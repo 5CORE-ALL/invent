@@ -533,16 +533,18 @@ class OverallAmazonController extends Controller
             $allLmpEntries = AmazonSkuCompetitor::applyIgnoreToSameAsins($allLmpEntries);
             $allLmpEntries = AmazonSkuCompetitor::dedupeByAsin($allLmpEntries);
 
-            $row['lmp_entries'] = $allLmpEntries
+            $mappedLmpEntries = $allLmpEntries
                 ->map(fn ($entry) => $this->mapAmazonLmpEntry($entry, $lmpIgnoredIds, false))
                 ->values()
                 ->all();
-            $row['lmp_entries_total'] = count($row['lmp_entries']);
+            $row['lmp_entries_total'] = count($mappedLmpEntries);
+            // Grid stays light: L1 price + count only. The LMP modal loads the list.
+            $row['lmp_entries'] = [];
 
-            // L1 from the same mapped entries the grid receives (skip ignored).
+            // L1 from the mapped entries (skip ignored). lmp_price is already landed.
             $lowestMapped = null;
             $lowestLanded = null;
-            foreach ($row['lmp_entries'] as $mapped) {
+            foreach ($mappedLmpEntries as $mapped) {
                 if (! empty($mapped['ignored'])) {
                     continue;
                 }
@@ -2839,11 +2841,8 @@ class OverallAmazonController extends Controller
                 [$min, $max] = [$max, $min];
             }
             $disc = isset($item['disc']) && is_numeric($item['disc'])
-                ? round((float) $item['disc'], 2)
+                ? $this->amazonClampPromoDisc((float) $item['disc'])
                 : 0.0;
-            if ($disc < 0) {
-                $disc = 0.0;
-            }
             $rules[] = [
                 'key' => $min.'-'.$max,
                 'min' => $min,
@@ -2871,6 +2870,15 @@ class OverallAmazonController extends Controller
         return 4;
     }
 
+    private function amazonNoReviewsNoDiscountFromSaved($saved): bool
+    {
+        if (! is_array($saved) || ! array_key_exists('no_reviews_no_discount', $saved)) {
+            return true;
+        }
+
+        return filter_var($saved['no_reviews_no_discount'], FILTER_VALIDATE_BOOLEAN);
+    }
+
     /**
      * Load Amazon Review Disc rules (channel amazon_review_vs_disc).
      */
@@ -2886,6 +2894,7 @@ class OverallAmazonController extends Controller
                 'success' => true,
                 'is_default' => true,
                 'max_reviews' => 4,
+                'no_reviews_no_discount' => true,
                 'rules' => $defaults,
             ]);
         }
@@ -2894,6 +2903,7 @@ class OverallAmazonController extends Controller
             'success' => true,
             'is_default' => false,
             'max_reviews' => $this->amazonReviewDiscMaxFromSaved($saved),
+            'no_reviews_no_discount' => $this->amazonNoReviewsNoDiscountFromSaved($saved),
             'rules' => $this->amazonNormalizeReviewDiscRules($saved),
         ]);
     }
@@ -2908,9 +2918,13 @@ class OverallAmazonController extends Controller
         if ($maxReviews < 1) {
             $maxReviews = 4;
         }
+        $noReviewsNoDiscount = $request->exists('no_reviews_no_discount')
+            ? $request->boolean('no_reviews_no_discount')
+            : true;
 
         $payload = [
             'max_reviews' => $maxReviews,
+            'no_reviews_no_discount' => $noReviewsNoDiscount,
             'rules' => $rules,
         ];
 
@@ -2922,15 +2936,16 @@ class OverallAmazonController extends Controller
         return response()->json([
             'success' => true,
             'max_reviews' => $maxReviews,
+            'no_reviews_no_discount' => $noReviewsNoDiscount,
             'rules' => $rules,
         ]);
     }
 
     /**
-     * Std prc vs dil: promotional % off standard price for Dil, Age Days, and CVR up/down.
+     * Std prc vs dil: promotional % off standard price for Dil, Age Days, CVR up/down, and Buss Discount.
      * Review ranges stay on amazon_review_vs_disc. CVR slabs stay on amazon_cvr_vs_disc.
      *
-     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array{down2_lt:float,down2_disc:float,down_lt:float,down_disc:float,up_gt:float,up_disc:float,up2_gt:float,up2_disc:float,flat_disc:float}}
+     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array{down2_lt:float,down2_disc:float,down_lt:float,down_disc:float,up_gt:float,up_disc:float,up2_gt:float,up2_disc:float,flat_disc:float}, buss: list<array{min:float,max:float,disc:float}>}
      */
     private function amazonDefaultStdPrcVsDil(): array
     {
@@ -2962,6 +2977,19 @@ class OverallAmazonController extends Controller
                 'up2_disc' => 0,
                 'flat_disc' => 0,
             ],
+            'buss' => [
+                ['min' => 0, 'max' => 15, 'disc' => 0],
+                ['min' => 15, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 9999, 'disc' => 0],
+            ],
+            'roi' => [
+                ['min' => -9999, 'max' => 0, 'disc' => 0],
+                ['min' => 0, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 75, 'disc' => 0],
+                ['min' => 75, 'max' => 125, 'disc' => 0],
+                ['min' => 125, 'max' => 9999, 'disc' => 0],
+            ],
+            'zero_sold_disc' => 0,
         ];
     }
 
@@ -2987,16 +3015,10 @@ class OverallAmazonController extends Controller
                 $max = $swap;
             }
             $disc = is_numeric($item['disc'] ?? null) ? (float) $item['disc'] : 0;
-            if ($disc < 0) {
-                $disc = 0;
-            }
-            if ($disc > 100) {
-                $disc = 100;
-            }
             $rules[] = [
                 'min' => round($min, 2),
                 'max' => round($max, 2),
-                'disc' => round($disc, 2),
+                'disc' => $this->amazonClampPromoDisc($disc),
             ];
         }
 
@@ -3025,13 +3047,7 @@ class OverallAmazonController extends Controller
                 continue;
             }
             $n = (float) $incoming[$key];
-            if ($n < 0) {
-                $n = 0;
-            }
-            if ($n > 100) {
-                $n = 100;
-            }
-            $out[$key] = round($n, 2);
+            $out[$key] = $this->amazonClampPromoDisc($n);
         }
         if (! $hadDown2Disc) {
             $out['down2_disc'] = $out['down_disc'];
@@ -3041,6 +3057,19 @@ class OverallAmazonController extends Controller
         }
 
         return $out;
+    }
+
+    /** Disc % may be negative (raises price) or a decimal. Kept to two places, between -100 and 100. */
+    private function amazonClampPromoDisc(float $disc): float
+    {
+        if ($disc < -100) {
+            $disc = -100;
+        }
+        if ($disc > 100) {
+            $disc = 100;
+        }
+
+        return round($disc, 2);
     }
 
     public function amazonStdPrcVsDilRules()
@@ -3057,6 +3086,9 @@ class OverallAmazonController extends Controller
                 'dil' => $defaults['dil'],
                 'age' => $defaults['age'],
                 'cvr' => $defaults['cvr'],
+                'buss' => $defaults['buss'],
+                'roi' => $defaults['roi'],
+                'zero_sold_disc' => $defaults['zero_sold_disc'],
             ]);
         }
 
@@ -3066,6 +3098,9 @@ class OverallAmazonController extends Controller
             'dil' => $this->amazonNormalizeStdPrcRanges($saved['dil'] ?? null, $defaults['dil']),
             'age' => $this->amazonNormalizeStdPrcRanges($saved['age'] ?? null, $defaults['age']),
             'cvr' => $this->amazonNormalizeStdPrcCvr($saved['cvr'] ?? null),
+            'buss' => $this->amazonNormalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
+            'roi' => $this->amazonNormalizeStdPrcRanges($saved['roi'] ?? null, $defaults['roi']),
+            'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0),
         ]);
     }
 
@@ -3076,11 +3111,14 @@ class OverallAmazonController extends Controller
             'dil' => $this->amazonNormalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
             'age' => $this->amazonNormalizeStdPrcRanges($request->input('age'), $defaults['age']),
             'cvr' => $this->amazonNormalizeStdPrcCvr($request->input('cvr')),
+            'buss' => $this->amazonNormalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
+            'roi' => $this->amazonNormalizeStdPrcRanges($request->input('roi'), $defaults['roi']),
+            'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($request->input('zero_sold_disc')) ? (float) $request->input('zero_sold_disc') : 0),
         ];
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'buss', 'roi', 'zero_sold']]
         );
 
         return response()->json([
@@ -3088,6 +3126,9 @@ class OverallAmazonController extends Controller
             'dil' => $payload['dil'],
             'age' => $payload['age'],
             'cvr' => $payload['cvr'],
+            'buss' => $payload['buss'],
+            'roi' => $payload['roi'],
+            'zero_sold_disc' => $payload['zero_sold_disc'],
         ]);
     }
 

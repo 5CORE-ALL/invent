@@ -330,6 +330,18 @@ class DobaController extends Controller
         $promoChannel = $onlyPickupPrepaidLabelFromDaily ? 'doba_withoutship' : 'doba';
         $promoMap = app(ChannelPromoPricingService::class)->mapForSkus($promoChannel, $skus);
 
+        // Age days — same clock as /amazon-tabulator-view (Shopify push → today, or last sale when Shop INV is 0).
+        $ageDays = app(\App\Http\Controllers\ProductMaster\InvDaysController::class);
+        $agePushBySku = [];
+        $ageLastSaleBySku = [];
+        try {
+            $ageSources = $ageDays->ageDaySources();
+            $agePushBySku = $ageSources['push'] ?? [];
+            $ageLastSaleBySku = $ageSources['last_sale'] ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('Doba tabulator: age days lookup failed', ['error' => $e->getMessage()]);
+        }
+
         // 7. Build Result
         $result = [];
 
@@ -348,6 +360,13 @@ class DobaController extends Controller
             $row["INV"] = (int) ($dobaMetric->inventory ?? 0);
             // Shopify inventory shown as a separate column
             $row["shopify_inv"] = (int) ($shopify->inv ?? 0);
+            // Age Disc uses this the same way Amazon analytics does (Shop INV, not D INV).
+            $row['age_days'] = $ageDays->ageDays(
+                (string) $pm->sku,
+                (float) $row['shopify_inv'],
+                $agePushBySku,
+                $ageLastSaleBySku
+            );
             // Missing = SKU not listed on Doba (no doba_metrics record), same idea as is_missing_amazon
             $row["is_missing_doba"] = $dobaMetric ? false : true;
             // L30 (overall) still from Shopify

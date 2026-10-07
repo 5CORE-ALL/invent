@@ -2,6 +2,11 @@
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+        if (new URLSearchParams(window.location.search).get('embed') === '1') {
+            document.documentElement.classList.add('pmcvr-embed');
+        }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -30,6 +35,15 @@
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
         }
+
+        html.pmcvr-embed .leftside-menu,
+        html.pmcvr-embed .navbar-custom,
+        html.pmcvr-embed .footer,
+        html.pmcvr-embed footer { display: none !important; }
+        html.pmcvr-embed .content-page { margin-left: 0 !important; padding-top: 0 !important; }
+        html.pmcvr-embed .container-fluid > .row,
+        html.pmcvr-embed .container-fluid > .card { display: none !important; }
+        html.pmcvr-embed #ovl30DetailsModal .modal-dialog { margin: 0.5rem auto; max-width: calc(100vw - 1rem); }
 
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
@@ -2025,20 +2039,31 @@
             });
         }
 
-        // Deep-link from /ebay-tabulator-view LMP magnifying glass (and others):
-        // /pricing-master-cvr?sku=XXX&inv=&l30=&dil= → open same analytics modal.
+        // Deep-link from /ebay-tabulator-view and /lmp-overall magnifying glass:
+        // /pricing-master-cvr?sku=XXX&inv=&l30=&dil=&embed=1 → open the same analytics modal.
         (function openSkuBreakdownFromQuery() {
             try {
                 const params = new URLSearchParams(window.location.search || '');
+                if (params.get('embed') === '1') {
+                    document.documentElement.classList.add('pmcvr-embed');
+                }
                 const sku = String(params.get('sku') || params.get('openSku') || '').trim();
                 if (!sku) return;
                 const inv = parseInt(params.get('inv'), 10) || 0;
                 const l30 = parseInt(params.get('l30'), 10) || 0;
                 const dil = parseFloat(params.get('dil')) || 0;
                 const image = params.get('image') || '';
+                const embed = params.get('embed') === '1';
                 $(function() {
                     loadMarketplaceBreakdown(sku, image, inv, l30, dil);
-                    if (window.history && window.history.replaceState) {
+                    if (embed) {
+                        $('#ovl30DetailsModal').on('hidden.bs.modal', function () {
+                            if (window.parent && window.parent !== window) {
+                                window.parent.postMessage({ type: 'lmp-overall-close-sold' }, '*');
+                            }
+                        });
+                    }
+                    if (window.history && window.history.replaceState && !embed) {
                         const url = new URL(window.location.href);
                         ['sku', 'openSku', 'inv', 'l30', 'dil', 'image'].forEach(function(k) {
                             url.searchParams.delete(k);

@@ -14,6 +14,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\AmazonDilGroiRule;
+use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -24,6 +25,7 @@ use Throwable;
  *
  * Same as Push Prc / S PRC on /amazon-tabulator-view:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + CVR Disc + Rev Disc) / 100)
+ *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  CVR Disc = CVR slab + CVR up/down promotional discount
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  Skip when live Price already equals the target. Price column updates on each push.
@@ -106,7 +108,8 @@ class AmazonSprcDilAutoPushService
                         $review['max_reviews'],
                         $cvrGroiAdj,
                         $adsPct,
-                        $stdPromo
+                        $stdPromo,
+                        (bool) ($review['no_reviews_no_discount'] ?? true)
                     );
                     if ($computed === null) {
                         $stats['skipped']++;
@@ -209,6 +212,7 @@ class AmazonSprcDilAutoPushService
      * @param  list<array{key:string,min:int,max:int,disc:float}>  $reviewRules
      * @param  array<string, mixed>|null  $cvrAdj
      * @param  array<string, mixed>  $stdPromo  Dil / Age / CVR up-down promotional % off Std Prc
+     * @param  bool  $noReviewsNoDiscount  No review count → 0 review discount
      * @return array{sprice:float,dil:float,groi:?float,nroi:?float,cvr_disc:float,review_disc:float,dil_disc:float,age_disc:float,sum_disc:float,dil_groi:bool,lmp_capped:bool,base:float}|null
      */
     public function computeTarget(
@@ -219,7 +223,8 @@ class AmazonSprcDilAutoPushService
         int $reviewMax,
         ?array $cvrAdj = null,
         ?float $adsPct = null,
-        array $stdPromo = []
+        array $stdPromo = [],
+        bool $noReviewsNoDiscount = true
     ): ?array {
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0)) {
@@ -231,7 +236,9 @@ class AmazonSprcDilAutoPushService
         $ship = (float) ($row['ship'] ?? 0);
         $std = (float) ($row['standard_price'] ?? 0);
         $cvr = (float) ($row['cvr'] ?? 0);
-        $reviews = (int) ($row['review_count'] ?? 0);
+        $reviews = isset($row['review_rating']) && is_numeric($row['review_rating'])
+            ? (float) $row['review_rating']
+            : (float) ($row['review_count'] ?? 0);
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $ads = $adsPct ?? $this->amazonAdsPercent();
@@ -259,22 +266,45 @@ class AmazonSprcDilAutoPushService
         }
         $dilGroi = $dilPrice !== null && $dilPrice > 0;
 
-        $cvrDisc = round(min(99.99, max(0, $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []))), 2);
-        $reviewDisc = $this->discForReviews($reviews, $reviewRules, $reviewMax);
+        $cvrDisc = $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
+        $reviewQty = (int) ($row['review_count'] ?? 0);
+        $hasStarRating = array_key_exists('review_rating', $row) && is_numeric($row['review_rating']);
+        $reviewDisc = ($noReviewsNoDiscount && $hasStarRating && $reviewQty <= 0)
+            ? 0.0
+            : $this->discForReviews($reviews, $reviewRules, $reviewMax);
         $dilDisc = $this->discForStdRange($dil, is_array($stdPromo['dil'] ?? null) ? $stdPromo['dil'] : []);
         $ageDisc = 0.0;
         if (isset($row['age_days']) && $row['age_days'] !== null && $row['age_days'] !== '') {
             $ageDisc = $this->discForStdRange((float) $row['age_days'], is_array($stdPromo['age'] ?? null) ? $stdPromo['age'] : []);
         }
-        $totalDisc = round(min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc)), 2);
+        $ageDisc = StdPrcVsDilPricer::scaleRuleDisc($ageDisc, $std);
+        $dilDisc = StdPrcVsDilPricer::scaleRuleDisc($dilDisc, $std);
+        $cvrDisc = StdPrcVsDilPricer::scaleRuleDisc($cvrDisc, $std);
+        $reviewDisc = StdPrcVsDilPricer::scaleRuleDisc($reviewDisc, $std);
+        $bussDisc = $this->discForStdRange($std, is_array($stdPromo['buss'] ?? null) ? $stdPromo['buss'] : []);
+        $listingPrice = (float) ($row['price'] ?? 0);
+        $roiPct = ($lp > 0 && $listingPrice > 0)
+            ? ((($listingPrice * 0.80) - $ship - $lp) / $lp) * 100
+            : null;
+        $roiDisc = $roiPct === null
+            ? 0.0
+            : StdPrcVsDilPricer::scaleRuleDisc(
+                $this->discForStdRange($roiPct, is_array($stdPromo['roi'] ?? null) ? $stdPromo['roi'] : [], true),
+                $std
+            );
+        $aL30Sold = (float) ($row['a_l30'] ?? 0);
+        $zeroSoldDisc = ! ($aL30Sold > 0)
+            ? StdPrcVsDilPricer::scaleRuleDisc((float) ($stdPromo['zero_sold_disc'] ?? 0), $std)
+            : 0.0;
+        $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $roiDisc)), 2);
 
         if (! ($std > 0)) {
             return null;
         }
         $sale = null;
-        if ($totalDisc > 0 && $totalDisc < 100) {
+        if (abs($totalDisc) >= 0.01 && $totalDisc < 100) {
             $sale = round($std * (1 - ($totalDisc / 100)), 2);
-            if (! ($sale >= 0.01) || $sale >= $std) {
+            if (! ($sale >= 0.01)) {
                 $sale = null;
             }
         }
@@ -284,13 +314,17 @@ class AmazonSprcDilAutoPushService
             return null;
         }
 
+        $stdCeiling = $std;
+        if ($totalDisc < 0 && $std > 0 && $sale !== null) {
+            $stdCeiling = (float) $sale;
+        }
         $capped = AmazonDilGroiRule::capSpriceToLmp(
             $effective,
             $lmp,
             $lp,
             $ship,
             AmazonDilGroiRule::TAKE_HOME,
-            $std
+            $stdCeiling
         );
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
@@ -308,6 +342,9 @@ class AmazonSprcDilAutoPushService
             'nroi' => $nroi,
             'cvr_disc' => $cvrDisc,
             'review_disc' => $reviewDisc,
+            'buss_disc' => $bussDisc,
+            'zero_sold_disc' => $zeroSoldDisc,
+            'roi_disc' => $roiDisc,
             'dil_disc' => $dilDisc,
             'age_disc' => $ageDisc,
             'sum_disc' => $totalDisc,
@@ -435,6 +472,7 @@ class AmazonSprcDilAutoPushService
             $dv = $this->decodeValue($views[$sku]->value ?? null);
             $std = (float) ($dv['STANDARD_PRICE'] ?? 0);
             $lastOffer = AmazonSpApiService::lastPushedSaleBusinessMin($dv);
+            $rev = $reviewsBySku[$sku] ?? ['count' => 0, 'rating' => 0.0];
 
             $out[] = [
                 'sku' => $sku,
@@ -452,7 +490,8 @@ class AmazonSprcDilAutoPushService
                 'lp' => $lp,
                 'ship' => $ship,
                 'lmp' => (float) ($lmpBySku[$sku] ?? 0),
-                'review_count' => (int) ($reviewsBySku[$sku] ?? 0),
+                'review_count' => (int) ($rev['count'] ?? 0),
+                'review_rating' => (float) ($rev['rating'] ?? 0),
                 'age_days' => $ageDays->ageDays($sellerSku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => $std,
                 'sprice' => (float) ($dv['SPRICE'] ?? 0),
@@ -489,7 +528,7 @@ class AmazonSprcDilAutoPushService
 
     /**
      * @param  list<string>  $skuKeys
-     * @return array<string, int>
+     * @return array<string, array{count: int, rating: float}>
      */
     protected function loadReviewCounts(array $skuKeys): array
     {
@@ -504,13 +543,16 @@ class AmazonSprcDilAutoPushService
                     $q->where('channel', 'Amazon')->orWhereNull('channel')->orWhere('channel', '');
                 })
                 ->whereNotNull('sku')
-                ->get(['sku', 'review_count']);
+                ->get(['sku', 'review_count', 'product_rating']);
             foreach ($rows as $rr) {
                 $k = strtoupper(trim(str_replace("\xc2\xa0", ' ', (string) $rr->sku)));
                 if ($k === '') {
                     continue;
                 }
-                $out[$k] = (int) ($rr->review_count ?? 0);
+                $out[$k] = [
+                    'count' => (int) ($rr->review_count ?? 0),
+                    'rating' => is_numeric($rr->product_rating) ? (float) $rr->product_rating : 0.0,
+                ];
             }
         } catch (Throwable $e) {
             Log::warning('[AmazonSprcDilAutoPush] reviews load failed', ['error' => $e->getMessage()]);
@@ -594,6 +636,16 @@ class AmazonSprcDilAutoPushService
         return [$lp, $ship];
     }
 
+    /** Disc % may be negative (raises price) or a decimal. Kept to two places, between -100 and 100. */
+    private function clampPromoDisc(float $disc): float
+    {
+        if (! is_finite($disc)) {
+            return 0.0;
+        }
+
+        return round(min(100, max(-100, $disc)), 2);
+    }
+
     /**
      * @param  list<array{key:string,label:string,disc:float}>  $rules
      */
@@ -604,7 +656,7 @@ class AmazonSprcDilAutoPushService
             if (($rule['key'] ?? '') === $key) {
                 $n = (float) ($rule['disc'] ?? 0);
 
-                return is_finite($n) && $n >= 0 ? round($n, 2) : 0.0;
+                return is_finite($n) ? $this->clampPromoDisc($n) : 0.0;
             }
         }
 
@@ -612,9 +664,11 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
+     * Star rating (4.0), not the count in parentheses.
+     *
      * @param  list<array{key:string,min:int,max:int,disc:float}>  $rules
      */
-    public function discForReviews(int $count, array $rules, int $maxReviews): float
+    public function discForReviews(float $count, array $rules, int $maxReviews): float
     {
         $cap = $maxReviews > 0 ? $maxReviews : 4;
         if (! ($count > 0) || $count >= $cap) {
@@ -626,7 +680,7 @@ class AmazonSprcDilAutoPushService
             if ($count >= $min && $count <= $max) {
                 $n = (float) ($rule['disc'] ?? 0);
 
-                return is_finite($n) && $n > 0 ? round($n, 2) : 0.0;
+                return is_finite($n) ? $this->clampPromoDisc($n) : 0.0;
             }
         }
 
@@ -638,9 +692,9 @@ class AmazonSprcDilAutoPushService
      *
      * @param  list<array<string, mixed>>  $rules
      */
-    public function discForStdRange(float $value, array $rules): float
+    public function discForStdRange(float $value, array $rules, bool $allowNegative = false): float
     {
-        if (! is_finite($value) || $value < 0 || $rules === []) {
+        if (! is_finite($value) || (! $allowNegative && $value < 0) || $rules === []) {
             return 0.0;
         }
         $list = array_values($rules);
@@ -664,7 +718,7 @@ class AmazonSprcDilAutoPushService
             }
             $n = (float) ($rule['disc'] ?? 0);
 
-            return is_finite($n) && $n > 0 ? round($n, 2) : 0.0;
+            return is_finite($n) ? $this->clampPromoDisc($n) : 0.0;
         }
 
         return 0.0;
@@ -716,11 +770,11 @@ class AmazonSprcDilAutoPushService
                 }
             }
         }
-        if (! is_finite($disc) || $disc <= 0) {
+        if (! is_finite($disc)) {
             return 0.0;
         }
 
-        return round($disc, 2);
+        return $this->clampPromoDisc($disc);
     }
 
     /**
@@ -728,7 +782,7 @@ class AmazonSprcDilAutoPushService
      */
     protected function loadStdPrcVsDil(): array
     {
-        $empty = ['dil' => [], 'age' => [], 'cvr' => []];
+        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => [], 'zero_sold_disc' => 0];
         try {
             $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_std_prc_vs_dil')->first();
         } catch (Throwable $e) {
@@ -743,6 +797,8 @@ class AmazonSprcDilAutoPushService
             'dil' => is_array($saved['dil'] ?? null) ? $saved['dil'] : [],
             'age' => is_array($saved['age'] ?? null) ? $saved['age'] : [],
             'cvr' => is_array($saved['cvr'] ?? null) ? $saved['cvr'] : [],
+            'buss' => is_array($saved['buss'] ?? null) ? $saved['buss'] : [],
+            'zero_sold_disc' => is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0,
         ];
     }
 
@@ -1021,7 +1077,7 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
-     * @return array{max_reviews: int, rules: list<array{key:string,min:int,max:int,label:string,disc:float}>}
+     * @return array{max_reviews: int, no_reviews_no_discount: bool, rules: list<array{key:string,min:int,max:int,label:string,disc:float}>}
      */
     protected function loadReviewDiscRules(): array
     {
@@ -1032,7 +1088,7 @@ class AmazonSprcDilAutoPushService
         $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_review_vs_disc')->first();
         $saved = is_array($row?->visibility) ? $row->visibility : null;
         if (! is_array($saved) || $saved === []) {
-            return ['max_reviews' => 4, 'rules' => $defaults];
+            return ['max_reviews' => 4, 'no_reviews_no_discount' => true, 'rules' => $defaults];
         }
         $max = isset($saved['max_reviews']) && is_numeric($saved['max_reviews'])
             ? (int) $saved['max_reviews']
@@ -1040,6 +1096,8 @@ class AmazonSprcDilAutoPushService
         if ($max < 1) {
             $max = 4;
         }
+        $noReviewsNoDiscount = ! array_key_exists('no_reviews_no_discount', $saved)
+            || filter_var($saved['no_reviews_no_discount'], FILTER_VALIDATE_BOOLEAN);
         $items = isset($saved['rules']) && is_array($saved['rules']) ? $saved['rules'] : $saved;
         $rules = [];
         foreach ($items as $item) {
@@ -1061,18 +1119,19 @@ class AmazonSprcDilAutoPushService
             if ($hi < $min) {
                 [$min, $hi] = [$hi, $min];
             }
-            $disc = isset($item['disc']) && is_numeric($item['disc']) ? round((float) $item['disc'], 2) : 0.0;
+            $disc = isset($item['disc']) && is_numeric($item['disc']) ? $this->clampPromoDisc((float) $item['disc']) : 0.0;
             $rules[] = [
                 'key' => $min.'-'.$hi,
                 'min' => $min,
                 'max' => $hi,
                 'label' => $min.'–'.$hi,
-                'disc' => $disc < 0 ? 0.0 : $disc,
+                'disc' => $disc,
             ];
         }
 
         return [
             'max_reviews' => $max,
+            'no_reviews_no_discount' => $noReviewsNoDiscount,
             'rules' => $rules !== [] ? $rules : $defaults,
         ];
     }

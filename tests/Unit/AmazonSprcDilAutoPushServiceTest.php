@@ -99,6 +99,37 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(4.0, $out['review_disc'], 0.001);
     }
 
+    public function test_std_under_15_halves_age_dil_cvr_and_review_discounts(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 12,
+            'age_days' => 100,
+            'lp' => 4,
+            'ship' => 1,
+            'standard_price' => 10,
+            'cvr' => 0.5,
+            'review_count' => 2,
+            'lmp' => 0,
+            'a_l30' => 8,
+            'sess30' => 100,
+            'a_l60' => 8,
+            'sess60' => 100,
+        ], 0.0, [
+            'dil' => [['min' => 10, 'max' => 25, 'disc' => 5]],
+            'age' => [['min' => 91, 'max' => 180, 'disc' => 3]],
+            'cvr' => ['down_lt' => 7, 'down_disc' => 2, 'up_gt' => 10, 'up_disc' => 1, 'flat_disc' => 0],
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(1.5, $out['age_disc'], 0.001);
+        $this->assertEqualsWithDelta(2.5, $out['dil_disc'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $out['cvr_disc'], 0.001);
+        $this->assertEqualsWithDelta(2.0, $out['review_disc'], 0.001);
+        $this->assertEqualsWithDelta(6.0, $out['sum_disc'], 0.001);
+        $this->assertEqualsWithDelta(9.4, $out['sprice'], 0.001);
+    }
+
     public function test_no_dil_and_no_disc_returns_std(): void
     {
         $out = $this->compute([
@@ -215,6 +246,44 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertTrue($out['dil_groi']);
         $this->assertEqualsWithDelta(40.0, $out['nroi'], 0.001);
         $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
+    }
+
+    public function test_no_reviews_blocks_discount_when_star_rating_would_match(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 2.5,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 0.5,
+            'review_count' => 0,
+            'review_rating' => 2,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(0.0, $out['review_disc'], 0.001);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
+    }
+
+    public function test_star_rating_still_discounts_when_a_review_exists(): void
+    {
+        $out = $this->compute([
+            'inv' => 10,
+            'dil' => 2.5,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 0.5,
+            'review_count' => 1,
+            'review_rating' => 2,
+            'lmp' => 0,
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(4.0, $out['review_disc'], 0.001);
+        $this->assertEqualsWithDelta(96.0, $out['sprice'], 0.001);
     }
 
     public function test_cvr_up_above_10_adds_10_to_target_nroi(): void

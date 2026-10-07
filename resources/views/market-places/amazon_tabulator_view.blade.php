@@ -920,6 +920,81 @@
         </div>
     </div>
 
+    <!-- Std Prc editor (magnifying glass). Std NROI% and Std NPFT% follow the typed price. -->
+    <div class="modal fade" id="stdPrcEditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 720px;">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title mb-0">Std Price — <span id="stdPrcEditSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-4">
+                            <label class="form-label mb-1 small fw-bold" for="stdPrcEditInput">Std Prc</label>
+                            <input type="number" class="form-control form-control-sm text-end fw-bold" id="stdPrcEditInput"
+                                step="0.01" min="0.01" placeholder="0.00" autocomplete="off">
+                        </div>
+                        <div class="col-4">
+                            <div class="form-label mb-1 small fw-bold">Std NROI%</div>
+                            <div id="stdPrcEditNroi" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × 0.70 − ship − LP) / LP) × 100">—</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="form-label mb-1 small fw-bold">Std NPFT%</div>
+                            <div id="stdPrcEditNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × 0.70 − ship − LP) / Std Prc) × 100">—</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg GPFT%</div>
+                            <div id="stdPrcAvgGpft" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg GPFT% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg GROI%</div>
+                            <div id="stdPrcAvgGroi" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg GROI% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg NPFT%</div>
+                            <div id="stdPrcAvgNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg NPFT% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg NROI%</div>
+                            <div id="stdPrcAvgNroi" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg NROI% from Pricing Master CVR">—</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">OV LMP</div>
+                            <div id="stdPrcOvLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Lowest LMP across Amazon, eBay, Temu, and Google">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg LMP</div>
+                            <div id="stdPrcAvgLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Average LMP across Amazon, eBay, Temu, and Google">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">My LMP</div>
+                            <div id="stdPrcMyLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Manual My LMP">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Diff</div>
+                            <div id="stdPrcDiff" class="form-control form-control-sm fw-bold text-center" title="(Avg LMP − Avg Price) / Avg Price">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg Price</div>
+                            <div id="stdPrcAvgPrice" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg Price from Pricing Master CVR">—</div>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Saves Std Prc for this SKU and its Sku Link LMP siblings. Avg and LMP figures match LMP Overall.</div>
+                    <div class="small mt-1" id="stdPrcEditMsg"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="stdPrcEditSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- LMP Competitors Modal -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -948,12 +1023,12 @@
                                         style="width: 7rem;" title="Manual Standard Price — use when LMP cannot be determined. Saves to Std Prc column only.">
                                 </div>
                                 <div class="col-auto">
-                                    <div class="small text-muted mb-0">GROI %</div>
-                                    <div id="lmpModalGroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
+                                    <div class="small text-muted mb-0">Std NROI%</div>
+                                    <div id="lmpModalStdNroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;" title="((Std Prc × 0.70 − ship − LP) / LP) × 100">—</div>
                                 </div>
                                 <div class="col-auto">
-                                    <div class="small text-muted mb-0">NROI %</div>
-                                    <div id="lmpModalNroiPct" class="fs-5 fw-bold" style="min-width: 3.5rem;">—</div>
+                                    <div class="small text-muted mb-0">Std NPFT%</div>
+                                    <div id="lmpModalStdNpftPct" class="fs-5 fw-bold" style="min-width: 3.5rem;" title="((Std Prc × 0.70 − ship − LP) / Std Prc) × 100">—</div>
                                 </div>
                                 <div class="col-auto small text-muted pb-1">
                                     Standard Price (manual). Saves to <strong>Std Prc</strong> for this SKU and all
@@ -1257,8 +1332,8 @@
             return row;
         }
 
-        // Outer LMP = Model L1 from the same lmp_entries (DB ignored flags).
-        // Used by the LMP column, Diff column, S PRC cap, and Diff filter.
+        // Outer LMP = landed L1. The grid stores that price on the row.
+        // A loaded competitor list (after the LMP modal) overrides it.
         function lmpWithShipping(rowData) {
             if (!rowData) return 0;
             const entries = rowData.lmp_entries || [];
@@ -1267,13 +1342,7 @@
                 return fromEntries.l1 != null && fromEntries.l1 > 0 ? fromEntries.l1 : 0;
             }
             const base = parseFloat(rowData.lmp_price || 0) || 0;
-            if (!base || base <= 0) return base;
-            let shipCost = 0;
-            if (rowData.lmp_delivery) {
-                const m = String(rowData.lmp_delivery).match(/\$\s*([\d,]+\.?\d*)\s*delivery/i);
-                if (m) shipCost = parseFloat(m[1].replace(/,/g, '')) || 0;
-            }
-            return base + shipCost;
+            return base > 0 ? base : 0;
         }
 
         /** Same test as LMP column red: INV > 0 and Price > landed L1. */
@@ -1312,14 +1381,21 @@
             const n = parseFloat(raw);
             return (isFinite(n) && n > 0) ? n : 0;
         }
-        /** Std Prc is always the maximum when it is set, including a high suggested S PRC. */
+        /** Std Prc is the maximum when it is set, unless a negative Std prc vs dil disc raises the price. */
         function amazonCapToStdWhenNoLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
             const rounded = +Number(s).toFixed(2);
             const std = amazonStdPrice(rowData);
-            if (!(std > 0) || rounded + 0.0001 <= std) return rounded;
-            return +Number(std).toFixed(2);
+            let ceiling = std;
+            if (std > 0 && typeof computeAmzSumDiscountPct === 'function') {
+                const disc = Number(computeAmzSumDiscountPct(rowData));
+                if (isFinite(disc) && disc < 0) {
+                    ceiling = +Number(std * (1 - (disc / 100))).toFixed(2);
+                }
+            }
+            if (!(ceiling > 0) || rounded + 0.0001 <= ceiling) return rounded;
+            return +Number(ceiling).toFixed(2);
         }
         function amazonCapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);
@@ -2581,6 +2657,48 @@
             return amazonComputeNroiAtSp(rowData && rowData.price, rowData);
         }
 
+        /** Std NROI% — same as /lmp-overall. ((Std × 0.70 − ship − LP) / LP) × 100 */
+        function amazonStdNroiAt(rowData) {
+            if (!rowData) return null;
+            const price = parseFloat(rowData.STANDARD_PRICE);
+            const lp = parseFloat(rowData.LP_productmaster);
+            if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            return ((price * 0.70 - ship - lp) / lp) * 100;
+        }
+
+        /** Std NPFT% — same as /lmp-overall. ((Std × 0.70 − ship − LP) / Std) × 100 */
+        function amazonStdNpftAt(rowData) {
+            if (!rowData) return null;
+            const price = parseFloat(rowData.STANDARD_PRICE);
+            if (!isFinite(price) || price <= 0) return null;
+            const lp = parseFloat(rowData.LP_productmaster);
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const lpVal = (isFinite(lp) && lp > 0) ? lp : 0;
+            return ((price * 0.70 - ship - lpVal) / price) * 100;
+        }
+
+        /** Modal NROI at Std — ((Std × 0.70 − ship − LP) / LP) × 100 */
+        function amazonModalNroiAtStd(sp, rowData) {
+            if (!rowData) return null;
+            const price = parseFloat(sp);
+            const lp = parseFloat(rowData.LP_productmaster);
+            if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            return ((price * 0.70 - ship - lp) / lp) * 100;
+        }
+
+        /** Std NPFT% at a typed Std Prc. ((Std × 0.70 − ship − LP) / Std) × 100 */
+        function amazonModalNpftAtStd(sp, rowData) {
+            if (!rowData) return null;
+            const price = parseFloat(sp);
+            if (!isFinite(price) || price <= 0) return null;
+            const lp = parseFloat(rowData.LP_productmaster);
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const lpVal = (isFinite(lp) && lp > 0) ? lp : 0;
+            return ((price * 0.70 - ship - lpVal) / price) * 100;
+        }
+
         function amazonModalNroiColoredHtml(fieldVal) {
             if (window.MetricPctColors) {
                 const html = MetricPctColors.htmlFor('nroi', fieldVal, { decimals: 0, empty: '' });
@@ -2591,19 +2709,29 @@
             return '<span style="color:#dc3545;font-weight:600;">' + Math.round(p) + '%</span>';
         }
 
+        function amazonModalNpftColoredHtml(fieldVal) {
+            if (window.MetricPctColors) {
+                const html = MetricPctColors.htmlFor('npft', fieldVal, { decimals: 0, empty: '' });
+                return html || '<span class="text-muted">—</span>';
+            }
+            const p = parseFloat(fieldVal);
+            if (!isFinite(p)) return '<span class="text-muted">—</span>';
+            return '<span style="font-weight:600;">' + Math.round(p) + '%</span>';
+        }
+
         function refreshLmpModalSpMetrics() {
             const sp = parseFloat($('#lmpModalSpInput').val());
             const row = currentLmpData.rowData;
-            const groi = amazonComputeGroiAtSp(sp, row);
-            const nroi = amazonComputeNroiAtSp(sp, row);
-            $('#lmpModalGroiPct').html(groi === null ? '<span class="text-muted">—</span>' : amazonModalGroiColoredHtml(groi));
-            $('#lmpModalNroiPct').html(nroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(nroi));
-            const spText = (isFinite(sp) && sp > 0) ? ('$' + sp.toFixed(2)) : '—';
-            const groiHtml = groi === null ? '<span class="text-muted">—</span>' : amazonModalGroiColoredHtml(groi);
+            const nroi = amazonModalNroiAtStd(sp, row);
+            const npft = amazonModalNpftAtStd(sp, row);
             const nroiHtml = nroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(nroi);
+            const npftHtml = npft === null ? '<span class="text-muted">—</span>' : amazonModalNpftColoredHtml(npft);
+            $('#lmpModalStdNroiPct').html(nroiHtml);
+            $('#lmpModalStdNpftPct').html(npftHtml);
+            const spText = (isFinite(sp) && sp > 0) ? ('$' + sp.toFixed(2)) : '—';
             $('.lmp-sp-cell').text(spText === '—' ? '—' : spText);
-            $('.lmp-groi-cell').html(groiHtml);
-            $('.lmp-nroi-cell').html(nroiHtml);
+            $('.lmp-std-nroi-cell').html(nroiHtml);
+            $('.lmp-std-npft-cell').html(npftHtml);
         }
 
         function initLmpModalSpFromSku(sku) {
@@ -2643,9 +2771,217 @@
                     || (target && rowKey === target);
                 if (!inGroup) return;
                 r.update({ STANDARD_PRICE: std });
+                if (typeof r.reformat === 'function') r.reformat();
                 if (rowKey === target) primaryRow = r;
             });
             return primaryRow;
+        }
+
+        let stdPrcEditState = { sku: '', rowData: null, lastSaved: null };
+
+        function refreshStdPrcEditMetrics() {
+            const sp = parseFloat($('#stdPrcEditInput').val());
+            const row = stdPrcEditState.rowData;
+            const nroi = amazonModalNroiAtStd(sp, row);
+            const npft = amazonModalNpftAtStd(sp, row);
+            $('#stdPrcEditNroi').html(nroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(nroi));
+            $('#stdPrcEditNpft').html(npft === null ? '<span class="text-muted">—</span>' : amazonModalNpftColoredHtml(npft));
+        }
+
+        const stdPrcLmpMetricIds = ['stdPrcAvgGpft', 'stdPrcAvgGroi', 'stdPrcAvgNpft', 'stdPrcAvgNroi', 'stdPrcOvLmp', 'stdPrcAvgLmp', 'stdPrcMyLmp', 'stdPrcDiff', 'stdPrcAvgPrice'];
+        const stdPrcLmpCache = {};
+        let stdPrcLmpXhr = null;
+
+        function stdPrcMetricDash(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            el.innerHTML = '<span class="text-muted">—</span>';
+        }
+
+        function stdPrcPaintPct(id, kind, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            const n = Number(value);
+            if (value == null || value === '' || !isFinite(n)) {
+                el.innerHTML = '<span class="text-muted">—</span>';
+                return;
+            }
+            if (window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
+                el.innerHTML = MetricPctColors.htmlFor(kind, n, { decimals: 0, empty: '—' });
+                return;
+            }
+            el.textContent = Math.round(n) + '%';
+        }
+
+        function stdPrcPaintMoney(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            const n = Number(value);
+            el.innerHTML = (isFinite(n) && n > 0)
+                ? ('$' + n.toFixed(2))
+                : '<span class="text-muted">—</span>';
+        }
+
+        function paintStdPrcLmpMetrics(data) {
+            if (!data) {
+                stdPrcLmpMetricIds.forEach(stdPrcMetricDash);
+                return;
+            }
+            stdPrcPaintPct('stdPrcAvgGpft', 'gpft', data.gpft);
+            stdPrcPaintPct('stdPrcAvgGroi', 'groi', data.groi);
+            stdPrcPaintPct('stdPrcAvgNpft', 'npft', data.npft);
+            stdPrcPaintPct('stdPrcAvgNroi', 'nroi', data.nroi);
+            stdPrcPaintMoney('stdPrcOvLmp', data.ov_lmp);
+            stdPrcPaintMoney('stdPrcAvgLmp', data.avg_lmp);
+            stdPrcPaintMoney('stdPrcMyLmp', data.my_lmp);
+            stdPrcPaintMoney('stdPrcAvgPrice', data.avg_price);
+            const diffEl = document.getElementById('stdPrcDiff');
+            const pct = Number(data.diff);
+            if (!diffEl) return;
+            if (data.diff == null || data.diff === '' || !isFinite(pct)) {
+                stdPrcMetricDash('stdPrcDiff');
+                return;
+            }
+            let bg = '#ff00ff';
+            if (pct < 0) bg = '#dc3545';
+            else if (pct < 10) bg = '#28a745';
+            else if (pct <= 20) bg = '#ffc107';
+            diffEl.style.background = bg;
+            diffEl.style.color = '#000';
+            diffEl.textContent = Math.round(pct) + '%';
+        }
+
+        function loadStdPrcLmpMetrics(sku) {
+            const key = String(sku || '').trim().toUpperCase();
+            if (!key) {
+                paintStdPrcLmpMetrics(null);
+                return;
+            }
+            if (stdPrcLmpCache[key]) {
+                paintStdPrcLmpMetrics(stdPrcLmpCache[key]);
+                return;
+            }
+            stdPrcLmpMetricIds.forEach(function(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.style.background = '';
+                el.style.color = '';
+                el.textContent = '…';
+            });
+            if (stdPrcLmpXhr && typeof stdPrcLmpXhr.abort === 'function') stdPrcLmpXhr.abort();
+            stdPrcLmpXhr = $.ajax({
+                url: '/lmp-overall/sku-metrics',
+                method: 'GET',
+                data: { sku: sku },
+                headers: { 'Accept': 'application/json' }
+            }).done(function(res) {
+                if (String(stdPrcEditState.sku || '').trim().toUpperCase() !== key) return;
+                if (!res || !res.success) {
+                    paintStdPrcLmpMetrics(null);
+                    return;
+                }
+                stdPrcLmpCache[key] = res;
+                paintStdPrcLmpMetrics(res);
+            }).fail(function(xhr) {
+                if (xhr && xhr.statusText === 'abort') return;
+                if (String(stdPrcEditState.sku || '').trim().toUpperCase() !== key) return;
+                paintStdPrcLmpMetrics(null);
+            });
+        }
+
+        function openStdPrcEditModal(sku) {
+            const key = String(sku || '').trim();
+            if (!key) return;
+            const row = getAmazonTabulatorRowDataBySku(key);
+            stdPrcEditState.sku = key;
+            stdPrcEditState.rowData = row || null;
+            let sp = null;
+            if (row) {
+                const std = parseFloat(row.STANDARD_PRICE);
+                if (isFinite(std) && std > 0) sp = std;
+            }
+            stdPrcEditState.lastSaved = sp;
+            $('#stdPrcEditSku').text(key);
+            $('#stdPrcEditMsg').text('');
+            $('#stdPrcEditInput').val(sp != null ? sp.toFixed(2) : '');
+            refreshStdPrcEditMetrics();
+            loadStdPrcLmpMetrics(key);
+            const el = document.getElementById('stdPrcEditModal');
+            if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+            bootstrap.Modal.getOrCreateInstance(el).show();
+            setTimeout(function() {
+                const input = document.getElementById('stdPrcEditInput');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }, 200);
+        }
+
+        function saveStdPrcEditModal(closeAfter) {
+            const sku = stdPrcEditState.sku;
+            const sp = parseFloat($('#stdPrcEditInput').val());
+            if (!sku || !isFinite(sp) || sp <= 0) return;
+            if (stdPrcEditState.lastSaved != null && Math.abs(stdPrcEditState.lastSaved - sp) < 0.0001) {
+                if (closeAfter) {
+                    const el = document.getElementById('stdPrcEditModal');
+                    if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        bootstrap.Modal.getOrCreateInstance(el).hide();
+                    }
+                }
+                return;
+            }
+            stdPrcEditState.lastSaved = sp;
+            $('#stdPrcEditMsg').text('Saving…');
+            $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    sku: sku,
+                    sprice: sp,
+                    is_standard_price: 1
+                },
+                success: function(response) {
+                    const std = parseFloat(response.data);
+                    const saved = (isFinite(std) && std > 0) ? std : sp;
+                    stdPrcEditState.lastSaved = saved;
+                    const primary = applyStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                    if (primary) stdPrcEditState.rowData = primary.getData();
+                    refreshStdPrcEditMetrics();
+                    if (typeof amzScheduleRuleSpriceSync === 'function') {
+                        amzScheduleRuleSpriceSync({ force: true, delay: 200 });
+                    }
+                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                    $('#stdPrcEditMsg').text(n > 1 ? ('Saved for ' + n + ' linked SKUs') : 'Saved');
+                    if (typeof showToast === 'function') {
+                        showToast('success', n > 1
+                            ? ('Std Prc saved for ' + n + ' linked SKUs')
+                            : 'Std Prc saved');
+                    }
+                    if (closeAfter) {
+                        const el = document.getElementById('stdPrcEditModal');
+                        if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                            bootstrap.Modal.getOrCreateInstance(el).hide();
+                        }
+                    }
+                },
+                error: function() {
+                    stdPrcEditState.lastSaved = null;
+                    $('#stdPrcEditMsg').text('Failed to save');
+                    if (typeof showToast === 'function') {
+                        showToast('error', 'Failed to save Std Prc');
+                    }
+                }
+            });
         }
 
         function saveLmpModalSpToGrid() {
@@ -4112,6 +4448,41 @@
                         width: 78
                     },
                     {
+                        title: "Reviews",
+                        field: "amz_avg_rating",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 85,
+                        headerTooltip: "Avg rating + review count from Amz Ads API cron (amazon:collect-reviews). Falls back to SP-API Catalog when Ads Brand Posts is unavailable.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent_summary) return '';
+                            const rating = row.amz_avg_rating;
+                            const reviews = row.amz_review_count;
+                            if (rating === null || rating === undefined || rating === '' || parseFloat(rating) <= 0) {
+                                return '<span style="color: #6c757d;">-</span>';
+                            }
+                            const ratingVal = parseFloat(rating);
+                            let ratingColor = '#a00211';
+                            if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107';
+                            else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc';
+                            else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
+                            else if (ratingVal > 4.5) ratingColor = '#e83e8c';
+                            const count = parseInt(reviews, 10) || 0;
+                            const reviewColor = count < 4 ? '#a00211' : '#6c757d';
+                            const src = row.amz_reviews_source ? String(row.amz_reviews_source) : 'amazon';
+                            return `<span style="color: ${ratingColor}; font-weight: 600;" title="Source: ${escapeHtmlAttr(src)} · ${count.toLocaleString()} reviews">
+                                    <i class="fa fa-star"></i> ${ratingVal.toFixed(1)}
+                                    <span style="color: ${reviewColor};">(${count.toLocaleString()})</span>
+                                </span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const ra = parseFloat(aRow.getData().amz_avg_rating) || 0;
+                            const rb = parseFloat(bRow.getData().amz_avg_rating) || 0;
+                            return ra - rb;
+                        }
+                    },
+                    {
                         title: "Buyer Link",
                         field: "asin",
                         width: 50,
@@ -4308,41 +4679,6 @@
                             return formatted;
                         }
                     },
-                    {
-                        title: "Reviews",
-                        field: "amz_avg_rating",
-                        hozAlign: "center",
-                        headerSort: true,
-                        width: 85,
-                        headerTooltip: "Avg rating + review count from Amz Ads API cron (amazon:collect-reviews). Falls back to SP-API Catalog when Ads Brand Posts is unavailable.",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            if (row.is_parent_summary) return '';
-                            const rating = row.amz_avg_rating;
-                            const reviews = row.amz_review_count;
-                            if (rating === null || rating === undefined || rating === '' || parseFloat(rating) <= 0) {
-                                return '<span style="color: #6c757d;">-</span>';
-                            }
-                            const ratingVal = parseFloat(rating);
-                            let ratingColor = '#a00211';
-                            if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107';
-                            else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc';
-                            else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
-                            else if (ratingVal > 4.5) ratingColor = '#e83e8c';
-                            const count = parseInt(reviews, 10) || 0;
-                            const reviewColor = count < 4 ? '#a00211' : '#6c757d';
-                            const src = row.amz_reviews_source ? String(row.amz_reviews_source) : 'amazon';
-                            return `<span style="color: ${ratingColor}; font-weight: 600;" title="Source: ${escapeHtmlAttr(src)} · ${count.toLocaleString()} reviews">
-                                    <i class="fa fa-star"></i> ${ratingVal.toFixed(1)}
-                                    <span style="color: ${reviewColor};">(${count.toLocaleString()})</span>
-                                </span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const ra = parseFloat(aRow.getData().amz_avg_rating) || 0;
-                            const rb = parseFloat(bRow.getData().amz_avg_rating) || 0;
-                            return ra - rb;
-                        }
-                    },
 
                     {
                         title: "Std Prc",
@@ -4350,30 +4686,86 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: "number",
-                        headerTooltip: "Standard Price (Std Prc) — manual only (LMP modal / Std Prc editor). Blank unless filled when LMP cannot be determined. Orange triangle = LMP is above Std Prc; review Std price. Dot vs Amz price.",
-                        editor: "input",
-                        width: 70,
+                        headerTooltip: "Standard Price. Not editable here. Magnifying glass opens Std Prc, Std NROI%, and Std NPFT%. Orange triangle = LMP is above Std Prc.",
+                        width: 108,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
                             const value = cell.getValue();
                             const currentPrice = parseFloat(rowData.price) || 0;
                             const std = parseFloat(value) || 0;
-                            // SP stays blank unless Standard Price was filled manually
-                            if (!value || std <= 0) return '';
                             const sku = rowData['(Child) sku'] || '';
+                            const searchBtn = sku
+                                ? `<button type="button" class="btn btn-sm p-0 open-std-prc-modal" data-sku="${escAttr(sku)}" title="Std Prc plus Avg GPFT, GROI, NPFT, NROI, OV LMP, Avg LMP, My LMP, Diff, and Avg Price" style="border:none;background:none;color:#0d6efd;line-height:1;"><i class="fa fa-search"></i></button>`
+                                : '';
+                            if (!value || std <= 0) {
+                                return searchBtn || '';
+                            }
                             const dot = amazonSpriceChangeDotHtml(std, currentPrice, sku);
                             const reviewTri = (window.SpriceLmpCap && SpriceLmpCap.reviewStdTriangleHtml)
                                 ? SpriceLmpCap.reviewStdTriangleHtml(rowData)
                                 : '';
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + ('$' + std.toFixed(2)) + reviewTri + '</span>';
+                                dot + ('$' + std.toFixed(2)) + reviewTri + searchBtn + '</span>';
                         },
-                        cellClick: function(e) {
+                        cellClick: function(e, cell) {
+                            const btn = e.target && e.target.closest ? e.target.closest('.open-std-prc-modal') : null;
+                            if (btn) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const rowData = cell.getRow().getData() || {};
+                                const sku = btn.getAttribute('data-sku') || rowData['(Child) sku'] || '';
+                                if (sku) {
+                                    openStdPrcEditModal(sku);
+                                }
+                                return false;
+                            }
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
                                 e.stopPropagation();
                                 return false;
                             }
+                        }
+                    },
+                    {
+                        title: "Std NROI%",
+                        field: "std_nroi",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 78,
+                        headerTooltip: "NROI% at Std Prc with 70% margin. Same as /lmp-overall. ((Std × 0.70 − ship − LP) / LP) × 100",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = amazonStdNroiAt(aRow.getData());
+                            const bv = amazonStdNroiAt(bRow.getData());
+                            return ((av == null || !isFinite(av)) ? 0 : av) - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent_summary) return '';
+                            const percent = amazonStdNroiAt(row);
+                            if (percent === null || !isFinite(percent)) return '';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('nroi', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                        }
+                    },
+                    {
+                        title: "Std NPFT%",
+                        field: "std_npft",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 78,
+                        headerTooltip: "NPFT% at Std Prc with 70% margin. Same as /lmp-overall. ((Std × 0.70 − ship − LP) / Std) × 100",
+                        sorter: function(a, b, aRow, bRow) {
+                            const av = amazonStdNpftAt(aRow.getData());
+                            const bv = amazonStdNpftAt(bRow.getData());
+                            return ((av == null || !isFinite(av)) ? 0 : av) - ((bv == null || !isFinite(bv)) ? 0 : bv);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent_summary) return '';
+                            const percent = amazonStdNpftAt(row);
+                            if (percent === null || !isFinite(percent)) return '';
+                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
+                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         }
                     },
 
@@ -4492,7 +4884,7 @@
                             return av - bv;
                         },
                         editable: false,
-                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + CVR Disc + Rev Disc). If LMP is lower and SGROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum.",
+                        headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc + ROI disc). If LMP is lower and SGROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
@@ -4970,12 +5362,6 @@
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
                         width: 80
-                    },
-                    {
-                        title: "Review",
-                        field: "review_issue",
-                        hozAlign: "center",
-                        visible: false
                     },
                     {
                         title: "Issue",
@@ -5719,8 +6105,11 @@
                 if (field === 'push_prc') return 'Push Prc';
                 if (field === 'age_discount') return 'Age Disc';
                 if (field === 'dil_discount') return 'Dil Disc';
+                if (field === 'buss_discount') return 'B Disc';
+                if (field === 'zero_sold_discount') return '0 Sold';
                 if (field === 'cvr_discount') return 'CVR Disc.';
                 if (field === 'review_discount') return 'Rev Disc.';
+                if (field === 'roi_discount') return 'ROI disc';
                 if (field === 'sum_discount') return 'Sum disc';
                 if (field === 't_discounts') return 'T Discounts';
                 if (field === 'SPRC_DIL') return 'Sprc Dil';
@@ -5744,7 +6133,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|cvr_discount|review_discount|sum_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|roi_discount|sum_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';
@@ -5760,7 +6149,7 @@
 
                 // Other — review/issue/action notes and anything unmatched
                 if (
-                    /^(review_issue|issue_found|action_taken)$/i.test(f) ||
+                    /^(issue_found|action_taken)$/i.test(f) ||
                     /\b(issue|action)\b/i.test(t)
                 ) {
                     return 'other';
@@ -6938,10 +7327,10 @@
                 
                 const modalSp = parseFloat($('#lmpModalSpInput').val());
                 const modalSpText = (isFinite(modalSp) && modalSp > 0) ? ('$' + modalSp.toFixed(2)) : '—';
-                const modalGroi = amazonComputeGroiAtSp(modalSp, currentLmpData.rowData);
-                const modalNroi = amazonComputeNroiAtSp(modalSp, currentLmpData.rowData);
-                const modalGroiHtml = modalGroi === null ? '<span class="text-muted">—</span>' : amazonModalGroiColoredHtml(modalGroi);
+                const modalNroi = amazonModalNroiAtStd(modalSp, currentLmpData.rowData);
+                const modalNpft = amazonModalNpftAtStd(modalSp, currentLmpData.rowData);
                 const modalNroiHtml = modalNroi === null ? '<span class="text-muted">—</span>' : amazonModalNroiColoredHtml(modalNroi);
+                const modalNpftHtml = modalNpft === null ? '<span class="text-muted">—</span>' : amazonModalNpftColoredHtml(modalNpft);
                 const l1ValForList = (lowestPrice != null && isFinite(parseFloat(lowestPrice)))
                     ? parseFloat(lowestPrice) : null;
 
@@ -6956,8 +7345,8 @@
                             <th class="text-center" style="width: 44px;" title="Seller">Seller</th>
                             <th style="width: 80px;">Price</th>
                             <th style="width: 70px;" title="Std Prc from top input">Std Prc</th>
-                            <th style="width: 70px;" title="GROI% at top SP — same formula as Sroi">GROI %</th>
-                            <th style="width: 70px;" title="NROI% at top SP — same formula as SNROI / NROI badge">NROI %</th>
+                            <th style="width: 78px;" title="NROI% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP) / LP) × 100">Std NROI%</th>
+                            <th style="width: 78px;" title="NPFT% at Std Price with 70% margin. ((Std Prc × 0.70 − ship − LP) / Std Prc) × 100">Std NPFT%</th>
                             <th style="width: 90px;">Revenue<br><small>(30d)</small></th>
                             <th style="width: 70px;">Units<br><small>(30d)</small></th>
                             <th style="width: 100px;">Buy Box</th>
@@ -7078,8 +7467,8 @@
                             <td class="text-center" style="width: 44px;">${sellerCell}</td>
                             <td><strong>${priceBadge}</strong></td>
                             <td class="text-center fw-bold lmp-sp-cell">${modalSpText}</td>
-                            <td class="text-center lmp-groi-cell">${modalGroiHtml}</td>
-                            <td class="text-center lmp-nroi-cell">${modalNroiHtml}</td>
+                            <td class="text-center lmp-std-nroi-cell">${modalNroiHtml}</td>
+                            <td class="text-center lmp-std-npft-cell">${modalNpftHtml}</td>
                             <td class="text-center">${revenue}</td>
                             <td class="text-center">${units}</td>
                             <td style="font-size: 11px;">${buyBox}</td>
@@ -7200,6 +7589,26 @@
             });
 
             // View Competitors Modal Event Listener
+            $(document).on('click', '.open-std-prc-modal', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = $(this).attr('data-sku') || $(this).data('sku');
+                if (!sku) return;
+                openStdPrcEditModal(sku);
+            });
+            $(document).on('input', '#stdPrcEditInput', function() {
+                refreshStdPrcEditMetrics();
+            });
+            $(document).on('keydown', '#stdPrcEditInput', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveStdPrcEditModal(true);
+                }
+            });
+            $(document).on('click', '#stdPrcEditSave', function() {
+                saveStdPrcEditModal(true);
+            });
+
             $(document).on('click', '.view-lmp-competitors', function(e) {
                 e.preventDefault();
                 const sku = $(this).data('sku') || $(this).attr('data-sku');

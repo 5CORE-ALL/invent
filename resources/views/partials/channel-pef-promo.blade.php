@@ -9285,6 +9285,13 @@
         /** What Push Prc sends. Sprc Dil is rules-only and is not this price. */
         function chPromoPushSpriceAmount(d) {
             if (!d) return 0;
+            if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b'
+                && typeof window.shopifyB2bSpriceRule === 'function'
+                && window.shopifyB2bSpriceRule() === 'dil'
+                && typeof window.shopifyB2bDisplayedSprice === 'function') {
+                const dilShown = Number(window.shopifyB2bDisplayedSprice(d)) || 0;
+                return dilShown > 0 ? chPromoRound2(dilShown) : 0;
+            }
             if (typeof window.chStdPriceForRow === 'function') {
                 const stdRule = Number(window.chStdPriceForRow(d)) || 0;
                 if (stdRule > 0) return chPromoRound2(stdRule);

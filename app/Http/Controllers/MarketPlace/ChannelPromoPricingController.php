@@ -1591,6 +1591,9 @@ class ChannelPromoPricingController extends Controller
                 'cvr' => $defaults['cvr'],
                 'reviews' => $defaults['reviews'],
                 'review_max' => $defaults['review_max'],
+                'buss' => $defaults['buss'],
+                'roi' => $defaults['roi'],
+                'zero_sold_disc' => $defaults['zero_sold_disc'],
             ]);
         }
 
@@ -1602,6 +1605,9 @@ class ChannelPromoPricingController extends Controller
             'cvr' => $this->normalizeStdPrcCvr($saved['cvr'] ?? null),
             'reviews' => $this->normalizeStdPrcRanges($saved['reviews'] ?? null, $defaults['reviews']),
             'review_max' => $this->normalizeStdPrcReviewMax($saved['review_max'] ?? null),
+            'buss' => $this->normalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
+            'roi' => $this->normalizeStdPrcRanges($saved['roi'] ?? null, $defaults['roi']),
+            'zero_sold_disc' => $this->normalizeZeroSoldDisc($saved['zero_sold_disc'] ?? null),
         ]);
     }
 
@@ -1618,10 +1624,13 @@ class ChannelPromoPricingController extends Controller
             'cvr' => $this->normalizeStdPrcCvr($request->input('cvr')),
             'reviews' => $this->normalizeStdPrcRanges($request->input('reviews'), $defaults['reviews']),
             'review_max' => $this->normalizeStdPrcReviewMax($request->input('review_max')),
+            'buss' => $this->normalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
+            'roi' => $this->normalizeStdPrcRanges($request->input('roi'), $defaults['roi']),
+            'zero_sold_disc' => $this->normalizeZeroSoldDisc($request->input('zero_sold_disc')),
         ];
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'roi', 'zero_sold']]
         );
 
         return response()->json(array_merge(['success' => true], $payload));
@@ -1698,7 +1707,7 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array<string, float>, reviews: list<array{min:float,max:float,disc:float}>, review_max: int}
+     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array<string, float>, reviews: list<array{min:float,max:float,disc:float}>, review_max: int, buss: list<array{min:float,max:float,disc:float}>, roi: list<array{min:float,max:float,disc:float}>, zero_sold_disc: float}
      */
     private function defaultStdPrcVsDil(): array
     {
@@ -1735,7 +1744,29 @@ class ChannelPromoPricingController extends Controller
                 ['min' => 2, 'max' => 3, 'disc' => 4],
             ],
             'review_max' => 4,
+            'buss' => [
+                ['min' => 0, 'max' => 15, 'disc' => 0],
+                ['min' => 15, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 9999, 'disc' => 0],
+            ],
+            'roi' => [
+                ['min' => -9999, 'max' => 0, 'disc' => 0],
+                ['min' => 0, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 75, 'disc' => 0],
+                ['min' => 75, 'max' => 125, 'disc' => 0],
+                ['min' => 125, 'max' => 9999, 'disc' => 0],
+            ],
+            'zero_sold_disc' => 0,
         ];
+    }
+
+    private function normalizeZeroSoldDisc(mixed $incoming): float
+    {
+        if (! is_numeric($incoming)) {
+            return 0.0;
+        }
+
+        return round(min(100, max(0, (float) $incoming)), 2);
     }
 
     /**
