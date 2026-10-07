@@ -10097,6 +10097,13 @@
         /** Live Dil S PRC for Shopify B2C. Same dollar the S PRC cell paints. */
         function chPromoB2cLiveSprice(d) {
             if (!d) return 0;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                if (typeof ebaySprcDilForRow === 'function') {
+                    const dil = Number(ebaySprcDilForRow(d)) || 0;
+                    return dil > 0 ? chPromoRound2(dil) : 0;
+                }
+                return 0;
+            }
             if (typeof window.chStdPriceForRow === 'function') {
                 const stdRule = Number(window.chStdPriceForRow(d)) || 0;
                 if (stdRule > 0) return chPromoRound2(stdRule);

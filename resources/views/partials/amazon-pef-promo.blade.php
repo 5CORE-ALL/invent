@@ -3517,6 +3517,12 @@
             return Math.abs((Number(stored) || 0) - live) > 0.009;
         }
         function amzRuleSpricePlanForRow(d) {
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                const live = amzLiveRuleSprice(d);
+                if (!(live > 0)) return null;
+                const std = Number(d && d.STANDARD_PRICE) || 0;
+                return { effective: live, sale: live, std: std > 0 ? std : live };
+            }
             const plan = amzPushPrcPlanForQueue(d);
             if (!plan || !(plan.effective > 0)) return null;
             return plan;
@@ -3634,17 +3640,26 @@
             opts = opts || {};
             clearTimeout(amzRuleSpriceSyncTimer);
             amzRuleSpriceSyncTimer = setTimeout(function() {
-                if (amzRuleSpriceSyncBusy || amzRuleSpricePersistActive > 0 || amzRuleSpricePersistQueue.length) {
-                    amzScheduleRuleSpriceSync(opts);
+                const start = function() {
+                    if (amzRuleSpriceSyncBusy || amzRuleSpricePersistActive > 0 || amzRuleSpricePersistQueue.length) {
+                        amzScheduleRuleSpriceSync(opts);
+                        return;
+                    }
+                    amzRuleSpriceSyncBusy = true;
+                    const req = amzApplyRuleSpriceToAllRows(opts);
+                    if (req && typeof req.always === 'function') {
+                        req.always(function() { amzRuleSpriceSyncBusy = false; });
+                    } else {
+                        amzRuleSpriceSyncBusy = false;
+                    }
+                };
+                if (document.getElementById('sprice-rule-switch')
+                    && window.spriceActiveRuleReady
+                    && typeof window.spriceActiveRuleReady.then === 'function') {
+                    window.spriceActiveRuleReady.then(start);
                     return;
                 }
-                amzRuleSpriceSyncBusy = true;
-                const req = amzApplyRuleSpriceToAllRows(opts);
-                if (req && typeof req.always === 'function') {
-                    req.always(function() { amzRuleSpriceSyncBusy = false; });
-                } else {
-                    amzRuleSpriceSyncBusy = false;
-                }
+                start();
             }, opts.delay != null ? opts.delay : 400);
         }
         function bindAmzRuleSpriceAutofill() {

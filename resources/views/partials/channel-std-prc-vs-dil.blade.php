@@ -1157,8 +1157,28 @@
             return chain;
         }
         function chStdOwnsSprice() {
-            if (typeof window.spriceActiveRule === 'function') return window.spriceActiveRule() !== 'dil';
+            if (document.getElementById('sprice-rule-switch')) {
+                return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() !== 'dil';
+            }
             return true;
+        }
+        function chStdWhenRuleSettled(fn) {
+            if (!document.getElementById('sprice-rule-switch')) {
+                fn();
+                return;
+            }
+            let tries = 0;
+            (function wait() {
+                if (window.spriceActiveRuleReady && typeof window.spriceActiveRuleReady.then === 'function') {
+                    window.spriceActiveRuleReady.then(fn);
+                    return;
+                }
+                if (tries++ > 40) {
+                    fn();
+                    return;
+                }
+                setTimeout(wait, 50);
+            })();
         }
         let chStdAutoApplied = false;
         let chStdAutoWaits = 0;
@@ -1172,11 +1192,12 @@
                 return;
             }
             $.when(chStdLoad(), chStdLoadAgeMap(), chStdLoadAmzMap()).always(function() {
-                if (chStdAutoApplied) return;
-                chStdAutoApplied = true;
-                chStdEnsureColumns();
-                if (!chStdOwnsSprice()) return;
-                const updates = chStdWritePrices(chStdDraftNow());
+                chStdWhenRuleSettled(function() {
+                    if (chStdAutoApplied) return;
+                    chStdAutoApplied = true;
+                    chStdEnsureColumns();
+                    if (!chStdOwnsSprice()) return;
+                    const updates = chStdWritePrices(chStdDraftNow());
                 const redraw = function() {
                     if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') {
                         try { table.redraw(true); } catch (e) { /* ignore */ }
@@ -1188,6 +1209,7 @@
                     if (updates.length && typeof chPromoToast === 'function') {
                         chPromoToast('success', 'S PRC set from Std prc vs dil (' + updates.length + ')');
                     }
+                });
                 });
             });
         }

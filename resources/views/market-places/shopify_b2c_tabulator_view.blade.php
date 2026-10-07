@@ -1301,6 +1301,10 @@
     /** S PRC to show / push. Sprc Dil above A Price stays. A stored Amz pin cannot cap it down. */
     function shopifyB2cDisplayedSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
+        if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+            const dil = shopifyB2cRawSprcDil(data);
+            return dil > 0 ? dil : 0;
+        }
         if (typeof window.chStdPriceForRow === 'function') {
             const stdRule = Number(window.chStdPriceForRow(data)) || 0;
             if (stdRule > 0) return stdRule;
@@ -2749,9 +2753,12 @@
                 const fills = [];
                 items.forEach(function(item) {
                     const d = item.row.getData() || {};
-                    let price = (typeof window.chStdPriceForRow === 'function')
-                        ? (Number(window.chStdPriceForRow(d)) || 0)
-                        : 0;
+                    let price = 0;
+                    if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                        price = (typeof ebaySprcDilForRow === 'function') ? (Number(ebaySprcDilForRow(d)) || 0) : 0;
+                    } else if (typeof window.chStdPriceForRow === 'function') {
+                        price = Number(window.chStdPriceForRow(d)) || 0;
+                    }
                     if (!(price > 0)) return;
                     if (typeof chPromoSpricePatch === 'function') {
                         item.row.update(Object.assign({}, chPromoSpricePatch(price), { SPRICE_STATUS: 'applied' }));

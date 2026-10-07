@@ -2186,8 +2186,11 @@
             redrawEbaySprcDilColumn();
         }
         /** Macys / Purchasing Power: paint Dil S PRC in the grid (persist is ebayApplySprcDilToTable). */
+        function ebayDilOwnsSprice() {
+            return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+        }
         function ebayDgPaintMacysRuleSprice() {
-            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() !== 'dil') return 0;
+            if (!ebayDilOwnsSprice()) return 0;
             if (typeof table === 'undefined' || !table) return 0;
             // Shopify S PRC / SNROI already read live Dil. Mass row.update + redraw jumps the table to the top.
             if ((typeof ebayDgIsShopifyB2c === 'function' && ebayDgIsShopifyB2c())
@@ -2293,17 +2296,23 @@
                     return;
                 }
                 ebayDgAutoApplyWaits = 0;
-                if (ebayDgIsShopifyB2c() && typeof window.chPromoScheduleB2cRuleSpriceThenPush === 'function') {
-                    window.chPromoScheduleB2cRuleSpriceThenPush({ delay: 200 });
-                    return;
+                const run = function() {
+                    if (!ebayDilOwnsSprice()) return;
+                    if (ebayDgIsShopifyB2c() && typeof window.chPromoScheduleB2cRuleSpriceThenPush === 'function') {
+                        window.chPromoScheduleB2cRuleSpriceThenPush({ delay: 200 });
+                        return;
+                    }
+                    const persist = opts.persist !== false;
+                    const push = persist
+                        && typeof chPromoPageReloadPushAllowed === 'function'
+                        && chPromoPageReloadPushAllowed();
+                    Promise.resolve(ebayApplySprcDilToTable({ persist: persist, push: push })).catch(function() { /* retry */ });
+                };
+                if (window.spriceActiveRuleReady && typeof window.spriceActiveRuleReady.then === 'function') {
+                    window.spriceActiveRuleReady.then(run);
+                } else {
+                    run();
                 }
-                // Always persist the Dil S PRC cell $ to the channel table.
-                // Push listing price only when this page already allows reload push.
-                const persist = opts.persist !== false;
-                const push = persist
-                    && typeof chPromoPageReloadPushAllowed === 'function'
-                    && chPromoPageReloadPushAllowed();
-                Promise.resolve(ebayApplySprcDilToTable({ persist: persist, push: push })).catch(function() { /* retry */ });
             }, delay);
         }
         function ebayDgMarkCellSavedAndPush() {
@@ -2392,7 +2401,7 @@
             return patch;
         }
         function ebayTiktokRuleDiscount(d) {
-            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+            if (ebayDilOwnsSprice()) {
                 const meta = ebayDilGroiMetaForRow(d);
                 if (meta && meta.sprc > 0) {
                     let price = ebayDgIsFbMarketplace() && typeof fbMpRoundSprice === 'function'
@@ -2553,7 +2562,7 @@
             return fills.length;
         }
         async function ebayApplySprcDilToTable(opts) {
-            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() !== 'dil') return 0;
+            if (!ebayDilOwnsSprice()) return 0;
             opts = opts || {};
             const persist = opts.persist === true;
             const allowPush = opts.push === true;

@@ -44,17 +44,31 @@
                 if (dil) dil.checked = rule === 'dil';
                 if (std) std.checked = rule === 'std';
             }
+            let spriceRuleResolve = null;
+            window.spriceActiveRuleReady = new Promise(function(resolve) { spriceRuleResolve = resolve; });
+            function spriceSettleRule(rule) {
+                rule = rule === 'dil' ? 'dil' : 'std';
+                window._spriceActiveRule = rule;
+                try { localStorage.setItem(SPRICE_RULE_KEY, rule); } catch (e) { /* ignore */ }
+                spricePaintRuleSwitch();
+                if (spriceRuleResolve) {
+                    const done = spriceRuleResolve;
+                    spriceRuleResolve = null;
+                    done(rule);
+                }
+            }
             function spriceApplyOnRule() {
                 const rule = spriceActiveRule();
+                if (typeof window.amzScheduleRuleSpriceSync === 'function') {
+                    try { window.amzScheduleRuleSpriceSync(); } catch (e) { /* ignore */ }
+                    return;
+                }
                 if (rule === 'dil') {
                     if (typeof ebayApplySprcDilToTable === 'function') {
                         Promise.resolve(ebayApplySprcDilToTable({ persist: true, push: false })).catch(function() { /* ignore */ });
                     }
                 } else if (typeof window.chStdApplyActivePrices === 'function') {
                     window.chStdApplyActivePrices();
-                }
-                if (typeof window.amzScheduleRuleSpriceSync === 'function') {
-                    try { window.amzScheduleRuleSpriceSync(); } catch (e) { /* ignore */ }
                 }
                 if (typeof window.shopifyB2bRefreshSpriceCells === 'function') {
                     try { window.shopifyB2bRefreshSpriceCells(); } catch (e2) { /* ignore */ }
@@ -97,13 +111,9 @@
                     method: 'GET',
                     headers: { 'Accept': 'application/json' },
                 }).done(function(res) {
-                    const server = res && res.rule === 'dil' ? 'dil' : 'std';
-                    if (server !== spriceActiveRule()) {
-                        window._spriceActiveRule = server;
-                        try { localStorage.setItem(SPRICE_RULE_KEY, server); } catch (e) { /* ignore */ }
-                        spricePaintRuleSwitch();
-                        spriceApplyOnRule();
-                    }
+                    spriceSettleRule(res && res.rule === 'dil' ? 'dil' : 'std');
+                }).fail(function() {
+                    spriceSettleRule(spriceActiveRule());
                 });
             }
             if (window.jQuery) {
