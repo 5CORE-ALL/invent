@@ -58,6 +58,9 @@ class SheetListingCatalogService
 
         $rows = $this->parseCsvFile($path);
         $masterByKey = $this->productMasterLookup();
+        if ($masterByKey === []) {
+            throw new \RuntimeException('CP Master has no SKUs to match this sheet against.');
+        }
 
         $listedCanonical = [];
         $skipped = 0;
@@ -281,7 +284,7 @@ class SheetListingCatalogService
     private function productMasterLookup(): array
     {
         $map = [];
-        if (! Schema::hasTable('product_masters')) {
+        if (! Schema::hasTable((new ProductMaster)->getTable())) {
             return $map;
         }
 

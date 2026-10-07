@@ -2,8 +2,11 @@
 
 namespace Tests\Unit;
 
+use App\Models\ProductMaster;
 use App\Support\Marketplace\DepopSheetListingService;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingCountsEngine;
+use App\Support\Marketplace\SheetListingCatalogService;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -69,5 +72,27 @@ class DepopSheetListingServiceTest extends TestCase
 
         $this->assertSame('ABC-100', $service->skuFromRow($rows[0]));
         $this->assertSame('DEF-200', $service->skuFromRow($rows[1]));
+    }
+
+    #[Test]
+    public function sheet_sku_matches_the_cp_master_sku(): void
+    {
+        $this->assertSame('product_master', (new ProductMaster)->getTable());
+
+        $canonical = 'CS 04 2W';
+        $master = [];
+        foreach (array_merge(
+            ListingCountsEngine::skuLookupKeys($canonical),
+            ListingCountsEngine::skuIndexKeys($canonical)
+        ) as $key) {
+            $master[$key] = $canonical;
+        }
+
+        $match = new \ReflectionMethod(SheetListingCatalogService::class, 'canonicalMasterSku');
+        $service = new SheetListingCatalogService();
+
+        $this->assertSame($canonical, $match->invoke($service, 'cs-04-2w', $master));
+        $this->assertSame($canonical, $match->invoke($service, 'CS042W', $master));
+        $this->assertNull($match->invoke($service, 'NOT-ON-MASTER', $master));
     }
 }
