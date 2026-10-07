@@ -97,7 +97,9 @@ class DobaApiService
     }
 
     /**
-     * Push available inventory for a Doba itemNo (best-effort across known endpoints).
+     * Push available inventory for a Doba itemNo.
+     * Stock lives on /goods/stock/update (same form style as /goods/price/update).
+     * /goods/update expects a full product body, and /goods/info/update does not exist.
      *
      * @return array{success: bool, message: string, response?: mixed, errors?: string}
      */
@@ -107,70 +109,97 @@ class DobaApiService
         if ($itemNo === '') {
             return ['success' => false, 'message' => 'itemNo is required.', 'errors' => 'itemNo is required.'];
         }
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Doba API credentials missing.', 'errors' => 'Doba API credentials missing.'];
+        }
 
         $qty = max(0, $qty);
+        $url = $this->baseUrl.'/goods/stock/update';
+        $payload = [
+            'itemNo' => $itemNo,
+            'availableInventory' => $qty,
+        ];
 
         try {
-            $timestamp = $this->getMillisecond();
-            $content = $this->getContent($timestamp);
-            $sign = $this->generateSignature($content);
-
-            $headers = [
-                'appKey' => config('services.doba.app_key'),
-                'signType' => 'rsa2',
-                'timestamp' => $timestamp,
-                'sign' => $sign,
-                'Content-Type' => 'application/x-www-form-urlencoded',
-            ];
-
-            $payloadAttempts = [
-                ['itemNo' => $itemNo, 'availableInventory' => $qty],
-                ['itemNo' => $itemNo, 'inventory' => $qty],
-                ['itemNo' => $itemNo, 'availableInventory' => (string) $qty],
-                ['itemNo' => $itemNo, 'inventory' => (string) $qty],
-            ];
-
-            $urls = [
-                $this->baseUrl.'/goods/update',
-                $this->baseUrl.'/goods/info/update',
-            ];
-
-            $lastMessage = 'Doba inventory update failed for all endpoints.';
-            foreach ($urls as $url) {
-                foreach ($payloadAttempts as $payload) {
-                    Log::info('Doba inventory update attempt', ['url' => $url, 'item_no' => $itemNo, 'qty' => $qty]);
-                    $response = Http::withHeaders($headers)->asForm()->post($url, $payload);
-                    $responseData = $response->json() ?? [];
-                    Log::info('Doba inventory update response', [
-                        'url' => $url,
-                        'status' => $response->status(),
-                        'response' => $responseData,
-                    ]);
-
-                    if (! $response->successful()) {
-                        $lastMessage = 'HTTP '.$response->status().': '.($responseData['responseMessage'] ?? $response->body());
-                        continue;
-                    }
-
-                    if (isset($responseData['responseCode']) && $responseData['responseCode'] !== '000000') {
-                        $lastMessage = (string) ($responseData['responseMessage'] ?? 'Doba API error '.$responseData['responseCode']);
-                        continue;
-                    }
-
-                    return [
-                        'success' => true,
-                        'message' => 'Doba inventory updated.',
-                        'response' => $responseData,
-                    ];
+            $response = null;
+            for ($try = 0; $try < 2; $try++) {
+                $timestamp = $this->getMillisecond();
+                $sign = $this->generateSignature($this->getContent($timestamp));
+                $response = Http::withHeaders([
+                    'appKey' => config('services.doba.app_key'),
+                    'signType' => 'rsa2',
+                    'timestamp' => (string) $timestamp,
+                    'sign' => $sign,
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                ])->asForm()->timeout(30)->post($url, $payload);
+                if ($response->status() !== 429) {
+                    break;
                 }
+                sleep(2);
             }
 
-            return ['success' => false, 'message' => $lastMessage, 'errors' => $lastMessage];
+            $data = $response->json();
+            $data = is_array($data) ? $data : [];
+            Log::info('Doba inventory update response', [
+                'url' => $url,
+                'item_no' => $itemNo,
+                'qty' => $qty,
+                'status' => $response->status(),
+                'response' => mb_substr((string) $response->body(), 0, 500),
+            ]);
+
+            $error = $this->dobaWriteError($response->status(), $data, (string) $response->body());
+            if ($error !== null) {
+                return ['success' => false, 'message' => $error, 'errors' => $error, 'response' => $data];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Doba inventory updated.',
+                'response' => $data,
+            ];
         } catch (\Throwable $e) {
             Log::error('Doba updateItemInventory failed', ['item_no' => $itemNo, 'error' => $e->getMessage()]);
 
             return ['success' => false, 'message' => $e->getMessage(), 'errors' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Shared success check for Doba form writes (price, stock).
+     */
+    private function dobaWriteError(int $status, array $data, string $body): ?string
+    {
+        $apiMsg = trim((string) ($data['responseMessage'] ?? $data['message'] ?? ''));
+        if ($status === 429) {
+            return 'Doba rate limit hit (HTTP 429). Wait a minute and push again.';
+        }
+        if ($status < 200 || $status >= 300) {
+            if ($apiMsg !== '' && stripos($apiMsg, 'whitelist') !== false) {
+                return 'Doba API IP whitelist check failed — add this server IP in the Doba Open Platform app settings.';
+            }
+
+            return 'HTTP '.$status.': '.($apiMsg !== '' ? $apiMsg : mb_substr($body, 0, 300));
+        }
+        if (isset($data['responseCode']) && (string) $data['responseCode'] !== '000000') {
+            return $apiMsg !== '' ? $apiMsg : 'Doba API error '.$data['responseCode'];
+        }
+
+        $business = $data['businessData'] ?? null;
+        if (is_array($business) && array_is_list($business)) {
+            $business = $business[0] ?? null;
+        }
+        if (! is_array($business)) {
+            return null;
+        }
+        $businessStatus = (string) ($business['businessStatus'] ?? '');
+        $businessMsg = trim((string) ($business['businessMessage'] ?? ''));
+        if (($businessStatus !== '' && $businessStatus !== '000000')
+            || (array_key_exists('successful', $business) && $business['successful'] !== true)) {
+            return $businessMsg !== '' ? $businessMsg : 'Doba rejected the inventory update.';
+        }
+
+        return null;
     }
 
     /**

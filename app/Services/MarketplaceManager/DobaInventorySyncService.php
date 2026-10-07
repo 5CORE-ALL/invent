@@ -88,6 +88,7 @@ class DobaInventorySyncService
         $updated = 0;
         $failed = 0;
         $skipped = 0;
+        $errors = [];
 
         foreach ($products as $product) {
             $sku = (string) $product->sku;
@@ -133,6 +134,10 @@ class DobaInventorySyncService
                 $this->persistLocalStock($sku, $qty);
             } else {
                 $failed++;
+                $reason = trim((string) ($result['message'] ?? $result['errors'] ?? ''));
+                if ($reason !== '' && count($errors) < 2 && ! in_array($reason, $errors, true)) {
+                    $errors[] = $reason;
+                }
             }
         }
 
@@ -149,7 +154,8 @@ class DobaInventorySyncService
             'updated' => $updated,
             'failed' => $failed,
             'skipped' => $skipped,
-            'message' => "Pushed {$updated} inventory row(s) to Doba ({$failed} API fail, {$skipped} skipped).",
+            'message' => "Pushed {$updated} inventory row(s) to Doba ({$failed} API fail, {$skipped} skipped)."
+                .($errors !== [] ? ' '.mb_substr(implode(' | ', $errors), 0, 400) : ''),
         ];
     }
 
