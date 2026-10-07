@@ -17,6 +17,8 @@ class RefreshStaleMappingCounts extends Command
         @set_time_limit(0);
         @ini_set('memory_limit', '2048M');
 
+        MappingChannelCounts::seedStoredRows();
+
         if (! Cache::has(MappingChannelCounts::MASTER_ROWS_CACHE_KEY)) {
             // The full rebuild counts every channel; pushes during it stay marked for the next run.
             Cache::forget(MappingChannelCounts::STALE_CHANNELS_CACHE_KEY);
