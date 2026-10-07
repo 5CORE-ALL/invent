@@ -1261,13 +1261,17 @@ class FaireApiService
             }
         }
 
-        // Faire requires prices[0].retail_price — keep existing retail when possible, else 2× wholesale.
-        $retailMinor = $this->extractVariantRetailMinor($variant);
-        if (! ($retailMinor > 0)) {
-            $retailMinor = max($amountMinor, (int) round($amountMinor * 2));
-        }
-        if ($retailMinor < $amountMinor) {
-            $retailMinor = $amountMinor;
+        // Wholesale stays the S PRC. Faire rejects the update unless retail is
+        // between 1.25× and 10× that wholesale, so move retail only when it is outside.
+        $existingRetailMinor = $this->extractVariantRetailMinor($variant);
+        $retailMinor = self::retailMinorWithinFaireRange($amountMinor, $existingRetailMinor);
+        if ($existingRetailMinor > 0 && $retailMinor !== $existingRetailMinor) {
+            Log::info('Faire retail adjusted so S PRC wholesale can push', [
+                'sku' => $sku,
+                'wholesale' => round($amountMinor / 100, 2),
+                'retail_before' => round($existingRetailMinor / 100, 2),
+                'retail_after' => round($retailMinor / 100, 2),
+            ]);
         }
 
         $wholesaleMoney = ['amount_minor' => $amountMinor, 'currency' => 'USD'];
@@ -1345,6 +1349,25 @@ class FaireApiService
             'status' => $last['status'] ?? null,
             'response' => $last['json'] ?? $last['raw'] ?? null,
         ];
+    }
+
+    /**
+     * Faire accepts a wholesale update only when retail is in [1.25×, 10×] of that wholesale.
+     * Missing retail stays at 2× wholesale (inside the window). A known retail is kept unless it falls outside.
+     */
+    public static function retailMinorWithinFaireRange(int $wholesaleMinor, int $retailMinor): int
+    {
+        if ($wholesaleMinor <= 0) {
+            return max(0, $retailMinor);
+        }
+
+        $min = intdiv($wholesaleMinor * 125 + 99, 100);
+        $max = $wholesaleMinor * 10;
+        if ($retailMinor <= 0) {
+            $retailMinor = $wholesaleMinor * 2;
+        }
+
+        return max($min, min($max, $retailMinor));
     }
 
     /**
