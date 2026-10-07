@@ -318,7 +318,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − CVR − Reviews − Buss. Std Prc under $15 uses half of each rule discount (0.5×).</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − CVR − Reviews. Std Prc under $15 uses half of each rule discount (0.5×).</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -408,7 +408,7 @@
 
                         <div class="amz-sp-col">
                             <div class="amz-sp-pie">
-                                <div class="amz-sp-pie-title" title="Std Prc ranges. Disc % updates the Buss Discount column.">Buss Discount</div>
+                                <div class="amz-sp-pie-title" title="Std Prc ranges. Disc % updates the B Disc column.">B Disc</div>
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-buss"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-buss"></div>
                             </div>
@@ -1251,7 +1251,7 @@
                 { key: 'dil', label: 'Dil', color: '#6f42c1' },
                 { key: 'cvr', label: 'CVR', color: '#20c997' },
                 { key: 'rev', label: 'Reviews', color: '#7c3aed' },
-                { key: 'buss', label: 'Buss', color: '#0d6efd' },
+                { key: 'buss', label: 'B Disc', color: '#0d6efd' },
             ];
             const allCounts = {
                 age: Math.round(dollars.age),
@@ -1279,9 +1279,9 @@
             const rows = [
                 ['Age', skuHits.age, pctTotals.age, dollars.age],
                 ['Dil', skuHits.dil, pctTotals.dil, dollars.dil],
+                ['B Disc', skuHits.buss, pctTotals.buss, dollars.buss],
                 ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr],
                 ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev],
-                ['Buss', skuHits.buss, pctTotals.buss, dollars.buss],
             ];
             let pctSum = 0;
             let dollarSum = 0;

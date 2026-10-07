@@ -52,4 +52,3 @@
         return '<a href="' + href + '" target="_blank" rel="noopener" style="color:' + color + ';font-weight:600;text-decoration:none;" title="Open /reviews" onclick="event.stopPropagation();">' + n.toLocaleString() + '</a>';
     }
 },
-@include('partials.analytics-buss-discount-column')

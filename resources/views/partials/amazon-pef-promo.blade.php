@@ -22,6 +22,7 @@
         .amz-pef-promo-cell.has-val { color: #0f172a; }
         .tabulator-row .tabulator-cell[tabulator-field="age_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="dil_discount"],
+        .tabulator-row .tabulator-cell[tabulator-field="buss_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="review_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="sum_discount"],
@@ -2842,6 +2843,30 @@
                     },
                 },
                 {
+                    title: 'B Disc',
+                    field: 'buss_discount',
+                    width: 68,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: 'B Disc from Std Prc ranges in Std prc vs dil. INV=0 → 0%. Std Prc under $15 is 0.5×. Read-only.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const av = (typeof computeAmzBussDiscountPct === 'function' ? computeAmzBussDiscountPct(aRow.getData()) : 0) || 0;
+                        const bv = (typeof computeAmzBussDiscountPct === 'function' ? computeAmzBussDiscountPct(bRow.getData()) : 0) || 0;
+                        return av - bv;
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (!amzPefIsChildRow(d)) return '';
+                        const pct = (typeof computeAmzBussDiscountPct === 'function') ? computeAmzBussDiscountPct(d) : 0;
+                        const std = Number(d.STANDARD_PRICE) || 0;
+                        const tip = (std > 0 ? ('Std Prc $' + std.toFixed(2) + ' → ') : '') + 'discount ' + (pct || 0) + '%';
+                        return '<span title="' + amzPefEscAttr(tip) + '">'
+                            + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'dil') : (pct || '—'))
+                            + '</span>';
+                    },
+                },
+                {
                     title: 'CVR Disc.',
                     field: 'cvr_discount',
                     width: 64,
@@ -2913,7 +2938,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'Age Disc + Dil Disc + CVR Disc + Rev Disc + Buss Discount. S PRC = Std Prc × (1 − this % / 100).',
+                    headerTooltip: 'Age Disc + Dil Disc + B Disc + CVR Disc + Rev Disc. S PRC = Std Prc × (1 − this % / 100).',
                     sorter: function(a, b, aRow, bRow) {
                         const fn = typeof computeAmzSumDiscountPct === 'function' ? computeAmzSumDiscountPct : function() { return 0; };
                         return (Number(fn(aRow.getData())) || 0) - (Number(fn(bRow.getData())) || 0);
@@ -2927,7 +2952,7 @@
                             + ' + Dil ' + (stack.dilDisc || 0)
                             + ' + CVR ' + (stack.cvrDisc || 0)
                             + ' + Rev ' + (stack.reviewDisc || 0)
-                            + ' + Buss ' + (stack.bussDisc || 0)
+                            + ' + B Disc ' + (stack.bussDisc || 0)
                             + ' = ' + (pct || 0) + '%';
                         return '<span title="' + amzPefEscAttr(tip) + '">'
                             + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'sum') : (pct || '—'))
@@ -3038,7 +3063,7 @@
 
         /**
          * Live rule stack for this SKU.
-         * Age Disc + Dil Disc + CVR Disc + Rev Disc + Buss Discount, each a % off Std Prc.
+         * Age Disc + Dil Disc + B Disc + CVR Disc + Rev Disc, each a % off Std Prc.
          * CVR Disc = Std prc vs dil up/down/flat disc only. INV=0 → 0.
          */
         function computeAmzRuleStack(d) {
@@ -3089,7 +3114,7 @@
             if (plan.dilDisc) parts.push('Dil Disc ' + plan.dilDisc + '%');
             if (plan.cvrDisc) parts.push('CVR Disc ' + plan.cvrDisc + '%');
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
-            if (plan.bussDisc) parts.push('Buss Discount ' + plan.bussDisc + '%');
+            if (plan.bussDisc) parts.push('B Disc ' + plan.bussDisc + '%');
             if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
             else if (plan.stdCapped) parts.push('Std cap');
             if (plan.lmpCapped) parts.push('LMP cap');

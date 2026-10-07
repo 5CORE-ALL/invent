@@ -76,7 +76,7 @@
 @endif
 
 @if($channelStdPrcPart === 'buttons' || $channelStdPrcPart === 'all')
-                    <button type="button" class="btn btn-sm" id="ch-std-prc-btn" title="Std Prc minus Age, Dil, CVR, Review, and Buss discounts. Same slabs as Amazon.">
+                    <button type="button" class="btn btn-sm" id="ch-std-prc-btn" title="Std Prc minus Age, Dil, B Disc, CVR, and Review discounts. Same slabs as Amazon.">
                         <i class="fas fa-tags"></i> Std prc vs dil
                     </button>
 @endif
@@ -88,7 +88,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − CVR − Reviews − Buss. Std Prc under $15 uses half of each rule discount (0.5×).</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − CVR − Reviews. Std Prc under $15 uses half of each rule discount (0.5×).</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -135,7 +135,7 @@
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-rev-add">Add range</button>
                         </div>
                         <div class="ch-sp-col">
-                            <div class="ch-sp-pie-title" title="Std Prc ranges. Disc % updates the Buss Discount column.">Buss Discount</div>
+                            <div class="ch-sp-pie-title" title="Std Prc ranges. Disc % updates the B Disc column.">B Disc</div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-buss"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-buss"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-buss-tbody"></tbody></table></div>
@@ -625,7 +625,7 @@
             const allSlices = [
                 { key: 'age', label: 'Age', color: '#d97706' }, { key: 'dil', label: 'Dil', color: '#6f42c1' },
                 { key: 'cvr', label: 'CVR', color: '#20c997' }, { key: 'rev', label: 'Reviews', color: '#7c3aed' },
-                { key: 'buss', label: 'Buss', color: '#0d6efd' },
+                { key: 'buss', label: 'B Disc', color: '#0d6efd' },
             ];
             const allCounts = { age: Math.round(dollars.age), dil: Math.round(dollars.dil), cvr: Math.round(dollars.cvr), rev: Math.round(dollars.rev), buss: Math.round(dollars.buss) };
             chStdHistLive = {};
@@ -644,7 +644,7 @@
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
             let pctSum = 0, dollarSum = 0;
-            const body = [['Age', skuHits.age, pctTotals.age, dollars.age], ['Dil', skuHits.dil, pctTotals.dil, dollars.dil], ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr], ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev], ['Buss', skuHits.buss, pctTotals.buss, dollars.buss]].map(function(row) {
+            const body = [['Age', skuHits.age, pctTotals.age, dollars.age], ['Dil', skuHits.dil, pctTotals.dil, dollars.dil], ['B Disc', skuHits.buss, pctTotals.buss, dollars.buss], ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr], ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev]].map(function(row) {
                 pctSum += row[2]; dollarSum += row[3];
                 return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td><td class="text-end">' + row[2] + '</td><td class="text-end">' + chStdMoney(row[3]) + '</td></tr>';
             });
@@ -846,6 +846,7 @@
                         return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
                     },
                 }),
+                Object.assign(chStdDiscCol('B Disc', 'buss_discount', 'B Disc from Std Prc ranges in Std prc vs dil. Std Prc under $15 is 0.5×.', function(d) { return chStdBussDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
                 Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
@@ -857,7 +858,7 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + CVR + Rev + Buss. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + B Disc + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];
         }
         function chStdAppendDiscColumns(cols) {
@@ -895,19 +896,50 @@
             channelPromoAnalyticsColumns._chStd = true;
             window.channelPromoAnalyticsColumns = channelPromoAnalyticsColumns;
         }
+        let chStdBussPlaced = false;
+        function chStdPlaceBussColumn() {
+            if (chStdBussPlaced) return;
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
+            let dil = null;
+            try { dil = table.getColumn('dil_discount'); } catch (e) { dil = null; }
+            if (!dil) return;
+            let buss = null;
+            try { buss = table.getColumn('buss_discount'); } catch (e) { buss = null; }
+            if (!buss) {
+                const spec = chStdDiscColumns().filter(function(c) { return c && c.field === 'buss_discount'; })[0];
+                if (!spec) return;
+                try { table.addColumn(spec, false, 'dil_discount'); } catch (err) { return; }
+            } else if (typeof table.moveColumn === 'function') {
+                try { table.moveColumn('buss_discount', 'dil_discount', true); } catch (err) { /* already beside Dil Disc */ }
+            }
+            try {
+                const col = table.getColumn('buss_discount');
+                if (col && typeof col.show === 'function') col.show();
+            } catch (err) { /* ignore */ }
+            chStdBussPlaced = true;
+            setTimeout(function() {
+                try {
+                    const col = table.getColumn('buss_discount');
+                    if (col && typeof col.show === 'function') col.show();
+                } catch (err) { /* ignore */ }
+            }, 1600);
+        }
+        window.chStdPlaceBussColumn = chStdPlaceBussColumn;
         function chStdEnsureColumns() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
             let exists = false;
             try { exists = !!table.getColumn('sum_discount'); } catch (e) { exists = false; }
-            if (exists) return;
-            let anchor = null;
-            try { anchor = table.getColumn('SPRICE') || table.getColumn('sprice'); } catch (e) { anchor = null; }
-            chStdDiscColumns().forEach(function(col) {
-                try {
-                    if (anchor) table.addColumn(col, true, anchor);
-                    else table.addColumn(col);
-                } catch (err) { /* column already present */ }
-            });
+            if (!exists) {
+                let anchor = null;
+                try { anchor = table.getColumn('SPRICE') || table.getColumn('sprice'); } catch (e) { anchor = null; }
+                chStdDiscColumns().forEach(function(col) {
+                    try {
+                        if (anchor) table.addColumn(col, true, anchor);
+                        else table.addColumn(col);
+                    } catch (err) { /* column already present */ }
+                });
+            }
+            chStdPlaceBussColumn();
         }
         function chStdCatalog() {
             const bySku = {};

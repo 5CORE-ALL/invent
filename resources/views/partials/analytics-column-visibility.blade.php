@@ -148,7 +148,7 @@
                 ) return 'pricing';
                 if (
                     t === 'p' || t === 'img' || t === 'image' ||
-                    /image|parent|sku|inv|dil|views?|cvr|nr_?req|map|links?|stock|ovl|l30|goods|missing/i.test(blob)
+                    /image|parent|sku|inv|dil|buss|views?|cvr|nr_?req|map|links?|stock|ovl|l30|goods|missing/i.test(blob)
                 ) return 'basic';
                 return 'other';
             }
