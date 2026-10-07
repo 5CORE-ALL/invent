@@ -9232,28 +9232,31 @@
             }
             return 0;
         }
-        /** Visible S PRC (live rules + LMP cap) — what Push Prc sends to the listing. */
+        function chPromoPriceIsSprcDil(d, price) {
+            if (!(price > 0) || typeof ebaySprcDilForRow !== 'function') return false;
+            const dil = Number(ebaySprcDilForRow(d)) || 0;
+            return dil > 0 && Math.abs(price - dil) < 0.005;
+        }
+        /** What Push Prc sends. Sprc Dil is rules-only and is not this price. */
         function chPromoPushSpriceAmount(d) {
             if (!d) return 0;
-            if (typeof ebayDisplayedSprice === 'function') {
-                const shown = Number(ebayDisplayedSprice(d)) || 0;
-                if (shown > 0) return chPromoRound2(shown);
+            if (typeof window.chStdPriceForRow === 'function') {
+                const stdRule = Number(window.chStdPriceForRow(d)) || 0;
+                if (stdRule > 0) return chPromoRound2(stdRule);
             }
-            if (typeof ebay2DisplayedSprice === 'function') {
-                const shown = Number(ebay2DisplayedSprice(d)) || 0;
-                if (shown > 0) return chPromoRound2(shown);
+            const shownFns = [
+                typeof ebayDisplayedSprice === 'function' ? ebayDisplayedSprice : null,
+                typeof ebay2DisplayedSprice === 'function' ? ebay2DisplayedSprice : null,
+                typeof ebay3DisplayedSprice === 'function' ? ebay3DisplayedSprice : null,
+                typeof chPromoPageDisplayedSprice === 'function' ? chPromoPageDisplayedSprice : null,
+            ];
+            for (let i = 0; i < shownFns.length; i++) {
+                if (!shownFns[i]) continue;
+                const shown = Number(shownFns[i](d)) || 0;
+                if (shown > 0 && !chPromoPriceIsSprcDil(d, shown)) return chPromoRound2(shown);
             }
-            if (typeof ebay3DisplayedSprice === 'function') {
-                const shown = Number(ebay3DisplayedSprice(d)) || 0;
-                if (shown > 0) return chPromoRound2(shown);
-            }
-            const pageShown = chPromoPageDisplayedSprice(d);
-            if (pageShown > 0) return pageShown;
-            let p = 0;
-            if (typeof chPromoLiveSprice === 'function') {
-                p = Number(chPromoLiveSprice(d)) || 0;
-            }
-            if (!(p > 0)) p = chPromoGetSprice(d);
+            let p = chPromoGetSprice(d);
+            if (chPromoPriceIsSprcDil(d, p)) p = 0;
             p = chPromoRound2(p);
             if (p > 0 && chPromoShouldCapSpriceToLmp(d)) {
                 if (typeof chPromoCapSpriceToLmp === 'function') {

@@ -1073,10 +1073,12 @@
                 const ageDisc = ageIdx >= 0 ? (Number(draft.age[ageIdx].disc) || 0) : 0;
                 const dilDisc = dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0;
                 const revDisc = revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0;
-                const slab = (typeof amzDiscForCvr === 'function' && typeof amzPefCvr === 'function') ? (amzDiscForCvr(amzPefCvr(d)) || 0) : 0;
                 const cvrHit = amzStdCvrMatch(d, draft.cvr);
                 let trend = cvrHit ? (Number(cvrHit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0);
-                const cvrDisc = Math.max(0, slab + (trend > 0 ? trend : 0));
+                if (!(trend > 0) && typeof amzDiscForCvr === 'function' && typeof amzPefCvr === 'function') {
+                    trend = amzDiscForCvr(amzPefCvr(d)) || 0;
+                }
+                const cvrDisc = Math.max(0, trend);
                 if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }

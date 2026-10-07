@@ -1001,7 +1001,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Channel Sprc Dil stays as saved slabs only. These jobs no longer write S PRC.
+        // New Temu One's own command still prices Dil→SNROI. Leave it off.
+        // Temu 1 is priced by dil:rule-sprice-apply temu in the loop below.
         if (false) {
         // New Temu One Sprc Dil (Dil→SNROI) + CVR + eBay/Amz/LMP cap → NTO_SPRICE,
         // then push S Base to Temu when it differs from the live base.
@@ -1021,8 +1022,9 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
+        }
 
-
+        // Std prc vs dil → S PRC, then push. The analytics page does not need to be open.
         foreach ([
             ['04:20', '20:20', 'ebay:rule-sprice-apply ebay1 --push', 'ebay1-sprc-dil'],
             ['04:35', '20:35', 'ebay:rule-sprice-apply ebay2 --push', 'ebay2-sprc-dil'],
@@ -1062,7 +1064,6 @@ class Kernel extends ConsoleKernel
                 ->withoutOverlapping(180)
                 ->runInBackground()
                 ->appendOutputTo($log);
-        }
         }
 
         $schedule->command('wayfair:daily-price-upload')

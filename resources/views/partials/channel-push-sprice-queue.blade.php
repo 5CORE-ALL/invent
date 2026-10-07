@@ -1284,23 +1284,27 @@
                 ];
                 for (let i = 0; i < pageShown.length; i++) {
                     const fn = global[pageShown[i]];
-                    if (typeof fn === 'function') {
-                        const shown = chPushSpriceRound2(fn(d));
-                        if (shown > 0) return shown;
+                    if (typeof fn !== 'function') continue;
+                    const shown = chPushSpriceRound2(fn(d));
+                    if (!(shown > 0)) continue;
+                    if (typeof global.ebaySprcDilForRow === 'function') {
+                        const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
+                        if (dil > 0 && Math.abs(shown - dil) < 0.005) continue;
                     }
+                    return shown;
                 }
-                if (typeof global.ebaySprcDilForRow === 'function') {
-                    const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
-                    if (dil > 0) return dil;
-                }
-                if (typeof chPromoLiveSprice === 'function') {
-                    const live = chPushSpriceRound2(chPromoLiveSprice(d));
-                    if (live > 0) return live;
-                }
+                let saved = 0;
                 if (typeof chPromoSavedOrLiveSprice === 'function') {
-                    return chPushSpriceRound2(chPromoSavedOrLiveSprice(d));
+                    saved = chPushSpriceRound2(chPromoSavedOrLiveSprice(d));
                 }
-                return chPushSpriceRound2(d && (d.SPRICE != null ? d.SPRICE : d.sprice));
+                if (!(saved > 0)) {
+                    saved = chPushSpriceRound2(d && (d.SPRICE != null ? d.SPRICE : d.sprice));
+                }
+                if (saved > 0 && typeof global.ebaySprcDilForRow === 'function') {
+                    const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
+                    if (dil > 0 && Math.abs(saved - dil) < 0.005) return 0;
+                }
+                return saved;
             }
             function chPushSpriceFillFromRow(d) {
                 return chPushSpriceSavedFromRow(d);

@@ -313,10 +313,8 @@
                     if (reviews >= rule.min && reviews <= rule.max) { revDisc = Number(rule.disc) || 0; break; }
                 }
             }
-            const slab = (typeof chPromoCvrDiscForRow === 'function') ? (Number(chPromoCvrDiscForRow(d)) || 0) : 0;
-            const hit = chStdCvrMatch(d, draft.cvr);
-            const trend = hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0);
-            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + Math.max(0, slab + (trend > 0 ? trend : 0)) + revDisc));
+            const cvrDisc = chStdCvrDiscPct(d, draft);
+            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc));
         }
         function chStdRows() {
             const out = [];
@@ -468,9 +466,10 @@
                 const ageDisc = ageIdx >= 0 ? (Number(draft.age[ageIdx].disc) || 0) : 0;
                 const dilDisc = dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0;
                 const revDisc = revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0;
-                const slab = (typeof chPromoCvrDiscForRow === 'function') ? (Number(chPromoCvrDiscForRow(d)) || 0) : 0;
                 const trend = hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0);
-                const cvrDisc = Math.max(0, slab + (trend > 0 ? trend : 0));
+                const cvrDisc = trend > 0
+                    ? trend
+                    : ((typeof chPromoCvrDiscForRow === 'function') ? (Number(chPromoCvrDiscForRow(d)) || 0) : 0);
                 if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
@@ -651,11 +650,13 @@
             const dil = (typeof chPromoDil === 'function') ? chPromoDil(d) : 0;
             return chStdRangeDisc(dil, chStdDil);
         }
-        function chStdCvrDiscPct(d) {
+        function chStdCvrDiscPct(d, draft) {
+            const cfg = (draft && draft.cvr) ? draft.cvr : chStdCvr;
+            const hit = chStdCvrMatch(d, cfg);
+            const trend = hit ? (Number(hit.disc) || 0) : (Number(cfg.flat_disc) || 0);
+            if (trend > 0) return trend;
             const slab = (typeof chPromoCvrDiscForRow === 'function') ? (Number(chPromoCvrDiscForRow(d)) || 0) : 0;
-            const hit = chStdCvrMatch(d, chStdCvr);
-            const trend = hit ? (Number(hit.disc) || 0) : (Number(chStdCvr.flat_disc) || 0);
-            return Math.max(0, slab + (trend > 0 ? trend : 0));
+            return Math.max(0, slab);
         }
         function chStdRevDiscPct(d) {
             const reviews = chStdReviews(d);
@@ -689,7 +690,7 @@
             return [
                 chStdDiscCol('Age Disc', 'age_discount', 'Age Disc from Std prc vs dil. INV = 0 → blank.', chStdAgeDisc),
                 chStdDiscCol('Dil Disc', 'dil_discount', 'Dil Disc from Std prc vs dil. INV = 0 → blank.', chStdDilDisc),
-                chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR slab plus CVR up/down from Std prc vs dil.', chStdCvrDiscPct),
+                chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR discount from Std prc vs dil. Up/down disc is used as-is and is not added to the CVR slab.', function(d) { return chStdCvrDiscPct(d); }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Above max reviews → 0.', chStdRevDiscPct),
                 chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];

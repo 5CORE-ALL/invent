@@ -255,7 +255,8 @@ class AmazonSprcDilAutoPushService
 
         $cvrSlab = $this->discForCvr($cvr, $cvrRules);
         $cvrTrendDisc = $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
-        $cvrDisc = round(min(99.99, max(0, $cvrSlab + $cvrTrendDisc)), 2);
+        // Up/down disc from Std prc vs dil is the CVR discount. Do not add the CVR slab on top.
+        $cvrDisc = round(min(99.99, max(0, $cvrTrendDisc > 0 ? $cvrTrendDisc : $cvrSlab)), 2);
         $reviewDisc = $this->discForReviews($reviews, $reviewRules, $reviewMax);
         $dilDisc = $this->discForStdRange($dil, is_array($stdPromo['dil'] ?? null) ? $stdPromo['dil'] : []);
         $ageDisc = 0.0;
@@ -667,7 +668,7 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
-     * CVR up/down promotional % added on top of the CVR slab discount.
+     * CVR up/down promotional % from Std prc vs dil. Used instead of the CVR slab when it is above 0.
      *
      * @param  array<string, mixed>  $row
      * @param  array<string, mixed>  $cfg

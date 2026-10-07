@@ -1221,13 +1221,17 @@
             const n = Number(rule.disc);
             return isFinite(n) && n >= 0 ? n : 0;
         }
-        /** CVR slab disc plus CVR up/down promo from Std prc vs dil. INV=0 → 0. */
+        /**
+         * CVR Disc. for the price.
+         * Std prc vs dil up/down/flat disc wins when it is set (that disc is the cap).
+         * Otherwise the CVR Disc slab. Never add the two together.
+         */
         function computeAmzCvrDiscountPct(d) {
             if (!amzPefIsChildRow(d)) return null;
             if (amzPefInv(d) === 0) return 0;
-            const slab = amzDiscForCvr(amzPefCvr(d));
             const trend = (typeof amzStdCvrTrendDisc === 'function') ? (Number(amzStdCvrTrendDisc(d)) || 0) : 0;
-            return amzPefRound2(Math.max(0, slab + trend));
+            if (trend > 0) return amzPefRound2(trend);
+            return amzPefRound2(Math.max(0, amzDiscForCvr(amzPefCvr(d))));
         }
         function amzPefReviewCount(d) {
             const n = parseInt(d && (d.amz_review_count != null ? d.amz_review_count : d.reviews), 10);
@@ -2999,7 +3003,7 @@
         /**
          * Live rule stack for this SKU.
          * Age Disc + Dil Disc + CVR Disc + Rev Disc, each a % off Std Prc.
-         * CVR Disc = CVR slab + CVR up/down promo. INV=0 → 0.
+         * CVR Disc = Std prc vs dil up/down disc when that disc is set, else the CVR slab. INV=0 → 0.
          */
         function computeAmzRuleStack(d) {
             const ageDisc = Math.max(0, Number(typeof computeAmzAgeDiscountPct === 'function' ? computeAmzAgeDiscountPct(d) : 0) || 0);

@@ -34,6 +34,8 @@ class EbayRuleSpriceApplyService
 
     private readonly string $channel;
 
+    private bool $applyStdPrcVsDil = false;
+
     public function __construct(string $channel = 'ebay3')
     {
         $this->channel = self::normalizeChannel($channel);
@@ -85,6 +87,7 @@ class EbayRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
+        $this->applyStdPrcVsDil = true;
         $store = $this->loadDilGroiStore();
         $dilRules = $store['rules'];
         $cvrAdj = $store['cvr_adj'];
@@ -221,6 +224,11 @@ class EbayRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin, float $adsPct = 0.0): ?array
     {
+        if ($this->applyStdPrcVsDil) {
+            $priced = \App\Support\StdPrcVsDilPricer::forChannel($this->channel)->priceFromRow($row);
+
+            return $priced !== null ? ['sprice' => $priced, 'groi' => 0.0, 'nroi' => 0.0] : null;
+        }
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0) || ! ($margin > 0)) {
             return null;
