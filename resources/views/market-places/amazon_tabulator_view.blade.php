@@ -4112,41 +4112,6 @@
                         width: 78
                     },
                     {
-                        title: "Reviews",
-                        field: "amz_avg_rating",
-                        hozAlign: "center",
-                        headerSort: true,
-                        width: 85,
-                        headerTooltip: "Avg rating + review count from Amz Ads API cron (amazon:collect-reviews). Falls back to SP-API Catalog when Ads Brand Posts is unavailable.",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            if (row.is_parent_summary) return '';
-                            const rating = row.amz_avg_rating;
-                            const reviews = row.amz_review_count;
-                            if (rating === null || rating === undefined || rating === '' || parseFloat(rating) <= 0) {
-                                return '<span style="color: #6c757d;">-</span>';
-                            }
-                            const ratingVal = parseFloat(rating);
-                            let ratingColor = '#a00211';
-                            if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107';
-                            else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc';
-                            else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
-                            else if (ratingVal > 4.5) ratingColor = '#e83e8c';
-                            const count = parseInt(reviews, 10) || 0;
-                            const reviewColor = count < 4 ? '#a00211' : '#6c757d';
-                            const src = row.amz_reviews_source ? String(row.amz_reviews_source) : 'amazon';
-                            return `<span style="color: ${ratingColor}; font-weight: 600;" title="Source: ${escapeHtmlAttr(src)} · ${count.toLocaleString()} reviews">
-                                    <i class="fa fa-star"></i> ${ratingVal.toFixed(1)}
-                                    <span style="color: ${reviewColor};">(${count.toLocaleString()})</span>
-                                </span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const ra = parseFloat(aRow.getData().amz_avg_rating) || 0;
-                            const rb = parseFloat(bRow.getData().amz_avg_rating) || 0;
-                            return ra - rb;
-                        }
-                    },
-                    {
                         title: "Buyer Link",
                         field: "asin",
                         width: 50,
@@ -4343,7 +4308,41 @@
                             return formatted;
                         }
                     },
-                    @include('partials.analytics-sku-reviews-column', ['marketplace' => 'amazon'])
+                    {
+                        title: "Reviews",
+                        field: "amz_avg_rating",
+                        hozAlign: "center",
+                        headerSort: true,
+                        width: 85,
+                        headerTooltip: "Avg rating + review count from Amz Ads API cron (amazon:collect-reviews). Falls back to SP-API Catalog when Ads Brand Posts is unavailable.",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            if (row.is_parent_summary) return '';
+                            const rating = row.amz_avg_rating;
+                            const reviews = row.amz_review_count;
+                            if (rating === null || rating === undefined || rating === '' || parseFloat(rating) <= 0) {
+                                return '<span style="color: #6c757d;">-</span>';
+                            }
+                            const ratingVal = parseFloat(rating);
+                            let ratingColor = '#a00211';
+                            if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107';
+                            else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc';
+                            else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745';
+                            else if (ratingVal > 4.5) ratingColor = '#e83e8c';
+                            const count = parseInt(reviews, 10) || 0;
+                            const reviewColor = count < 4 ? '#a00211' : '#6c757d';
+                            const src = row.amz_reviews_source ? String(row.amz_reviews_source) : 'amazon';
+                            return `<span style="color: ${ratingColor}; font-weight: 600;" title="Source: ${escapeHtmlAttr(src)} · ${count.toLocaleString()} reviews">
+                                    <i class="fa fa-star"></i> ${ratingVal.toFixed(1)}
+                                    <span style="color: ${reviewColor};">(${count.toLocaleString()})</span>
+                                </span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const ra = parseFloat(aRow.getData().amz_avg_rating) || 0;
+                            const rb = parseFloat(bRow.getData().amz_avg_rating) || 0;
+                            return ra - rb;
+                        }
+                    },
 
                     {
                         title: "Std Prc",
