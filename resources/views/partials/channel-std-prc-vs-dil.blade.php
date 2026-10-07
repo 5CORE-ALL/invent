@@ -613,6 +613,92 @@
                 .done(function(res) { draw((res && res.success && Array.isArray(res.data)) ? res.data : []); })
                 .fail(function() { draw([]); });
         }
+        function chStdDraftNow() {
+            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax };
+        }
+        function chStdPriceForRow(d, draft) {
+            if (!d) return 0;
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
+            if (typeof chPromoInv === 'function' && chPromoInv(d) <= 0) return 0;
+            const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
+            if (!(std > 0)) return 0;
+            const sum = chStdSumDisc(d, draft || chStdDraftNow());
+            const raw = std * (1 - Math.min(99.99, sum) / 100);
+            if (!(raw > 0)) return 0;
+            return (typeof chPromoRoundChannelSprice === 'function')
+                ? chPromoRoundChannelSprice(raw)
+                : Math.round(raw * 100) / 100;
+        }
+        function chStdCatalog() {
+            const bySku = {};
+            const order = [];
+            const take = function(d, row) {
+                if (!d) return;
+                if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return;
+                const sku = (typeof chPromoSku === 'function') ? chPromoSku(d) : '';
+                if (!sku) return;
+                if (bySku[sku]) {
+                    if (row && !bySku[sku].row) bySku[sku].row = row;
+                    return;
+                }
+                const item = { d: d, row: row || null, sku: sku };
+                bySku[sku] = item;
+                order.push(item);
+            };
+            const extra = (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length)
+                ? window.allTableData
+                : ((typeof allTableData !== 'undefined' && Array.isArray(allTableData)) ? allTableData : []);
+            extra.forEach(function(d) { take(d, null); });
+            if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { take(d, row); });
+            return order;
+        }
+        function chStdWritePrices(draft) {
+            const updates = [];
+            chStdCatalog().forEach(function(item) {
+                const price = chStdPriceForRow(item.d, draft);
+                if (!(price > 0)) return;
+                const patch = (typeof chPromoSpricePatch === 'function')
+                    ? chPromoSpricePatch(price)
+                    : { SPRICE: price, sprice: price, has_custom_sprice: true };
+                if (item.row && typeof chPromoPatchRowData === 'function') chPromoPatchRowData(item.row, patch);
+                if (typeof chPromoPatchDatasetSprice === 'function') chPromoPatchDatasetSprice(item.sku, patch);
+                updates.push({ sku: item.sku, sprice: price });
+            });
+            return updates;
+        }
+        function chStdSavePrices(updates) {
+            if (typeof saveChannelSpriceBatch !== 'function' || !updates.length) {
+                return $.Deferred().resolve().promise();
+            }
+            const size = 200;
+            let chain = $.Deferred().resolve().promise();
+            for (let i = 0; i < updates.length; i += size) {
+                const chunk = updates.slice(i, i + size);
+                chain = chain.then(function() { return saveChannelSpriceBatch(chunk, { skip_push: 1 }); });
+            }
+            return chain;
+        }
+        let chStdAutoApplied = false;
+        let chStdAutoWaits = 0;
+        function chStdScheduleAutoApply() {
+            if (chStdAutoApplied) return;
+            const extraN = (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) ? allTableData.length : 0;
+            const tblN = (typeof table !== 'undefined' && table && typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
+            if (!(extraN > 0) && !(tblN > 0)) {
+                if (chStdAutoWaits++ < 40) setTimeout(chStdScheduleAutoApply, 500);
+                return;
+            }
+            chStdLoad().always(function() {
+                if (chStdAutoApplied) return;
+                chStdAutoApplied = true;
+                const updates = chStdWritePrices(chStdDraftNow());
+                chStdSavePrices(updates).always(function() {
+                    if (updates.length && typeof chPromoToast === 'function') {
+                        chPromoToast('success', 'S PRC set from Std prc vs dil (' + updates.length + ')');
+                    }
+                });
+            });
+        }
         function chStdApply() {
             const draft = chStdReadDraft();
             if (!draft.dil.length || !draft.age.length) {
@@ -631,32 +717,17 @@
                 if (res && res.reviews) chStdRev = res.reviews.map(chStdNormRange).filter(Boolean);
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
-                const updates = [];
-                const targets = (typeof collectChPromoSelectedRows === 'function' && collectChPromoSelectedRows().length)
-                    ? collectChPromoSelectedRows()
-                    : ((typeof collectChPromoVisibleRows === 'function') ? collectChPromoVisibleRows() : []);
-                targets.forEach(function(item) {
-                    const d = item.d || {};
-                    if (typeof chPromoInv === 'function' && chPromoInv(d) <= 0) return;
-                    const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
-                    if (!(std > 0)) return;
-                    const sum = chStdSumDisc(d, draft);
-                    const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
-                    if (item.row && typeof chPromoPatchRowData === 'function') chPromoPatchRowData(item.row, { SPRICE: sprice, sprice: sprice });
-                    const sku = (typeof chPromoSku === 'function') ? chPromoSku(d) : '';
-                    if (sku) updates.push({ sku: sku, sprice: sprice });
-                });
+                const updates = chStdWritePrices(draft);
                 const done = function() {
-                    $('#ch-sp-status').text('Saved. S PRC = Std Prc − Sum disc.');
+                    chStdAutoApplied = true;
+                    $('#ch-sp-status').text('Saved. S PRC = Std Prc − Sum disc on ' + updates.length + ' SKU(s).');
                     chStdRefresh();
                     chStdSaveHistory();
-                    if (typeof chPromoToast === 'function') chPromoToast('success', 'Std prc vs dil saved');
+                    if (typeof chPromoToast === 'function') chPromoToast('success', 'S PRC applied from Std prc vs dil');
                 };
-                if (typeof saveChannelSpriceBatch === 'function' && updates.length) {
-                    const pending = saveChannelSpriceBatch(updates, { skip_push: 1, queue_push: false });
-                    if (pending && typeof pending.always === 'function') pending.always(done);
-                    else done();
-                } else done();
+                const pending = chStdSavePrices(updates);
+                if (pending && typeof pending.always === 'function') pending.always(done);
+                else done();
             }).fail(function() {
                 $('#ch-sp-status').text('Save failed');
                 if (typeof chPromoToast === 'function') chPromoToast('error', 'Could not save Std prc vs dil');
@@ -717,5 +788,8 @@
             });
             $('#ch-sp-hist-close').off('click.chsthist').on('click.chsthist', function() { $('#ch-sp-hist-wrap').removeClass('is-open'); });
         }
-        $(function() { bindChStdPrcUi(); });
+        $(function() {
+            bindChStdPrcUi();
+            chStdScheduleAutoApply();
+        });
 @endif
