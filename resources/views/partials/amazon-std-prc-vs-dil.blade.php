@@ -18,6 +18,11 @@
         .amz-age-discount-badge.is-zero,
         .amz-dil-discount-badge.is-zero,
         .amz-sum-discount-badge.is-zero { color: #adb5bd; font-weight: 600; }
+        .amz-age-discount-badge.is-neg,
+        .amz-dil-discount-badge.is-neg,
+        .amz-sum-discount-badge.is-neg,
+        .amz-cvr-discount-badge.is-neg,
+        .amz-review-discount-badge.is-neg { color: #dc3545; }
         #amzStdPrcModal .modal-dialog {
             width: calc(100vw - 1.25rem);
             max-width: calc(100vw - 1.25rem);
@@ -403,31 +408,31 @@
                                         <tr>
                                             <td><span class="amz-sp-when amz-sp-when-down2">Down</span></td>
                                             <td class="text-center"><span class="amz-sp-cvr-thresh">&lt;<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down2-lt" value="4"></span></td>
-                                            <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down2-disc" value="0"></td>
+                                            <td class="text-end"><input type="number" step="any" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down2-disc" value="0"></td>
                                             <td class="amz-sp-count" id="amz-sp-cvr-down2-count">0</td>
                                         </tr>
                                         <tr>
                                             <td><span class="amz-sp-when amz-sp-when-down">Down</span></td>
                                             <td class="text-center"><span class="amz-sp-cvr-thresh">&lt;<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down-lt" value="7"></span></td>
-                                            <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down-disc" value="0"></td>
+                                            <td class="text-end"><input type="number" step="any" class="form-control form-control-sm amz-sp-input amz-sp-cvr-down-disc" value="0"></td>
                                             <td class="amz-sp-count" id="amz-sp-cvr-down-count">0</td>
                                         </tr>
                                         <tr>
                                             <td><span class="amz-sp-when amz-sp-when-flat">Flat</span></td>
                                             <td class="text-center text-muted">mid</td>
-                                            <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-flat-disc" value="0"></td>
+                                            <td class="text-end"><input type="number" step="any" class="form-control form-control-sm amz-sp-input amz-sp-cvr-flat-disc" value="0"></td>
                                             <td class="amz-sp-count" id="amz-sp-cvr-flat-count">0</td>
                                         </tr>
                                         <tr>
                                             <td><span class="amz-sp-when amz-sp-when-up">Up</span></td>
                                             <td class="text-center"><span class="amz-sp-cvr-thresh">&gt;<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up-gt" value="10"></span></td>
-                                            <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up-disc" value="0"></td>
+                                            <td class="text-end"><input type="number" step="any" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up-disc" value="0"></td>
                                             <td class="amz-sp-count" id="amz-sp-cvr-up-count">0</td>
                                         </tr>
                                         <tr>
                                             <td><span class="amz-sp-when amz-sp-when-up2">Up</span></td>
                                             <td class="text-center"><span class="amz-sp-cvr-thresh">&gt;<input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up2-gt" value="15"></span></td>
-                                            <td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up2-disc" value="0"></td>
+                                            <td class="text-end"><input type="number" step="any" class="form-control form-control-sm amz-sp-input amz-sp-cvr-up2-disc" value="0"></td>
                                             <td class="amz-sp-count" id="amz-sp-cvr-up2-count">0</td>
                                         </tr>
                                     </tbody>
@@ -520,14 +525,21 @@
         let amzStdHistChart = null;
         let amzStdHistLive = {};
 
+        function amzStdDisc(raw) {
+            const n = Number(raw);
+            if (!isFinite(n)) return 0;
+            return Math.min(100, Math.max(-100, Math.round(n * 100) / 100));
+        }
         function fmtAmzStdDiscBadge(pct, kind) {
             const n = Number(pct);
             const cls = kind === 'age' ? 'amz-age-discount-badge'
-                : (kind === 'dil' ? 'amz-dil-discount-badge' : 'amz-sum-discount-badge');
-            if (!isFinite(n) || n <= 0) {
+                : (kind === 'dil' ? 'amz-dil-discount-badge'
+                    : (kind === 'cvr' ? 'amz-cvr-discount-badge'
+                        : (kind === 'review' ? 'amz-review-discount-badge' : 'amz-sum-discount-badge')));
+            if (!isFinite(n) || n === 0) {
                 return '<span class="' + cls + ' is-zero">—</span>';
             }
-            return '<span class="' + cls + '">' + n + '</span>';
+            return '<span class="' + cls + (n < 0 ? ' is-neg' : '') + '">' + n + '</span>';
         }
         function amzStdRangeDisc(value, rules) {
             const n = Number(value);
@@ -545,8 +557,7 @@
                     ? Math.abs(n - min) < 0.00001
                     : (n >= min && (i === last ? n <= max : n < max));
                 if (!hit) continue;
-                const disc = Number(rule.disc);
-                return isFinite(disc) && disc > 0 ? disc : 0;
+                return amzStdDisc(rule.disc);
             }
             return 0;
         }
@@ -565,13 +576,13 @@
         function amzStdCvrSlabs(cfg) {
             cfg = cfg || AMZ_STD_CVR_DEFAULT;
             const down = [
-                { key: 'down2', lt: Number(cfg.down2_lt), disc: Number(cfg.down2_disc) || 0 },
-                { key: 'down', lt: Number(cfg.down_lt), disc: Number(cfg.down_disc) || 0 },
+                { key: 'down2', lt: Number(cfg.down2_lt), disc: amzStdDisc(cfg.down2_disc) },
+                { key: 'down', lt: Number(cfg.down_lt), disc: amzStdDisc(cfg.down_disc) },
             ].filter(function(s) { return isFinite(s.lt) && s.lt > 0; });
             down.sort(function(a, b) { return a.lt - b.lt; });
             const up = [
-                { key: 'up', gt: Number(cfg.up_gt), disc: Number(cfg.up_disc) || 0 },
-                { key: 'up2', gt: Number(cfg.up2_gt), disc: Number(cfg.up2_disc) || 0 },
+                { key: 'up', gt: Number(cfg.up_gt), disc: amzStdDisc(cfg.up_disc) },
+                { key: 'up2', gt: Number(cfg.up2_gt), disc: amzStdDisc(cfg.up2_disc) },
             ].filter(function(s) { return isFinite(s.gt) && s.gt >= 0; });
             up.sort(function(a, b) { return b.gt - a.gt; });
             return { down: down, up: up };
@@ -596,8 +607,7 @@
             if (!d || (typeof amzPefInv === 'function' && amzPefInv(d) === 0)) return 0;
             const cfg = amzStdCvrCfg || AMZ_STD_CVR_DEFAULT;
             const hit = amzStdCvrMatch(d, cfg);
-            const disc = hit ? hit.disc : (Number(cfg.flat_disc) || 0);
-            return isFinite(disc) && disc > 0 ? disc : 0;
+            return amzStdDisc(hit ? hit.disc : cfg.flat_disc);
         }
         function amzStdCvrBand(d, cfg) {
             const hit = amzStdCvrMatch(d, cfg);
@@ -611,7 +621,7 @@
         function amzStdSprice(d) {
             const std = Number(d && d.STANDARD_PRICE) || 0;
             if (!(std > 0)) return 0;
-            const pct = Math.min(99.99, Math.max(0, Number(computeAmzSumDiscountPct(d)) || 0));
+            const pct = Math.min(99.99, Math.max(-100, Number(computeAmzSumDiscountPct(d)) || 0));
             return (typeof amzPefRound2 === 'function')
                 ? amzPefRound2(std * (1 - (pct / 100)))
                 : Math.round(std * (1 - (pct / 100)) * 100) / 100;
@@ -627,20 +637,21 @@
             let max = Number(r && r.max);
             if (!isFinite(min) || !isFinite(max)) return null;
             if (max < min) { const swap = min; min = max; max = swap; }
-            let disc = Number(r && r.disc);
-            if (!isFinite(disc) || disc < 0) disc = 0;
-            if (disc > 100) disc = 100;
-            return { min: min, max: max, disc: disc };
+            return { min: min, max: max, disc: amzStdDisc(r && r.disc) };
         }
         function amzStdNormCvr(raw) {
             const out = Object.assign({}, AMZ_STD_CVR_DEFAULT);
             if (!raw) return out;
             const hadDown2Disc = raw.down2_disc !== undefined && raw.down2_disc !== null && raw.down2_disc !== '';
             const hadUp2Disc = raw.up2_disc !== undefined && raw.up2_disc !== null && raw.up2_disc !== '';
-            ['down2_lt', 'down_lt', 'up_gt', 'up2_gt', 'down2_disc', 'down_disc', 'up_disc', 'up2_disc', 'flat_disc'].forEach(function(key) {
+            ['down2_lt', 'down_lt', 'up_gt', 'up2_gt'].forEach(function(key) {
                 const n = Number(raw[key]);
                 if (!isFinite(n) || n < 0) return;
-                out[key] = n > 100 && key.indexOf('disc') !== -1 ? 100 : n;
+                out[key] = n;
+            });
+            ['down2_disc', 'down_disc', 'up_disc', 'up2_disc', 'flat_disc'].forEach(function(key) {
+                if (raw[key] === undefined || raw[key] === null || raw[key] === '') return;
+                out[key] = amzStdDisc(raw[key]);
             });
             if (!hadDown2Disc) out.down2_disc = out.down_disc;
             if (!hadUp2Disc) out.up2_disc = out.up_disc;
@@ -699,7 +710,7 @@
                 + '<td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm amz-sp-input ' + prefix + '-min" value="' + min + '"></td>'
                 + '<td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm amz-sp-input ' + prefix + '-max" value="' + max + '"></td>'
                 + '<td class="amz-sp-count ' + prefix + '-count">0</td>'
-                + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm amz-sp-input ' + prefix + '-disc" value="' + disc + '"></td>'
+                + '<td class="text-end"><input type="number" step="any" class="form-control form-control-sm amz-sp-input ' + prefix + '-disc" value="' + disc + '"></td>'
                 + '<td class="text-center"><button type="button" class="btn btn-sm amz-sp-del ' + prefix + '-del" title="Remove">&times;</button></td>'
                 + '</tr>';
         }
@@ -1070,17 +1081,17 @@
                 const band = amzStdCvrBand(d, draft.cvr);
                 cvrCounts[band] = (cvrCounts[band] || 0) + 1;
 
-                const ageDisc = ageIdx >= 0 ? (Number(draft.age[ageIdx].disc) || 0) : 0;
-                const dilDisc = dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0;
-                const revDisc = revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0;
+                const ageDisc = ageIdx >= 0 ? amzStdDisc(draft.age[ageIdx].disc) : 0;
+                const dilDisc = dilIdx >= 0 ? amzStdDisc(draft.dil[dilIdx].disc) : 0;
+                const revDisc = revIdx >= 0 ? amzStdDisc(draft.reviews[revIdx].disc) : 0;
                 const cvrHit = amzStdCvrMatch(d, draft.cvr);
-                const cvrDisc = Math.max(0, cvrHit ? (Number(cvrHit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0));
-                if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
-                if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
-                if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
-                if (revDisc > 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
-                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc);
-                if (sum > 0) skuHits.all++;
+                const cvrDisc = amzStdDisc(cvrHit ? cvrHit.disc : draft.cvr.flat_disc);
+                if (ageDisc !== 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
+                if (dilDisc !== 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
+                if (cvrDisc !== 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
+                if (revDisc !== 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
+                const sum = Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + revDisc));
+                if (sum !== 0) skuHits.all++;
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
                     const profit = amzStdUnitProfit(d, sprice);

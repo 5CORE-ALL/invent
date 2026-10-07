@@ -1230,14 +1230,14 @@
             const rule = amzCvrDiscRules.find(function(r) { return r.key === key; });
             if (!rule) return 0;
             const n = Number(rule.disc);
-            return isFinite(n) && n >= 0 ? n : 0;
+            return isFinite(n) ? amzStdDisc(n) : 0;
         }
         /** CVR Disc. is only the Std prc vs dil up/down/flat disc. The old CVR slab is not added. */
         function computeAmzCvrDiscountPct(d) {
             if (!amzPefIsChildRow(d)) return null;
             if (amzPefInv(d) === 0) return 0;
-            const trend = (typeof amzStdCvrTrendDisc === 'function') ? (Number(amzStdCvrTrendDisc(d)) || 0) : 0;
-            return amzPefRound2(Math.max(0, trend));
+            const trend = (typeof amzStdCvrTrendDisc === 'function') ? Number(amzStdCvrTrendDisc(d)) : 0;
+            return (typeof amzStdDisc === 'function') ? amzStdDisc(trend) : (isFinite(trend) ? trend : 0);
         }
         /** Star rating in Reviews (4.0), not the count in parentheses. */
         function amzPefReviewCount(d) {
@@ -1257,7 +1257,7 @@
                 min: lo,
                 max: hi,
                 label: lo + '–' + hi,
-                disc: (isFinite(disc) && disc >= 0) ? disc : 0,
+                disc: (typeof amzStdDisc === 'function') ? amzStdDisc(disc) : ((isFinite(disc) ? disc : 0)),
             };
         }
         /** Star rating → Rev Disc. % (INV=0, rating 0, or rating >= max → 0). First matching from–to wins. */
@@ -1272,25 +1272,27 @@
                 const rule = amzNormalizeReviewDiscRule(amzReviewDiscRules[i]);
                 if (!rule) continue;
                 if (count >= rule.min && count <= rule.max) {
-                    return rule.disc > 0 ? rule.disc : 0;
+                    return (typeof amzStdDisc === 'function') ? amzStdDisc(rule.disc) : (Number(rule.disc) || 0);
                 }
             }
             return 0;
         }
         function fmtAmzReviewDiscountBadge(pct) {
+            if (typeof fmtAmzStdDiscBadge === 'function') return fmtAmzStdDiscBadge(pct, 'review');
             const n = Number(pct);
-            if (!isFinite(n) || n <= 0) {
+            if (!isFinite(n) || n === 0) {
                 return '<span class="amz-review-discount-badge is-zero" title="No Review Disc">—</span>';
             }
-            return '<span class="amz-review-discount-badge" title="Review Disc rule → ' + n + '%">'
+            return '<span class="amz-review-discount-badge' + (n < 0 ? ' is-neg' : '') + '" title="Review Disc rule → ' + n + '%">'
                 + n + '</span>';
         }
         function fmtAmzCvrDiscountBadge(pct) {
+            if (typeof fmtAmzStdDiscBadge === 'function') return fmtAmzStdDiscBadge(pct, 'cvr');
             const n = Number(pct);
-            if (!isFinite(n) || n <= 0) {
+            if (!isFinite(n) || n === 0) {
                 return '<span class="amz-cvr-discount-badge is-zero" title="No CVR Disc">—</span>';
             }
-            return '<span class="amz-cvr-discount-badge" title="CVR Disc rule → ' + n + '%">'
+            return '<span class="amz-cvr-discount-badge' + (n < 0 ? ' is-neg' : '') + '" title="CVR Disc rule → ' + n + '%">'
                 + n + '</span>';
         }
         function amzPefAL30(d) {
@@ -2514,7 +2516,7 @@
                     + '<td class="amz-review-disc-count">' + (counts[rule.key] || 0) + '</td>'
                     + '<td class="text-end">'
                     + '<input type="number" class="form-control form-control-sm amz-review-disc-input amz-rd-disc" '
-                    + 'min="0" step="0.1" value="' + rule.disc + '">'
+                    + 'step="any" value="' + rule.disc + '">'
                     + '</td>'
                     + '<td class="text-center">'
                     + '<button type="button" class="amz-review-disc-row-del" data-idx="' + idx + '" title="Remove range">&times;</button>'
@@ -3015,16 +3017,24 @@
          * CVR Disc = Std prc vs dil up/down/flat disc only. INV=0 → 0.
          */
         function computeAmzRuleStack(d) {
-            const ageDisc = Math.max(0, Number(typeof computeAmzAgeDiscountPct === 'function' ? computeAmzAgeDiscountPct(d) : 0) || 0);
-            const dilDisc = Math.max(0, Number(typeof computeAmzDilDiscountPct === 'function' ? computeAmzDilDiscountPct(d) : 0) || 0);
-            const cvrDisc = Math.max(0, Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
-            const reviewDisc = Math.max(0, Number(typeof computeAmzReviewDiscountPct === 'function' ? computeAmzReviewDiscountPct(d) : 0) || 0);
+            const ageDisc = (typeof amzStdDisc === 'function')
+                ? amzStdDisc(typeof computeAmzAgeDiscountPct === 'function' ? computeAmzAgeDiscountPct(d) : 0)
+                : (Number(typeof computeAmzAgeDiscountPct === 'function' ? computeAmzAgeDiscountPct(d) : 0) || 0);
+            const dilDisc = (typeof amzStdDisc === 'function')
+                ? amzStdDisc(typeof computeAmzDilDiscountPct === 'function' ? computeAmzDilDiscountPct(d) : 0)
+                : (Number(typeof computeAmzDilDiscountPct === 'function' ? computeAmzDilDiscountPct(d) : 0) || 0);
+            const cvrDisc = (typeof amzStdDisc === 'function')
+                ? amzStdDisc(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0)
+                : (Number(typeof computeAmzCvrDiscountPct === 'function' ? computeAmzCvrDiscountPct(d) : 0) || 0);
+            const reviewDisc = (typeof amzStdDisc === 'function')
+                ? amzStdDisc(typeof computeAmzReviewDiscountPct === 'function' ? computeAmzReviewDiscountPct(d) : 0)
+                : (Number(typeof computeAmzReviewDiscountPct === 'function' ? computeAmzReviewDiscountPct(d) : 0) || 0);
             const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(d);
             const dilGroiMeta = (typeof amzDilGroiMetaForRow === 'function')
                 ? amzDilGroiMetaForRow(d)
                 : null;
             const dilGroi = !!(dilGroiMeta && dilGroiMeta.sprc > 0);
-            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + reviewDisc)));
+            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + reviewDisc)));
             return {
                 prmt: 0,
                 ageDisc: ageDisc,
@@ -3081,9 +3091,9 @@
             const stack = computeAmzRuleStack(d);
             if (!(std > 0)) return null;
             let sale = null;
-            if (stack.totalDisc > 0 && stack.totalDisc < 100) {
+            if (Math.abs(stack.totalDisc) >= 0.01 && stack.totalDisc < 100) {
                 sale = amzPefRound2(std * (1 - (stack.totalDisc / 100)));
-                if (!(sale >= 0.01) || sale >= std) sale = null;
+                if (!(sale >= 0.01)) sale = null;
             }
             const saleBase = sale != null ? sale : (std > 0 ? amzPefRound2(std) : 0);
             if (!(saleBase > 0)) return null;

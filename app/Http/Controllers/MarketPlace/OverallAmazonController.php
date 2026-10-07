@@ -2841,11 +2841,8 @@ class OverallAmazonController extends Controller
                 [$min, $max] = [$max, $min];
             }
             $disc = isset($item['disc']) && is_numeric($item['disc'])
-                ? round((float) $item['disc'], 2)
+                ? $this->amazonClampPromoDisc((float) $item['disc'])
                 : 0.0;
-            if ($disc < 0) {
-                $disc = 0.0;
-            }
             $rules[] = [
                 'key' => $min.'-'.$max,
                 'min' => $min,
@@ -2989,16 +2986,10 @@ class OverallAmazonController extends Controller
                 $max = $swap;
             }
             $disc = is_numeric($item['disc'] ?? null) ? (float) $item['disc'] : 0;
-            if ($disc < 0) {
-                $disc = 0;
-            }
-            if ($disc > 100) {
-                $disc = 100;
-            }
             $rules[] = [
                 'min' => round($min, 2),
                 'max' => round($max, 2),
-                'disc' => round($disc, 2),
+                'disc' => $this->amazonClampPromoDisc($disc),
             ];
         }
 
@@ -3027,13 +3018,7 @@ class OverallAmazonController extends Controller
                 continue;
             }
             $n = (float) $incoming[$key];
-            if ($n < 0) {
-                $n = 0;
-            }
-            if ($n > 100) {
-                $n = 100;
-            }
-            $out[$key] = round($n, 2);
+            $out[$key] = $this->amazonClampPromoDisc($n);
         }
         if (! $hadDown2Disc) {
             $out['down2_disc'] = $out['down_disc'];
@@ -3043,6 +3028,19 @@ class OverallAmazonController extends Controller
         }
 
         return $out;
+    }
+
+    /** Disc % may be negative (raises price) or a decimal. Kept to two places, between -100 and 100. */
+    private function amazonClampPromoDisc(float $disc): float
+    {
+        if ($disc < -100) {
+            $disc = -100;
+        }
+        if ($disc > 100) {
+            $disc = 100;
+        }
+
+        return round($disc, 2);
     }
 
     public function amazonStdPrcVsDilRules()

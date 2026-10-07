@@ -1306,14 +1306,21 @@
             const n = parseFloat(raw);
             return (isFinite(n) && n > 0) ? n : 0;
         }
-        /** Std Prc is always the maximum when it is set, including a high suggested S PRC. */
+        /** Std Prc is the maximum when it is set, unless a negative Std prc vs dil disc raises the price. */
         function amazonCapToStdWhenNoLmp(rowData, sprice) {
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
             const rounded = +Number(s).toFixed(2);
             const std = amazonStdPrice(rowData);
-            if (!(std > 0) || rounded + 0.0001 <= std) return rounded;
-            return +Number(std).toFixed(2);
+            let ceiling = std;
+            if (std > 0 && typeof computeAmzSumDiscountPct === 'function') {
+                const disc = Number(computeAmzSumDiscountPct(rowData));
+                if (isFinite(disc) && disc < 0) {
+                    ceiling = +Number(std * (1 - (disc / 100))).toFixed(2);
+                }
+            }
+            if (!(ceiling > 0) || rounded + 0.0001 <= ceiling) return rounded;
+            return +Number(ceiling).toFixed(2);
         }
         function amazonCapSpriceToLmp(rowData, sprice) {
             const s = parseFloat(sprice);

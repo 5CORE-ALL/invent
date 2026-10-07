@@ -261,22 +261,22 @@ class AmazonSprcDilAutoPushService
         }
         $dilGroi = $dilPrice !== null && $dilPrice > 0;
 
-        $cvrDisc = round(min(99.99, max(0, $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []))), 2);
+        $cvrDisc = $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
         $reviewDisc = $this->discForReviews($reviews, $reviewRules, $reviewMax);
         $dilDisc = $this->discForStdRange($dil, is_array($stdPromo['dil'] ?? null) ? $stdPromo['dil'] : []);
         $ageDisc = 0.0;
         if (isset($row['age_days']) && $row['age_days'] !== null && $row['age_days'] !== '') {
             $ageDisc = $this->discForStdRange((float) $row['age_days'], is_array($stdPromo['age'] ?? null) ? $stdPromo['age'] : []);
         }
-        $totalDisc = round(min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc)), 2);
+        $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc)), 2);
 
         if (! ($std > 0)) {
             return null;
         }
         $sale = null;
-        if ($totalDisc > 0 && $totalDisc < 100) {
+        if (abs($totalDisc) >= 0.01 && $totalDisc < 100) {
             $sale = round($std * (1 - ($totalDisc / 100)), 2);
-            if (! ($sale >= 0.01) || $sale >= $std) {
+            if (! ($sale >= 0.01)) {
                 $sale = null;
             }
         }
@@ -286,13 +286,17 @@ class AmazonSprcDilAutoPushService
             return null;
         }
 
+        $stdCeiling = $std;
+        if ($totalDisc < 0 && $std > 0 && $sale !== null) {
+            $stdCeiling = (float) $sale;
+        }
         $capped = AmazonDilGroiRule::capSpriceToLmp(
             $effective,
             $lmp,
             $lp,
             $ship,
             AmazonDilGroiRule::TAKE_HOME,
-            $std
+            $stdCeiling
         );
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
@@ -601,6 +605,16 @@ class AmazonSprcDilAutoPushService
         return [$lp, $ship];
     }
 
+    /** Disc % may be negative (raises price) or a decimal. Kept to two places, between -100 and 100. */
+    private function clampPromoDisc(float $disc): float
+    {
+        if (! is_finite($disc)) {
+            return 0.0;
+        }
+
+        return round(min(100, max(-100, $disc)), 2);
+    }
+
     /**
      * @param  list<array{key:string,label:string,disc:float}>  $rules
      */
@@ -611,7 +625,7 @@ class AmazonSprcDilAutoPushService
             if (($rule['key'] ?? '') === $key) {
                 $n = (float) ($rule['disc'] ?? 0);
 
-                return is_finite($n) && $n >= 0 ? round($n, 2) : 0.0;
+                return is_finite($n) ? $this->clampPromoDisc($n) : 0.0;
             }
         }
 
@@ -635,7 +649,7 @@ class AmazonSprcDilAutoPushService
             if ($count >= $min && $count <= $max) {
                 $n = (float) ($rule['disc'] ?? 0);
 
-                return is_finite($n) && $n > 0 ? round($n, 2) : 0.0;
+                return is_finite($n) ? $this->clampPromoDisc($n) : 0.0;
             }
         }
 
@@ -673,7 +687,7 @@ class AmazonSprcDilAutoPushService
             }
             $n = (float) ($rule['disc'] ?? 0);
 
-            return is_finite($n) && $n > 0 ? round($n, 2) : 0.0;
+            return is_finite($n) ? $this->clampPromoDisc($n) : 0.0;
         }
 
         return 0.0;
@@ -725,11 +739,11 @@ class AmazonSprcDilAutoPushService
                 }
             }
         }
-        if (! is_finite($disc) || $disc <= 0) {
+        if (! is_finite($disc)) {
             return 0.0;
         }
 
-        return round($disc, 2);
+        return $this->clampPromoDisc($disc);
     }
 
     /**
@@ -1070,13 +1084,13 @@ class AmazonSprcDilAutoPushService
             if ($hi < $min) {
                 [$min, $hi] = [$hi, $min];
             }
-            $disc = isset($item['disc']) && is_numeric($item['disc']) ? round((float) $item['disc'], 2) : 0.0;
+            $disc = isset($item['disc']) && is_numeric($item['disc']) ? $this->clampPromoDisc((float) $item['disc']) : 0.0;
             $rules[] = [
                 'key' => $min.'-'.$hi,
                 'min' => $min,
                 'max' => $hi,
                 'label' => $min.'–'.$hi,
-                'disc' => $disc < 0 ? 0.0 : $disc,
+                'disc' => $disc,
             ];
         }
 
