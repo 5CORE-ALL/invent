@@ -876,7 +876,7 @@ class VerificationAdjustmentController extends Controller
             return ['success' => false, 'error' => 'SKU not found in Shopify: '.$normalizedSku];
         }
 
-        $locationId = \App\Services\ShopifyOhioLocationResolver::mainWarehouseLocationId();
+        $locationId = $this->resolveMainWarehouseLocationId();
         if (! $locationId) {
             return ['success' => false, 'error' => 'Main Warehouse was not found in Shopify. Inventory was not sent to another warehouse.'];
         }
@@ -918,21 +918,11 @@ class VerificationAdjustmentController extends Controller
         $row = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])->first(['variant_id']);
         $inventoryItemId = null;
 
+        // GraphQL has its own cost bucket. The REST variant lookup used to wait on the
+        // shared 2 calls/second gate (price push, inventory sync) for up to 45s, then
+        // retry with multi-second sleeps, all inside this Accept request.
         if ($row && $row->variant_id) {
-            try {
-                $response = $this->sendShopify(function () use ($row) {
-                    return $this->shopifyHttp()->timeout(8)
-                        ->get("https://{$this->shopifyDomain}/admin/api/2025-01/variants/{$row->variant_id}.json");
-                });
-                if ($response->successful()) {
-                    $inventoryItemId = $response->json('variant.inventory_item_id');
-                }
-            } catch (\Exception $e) {
-                Log::warning('Fast variant lookup failed', [
-                    'sku' => $normalizedSku,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            $inventoryItemId = $this->findInventoryItemIdByVariantGraphQl((string) $row->variant_id);
         }
 
         if (! $inventoryItemId) {
@@ -948,6 +938,28 @@ class VerificationAdjustmentController extends Controller
         return null;
     }
 
+    protected function findInventoryItemIdByVariantGraphQl(string $variantId): ?string
+    {
+        $numeric = preg_replace('/\D/', '', $variantId);
+        if ($numeric === null || $numeric === '') {
+            return null;
+        }
+
+        $query = <<<'GQL'
+query ($id: ID!) {
+  productVariant(id: $id) {
+    inventoryItem { id }
+  }
+}
+GQL;
+
+        $json = $this->postShopifyGraphql($query, [
+            'id' => 'gid://shopify/ProductVariant/'.$numeric,
+        ], 'variant inventory item');
+
+        return $this->numericIdFromShopifyGid($json['data']['productVariant']['inventoryItem']['id'] ?? null);
+    }
+
     protected function findInventoryItemIdBySkuGraphQl(string $normalizedSku): ?string
     {
         $query = <<<'GQL'
@@ -960,35 +972,139 @@ query ($q: String!) {
 }
 GQL;
 
+        $json = $this->postShopifyGraphql($query, [
+            'q' => 'sku:"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $normalizedSku).'"',
+        ], 'SKU inventory item');
+
+        return $this->numericIdFromShopifyGid($json['data']['productVariants']['nodes'][0]['inventoryItem']['id'] ?? null);
+    }
+
+    /**
+     * Main Warehouse id from the GraphQL cost bucket. locations.json shares the REST
+     * 2/sec gate, so a cold cache used to stall Accept behind other Shopify jobs.
+     */
+    protected function resolveMainWarehouseLocationId(): ?string
+    {
+        $cached = Cache::get('shopify_main_warehouse_location_id');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $query = <<<'GQL'
+query VerificationLocations {
+  locations(first: 50) {
+    nodes {
+      id
+      name
+      isActive
+    }
+  }
+}
+GQL;
+
         try {
-            $response = $this->sendShopify(function () use ($query, $normalizedSku) {
-                return $this->shopifyHttp()->timeout(8)
-                    ->post("https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json", [
-                        'query' => $query,
-                        'variables' => [
-                            'q' => 'sku:"'.str_replace(['\\', '"'], ['\\\\', '\\"'], $normalizedSku).'"',
-                        ],
-                    ]);
-            });
+            $json = $this->postShopifyGraphql($query, [], 'Main Warehouse location');
         } catch (\Exception $e) {
-            Log::warning('Fast SKU GraphQL lookup failed', [
-                'sku' => $normalizedSku,
-                'error' => $e->getMessage(),
-            ]);
+            if (! self::isShopifyRateLimitError($e->getMessage())) {
+                return \App\Services\ShopifyOhioLocationResolver::mainWarehouseLocationId();
+            }
 
-            return null;
+            throw $e;
         }
 
-        if (! $response->successful()) {
-            return null;
+        foreach ($json['data']['locations']['nodes'] ?? [] as $node) {
+            if (! is_array($node) || ($node['isActive'] ?? true) === false) {
+                continue;
+            }
+            $name = strtolower((string) preg_replace('/\s+/', '', (string) ($node['name'] ?? '')));
+            if ($name !== 'mainwarehouse') {
+                continue;
+            }
+            $id = $this->numericIdFromShopifyGid($node['id'] ?? null);
+            if ($id) {
+                Cache::put('shopify_main_warehouse_location_id', $id, 3600);
+
+                return $id;
+            }
         }
 
-        $gid = $response->json('data.productVariants.nodes.0.inventoryItem.id');
+        return \App\Services\ShopifyOhioLocationResolver::mainWarehouseLocationId();
+    }
+
+    /**
+     * One GraphQL call, retried once on throttle. Does not enter the REST call gate.
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     */
+    protected function postShopifyGraphql(string $query, array $variables, string $purpose): array
+    {
+        $payload = ['query' => $query];
+        if ($variables !== []) {
+            $payload['variables'] = $variables;
+        }
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                $response = $this->shopifyHttp()->timeout(8)
+                    ->post("https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json", $payload);
+            } catch (\Throwable $e) {
+                Log::warning('Verification Shopify GraphQL failed', [
+                    'purpose' => $purpose,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return [];
+            }
+
+            $json = $response->json();
+            $json = is_array($json) ? $json : [];
+            $throttled = $response->status() === 429 || ShopifyStockTransferGraphql::isThrottled($json);
+            if ($throttled) {
+                if ($attempt === 0) {
+                    $this->pauseForGraphqlThrottle($response->header('Retry-After'), $json);
+
+                    continue;
+                }
+
+                throw new \Exception('Shopify is busy (rate limited). Automatic retry scheduled.');
+            }
+
+            if (! $response->successful()) {
+                Log::warning('Verification Shopify GraphQL failed', [
+                    'purpose' => $purpose,
+                    'status' => $response->status(),
+                ]);
+
+                return [];
+            }
+
+            return $json;
+        }
+
+        throw new \Exception('Shopify is busy (rate limited). Automatic retry scheduled.');
+    }
+
+    protected function numericIdFromShopifyGid(mixed $gid): ?string
+    {
         if (! is_string($gid) || ! preg_match('/(\d+)$/', $gid, $matches)) {
             return null;
         }
 
         return $matches[1];
+    }
+
+    protected function pauseForGraphqlThrottle(?string $retryAfter, ?array $json): void
+    {
+        if (is_numeric($retryAfter)) {
+            $seconds = min(2.0, max(0.0, (float) $retryAfter));
+        } else {
+            $seconds = min(2.0, (float) ShopifyStockTransferGraphql::throttleWaitSeconds($retryAfter, $json, 2));
+        }
+
+        if ($seconds > 0) {
+            usleep((int) round($seconds * 1_000_000));
+        }
     }
 
     /**
@@ -1010,7 +1126,7 @@ GQL;
                     'location_id' => $locationId,
                     'available_adjustment' => $adjustment,
                 ]);
-        });
+        }, 2);
 
         if (! $response->successful()) {
             $errorMessage = "HTTP {$response->status()}";
@@ -1030,50 +1146,71 @@ GQL;
      */
     protected function adjustInventoryViaGraphQl(string $inventoryItemId, string $locationId, int $adjustment): ?array
     {
-        try {
-            $response = $this->shopifyHttp()->timeout(12)
-                ->post("https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json", [
-                    'query' => ShopifyStockTransferGraphql::ADJUST_MUTATION,
-                    'variables' => [
-                        'input' => [
-                            'reason' => 'correction',
-                            'name' => 'available',
-                            'changes' => [[
-                                'delta' => $adjustment,
-                                'inventoryItemId' => 'gid://shopify/InventoryItem/'.$inventoryItemId,
-                                'locationId' => 'gid://shopify/Location/'.$locationId,
-                            ]],
-                        ],
-                    ],
+        $payload = [
+            'query' => ShopifyStockTransferGraphql::ADJUST_MUTATION,
+            'variables' => [
+                'input' => [
+                    'reason' => 'correction',
+                    'name' => 'available',
+                    'changes' => [[
+                        'delta' => $adjustment,
+                        'inventoryItemId' => 'gid://shopify/InventoryItem/'.$inventoryItemId,
+                        'locationId' => 'gid://shopify/Location/'.$locationId,
+                    ]],
+                ],
+            ],
+        ];
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            try {
+                $response = $this->shopifyHttp()->timeout(12)
+                    ->post("https://{$this->shopifyDomain}/admin/api/2025-01/graphql.json", $payload);
+            } catch (\Throwable $e) {
+                Log::warning('Verification GraphQL inventory adjust failed', [
+                    'error' => $e->getMessage(),
                 ]);
-        } catch (\Throwable $e) {
-            Log::warning('Verification GraphQL inventory adjust failed', [
-                'error' => $e->getMessage(),
-            ]);
+
+                return null;
+            }
+
+            $json = $response->json();
+            $json = is_array($json) ? $json : null;
+            $throttled = $response->status() === 429
+                || ($json !== null && ShopifyStockTransferGraphql::isThrottled($json));
+
+            if ($throttled) {
+                if ($attempt === 0) {
+                    $this->pauseForGraphqlThrottle($response->header('Retry-After'), $json);
+
+                    continue;
+                }
+
+                throw new \Exception('Shopify is busy (rate limited). Automatic retry scheduled.');
+            }
+
+            if (! $response->successful() || $json === null) {
+                return null;
+            }
+
+            $topError = strtolower((string) ($json['errors'][0]['message'] ?? ''));
+            if (str_contains($topError, "doesn't exist") || str_contains($topError, 'does not exist')) {
+                return null;
+            }
+
+            $parsed = ShopifyStockTransferGraphql::parseAdjust($json);
+            if ($parsed['success'] ?? false) {
+                return ['available' => $parsed['available'] ?? null];
+            }
+
+            $error = (string) ($parsed['error'] ?? '');
+            if ($error !== '' && $this->inventoryNotStockedAtLocation(new \Exception($error))) {
+                throw new \Exception($error);
+            }
 
             return null;
         }
 
-        if (! $response->successful()) {
-            return null;
-        }
-
-        $json = $response->json();
-        if (! is_array($json) || ShopifyStockTransferGraphql::isThrottled($json)) {
-            return null;
-        }
-
-        $parsed = ShopifyStockTransferGraphql::parseAdjust($json);
-        if ($parsed['success'] ?? false) {
-            return ['available' => $parsed['available'] ?? null];
-        }
-
-        $error = (string) ($parsed['error'] ?? '');
-        if ($error !== '' && $this->inventoryNotStockedAtLocation(new \Exception($error))) {
-            throw new \Exception($error);
-        }
-
-        return null;
+        throw new \Exception('Shopify is busy (rate limited). Automatic retry scheduled.');
     }
 
     protected function inventoryNotStockedAtLocation(\Exception $e): bool
@@ -1092,7 +1229,7 @@ GQL;
                     'inventory_item_id' => $inventoryItemId,
                     'location_id' => $locationId,
                 ]);
-        });
+        }, 2);
 
         if (! $response->successful()) {
             $errorMessage = "HTTP {$response->status()}";
