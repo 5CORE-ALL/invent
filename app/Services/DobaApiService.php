@@ -115,49 +115,61 @@ class DobaApiService
 
         $qty = max(0, $qty);
         $url = $this->baseUrl.'/goods/stock/update';
-        $payload = [
-            'itemNo' => $itemNo,
-            'availableInventory' => $qty,
+        // Doba validates a field named inventory as an integer. availableInventory
+        // (the name goods/detail returns) is ignored, which produces
+        // "Inventory should be a positive integer greater than or equal to 0."
+        $attempts = [
+            'json' => ['itemNo' => $itemNo, 'inventory' => $qty],
+            'form' => ['itemNo' => $itemNo, 'inventory' => $qty],
         ];
 
         try {
-            $response = null;
-            for ($try = 0; $try < 2; $try++) {
-                $timestamp = $this->getMillisecond();
-                $sign = $this->generateSignature($this->getContent($timestamp));
-                $response = Http::withHeaders([
-                    'appKey' => config('services.doba.app_key'),
-                    'signType' => 'rsa2',
-                    'timestamp' => (string) $timestamp,
-                    'sign' => $sign,
-                    'Content-Type' => 'application/x-www-form-urlencoded',
-                ])->asForm()->timeout(30)->post($url, $payload);
-                if ($response->status() !== 429) {
-                    break;
+            $lastError = 'Doba inventory update failed.';
+            $lastData = [];
+            foreach ($attempts as $mode => $payload) {
+                $response = null;
+                for ($try = 0; $try < 2; $try++) {
+                    $timestamp = $this->getMillisecond();
+                    $sign = $this->generateSignature($this->getContent($timestamp));
+                    $pending = Http::withHeaders([
+                        'appKey' => config('services.doba.app_key'),
+                        'signType' => 'rsa2',
+                        'timestamp' => (string) $timestamp,
+                        'sign' => $sign,
+                    ])->timeout(30);
+                    $response = $mode === 'json'
+                        ? $pending->asJson()->post($url, $payload)
+                        : $pending->asForm()->post($url, $payload);
+                    if ($response->status() !== 429) {
+                        break;
+                    }
+                    sleep(2);
                 }
-                sleep(2);
+
+                $data = $response->json();
+                $data = is_array($data) ? $data : [];
+                Log::info('Doba inventory update response', [
+                    'url' => $url,
+                    'mode' => $mode,
+                    'item_no' => $itemNo,
+                    'qty' => $qty,
+                    'status' => $response->status(),
+                    'response' => mb_substr((string) $response->body(), 0, 500),
+                ]);
+
+                $error = $this->dobaWriteError($response->status(), $data, (string) $response->body());
+                if ($error === null) {
+                    return [
+                        'success' => true,
+                        'message' => 'Doba inventory updated.',
+                        'response' => $data,
+                    ];
+                }
+                $lastError = $error;
+                $lastData = $data;
             }
 
-            $data = $response->json();
-            $data = is_array($data) ? $data : [];
-            Log::info('Doba inventory update response', [
-                'url' => $url,
-                'item_no' => $itemNo,
-                'qty' => $qty,
-                'status' => $response->status(),
-                'response' => mb_substr((string) $response->body(), 0, 500),
-            ]);
-
-            $error = $this->dobaWriteError($response->status(), $data, (string) $response->body());
-            if ($error !== null) {
-                return ['success' => false, 'message' => $error, 'errors' => $error, 'response' => $data];
-            }
-
-            return [
-                'success' => true,
-                'message' => 'Doba inventory updated.',
-                'response' => $data,
-            ];
+            return ['success' => false, 'message' => $lastError, 'errors' => $lastError, 'response' => $lastData];
         } catch (\Throwable $e) {
             Log::error('Doba updateItemInventory failed', ['item_no' => $itemNo, 'error' => $e->getMessage()]);
 

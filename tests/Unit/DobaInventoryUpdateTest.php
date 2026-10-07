@@ -50,10 +50,11 @@ class DobaInventoryUpdateTest extends TestCase
         $result = app(DobaApiService::class)->updateItemInventory('GS EL HYBRID', 1128);
 
         $this->assertTrue($result['success']);
+        Http::assertSentCount(1);
         Http::assertSent(function ($request) {
             return $request->url() === 'https://openapi.doba.com/api/goods/stock/update'
                 && $request['itemNo'] === 'GS EL HYBRID'
-                && (string) $request['availableInventory'] === '1128';
+                && $request['inventory'] === 1128;
         });
     }
 
