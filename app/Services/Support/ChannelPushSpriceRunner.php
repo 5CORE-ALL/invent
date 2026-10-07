@@ -23,6 +23,7 @@ use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
 use App\Support\MacysAmazonPriceCap;
+use App\Support\NegativeSnroiPushGuard;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -230,10 +231,21 @@ class ChannelPushSpriceRunner
             $error = null;
             $live = null;
             $alreadyLive = false;
+            $negSnroi = false;
             try {
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
                 }
+                if (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
+                    $ok = true;
+                    $negSnroi = true;
+                    $logger->info('S PRC background push skipped — negative SNROI', [
+                        'channel' => $this->channel,
+                        'sku' => $sku,
+                        'price' => $price,
+                    ]);
+                    $store->appendMessage('Skip '.$sku.': negative SNROI');
+                } else {
                 $matchedLive = $this->liveListingPriceIfMatches($sku, $price);
                 if ($matchedLive !== null) {
                     $ok = true;
@@ -315,6 +327,7 @@ class ChannelPushSpriceRunner
                         }
                     }
                 }
+                }
             } catch (\Throwable $e) {
                 $ok = false;
                 $error = $e->getMessage();
@@ -326,14 +339,14 @@ class ChannelPushSpriceRunner
                 $this->markListingEndedIfNeeded($sku, $error);
             }
 
-            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive) {
+            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;
                 }
                 if ($ok) {
                     $state['tasks'][$index]['status'] = 'ok';
                     $state['tasks'][$index]['error'] = null;
-                    $state['tasks'][$index]['message'] = $alreadyLive ? 'already live' : 'pushed';
+                    $state['tasks'][$index]['message'] = $negSnroi ? 'negative SNROI' : ($alreadyLive ? 'already live' : 'pushed');
                     if ($live !== null) {
                         $state['tasks'][$index]['ebay_price'] = $live;
                     }
@@ -359,8 +372,8 @@ class ChannelPushSpriceRunner
             });
 
             $store->appendMessage(
-                ($ok ? ($alreadyLive ? 'Skip ' : 'OK ') : 'Fail ').$sku
-                    .($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : '')),
+                ($ok ? (($negSnroi || $alreadyLive) ? 'Skip ' : 'OK ') : 'Fail ').$sku
+                    .($negSnroi ? ': negative SNROI' : ($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : ''))),
                 $ok
             );
             usleep(in_array($this->channel, ['macys', 'macy'], true) ? 50000 : 250000);

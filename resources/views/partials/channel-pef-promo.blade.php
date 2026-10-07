@@ -23,6 +23,7 @@
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
     $channelPromoUsesAmazonCvrDisc = false;
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
+    $channelPromoIgnoreNegSnroi = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::ignoreNegativeSnroiPush($channelPromoChannel);
     $channelPromoTakehome = ($channelPromoPart === 'script' || $channelPromoPart === 'all')
         ? \App\Models\MarketplacePercentage::takeHomeForPromoChannel($channelPromoChannel)
         : 1.0;
@@ -621,6 +622,16 @@
                     <input type="checkbox" role="switch" id="ch-promo-reload-push-switch"
                         {{ $channelPromoPageReloadPushEnabled ? 'checked' : '' }}>
                 </label>
+                <label class="ch-promo-reload-push-switch{{ $channelPromoIgnoreNegSnroi ? '' : ' is-off' }}"
+                    id="ch-promo-neg-snroi-wrap"
+                    title="When ON, Push Prc skips a SKU whose SNROI at the push price is below 0. The price still saves. When OFF, negative SNROI is pushed.">
+                    <span class="ch-promo-reload-push-text">
+                        Ignore neg SNROI
+                        <span class="ch-promo-reload-push-state" id="ch-promo-neg-snroi-label">{{ $channelPromoIgnoreNegSnroi ? 'On' : 'Off' }}</span>
+                    </span>
+                    <input type="checkbox" role="switch" id="ch-promo-neg-snroi-switch"
+                        {{ $channelPromoIgnoreNegSnroi ? 'checked' : '' }}>
+                </label>
                 <div id="ch-promo-reload-push-progress" class="ch-promo-reload-push-progress"
                     aria-live="polite" title="S PRC push progress">
                     <div class="ch-promo-reload-push-progress-track">
@@ -1207,6 +1218,7 @@
         }
         const CHANNEL_PROMO_TAKEHOME = {{ (float) ($channelPromoTakehome ?? 1) }};
         let chPromoPageReloadPushEnabled = @json($channelPromoPageReloadPushEnabled ?? true);
+        let chPromoIgnoreNegSnroi = @json($channelPromoIgnoreNegSnroi ?? false);
         const CHANNEL_PROMO_HIDE_CVR_CPN = @json($channelPromoHideCvrCpn);
         const CHANNEL_PROMO_HIDE_PUSH_CPN = @json($channelPromoHidePushCpn);
         const CHANNEL_PROMO_USES_AMAZON_CVR_DISC = @json($channelPromoUsesAmazonCvrDisc ?? false);
@@ -3467,6 +3479,29 @@
                 : 1;
             return ((sprice * margin - lp - ship) / lp) * 100;
         }
+        /** SNROI% at a push price. Below 0 is a loss after ads. */
+        function chPromoSnroiAtPrice(d, price) {
+            const sprice = Number(price);
+            const lp = (typeof chPromoLp === 'function')
+                ? chPromoLp(d)
+                : parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp));
+            if (!(sprice > 0) || !(lp > 0)) return null;
+            const ship = (typeof chPromoShipCost === 'function')
+                ? (Number(chPromoShipCost(d)) || 0)
+                : (parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0);
+            const margin = (typeof chPromoTakehomeMargin === 'function')
+                ? chPromoTakehomeMargin(d)
+                : 0.80;
+            const ads = (typeof chPromoAdsFrac === 'function') ? (Number(chPromoAdsFrac()) || 0) : 0;
+            const net = (sprice * margin) - ship - lp - (sprice * ads);
+            return (net / lp) * 100;
+        }
+        function chPromoSnroiPushBlocked(d, price) {
+            if (!chPromoIgnoreNegSnroi) return false;
+            const n = chPromoSnroiAtPrice(d, price);
+            return n != null && n < 0;
+        }
+        window.chPromoSnroiPushBlocked = chPromoSnroiPushBlocked;
         /**
          * Amazon LMP cap: LMP is lower than S PRC, and SGROI at that LMP is ≥ 20%.
          * Used for eBay 1–3 so S PRC becomes LMP the same way as /amazon-tabulator-view.
@@ -11296,8 +11331,38 @@
             return cols;
         }
 
+        function syncChPromoNegSnroiSwitchUi() {
+            const on = !!chPromoIgnoreNegSnroi;
+            $('#ch-promo-neg-snroi-wrap').toggleClass('is-off', !on);
+            $('#ch-promo-neg-snroi-label').text(on ? 'On' : 'Off');
+            const $sw = $('#ch-promo-neg-snroi-switch');
+            if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
+        }
+        function saveChPromoIgnoreNegSnroi(enabled) {
+            chPromoIgnoreNegSnroi = !!enabled;
+            syncChPromoNegSnroiSwitchUi();
+            return $.ajax({
+                url: CH_PROMO_RULES_BASE + '/ignore-neg-snroi',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
+                data: { _token: chPromoCsrf(), enabled: enabled ? 1 : 0 },
+            });
+        }
         function initChannelPromoPricingUi() {
             syncChPromoReloadPushSwitchUi();
+            syncChPromoNegSnroiSwitchUi();
+            $('#ch-promo-neg-snroi-switch').off('change.chpromoNegSnroi').on('change.chpromoNegSnroi', function() {
+                const on = !!this.checked;
+                saveChPromoIgnoreNegSnroi(on).done(function() {
+                    chPromoToast('success', on
+                        ? 'Negative SNROI is not pushed.'
+                        : 'Negative SNROI can be pushed.');
+                }).fail(function() {
+                    chPromoIgnoreNegSnroi = !on;
+                    syncChPromoNegSnroiSwitchUi();
+                    chPromoToast('error', 'Could not save the SNROI switch');
+                });
+            });
             $('#ch-promo-reload-push-switch').off('change.chpromoReload').on('change.chpromoReload', function() {
                 const on = !!this.checked;
                 const prev = chPromoPageReloadPushAllowed();

@@ -362,6 +362,47 @@ class ChannelPromoPricingController extends Controller
         ]);
     }
 
+    /** Per-page switch: skip Push Prc when SNROI at that price is below 0. */
+    public static function ignoreNegativeSnroiPush(string $channel): bool
+    {
+        return \App\Support\NegativeSnroiPushGuard::enabled($channel);
+    }
+
+    public function ignoreNegSnroiSetting(string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->allowsPageReloadPushChannel($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'enabled' => self::ignoreNegativeSnroiPush($channel),
+        ]);
+    }
+
+    public function saveIgnoreNegSnroiSetting(Request $request, string $channel): JsonResponse
+    {
+        $channel = strtolower(trim($channel));
+        if (! $this->allowsPageReloadPushChannel($channel)) {
+            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        $enabled = filter_var($request->input('enabled'), FILTER_VALIDATE_BOOLEAN);
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => $channel.'_ignore_neg_snroi'],
+            ['visibility' => ['enabled' => $enabled], 'column_order' => []]
+        );
+        \App\Support\NegativeSnroiPushGuard::remember($channel, $enabled);
+
+        return response()->json([
+            'success' => true,
+            'channel' => $channel,
+            'enabled' => $enabled,
+        ]);
+    }
+
     /**
      * Blue badges (S PRC ≠ live Price, INV > 0, not ended) on a server worker.
      * Same idea as amazon:sprc-dil-auto-push: the browser can close.

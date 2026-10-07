@@ -9,6 +9,7 @@
 @php
     $amazonPefPromoPart = $amazonPefPromoPart ?? 'all';
     $amazonPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled('amazon');
+    $amazonIgnoreNegSnroi = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::ignoreNegativeSnroiPush('amazon');
 @endphp
 
 @if($amazonPefPromoPart === 'css' || $amazonPefPromoPart === 'all')
@@ -503,6 +504,16 @@
                     <input type="checkbox" role="switch" id="amz-reload-push-switch"
                         {{ $amazonPageReloadPushEnabled ? 'checked' : '' }}>
                 </label>
+                <label class="amz-reload-push-switch{{ $amazonIgnoreNegSnroi ? '' : ' is-off' }}"
+                    id="amz-neg-snroi-wrap"
+                    title="When ON, Push Prc skips a SKU whose SNROI at the push price is below 0. The price still saves. When OFF, negative SNROI is pushed.">
+                    <span class="amz-reload-push-text">
+                        Ignore neg SNROI
+                        <span class="amz-reload-push-state" id="amz-neg-snroi-label">{{ $amazonIgnoreNegSnroi ? 'On' : 'Off' }}</span>
+                    </span>
+                    <input type="checkbox" role="switch" id="amz-neg-snroi-switch"
+                        {{ $amazonIgnoreNegSnroi ? 'checked' : '' }}>
+                </label>
                 <div id="amz-reload-push-progress" class="amz-reload-push-progress"
                     aria-live="polite" title="Amazon Push Prc progress">
                     <div class="amz-reload-push-progress-track">
@@ -940,6 +951,7 @@
             ];
         }
         let amzPageReloadPushEnabled = @json($amazonPageReloadPushEnabled ?? false);
+        let amzIgnoreNegSnroi = @json($amazonIgnoreNegSnroi ?? false);
 
         function amzPefCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -1221,17 +1233,12 @@
             const n = Number(rule.disc);
             return isFinite(n) && n >= 0 ? n : 0;
         }
-        /**
-         * CVR Disc. for the price.
-         * Std prc vs dil up/down/flat disc wins when it is set (that disc is the cap).
-         * Otherwise the CVR Disc slab. Never add the two together.
-         */
+        /** CVR Disc. is only the Std prc vs dil up/down/flat disc. The old CVR slab is not added. */
         function computeAmzCvrDiscountPct(d) {
             if (!amzPefIsChildRow(d)) return null;
             if (amzPefInv(d) === 0) return 0;
             const trend = (typeof amzStdCvrTrendDisc === 'function') ? (Number(amzStdCvrTrendDisc(d)) || 0) : 0;
-            if (trend > 0) return amzPefRound2(trend);
-            return amzPefRound2(Math.max(0, amzDiscForCvr(amzPefCvr(d))));
+            return amzPefRound2(Math.max(0, trend));
         }
         function amzPefReviewCount(d) {
             const n = parseInt(d && (d.amz_review_count != null ? d.amz_review_count : d.reviews), 10);
@@ -2815,7 +2822,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'CVR Disc. — from CVR Disc rules. INV=0 → 0%. Read-only.',
+                    headerTooltip: 'CVR Disc. — Std prc vs dil up/down/flat disc only. INV=0 → 0%. Read-only.',
                     sorter: function(a, b, aRow, bRow) {
                         const av = computeAmzCvrDiscountPct(aRow.getData()) || 0;
                         const bv = computeAmzCvrDiscountPct(bRow.getData()) || 0;
@@ -2835,7 +2842,8 @@
                             + ' → discount ' + (pct || 0) + '%'
                             + (dollars > 0 ? (' ≈ $' + dollars.toFixed(2) + ' off Std/Price') : '');
                         return '<span title="' + amzPefEscAttr(tip) + '">'
-                            + fmtAmzCvrDiscountBadge(pct) + '</span>';
+                            + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'cvr') : fmtAmzCvrDiscountBadge(pct))
+                            + '</span>';
                     },
                 },
                 {
@@ -3003,7 +3011,7 @@
         /**
          * Live rule stack for this SKU.
          * Age Disc + Dil Disc + CVR Disc + Rev Disc, each a % off Std Prc.
-         * CVR Disc = Std prc vs dil up/down disc when that disc is set, else the CVR slab. INV=0 → 0.
+         * CVR Disc = Std prc vs dil up/down/flat disc only. INV=0 → 0.
          */
         function computeAmzRuleStack(d) {
             const ageDisc = Math.max(0, Number(typeof computeAmzAgeDiscountPct === 'function' ? computeAmzAgeDiscountPct(d) : 0) || 0);
@@ -3952,8 +3960,29 @@
         }
 
         /** Queue SKUs for background Push Prc (append-safe while a job is running). */
+        function amzPushBlockedByNegSnroi(item) {
+            if (!amzIgnoreNegSnroi || !item || typeof amazonComputeNroiAtSp !== 'function') return false;
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return false;
+            const sku = String(item.sku || '').trim().toUpperCase();
+            let d = null;
+            table.getRows().some(function(r) {
+                const row = r.getData() || {};
+                if (String(amzPefSku(row) || '').trim().toUpperCase() === sku) {
+                    d = row;
+                    return true;
+                }
+                return false;
+            });
+            if (!d) return false;
+            const price = Number(item.sale || item.effective || item.std) || 0;
+            const n = amazonComputeNroiAtSp(price, d);
+            return n != null && n < 0;
+        }
         function queueAmzPushPrcItems(items, opts) {
             opts = opts || {};
+            if (amzIgnoreNegSnroi && Array.isArray(items)) {
+                items = items.filter(function(item) { return !amzPushBlockedByNegSnroi(item); });
+            }
             if (!items || !items.length) {
                 if (!opts.silent) amzPefToast('error', 'Nothing to queue');
                 return Promise.resolve(null);
@@ -4129,6 +4158,23 @@
             $('#amz-reload-push-label').text(on ? 'On' : 'Off');
             if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
         }
+        function syncAmzNegSnroiSwitchUi() {
+            const on = !!amzIgnoreNegSnroi;
+            $('#amz-neg-snroi-wrap').toggleClass('is-off', !on);
+            $('#amz-neg-snroi-label').text(on ? 'On' : 'Off');
+            const $sw = $('#amz-neg-snroi-switch');
+            if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
+        }
+        function saveAmzIgnoreNegSnroi(enabled) {
+            amzIgnoreNegSnroi = !!enabled;
+            syncAmzNegSnroiSwitchUi();
+            return $.ajax({
+                url: '/channel-promo-pricing/amazon/ignore-neg-snroi',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': amzPefCsrf(), 'Accept': 'application/json' },
+                data: { _token: amzPefCsrf(), enabled: enabled ? 1 : 0 },
+            });
+        }
         function saveAmzPageReloadPush(enabled) {
             amzPageReloadPushEnabled = !!enabled;
             syncAmzReloadPushSwitchUi();
@@ -4209,6 +4255,19 @@
 
         function initAmazonPefPromoUi() {
             syncAmzReloadPushSwitchUi();
+            syncAmzNegSnroiSwitchUi();
+            $('#amz-neg-snroi-switch').off('change.amzNegSnroi').on('change.amzNegSnroi', function() {
+                const on = !!this.checked;
+                saveAmzIgnoreNegSnroi(on).done(function() {
+                    amzPefToast('success', on
+                        ? 'Negative SNROI is not pushed.'
+                        : 'Negative SNROI can be pushed.');
+                }).fail(function() {
+                    amzIgnoreNegSnroi = !on;
+                    syncAmzNegSnroiSwitchUi();
+                    amzPefToast('error', 'Could not save the SNROI switch');
+                });
+            });
             $('#amz-reload-push-switch').off('change.amzReload').on('change.amzReload', function() {
                 const on = !!this.checked;
                 const prev = amzPageReloadPushAllowed();

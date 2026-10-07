@@ -788,6 +788,14 @@
             }
             function enqueueChannelPushSprice(items, opts) {
                 opts = opts || {};
+                if (Array.isArray(items) && typeof global.chPromoSnroiPushBlocked === 'function') {
+                    items = items.filter(function(item) {
+                        if (!item) return false;
+                        const row = typeof chPushSpriceFindRowBySku === 'function' ? chPushSpriceFindRowBySku(item.sku) : null;
+                        const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
+                        return !global.chPromoSnroiPushBlocked(d, item.price);
+                    });
+                }
                 if (!CH_PUSH_SPRICE_LIVE) {
                     if (!opts.silent) {
                         chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
@@ -852,6 +860,9 @@
                             chPushSafeRowUpdate(row, { SPRICE_STATUS: 'saved' });
                         }
                     } catch (e) { /* ignore */ }
+                    return false;
+                }
+                if (typeof global.chPromoSnroiPushBlocked === 'function' && global.chPromoSnroiPushBlocked(d, p)) {
                     return false;
                 }
                 if (!force) {

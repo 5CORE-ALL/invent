@@ -466,10 +466,7 @@
                 const ageDisc = ageIdx >= 0 ? (Number(draft.age[ageIdx].disc) || 0) : 0;
                 const dilDisc = dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0;
                 const revDisc = revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0;
-                const trend = hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0);
-                const cvrDisc = trend > 0
-                    ? trend
-                    : ((typeof chPromoCvrDiscForRow === 'function') ? (Number(chPromoCvrDiscForRow(d)) || 0) : 0);
+                const cvrDisc = Math.max(0, hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0));
                 if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
@@ -654,9 +651,7 @@
             const cfg = (draft && draft.cvr) ? draft.cvr : chStdCvr;
             const hit = chStdCvrMatch(d, cfg);
             const trend = hit ? (Number(hit.disc) || 0) : (Number(cfg.flat_disc) || 0);
-            if (trend > 0) return trend;
-            const slab = (typeof chPromoCvrDiscForRow === 'function') ? (Number(chPromoCvrDiscForRow(d)) || 0) : 0;
-            return Math.max(0, slab);
+            return Math.max(0, trend);
         }
         function chStdRevDiscPct(d) {
             const reviews = chStdReviews(d);
