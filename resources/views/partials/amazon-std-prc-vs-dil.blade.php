@@ -318,7 +318,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − CVR − Reviews. CVR adds the slab and the up/down discount.</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − CVR − Reviews. Std Prc under $15 uses half of each rule discount (0.5×).</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -548,6 +548,16 @@
             if (!isFinite(n)) return 0;
             return Math.min(100, Math.max(-100, Math.round(n * 100) / 100));
         }
+        function amzStdLowFactor(std) {
+            const n = Number(std);
+            return (isFinite(n) && n > 0 && n < 15) ? 0.5 : 1;
+        }
+        function amzStdScaleDisc(std, disc) {
+            if (disc == null) return disc;
+            const factor = amzStdLowFactor(std);
+            if (factor === 1) return disc;
+            return amzStdDisc(Number(disc) * factor);
+        }
         function fmtAmzStdDiscBadge(pct, kind) {
             const n = Number(pct);
             const cls = kind === 'age' ? 'amz-age-discount-badge'
@@ -583,13 +593,13 @@
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return null;
             if (typeof amzPefInv === 'function' && amzPefInv(d) === 0) return 0;
             if (!d || d.age_days == null || d.age_days === '') return 0;
-            return amzStdRangeDisc(d.age_days, amzStdAgeRules);
+            return amzStdScaleDisc(d.STANDARD_PRICE, amzStdRangeDisc(d.age_days, amzStdAgeRules));
         }
         function computeAmzDilDiscountPct(d) {
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return null;
             if (typeof amzPefInv === 'function' && amzPefInv(d) === 0) return 0;
             const dil = (typeof amzPefDil === 'function') ? amzPefDil(d) : 0;
-            return amzStdRangeDisc(dil, amzStdDilRules);
+            return amzStdScaleDisc(d && d.STANDARD_PRICE, amzStdRangeDisc(dil, amzStdDilRules));
         }
         function amzStdCvrSlabs(cfg) {
             cfg = cfg || AMZ_STD_CVR_DEFAULT;
@@ -625,7 +635,7 @@
             if (!d || (typeof amzPefInv === 'function' && amzPefInv(d) === 0)) return 0;
             const cfg = amzStdCvrCfg || AMZ_STD_CVR_DEFAULT;
             const hit = amzStdCvrMatch(d, cfg);
-            return amzStdDisc(hit ? hit.disc : cfg.flat_disc);
+            return amzStdScaleDisc(d && d.STANDARD_PRICE, amzStdDisc(hit ? hit.disc : cfg.flat_disc));
         }
         function amzStdCvrBand(d, cfg) {
             const hit = amzStdCvrMatch(d, cfg);
@@ -1109,11 +1119,15 @@
                 const band = amzStdCvrBand(d, draft.cvr);
                 cvrCounts[band] = (cvrCounts[band] || 0) + 1;
 
-                const ageDisc = ageIdx >= 0 ? amzStdDisc(draft.age[ageIdx].disc) : 0;
-                const dilDisc = dilIdx >= 0 ? amzStdDisc(draft.dil[dilIdx].disc) : 0;
-                const revDisc = revIdx >= 0 ? amzStdDisc(draft.reviews[revIdx].disc) : 0;
+                let ageDisc = ageIdx >= 0 ? amzStdDisc(draft.age[ageIdx].disc) : 0;
+                let dilDisc = dilIdx >= 0 ? amzStdDisc(draft.dil[dilIdx].disc) : 0;
+                let revDisc = revIdx >= 0 ? amzStdDisc(draft.reviews[revIdx].disc) : 0;
                 const cvrHit = amzStdCvrMatch(d, draft.cvr);
-                const cvrDisc = amzStdDisc(cvrHit ? cvrHit.disc : draft.cvr.flat_disc);
+                let cvrDisc = amzStdDisc(cvrHit ? cvrHit.disc : draft.cvr.flat_disc);
+                ageDisc = amzStdScaleDisc(std, ageDisc);
+                dilDisc = amzStdScaleDisc(std, dilDisc);
+                revDisc = amzStdScaleDisc(std, revDisc);
+                cvrDisc = amzStdScaleDisc(std, cvrDisc);
                 if (ageDisc !== 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc !== 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc !== 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }

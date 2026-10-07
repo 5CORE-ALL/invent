@@ -1285,7 +1285,8 @@
                 const rule = amzNormalizeReviewDiscRule(amzReviewDiscRules[i]);
                 if (!rule) continue;
                 if (count >= rule.min && count <= rule.max) {
-                    return (typeof amzStdDisc === 'function') ? amzStdDisc(rule.disc) : (Number(rule.disc) || 0);
+                    const raw = (typeof amzStdDisc === 'function') ? amzStdDisc(rule.disc) : (Number(rule.disc) || 0);
+                    return (typeof amzStdScaleDisc === 'function') ? amzStdScaleDisc(d && d.STANDARD_PRICE, raw) : raw;
                 }
             }
             return 0;

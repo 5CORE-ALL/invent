@@ -14,6 +14,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\AmazonDilGroiRule;
+use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -24,6 +25,7 @@ use Throwable;
  *
  * Same as Push Prc / S PRC on /amazon-tabulator-view:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + CVR Disc + Rev Disc) / 100)
+ *  Std Prc under $15 uses half of each rule discount (0.5×).
  *  CVR Disc = CVR slab + CVR up/down promotional discount
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  Skip when live Price already equals the target. Price column updates on each push.
@@ -275,6 +277,10 @@ class AmazonSprcDilAutoPushService
         if (isset($row['age_days']) && $row['age_days'] !== null && $row['age_days'] !== '') {
             $ageDisc = $this->discForStdRange((float) $row['age_days'], is_array($stdPromo['age'] ?? null) ? $stdPromo['age'] : []);
         }
+        $ageDisc = StdPrcVsDilPricer::scaleRuleDisc($ageDisc, $std);
+        $dilDisc = StdPrcVsDilPricer::scaleRuleDisc($dilDisc, $std);
+        $cvrDisc = StdPrcVsDilPricer::scaleRuleDisc($cvrDisc, $std);
+        $reviewDisc = StdPrcVsDilPricer::scaleRuleDisc($reviewDisc, $std);
         $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc)), 2);
 
         if (! ($std > 0)) {

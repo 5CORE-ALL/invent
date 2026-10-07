@@ -7,10 +7,15 @@ use App\Models\ChannelTabulatorColumnSetting;
 /**
  * S PRC from a channel's saved Std prc vs dil slabs.
  * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review) / 100).
+ * Std Prc under $15 uses half of each rule discount (0.5×).
  * Used by the unattended apply commands. The page does not have to be open.
  */
 class StdPrcVsDilPricer
 {
+    /** Std Prc strictly below this uses {@see self::LOW_STD_FACTOR}. */
+    public const LOW_STD_UNDER = 15.0;
+
+    public const LOW_STD_FACTOR = 0.5;
     /** @var array<string, self> */
     private static array $cache = [];
 
@@ -56,10 +61,24 @@ class StdPrcVsDilPricer
         $cvr = (float) ($row['cvr'] ?? 0);
         $cvr60 = (float) ($row['cvr_60'] ?? 0);
         $reviews = (float) ($row['review_count'] ?? $row['reviews'] ?? $row['Reviews'] ?? 0);
-        $sum = min(99.99, max(0, $this->ageDisc($age) + $this->rangeDisc($dil, $this->rules['dil']) + $this->cvrDisc($cvr, $cvr60) + $this->reviewDisc($reviews)));
+        $ageDisc = self::scaleRuleDisc($this->ageDisc($age), $std);
+        $dilDisc = self::scaleRuleDisc($this->rangeDisc($dil, $this->rules['dil']), $std);
+        $cvrDisc = self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60), $std);
+        $reviewDisc = self::scaleRuleDisc($this->reviewDisc($reviews), $std);
+        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc));
         $price = round($std * (1 - $sum / 100), 2);
 
         return $price > 0 ? $price : null;
+    }
+
+    /** Std Prc under $15 → rule discount × 0.5. $15 and above keep the saved discount. */
+    public static function scaleRuleDisc(float $disc, float $std): float
+    {
+        if (! ($std > 0) || $std >= self::LOW_STD_UNDER) {
+            return $disc;
+        }
+
+        return round($disc * self::LOW_STD_FACTOR, 2);
     }
 
     private function ageDisc(?float $age): float
