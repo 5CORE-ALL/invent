@@ -111,6 +111,34 @@ class StdPrcVsDilPricerTest extends TestCase
         ]));
     }
 
+    public function test_zero_sold_discount_applies_only_when_sold_qty_is_zero(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'zero_sold_disc' => 10,
+        ], 'ebay1');
+
+        $this->assertSame(90.0, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 100,
+            'ebay_l30' => 0,
+        ]));
+        $this->assertSame(100.0, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 100,
+            'ebay_l30' => 3,
+        ]));
+        $this->assertSame(9.5, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 10,
+            'ebay_l30' => 0,
+        ]));
+    }
+
     public function test_zero_cvr_is_down_like_amazon(): void
     {
         $pricer = new StdPrcVsDilPricer([

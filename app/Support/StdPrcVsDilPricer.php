@@ -6,7 +6,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 
 /**
  * S PRC from a channel's saved Std prc vs dil slabs.
- * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review + Buss) / 100).
+ * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review + Buss + 0 Sold) / 100).
  * Std Prc under $15 uses half of each rule discount (0.5×).
  * Used by the unattended apply commands. The page does not have to be open.
  */
@@ -19,8 +19,8 @@ class StdPrcVsDilPricer
     /** @var array<string, self> */
     private static array $cache = [];
 
-    /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss?:list<array<string,float>>} $rules */
-    public function __construct(private array $rules) {}
+    /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss?:list<array<string,float>>,zero_sold_disc?:float} $rules */
+    public function __construct(private array $rules, private string $channel = '') {}
 
     public static function forChannel(string $channel): self
     {
@@ -39,9 +39,10 @@ class StdPrcVsDilPricer
             'reviews' => self::ranges($saved['reviews'] ?? null, $defaults['reviews']),
             'review_max' => is_numeric($saved['review_max'] ?? null) ? max(1, (int) $saved['review_max']) : $defaults['review_max'],
             'buss' => self::ranges($saved['buss'] ?? null, $defaults['buss']),
+            'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
         ];
 
-        return self::$cache[$channel] = new self($rules);
+        return self::$cache[$channel] = new self($rules, $channel);
     }
 
     /**
@@ -68,7 +69,10 @@ class StdPrcVsDilPricer
         $cvrDisc = self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60), $std);
         $reviewDisc = self::scaleRuleDisc($this->reviewDisc($reviews), $std);
         $bussDisc = self::scaleRuleDisc($this->rangeDisc($std, $this->rules['buss'] ?? []), $std);
-        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc));
+        $zeroSoldDisc = $this->isZeroSold($row)
+            ? self::scaleRuleDisc((float) ($this->rules['zero_sold_disc'] ?? 0), $std)
+            : 0.0;
+        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc));
         $price = round($std * (1 - $sum / 100), 2);
 
         return $price > 0 ? $price : null;
@@ -328,6 +332,58 @@ class StdPrcVsDilPricer
                 ['min' => 15, 'max' => 50, 'disc' => 0],
                 ['min' => 50, 'max' => 9999, 'disc' => 0],
             ],
+            'zero_sold_disc' => 0,
         ];
+    }
+
+    private static function discPercent(mixed $value): float
+    {
+        if (! is_numeric($value)) {
+            return 0.0;
+        }
+
+        return round(min(100, max(0, (float) $value)), 2);
+    }
+
+    /**
+     * Sold qty for this channel. Missing sold data does not treat the row as 0 sold.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function isZeroSold(array $row): bool
+    {
+        $sold = $this->soldQty($row);
+        if ($sold === null) {
+            return false;
+        }
+
+        return ! ($sold > 0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function soldQty(array $row): ?float
+    {
+        $key = match ($this->channel) {
+            'ebay1', 'ebay2', 'ebay3', 'ebay2op' => 'ebay_l30',
+            'shopify_b2c' => 'b2c_l30',
+            'macys', 'macy' => 'mc_l30',
+            'purchasing_power' => 'pp_l30',
+            'temu', 'temu2', 'temu3' => 'temu_l30',
+            'aliexpress', 'shein', 'faire' => 'al30',
+            'amazon' => 'a_l30',
+            default => null,
+        };
+        if ($key !== null && array_key_exists($key, $row) && is_numeric($row[$key])) {
+            return (float) $row[$key];
+        }
+        foreach (['sold', 'a_l30', 'A_L30', 'ebay_l30', 'b2c_l30', 'mc_l30', 'pp_l30'] as $fallback) {
+            if (array_key_exists($fallback, $row) && is_numeric($row[$fallback])) {
+                return (float) $row[$fallback];
+            }
+        }
+
+        return null;
     }
 }

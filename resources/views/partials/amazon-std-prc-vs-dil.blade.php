@@ -57,7 +57,7 @@
         }
         #amzStdPrcModal .amz-sp-cols {
             display: grid;
-            grid-template-columns: repeat(6, minmax(0, 1fr));
+            grid-template-columns: repeat(7, minmax(0, 1fr));
             gap: 12px;
             align-items: stretch;
             width: 100%;
@@ -304,7 +304,7 @@
 
 @if($amazonStdPrcPart === 'buttons' || $amazonStdPrcPart === 'all')
                     <button type="button" class="btn btn-sm" id="amz-std-prc-btn"
-                        title="Std Prc minus Age, Dil, CVR, and Review promotional discounts. S PRC = Std − Sum disc.">
+                        title="Std Prc minus Age, Dil, B Disc, 0 Sold, CVR, and Review promotional discounts. S PRC = Std − Sum disc.">
                         <i class="fas fa-tags"></i> Std prc vs dil
                     </button>
 @endif
@@ -318,7 +318,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − CVR − Reviews. Std Prc under $15 uses half of each rule discount (0.5×).</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of each rule discount (0.5×).</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -427,6 +427,19 @@
                                 </table>
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-buss-add">Add range</button>
+                        </div>
+
+                        <div class="amz-sp-col">
+                            <div class="amz-sp-pie">
+                                <div class="amz-sp-pie-title" title="Disc % when A L30 is 0. Sold SKUs stay 0%.">0 Sold</div>
+                                <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-zs"></canvas></div>
+                                <div class="amz-sp-pie-legend" id="amz-sp-leg-zs"></div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="small fw-semibold mb-0" for="amz-sp-zs-disc">Disc %</label>
+                                <input type="number" id="amz-sp-zs-disc" class="form-control form-control-sm amz-sp-input" min="0" step="0.1" value="0">
+                            </div>
+                            <div class="small text-muted">0 sold SKUs: <strong id="amz-sp-zs-count">0</strong></div>
                         </div>
 
                         <div class="amz-sp-col">
@@ -565,6 +578,7 @@
         let amzStdDilRules = AMZ_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzStdBussRules = AMZ_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        let amzStdZeroSoldDisc = 0;
         let amzStdCvrCfg = Object.assign({}, AMZ_STD_CVR_DEFAULT);
         const amzStdPieCharts = {};
         let amzStdPieGen = 0;
@@ -638,6 +652,17 @@
         }
         window.computeAmzBussDiscountPct = computeAmzBussDiscountPct;
         window.analyticsBussDiscountPct = computeAmzBussDiscountPct;
+        function computeAmzZeroSoldDiscountPct(d) {
+            if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return null;
+            if (typeof amzPefInv === 'function' && amzPefInv(d) === 0) return 0;
+            const zero = (typeof amzIsZeroSoldRow === 'function')
+                ? amzIsZeroSoldRow(d)
+                : !((typeof amzPefAL30 === 'function' ? amzPefAL30(d) : 0) > 0);
+            if (!zero) return 0;
+            const std = Number(d && d.STANDARD_PRICE) || 0;
+            return amzStdScaleDisc(std, Number(amzStdZeroSoldDisc) || 0);
+        }
+        window.computeAmzZeroSoldDiscountPct = computeAmzZeroSoldDiscountPct;
         function amzStdCvrSlabs(cfg) {
             cfg = cfg || AMZ_STD_CVR_DEFAULT;
             const down = [
@@ -765,6 +790,7 @@
                 cvr: cvr,
                 reviews: reviews,
                 buss: amzStdReadRanges('#amz-sp-buss-tbody', '.amz-sp-buss-min', '.amz-sp-buss-max', '.amz-sp-buss-disc'),
+                zeroSoldDisc: (function() { const n = Number($('#amz-sp-zs-disc').val()); return isFinite(n) ? amzStdDisc(n) : 0; })(),
                 reviewMax: reviewMax,
                 noReviewsNoDiscount: $('#amz-sp-no-reviews-no-disc').is(':checked'),
             };
@@ -805,6 +831,7 @@
                 : [{ min: 1, max: 2, disc: 4 }, { min: 2, max: 3, disc: 4 }];
             amzStdPaintRanges('#amz-sp-rev-tbody', 'amz-sp-rev', reviews);
             amzStdPaintRanges('#amz-sp-buss-tbody', 'amz-sp-buss', amzStdBussRules);
+            $('#amz-sp-zs-disc').val(amzStdZeroSoldDisc);
             const maxRev = (typeof amzReviewDiscMax !== 'undefined') ? amzReviewDiscMax : 4;
             $('#amz-sp-review-max').val(maxRev);
             const noRev = (typeof amzNoReviewsNoDiscount === 'undefined') ? true : !!amzNoReviewsNoDiscount;
@@ -1118,9 +1145,10 @@
             revCounts.noreviews = 0;
             draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
             bussCounts.outside = 0;
-            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0 };
-            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0 };
-            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, all: 0 };
+            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
+            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
+            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, all: 0 };
+            const zsCounts = { zero: 0, sold: 0 };
             const l30 = amzStdEmptyBucket();
             const inv = amzStdEmptyBucket();
             const adsPct = (typeof amzAmazonAdsPct === 'function') ? amzAmazonAdsPct() : 0;
@@ -1179,12 +1207,18 @@
                 revDisc = amzStdScaleDisc(std, revDisc);
                 bussDisc = amzStdScaleDisc(std, bussDisc);
                 cvrDisc = amzStdScaleDisc(std, cvrDisc);
+                const zeroSold = (typeof amzIsZeroSoldRow === 'function')
+                    ? amzIsZeroSoldRow(d)
+                    : !((typeof amzPefAL30 === 'function' ? amzPefAL30(d) : 0) > 0);
+                if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
+                const zsDisc = zeroSold ? amzStdScaleDisc(std, amzStdDisc(draft.zeroSoldDisc)) : 0;
                 if (ageDisc !== 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc !== 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc !== 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
                 if (revDisc !== 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
                 if (bussDisc !== 0) { skuHits.buss++; dollars.buss += std * bussDisc / 100; pctTotals.buss += bussDisc; }
-                const sum = Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc));
+                if (zsDisc !== 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
+                const sum = Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc));
                 if (sum !== 0) skuHits.all++;
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
@@ -1222,6 +1256,7 @@
             $('#amz-sp-cvr-flat-count').text(cvrCounts.flat || 0);
             $('#amz-sp-cvr-up-count').text(cvrCounts.up || 0);
             $('#amz-sp-cvr-up2-count').text(cvrCounts.up2 || 0);
+            $('#amz-sp-zs-count').text(zsCounts.zero || 0);
 
             const dilSlices = draft.dil.map(function(r, i) {
                 return { key: 'd' + i, label: r.min + '–' + r.max, color: AMZ_STD_PIE_COLORS[i % AMZ_STD_PIE_COLORS.length] };
@@ -1252,6 +1287,7 @@
                 { key: 'cvr', label: 'CVR', color: '#20c997' },
                 { key: 'rev', label: 'Reviews', color: '#7c3aed' },
                 { key: 'buss', label: 'B Disc', color: '#0d6efd' },
+                { key: 'zs', label: '0 Sold', color: '#f59e0b' },
             ];
             const allCounts = {
                 age: Math.round(dollars.age),
@@ -1259,11 +1295,17 @@
                 cvr: Math.round(dollars.cvr),
                 rev: Math.round(dollars.rev),
                 buss: Math.round(dollars.buss),
+                zs: Math.round(dollars.zs),
             };
+            const zsSlices = [
+                { key: 'zero', label: '0 sold', color: '#f59e0b' },
+                { key: 'sold', label: 'Sold', color: '#94a3b8' },
+            ];
             amzStdDrawPies([
                 { id: 'amz-sp-pie-dil', slices: dilSlices, counts: dilCounts },
                 { id: 'amz-sp-pie-rev', slices: revSlices, counts: revCounts },
                 { id: 'amz-sp-pie-buss', slices: bussSlices, counts: bussCounts },
+                { id: 'amz-sp-pie-zs', slices: zsSlices, counts: zsCounts },
                 { id: 'amz-sp-pie-cvr', slices: cvrSlices, counts: cvrCounts },
                 { id: 'amz-sp-pie-age', slices: ageSlices, counts: ageCounts },
                 { id: 'amz-sp-pie-all', slices: allSlices, counts: allCounts },
@@ -1272,6 +1314,7 @@
             amzStdLegend('#amz-sp-leg-dil', dilSlices, dilCounts, 'dil');
             amzStdLegend('#amz-sp-leg-rev', revSlices, revCounts, 'rev');
             amzStdLegend('#amz-sp-leg-buss', bussSlices, bussCounts, 'buss');
+            amzStdLegend('#amz-sp-leg-zs', zsSlices, zsCounts, 'zs');
             amzStdLegend('#amz-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
             amzStdLegend('#amz-sp-leg-age', ageSlices, ageCounts, 'age');
             amzStdLegend('#amz-sp-leg-all', allSlices, allCounts, 'all');
@@ -1280,6 +1323,7 @@
                 ['Age', skuHits.age, pctTotals.age, dollars.age],
                 ['Dil', skuHits.dil, pctTotals.dil, dollars.dil],
                 ['B Disc', skuHits.buss, pctTotals.buss, dollars.buss],
+                ['0 Sold', skuHits.zs, pctTotals.zs, dollars.zs],
                 ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr],
                 ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev],
             ];
@@ -1325,6 +1369,7 @@
                 amzStdAgeRules = (res.age || AMZ_STD_AGE_DEFAULTS).map(function(r) { return amzStdNormRange(r); }).filter(Boolean);
                 amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 amzStdBussRules = (res.buss || AMZ_STD_BUSS_DEFAULTS).map(function(r) { return amzStdNormRange(r); }).filter(Boolean);
+                amzStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? amzStdDisc(res.zero_sold_disc) : 0;
                 if (!amzStdDilRules.length) amzStdDilRules = AMZ_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdAgeRules.length) amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdBussRules.length) amzStdBussRules = AMZ_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1342,6 +1387,7 @@
             amzStdAgeRules = draft.age;
             amzStdCvrCfg = draft.cvr;
             amzStdBussRules = draft.buss.length ? draft.buss : amzStdBussRules;
+            amzStdZeroSoldDisc = amzStdDisc(draft.zeroSoldDisc);
             if (typeof amzReviewDiscRules !== 'undefined') {
                 amzReviewDiscRules = draft.reviews.map(function(r) {
                     return (typeof amzNormalizeReviewDiscRule === 'function')
@@ -1357,7 +1403,7 @@
                 url: '/amazon-std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss },
+                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc },
             });
             const revSave = $.ajax({
                 url: '/amazon-review-disc',
@@ -1371,6 +1417,7 @@
                 if (res && res.age) amzStdAgeRules = res.age.map(amzStdNormRange).filter(Boolean);
                 if (res && res.cvr) amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 if (res && res.buss) amzStdBussRules = res.buss.map(amzStdNormRange).filter(Boolean);
+                if (res && isFinite(Number(res.zero_sold_disc))) amzStdZeroSoldDisc = amzStdDisc(res.zero_sold_disc);
                 if (typeof table !== 'undefined' && table && typeof amzTableRedrawPreserveScroll === 'function') {
                     amzTableRedrawPreserveScroll(true);
                 }

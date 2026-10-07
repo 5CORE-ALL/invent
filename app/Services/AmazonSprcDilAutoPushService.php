@@ -283,7 +283,11 @@ class AmazonSprcDilAutoPushService
         $reviewDisc = StdPrcVsDilPricer::scaleRuleDisc($reviewDisc, $std);
         $bussDisc = $this->discForStdRange($std, is_array($stdPromo['buss'] ?? null) ? $stdPromo['buss'] : []);
         $bussDisc = StdPrcVsDilPricer::scaleRuleDisc($bussDisc, $std);
-        $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc)), 2);
+        $aL30Sold = (float) ($row['a_l30'] ?? 0);
+        $zeroSoldDisc = ! ($aL30Sold > 0)
+            ? StdPrcVsDilPricer::scaleRuleDisc((float) ($stdPromo['zero_sold_disc'] ?? 0), $std)
+            : 0.0;
+        $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc)), 2);
 
         if (! ($std > 0)) {
             return null;
@@ -330,6 +334,7 @@ class AmazonSprcDilAutoPushService
             'cvr_disc' => $cvrDisc,
             'review_disc' => $reviewDisc,
             'buss_disc' => $bussDisc,
+            'zero_sold_disc' => $zeroSoldDisc,
             'dil_disc' => $dilDisc,
             'age_disc' => $ageDisc,
             'sum_disc' => $totalDisc,
@@ -767,7 +772,7 @@ class AmazonSprcDilAutoPushService
      */
     protected function loadStdPrcVsDil(): array
     {
-        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => []];
+        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => [], 'zero_sold_disc' => 0];
         try {
             $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_std_prc_vs_dil')->first();
         } catch (Throwable $e) {
@@ -783,6 +788,7 @@ class AmazonSprcDilAutoPushService
             'age' => is_array($saved['age'] ?? null) ? $saved['age'] : [],
             'cvr' => is_array($saved['cvr'] ?? null) ? $saved['cvr'] : [],
             'buss' => is_array($saved['buss'] ?? null) ? $saved['buss'] : [],
+            'zero_sold_disc' => is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0,
         ];
     }
 

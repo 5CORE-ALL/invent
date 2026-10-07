@@ -15,7 +15,7 @@
         #chStdPrcModal .ch-sp-sub { color: #64748b; font-size: 12px; margin-top: 2px; }
         #chStdPrcModal .modal-body { background: #f4f7fb; padding: 14px 16px 16px; }
         #chStdPrcModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; }
-        #chStdPrcModal .ch-sp-cols { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; align-items: stretch; width: 100%; min-width: 0; }
+        #chStdPrcModal .ch-sp-cols { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; align-items: stretch; width: 100%; min-width: 0; }
         #chStdPrcModal .ch-sp-col { min-width: 0; display: flex; flex-direction: column; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px; background: #fff; }
         #chStdPrcModal .ch-sp-pie-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: #0f172a; }
         #chStdPrcModal .ch-sp-pie-canvas { position: relative; width: 100%; height: 150px; }
@@ -76,7 +76,7 @@
 @endif
 
 @if($channelStdPrcPart === 'buttons' || $channelStdPrcPart === 'all')
-                    <button type="button" class="btn btn-sm" id="ch-std-prc-btn" title="Std Prc minus Age, Dil, B Disc, CVR, and Review discounts. Same slabs as Amazon.">
+                    <button type="button" class="btn btn-sm" id="ch-std-prc-btn" title="Std Prc minus Age, Dil, B Disc, 0 Sold, CVR, and Review discounts. Same slabs as Amazon.">
                         <i class="fas fa-tags"></i> Std prc vs dil
                     </button>
 @endif
@@ -88,7 +88,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − CVR − Reviews. Std Prc under $15 uses half of each rule discount (0.5×).</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of each rule discount (0.5×).</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -142,6 +142,16 @@
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-buss-add">Add range</button>
                         </div>
                         <div class="ch-sp-col">
+                            <div class="ch-sp-pie-title" title="Disc % when this page's sold qty is 0. Sold &gt; 0 stays 0%.">0 Sold</div>
+                            <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-zs"></canvas></div>
+                            <div class="ch-sp-pie-legend" id="ch-sp-leg-zs"></div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="small fw-semibold mb-0" for="ch-sp-zs-disc">Disc %</label>
+                                <input type="number" id="ch-sp-zs-disc" class="form-control form-control-sm ch-sp-input" min="0" step="0.1" value="0">
+                            </div>
+                            <div class="small text-muted">0 sold SKUs: <strong id="ch-sp-zs-count">0</strong></div>
+                        </div>
+                        <div class="ch-sp-col">
                             <div class="ch-sp-pie-title">CVR up / down</div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-cvr"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-cvr"></div>
@@ -191,6 +201,7 @@
         const CH_STD_CVR_DEFAULT = { down2_lt: 4, down2_disc: 0, down_lt: 7, down_disc: 0, up_gt: 10, up_disc: 0, up2_gt: 15, up2_disc: 0, flat_disc: 0 };
         const CH_STD_REV_DEFAULTS = [{ min: 1, max: 2, disc: 4 }, { min: 2, max: 3, disc: 4 }];
         const CH_STD_BUSS_DEFAULTS = [{ min: 0, max: 15, disc: 0 }, { min: 15, max: 50, disc: 0 }, { min: 50, max: 9999, disc: 0 }];
+        let chStdZeroSoldDisc = 0;
         const CH_STD_COLORS = ['#6f42c1', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#ea580c', '#dc3545', '#e83e8c', '#0ea5e9', '#64748b'];
         let chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -403,7 +414,7 @@
             return chStdNum(d, ['review_count', 'reviews', 'Reviews', 'rating_count', 'ratings']);
         }
         function chStdSumDisc(d, draft) {
-            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss };
+            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc };
             if (!(chStdStockForAge(d) > 0)) return 0;
             const std = chStdRowStd(d);
             const dil = chStdDilPct(d);
@@ -421,7 +432,9 @@
             const cvrDisc = chStdScaleDisc(std, chStdCvrDiscPct(d, draft));
             const bussRules = draft.buss || chStdBuss;
             const bussDisc = chStdScaleDisc(std, chStdRangeDisc(std, bussRules));
-            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc));
+            const zsRaw = chStdRowIsZeroSold(d) ? (Number(draft.zeroSoldDisc != null ? draft.zeroSoldDisc : chStdZeroSoldDisc) || 0) : 0;
+            const zsDisc = chStdScaleDisc(std, zsRaw);
+            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc));
         }
         function chStdRows() {
             const out = [];
@@ -462,6 +475,7 @@
                 age: chStdReadRanges('#ch-sp-age-tbody', '.ch-sp-age-min', '.ch-sp-age-max', '.ch-sp-age-disc'),
                 reviews: chStdReadRanges('#ch-sp-rev-tbody', '.ch-sp-rev-min', '.ch-sp-rev-max', '.ch-sp-rev-disc'),
                 buss: chStdReadRanges('#ch-sp-buss-tbody', '.ch-sp-buss-min', '.ch-sp-buss-max', '.ch-sp-buss-disc'),
+                zeroSoldDisc: (function() { const n = Number($('#ch-sp-zs-disc').val()); return isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; })(),
                 reviewMax: (function() { const n = parseInt($('#ch-sp-review-max').val(), 10); return isFinite(n) && n > 0 ? n : 4; })(),
                 cvr: chStdNormCvr({
                     down2_lt: $('#chStdPrcModal .ch-sp-cvr-down2-lt').val(), down2_disc: $('#chStdPrcModal .ch-sp-cvr-down2-disc').val(),
@@ -544,9 +558,10 @@
             draft.age.forEach(function(r, i) { ageCounts['a' + i] = 0; });
             draft.reviews.forEach(function(r, i) { revCounts['r' + i] = 0; });
             draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
-            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0 };
-            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0 };
-            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, all: 0 };
+            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
+            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
+            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, all: 0 };
+            const zsCounts = { zero: 0, sold: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const invB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const ads = (typeof chPromoAdsFrac === 'function') ? ((Number(chPromoAdsFrac()) || 0) * 100) : 0;
@@ -582,12 +597,16 @@
                 const revDisc = chStdScaleDisc(std, revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0);
                 const bussDisc = chStdScaleDisc(std, bussIdx >= 0 ? (Number(draft.buss[bussIdx].disc) || 0) : 0);
                 const cvrDisc = invOk ? chStdScaleDisc(std, Math.max(0, hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0))) : 0;
+                const zeroSold = invOk && chStdRowIsZeroSold(d);
+                if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
+                const zsDisc = zeroSold ? chStdScaleDisc(std, Number(draft.zeroSoldDisc) || 0) : 0;
                 if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
                 if (revDisc > 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
                 if (bussDisc > 0) { skuHits.buss++; dollars.buss += std * bussDisc / 100; pctTotals.buss += bussDisc; }
-                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc);
+                if (zsDisc > 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
+                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc);
                 if (sum > 0) skuHits.all++;
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
@@ -611,6 +630,7 @@
             $('#ch-sp-cvr-flat-count').text(cvrCounts.flat);
             $('#ch-sp-cvr-up-count').text(cvrCounts.up);
             $('#ch-sp-cvr-up2-count').text(cvrCounts.up2);
+            $('#ch-sp-zs-count').text(zsCounts.zero);
             const dilSlices = draft.dil.map(function(r, i) { return { key: 'd' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const ageSlices = draft.age.map(function(r, i) { return { key: 'a' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No age', color: '#cbd5e1' }]);
             const revSlices = draft.reviews.map(function(r, i) { return { key: 'r' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
@@ -626,12 +646,18 @@
                 { key: 'age', label: 'Age', color: '#d97706' }, { key: 'dil', label: 'Dil', color: '#6f42c1' },
                 { key: 'cvr', label: 'CVR', color: '#20c997' }, { key: 'rev', label: 'Reviews', color: '#7c3aed' },
                 { key: 'buss', label: 'B Disc', color: '#0d6efd' },
+                { key: 'zs', label: '0 Sold', color: '#f59e0b' },
             ];
-            const allCounts = { age: Math.round(dollars.age), dil: Math.round(dollars.dil), cvr: Math.round(dollars.cvr), rev: Math.round(dollars.rev), buss: Math.round(dollars.buss) };
+            const allCounts = { age: Math.round(dollars.age), dil: Math.round(dollars.dil), cvr: Math.round(dollars.cvr), rev: Math.round(dollars.rev), buss: Math.round(dollars.buss), zs: Math.round(dollars.zs) };
+            const zsSlices = [
+                { key: 'zero', label: '0 sold', color: '#f59e0b' },
+                { key: 'sold', label: 'Sold', color: '#94a3b8' },
+            ];
             chStdHistLive = {};
             chStdLegend('#ch-sp-leg-dil', dilSlices, dilCounts, 'dil');
             chStdLegend('#ch-sp-leg-rev', revSlices, revCounts, 'rev');
             chStdLegend('#ch-sp-leg-buss', bussSlices, bussCounts, 'buss');
+            chStdLegend('#ch-sp-leg-zs', zsSlices, zsCounts, 'zs');
             chStdLegend('#ch-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
             chStdLegend('#ch-sp-leg-age', ageSlices, ageCounts, 'age');
             chStdLegend('#ch-sp-leg-all', allSlices, allCounts, 'all');
@@ -639,12 +665,13 @@
                 { id: 'ch-sp-pie-dil', slices: dilSlices, counts: dilCounts },
                 { id: 'ch-sp-pie-rev', slices: revSlices, counts: revCounts },
                 { id: 'ch-sp-pie-buss', slices: bussSlices, counts: bussCounts },
+                { id: 'ch-sp-pie-zs', slices: zsSlices, counts: zsCounts },
                 { id: 'ch-sp-pie-cvr', slices: cvrSlices, counts: cvrCounts },
                 { id: 'ch-sp-pie-age', slices: ageSlices, counts: ageCounts },
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
             let pctSum = 0, dollarSum = 0;
-            const body = [['Age', skuHits.age, pctTotals.age, dollars.age], ['Dil', skuHits.dil, pctTotals.dil, dollars.dil], ['B Disc', skuHits.buss, pctTotals.buss, dollars.buss], ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr], ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev]].map(function(row) {
+            const body = [['Age', skuHits.age, pctTotals.age, dollars.age], ['Dil', skuHits.dil, pctTotals.dil, dollars.dil], ['B Disc', skuHits.buss, pctTotals.buss, dollars.buss], ['0 Sold', skuHits.zs, pctTotals.zs, dollars.zs], ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr], ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev]].map(function(row) {
                 pctSum += row[2]; dollarSum += row[3];
                 return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td><td class="text-end">' + row[2] + '</td><td class="text-end">' + chStdMoney(row[3]) + '</td></tr>';
             });
@@ -673,6 +700,7 @@
             $('#ch-sp-age-tbody').html(chStdAge.map(function(r) { return chStdRangeRow('ch-sp-age', r); }).join(''));
             $('#ch-sp-rev-tbody').html(chStdRev.map(function(r) { return chStdRangeRow('ch-sp-rev', r); }).join(''));
             $('#ch-sp-buss-tbody').html(chStdBuss.map(function(r) { return chStdRangeRow('ch-sp-buss', r); }).join(''));
+            $('#ch-sp-zs-disc').val(chStdZeroSoldDisc);
             $('#ch-sp-review-max').val(chStdReviewMax);
             const cfg = chStdNormCvr(chStdCvr);
             $('#chStdPrcModal .ch-sp-cvr-down2-lt').val(cfg.down2_lt);
@@ -693,6 +721,7 @@
                 chStdAge = (res.age || CH_STD_AGE_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdRev = (res.reviews || CH_STD_REV_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdBuss = (res.buss || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
+                chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(0, Number(res.zero_sold_disc))) : 0;
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdDil.length) chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -757,7 +786,7 @@
                 .fail(function() { draw([]); });
         }
         function chStdDraftNow() {
-            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss };
+            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc };
         }
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
@@ -804,6 +833,19 @@
         }
         window.chStdBussDiscPct = chStdBussDiscPct;
         window.analyticsBussDiscountPct = chStdBussDiscPct;
+        function chStdRowIsZeroSold(d) {
+            if (!d || d.is_parent_summary) return false;
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return false;
+            if (!(chStdStockForAge(d) > 0)) return false;
+            if (typeof chPromoIsZeroSoldRow === 'function') return !!chPromoIsZeroSoldRow(d);
+            return !(chStdNum(d, ['L30', 'l30', 'AL30', 'al30', 'A_L30', 'sold', 'E L30', 'RV L30']) > 0);
+        }
+        function chStdZeroSoldDiscPct(d) {
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return null;
+            if (!chStdRowIsZeroSold(d)) return 0;
+            return chStdScaleDisc(chStdRowStd(d), Number(chStdZeroSoldDisc) || 0);
+        }
+        window.chStdZeroSoldDiscPct = chStdZeroSoldDiscPct;
         function chStdDiscCol(title, field, tip, read) {
             return {
                 title: title,
@@ -847,6 +889,7 @@
                     },
                 }),
                 Object.assign(chStdDiscCol('B Disc', 'buss_discount', 'B Disc from Std Prc ranges in Std prc vs dil. Std Prc under $15 is 0.5×.', function(d) { return chStdBussDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
+                Object.assign(chStdDiscCol('0 Sold', 'zero_sold_discount', '0 Sold discount from Std prc vs dil. Applies only when this page sold qty is 0. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdZeroSoldDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
                 Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
@@ -858,7 +901,7 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + B Disc + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];
         }
         function chStdAppendDiscColumns(cols) {
@@ -925,6 +968,35 @@
             }, 1600);
         }
         window.chStdPlaceBussColumn = chStdPlaceBussColumn;
+        let chStdZeroSoldPlaced = false;
+        function chStdPlaceZeroSoldColumn() {
+            if (chStdZeroSoldPlaced) return;
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
+            let anchor = null;
+            try { anchor = table.getColumn('buss_discount') || table.getColumn('dil_discount'); } catch (e) { anchor = null; }
+            if (!anchor) return;
+            const afterField = anchor.getField ? anchor.getField() : 'buss_discount';
+            let zs = null;
+            try { zs = table.getColumn('zero_sold_discount'); } catch (e) { zs = null; }
+            if (!zs) {
+                const spec = chStdDiscColumns().filter(function(c) { return c && c.field === 'zero_sold_discount'; })[0];
+                if (!spec) return;
+                try { table.addColumn(spec, false, afterField); } catch (err) { return; }
+            } else if (typeof table.moveColumn === 'function') {
+                try { table.moveColumn('zero_sold_discount', afterField, true); } catch (err) { /* already in place */ }
+            }
+            try {
+                const col = table.getColumn('zero_sold_discount');
+                if (col && typeof col.show === 'function') col.show();
+            } catch (err) { /* ignore */ }
+            chStdZeroSoldPlaced = true;
+            setTimeout(function() {
+                try {
+                    const col = table.getColumn('zero_sold_discount');
+                    if (col && typeof col.show === 'function') col.show();
+                } catch (err) { /* ignore */ }
+            }, 1600);
+        }
         function chStdEnsureColumns() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
             let exists = false;
@@ -940,6 +1012,7 @@
                 });
             }
             chStdPlaceBussColumn();
+            chStdPlaceZeroSoldColumn();
         }
         function chStdCatalog() {
             const bySku = {};
@@ -1031,12 +1104,13 @@
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss },
+                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc },
             }).done(function(res) {
                 if (res && res.dil) chStdDil = res.dil.map(chStdNormRange).filter(Boolean);
                 if (res && res.age) chStdAge = res.age.map(chStdNormRange).filter(Boolean);
                 if (res && res.reviews) chStdRev = res.reviews.map(chStdNormRange).filter(Boolean);
                 if (res && res.buss) chStdBuss = res.buss.map(chStdNormRange).filter(Boolean);
+                if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(0, Number(res.zero_sold_disc)));
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 const updates = chStdWritePrices(draft);

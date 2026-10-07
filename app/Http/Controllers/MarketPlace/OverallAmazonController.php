@@ -2982,6 +2982,7 @@ class OverallAmazonController extends Controller
                 ['min' => 15, 'max' => 50, 'disc' => 0],
                 ['min' => 50, 'max' => 9999, 'disc' => 0],
             ],
+            'zero_sold_disc' => 0,
         ];
     }
 
@@ -3079,6 +3080,7 @@ class OverallAmazonController extends Controller
                 'age' => $defaults['age'],
                 'cvr' => $defaults['cvr'],
                 'buss' => $defaults['buss'],
+                'zero_sold_disc' => $defaults['zero_sold_disc'],
             ]);
         }
 
@@ -3089,6 +3091,7 @@ class OverallAmazonController extends Controller
             'age' => $this->amazonNormalizeStdPrcRanges($saved['age'] ?? null, $defaults['age']),
             'cvr' => $this->amazonNormalizeStdPrcCvr($saved['cvr'] ?? null),
             'buss' => $this->amazonNormalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
+            'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0),
         ]);
     }
 
@@ -3100,11 +3103,12 @@ class OverallAmazonController extends Controller
             'age' => $this->amazonNormalizeStdPrcRanges($request->input('age'), $defaults['age']),
             'cvr' => $this->amazonNormalizeStdPrcCvr($request->input('cvr')),
             'buss' => $this->amazonNormalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
+            'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($request->input('zero_sold_disc')) ? (float) $request->input('zero_sold_disc') : 0),
         ];
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'buss']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'buss', 'zero_sold']]
         );
 
         return response()->json([
@@ -3113,6 +3117,7 @@ class OverallAmazonController extends Controller
             'age' => $payload['age'],
             'cvr' => $payload['cvr'],
             'buss' => $payload['buss'],
+            'zero_sold_disc' => $payload['zero_sold_disc'],
         ]);
     }
 
