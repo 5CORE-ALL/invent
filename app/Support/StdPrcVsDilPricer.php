@@ -165,8 +165,20 @@ class StdPrcVsDilPricer
         return $this->rangeDisc($age, $this->rules['age']);
     }
 
+    public static function excludesShip(string $channel): bool
+    {
+        return in_array($channel, [
+            'shopify_b2b',
+            'faire',
+            'wayfair',
+            'topdawg',
+            'depop',
+            'mercari_woship',
+        ], true);
+    }
+
     /**
-     * GROI% at the current listing price. Shopify B2B and Faire exclude ship, matching the page column.
+     * GROI% at the current listing price. No-ship channels exclude ship, matching the page column.
      *
      * @param  array<string, mixed>  $row
      */
@@ -192,7 +204,7 @@ class StdPrcVsDilPricer
         if (! ($margin > 0)) {
             return null;
         }
-        $ship = in_array($this->channel, ['shopify_b2b', 'faire'], true)
+        $ship = self::excludesShip($this->channel)
             ? 0.0
             : (float) ($row['ship'] ?? $row['Ship'] ?? 0);
 

@@ -426,8 +426,13 @@
             return chStdNum(d, ['review_count', 'reviews', 'Reviews', 'rating_count', 'ratings']);
         }
         function chStdExcludesShip() {
-            return typeof CHANNEL_PROMO_CHANNEL !== 'undefined'
-                && (CHANNEL_PROMO_CHANNEL === 'shopify_b2b' || CHANNEL_PROMO_CHANNEL === 'faire');
+            if (typeof CHANNEL_PROMO_CHANNEL === 'undefined') return false;
+            return CHANNEL_PROMO_CHANNEL === 'shopify_b2b'
+                || CHANNEL_PROMO_CHANNEL === 'faire'
+                || CHANNEL_PROMO_CHANNEL === 'wayfair'
+                || CHANNEL_PROMO_CHANNEL === 'topdawg'
+                || CHANNEL_PROMO_CHANNEL === 'depop'
+                || CHANNEL_PROMO_CHANNEL === 'mercari_woship';
         }
         function chStdRoiPct(d) {
             if (typeof shopifyB2bRowPriceMetrics === 'function') {

@@ -199,7 +199,7 @@ class StdPrcVsDilPricerTest extends TestCase
         ]));
     }
 
-    public function test_faire_roi_discount_excludes_ship_like_shopify_b2b(): void
+    public function test_no_ship_channels_exclude_ship_from_roi_discount(): void
     {
         $rules = [
             'dil' => [],
@@ -222,7 +222,9 @@ class StdPrcVsDilPricerTest extends TestCase
         ];
 
         // ($30 × 0.75 − LP $10) / LP = GROI 125% with ship ignored → 2%. $100 × 0.98 = $98.
-        $this->assertSame(98.0, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row));
+        foreach (['faire', 'wayfair', 'topdawg', 'depop', 'mercari_woship'] as $channel) {
+            $this->assertSame(98.0, (new StdPrcVsDilPricer($rules, $channel))->priceFromRow($row), $channel);
+        }
         // Same row with ship counted: GROI 45% → 10%. $100 × 0.90 = $90.
         $this->assertSame(90.0, (new StdPrcVsDilPricer($rules, 'ebay1'))->priceFromRow($row));
     }
