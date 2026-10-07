@@ -10,6 +10,7 @@ use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Services\AliExpressApiService;
 use App\Support\AliexpressPushGuard;
+use App\Support\NegativeSnroiPushGuard;
 use Illuminate\Console\Command;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -166,6 +167,10 @@ class PushAliexpressSpriceDaily extends Command
                     $pm = $pmByNorm[$norm] ?? ['lp' => 0.0, 'ship' => 0.0];
                     $sgroi = AliexpressPushGuard::sgroi($sprice, $margin, (float) $pm['lp'], (float) $pm['ship']);
                     if ($guardOn && AliexpressPushGuard::shouldSkipSgroi($sgroi)) {
+                        $skippedLow++;
+                        continue;
+                    }
+                    if (NegativeSnroiPushGuard::shouldSkip('aliexpress', $sku, $sprice)) {
                         $skippedLow++;
                         continue;
                     }

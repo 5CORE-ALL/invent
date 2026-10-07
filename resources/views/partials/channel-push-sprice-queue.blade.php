@@ -788,6 +788,14 @@
             }
             function enqueueChannelPushSprice(items, opts) {
                 opts = opts || {};
+                if (Array.isArray(items) && typeof global.chPromoSnroiPushBlocked === 'function') {
+                    items = items.filter(function(item) {
+                        if (!item) return false;
+                        const row = typeof chPushSpriceFindRowBySku === 'function' ? chPushSpriceFindRowBySku(item.sku) : null;
+                        const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
+                        return !global.chPromoSnroiPushBlocked(d, item.price);
+                    });
+                }
                 if (!CH_PUSH_SPRICE_LIVE) {
                     if (!opts.silent) {
                         chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
@@ -852,6 +860,9 @@
                             chPushSafeRowUpdate(row, { SPRICE_STATUS: 'saved' });
                         }
                     } catch (e) { /* ignore */ }
+                    return false;
+                }
+                if (typeof global.chPromoSnroiPushBlocked === 'function' && global.chPromoSnroiPushBlocked(d, p)) {
                     return false;
                 }
                 if (!force) {
@@ -1284,23 +1295,27 @@
                 ];
                 for (let i = 0; i < pageShown.length; i++) {
                     const fn = global[pageShown[i]];
-                    if (typeof fn === 'function') {
-                        const shown = chPushSpriceRound2(fn(d));
-                        if (shown > 0) return shown;
+                    if (typeof fn !== 'function') continue;
+                    const shown = chPushSpriceRound2(fn(d));
+                    if (!(shown > 0)) continue;
+                    if (typeof global.ebaySprcDilForRow === 'function') {
+                        const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
+                        if (dil > 0 && Math.abs(shown - dil) < 0.005) continue;
                     }
+                    return shown;
                 }
-                if (typeof global.ebaySprcDilForRow === 'function') {
-                    const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
-                    if (dil > 0) return dil;
-                }
-                if (typeof chPromoLiveSprice === 'function') {
-                    const live = chPushSpriceRound2(chPromoLiveSprice(d));
-                    if (live > 0) return live;
-                }
+                let saved = 0;
                 if (typeof chPromoSavedOrLiveSprice === 'function') {
-                    return chPushSpriceRound2(chPromoSavedOrLiveSprice(d));
+                    saved = chPushSpriceRound2(chPromoSavedOrLiveSprice(d));
                 }
-                return chPushSpriceRound2(d && (d.SPRICE != null ? d.SPRICE : d.sprice));
+                if (!(saved > 0)) {
+                    saved = chPushSpriceRound2(d && (d.SPRICE != null ? d.SPRICE : d.sprice));
+                }
+                if (saved > 0 && typeof global.ebaySprcDilForRow === 'function') {
+                    const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
+                    if (dil > 0 && Math.abs(saved - dil) < 0.005) return 0;
+                }
+                return saved;
             }
             function chPushSpriceFillFromRow(d) {
                 return chPushSpriceSavedFromRow(d);

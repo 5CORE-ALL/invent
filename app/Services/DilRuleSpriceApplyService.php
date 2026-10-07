@@ -114,6 +114,8 @@ class DilRuleSpriceApplyService
 
     private readonly string $channel;
 
+    private bool $applyStdPrcVsDil = false;
+
     public function __construct(string $channel = 'bestbuy')
     {
         $this->channel = self::normalizeChannel($channel);
@@ -170,6 +172,7 @@ class DilRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
+        $this->applyStdPrcVsDil = true;
         $store = $this->loadDilGroiStore();
         $dilRules = $store['rules'];
         $cvrAdj = $store['cvr_adj'];
@@ -302,6 +305,11 @@ class DilRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
     {
+        if ($this->applyStdPrcVsDil) {
+            $priced = \App\Support\StdPrcVsDilPricer::forChannel($this->channel)->priceFromRow($row);
+
+            return $priced !== null ? ['sprice' => $priced] : null;
+        }
         if ($this->channel === 'aliexpress') {
             return $this->computeAliexpressTarget($row, $dilRules, $margin);
         }

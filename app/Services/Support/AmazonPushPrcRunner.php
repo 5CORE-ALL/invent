@@ -5,6 +5,7 @@ namespace App\Services\Support;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Models\AmazonDataView;
 use App\Services\AmazonSpApiService;
+use App\Support\NegativeSnroiPushGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -128,7 +129,14 @@ class AmazonPushPrcRunner
             try {
                 $skuKey = strtoupper(trim($sku));
                 $livePrice = (float) ($this->store->listingPricesForSkus([$skuKey])[$skuKey] ?? 0);
-                if (AmazonSpApiService::listingPriceMatchesSprice($livePrice, $target)) {
+                if (NegativeSnroiPushGuard::shouldSkip('amazon', $sku, (float) $target)) {
+                    $ok = true;
+                    $skipMsg = 'skipped — negative SNROI';
+                    $logger->info('Amazon Push Prc: skipped — negative SNROI', [
+                        'sku' => $sku,
+                        'price' => $target,
+                    ]);
+                } elseif (AmazonSpApiService::listingPriceMatchesSprice($livePrice, $target)) {
                     $ok = true;
                     $skipMsg = 'skipped — Price already = S PRC';
                     $logger->info('Amazon Push Prc: skipped — Price already = S PRC', [
@@ -203,7 +211,7 @@ class AmazonPushPrcRunner
                 }
             }
 
-            if ($ok) {
+            if ($ok && $skipMsg !== 'skipped — negative SNROI') {
                 $this->recordPushPrcLocal($sku, (float) $target);
             }
 

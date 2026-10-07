@@ -24,6 +24,8 @@ use Throwable;
  */
 class MacysRuleSpriceApplyService
 {
+    private bool $applyStdPrcVsDil = false;
+
     /**
      * @param  list<string>|null  $onlySkus
      * @param  callable(string): void|null  $logger
@@ -31,6 +33,7 @@ class MacysRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
+        $this->applyStdPrcVsDil = true;
         $dilRules = $this->loadDilGroiRules();
         $margin = MarketplacePercentage::takeHomeForPromoChannel('macys');
         if (! ($margin > 0)) {
@@ -144,6 +147,11 @@ class MacysRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, float $margin): ?array
     {
+        if ($this->applyStdPrcVsDil) {
+            $priced = \App\Support\StdPrcVsDilPricer::forChannel('macys')->priceFromRow($row);
+
+            return $priced !== null ? ['sprice' => $priced] : null;
+        }
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0) || ! ($margin > 0)) {
             return null;

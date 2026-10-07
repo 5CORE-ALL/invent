@@ -133,6 +133,12 @@ class AmazonSprcDilAutoPushService
                         continue;
                     }
 
+                    if (\App\Support\NegativeSnroiPushGuard::shouldSkip('amazon', (string) $row['sku'], (float) $computed['sprice'])) {
+                        $stats['skipped']++;
+                        $this->log($logger, 'Skip '.$row['sku'].': negative SNROI');
+                        continue;
+                    }
+
                     $plan = AmazonSpApiService::computeSaleBusinessMin((float) $computed['sprice']);
                     $reason = $pushAll
                         ? 'Push All'
@@ -253,9 +259,7 @@ class AmazonSprcDilAutoPushService
         }
         $dilGroi = $dilPrice !== null && $dilPrice > 0;
 
-        $cvrSlab = $this->discForCvr($cvr, $cvrRules);
-        $cvrTrendDisc = $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []);
-        $cvrDisc = round(min(99.99, max(0, $cvrSlab + $cvrTrendDisc)), 2);
+        $cvrDisc = round(min(99.99, max(0, $this->discForStdCvrTrend($row, is_array($stdPromo['cvr'] ?? null) ? $stdPromo['cvr'] : []))), 2);
         $reviewDisc = $this->discForReviews($reviews, $reviewRules, $reviewMax);
         $dilDisc = $this->discForStdRange($dil, is_array($stdPromo['dil'] ?? null) ? $stdPromo['dil'] : []);
         $ageDisc = 0.0;
@@ -667,7 +671,7 @@ class AmazonSprcDilAutoPushService
     }
 
     /**
-     * CVR up/down promotional % added on top of the CVR slab discount.
+     * CVR up/down promotional % from Std prc vs dil. Used instead of the CVR slab when it is above 0.
      *
      * @param  array<string, mixed>  $row
      * @param  array<string, mixed>  $cfg

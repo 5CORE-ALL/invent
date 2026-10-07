@@ -26,6 +26,8 @@ use Throwable;
  */
 class ShopifyB2cRuleSpriceApplyService
 {
+    private bool $applyStdPrcVsDil = false;
+
     /**
      * @param  list<string>|null  $onlySkus
      * @param  callable(string): void|null  $logger
@@ -33,6 +35,7 @@ class ShopifyB2cRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
+        $this->applyStdPrcVsDil = true;
         $dilStore = $this->loadDilGroiStore();
         $dilRules = $dilStore['rules'];
         $cvrAdj = $dilStore['cvr_adj'];
@@ -272,6 +275,19 @@ class ShopifyB2cRuleSpriceApplyService
      */
     protected function computeTarget(array $row, array $cvrRules, array $zeroRules, float $zeroMinRoi, float $margin, array $dilRules = [], ?array $cvrAdj = null, float $adsPct = 0.0, array $coupon = []): ?array
     {
+        if ($this->applyStdPrcVsDil) {
+            $priced = \App\Support\StdPrcVsDilPricer::forChannel('shopify_b2c')->priceFromRow($row);
+            if ($priced === null) {
+                return null;
+            }
+
+            return [
+                'sprice' => $priced,
+                'prmt' => (float) ($row['saved_prmt'] ?? 0),
+                'cpn' => (float) ($row['saved_cpn'] ?? 0),
+                'amz_sugg' => ! empty($row['amz_sugg']),
+            ];
+        }
         $dil = (float) ($row['dil'] ?? 0);
         $cvr = (float) ($row['cvr'] ?? 0);
         $sold = (float) ($row['b2c_l30'] ?? 0);

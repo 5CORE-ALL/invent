@@ -28,6 +28,8 @@ use Throwable;
  */
 class PurchasingPowerRuleSpriceApplyService
 {
+    private bool $applyStdPrcVsDil = false;
+
     public function __construct(
         private readonly PurchasingPowerApiService $ppApi
     ) {}
@@ -39,6 +41,7 @@ class PurchasingPowerRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, bool $push = true, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
+        $this->applyStdPrcVsDil = true;
         $dilRules = $this->loadDilGroiRules();
         $margin = MarketplacePercentage::takeHomeForPromoChannel('purchasing_power');
         if (! ($margin > 0)) {
@@ -176,6 +179,11 @@ class PurchasingPowerRuleSpriceApplyService
      */
     public function computeTarget(array $row, array $dilRules, float $margin): ?array
     {
+        if ($this->applyStdPrcVsDil) {
+            $priced = \App\Support\StdPrcVsDilPricer::forChannel('purchasing_power')->priceFromRow($row);
+
+            return $priced !== null ? ['sprice' => $priced] : null;
+        }
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0) || ! ($margin > 0)) {
             return null;
@@ -293,6 +301,8 @@ class PurchasingPowerRuleSpriceApplyService
                 ->keyBy(static fn ($r) => strtoupper(trim((string) $r->sku)));
         }
 
+        $stdBySku = DilRuleSpriceApplyService::amazonStdBySku($skus);
+
         $out = [];
         foreach ($skus as $sku) {
             $master = $masters[$sku] ?? null;
@@ -334,6 +344,7 @@ class PurchasingPowerRuleSpriceApplyService
                 'pp_l30' => $ppL30,
                 'pp_price' => $ppPrice,
                 'lp' => $lp,
+                'std' => $stdBySku[$sku] ?? 0.0,
                 'ship' => ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $master),
                 'amz' => isset($amzBySku[$sku]) ? (float) ($amzBySku[$sku]->price ?? 0) : 0.0,
                 'listed' => $pp !== null,

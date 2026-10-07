@@ -24,11 +24,11 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertTrue($out['dil_groi']);
         $this->assertEqualsWithDelta(50.0, $out['nroi'], 0.001);
-        $this->assertEqualsWithDelta(9.0, $out['cvr_disc'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $out['cvr_disc'], 0.001);
         $this->assertEqualsWithDelta(4.0, $out['review_disc'], 0.001);
-        $this->assertEqualsWithDelta(13.0, $out['sum_disc'], 0.001);
-        // Std $100 − (9% + 4%).
-        $this->assertEqualsWithDelta(87.0, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(4.0, $out['sum_disc'], 0.001);
+        // Std $100 − review 4%. CVR Disc is the Std prc vs dil disc, which is unset here.
+        $this->assertEqualsWithDelta(96.0, $out['sprice'], 0.001);
     }
 
     public function test_ads_pct_does_not_change_std_discount_sprice(): void
@@ -45,7 +45,7 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         ], 10.0);
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(87.0, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(96.0, $out['sprice'], 0.001);
     }
 
     public function test_std_price_minus_age_dil_cvr_and_review_discounts(): void
@@ -73,10 +73,10 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(3.0, $out['age_disc'], 0.001);
         $this->assertEqualsWithDelta(5.0, $out['dil_disc'], 0.001);
-        $this->assertEqualsWithDelta(9.0, $out['cvr_disc'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $out['cvr_disc'], 0.001);
         $this->assertEqualsWithDelta(4.0, $out['review_disc'], 0.001);
-        $this->assertEqualsWithDelta(21.0, $out['sum_disc'], 0.001);
-        $this->assertEqualsWithDelta(158.0, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(12.0, $out['sum_disc'], 0.001);
+        $this->assertEqualsWithDelta(176.0, $out['sprice'], 0.001);
     }
 
     public function test_no_dil_match_uses_std_minus_cvr_and_review_disc(): void
@@ -94,8 +94,8 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertFalse($out['dil_groi']);
-        $this->assertEqualsWithDelta(87.0, $out['sprice'], 0.001);
-        $this->assertEqualsWithDelta(9.0, $out['cvr_disc'], 0.001);
+        $this->assertEqualsWithDelta(96.0, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $out['cvr_disc'], 0.001);
         $this->assertEqualsWithDelta(4.0, $out['review_disc'], 0.001);
     }
 
