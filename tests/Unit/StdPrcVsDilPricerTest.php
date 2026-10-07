@@ -104,8 +104,8 @@ class StdPrcVsDilPricerTest extends TestCase
             'inv' => 1,
             'std' => 20,
         ]));
-        // $10 is under $15, so 10% is halved to 5%. $10 × 0.95 = $9.50.
-        $this->assertSame(9.5, $pricer->priceFromRow([
+        // $10 is under $15. B Disc stays at the full 10%. $10 × 0.90 = $9.00.
+        $this->assertSame(9.0, $pricer->priceFromRow([
             'inv' => 1,
             'std' => 10,
         ]));

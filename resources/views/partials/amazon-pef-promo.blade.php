@@ -2850,7 +2850,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'B Disc from Std Prc ranges in Std prc vs dil. INV=0 → 0%. Std Prc under $15 is 0.5×. Read-only.',
+                    headerTooltip: 'B Disc from Std Prc ranges in Std prc vs dil. INV=0 → 0%. Full Disc % at every Std Prc, including under $15. Read-only.',
                     sorter: function(a, b, aRow, bRow) {
                         const av = (typeof computeAmzBussDiscountPct === 'function' ? computeAmzBussDiscountPct(aRow.getData()) : 0) || 0;
                         const bv = (typeof computeAmzBussDiscountPct === 'function' ? computeAmzBussDiscountPct(bRow.getData()) : 0) || 0;

@@ -88,7 +88,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of each rule discount (0.5×).</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -431,7 +431,7 @@
             revDisc = chStdScaleDisc(std, revDisc);
             const cvrDisc = chStdScaleDisc(std, chStdCvrDiscPct(d, draft));
             const bussRules = draft.buss || chStdBuss;
-            const bussDisc = chStdScaleDisc(std, chStdRangeDisc(std, bussRules));
+            const bussDisc = chStdRangeDisc(std, bussRules);
             const zsRaw = chStdRowIsZeroSold(d) ? (Number(draft.zeroSoldDisc != null ? draft.zeroSoldDisc : chStdZeroSoldDisc) || 0) : 0;
             const zsDisc = chStdScaleDisc(std, zsRaw);
             return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc));
@@ -595,7 +595,7 @@
                 const ageDisc = invOk ? chStdScaleDisc(std, ageIdx >= 0 ? (Number(draft.age[ageIdx].disc) || 0) : 0) : 0;
                 const dilDisc = invOk ? chStdScaleDisc(std, dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0) : 0;
                 const revDisc = chStdScaleDisc(std, revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0);
-                const bussDisc = chStdScaleDisc(std, bussIdx >= 0 ? (Number(draft.buss[bussIdx].disc) || 0) : 0);
+                const bussDisc = bussIdx >= 0 ? (Number(draft.buss[bussIdx].disc) || 0) : 0;
                 const cvrDisc = invOk ? chStdScaleDisc(std, Math.max(0, hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0))) : 0;
                 const zeroSold = invOk && chStdRowIsZeroSold(d);
                 if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
@@ -829,7 +829,7 @@
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return null;
             if (typeof chPromoInv === 'function' && chPromoInv(d) <= 0) return 0;
             const std = chStdRowStd(d);
-            return chStdScaleDisc(std, chStdRangeDisc(std, chStdBuss));
+            return chStdRangeDisc(std, chStdBuss);
         }
         window.chStdBussDiscPct = chStdBussDiscPct;
         window.analyticsBussDiscountPct = chStdBussDiscPct;
@@ -888,7 +888,7 @@
                         return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
                     },
                 }),
-                Object.assign(chStdDiscCol('B Disc', 'buss_discount', 'B Disc from Std Prc ranges in Std prc vs dil. Std Prc under $15 is 0.5×.', function(d) { return chStdBussDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
+                Object.assign(chStdDiscCol('B Disc', 'buss_discount', 'B Disc from Std Prc ranges in Std prc vs dil. Full Disc % at every Std Prc, including under $15.', function(d) { return chStdBussDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
                 Object.assign(chStdDiscCol('0 Sold', 'zero_sold_discount', '0 Sold discount from Std prc vs dil. Applies only when this page sold qty is 0. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdZeroSoldDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
                 Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
                     formatter: function(cell) {

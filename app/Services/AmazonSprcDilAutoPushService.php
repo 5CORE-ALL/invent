@@ -25,7 +25,7 @@ use Throwable;
  *
  * Same as Push Prc / S PRC on /amazon-tabulator-view:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + CVR Disc + Rev Disc) / 100)
- *  Std Prc under $15 uses half of each rule discount (0.5×).
+ *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  CVR Disc = CVR slab + CVR up/down promotional discount
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  Skip when live Price already equals the target. Price column updates on each push.
@@ -282,7 +282,6 @@ class AmazonSprcDilAutoPushService
         $cvrDisc = StdPrcVsDilPricer::scaleRuleDisc($cvrDisc, $std);
         $reviewDisc = StdPrcVsDilPricer::scaleRuleDisc($reviewDisc, $std);
         $bussDisc = $this->discForStdRange($std, is_array($stdPromo['buss'] ?? null) ? $stdPromo['buss'] : []);
-        $bussDisc = StdPrcVsDilPricer::scaleRuleDisc($bussDisc, $std);
         $aL30Sold = (float) ($row['a_l30'] ?? 0);
         $zeroSoldDisc = ! ($aL30Sold > 0)
             ? StdPrcVsDilPricer::scaleRuleDisc((float) ($stdPromo['zero_sold_disc'] ?? 0), $std)

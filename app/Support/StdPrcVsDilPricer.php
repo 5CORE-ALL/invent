@@ -7,7 +7,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 /**
  * S PRC from a channel's saved Std prc vs dil slabs.
  * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review + Buss + 0 Sold) / 100).
- * Std Prc under $15 uses half of each rule discount (0.5×).
+ * Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  * Used by the unattended apply commands. The page does not have to be open.
  */
 class StdPrcVsDilPricer
@@ -68,7 +68,7 @@ class StdPrcVsDilPricer
         $dilDisc = self::scaleRuleDisc($this->rangeDisc($dil, $this->rules['dil']), $std);
         $cvrDisc = self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60), $std);
         $reviewDisc = self::scaleRuleDisc($this->reviewDisc($reviews), $std);
-        $bussDisc = self::scaleRuleDisc($this->rangeDisc($std, $this->rules['buss'] ?? []), $std);
+        $bussDisc = $this->rangeDisc($std, $this->rules['buss'] ?? []);
         $zeroSoldDisc = $this->isZeroSold($row)
             ? self::scaleRuleDisc((float) ($this->rules['zero_sold_disc'] ?? 0), $std)
             : 0.0;

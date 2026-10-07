@@ -318,7 +318,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of each rule discount (0.5×).</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -648,7 +648,7 @@
             if (typeof amzPefIsChildRow === 'function' && !amzPefIsChildRow(d)) return null;
             if (typeof amzPefInv === 'function' && amzPefInv(d) === 0) return 0;
             const std = Number(d && d.STANDARD_PRICE) || 0;
-            return amzStdScaleDisc(std, amzStdRangeDisc(std, amzStdBussRules));
+            return amzStdDisc(amzStdRangeDisc(std, amzStdBussRules));
         }
         window.computeAmzBussDiscountPct = computeAmzBussDiscountPct;
         window.analyticsBussDiscountPct = computeAmzBussDiscountPct;
@@ -1205,7 +1205,6 @@
                 ageDisc = amzStdScaleDisc(std, ageDisc);
                 dilDisc = amzStdScaleDisc(std, dilDisc);
                 revDisc = amzStdScaleDisc(std, revDisc);
-                bussDisc = amzStdScaleDisc(std, bussDisc);
                 cvrDisc = amzStdScaleDisc(std, cvrDisc);
                 const zeroSold = (typeof amzIsZeroSoldRow === 'function')
                     ? amzIsZeroSoldRow(d)
