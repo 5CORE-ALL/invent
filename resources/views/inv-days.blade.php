@@ -122,6 +122,18 @@
         cursor: pointer;
     }
     .invdays-nrp-dot:hover { transform: scale(1.25); }
+    #invdays-table .tabulator-header .tabulator-col.tabulator-sortable { cursor: pointer; }
+    #invdays-table .tabulator-header .tabulator-col .tabulator-arrow { border-bottom-color: #5b7bb5; border-top-color: #5b7bb5; }
+    #invdaysClear {
+        cursor: pointer;
+        background: #e5e7eb;
+        color: #374151;
+        font-weight: 700;
+    }
+    #invdaysClear.invdays-clear--on {
+        background: #dc2626;
+        color: #fff;
+    }
 </style>
 @endsection
 
@@ -140,6 +152,9 @@
                     <button type="button" class="btn btn-sm text-dark text-nowrap d-none" id="invdaysBulkLater" style="background:#facc15;">NRP LATER</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" id="invdaysRefresh">
                         <i class="fas fa-rotate me-1"></i>Refresh
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success text-nowrap" id="invdaysExport" title="Download the rows currently shown, in the current sort, as CSV">
+                        <i class="fas fa-file-export me-1"></i>Export
                     </button>
                     <span class="badge bg-primary px-2 py-1 text-nowrap" title="Rows currently shown">Rows: <span id="invdaysCount">0</span></span>
                     <span class="badge bg-info text-dark px-2 py-1 text-nowrap" title="Sum of INV for rows currently shown">Inv Sum: <span id="invdaysInvSum">0</span></span>
@@ -171,6 +186,7 @@
                         <span class="input-group-text"><i class="fas fa-search"></i></span>
                         <input type="text" id="invdaysSkuSearch" class="form-control" placeholder="SKU" aria-label="Search SKU">
                     </div>
+                    <button type="button" class="badge border-0 px-2 py-1 text-nowrap" id="invdaysClear" title="Clear search and filters">Clear</button>
                 </div>
                 <div id="invdays-table"></div>
             </div>
@@ -219,25 +235,11 @@ document.addEventListener('DOMContentLoaded', function () {
         return Number.isInteger(n) ? String(n) : n.toFixed(decimals || 2).replace(/\.?0+$/, '');
     }
 
-    function missingLastSorter(a, b) {
-        const an = Number(a);
-        const bn = Number(b);
-        const aOk = a !== null && a !== undefined && a !== '' && Number.isFinite(an);
-        const bOk = b !== null && b !== undefined && b !== '' && Number.isFinite(bn);
-        if (!aOk && !bOk) return 0;
-        if (!aOk) return -1;
-        if (!bOk) return 1;
-        return an - bn;
+    function textSort() {
+        return { sorter: 'alphanum', sorterParams: { alignEmptyValues: 'bottom' }, headerSort: true, headerSortStartingDir: 'asc' };
     }
-
-    function daysExpValue(v) {
-        const n = Number(v);
-        if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return -1;
-        return n;
-    }
-
-    function daysExpSorter(a, b) {
-        return daysExpValue(a) - daysExpValue(b);
+    function numberSort() {
+        return { sorter: 'number', sorterParams: { alignEmptyValues: 'bottom' }, headerSort: true, headerSortStartingDir: 'desc' };
     }
 
     let allRows = [];
@@ -336,10 +338,70 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('invdaysExpAvg').textContent = expAvg === null ? '—' : expAvg.toLocaleString();
     }
 
+    function filtersActive() {
+        const parentQ = (document.getElementById('invdaysParentSearch').value || '').trim();
+        const skuQ = (document.getElementById('invdaysSkuSearch').value || '').trim();
+        return parentQ !== ''
+            || skuQ !== ''
+            || document.getElementById('invdaysInvFilter').value !== 'all'
+            || document.getElementById('invdaysAgeFilter').value !== 'all'
+            || document.getElementById('invdaysExpFilter').value !== 'all';
+    }
+
+    function paintClearBadge() {
+        document.getElementById('invdaysClear').classList.toggle('invdays-clear--on', filtersActive());
+    }
+
+    function csvCell(v) {
+        const s = v == null ? '' : String(v);
+        if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+    }
+
+    function exportNumber(v) {
+        const n = Number(v);
+        if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return '';
+        return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+    }
+
+    function exportCsv() {
+        if (!table) return;
+        const rows = table.getRows('active').map(function (row) { return row.getData(); });
+        const headers = ['Parent', 'SKU', 'INV', 'Inv Value', 'OVL30', 'DIL %', 'Age Days', 'Days Exp', 'MSL', 'Clearance', 'NRP'];
+        const lines = [headers.join(',')];
+        rows.forEach(function (row) {
+            const nr = String(row.nr || 'REQ').trim().toUpperCase();
+            const clearance = String(row.clearance || 'NO').toUpperCase() === 'YES' ? 'Yes' : 'NO';
+            lines.push([
+                csvCell(row.parent || ''),
+                csvCell(row.sku || ''),
+                csvCell(exportNumber(row.inv)),
+                csvCell(exportNumber(row.inv_value)),
+                csvCell(exportNumber(row.ovl30)),
+                csvCell(exportNumber(row.dil)),
+                csvCell(exportNumber(row.age_days)),
+                csvCell(exportNumber(row.days_exp)),
+                csvCell(exportNumber(row.msl)),
+                csvCell(clearance),
+                csvCell(nr === 'REQ' || nr === 'NR' || nr === 'LATER' ? nr : 'REQ'),
+            ].join(','));
+        });
+        const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'inv-days-' + new Date().toISOString().slice(0, 10) + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
     function applyFilters() {
         if (!table) return;
         table.setFilter(rowPasses);
         updateCount();
+        paintClearBadge();
     }
 
     table = new Tabulator('#invdays-table', {
@@ -353,6 +415,7 @@ document.addEventListener('DOMContentLoaded', function () {
         height: '72vh',
         pagination: false,
         placeholder: 'No SKUs found',
+        columnDefaults: { headerSort: true, headerSortTristate: false },
         initialSort: [{ column: 'days_exp', dir: 'desc' }],
         initialFilter: rowPasses,
         columns: [
@@ -395,7 +458,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 72,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                headerSort: false,
+                headerSort: true,
+                headerSortStartingDir: 'desc',
+                sorter: function (a, b) {
+                    const rank = function (v) { return v ? 1 : 0; };
+                    const diff = rank(a) - rank(b);
+                    if (diff !== 0) return diff;
+                    return String(a || '').localeCompare(String(b || ''));
+                },
                 formatter: function (cell) {
                     const src = cell.getValue();
                     if (!src) return '<div class="invdays-cell"><span class="text-muted">—</span></div>';
@@ -409,6 +479,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 widthGrow: 1,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
+                ...textSort(),
                 formatter: function (cell) {
                     const v = String(cell.getValue() || '').trim();
                     return v ? escapeHtml(v) : '<span class="text-muted">—</span>';
@@ -421,6 +492,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 widthGrow: 2,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
+                ...textSort(),
                 formatter: function (cell) {
                     return `<span class="fw-semibold">${escapeHtml(cell.getValue())}</span>`;
                 },
@@ -431,7 +503,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 100,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                sorter: 'number',
+                ...numberSort(),
                 formatter: function (cell) {
                     return fmtNum(cell.getValue());
                 },
@@ -442,7 +514,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 120,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                sorter: 'number',
+                ...numberSort(),
                 formatter: function (cell) {
                     const v = cell.getValue();
                     if (v === null || v === undefined || v === '') return '<span class="text-muted">—</span>';
@@ -456,7 +528,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 100,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                sorter: 'number',
+                ...numberSort(),
                 formatter: function (cell) {
                     return fmtNum(cell.getValue());
                 },
@@ -467,7 +539,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 110,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                sorter: 'number',
+                ...numberSort(),
                 formatter: function (cell) {
                     const v = cell.getValue();
                     if (v === null || v === undefined) return '<span class="text-muted">—</span>';
@@ -482,7 +554,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 120,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                sorter: missingLastSorter,
+                ...numberSort(),
                 formatter: paintAgeCell,
             },
             {
@@ -491,7 +563,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 120,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                sorter: daysExpSorter,
+                ...numberSort(),
                 formatter: paintDayCell,
             },
             {
@@ -500,7 +572,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 90,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                sorter: 'number',
+                ...numberSort(),
                 formatter: function (cell) {
                     const n = Number(cell.getValue());
                     const v = Number.isFinite(n) ? Math.round(n) : 0;
@@ -513,7 +585,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 140,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                headerSort: false,
+                ...textSort(),
                 formatter: function (cell) {
                     const data = cell.getRow().getData();
                     const yes = String(data.clearance || 'NO').toUpperCase() === 'YES';
@@ -542,7 +614,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 width: 70,
                 hozAlign: 'center',
                 headerHozAlign: 'center',
-                sorter: 'string',
+                ...textSort(),
                 formatter: function (cell) {
                     let value = String(cell.getValue() || '').trim().toUpperCase();
                     if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') value = 'REQ';
@@ -765,6 +837,16 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('invdaysRefresh').addEventListener('click', function () {
         if (table) table.replaceData();
     });
+    document.getElementById('invdaysExport').addEventListener('click', exportCsv);
+    document.getElementById('invdaysClear').addEventListener('click', function () {
+        document.getElementById('invdaysParentSearch').value = '';
+        document.getElementById('invdaysSkuSearch').value = '';
+        document.getElementById('invdaysInvFilter').value = 'all';
+        document.getElementById('invdaysAgeFilter').value = 'all';
+        document.getElementById('invdaysExpFilter').value = 'all';
+        applyFilters();
+    });
+    paintClearBadge();
 });
 </script>
 @endsection
