@@ -2788,7 +2788,7 @@ class OverallAmazonController extends Controller
 
     /**
      * Default Review count slabs → Disc% for Amazon tabulator Rev Disc. column.
-     * 1–2 and 2–3 take 4%. Review count above max (4) never takes a discount.
+     * 1–2 and 2–3 take 4%. Review count at or above max (4) never takes a discount.
      *
      * @return list<array{key:string,min:int,max:int,label:string,disc:float|int}>
      */

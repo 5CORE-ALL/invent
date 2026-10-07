@@ -642,15 +642,15 @@
                         Map <strong>review count</strong> ranges to <strong>Rev Disc.</strong> %
                         (added to T Discounts / S PRC).
                         Defaults: <strong>1–2 → 4%</strong>, <strong>2–3 → 4%</strong>.
-                        Review count above <strong>Max reviews</strong> never takes a discount.
+                        Review count at or above <strong>Max reviews</strong> never takes a discount.
                         Add or edit ranges as needed.
                     </p>
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <label for="amz-review-disc-max" class="small fw-semibold mb-0 text-nowrap">Max reviews</label>
                         <input type="number" id="amz-review-disc-max" class="form-control form-control-sm"
                             min="1" step="1" value="4" style="width:72px;"
-                            title="Discount never applies when review count is greater than this">
-                        <span class="small text-muted">No discount when reviews &gt; this value.</span>
+                            title="Discount never applies when review count is this value or higher">
+                        <span class="small text-muted">No discount when reviews are this value or higher.</span>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered align-middle mb-0" id="amz-review-disc-table">
@@ -1258,14 +1258,14 @@
                 disc: (isFinite(disc) && disc >= 0) ? disc : 0,
             };
         }
-        /** Review count → Rev Disc. % (INV=0 or count 0 or count > max → 0). First matching from–to wins. */
+        /** Review count → Rev Disc. % (INV=0 or count 0 or count >= max → 0). First matching from–to wins. */
         function computeAmzReviewDiscountPct(d) {
             if (!amzPefIsChildRow(d)) return null;
             if (amzPefInv(d) === 0) return 0;
             const count = amzPefReviewCount(d);
             const cap = Number(amzReviewDiscMax);
             const maxRev = (isFinite(cap) && cap > 0) ? cap : AMZ_REVIEW_DISC_MAX_DEFAULT;
-            if (!(count > 0) || count > maxRev) return 0;
+            if (!(count > 0) || count >= maxRev) return 0;
             for (let i = 0; i < amzReviewDiscRules.length; i++) {
                 const rule = amzNormalizeReviewDiscRule(amzReviewDiscRules[i]);
                 if (!rule) continue;
@@ -2483,7 +2483,7 @@
                 const count = amzPefReviewCount(d);
                 const cap = Number(amzReviewDiscMax);
                 const maxRev = (isFinite(cap) && cap > 0) ? cap : AMZ_REVIEW_DISC_MAX_DEFAULT;
-                if (!(count > 0) || count > maxRev) return;
+                if (!(count > 0) || count >= maxRev) return;
                 for (let i = 0; i < amzReviewDiscRules.length; i++) {
                     const rule = amzNormalizeReviewDiscRule(amzReviewDiscRules[i]);
                     if (!rule) continue;
@@ -2852,7 +2852,7 @@
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'Review Disc. — from Review Disc rules (1–2 / 2–3 = 4% by default). Reviews > Max (4) → 0%. INV=0 → 0%. Read-only.',
+                    headerTooltip: 'Review Disc. — from Review Disc rules (1–2 / 2–3 = 4% by default). Reviews at or above Max (4) → 0%. INV=0 → 0%. Read-only.',
                     sorter: function(a, b, aRow, bRow) {
                         const av = computeAmzReviewDiscountPct(aRow.getData()) || 0;
                         const bv = computeAmzReviewDiscountPct(bRow.getData()) || 0;
@@ -2870,8 +2870,8 @@
                         const dollars = (pct > 0 && base > 0) ? amzPefRound2(base * (pct / 100)) : 0;
                         const tip = (count > 0 ? (count + ' review' + (count === 1 ? '' : 's')) : '0 reviews')
                             + ' → discount ' + (pct || 0) + '%'
-                            + (count > (Number(amzReviewDiscMax) || AMZ_REVIEW_DISC_MAX_DEFAULT)
-                                ? (' (above max ' + (amzReviewDiscMax || AMZ_REVIEW_DISC_MAX_DEFAULT) + ')')
+                            + (count >= (Number(amzReviewDiscMax) || AMZ_REVIEW_DISC_MAX_DEFAULT)
+                                ? (' (at or above max ' + (amzReviewDiscMax || AMZ_REVIEW_DISC_MAX_DEFAULT) + ')')
                                 : '')
                             + (dollars > 0 ? (' ≈ $' + dollars.toFixed(2) + ' off Std/Price') : '');
                         return '<span title="' + amzPefEscAttr(tip) + '">'

@@ -617,7 +617,7 @@ class AmazonSprcDilAutoPushService
     public function discForReviews(int $count, array $rules, int $maxReviews): float
     {
         $cap = $maxReviews > 0 ? $maxReviews : 4;
-        if (! ($count > 0) || $count > $cap) {
+        if (! ($count > 0) || $count >= $cap) {
             return 0.0;
         }
         foreach ($rules as $rule) {

@@ -144,7 +144,7 @@ class StdPrcVsDilPricer
     private function reviewDisc(float $reviews): float
     {
         $max = (int) $this->rules['review_max'];
-        if (! ($reviews > 0) || $reviews > $max) {
+        if (! ($reviews > 0) || $reviews >= $max) {
             return 0.0;
         }
         foreach ($this->rules['reviews'] as $rule) {

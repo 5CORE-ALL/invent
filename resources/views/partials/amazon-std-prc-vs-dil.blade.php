@@ -364,7 +364,7 @@
                             </div>
                             <div class="amz-sp-max">
                                 <label for="amz-sp-review-max">Max reviews</label>
-                                <input type="number" id="amz-sp-review-max" class="form-control form-control-sm amz-sp-input" min="1" step="1" value="4" title="No review discount when reviews are above this">
+                                <input type="number" id="amz-sp-review-max" class="form-control form-control-sm amz-sp-input" min="1" step="1" value="4" title="No review discount when reviews are this value or higher">
                             </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0">
@@ -1059,7 +1059,7 @@
                 else ageCounts.none += 1;
                 const reviews = (typeof amzPefReviewCount === 'function') ? amzPefReviewCount(d) : 0;
                 let revIdx = -1;
-                if (reviews > 0 && reviews <= draft.reviewMax) {
+                if (reviews > 0 && reviews < draft.reviewMax) {
                     for (let i = 0; i < draft.reviews.length; i++) {
                         const rule = draft.reviews[i];
                         if (reviews >= rule.min && reviews <= rule.max) { revIdx = i; break; }

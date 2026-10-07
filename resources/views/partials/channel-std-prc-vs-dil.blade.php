@@ -333,7 +333,7 @@
             const dilDisc = chStdRangeDisc(dil, draft.dil);
             const reviews = chStdReviews(d);
             let revDisc = 0;
-            if (reviews > 0 && reviews <= draft.reviewMax) {
+            if (reviews > 0 && reviews < draft.reviewMax) {
                 for (let i = 0; i < draft.reviews.length; i++) {
                     const rule = draft.reviews[i];
                     if (reviews >= rule.min && reviews <= rule.max) { revDisc = Number(rule.disc) || 0; break; }
@@ -481,7 +481,7 @@
                 if (ageIdx >= 0) ageCounts['a' + ageIdx] += 1; else ageCounts.none += 1;
                 const reviews = chStdReviews(d);
                 let revIdx = -1;
-                if (reviews > 0 && reviews <= draft.reviewMax) {
+                if (reviews > 0 && reviews < draft.reviewMax) {
                     for (let i = 0; i < draft.reviews.length; i++) {
                         if (reviews >= draft.reviews[i].min && reviews <= draft.reviews[i].max) { revIdx = i; break; }
                     }
@@ -681,7 +681,7 @@
         }
         function chStdRevDiscPct(d) {
             const reviews = chStdReviews(d);
-            if (!(reviews > 0) || reviews > chStdReviewMax) return 0;
+            if (!(reviews > 0) || reviews >= chStdReviewMax) return 0;
             for (let i = 0; i < chStdRev.length; i++) {
                 const rule = chStdRev[i];
                 if (reviews >= rule.min && reviews <= rule.max) return Number(rule.disc) || 0;
@@ -712,7 +712,7 @@
                 chStdDiscCol('Age Disc', 'age_discount', 'Age Disc from Std prc vs dil. INV = 0 → blank.', chStdAgeDisc),
                 chStdDiscCol('Dil Disc', 'dil_discount', 'Dil Disc from Std prc vs dil. INV = 0 → blank.', chStdDilDisc),
                 chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR discount from Std prc vs dil. Up/down disc is used as-is and is not added to the CVR slab.', function(d) { return chStdCvrDiscPct(d); }),
-                chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Above max reviews → 0.', chStdRevDiscPct),
+                chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
                 chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];
         }
