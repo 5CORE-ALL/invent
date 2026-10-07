@@ -1001,6 +1001,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Channel Sprc Dil stays as saved slabs only. These jobs no longer write S PRC.
+        if (false) {
         // New Temu One Sprc Dil (Dil→SNROI) + CVR + eBay/Amz/LMP cap → NTO_SPRICE,
         // then push S Base to Temu when it differs from the live base.
         // 04:10 and 20:10 IST — same twice-daily idea as Amazon, offset 10 min.
@@ -1061,6 +1063,7 @@ class Kernel extends ConsoleKernel
                 ->runInBackground()
                 ->appendOutputTo($log);
         }
+        }
 
         $schedule->command('wayfair:daily-price-upload')
             ->dailyAt((string) config('wayfair_upload.schedule_time', '05:00'))
@@ -1087,14 +1090,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Shopify B2C Dil→SNROI → save SPRICE (page not required).
-        $schedule->command('shopify-b2c:rule-sprice-apply')
-            ->dailyAt('04:10')
-            ->timezone('America/New_York')
-            ->name('shopify-b2c-rule-sprice-apply-4am-et')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // Shopify B2C Dil→SNROI no longer writes SPRICE. Slabs stay on the page.
 
         /*
         |--------------------------------------------------------------------------

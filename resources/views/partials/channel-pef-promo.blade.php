@@ -3928,15 +3928,6 @@
          *  Does not write into SPRICE — an unsaved row stays empty, not a live guess. */
         function chPromoLiveSprice(d) {
             if (!d || !chPromoIsChildRow(d)) return 0;
-            if (typeof ebaySprcDilForRow === 'function') {
-                const sprcDil = ebaySprcDilForRow(d);
-                    if (sprcDil > 0) {
-                    if (CHANNEL_PROMO_CHANNEL === 'shopify_b2c' && typeof chPromoFinalSpriceToSave === 'function') {
-                        return chPromoFinalSpriceToSave(d, sprcDil);
-                    }
-                    return chPromoFloorShopifySpriceToAmz(d, chPromoCapSpriceToLmp(d, sprcDil));
-                }
-            }
             const zeroSold = typeof chPromoZeroSoldRuleSprice === 'function' ? chPromoZeroSoldRuleSprice(d) : 0;
             if (typeof chPromoUsesSprcDilOnlySprice === 'function' && chPromoUsesSprcDilOnlySprice()) {
                 return zeroSold > 0 ? chPromoFloorShopifySpriceToAmz(d, chPromoCapSpriceToLmp(d, zeroSold)) : 0;
@@ -4312,10 +4303,6 @@
         }
         /** Temu discounted start: 0 Sold Dil→Target GROI%, else Std × (1 − T Promo). Never stored S PRC. */
         function chPromoTemuDiscountedStart(d) {
-            if (typeof ebaySprcDilForRow === 'function') {
-                const sprcDil = Number(ebaySprcDilForRow(d));
-                if (sprcDil > 0) return chPromoRound2(sprcDil);
-            }
             const zeroSold = typeof chPromoTemuZeroSoldSprice === 'function'
                 ? Number(chPromoTemuZeroSoldSprice(d))
                 : 0;
@@ -9579,10 +9566,6 @@
                 if (!extra.skip_amz_floor) out = chPromoFloorShopifySpriceToAmz(d, out);
                 return chPromoRoundChannelSprice(out);
             };
-            if (typeof ebaySprcDilForRow === 'function') {
-                const sprcDil = ebaySprcDilForRow(d);
-                if (sprcDil > 0) return finish(sprcDil);
-            }
             if (typeof chPromoZeroSoldRuleSprice === 'function') {
                 const zeroSold = chPromoZeroSoldRuleSprice(d);
                 if (zeroSold > 0) return finish(zeroSold);
@@ -10150,7 +10133,8 @@
                 }
             }
         }
-        function chPromoScheduleB2cRuleSpriceThenPush(opts) {
+        function chPromoScheduleB2cRuleSpriceThenPush() {
+            return;
             if (CHANNEL_PROMO_CHANNEL !== 'shopify_b2c') return;
             opts = opts || {};
             const delay = opts.delay != null ? opts.delay : 500;

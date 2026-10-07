@@ -345,8 +345,7 @@
                         @endif
                         <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
-                            it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
-                            (page close OK).
+                            the slab is kept on this page. It does <strong>not</strong> write <strong>S PRC</strong> or queue <strong>Push Prc</strong>.
                         </li>
                         @if(!empty($ebaySprcDilTargetNroi) && $ebaySprcDilChannel !== 'purchasing_power')
                         <li>
@@ -404,8 +403,7 @@
                         @endif
                         <li>
                             <strong>When</strong> a price is calculated from a Dil slab match:
-                            it auto-applies to <strong>S PRC</strong> and is <strong>queued for Push Prc</strong>
-                            (page close OK).
+                            the slab is kept on this page. It does <strong>not</strong> write <strong>S PRC</strong> or queue <strong>Push Prc</strong>.
                         </li>
                         @if($ebaySprcDilChannel === 'temu3')
                         <li>
@@ -461,7 +459,7 @@
                         </li>
                         <li>
                             <strong>When</strong> you change a Dil / Target value (or add/delete a slab):
-                            slabs <strong>autosave</strong>. S PRC updates from the new rule. <strong>Save and Apply</strong> is optional (push / full wipe-then-write).
+                            slabs <strong>autosave</strong>. S PRC is left as it is.
                         </li>
                         <li>
                             <strong>Clearance</strong> count: INV &gt; 0 and Clearance is <strong>Yes</strong> on Inv Days.
@@ -563,8 +561,8 @@
                 </div>
                 <div class="modal-footer py-2 flex-wrap gap-1">
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="ebay-dil-groi-save-btn"
-                        title="Optional. Slabs already autosave when you change a value. This also wipe-then-writes S PRC and queues push if enabled.">
-                        <i class="fas fa-save me-1"></i> Save and Apply
+                        title="Saves these Dil slabs only. Does not write S PRC or queue a price push.">
+                        <i class="fas fa-save me-1"></i> Save rules
                     </button>
                 </div>
             </div>
@@ -700,7 +698,7 @@
                 || EBAY_DIL_GROI_CHANNEL === 'mercari_woship';
         }
         function ebayDgAutoApplies() {
-            return true;
+            return false;
         }
         function ebayDgExcludeShip() {
             // Purchasing Power uses Ship BB in the Amazon invert — do not drop it here.
@@ -2184,14 +2182,6 @@
         }
         function ebayAfterDilGroiRulesChanged() {
             redrawEbaySprcDilColumn();
-            // Same as Amazon: Dil edit wipes saved S PRC, then writes the cell Dil $.
-            ebayScheduleSprcDilAutoApply({
-                delay: 400,
-                flashClear: true,
-                persist: true,
-                forcePersist: true,
-                toast: false,
-            });
         }
         /** Macys / Purchasing Power: paint Dil S PRC in the grid (persist is ebayApplySprcDilToTable). */
         function ebayDgPaintMacysRuleSprice() {
@@ -2797,7 +2787,7 @@
                 $('#ebay-dil-groi-status').text('Autosaving Dil slabs…');
                 postEbayDilGroiRules().then(function() {
                     if (seq !== ebayDgAutosaveSeq) return;
-                    $('#ebay-dil-groi-status').text('Autosaved. S PRC updates as you type — Save and Apply not required.');
+                    $('#ebay-dil-groi-status').text('Autosaved. Rules only — S PRC was not changed.');
                 }, function(xhr) {
                     if (seq !== ebayDgAutosaveSeq) return;
                     if (xhr && xhr.statusText === 'abort') return;
@@ -2824,16 +2814,7 @@
                     renderEbayDilGroiModalTable();
                 }
                 if (res && res.cvr_adj) ebayPaintCvrGroiAdjTable(res.cvr_adj);
-                if (ebayDgIsShopifyB2b() || ebayDgIsEbay123()) {
-                    ebayDgB2bPersistOnce = false;
-                    ebayDgClearApplyPersistOnce = false;
-                }
-                const n = await ebayApplySprcDilToTable({ persist: true, push: true });
-                $('#ebay-dil-groi-status').text(ebayDgIsPurchasingPower()
-                    ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); apply + MCM price push queued in the background.'
-                    : (ebayDgIsMacys()
-                        ? 'Saved via API. SPRICE cleared, then Dil painted on ' + n + ' SKU(s); persist queued in the background.'
-                        : ('Saved via API. S PRC applied on ' + n + ' SKU(s); only S PRC ≠ Price were queued.')));
+                $('#ebay-dil-groi-status').text('Saved. Rules only — S PRC was not changed.');
                 return res;
             });
         }
@@ -2865,7 +2846,7 @@
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
                 try {
                     await saveEbayDilGroiRules();
-                    ebayDgToast('success', 'Sprc Dil saved and applied');
+                    ebayDgToast('success', 'Sprc Dil rules saved');
                 } catch (xhr) {
                     ebayDgToast('error', 'Save failed: ' + (
                         (xhr && xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
