@@ -1533,6 +1533,20 @@
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         window.ttHasBlueTriangle = ttHasBlueTriangle;
+        window.ttRefreshBlueBadge = function() {
+            let blueTriangleCount = 0;
+            let rows = [];
+            try { rows = (table && table.getRows) ? (table.getRows() || []) : []; } catch (e) { rows = []; }
+            rows.forEach(function(row) {
+                let d = null;
+                try { d = row.getData(); } catch (e2) { d = null; }
+                if (ttHasBlueTriangle(d)) blueTriangleCount++;
+            });
+            $('#tiktok-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
+            if (typeof syncTtTriangleBadgeState === 'function') syncTtTriangleBadgeState();
+        };
         function syncTtTriangleBadgeState() {
             $('#tiktok-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',

@@ -341,7 +341,7 @@
             }
             function chPushPaintRowColumns(row) {
                 if (!row || typeof row.getCell !== 'function') return;
-                ['push_price', 'push_status', 'push_prc', 'SPRICE', 'price', 'groi', 'gpft', 'profit'].forEach(function(field) {
+                ['push_price', 'push_status', 'push_prc', 'SPRICE', 'price', 'TT Price', 'eBay Price', 'groi', 'gpft', 'profit'].forEach(function(field) {
                     let cell;
                     try { cell = row.getCell(field); } catch (e) { return; }
                     if (!cell || typeof cell.getElement !== 'function' || typeof cell.getColumn !== 'function') return;
@@ -490,6 +490,9 @@
                     const t = sku ? bySku[sku] : null;
                     if (t) patchRecord(d, t);
                 });
+                if (priceChanged && typeof window.ttRefreshBlueBadge === 'function') {
+                    try { window.ttRefreshBlueBadge(); } catch (e) { /* ignore */ }
+                }
                 if ((priceChanged || Object.keys(bySku).length) && typeof updateSummary === 'function') {
                     clearTimeout(applyChannelPushSpriceTasks._sumTimer);
                     applyChannelPushSpriceTasks._sumTimer = setTimeout(function() {
@@ -910,6 +913,10 @@
                 p = chPushSpriceCapMacysToAmz(d, p);
                 if (!sku || !(p > 0)) return false;
                 if (String(sku).toUpperCase().indexOf('PARENT') !== -1) return false;
+                // Blue badge is only in-stock rows. Out-of-stock SKUs were filling a 2,400 push.
+                if (!force && (CH_PUSH_SPRICE_CHANNEL === 'tiktok' || CH_PUSH_SPRICE_CHANNEL === 'tiktok2')) {
+                    if (!(parseFloat(d && d.INV) > 0)) return false;
+                }
                 if (chPushSpriceRowBlocked(d)) return false;
                 if (!CH_PUSH_SPRICE_CAN_LIVE) return false;
                 if (!chPushSpriceAutoPushAllowed()) {

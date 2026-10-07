@@ -358,9 +358,14 @@
         const text = Math.round(percent) + '%';
         return st ? '<span style="' + st + '">' + text + '</span>' : text;
     }
+    function plsInv(data) {
+        if (!data) return 0;
+        const raw = data.inventory != null ? data.inventory : (data.INV != null ? data.INV : data.inv);
+        return parseFloat(raw) || 0;
+    }
     function plsHasBlueTriangle(data) {
         if (plsIsParentRow(data)) return false;
-        if (!(parseFloat(data && (data.INV != null ? data.INV : data.inv)) > 0)) return false;
+        if (!(plsInv(data) > 0)) return false;
         const sprice = plsRowSpriceForAlert(data);
         const price = parseFloat(data && data.price) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
@@ -1028,7 +1033,7 @@
                             : (rowData.has_custom_sprice === false
                                 ? `<span style="color: #0d6efd; font-weight: 500;">${formatted}</span>`
                                 : formatted);
-                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
+                        const blueTri = plsHasBlueTriangle(rowData)
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';

@@ -231,6 +231,17 @@
             height: 14px;
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
+        @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css'])
+        #ch-std-prc-btn {
+            background: #0f766e;
+            border-color: #0f766e;
+            color: #fff;
+        }
+        #ch-std-prc-btn:hover, #ch-std-prc-btn:focus {
+            background: #115e59;
+            border-color: #115e59;
+            color: #fff;
+        }
         @include('partials.ebay-sprc-dil', [
             'ebaySprcDilPart' => 'css',
             'ebaySprcDilChannel' => 'newtemutwo',
@@ -523,6 +534,7 @@
                         <option value="l30_gt_l60">CVR30 &gt; CVR60</option>
                         <option value="equal">CVR60 = CVR30</option>
                     </select>
+                    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons'])
                     @include('partials.ebay-sprc-dil', [
                         'ebaySprcDilPart' => 'buttons',
                         'ebaySprcDilChannel' => 'newtemutwo',
@@ -747,6 +759,7 @@
             </div>
         </div>
     </div>
+    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'modals'])
     @include('partials.ebay-sprc-dil', [
         'ebaySprcDilPart' => 'modals',
         'ebaySprcDilChannel' => 'newtemutwo',
@@ -1070,6 +1083,49 @@
             fn(row, row.getData() || {});
         });
     }
+    const CH_PROMO_RULES_BASE = '/channel-promo-pricing/newtemutwo';
+    function chPromoCsrf() {
+        return (typeof ntoPushCsrf === 'function') ? ntoPushCsrf() : '';
+    }
+    function chPromoStdBase(d) {
+        const raw = d && (d.STANDARD_PRICE != null && d.STANDARD_PRICE !== '' ? d.STANDARD_PRICE : d.standard_price);
+        const n = Number(raw);
+        return (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
+    }
+    function chPromoLp(d) {
+        const n = Number(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp));
+        return isFinite(n) ? n : 0;
+    }
+    function chPromoShipCost(d) {
+        const n = Number(d && (d.Ship_productmaster != null ? d.Ship_productmaster : (d.temu_ship != null ? d.temu_ship : d.ship)));
+        return (isFinite(n) && n > 0) ? n : 0;
+    }
+    function chPromoOvL30(d) {
+        const n = Number(d && d.L30);
+        return isFinite(n) ? n : 0;
+    }
+    function chPromoTakehomeMargin(d) {
+        const n = Number(d && d.percentage);
+        if (!isFinite(n) || n <= 0) return 0.95;
+        return n > 1 ? n / 100 : n;
+    }
+    function chPromoAdsFrac() {
+        if (typeof temuAdsPercentForNet !== 'function') return 0;
+        const pct = Number(temuAdsPercentForNet()) || 0;
+        return pct > 1 ? pct / 100 : pct;
+    }
+    function chPromoToast(type, msg) {
+        if (typeof showToast === 'function') showToast(msg, type || 'info');
+    }
+    function chPromoPatchRowData(row, patch) {
+        if (!row || typeof row.update !== 'function' || !patch) return;
+        try { row.update(patch); } catch (e) { /* ignore */ }
+    }
+    function saveChannelSpriceBatch(updates) {
+        if (typeof ntoSaveSpriceChunks !== 'function') return $.Deferred().resolve().promise();
+        return ntoSaveSpriceChunks(updates || []);
+    }
+    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script'])
     async function ntoSaveSpriceChunks(updates) {
         const size = 200;
         for (let i = 0; i < updates.length; i += size) {
@@ -1188,33 +1244,14 @@
         return isFinite(n) ? n : null;
     }
 
-    /**
-     * Discounted Price = Sprc Dil (OV L30 Dil → Target GROI).
-     * If Dil is missing or over the last slab (no match), Amazon-style fallback:
-     * STD (T Price). Cap compute then takes min(eBay, Amazon, LMP) when cheaper.
-     * Saved S PRC from the server is reused until Dil / CVR / pricing inputs change.
-     */
+    /** Discounted Price = Std prc vs dil only. Sprc Dil does not write S PRC. */
     function temuDiscountedPrice(row) {
         if (!row) return 0;
         if (typeof window.chStdPriceForRow === 'function') {
             const stdRule = Number(window.chStdPriceForRow(row)) || 0;
             if (stdRule > 0) return +stdRule.toFixed(2);
         }
-        if (typeof chPromoTemuZeroSoldSprice === 'function') {
-            const zeroSold = Number(chPromoTemuZeroSoldSprice(row));
-            if (zeroSold > 0) return +zeroSold.toFixed(2);
-        }
-        if (typeof chPromoTemuSpriceFromStdPrmtCpn === 'function') {
-            const combo = Number(chPromoTemuSpriceFromStdPrmtCpn(row));
-            if (combo > 0) return +combo.toFixed(2);
-        }
-        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-            const calc = chPromoSpriceFromStdTPromo(row, { skip_lmp_cap: true });
-            if (calc > 0) return +Number(calc).toFixed(2);
-        }
-        if (!(chPromoInv(row) > 0)) return 0;
-        const std = temuStdPrc(row);
-        return std > 0 ? std : 0;
+        return 0;
     }
 
     // The cap chain runs a GROI bisection per call, and a dozen formatters plus the badge
@@ -3444,7 +3481,7 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'Sprc Dil from Dil (OV L30 ÷ INV) → Target NROI. Dil = 0 uses the 0–0 slab. Temu L30 = 0 still uses the Dil-matching slab. Then the lowest of eBay, Amazon, and LMP.',
+                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, CVR, and Review discounts). Then the lowest of eBay, Amazon, and LMP. Sprc Dil does not set this cell.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'

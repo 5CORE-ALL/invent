@@ -248,14 +248,23 @@
             return 0;
         }
         function chStdCvrLive(d) {
-            const a = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30']);
+            let a = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30']);
+            if (!(a > 0)) a = chStdNum(d, ['temu_l30']);
             const sess = chStdNum(d, ['Sess30', 'sess30', 'sessions_l30', 'views']);
             if (sess > 0) return (a / sess) * 100;
             return (typeof chPromoCvr === 'function') ? (Number(chPromoCvr(d)) || 0) : 0;
         }
         function chStdCvrTrend(d) {
+            const amzUnits = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30', 'Sess30', 'sess30', 'sessions_l30']);
+            if (!(amzUnits > 0) && d && (d.cvr_30 != null || d.cvr_60 != null)) {
+                const c30 = chStdNum(d, ['cvr_30', 'cvr_percent']);
+                const c60 = chStdNum(d, ['cvr_60']);
+                if (c30 + 0.1 < c60) return 'down';
+                if (c30 > c60 + 0.1) return 'up';
+                return 'flat';
+            }
             const cvr = chStdCvrLive(d);
-            const a30 = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30']);
+            const a30 = chStdNum(d, ['A_L30', 'a_l30', 'al30', 'AL30', 'temu_l30']);
             const s30 = chStdNum(d, ['Sess30', 'sess30', 'sessions_l30', 'views']);
             const a60 = chStdNum(d, ['units_ordered_l60', 'a_l60', 'al60']);
             const s60 = chStdNum(d, ['sessions_l60', 'sess60']);

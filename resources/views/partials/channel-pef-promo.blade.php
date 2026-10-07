@@ -3574,7 +3574,9 @@
                 return chPromoRound2(sprice);
             }
             if (!chPromoShouldCapSpriceToLmp(d)) {
-                return chPromoCapToStdWhenNoLmp(d, sprice);
+                // TikTok, Faire, Doba, TopDawg, FB, Shopify B2B: push the S PRC
+                // cell. Do not swap it for Standard — that leaves the blue badge up.
+                return chPromoRound2(sprice);
             }
             if (chPromoIsEbayChannel()) {
                 if (typeof ebayCapSpriceToLmp === 'function') return ebayCapSpriceToLmp(d, sprice);

@@ -2056,30 +2056,18 @@
         return getTemu3DisplayLmp(row);
     }
 
-    /** Discounted Price = Sprc Dil (Dil → Target GROI%), else 0 Sold / Std × (1 − T Promo). Never uses stored S PRC. */
+    /** Discounted Price = Std prc vs dil only. Sprc Dil does not write S PRC. */
     function temuDiscountedPrice(row) {
         if (!row || (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(row))) return 0;
         if (typeof window.chStdPriceForRow === 'function') {
             const stdRule = Number(window.chStdPriceForRow(row)) || 0;
             if (stdRule > 0) return +stdRule.toFixed(2);
         }
-        if (typeof chPromoTemuZeroSoldSprice === 'function') {
-            const zeroSold = Number(chPromoTemuZeroSoldSprice(row));
-            if (zeroSold > 0) return +zeroSold.toFixed(2);
-        }
-        if (typeof chPromoTemuSpriceFromStdPrmtCpn === 'function') {
-            const combo = Number(chPromoTemuSpriceFromStdPrmtCpn(row));
-            if (combo > 0) return +combo.toFixed(2);
-        }
-        if (typeof chPromoSpriceFromStdTPromo === 'function') {
-            const calc = chPromoSpriceFromStdTPromo(row, { skip_lmp_cap: true });
-            if (calc > 0) return +Number(calc).toFixed(2);
-        }
         return 0;
     }
 
     /**
-     * S PRC = Discounted Price (Sprc Dil), then the lowest of eBay / Amazon / LMP when those are cheaper.
+     * S PRC = Std prc vs dil, then the lowest of eBay / Amazon / LMP when those are cheaper.
      * Stored S PRC is never the source — only an explicit candidate (use_passed_as_discounted).
      */
     function temuSpriceCapResult(row, rawSprice, extra) {
@@ -4203,7 +4191,7 @@
                     sorter: temuSortBy(function(d) {
                         return typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d.sprice) || 0);
                     }),
-                    headerTooltip: "S PRC from Sprc Dil. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU uses the Dil-matching slab (including Temu L30 = 0), then the lowest of eBay, Amazon, and LMP. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC from Std prc vs dil (Std minus Age, Dil, CVR, and Review discounts), then the lowest of eBay, Amazon, and LMP. Sprc Dil does not set this cell. Orange Amz/EB = channel cap. Red triangle = LMP. Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (typeof isTemu3ParentRow === 'function' && isTemu3ParentRow(rowData)) return '';
