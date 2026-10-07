@@ -1301,6 +1301,10 @@
     /** S PRC to show / push. Sprc Dil above A Price stays. A stored Amz pin cannot cap it down. */
     function shopifyB2cDisplayedSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
+        if (typeof window.chStdPriceForRow === 'function') {
+            const stdRule = Number(window.chStdPriceForRow(data)) || 0;
+            if (stdRule > 0) return stdRule;
+        }
         const stored = parseFloat(data.SPRICE) || 0;
         const dil = shopifyB2cRawSprcDil(data);
         const amz = shopifyB2cAmzPrice(data);

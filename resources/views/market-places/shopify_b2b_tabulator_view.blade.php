@@ -691,6 +691,10 @@
 
     function shopifyB2bDisplayedSprice(data) {
         if (!data || isShopifyB2bParentRow(data)) return 0;
+        if (typeof window.chStdPriceForRow === 'function') {
+            const stdRule = Number(window.chStdPriceForRow(data)) || 0;
+            if (stdRule > 0) return stdRule;
+        }
         if (typeof ebaySprcDilForRow === 'function') {
             const dil = Number(ebaySprcDilForRow(data)) || 0;
             if (dil > 0) return Math.round(dil * 100) / 100;

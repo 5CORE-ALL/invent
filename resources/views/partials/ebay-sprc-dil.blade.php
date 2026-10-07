@@ -2389,6 +2389,10 @@
             return patch;
         }
         function ebayTiktokRuleDiscount(d) {
+            if (typeof window.chStdPriceForRow === 'function') {
+                const stdRule = Number(window.chStdPriceForRow(d)) || 0;
+                if (stdRule > 0) return stdRule;
+            }
             if (ebayDgIsDobaWithoutship()) {
                 const copied = ebayDgDobaTabulatorSPick(d);
                 if (copied > 0) return copied;

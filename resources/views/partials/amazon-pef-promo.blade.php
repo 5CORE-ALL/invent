@@ -3498,8 +3498,29 @@
             }, opts.delay != null ? opts.delay : 400);
         }
         function bindAmzRuleSpriceAutofill() {
-            // Do not clear or rewrite stored S PRC when the table loads.
-            // Recalc stays on the S PRC button and when Dil / CVR / Rev rules are saved.
+            let waits = 0;
+            let started = false;
+            function go() {
+                if (started) return;
+                const n = (typeof table !== 'undefined' && table && typeof table.getDataCount === 'function')
+                    ? table.getDataCount()
+                    : 0;
+                if (!(n > 0) || !amzRuleSpriceSlabsReady) {
+                    if (waits++ < 60) setTimeout(go, 500);
+                    return;
+                }
+                const start = function() {
+                    if (started) return;
+                    started = true;
+                    amzScheduleRuleSpriceSync({ force: true, toast: true, delay: 200 });
+                };
+                if (typeof loadAmzStdPrcRules === 'function') {
+                    Promise.resolve(loadAmzStdPrcRules()).then(start).catch(start);
+                } else {
+                    start();
+                }
+            }
+            go();
         }
         window.amzScheduleRuleSpriceSync = amzScheduleRuleSpriceSync;
         window.amzApplyRuleSpriceToAllRows = amzApplyRuleSpriceToAllRows;

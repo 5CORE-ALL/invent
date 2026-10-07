@@ -204,19 +204,30 @@
         #amzStdPrcModal .amz-sp-metric .amz-sp-metric-pct { font-weight: 700; text-align: right; }
         #amzStdPrcModal .amz-sp-section { font-weight: 700; font-size: 12px; margin: 12px 0 6px; color: #334155; }
         #amzStdPrcModal .amz-sp-input {
-            width: 58px;
-            max-width: 100%;
+            width: 52px;
+            min-width: 52px;
+            max-width: 52px;
             margin: 0 auto;
             display: inline-block;
+            box-sizing: border-box;
             text-align: center;
             font-weight: 600;
-            padding: 2px 6px;
-            font-size: 12px;
+            padding: 0 4px;
+            font-size: 13px;
+            line-height: 24px;
             height: 28px;
+            color: #0f172a;
             border-radius: 7px;
             border-color: #dbe3ee;
-            background: #f8fafc;
+            background: #fff;
             font-variant-numeric: tabular-nums;
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        #amzStdPrcModal .amz-sp-input::-webkit-outer-spin-button,
+        #amzStdPrcModal .amz-sp-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
         #amzStdPrcModal .amz-sp-input:focus {
             background: #fff;

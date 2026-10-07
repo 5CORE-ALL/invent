@@ -32,7 +32,30 @@
         #chStdPrcModal .ch-sp-col .table { font-size: 12px; margin-bottom: 0; }
         #chStdPrcModal .ch-sp-col .table th, #chStdPrcModal .ch-sp-col .table td { padding: 5px 6px; vertical-align: middle; }
         #chStdPrcModal .ch-sp-col .table thead th { background: #f8fafc; color: #64748b; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
-        #chStdPrcModal .ch-sp-input { width: 100%; max-width: 58px; margin: 0 auto; display: inline-block; text-align: center; font-weight: 600; font-size: 12px; height: 28px; border-radius: 7px; }
+        #chStdPrcModal .ch-sp-input {
+            width: 52px;
+            min-width: 52px;
+            max-width: 52px;
+            margin: 0 auto;
+            display: inline-block;
+            box-sizing: border-box;
+            text-align: center;
+            font-weight: 600;
+            font-size: 13px;
+            line-height: 24px;
+            height: 28px;
+            padding: 0 4px;
+            color: #0f172a;
+            background: #fff;
+            border-radius: 7px;
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        #chStdPrcModal .ch-sp-input::-webkit-outer-spin-button,
+        #chStdPrcModal .ch-sp-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
         #chStdPrcModal td.text-end .ch-sp-input { margin-left: auto; margin-right: 0; }
         #chStdPrcModal .ch-sp-cvr-thresh { display: inline-flex; align-items: center; gap: 4px; color: #64748b; font-weight: 700; }
         #chStdPrcModal .ch-sp-cvr-thresh .ch-sp-input { width: 52px; margin: 0; }
@@ -616,6 +639,70 @@
         function chStdDraftNow() {
             return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax };
         }
+        function chStdDiscBadge(pct) {
+            const n = Number(pct) || 0;
+            if (!(n > 0)) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
+            return '<span style="font-weight:700;color:#0f172a;">' + n + '</span>';
+        }
+        function chStdAgeDisc(d) {
+            return chStdRangeDisc(chStdAgeDays(d), chStdAge);
+        }
+        function chStdDilDisc(d) {
+            const dil = (typeof chPromoDil === 'function') ? chPromoDil(d) : 0;
+            return chStdRangeDisc(dil, chStdDil);
+        }
+        function chStdCvrDiscPct(d) {
+            const slab = (typeof chPromoCvrDiscForRow === 'function') ? (Number(chPromoCvrDiscForRow(d)) || 0) : 0;
+            const hit = chStdCvrMatch(d, chStdCvr);
+            const trend = hit ? (Number(hit.disc) || 0) : (Number(chStdCvr.flat_disc) || 0);
+            return Math.max(0, slab + (trend > 0 ? trend : 0));
+        }
+        function chStdRevDiscPct(d) {
+            const reviews = chStdReviews(d);
+            if (!(reviews > 0) || reviews > chStdReviewMax) return 0;
+            for (let i = 0; i < chStdRev.length; i++) {
+                const rule = chStdRev[i];
+                if (reviews >= rule.min && reviews <= rule.max) return Number(rule.disc) || 0;
+            }
+            return 0;
+        }
+        function chStdDiscCol(title, field, tip, read) {
+            return {
+                title: title,
+                field: field,
+                width: 72,
+                hozAlign: 'center',
+                vertAlign: 'middle',
+                headerSort: true,
+                headerTooltip: tip,
+                sorter: function(a, b, aRow, bRow) {
+                    return (Number(read(aRow.getData() || {})) || 0) - (Number(read(bRow.getData() || {})) || 0);
+                },
+                formatter: function(cell) {
+                    const d = cell.getRow().getData() || {};
+                    if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                    return chStdDiscBadge(read(d));
+                },
+            };
+        }
+        function chStdDiscColumns() {
+            return [
+                chStdDiscCol('Age Disc', 'age_discount', 'Age Disc from Std prc vs dil. INV = 0 → blank.', chStdAgeDisc),
+                chStdDiscCol('Dil Disc', 'dil_discount', 'Dil Disc from Std prc vs dil. INV = 0 → blank.', chStdDilDisc),
+                chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR slab plus CVR up/down from Std prc vs dil.', chStdCvrDiscPct),
+                chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Above max reviews → 0.', chStdRevDiscPct),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
+            ];
+        }
+        function chStdAppendDiscColumns(cols) {
+            const out = Array.isArray(cols) ? cols.slice() : [];
+            const have = {};
+            out.forEach(function(c) { if (c && c.field) have[c.field] = 1; });
+            chStdDiscColumns().forEach(function(c) {
+                if (!have[c.field]) out.push(c);
+            });
+            return out;
+        }
         function chStdPriceForRow(d, draft) {
             if (!d) return 0;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
@@ -628,6 +715,33 @@
             return (typeof chPromoRoundChannelSprice === 'function')
                 ? chPromoRoundChannelSprice(raw)
                 : Math.round(raw * 100) / 100;
+        }
+        window.chStdPriceForRow = chStdPriceForRow;
+        if (typeof channelPromoPricingColumns === 'function' && !channelPromoPricingColumns._chStd) {
+            const chStdPrevPricingCols = channelPromoPricingColumns;
+            channelPromoPricingColumns = function() { return chStdAppendDiscColumns(chStdPrevPricingCols()); };
+            channelPromoPricingColumns._chStd = true;
+            window.channelPromoPricingColumns = channelPromoPricingColumns;
+        }
+        if (typeof channelPromoAnalyticsColumns === 'function' && !channelPromoAnalyticsColumns._chStd) {
+            const chStdPrevAnalyticsCols = channelPromoAnalyticsColumns;
+            channelPromoAnalyticsColumns = function() { return chStdAppendDiscColumns(chStdPrevAnalyticsCols()); };
+            channelPromoAnalyticsColumns._chStd = true;
+            window.channelPromoAnalyticsColumns = channelPromoAnalyticsColumns;
+        }
+        function chStdEnsureColumns() {
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
+            let exists = false;
+            try { exists = !!table.getColumn('sum_discount'); } catch (e) { exists = false; }
+            if (exists) return;
+            let anchor = null;
+            try { anchor = table.getColumn('SPRICE') || table.getColumn('sprice'); } catch (e) { anchor = null; }
+            chStdDiscColumns().forEach(function(col) {
+                try {
+                    if (anchor) table.addColumn(col, true, anchor);
+                    else table.addColumn(col);
+                } catch (err) { /* column already present */ }
+            });
         }
         function chStdCatalog() {
             const bySku = {};
@@ -684,15 +798,23 @@
             if (chStdAutoApplied) return;
             const extraN = (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) ? allTableData.length : 0;
             const tblN = (typeof table !== 'undefined' && table && typeof table.getDataCount === 'function') ? table.getDataCount() : 0;
+            chStdEnsureColumns();
             if (!(extraN > 0) && !(tblN > 0)) {
-                if (chStdAutoWaits++ < 40) setTimeout(chStdScheduleAutoApply, 500);
+                if (chStdAutoWaits++ < 120) setTimeout(chStdScheduleAutoApply, 500);
                 return;
             }
             chStdLoad().always(function() {
                 if (chStdAutoApplied) return;
                 chStdAutoApplied = true;
+                chStdEnsureColumns();
                 const updates = chStdWritePrices(chStdDraftNow());
+                const redraw = function() {
+                    if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') {
+                        try { table.redraw(true); } catch (e) { /* ignore */ }
+                    }
+                };
                 chStdSavePrices(updates).always(function() {
+                    redraw();
                     if (updates.length && typeof chPromoToast === 'function') {
                         chPromoToast('success', 'S PRC set from Std prc vs dil (' + updates.length + ')');
                     }
