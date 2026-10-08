@@ -8,8 +8,7 @@ use Illuminate\Support\Facades\DB;
  * Dil → S Bid slabs for one eBay campaign-ads account.
  * Each account has its own key in ebay_sbid_rules (not shared).
  *
- * Row 1 (0–0): use that listing's ES Bid.
- * Later rows: the editable S Bid % on that slab.
+ * Every row has an editable S Bid % (the 0–0 row is SKUs with no sales; it starts at 0).
  * First matching slab wins. A slab that starts where the previous one ended
  * is exclusive on From, so Dil 10 stays on 0.1–10.
  * Four more range tables each add their own S Bid to the Dil bid:
@@ -32,7 +31,7 @@ final class DilVsSbidRule
     public static function defaultSlabs(): array
     {
         return [
-            ['min' => 0, 'max' => 0, 'mode' => 'es_bid', 'bid' => null],
+            ['min' => 0, 'max' => 0, 'mode' => 'dynamic', 'bid' => 0.0],
             ['min' => 0.1, 'max' => 10, 'mode' => 'dynamic', 'bid' => 8],
         ];
     }
@@ -351,12 +350,11 @@ final class DilVsSbidRule
                 continue;
             }
             $mode = self::modeForIndex(count($clean));
-            $bid = null;
-            if ($mode === 'dynamic') {
-                $bid = self::num($slab['bid'] ?? null);
-                if ($bid === null || $bid < 0) {
-                    $bid = 8.0;
-                }
+            $bid = self::num($slab['bid'] ?? null);
+            if ($bid === null || $bid < 0) {
+                // The 0–0 slab used to be ES Bid (no S Bid saved). It now starts at 0.
+                $isZeroSlab = abs($min) < 0.0000001 && abs($max) < 0.0000001;
+                $bid = $isZeroSlab ? 0.0 : 8.0;
             }
             $clean[] = [
                 'min' => $min,
@@ -393,10 +391,6 @@ final class DilVsSbidRule
 
     public static function modeForIndex(int $index): string
     {
-        if ($index <= 0) {
-            return 'es_bid';
-        }
-
         return 'dynamic';
     }
 
@@ -418,15 +412,6 @@ final class DilVsSbidRule
      */
     private static function decision(array $slab, float $esBid): array
     {
-        $mode = (string) $slab['mode'];
-        if ($mode === 'es_bid') {
-            if ($esBid > 0) {
-                return ['mode' => 'es_bid', 'bid' => $esBid, 'off' => false, 'label' => 'ES Bid'];
-            }
-
-            return ['mode' => 'none', 'bid' => 0.0, 'off' => false, 'label' => 'ES Bid missing'];
-        }
-
         $bid = (float) ($slab['bid'] ?? 0);
         if ($bid > 0) {
             return ['mode' => 'dynamic', 'bid' => $bid, 'off' => false, 'label' => 'S Bid'];

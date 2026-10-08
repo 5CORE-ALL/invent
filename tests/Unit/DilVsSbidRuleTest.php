@@ -7,12 +7,13 @@ use PHPUnit\Framework\TestCase;
 
 class DilVsSbidRuleTest extends TestCase
 {
-    public function test_defaults_are_es_bid_then_one_sbid_slab(): void
+    public function test_defaults_are_two_sbid_slabs_with_no_es_bid(): void
     {
         $slabs = DilVsSbidRule::defaultSlabs();
 
         $this->assertCount(2, $slabs);
-        $this->assertSame('es_bid', $slabs[0]['mode']);
+        $this->assertSame('dynamic', $slabs[0]['mode']);
+        $this->assertEquals(0, $slabs[0]['bid']);
         $this->assertEquals(0, $slabs[0]['min']);
         $this->assertEquals(0, $slabs[0]['max']);
 
@@ -21,14 +22,20 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertEquals(10, $slabs[1]['max']);
     }
 
-    public function test_resolve_uses_es_bid_or_sbid_and_does_not_pause(): void
+    public function test_resolve_uses_the_typed_sbid_and_never_es_bid(): void
     {
         $slabs = DilVsSbidRule::defaultSlabs();
 
         $zero = DilVsSbidRule::resolve(0, 12.5, $slabs);
-        $this->assertSame('es_bid', $zero['mode']);
-        $this->assertSame(12.5, $zero['bid']);
+        $this->assertSame('none', $zero['mode']);
+        $this->assertSame(0.0, $zero['bid']);
         $this->assertFalse($zero['off']);
+
+        $slabs[0]['bid'] = 5.0;
+        $typed = DilVsSbidRule::resolve(0, 12.5, $slabs);
+        $this->assertSame('dynamic', $typed['mode']);
+        $this->assertSame(5.0, $typed['bid']);
+        $slabs[0]['bid'] = 0.0;
 
         $mid = DilVsSbidRule::resolve(10, 12.5, $slabs);
         $this->assertSame('dynamic', $mid['mode']);
@@ -52,7 +59,8 @@ class DilVsSbidRuleTest extends TestCase
 
         $normalized = DilVsSbidRule::normalize($slabs);
         $this->assertCount(2, $normalized);
-        $this->assertSame('es_bid', $normalized[0]['mode']);
+        $this->assertSame('dynamic', $normalized[0]['mode']);
+        $this->assertEquals(0, $normalized[0]['bid']);
         $this->assertSame('dynamic', $normalized[1]['mode']);
         $this->assertFalse(DilVsSbidRule::resolve(55, 0, $slabs)['off']);
     }
@@ -223,9 +231,13 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertTrue(DilVsSbidRule::usesNpft($tables));
     }
 
-    public function test_missing_es_bid_does_not_invent_a_percent(): void
+    public function test_legacy_es_bid_zero_slab_becomes_zero_not_eight(): void
     {
-        $zero = DilVsSbidRule::resolve(0, 0, DilVsSbidRule::defaultSlabs());
+        $legacy = [
+            ['min' => 0, 'max' => 0, 'mode' => 'es_bid', 'bid' => null],
+            ['min' => 0.1, 'max' => 10, 'mode' => 'dynamic', 'bid' => 8],
+        ];
+        $zero = DilVsSbidRule::resolve(0, 9, $legacy);
         $this->assertSame('none', $zero['mode']);
         $this->assertSame(0.0, $zero['bid']);
     }

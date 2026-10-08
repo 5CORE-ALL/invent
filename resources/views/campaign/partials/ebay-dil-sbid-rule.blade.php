@@ -73,14 +73,14 @@
                 <p class="small mb-2" id="dil-sbid-mode-note">Off. S Bid is not changed.</p>
                 <ul class="dsb-notes">
                     <li>Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100). Inventory 0 and missing data are not counted. First matching range wins in every table. A range that starts where the one above ended is exclusive on From. The last range is open at the top.</li>
-                    <li><strong>Dil 0–0</strong> is SKUs with OV L30 sold = 0. That slab uses the listing's <strong>ES Bid</strong>. Every other Dil slab uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the SKU falls in. A negative value subtracts. A SKU outside every range adds 0.</li>
+                    <li><strong>Dil 0–0</strong> is SKUs with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the SKU falls in. A negative value subtracts. A SKU outside every range adds 0.</li>
                     <li>New tables start at 0, so nothing changes until you type an S Bid. The final bid is rounded to 0.1 and kept between 2 and 100 before it is pushed.</li>
                     <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push. Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay 1 and eBay 2 push the new S Bid on their own when the rules change the bid. The switch must be On.</li>
                 </ul>
                 <div class="dsb-cols">
                     <div class="dsb-col">
-                        <div class="dsb-title" title="CP Master Dil. 0–0 uses each listing's ES Bid.">Dil</div>
+                        <div class="dsb-title" title="CP Master Dil. Each slab uses the S Bid you type.">Dil</div>
                         <div class="dsb-canvas"><canvas id="dil-sbid-chart-dil"></canvas></div>
                         <div class="dsb-legend" id="dil-sbid-leg-dil"></div>
                         <div class="table-responsive">
@@ -219,8 +219,8 @@
                 <p class="small mb-2" id="dil-sbid-mode-note">Off. S Bid is not changed.</p>
                 <ul class="small text-muted mb-3 ps-3">
                     <li>Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100). Inventory 0 and missing data are not counted. First matching slab wins.</li>
-                    <li><strong>0–0</strong> is SKUs with <strong>OV L30 sold = 0</strong>. Every ad for that SKU uses its <strong>ES Bid</strong>.</li>
-                    <li>Every other slab uses the <strong>S Bid %</strong> you type on that row.</li>
+                    <li><strong>0–0</strong> is SKUs with <strong>OV L30 sold = 0</strong>.</li>
+                    <li>Every slab, including 0–0, uses the <strong>S Bid %</strong> you type on that row.</li>
                     <li><strong>CVR overlay</strong> then adjusts that S Bid, same as Sprc Dil. Down = CVR is below the threshold and the arrow is down (CVR L30 under CVR L60). Up = CVR is above the threshold and the arrow is up. Flat arrows are left alone.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay, eBay 2, and eBay 3 each keep their own slabs.</li>
                     <li>eBay 1 and eBay 2 push the new S Bid on their own when Dil or CVR changes the bid. The switch must be On. eBay 3 stays manual.</li>
@@ -352,7 +352,7 @@ function dilSbidPaintMode() {
 }
 
 function dilSbidMode(i) {
-    return i <= 0 ? 'es_bid' : 'dynamic';
+    return 'dynamic';
 }
 function dilSbidRound(n) {
     return Math.round((Number(n) || 0) * 100) / 100;
@@ -593,19 +593,13 @@ function dilSbidApplyCvr(bid, row) {
     }
     return { bid: next, adj: adj, why: why };
 }
-/** Dil slab part of the S Bid: the slab's S Bid, or the listing's ES Bid on the 0–0 slab. */
+/** Dil slab part of the S Bid: the S Bid typed on the slab Dil falls in. */
 function dilSbidDilPart(row, dil) {
-    const esRaw = row && (row.suggested_bid != null && row.suggested_bid !== '' ? row.suggested_bid : row.ca_suggested_bid);
-    const esBid = parseFloat(esRaw) || 0;
     let prevMax = null;
     for (let i = 0; i < currentDilSbidSlabs.length; i++) {
         const slab = currentDilSbidSlabs[i];
         const openTop = i === currentDilSbidSlabs.length - 1;
         if (dilSbidContains(dil, slab, prevMax, openTop)) {
-            if (dilSbidMode(i) === 'es_bid') {
-                if (!(esBid > 0)) return { bid: 0, color: '#6c757d', title: '', miss: 'Dil 0 but ES Bid is empty' };
-                return { bid: esBid, color: '#0dcaf0', title: 'Dil 0 → ES Bid', miss: '' };
-            }
             const typed = parseFloat(slab.bid);
             if (!(isFinite(typed) && typed > 0)) {
                 return { bid: 0, color: '#6c757d', title: '', miss: 'Type an S Bid % on this slab' };
@@ -772,12 +766,8 @@ function renderDilSbidTable() {
         const mode = dilSbidMode(i);
         const color = DIL_SBID_COLORS[i % DIL_SBID_COLORS.length];
         let bidCell = '';
-        if (mode === 'es_bid') {
-            bidCell = '<span class="dil-sbid-badge dil-sbid-es" title="This slab uses each listing’s ES Bid">ES BID</span>';
-        } else {
-            const bid = (slab.bid === null || slab.bid === undefined || slab.bid === '') ? '' : slab.bid;
-            bidCell = '<input type="number" min="0" step="0.1" class="form-control form-control-sm text-end fw-semibold dsb-input dil-sbid-bid" value="' + bid + '" title="S Bid % for Dil in this slab">';
-        }
+        const bid = (slab.bid === null || slab.bid === undefined || slab.bid === '') ? '' : slab.bid;
+        bidCell = '<input type="number" min="0" step="0.1" class="form-control form-control-sm text-end fw-semibold dsb-input dil-sbid-bid" value="' + bid + '" title="S Bid % for Dil in this slab">';
         const tr = document.createElement('tr');
         tr.innerHTML = ''
             + '<td><input type="number" step="0.1" class="form-control form-control-sm text-end dsb-input dil-sbid-min" value="' + slab.min + '"></td>'
