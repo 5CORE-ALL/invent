@@ -315,6 +315,15 @@
         .amz-cpc-avg-history-dot.is-down { background: #ff2727; }
         .amz-cpc-avg-history-dot.is-flat { background: #9ca3af; }
         .amz-cpc-avg-history-dot:hover { transform: scale(1.35); }
+        /* History icon variant: a colored history glyph instead of a plain dot. */
+        .amz-cpc-avg-history-dot.amz-hist-as-icon {
+            width: auto; height: auto; background: transparent; border-radius: 0;
+            line-height: 1; font-size: 12px; color: #166534;
+        }
+        .amz-cpc-avg-history-dot.amz-hist-as-icon.is-up { background: transparent; color: #05bd30; }
+        .amz-cpc-avg-history-dot.amz-hist-as-icon.is-down { background: transparent; color: #ff2727; }
+        .amz-cpc-avg-history-dot.amz-hist-as-icon.is-flat { background: transparent; color: #9ca3af; }
+        .amz-cpc-avg-history-dot.amz-hist-as-icon:hover { transform: scale(1.25); }
         /* CPC history modal — same full-width layout as Active Channel */
         #amazonAdsCpcAvgHistoryModal.modal {
             --tz-modal-width: 100%;
@@ -1672,8 +1681,9 @@
                 else if (trend === 'up') tip += ' · Up vs previous day $' + prevTxt + ' → $' + nowTxt;
                 else if (trend === 'down') tip += ' · Down vs previous day $' + prevTxt + ' → $' + nowTxt;
                 else tip += ' · Same as previous day $' + prevTxt;
-                return '<button type="button" class="amz-cpc-avg-history-dot ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
-                    + ' data-history="' + amzEsc(kind) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '"></button>';
+                return '<button type="button" class="amz-cpc-avg-history-dot amz-hist-as-icon ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
+                    + ' data-history="' + amzEsc(kind) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
+                    + '<i class="fas fa-history"></i></button>';
             }
             function fmtLtAcos(cell) {
                 var v = cell.getValue();
