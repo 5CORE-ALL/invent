@@ -20,6 +20,7 @@ class AllMarketplaceMasterBadgeAggregator
         $totalYGross = 0.0;
         $totalYNet = 0.0;
         $totalYCogs = 0.0;
+        $totalYPctSales = 0.0;
         $totalTodaySales = 0.0;
         $totalPSales = 0.0;
         $totalPGross = 0.0;
@@ -69,9 +70,18 @@ class AllMarketplaceMasterBadgeAggregator
 
             $totalL30Sales += $l30Sales;
             $totalYSales += $ySales;
-            $totalYGross += ($gprofitPercent / 100) * $ySales;
-            $totalYNet += ($npftPercent / 100) * $ySales;
-            $totalYCogs += self::yCogsFromParts($ySales, $l30Sales, $gprofitPercent, $cogs);
+            $yMeasured = self::yMeasuredFromRow($row);
+            if ($yMeasured !== null) {
+                $totalYGross += $yMeasured['pft'];
+                $totalYNet += $yMeasured['pft'] - $yMeasured['spend'];
+                $totalYCogs += $yMeasured['cogs'];
+                $totalYPctSales += $yMeasured['sales'];
+            } else {
+                $totalYGross += ($gprofitPercent / 100) * $ySales;
+                $totalYNet += ($npftPercent / 100) * $ySales;
+                $totalYCogs += self::yCogsFromParts($ySales, $l30Sales, $gprofitPercent, $cogs);
+                $totalYPctSales += $ySales;
+            }
             $totalTodaySales += $todaySales;
             $totalPSales += $pSales;
             $totalPGross += ($gprofitPercent / 100) * $pSales;
@@ -113,7 +123,7 @@ class AllMarketplaceMasterBadgeAggregator
         $avgAdsPercent = $totalL30Sales > 0 ? ($totalAdSpend / $totalL30Sales) * 100 : 0.0;
         $avgNpft = $avgGprofit - $avgAdsPercent;
         $avgPNpft = $totalPSales > 0 ? (($totalPGross - $totalAdSpend) / $totalPSales) * 100 : 0.0;
-        $avgYNpft = $totalYSales > 0 ? ($totalYNet / $totalYSales) * 100 : 0.0;
+        $avgYNpft = $totalYPctSales > 0 ? ($totalYNet / $totalYPctSales) * 100 : 0.0;
         $avgYGroi = $totalYCogs > 0 ? ($totalYGross / $totalYCogs) * 100 : 0.0;
         $avgYNroi = $totalYCogs > 0 ? ($totalYNet / $totalYCogs) * 100 : 0.0;
         $netProfit = $totalPft - $totalAdSpend;
@@ -196,6 +206,28 @@ class AllMarketplaceMasterBadgeAggregator
             'total_reviews' => (int) round($reviewsSum),
             'seller_avg_rating' => $sellerReviewsSum > 0 ? round($sellerRatingSum / $sellerReviewsSum, 1) : 0.0,
             'seller_total_reviews' => (int) round($sellerReviewsSum),
+        ];
+    }
+
+    /**
+     * Yesterday's own gross profit / COGS / ad spend / sales when the nightly
+     * calculation measured them. Null means fall back to rescaling the L30 rates,
+     * which cancels the Y Sales factor and reproduces the L30 percentages.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{pft: float, cogs: float, spend: float, sales: float}|null
+     */
+    private static function yMeasuredFromRow(array $row): ?array
+    {
+        if (($row['Y GPFT $'] ?? null) === null || ($row['Y COGS'] ?? null) === null) {
+            return null;
+        }
+
+        return [
+            'pft' => self::rowNumber($row, 'Y GPFT $'),
+            'cogs' => self::rowNumber($row, 'Y COGS'),
+            'spend' => self::rowNumber($row, 'Y Spend'),
+            'sales' => self::rowNumber($row, 'Y Day Sales'),
         ];
     }
 

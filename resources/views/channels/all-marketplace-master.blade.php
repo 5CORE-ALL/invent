@@ -811,13 +811,13 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft_amt" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is last-7-day pace × 30; spend is current L30 ad spend. % is P NPFT $ vs NPFT $.">
                             <span class="summary-trend-dot none" data-metric="p_npft_amt" title="Rolling history"></span>P NPFT: <span id="total-p-npft">$0</span><span id="total-p-npft-vs-npft"></span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="yNprft% = blended NPFT% weighted by Y Sales: sum(Y Sales × NPFT%) ÷ sum(Y Sales). Same rate used for the Y NPFT $ column.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="yNprft% = (Σ yesterday net PFT $) ÷ (Σ yesterday sales), measured from yesterday's orders alone.">
                             <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>yNprft%: <span id="avg-y-npft">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_groi_pct" style="background-color: #dc3545; color: white; font-weight: bold; cursor:pointer;" title="YGroi% = yesterday blended GROI%: sum(Y Sales × GPFT%) ÷ yesterday COGS. Yesterday COGS is L30 COGS scaled by Y Sales ÷ L30 Sales (falls back to Y Sales × (1 − GPFT%)).">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_groi_pct" style="background-color: #dc3545; color: white; font-weight: bold; cursor:pointer;" title="YGroi% = (Σ yesterday gross PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
                             <span class="summary-trend-dot none" data-metric="y_groi_pct" title="Rolling history"></span>YGroi%: <span id="avg-y-groi">0.0%</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="y_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="YNROI% = yesterday blended NROI%: sum(Y Sales × NPFT%) ÷ yesterday COGS. Yesterday COGS is L30 COGS scaled by Y Sales ÷ L30 Sales (falls back to Y Sales × (1 − GPFT%)).">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="y_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
                             <span class="summary-trend-dot none" data-metric="y_nroi_pct" title="Rolling history"></span>YNROI%: <span id="avg-y-nroi">0.0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
@@ -1642,13 +1642,36 @@
             const gp = parseNumber(row['Gprofit%'] || 0);
             return (l30 * gp) / 100 - rowAdSpendFromRow(row);
         }
+        // Yesterday's own measured gross profit / COGS / ad spend / sales, written by
+        // channel:calculate-data. Null until that runs, then we fall back to the L30
+        // rates below. Deriving Y% from the L30 rates cancels the Y Sales factor
+        // (Y×GP ÷ COGS×Y/L30 reduces to L30 GPFT$ ÷ L30 COGS), which made Y GROI% /
+        // YNPFT% / YNROI% identical to G Roi / N PFT / N ROI on every row.
+        function yMeasuredFromRow(row) {
+            if (!row) return null;
+            const pft = row['Y GPFT $'];
+            const cogs = row['Y COGS'];
+            if (pft == null || cogs == null) return null;
+            return {
+                pft: parseNumber(pft || 0),
+                cogs: parseNumber(cogs || 0),
+                spend: parseNumber(row['Y Spend'] || 0),
+                sales: parseNumber(row['Y Day Sales'] || 0)
+            };
+        }
         function yGrossPftFromRow(row) {
+            const m = yMeasuredFromRow(row);
+            if (m) return m.pft;
             return (parseNumber(row['Y Sales'] || 0) * parseNumber(row['Gprofit%'] || 0)) / 100;
         }
         function yNetPftFromRow(row) {
+            const m = yMeasuredFromRow(row);
+            if (m) return m.pft - m.spend;
             return (parseNumber(row['Y Sales'] || 0) * parseNumber(row['N PFT'] || 0)) / 100;
         }
         function yCogsFromRow(row) {
+            const m = yMeasuredFromRow(row);
+            if (m) return m.cogs;
             const ySales = parseNumber(row['Y Sales'] || 0);
             if (!ySales) return 0;
             const l30 = parseNumber(row['L30 Sales'] || 0);
@@ -1658,6 +1681,8 @@
             return ySales * Math.max(0, 1 - gp / 100);
         }
         function yGroiPctFromRow(row) {
+            const m = yMeasuredFromRow(row);
+            if (m) return m.cogs > 0 ? (m.pft / m.cogs) * 100 : null;
             const ySales = parseNumber(row['Y Sales'] || 0);
             if (!ySales) return null;
             const yCogs = yCogsFromRow(row);
@@ -1666,6 +1691,8 @@
             return groi || null;
         }
         function yNpftPctFromRow(row) {
+            const m = yMeasuredFromRow(row);
+            if (m) return m.sales > 0 ? ((m.pft - m.spend) / m.sales) * 100 : null;
             const ySales = parseNumber(row['Y Sales'] || 0);
             if (!ySales) return null;
             return parseNumber(row['N PFT'] || 0);
@@ -2767,7 +2794,7 @@
                     {
                         title: "Y GROI%",
                         field: "Y GROI%",
-                        headerTooltip: "Yesterday GROI% = Y PFT $ ÷ yesterday COGS. Yesterday COGS is L30 COGS × (Y Sales ÷ L30 Sales), falling back to Y Sales × (1 − GPFT%).",
+                        headerTooltip: "Yesterday GROI% = yesterday gross PFT $ ÷ yesterday COGS, both measured from yesterday's orders alone. Falls back to L30 COGS × (Y Sales ÷ L30 Sales) until the nightly calculation has run.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 80,
@@ -2811,7 +2838,7 @@
                     {
                         title: "YNPFT%",
                         field: "YNPFT%",
-                        headerTooltip: "Yesterday NPFT% = (Y Sales × NPFT%) ÷ Y Sales. Same blended rate as the yNprft% badge; NYS when a channel had no yesterday sales.",
+                        headerTooltip: "Yesterday NPFT% = (yesterday gross PFT $ − yesterday ad spend) ÷ yesterday sales, all measured from yesterday alone. Falls back to the L30 NPFT% until the nightly calculation has run; NYS when a channel had no yesterday sales.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 80,
@@ -2839,8 +2866,9 @@
                         bottomCalc: function(values, data) {
                             let yNet = 0, ySales = 0;
                             data.forEach(function(row) {
+                                const m = yMeasuredFromRow(row);
                                 yNet += yNetPftFromRow(row);
-                                ySales += parseNumber(row['Y Sales'] || 0);
+                                ySales += m ? m.sales : parseNumber(row['Y Sales'] || 0);
                             });
                             return ySales > 0 ? (yNet / ySales) * 100 : null;
                         },
@@ -5171,6 +5199,7 @@
                 let totalChannels = data.length;
                 let totalL30Sales = 0;
                 let totalYSales = 0;
+                let totalYPctSales = 0;
                 let totalYGross = 0;
                 let totalYNet = 0;
                 let totalYCogs = 0;
@@ -5228,9 +5257,13 @@
 
                     totalL30Sales += l30Sales;
                     totalYSales += ySales;
-                    totalYGross += (gprofitPercent / 100) * ySales;
-                    totalYNet += (npft / 100) * ySales;
+                    totalYGross += yGrossPftFromRow(row);
+                    totalYNet += yNetPftFromRow(row);
                     totalYCogs += yCogsFromRow(row);
+                    // YNPFT% divides by the same one-day sales the profit was measured
+                    // against; the Y Sales badge keeps using the Y Sales column.
+                    const yMeasured = yMeasuredFromRow(row);
+                    totalYPctSales += yMeasured ? yMeasured.sales : ySales;
                     totalTodaySales += todaySales;
                     totalPSales += pSales;
                     totalPGross += (gprofitPercent / 100) * pSales;
@@ -5535,12 +5568,12 @@
                     setBadgeExact($el, val);
                 })();
                 (function() {
-                    const avgYNpft = totalYSales > 0 ? (totalYNet / totalYSales) * 100 : 0;
+                    const avgYNpft = totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : 0;
                     const val = pct1(avgYNpft);
                     const $el = $('#avg-y-npft');
                     $el.text(val.toFixed(1) + '%');
                     $el.closest('.badge').attr('title',
-                        'yNprft% = (Σ Y Sales × NPFT%) ÷ Σ Y Sales. PFT dollars use the Y Sales column. ' + val.toFixed(1) + '%');
+                        'yNprft% = (Σ yesterday net PFT $) ÷ (Σ yesterday sales), both measured for yesterday alone. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {
@@ -5549,7 +5582,7 @@
                     const $el = $('#avg-y-groi');
                     $el.text(val.toFixed(1) + '%');
                     $el.closest('.badge').attr('title',
-                        'YGroi% = (Σ Y Sales × GPFT%) ÷ Σ yesterday COGS. Yesterday COGS is L30 COGS × (Y Sales ÷ L30 Sales). ' + val.toFixed(1) + '%');
+                        'YGroi% = (Σ yesterday gross PFT $) ÷ (Σ yesterday COGS), both measured for yesterday alone. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {
@@ -5558,7 +5591,7 @@
                     const $el = $('#avg-y-nroi');
                     $el.text(val.toFixed(1) + '%');
                     $el.closest('.badge').attr('title',
-                        'YNROI% = (Σ Y Sales × NPFT%) ÷ Σ yesterday COGS. Yesterday COGS is L30 COGS × (Y Sales ÷ L30 Sales). ' + val.toFixed(1) + '%');
+                        'YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), both measured for yesterday alone. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {

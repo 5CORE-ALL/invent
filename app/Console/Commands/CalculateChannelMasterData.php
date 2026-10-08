@@ -10,9 +10,12 @@ use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Models\LqsHistory;
 use App\Models\ProductMaster;
 use App\Services\CronMonitor\CronExecutionContext;
+use App\Services\Support\YesterdayMarketplaceMetricsService;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CalculateChannelMasterData extends Command
 {
@@ -39,6 +42,8 @@ class CalculateChannelMasterData extends Command
                               - Data displayed in dashboard LQS badges and trend charts';
 
     protected string $monitorJobName = 'Channel Calculate Data';
+
+    private ?YesterdayMarketplaceMetricsService $yesterdayMetrics = null;
 
     /** Expire before the 15-min every-5-min mutex so a crashed run cannot block the next ticks. */
     protected int $monitorLockTtlSeconds = 840;
@@ -202,6 +207,58 @@ class CalculateChannelMasterData extends Command
         }
     }
 
+    /**
+     * Yesterday's own sales / gross profit / COGS / ad spend for one channel.
+     * All four come from the same one-day row, so every Y percentage derived from
+     * them stays internally consistent. Null when the channel has no 1-day source.
+     *
+     * @return array<string, float|null>
+     */
+    private function yesterdayProfitColumns(string $channelName): array
+    {
+        $blank = ['y_day_sales' => null, 'y_pft' => null, 'y_cogs' => null, 'y_ad_spend' => null];
+        $channelName = trim($channelName);
+        if ($channelName === '') {
+            return $blank;
+        }
+
+        try {
+            // One instance for the whole run: it caches the ProductMaster LP/ship map,
+            // which is far too expensive to rebuild for each channel.
+            $this->yesterdayMetrics ??= app(YesterdayMarketplaceMetricsService::class);
+            $row = $this->yesterdayMetrics->metricsForPacificDate(
+                $channelName,
+                Carbon::yesterday('America/Los_Angeles')->toDateString()
+            );
+        } catch (\Throwable $e) {
+            Log::warning("Yesterday profit columns failed for {$channelName}: ".$e->getMessage());
+
+            return $blank;
+        }
+
+        if (! is_array($row) || ! ($row['computed'] ?? false)) {
+            return $blank;
+        }
+
+        // Sales-only channels (Shein, Depop, Vinted, …) report zero profit on purpose,
+        // so gpft_sales is the service's own flag for "profit is meaningful here".
+        // Storing their zeros would show YNPFT% as 0% instead of falling back.
+        if ((float) ($row['gpft_sales'] ?? 0) <= 0) {
+            return $blank;
+        }
+
+        // Reported sales, so YNPFT% is yesterday's net profit over the same dollars
+        // the Y Sales column shows beside it.
+        $daySales = (float) ($row['sales'] ?? 0);
+
+        return [
+            'y_day_sales' => round($daySales > 0 ? $daySales : (float) $row['gpft_sales'], 2),
+            'y_pft' => round((float) ($row['pft'] ?? 0), 2),
+            'y_cogs' => round((float) ($row['cogs'] ?? 0), 2),
+            'y_ad_spend' => round((float) ($row['ad_spend'] ?? 0), 2),
+        ];
+    }
+
     private function saveChannelData(array $data, $calculatedAt, $dataAsOf)
     {
         $parseNumber = function($value) {
@@ -224,6 +281,9 @@ class CalculateChannelMasterData extends Command
             'l60_sales' => $parseNumber($data['L-60 Sales'] ?? 0),
             'l30_sales' => $parseNumber($data['L30 Sales'] ?? 0),
             'yesterday_sales' => $parseNumber($data['Y Sales'] ?? 0),
+            // Measured one-day profit/COGS/spend so Y GROI% / YNPFT% / YNROI% are
+            // yesterday's own numbers instead of the L30 percentages rescaled.
+            ...$this->yesterdayProfitColumns($data['Channel '] ?? $data['Channel'] ?? ''),
             'today_sales' => $parseNumber($data['Today Sales'] ?? 0),
             'l7_sales' => $parseNumber($data['L7 Sales'] ?? 0),
             'growth' => $parseNumber($data['Growth'] ?? 0),
