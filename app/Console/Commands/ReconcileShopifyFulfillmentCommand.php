@@ -2,10 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\Channels\OrderFulfillmentController;
 use App\Models\OrderFulfillmentTracking;
 use App\Services\MarketplaceManager\MarketplaceShopifyStores;
+use App\Services\MarketplaceManager\MarketplaceTrackingOwnership;
 use App\Services\MarketplaceManager\ShopifyDuplicateOrderPlanner;
-use App\Services\MarketplaceManager\ShopifyRestClient;
+use App\Services\MarketplaceManager\ShopifyGraphqlFulfiller;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
 use App\Services\OrderFulfillment\OrderFulfillmentShopifyPushService;
 use Illuminate\Console\Command;
@@ -13,28 +15,28 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Starts from Shopify: every open, unfulfilled marketplace order is matched to the tracking the
- * Order Fulfillment page has for it and fulfilled with that number.
+ * Starts from Shopify: every open, unfulfilled marketplace order gets the tracking the Order
+ * Fulfillment page has for it (looked up first when the page has none yet) and is fulfilled.
  *
- * order-fulfillment:push-tracking works from our tracking rows and stops at the first answer it
- * believes ("done", "already has tracking", linked to another copy), so a Shopify order it got
- * wrong once stayed unfulfilled for good. This sweep checks Shopify's own list instead.
+ * order-fulfillment:push-tracking works from our tracking rows over the REST API, which other
+ * jobs keep at its rate limit, and stops at the first answer it believes ("done", "already has
+ * tracking", linked to another copy) — so some Shopify orders stayed unfulfilled for good. This
+ * sweep reads Shopify's own list and writes through GraphQL, which has its own budget.
  */
 class ReconcileShopifyFulfillmentCommand extends Command
 {
     protected $signature = 'order-fulfillment:reconcile-shopify
         {--days=14 : Shopify orders created in the last N days}
-        {--limit=250 : Most orders to fulfil per run}
+        {--limit=300 : Most orders to fulfil per run}
+        {--lookups=80 : Most orders to look tracking up for per run}
         {--budget=1500 : Seconds this run may spend}
         {--store= : Only this Shopify store key}
-        {--order= : Only this Shopify order name (#348462) or marketplace order id}
+        {--order= : Only this Shopify order name (348462) or marketplace order id}
         {--dry-run : Report only; nothing is written to Shopify}';
 
-    protected $description = 'Fulfil unfulfilled Shopify marketplace orders that already have tracking on /order-fulfillment';
+    protected $description = 'Fetch missing tracking and fulfil unfulfilled Shopify marketplace orders (GraphQL)';
 
-    private const API_VERSION = '2025-01';
-
-    public function handle(VeeqoShopifyFulfillmentService $labels): int
+    public function handle(VeeqoShopifyFulfillmentService $labels, ShopifyGraphqlFulfiller $shopify): int
     {
         @set_time_limit(0);
         if (! Schema::hasTable('order_fulfillment_trackings')) {
@@ -46,52 +48,87 @@ class ReconcileShopifyFulfillmentCommand extends Command
 
         $days = max(1, min(60, (int) $this->option('days')));
         $limit = max(1, (int) $this->option('limit'));
+        $maxLookups = max(0, (int) $this->option('lookups'));
         $deadline = microtime(true) + max(60, (int) $this->option('budget'));
         $dryRun = (bool) $this->option('dry-run');
         $onlyOrder = ltrim(trim((string) $this->option('order')), '#');
-        $since = now()->subDays($days)->toIso8601String();
+        $verbose = $dryRun || $onlyOrder !== '' || $this->getOutput()->isVerbose();
 
         $counts = [];
         $problems = [];
         $attempted = 0;
 
         foreach (MarketplaceShopifyStores::configs((string) $this->option('store')) as $config) {
-            $orders = $this->unfulfilledOrders($config, $since);
+            $orders = $shopify->unfulfilledOrders($config, now()->subDays($days));
             if ($orders === null) {
                 $this->error('Could not list Shopify orders for '.$config['store_url']);
 
                 continue;
             }
-            $this->line($config['store_key'].': '.count($orders).' open unfulfilled orders since '.$since);
+            $this->line($config['store_key'].': '.count($orders).' open unfulfilled orders in the last '.$days.' days');
 
+            $work = [];
             foreach ($orders as $order) {
-                if ($attempted >= $limit || microtime(true) >= $deadline) {
-                    break 2;
-                }
                 $refs = ShopifyDuplicateOrderPlanner::orderRefs($order);
-                if ($onlyOrder !== '' && ! $this->matchesFilter($order, $refs, $onlyOrder)) {
+                if ($refs === [] || ($onlyOrder !== '' && ! $this->matchesFilter($order, $refs, $onlyOrder))) {
                     continue;
                 }
-                if ($refs === []) {
-                    continue;
-                }
+                $work[] = ['order' => $order, 'refs' => $refs];
+            }
 
-                $result = $this->reconcileOrder($labels, $config, $order, $refs, $dryRun);
+            $report = function (array $order, array $result) use (&$counts, &$problems, $verbose): void {
                 $counts[$result['outcome']] = ($counts[$result['outcome']] ?? 0) + 1;
-                if ($result['attempted']) {
-                    $attempted++;
+                if (! in_array($result['outcome'], ['fulfilled', 'already_on_shopify', 'would_fulfil'], true)) {
+                    $problems[] = [(string) ($order['name'] ?: $order['id']), $result['slug'], $result['ref'], $result['tracking'], $result['outcome'], mb_strimwidth($result['message'], 0, 80, '…')];
                 }
-                if ($result['outcome'] !== 'fulfilled' && $result['outcome'] !== 'no_tracking_in_app') {
-                    $problems[] = [(string) ($order['name'] ?? $order['id']), $result['slug'], $result['ref'], $result['tracking'], $result['outcome'], mb_strimwidth($result['message'], 0, 80, '…')];
+                if ($verbose) {
+                    $this->line(sprintf('  %s %s-%s %s → %s %s', $order['name'] ?: $order['id'], $result['slug'], $result['ref'], $result['tracking'], $result['outcome'], $result['message']));
                 }
-                if ($dryRun || $onlyOrder !== '') {
-                    $this->line(sprintf('  %s %s-%s %s → %s %s', $order['name'] ?? $order['id'], $result['slug'], $result['ref'], $result['tracking'], $result['outcome'], $result['message']));
+            };
+
+            // Pass 1 uses the tracking the page already has.
+            $needLookup = [];
+            foreach ($work as $item) {
+                if ($attempted >= $limit || microtime(true) >= $deadline) {
+                    break;
                 }
+                $result = $this->reconcileOrder($labels, $shopify, $config, $item['order'], $item['refs'], $dryRun);
+                if ($result['outcome'] === 'no_tracking_in_app') {
+                    $needLookup[] = ['item' => $item, 'result' => $result];
+
+                    continue;
+                }
+                $attempted += $result['attempted'] ? 1 : 0;
+                $report($item['order'], $result);
+            }
+
+            // Pass 2: fetch tracking (Veeqo, marketplace API, 4Seller) for the rest, then fulfil what was found.
+            $found = [];
+            $looked = 0;
+            if ($needLookup !== [] && ! $dryRun && $maxLookups > 0 && microtime(true) < $deadline) {
+                $batch = array_slice($needLookup, 0, $maxLookups);
+                $looked = count($batch);
+                $found = $this->lookUpTracking(array_map(fn ($n) => $n['result'], $batch), $deadline);
+                $this->line('  Looked up tracking for '.$looked.' order(s) with none on the page: '.count($found).' found.');
+            }
+            foreach ($needLookup as $i => $n) {
+                $result = $n['result'];
+                if (isset($found[strtolower($result['slug'].'|'.$result['ref'])]) && $attempted < $limit && microtime(true) < $deadline) {
+                    $result = $this->reconcileOrder($labels, $shopify, $config, $n['item']['order'], $n['item']['refs'], false);
+                    $attempted += $result['attempted'] ? 1 : 0;
+                } elseif ($dryRun) {
+                    $result['message'] = 'A real run looks tracking up first.';
+                } elseif ($i < $looked) {
+                    $result['message'] = 'No tracking found in Veeqo, the marketplace or 4Seller yet.';
+                } else {
+                    $result['message'] = 'Lookup comes in the next run.';
+                }
+                $report($n['item']['order'], $result);
             }
         }
 
-        if ($problems !== [] && ! $dryRun && $onlyOrder === '') {
-            $this->table(['Shopify', 'Marketplace', 'Order', 'Tracking', 'Result', 'Detail'], array_slice($problems, 0, 60));
+        if ($problems !== [] && ! $verbose) {
+            $this->table(['Shopify', 'Marketplace', 'Order', 'Tracking', 'Result', 'Detail'], array_slice($problems, 0, 80));
         }
         ksort($counts);
         $summary = implode(', ', array_map(fn ($k, $v) => "{$k} {$v}", array_keys($counts), $counts));
@@ -102,18 +139,38 @@ class ReconcileShopifyFulfillmentCommand extends Command
     }
 
     /**
+     * @param  list<array{slug: string, ref: string}>  $items
+     * @return array<string, true>
+     */
+    private function lookUpTracking(array $items, float $deadline): array
+    {
+        if ($items === []) {
+            return [];
+        }
+        try {
+            return app(OrderFulfillmentController::class)->resolveTrackingNow(
+                array_map(fn ($w) => ['mm_slug' => $w['slug'], 'order_id' => $w['ref']], $items),
+                (int) max(20, min(900, $deadline - microtime(true) - 60))
+            );
+        } catch (\Throwable $e) {
+            Log::warning('order-fulfillment:reconcile-shopify: tracking lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
      * @param  array{store_url: string, token: string, store_key: string}  $config
-     * @param  array<string, mixed>  $order
+     * @param  array{id: string, name: string, tags: string}  $order
      * @param  list<array{slug: string, ref: string}>  $refs
      * @return array{outcome: string, message: string, slug: string, ref: string, tracking: string, attempted: bool}
      */
-    private function reconcileOrder(VeeqoShopifyFulfillmentService $labels, array $config, array $order, array $refs, bool $dryRun): array
+    private function reconcileOrder(VeeqoShopifyFulfillmentService $labels, ShopifyGraphqlFulfiller $shopify, array $config, array $order, array $refs, bool $dryRun): array
     {
         $shopifyId = (string) $order['id'];
-        $first = $refs[0];
-        $out = ['outcome' => 'no_tracking_in_app', 'message' => '', 'slug' => $first['slug'], 'ref' => $first['ref'], 'tracking' => '', 'attempted' => false];
+        $out = ['outcome' => 'no_tracking_in_app', 'message' => '', 'slug' => $refs[0]['slug'], 'ref' => $refs[0]['ref'], 'tracking' => '', 'attempted' => false];
 
-        $row = null;
+        $rows = collect();
         foreach ($refs as $ref) {
             if (in_array($ref['slug'], OrderFulfillmentShopifyPushService::EXCLUDED_SLUGS, true)) {
                 $out['outcome'] = 'excluded_marketplace';
@@ -121,31 +178,43 @@ class ReconcileShopifyFulfillmentCommand extends Command
 
                 return $out;
             }
-            $row = OrderFulfillmentTracking::query()
+            $rows = OrderFulfillmentTracking::query()
                 ->where('mm_slug', $ref['slug'])
                 ->whereIn('order_id', [$ref['ref'], '#'.$ref['ref']])
                 ->whereNotNull('tracking_number')
                 ->where('tracking_number', '!=', '')
                 ->whereIn('source', OrderFulfillmentShopifyPushService::PUSHABLE_SOURCES)
-                ->orderByRaw("source = 'manual' DESC")
-                ->orderByDesc('checked_at')
-                ->first();
-            if ($row !== null) {
+                ->get();
+            if ($rows->isNotEmpty()) {
                 $out['slug'] = $ref['slug'];
                 $out['ref'] = $ref['ref'];
                 break;
             }
         }
-        if ($row === null) {
+        if ($rows->isEmpty()) {
+            return $out;
+        }
+        $slug = $out['slug'];
+
+        if ($labels->autoFulfillBlocked($slug)) {
+            $out['outcome'] = 'auto_fulfill_off';
+            $out['message'] = 'Automatic Shopify fulfillment is turned off for '.$slug.'.';
+
             return $out;
         }
 
-        $tracking = strtoupper(trim((string) $row->tracking_number));
-        $carrier = trim((string) ($row->carrier ?? ''));
-        $out['tracking'] = $tracking;
-        $slug = $out['slug'];
-        $localId = preg_match('/^'.preg_quote($slug, '/').'-(\d+)(?:-|$)/', (string) $row->row_key, $m) ? (int) $m[1] : 0;
+        // Tracking → SKUs it covers. A manual number wins over a looked-up one for the same line.
+        $byTracking = [];
+        $carriers = [];
+        foreach ($rows->sortByDesc(fn ($r) => $r->source === 'manual' ? 1 : 0) as $row) {
+            $tn = strtoupper((string) preg_replace('/\s+/', '', (string) $row->tracking_number));
+            $byTracking[$tn][] = trim((string) $row->sku);
+            $carriers[$tn] ??= trim((string) ($row->carrier ?? ''));
+        }
+        $out['tracking'] = implode(' ', array_keys($byTracking));
 
+        $first = $rows->first();
+        $localId = preg_match('/^'.preg_quote($slug, '/').'-(\d+)(?:-|$)/', (string) $first->row_key, $m) ? (int) $m[1] : 0;
         $ctx = null;
         if ($localId > 0) {
             try {
@@ -156,9 +225,8 @@ class ReconcileShopifyFulfillmentCommand extends Command
         }
 
         $linked = trim((string) ($ctx['shopify_order_id'] ?? ''));
-        if ($linked !== '' && $linked !== $shopifyId && ! str_starts_with($linked, 'manual')) {
-            $other = $this->linkedCopyState($config, $linked);
-            if ($other === 'open') {
+        if ($linked !== '' && $linked !== $shopifyId && ctype_digit($linked)) {
+            if (in_array($shopify->orderState($config, $linked), ['open', 'fulfilled'], true)) {
                 $out['outcome'] = 'duplicate_copy';
                 $out['message'] = 'Marketplace order is linked to Shopify '.$linked.'; this copy is left for mm:cancel-duplicate-shopify-orders.';
 
@@ -166,125 +234,67 @@ class ReconcileShopifyFulfillmentCommand extends Command
             }
         }
 
+        $ownership = app(MarketplaceTrackingOwnership::class);
+        foreach (array_keys($byTracking) as $tn) {
+            if ($ownership->isWrongFor($tn, $slug, $out['ref'], $shopifyId)) {
+                $out['outcome'] = 'tracking_belongs_elsewhere';
+                $out['message'] = $tn.' belongs to another marketplace order.';
+
+                return $out;
+            }
+        }
+
         if ($dryRun) {
             $out['outcome'] = 'would_fulfil';
-            $out['message'] = 'with '.$tracking.($carrier !== '' ? ' ('.$carrier.')' : '');
+            $out['message'] = 'with '.$out['tracking'];
 
             return $out;
         }
 
         $out['attempted'] = true;
-        $marketplaceIds = is_array($ctx['marketplace_order_ids'] ?? null) && $ctx['marketplace_order_ids'] !== []
-            ? $ctx['marketplace_order_ids']
-            : [$out['ref']];
-        try {
-            $result = $labels->fulfillShopifyFromLabels(
-                $shopifyId,
-                $config,
-                (array) ($ctx['refs'] ?? [$out['ref']]),
-                ['tracking' => $tracking, 'carrier' => $carrier !== '' ? $carrier : 'Other'],
-                (string) ($row->sku ?: ($ctx['sku'] ?? '')),
-                $marketplaceIds,
-                $slug
-            );
-        } catch (\Throwable $e) {
-            $out['outcome'] = 'error';
-            $out['message'] = $e->getMessage();
-
-            return $out;
-        }
-
-        $action = (string) ($result['action'] ?? '');
-        $out['message'] = (string) ($result['message'] ?? '');
-        if (! in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
-            $out['outcome'] = $action !== '' ? $action : 'failed';
-
-            return $out;
-        }
-
-        // Shopify listed this order as unfulfilled, so "already" means another line still waits.
-        $out['outcome'] = $action === 'shopify_fulfilled' ? 'fulfilled' : 'already_on_shopify';
-        $row->shopify_order_id = $shopifyId;
-        $row->shopify_fulfilled_at = now();
-        $row->shopify_push_checked_at = now();
-        $row->shopify_next_try_at = null;
-        $row->shopify_push_message = mb_substr('reconcile: '.$out['message'], 0, 255);
-        $row->save();
-        if ($localId > 0) {
-            try {
-                $labels->persistTrackingOntoMarketplaceOrder($slug, $localId, $shopifyId, (string) ($result['tracking'] ?? $tracking), (string) ($result['carrier'] ?? $carrier));
-            } catch (\Throwable $e) {
+        $single = count($byTracking) === 1;
+        $statuses = [];
+        $messages = [];
+        foreach ($byTracking as $tn => $skus) {
+            $carrier = $carriers[$tn] !== '' ? $carriers[$tn] : 'Other';
+            $res = $shopify->fulfil($config, $shopifyId, $tn, $carrier, $single ? null : array_values(array_filter($skus)));
+            $statuses[] = $res['status'];
+            $messages[] = $res['message'];
+            if (in_array($res['status'], ['fulfilled', 'already'], true)) {
+                $this->markRowsFulfilled($rows->filter(fn ($r) => strtoupper((string) preg_replace('/\s+/', '', (string) $r->tracking_number)) === $tn), $shopifyId, $res['message']);
+                if ($localId > 0) {
+                    try {
+                        $labels->persistTrackingOntoMarketplaceOrder($slug, $localId, $shopifyId, $tn, $carrier);
+                    } catch (\Throwable $e) {
+                    }
+                }
             }
         }
+
+        $out['message'] = implode(' | ', array_unique($messages));
+        $out['outcome'] = match (true) {
+            in_array('fulfilled', $statuses, true) => 'fulfilled',
+            in_array('already', $statuses, true) => 'already_on_shopify',
+            default => $statuses[0] ?? 'error',
+        };
 
         return $out;
     }
 
-    /**
-     * 'open' when the linked Shopify copy exists and is not cancelled.
-     *
-     * @param  array{store_url: string, token: string}  $config
-     */
-    private function linkedCopyState(array $config, string $shopifyId): string
+    private function markRowsFulfilled($rows, string $shopifyId, string $message): void
     {
-        if (! ctype_digit($shopifyId)) {
-            return 'unknown';
+        foreach ($rows as $row) {
+            $row->shopify_order_id = $shopifyId;
+            $row->shopify_fulfilled_at = now();
+            $row->shopify_push_checked_at = now();
+            $row->shopify_next_try_at = null;
+            $row->shopify_push_message = mb_substr('reconcile: '.$message, 0, 255);
+            $row->save();
         }
-        try {
-            $res = ShopifyRestClient::request('GET', 'https://'.$config['store_url'].'/admin/api/'.self::API_VERSION.'/orders/'.$shopifyId.'.json', $config['token']);
-        } catch (\Throwable $e) {
-            return 'unknown';
-        }
-        if ($res->status() === 404) {
-            return 'missing';
-        }
-        if (! $res->successful()) {
-            return 'unknown';
-        }
-
-        return empty($res->json('order.cancelled_at')) ? 'open' : 'cancelled';
     }
 
     /**
-     * @param  array{store_url: string, token: string}  $config
-     * @return list<array<string, mixed>>|null
-     */
-    private function unfulfilledOrders(array $config, string $since): ?array
-    {
-        $base = 'https://'.$config['store_url'].'/admin/api/'.self::API_VERSION.'/orders.json';
-        $fields = 'id,name,tags,created_at,cancelled_at,fulfillment_status';
-        $query = ['status' => 'open', 'fulfillment_status' => 'unfulfilled', 'created_at_min' => $since, 'limit' => 250, 'fields' => $fields];
-        $orders = [];
-
-        for ($page = 0; $page < 100; $page++) {
-            try {
-                $response = ShopifyRestClient::request('GET', $base, $config['token'], $query, 60, 6);
-            } catch (\Throwable $e) {
-                return $orders === [] ? null : $orders;
-            }
-            if (! $response->successful()) {
-                return $orders === [] ? null : $orders;
-            }
-            foreach ((array) $response->json('orders', []) as $order) {
-                if (is_array($order) && ! empty($order['id']) && empty($order['cancelled_at'])) {
-                    $orders[] = $order;
-                }
-            }
-            if (! preg_match('/<([^>]+)>;\s*rel="next"/', (string) $response->header('Link'), $m)) {
-                break;
-            }
-            parse_str((string) parse_url($m[1], PHP_URL_QUERY), $next);
-            $query = ['limit' => 250, 'fields' => $fields, 'page_info' => (string) ($next['page_info'] ?? '')];
-        }
-
-        // Oldest first: those have waited longest.
-        usort($orders, fn ($a, $b) => strcmp((string) ($a['created_at'] ?? ''), (string) ($b['created_at'] ?? '')));
-
-        return $orders;
-    }
-
-    /**
-     * @param  array<string, mixed>  $order
+     * @param  array{id: string, name: string}  $order
      * @param  list<array{slug: string, ref: string}>  $refs
      */
     private function matchesFilter(array $order, array $refs, string $filter): bool

@@ -2994,10 +2994,10 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Hourly from Shopify's side: any open unfulfilled marketplace order whose tracking is on
-        // /order-fulfillment is fulfilled, even if the row-based push above marked it done.
-        $schedule->command('order-fulfillment:reconcile-shopify --days=14 --limit=250 --budget=1500')
-            ->hourlyAt(35)
+        // Every 30 min from Shopify's side (GraphQL): open unfulfilled marketplace orders get the
+        // tracking from /order-fulfillment — looked up first when it has none — and are fulfilled.
+        $schedule->command('order-fulfillment:reconcile-shopify --days=14 --limit=300 --lookups=80 --budget=1500')
+            ->cron('5,35 * * * *')
             ->timezone('Asia/Kolkata')
             ->name('order-fulfillment-reconcile-shopify')
             ->withoutOverlapping(60)
