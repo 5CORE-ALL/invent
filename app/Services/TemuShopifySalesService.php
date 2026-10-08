@@ -717,7 +717,11 @@ class TemuShopifySalesService
             }
 
             $qty = (int) ($r['quantity_purchased'] ?? 0);
-            $base = (float) ($r['base_price_total'] ?? 0);
+            // Goods-only unit, same meaning as Temu 2's base_price_total, so the $2.99 freight
+            // Temu pays on top is added once (R Price / Temu Price) and not twice. Same input
+            // /temu-tabulator now reads.
+            $goods = (float) ($r['goods_base_price'] ?? 0);
+            $base = $goods > 0 ? $goods : (float) ($r['base_price_total'] ?? 0);
             if ($qty <= 0 || $base <= 0) {
                 continue;
             }
@@ -725,10 +729,6 @@ class TemuShopifySalesService
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
             $lineSales = (float) ($r['line_sales'] ?? 0);
-            // Temu 1 profit is the /temu-tabulator figure on purpose: R Price rebuilt from
-            // base_price_total (computeFbPrice), exactly what that page's GPFT$ / GPFT % /
-            // GROI % compute. Active Channel has to show the same numbers as that page, so
-            // do not pass a profit basis override here (Temu 2 above does).
             $calc = self::temuPriceSalesAndProfit(
                 $base,
                 $qty,
@@ -884,15 +884,7 @@ class TemuShopifySalesService
             return $empty;
         }
 
-        // Computed exactly the way /temu3-tabulator's updateSummary() does, row by row,
-        // so Active Channel shows that page's L30 Sales / GPFT / GROI. That page is the
-        // source of truth for Temu 3, quirks included:
-        //  - goods base = unit − $2.99 when the unit is under $26.99
-        //  - R Price re-adds the $2.99 (temuFbPrice) and then adds it again when < $27
-        //  - Temu Price = R Price × 1.136
-        //  - GPFT$ (R Price) is summed per unit, NOT × Qty, while Sales and the GROI
-        //    profit (Temu Price) are × Qty
-        // Rows are not filtered on Product Master, same as the page.
+ 
         $margin = self::temu3MarginDecimal();
         $totalFull = 0.0;
         $totalBase = 0.0;
@@ -1577,6 +1569,15 @@ class TemuShopifySalesService
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
             $pft = $pftDecimal * $fbPrice * $quantity;
 
+            // Goods-only unit, i.e. what base_price_total holds when no amount payload exists.
+            // With the payload, base_price_total is goods + the $2.99 Temu pays on top, so
+            // deriving R Price / Temu Price from it adds that freight a second time. Pages that
+            // add the freight themselves (/temu-tabulator) read this field instead.
+            $lineBase = $hasApiSales ? TemuOrderAmountParser::lineBaseAmount($o) : null;
+            $goodsBasePrice = $hasApiSales
+                ? ($lineBase !== null && $quantity > 0 ? $lineBase / $quantity : $officialUnit)
+                : $price;
+
             $mapped = [
                 'Parent' => $parent,
                 'contribution_sku' => $sku,
@@ -1590,6 +1591,7 @@ class TemuShopifySalesService
                 'quantity_shipped' => 0,
                 'quantity_to_ship' => 0,
                 'base_price_total' => round($officialUnit > 0 ? $officialUnit : $price, 2),
+                'goods_base_price' => round($goodsBasePrice > 0 ? $goodsBasePrice : ($officialUnit > 0 ? $officialUnit : $price), 2),
                 'listing_base_price' => round((float) ($priceBySku[$sku] ?? 0), 2),
                 'line_sales' => $hasApiSales ? round($lineSales, 2) : round(self::lineSales($price, $quantity), 2),
                 'fb_price' => round($fbPrice, 2),

@@ -167,8 +167,15 @@
         if (b <= 0) return 0;
         return +b.toFixed(2);
     }
+    /**
+     * Goods-only unit, same meaning as /temu2-tabulator's Base. With the amount API,
+     * base_price_total is goods + the $2.99 Temu pays on top, and R Price / Temu Price add
+     * that freight themselves, so they must start from goods_base_price. Rows without it
+     * (L60 / L7 uploads) keep using base_price_total.
+     */
     function temuRowBase(row) {
-        return temuGoodsBase(row && row.base_price_total);
+        const goods = parseFloat(row && row.goods_base_price) || 0;
+        return temuGoodsBase(goods > 0 ? goods : (row && row.base_price_total));
     }
     function temuPriceFromBase(basePrice) {
         const b = parseFloat(basePrice) || 0;
@@ -407,13 +414,13 @@
                 },
                 {
                     title: "Base Price",
-                    field: "base_price_total",
+                    field: "goods_base_price",
                     hozAlign: "right",
                     sorter: function(a, b) {
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
                     width: 120,
-                    headerTooltip: "Base = stored/API unit. No −$2.99 (same as /temu2-tabulator).",
+                    headerTooltip: "Base = goods price without the $2.99 freight (R Price and Temu Price add it once, same as /temu2-tabulator).",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
                         return n > 0 ? n.toFixed(2) : '';

@@ -96,6 +96,34 @@ class TemuOrderAmountParser
     }
 
     /**
+     * Goods-only dollars for the line: orderList.basePrice, without the shipAmountTotal
+     * freight that lineSalesAmount() adds on top. Null when the payload carries no base.
+     */
+    public static function lineBaseAmount(object $order): ?float
+    {
+        $decoded = self::decodePayload($order->amount_raw_json ?? null);
+        if ($decoded === null) {
+            return null;
+        }
+        $decoded = self::unwrapResult($decoded);
+        $orderSn = trim((string) ($order->order_sn ?? ''));
+        foreach ($decoded['orderList'] ?? [] as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            if ($orderSn === '' || trim((string) ($entry['orderSn'] ?? '')) !== $orderSn) {
+                continue;
+            }
+            $base = self::pickMoney($entry, ['basePrice', 'basePriceTotal', 'goodsAmount']);
+            if ($base !== null && $base > 0) {
+                return round($base, 2);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Line sale (dollars) from stored amount JSON, then columns.
      */
     public static function amountFromOrder(object $order): ?float
