@@ -465,7 +465,10 @@ class YesterdayMarketplaceMetricsService
             (int) $m['orders'],
             (int) $m['qty'],
             (float) $m['sales'],
-            $ads['sales']
+            $ads['sales'],
+            // Temu 1's Sales column is this Temu Price × Qty figure, not base_sales,
+            // so its Y percentages have to divide by the same thing to be comparable.
+            (float) $m['sales']
         );
     }
 
@@ -1188,11 +1191,13 @@ class YesterdayMarketplaceMetricsService
         int $orders,
         int $qty,
         float $adsSales,
-        float $attributedAdSales = 0.0
+        float $attributedAdSales = 0.0,
+        float $pftSales = 0.0
     ): array {
         return [
             'sales' => round($sales, 2),
             'gpft_sales' => round($gpftSales, 2),
+            'pft_sales' => round($pftSales, 2),
             'ads_sales' => round($adsSales, 2),
             'pft' => round($pft, 2),
             'cogs' => round($cogs, 2),
@@ -1224,6 +1229,12 @@ class YesterdayMarketplaceMetricsService
         $cvr = ($views !== null && $views > 0) ? ($qty / $views) * 100 : null;
 
         $gpftBase = $sales > 0 ? $sales : $gpftSales;
+        // Sales basis the channel's own Gprofit% divides by on /all-marketplace-master.
+        // Temu 1 is the one channel where that differs from $gpftBase: its Sales column
+        // is Temu Price × Qty while its reported sales are the API base, so a Y% built
+        // on $gpftBase read 20.3% against an L30 Gprofit% of 9.5% for the same orders.
+        $pftSales = (float) ($m['pft_sales'] ?? 0);
+        $pftSales = $pftSales > 0 ? $pftSales : $gpftBase;
         $adsBase = $sales > 0 ? $sales : $adsSales;
         $gpft = ($computed && $gpftBase > 0) ? ($pft / $gpftBase) * 100 : null;
         $groi = ($computed && $cogs > 0) ? ($pft / $cogs) * 100 : null;
@@ -1255,6 +1266,7 @@ class YesterdayMarketplaceMetricsService
             'ad_spend' => $adSpend,
             'attributed_ad_sales' => $attributedAdSales,
             'gpft_sales' => $gpftSales,
+            'pft_sales' => round($pftSales, 2),
             'computed' => $computed,
         ];
     }

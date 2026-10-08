@@ -7962,7 +7962,8 @@ class ChannelMasterController extends Controller
                         ? round((float) $channel->y_pft - $this->yesterdayAdSpend($channel->y_day_sales, $channel->ads_percentage), 2)
                         : $this->yProfitDollars($channel->yesterday_sales, $channel->n_pft),
                     // Measured one-day figures: Y GROI% / YNPFT% / YNROI% come from these,
-                    // not from rescaling the L30 percentages.
+                    // not from rescaling the L30 percentages. Y Day Sales is the YNPFT%
+                    // denominator on the channel's own Sales basis, not a display figure.
                     'Y Day Sales' => $channel->y_day_sales !== null ? (float) $channel->y_day_sales : null,
                     'Y GPFT $' => $channel->y_pft !== null ? (float) $channel->y_pft : null,
                     'Y COGS' => $channel->y_cogs !== null ? (float) $channel->y_cogs : null,

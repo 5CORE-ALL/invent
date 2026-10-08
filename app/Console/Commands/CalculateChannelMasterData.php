@@ -247,9 +247,13 @@ class CalculateChannelMasterData extends Command
             return $blank;
         }
 
-        // Reported sales, so YNPFT% is yesterday's net profit over the same dollars
-        // the Y Sales column shows beside it.
-        $daySales = (float) ($row['sales'] ?? 0);
+        // Denominator for YNPFT%, not a display figure: the same sales basis the
+        // channel's own Gprofit% divides by, so the Y and L30 percentages are
+        // comparable. Equals reported sales for every channel except Temu 1.
+        $daySales = (float) ($row['pft_sales'] ?? 0);
+        if ($daySales <= 0) {
+            $daySales = (float) ($row['sales'] ?? 0);
+        }
 
         return [
             'y_day_sales' => round($daySales > 0 ? $daySales : (float) $row['gpft_sales'], 2),
