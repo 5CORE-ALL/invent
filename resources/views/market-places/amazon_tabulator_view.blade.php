@@ -4718,48 +4718,6 @@
                             }
                         }
                     },
-                    {
-                        title: "Std NROI%",
-                        field: "std_nroi",
-                        hozAlign: "center",
-                        headerSort: true,
-                        width: 78,
-                        headerTooltip: "NROI% at Std Prc with 70% margin. Same as /lmp-overall. ((Std × 0.70 − ship − LP) / LP) × 100",
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = amazonStdNroiAt(aRow.getData());
-                            const bv = amazonStdNroiAt(bRow.getData());
-                            return ((av == null || !isFinite(av)) ? 0 : av) - ((bv == null || !isFinite(bv)) ? 0 : bv);
-                        },
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            if (row.is_parent_summary) return '';
-                            const percent = amazonStdNroiAt(row);
-                            if (percent === null || !isFinite(percent)) return '';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('nroi', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        }
-                    },
-                    {
-                        title: "Std NPFT%",
-                        field: "std_npft",
-                        hozAlign: "center",
-                        headerSort: true,
-                        width: 78,
-                        headerTooltip: "NPFT% at Std Prc with 70% margin. Same as /lmp-overall. ((Std × 0.70 − ship − LP) / Std) × 100",
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = amazonStdNpftAt(aRow.getData());
-                            const bv = amazonStdNpftAt(bRow.getData());
-                            return ((av == null || !isFinite(av)) ? 0 : av) - ((bv == null || !isFinite(bv)) ? 0 : bv);
-                        },
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            if (row.is_parent_summary) return '';
-                            const percent = amazonStdNpftAt(row);
-                            if (percent === null || !isFinite(percent)) return '';
-                            const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
-                            return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
-                        }
-                    },
 
                     {
                         title: "Price",
