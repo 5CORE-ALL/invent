@@ -47,6 +47,9 @@ class VeeqoShopifyFulfillmentService
 {
     private const SHOPIFY_API_VERSION = '2025-01';
 
+    /** HTTP status of the last shopifyOrderPayload() read (null = connection error). */
+    protected ?int $lastOrderLoadStatus = null;
+
     /** @var (callable(array<string, mixed>): void)|null */
     protected $progressReporter = null;
 
@@ -459,6 +462,14 @@ class VeeqoShopifyFulfillmentService
 
         if ($strict) {
             $orderCheck = $this->shopifyOrderPayload($shopifyConfig, $shopifyOrderId);
+            if ($orderCheck === null && ($this->lastOrderLoadStatus === null || $this->lastOrderLoadStatus === 429 || $this->lastOrderLoadStatus >= 500)) {
+                return [
+                    'success' => false,
+                    'skipped' => true,
+                    'action' => 'shopify_rate_limited',
+                    'message' => 'Shopify did not answer (HTTP '.($this->lastOrderLoadStatus ?? 'timeout').') — will retry shortly.',
+                ];
+            }
             if ($orderCheck === null) {
                 return [
                     'success' => false,
@@ -5935,35 +5946,8 @@ GQL;
     protected function shopifyApi(string $storeUrl, string $token, string $method, string $path, array $payload = [], int $timeout = 30, int $attempts = 4)
     {
         $url = "https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/{$path}";
-        $last = null;
-        $attempts = max(1, $attempts);
-        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-            try {
-                $req = Http::withoutVerifying()->withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                    'Content-Type' => 'application/json',
-                ])->timeout(max(3, $timeout));
-                $verb = strtoupper($method);
-                $last = match ($verb) {
-                    'POST' => $req->post($url, $payload),
-                    'PUT' => $req->put($url, $payload),
-                    default => $req->get($url, $payload),
-                };
-            } catch (\Throwable $e) {
-                if ($attempt >= 4) {
-                    throw $e;
-                }
-                sleep(2 * $attempt);
-                continue;
-            }
-            if ($last->status() !== 429) {
-                return $last;
-            }
-            $wait = (int) ($last->header('Retry-After') ?: (2 * $attempt));
-            sleep(max(2, min(20, $wait)));
-        }
 
-        return $last;
+        return ShopifyRestClient::request($method, $url, $token, $payload, $timeout, $attempts);
     }
 
     /**
@@ -6099,9 +6083,7 @@ GQL;
         }
 
         try {
-            $response = Http::withoutVerifying()->withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json");
+            $response = $this->shopifyApi($storeUrl, $token, 'GET', "orders/{$shopifyOrderId}.json");
             if (! $response->successful()) {
                 return null;
             }
@@ -6442,9 +6424,7 @@ GQL;
         }
 
         try {
-            $response = Http::withoutVerifying()->withHeaders([
-                'X-Shopify-Access-Token' => $token,
-            ])->timeout(30)->get("https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json", [
+            $response = $this->shopifyApi($storeUrl, $token, 'GET', "orders/{$shopifyOrderId}.json", [
                 'fields' => 'id,line_items,fulfillments,tags,note,name',
             ]);
             if (! $response->successful()) {
@@ -6500,33 +6480,23 @@ GQL;
         $storeUrl = trim((string) ($config['store_url'] ?? ''));
         $token = trim((string) ($config['token'] ?? ''));
         $shopifyOrderId = trim($shopifyOrderId);
+        $this->lastOrderLoadStatus = null;
         if ($storeUrl === '' || $token === '' || $shopifyOrderId === '') {
-                return null;
-            }
+            return null;
+        }
 
-        $url = "https://{$storeUrl}/admin/api/".self::SHOPIFY_API_VERSION."/orders/{$shopifyOrderId}.json";
-        for ($attempt = 0; $attempt < 4; $attempt++) {
-            try {
-                $response = Http::withoutVerifying()->withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                ])->timeout(30)->get($url);
-                if ($response->successful()) {
-            $order = $response->json('order');
-
-            return is_array($order) ? $order : null;
-                }
-                if ($response->status() === 429) {
-                    $wait = (int) ($response->header('Retry-After') ?: (2 * ($attempt + 1)));
-                    sleep(max(2, min(15, $wait)));
-                    continue;
-                }
+        try {
+            $response = $this->shopifyApi($storeUrl, $token, 'GET', "orders/{$shopifyOrderId}.json");
         } catch (\Throwable) {
-                // retry
+            return null;
         }
-            usleep(350000 * ($attempt + 1));
+        $this->lastOrderLoadStatus = $response->status();
+        if (! $response->successful()) {
+            return null;
         }
+        $order = $response->json('order');
 
-        return null;
+        return is_array($order) ? $order : null;
     }
 
     /**

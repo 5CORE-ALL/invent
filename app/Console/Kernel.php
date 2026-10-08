@@ -2978,7 +2978,7 @@ class Kernel extends ConsoleKernel
 
         // Copy the numbers the Order Fulfillment page resolved onto the Shopify
         // orders (mark fulfilled) and push them to marketplaces still without tracking.
-        $schedule->command('order-fulfillment:push-tracking --limit=80 --budget=540')
+        $schedule->command('order-fulfillment:push-tracking --limit=150 --budget=540')
             ->everyTenMinutes()
             ->timezone('Asia/Kolkata')
             ->name('order-fulfillment-push-tracking')

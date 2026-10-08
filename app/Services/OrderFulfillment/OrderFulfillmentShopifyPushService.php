@@ -44,6 +44,12 @@ class OrderFulfillmentShopifyPushService
     /** Wait while Shopify has no copy / no open fulfillment order yet (no attempt counted). */
     public const WAITING_RETRY_MINUTES = 30;
 
+    /** Wait after Shopify rate-limited the row (no attempt counted). */
+    public const RATE_LIMIT_RETRY_MINUTES = 15;
+
+    /** Rate-limited rows in a row before the run stops and leaves the bucket to other jobs. */
+    public const RATE_LIMIT_STOP_AFTER = 5;
+
     /** Only rows resolved by the page from these sources are pushed. */
     public const PUSHABLE_SOURCES = ['veeqo', 'gofo', '4seller', 'channel', 'shopify', 'manual'];
 
@@ -83,13 +89,15 @@ class OrderFulfillmentShopifyPushService
         }
         self::ensureColumns();
 
+        $rateLimitedInARow = 0;
         foreach ($this->pendingShopifyRows($limit, $onlySlug, $onlyOrderId) as $row) {
-            if (microtime(true) >= $deadline) {
+            if (microtime(true) >= $deadline || $rateLimitedInARow >= self::RATE_LIMIT_STOP_AFTER) {
                 break;
             }
             $stats['checked']++;
             $outcome = $this->handleRow($row, $dryRun);
             $stats['rows'][] = $outcome;
+            $rateLimitedInARow = empty($outcome['rate_limited']) ? 0 : $rateLimitedInARow + 1;
 
             match ($outcome['shopify']) {
                 'fulfilled' => $stats['shopify_fulfilled']++,
@@ -234,6 +242,17 @@ class OrderFulfillmentShopifyPushService
         });
     }
 
+    /** Shopify refused or did not answer because of load (429 / 5xx / timeout), not because of the order. */
+    public static function isRateLimitResult(string $action, string $message): bool
+    {
+        if ($action === 'shopify_rate_limited') {
+            return true;
+        }
+        $m = strtolower($message);
+
+        return str_contains($m, 'http 429') || str_contains($m, 'exceeded 2 calls per second') || str_contains($m, 'too many requests');
+    }
+
     /**
      * Minutes until the next Shopify attempt after the given number of failures.
      */
@@ -368,7 +387,11 @@ class OrderFulfillmentShopifyPushService
         $action = (string) ($result['action'] ?? '');
         $message = (string) ($result['message'] ?? '');
         if (! in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
-            if (str_contains(strtolower($message), 'no open fulfillment orders')) {
+            if (self::isRateLimitResult($action, $message)) {
+                // Shopify's shared bucket is full: not this order's fault, so no attempt is counted.
+                $this->markWaiting($row, $action.': '.$message, $dryRun, self::RATE_LIMIT_RETRY_MINUTES);
+                $out['rate_limited'] = true;
+            } elseif (str_contains(strtolower($message), 'no open fulfillment orders')) {
                 // Hold, schedule, or a 3PL request: the fulfillment order often opens later the same day.
                 $this->markWaiting($row, $action.': '.$message, $dryRun);
             } else {
@@ -535,13 +558,13 @@ class OrderFulfillmentShopifyPushService
         $row->save();
     }
 
-    protected function markWaiting(OrderFulfillmentTracking $row, string $message, bool $dryRun): void
+    protected function markWaiting(OrderFulfillmentTracking $row, string $message, bool $dryRun, int $minutes = self::WAITING_RETRY_MINUTES): void
     {
         if ($dryRun) {
             return;
         }
         $row->shopify_push_checked_at = now();
-        $row->shopify_next_try_at = now()->addMinutes(self::WAITING_RETRY_MINUTES);
+        $row->shopify_next_try_at = now()->addMinutes($minutes);
         $row->shopify_push_message = mb_substr($message, 0, 255);
         $row->save();
     }

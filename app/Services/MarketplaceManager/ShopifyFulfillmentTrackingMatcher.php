@@ -3,7 +3,6 @@
 namespace App\Services\MarketplaceManager;
 
 use App\Models\ShopifySku;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -368,14 +367,14 @@ class ShopifyFulfillmentTrackingMatcher
     {
         $shopifyOrderId = $this->numericShopifyId($shopifyOrderId);
         foreach ($this->shopifyApiVersions() as $version) {
-            $response = Http::withoutVerifying()
-                ->withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                ])
-                ->timeout(30)
-                ->get("https://{$storeUrl}/admin/api/{$version}/orders/{$shopifyOrderId}.json");
+            $response = ShopifyRestClient::request('GET', "https://{$storeUrl}/admin/api/{$version}/orders/{$shopifyOrderId}.json", $token);
             if (! $response->successful()) {
-                continue;
+                // Only an unknown version is worth another version; a 429/5xx would just spend the bucket again.
+                if ($response->status() === 404) {
+                    continue;
+                }
+
+                return null;
             }
             $order = $response->json('order');
             if (is_array($order)) {
@@ -406,14 +405,13 @@ class ShopifyFulfillmentTrackingMatcher
     protected function shopifyGet(string $storeUrl, string $token, string $path): ?array
     {
         foreach ($this->shopifyApiVersions() as $version) {
-            $response = Http::withoutVerifying()
-                ->withHeaders([
-                    'X-Shopify-Access-Token' => $token,
-                ])
-                ->timeout(30)
-                ->get("https://{$storeUrl}/admin/api/{$version}/{$path}");
+            $response = ShopifyRestClient::request('GET', "https://{$storeUrl}/admin/api/{$version}/{$path}", $token);
             if (! $response->successful()) {
-                continue;
+                if ($response->status() === 404) {
+                    continue;
+                }
+
+                return null;
             }
             $this->workingApiVersion = $version;
             $json = $response->json();
