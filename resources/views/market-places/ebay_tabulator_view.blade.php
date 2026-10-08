@@ -5245,7 +5245,7 @@
                         field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Sum of the Dil, Views, CVR, eBay Sold and Std NPFT % S Bids (Dil vs SBid), then the CVR up / down adjustment. Hover a value for the breakdown. Blank only when the sum is 0 or the SKU has no matching Dil slab.",
+                        headerTooltip: "Sum of the Dil, Views, CVR, eBay Sold and Std NPFT % S Bids (Dil vs SBid), then CVR up / down, then L30 View up / down, then the Min / Max cap. Hover a value for the breakdown. When there is no S Bid the cell shows the reason; hover it for details.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -5255,7 +5255,8 @@
                                 return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
                             }
                             if (res.skip) {
-                                return `<span class="text-muted" title="${res.title || 'No matching Dil slab'}" style="font-size:11px;">—</span>`;
+                                const why = String(res.title || 'No S Bid').replace(/"/g, '&quot;');
+                                return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap; cursor:help;" title="${why}">${res.short || 'No S Bid'}</span>`;
                             }
                             const color = res.bid > EBAY_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
                             const title = res.title || 'Dil vs SBid';

@@ -29,7 +29,7 @@
         #dilSbidRuleModal .dsb-sub { color: #64748b; font-size: 12px; margin-top: 2px; }
         #dilSbidRuleModal .dsb-notes { color: #64748b; font-size: 12px; margin: 0 0 12px; padding-left: 1.1rem; }
         #dilSbidRuleModal .modal-body { overflow-x: auto; }
-        #dilSbidRuleModal .dsb-cols { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: stretch; width: 100%; min-width: 1260px; }
+        #dilSbidRuleModal .dsb-cols { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; align-items: stretch; width: 100%; min-width: 1440px; }
         #dilSbidRuleModal .dsb-col { min-width: 0; display: flex; flex-direction: column; border: 1px solid #e6edf5; border-radius: 12px; padding: 8px; background: #fff; }
         #dilSbidRuleModal .dsb-col-sum { border-color: #b6d4fe; box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.08); }
         #dilSbidRuleModal .dsb-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: #0f172a; }
@@ -51,7 +51,10 @@
         #dilSbidRuleModal .dsb-del { width: 18px; height: 18px; padding: 0; line-height: 1; border-radius: 5px; font-size: 12px; }
         #dilSbidRuleModal .dil-sbid-badge { min-width: 0; width: 44px; font-size: 9px; padding: 3px 0; }
         #dilSbidRuleModal .dsb-sum-total td { font-weight: 700; background: #eef5ff; }
-        #dil-sbid-cvr-table .dil-sbid-cvr-input { width: 100%; max-width: 40px; display: inline-block; padding: 0 2px; }
+        #dil-sbid-cvr-table .dil-sbid-cvr-input,
+        #dil-sbid-view-table .dil-sbid-view-input { width: 100%; max-width: 40px; display: inline-block; padding: 0 2px; }
+        #dilSbidRuleModal .dsb-cap { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: #334155; font-size: 12px; font-weight: 600; }
+        #dilSbidRuleModal .dsb-cap-input { width: 52px; height: 28px; padding: 0 4px; font-weight: 700; text-align: center; }
     </style>
     <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
@@ -61,9 +64,15 @@
                         <i class="fas fa-percent me-2 text-primary"></i>Dil vs SBid
                         <span class="badge bg-secondary ms-2" style="font-size:11px;">{{ $dilSbidAccount }} only</span>
                     </h5>
-                    <div class="dsb-sub">S Bid = Dil + Views + CVR + eBay Sold + Std NPFT %, then the CVR up / down adjustment. The last card shows the sum that fills the S BID column.</div>
+                    <div class="dsb-sub">S Bid = Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. The last card shows the sum that fills the S BID column.</div>
                 </div>
-                <div class="form-check form-switch dil-sbid-switch mb-0 ms-auto me-3">
+                <div class="dsb-cap ms-3 me-2" title="The final S Bid never goes below Min or above Max. eBay only accepts 2–100.">
+                    <label class="mb-0" for="dil-sbid-cap-min">Min</label>
+                    <input type="number" min="2" max="100" step="0.1" class="form-control form-control-sm dsb-cap-input" id="dil-sbid-cap-min" value="2">
+                    <label class="mb-0" for="dil-sbid-cap-max">Max</label>
+                    <input type="number" min="2" max="100" step="0.1" class="form-control form-control-sm dsb-cap-input" id="dil-sbid-cap-max" value="100">
+                </div>
+                <div class="form-check form-switch dil-sbid-switch mb-0 me-3">
                     <input class="form-check-input" type="checkbox" role="switch" id="dil-sbid-enabled">
                     <label class="form-check-label small fw-semibold" for="dil-sbid-enabled" id="dil-sbid-enabled-label">Off</label>
                 </div>
@@ -74,7 +83,7 @@
                 <ul class="dsb-notes">
                     <li>Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100). Inventory 0 and missing data are not counted. First matching range wins in every table. A range that starts where the one above ended is exclusive on From. The last range is open at the top.</li>
                     <li><strong>Dil 0–0</strong> is SKUs with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the SKU falls in. A negative value subtracts. A SKU outside every range adds 0.</li>
-                    <li>New tables start at 0, so nothing changes until you type an S Bid. The final bid is rounded to 0.1 and kept between 2 and 100 before it is pushed.</li>
+                    <li>New tables start at 0, so nothing changes until you type an S Bid. L30 View up / down uses the same arrow as the L30 View column (L7 pace vs L30 pace). Its Adj starts at 0. The final bid is rounded to 0.1 and kept between the Min and Max caps (those caps cannot go outside 2 and 100, which eBay accepts).</li>
                     <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push. Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay 1 and eBay 2 push the new S Bid on their own when the rules change the bid. The switch must be On.</li>
                 </ul>
@@ -156,6 +165,41 @@
                             <button type="button" class="btn btn-sm btn-outline-primary dsb-add flex-fill mt-0" id="dil-sbid-cvr-add-up" title="Add an Up range. The highest threshold CVR is over wins."><i class="fas fa-plus me-1"></i>Up range</button>
                         </div>
                     </div>
+                    <div class="dsb-col">
+                        <div class="dsb-title" title="Adjusts the S Bid after the CVR overlay. Down = L30 views below the threshold and the L30 View arrow is down (L7 pace under L30 pace). Up = L30 views above the threshold and the arrow is up. Flat arrows are left alone.">L30 View up / down</div>
+                        <div class="dsb-canvas"><canvas id="dil-sbid-chart-viewover"></canvas></div>
+                        <div class="dsb-legend" id="dil-sbid-leg-viewover"></div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0" id="dil-sbid-view-table">
+                                <thead>
+                                    <tr>
+                                        <th>When</th>
+                                        <th class="text-center">Views</th>
+                                        <th class="text-end">Adj S Bid</th>
+                                        <th class="text-center" title="Unique SKUs. Down: L30 views below the threshold and a down arrow. Up: L30 views above the threshold and an up arrow.">Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr data-view-dir="down">
+                                        <td>Down</td>
+                                        <td class="text-center">&lt; <input type="number" min="0" step="1" class="form-control form-control-sm text-end dil-sbid-view-input" id="dil-sbid-view-down-lt" value="30"></td>
+                                        <td class="text-end"><input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-view-input" id="dil-sbid-view-down-adj" value="0"></td>
+                                        <td class="dsb-count"><span id="dil-sbid-view-down-count">0</span></td>
+                                    </tr>
+                                    <tr data-view-dir="up">
+                                        <td>Up</td>
+                                        <td class="text-center">&gt; <input type="number" min="0" step="1" class="form-control form-control-sm text-end dil-sbid-view-input" id="dil-sbid-view-up-gt" value="30"></td>
+                                        <td class="text-end"><input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-view-input" id="dil-sbid-view-up-adj" value="0"></td>
+                                        <td class="dsb-count"><span id="dil-sbid-view-up-count">0</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="d-flex gap-1 mt-auto pt-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary dsb-add flex-fill mt-0" id="dil-sbid-view-add-down" title="Add a Down range. The lowest threshold L30 views is under wins."><i class="fas fa-plus me-1"></i>Down range</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary dsb-add flex-fill mt-0" id="dil-sbid-view-add-up" title="Add an Up range. The highest threshold L30 views is over wins."><i class="fas fa-plus me-1"></i>Up range</button>
+                        </div>
+                    </div>
                     <div class="dsb-col dsb-col-sum">
                         <div class="dsb-title" title="Dil + Views + CVR + eBay Sold + Std NPFT %. This sum, after the CVR up / down adjustment, fills the S BID column.">Sum S Bid</div>
                         <div class="dsb-canvas"><canvas id="dil-sbid-chart-sum"></canvas></div>
@@ -189,7 +233,8 @@
 <div class="modal fade is-off" id="dilSbidRuleModal" tabindex="-1" aria-labelledby="dilSbidRuleModalLabel" aria-hidden="true">
     <style>
         #dilSbidRuleModal .modal-dialog { max-width: 760px; }
-        #dil-sbid-cvr-table .dil-sbid-cvr-input { width: 88px; display: inline-block; }
+        #dil-sbid-cvr-table .dil-sbid-cvr-input,
+        #dil-sbid-view-table .dil-sbid-view-input { width: 88px; display: inline-block; }
         #dil-sbid-table thead th { background: #e7f1fb; color: #1e3a5f; font-weight: 600; }
         #dilSbidRuleModal input[type=number]::-webkit-inner-spin-button,
         #dilSbidRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -201,6 +246,8 @@
         .dil-sbid-badge { display: inline-block; min-width: 72px; text-align: center; font-weight: 700; font-size: 12px; padding: 4px 8px; border-radius: 8px; }
         .dil-sbid-es { background: #cff4fc; color: #055160; }
         .dil-sbid-off { background: #f8d7da; color: #842029; }
+        #dilSbidRuleModal .dsb-cap { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: #334155; font-size: 12px; font-weight: 600; }
+        #dilSbidRuleModal .dsb-cap-input { width: 56px; height: 28px; padding: 0 4px; font-weight: 700; text-align: center; }
     </style>
     <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
@@ -209,7 +256,13 @@
                     <i class="fas fa-percent me-2 text-primary"></i>Dil vs SBid
                     <span class="badge bg-secondary ms-2" style="font-size:11px;">{{ $dilSbidAccount }} only</span>
                 </h5>
-                <div class="form-check form-switch dil-sbid-switch mb-0 ms-auto me-3">
+                <div class="dsb-cap ms-auto me-2" title="The final S Bid never goes below Min or above Max. eBay only accepts 2–100.">
+                    <label class="mb-0 small" for="dil-sbid-cap-min">Min</label>
+                    <input type="number" min="2" max="100" step="0.1" class="form-control form-control-sm dsb-cap-input" id="dil-sbid-cap-min" value="2">
+                    <label class="mb-0 small" for="dil-sbid-cap-max">Max</label>
+                    <input type="number" min="2" max="100" step="0.1" class="form-control form-control-sm dsb-cap-input" id="dil-sbid-cap-max" value="100">
+                </div>
+                <div class="form-check form-switch dil-sbid-switch mb-0 me-3">
                     <input class="form-check-input" type="checkbox" role="switch" id="dil-sbid-enabled">
                     <label class="form-check-label small fw-semibold" for="dil-sbid-enabled" id="dil-sbid-enabled-label">Off</label>
                 </div>
@@ -222,6 +275,8 @@
                     <li><strong>0–0</strong> is SKUs with <strong>OV L30 sold = 0</strong>.</li>
                     <li>Every slab, including 0–0, uses the <strong>S Bid %</strong> you type on that row.</li>
                     <li><strong>CVR overlay</strong> then adjusts that S Bid, same as Sprc Dil. Down = CVR is below the threshold and the arrow is down (CVR L30 under CVR L60). Up = CVR is above the threshold and the arrow is up. Flat arrows are left alone.</li>
+                    <li><strong>L30 View overlay</strong> then adjusts that S Bid. Down = L30 views below the threshold and the L30 View arrow is down (L7 pace under L30 pace). Up = L30 views above the threshold and the arrow is up. Adj starts at 0.</li>
+                    <li><strong>Min / Max</strong> then keep a real S Bid inside that range. They cannot go outside 2 and 100, which eBay accepts. A SKU with no S Bid stays blank.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay, eBay 2, and eBay 3 each keep their own slabs.</li>
                     <li>eBay 1 and eBay 2 push the new S Bid on their own when Dil or CVR changes the bid. The switch must be On. eBay 3 stays manual.</li>
                 </ul>
@@ -279,6 +334,43 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="fw-semibold small mt-3 mb-1">L30 View overlay — S Bid</div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0" id="dil-sbid-view-table">
+                        <thead>
+                            <tr>
+                                <th>When</th>
+                                <th class="text-center">Views</th>
+                                <th class="text-end">Adj S Bid</th>
+                                <th class="text-center" style="width:80px;" title="Unique SKUs. Down: L30 views below the threshold and a down arrow. Up: L30 views above the threshold and an up arrow.">Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Down</td>
+                                <td class="text-center">
+                                    &lt;
+                                    <input type="number" min="0" step="1" class="form-control form-control-sm text-end dil-sbid-view-input" id="dil-sbid-view-down-lt" value="30">
+                                </td>
+                                <td class="text-end">
+                                    <input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-view-input" id="dil-sbid-view-down-adj" value="0">
+                                </td>
+                                <td class="text-center fw-semibold"><span id="dil-sbid-view-down-count">0</span></td>
+                            </tr>
+                            <tr>
+                                <td>Up</td>
+                                <td class="text-center">
+                                    &gt;
+                                    <input type="number" min="0" step="1" class="form-control form-control-sm text-end dil-sbid-view-input" id="dil-sbid-view-up-gt" value="30">
+                                </td>
+                                <td class="text-end">
+                                    <input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-view-input" id="dil-sbid-view-up-adj" value="0">
+                                </td>
+                                <td class="text-center fw-semibold"><span id="dil-sbid-view-up-count">0</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
                 <p class="small text-danger mb-0 mt-2 d-none" id="dil-sbid-err"></p>
             </div>
             <div class="modal-footer py-2 d-flex justify-content-between">
@@ -296,9 +388,13 @@ const DIL_SBID_SAVE_URL = @json($saveUrl);
 const DIL_SBID_APPLY_URL = @json($applyUrl);
 const DIL_SBID_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultSlabs());
 const DIL_SBID_CVR_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultCvr());
+const DIL_SBID_VIEW_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultViewOver());
+const DIL_SBID_CAP_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultCap());
 const DIL_SBID_COLORS = ['#6f42c1','#3b82f6','#14b8a6','#22c55e','#84cc16','#eab308','#f59e0b','#ea580c','#dc3545','#e83e8c','#7c3aed','#0ea5e9'];
 let currentDilSbidSlabs = DIL_SBID_DEFAULTS.map(function(s) { return Object.assign({}, s); });
 let currentDilSbidCvr = Object.assign({}, DIL_SBID_CVR_DEFAULTS);
+let currentDilSbidView = Object.assign({}, DIL_SBID_VIEW_DEFAULTS);
+let currentDilSbidCap = Object.assign({}, DIL_SBID_CAP_DEFAULTS);
 var dilSbidEnabled = false;
 let dilSbidSaveTimer = null;
 
@@ -343,8 +439,8 @@ function dilSbidPaintMode() {
     if (note) {
         note.textContent = on
             ? (DIL_SBID_EXT
-                ? 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then the CVR up / down adjustment.'
-                : 'On. S Bid uses these Dil slabs, then the CVR overlay.')
+                ? 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap.'
+                : 'On. S Bid uses these Dil slabs, then the CVR overlay, then the L30 View overlay, then the Min / Max cap.')
             : 'Off. S Bid is not changed.';
         note.className = on ? 'small mb-2 text-success' : 'small mb-2 text-muted';
     }
@@ -585,13 +681,200 @@ function dilSbidApplyCvr(bid, row) {
     }
     let next = dilSbidRound(bid + adj);
     if (next < 0) next = 0;
-    // eBay accepts 2.0–100.0 in tenths. Above the maximum the whole push is rejected.
-    if (next > 0) {
-        next = Math.round(next * 10) / 10;
-        if (next < 2) next = 2;
-        if (next > 100) next = 100;
-    }
     return { bid: next, adj: adj, why: why };
+}
+function dilSbidViewNow() {
+    const num = function(id, fallback) {
+        const el = document.getElementById(id);
+        const n = el ? parseFloat(el.value) : NaN;
+        return isFinite(n) ? n : fallback;
+    };
+    const prev = currentDilSbidView || {};
+    let downMore = Array.isArray(prev.down_more) ? prev.down_more : [];
+    let upMore = Array.isArray(prev.up_more) ? prev.up_more : [];
+    if (DIL_SBID_EXT) {
+        const readMore = function(dir, edgeKey) {
+            const out = [];
+            document.querySelectorAll('#dil-sbid-view-table tr.dil-sbid-view-x[data-dir="' + dir + '"]').forEach(function(tr) {
+                const edge = parseFloat(tr.querySelector('.dil-sbid-view-x-edge').value);
+                const adj = parseFloat(tr.querySelector('.dil-sbid-view-x-adj').value);
+                const item = { adj: isFinite(adj) ? adj : 0 };
+                item[edgeKey] = isFinite(edge) ? Math.max(0, edge) : 0;
+                out.push(item);
+            });
+            return out;
+        };
+        downMore = readMore('down', 'lt');
+        upMore = readMore('up', 'gt');
+    }
+    currentDilSbidView = {
+        down_lt: Math.max(0, num('dil-sbid-view-down-lt', DIL_SBID_VIEW_DEFAULTS.down_lt)),
+        down_adj: num('dil-sbid-view-down-adj', DIL_SBID_VIEW_DEFAULTS.down_adj),
+        up_gt: Math.max(0, num('dil-sbid-view-up-gt', DIL_SBID_VIEW_DEFAULTS.up_gt)),
+        up_adj: num('dil-sbid-view-up-adj', DIL_SBID_VIEW_DEFAULTS.up_adj),
+        down_more: downMore,
+        up_more: upMore
+    };
+    return currentDilSbidView;
+}
+function dilSbidPaintView() {
+    const cfg = currentDilSbidView || DIL_SBID_VIEW_DEFAULTS;
+    const set = function(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    };
+    set('dil-sbid-view-down-lt', cfg.down_lt);
+    set('dil-sbid-view-down-adj', cfg.down_adj);
+    set('dil-sbid-view-up-gt', cfg.up_gt);
+    set('dil-sbid-view-up-adj', cfg.up_adj);
+    if (DIL_SBID_EXT) dilSbidViewRenderMore();
+}
+function dilSbidViewParts(row) {
+    const views = parseFloat(row && row.views) || 0;
+    const l7 = parseFloat(row && row.l7_views) || 0;
+    return { views: views, l7: l7 };
+}
+function dilSbidViewTrend(parts) {
+    if (!parts) return 'flat';
+    const l30Pace = parts.views / 30;
+    const l7Pace = parts.l7 / 7;
+    const tol = Math.max(0.05, l30Pace * 0.05);
+    if (l7Pace > l30Pace + tol) return 'up';
+    if (l7Pace < l30Pace - tol) return 'down';
+    return 'flat';
+}
+function dilSbidViewRules(cfg) {
+    const down = [{ edge: parseFloat(cfg.down_lt), adj: parseFloat(cfg.down_adj) || 0, id: -1 }];
+    (Array.isArray(cfg.down_more) ? cfg.down_more : []).forEach(function(r, i) {
+        down.push({ edge: parseFloat(r.lt), adj: parseFloat(r.adj) || 0, id: i });
+    });
+    const up = [{ edge: parseFloat(cfg.up_gt), adj: parseFloat(cfg.up_adj) || 0, id: -1 }];
+    (Array.isArray(cfg.up_more) ? cfg.up_more : []).forEach(function(r, i) {
+        up.push({ edge: parseFloat(r.gt), adj: parseFloat(r.adj) || 0, id: i });
+    });
+    return {
+        down: down.filter(function(r) { return isFinite(r.edge); }).sort(function(a, b) { return a.edge - b.edge; }),
+        up: up.filter(function(r) { return isFinite(r.edge); }).sort(function(a, b) { return b.edge - a.edge; })
+    };
+}
+function dilSbidViewHit(parts, cfg) {
+    if (!parts) return null;
+    const trend = dilSbidViewTrend(parts);
+    const rules = dilSbidViewRules(cfg);
+    if (trend === 'down') {
+        for (let i = 0; i < rules.down.length; i++) {
+            if (parts.views < rules.down[i].edge) return { dir: 'down', rule: rules.down[i] };
+        }
+    } else if (trend === 'up') {
+        for (let i = 0; i < rules.up.length; i++) {
+            if (parts.views > rules.up[i].edge) return { dir: 'up', rule: rules.up[i] };
+        }
+    }
+    return null;
+}
+function dilSbidViewMoreRow(dir, idx, edge, adj) {
+    const sign = dir === 'down' ? '&lt;' : '&gt;';
+    return '<tr class="dil-sbid-view-x" data-dir="' + dir + '" data-idx="' + idx + '">'
+        + '<td>' + (dir === 'down' ? 'Down' : 'Up') + ' <button type="button" class="btn btn-sm btn-outline-danger dsb-del dil-sbid-view-x-del" title="Remove range">&times;</button></td>'
+        + '<td class="text-center">' + sign + ' <input type="number" min="0" step="1" class="form-control form-control-sm text-end dil-sbid-view-input dil-sbid-view-x-edge" value="' + dilSbidEsc(edge) + '"></td>'
+        + '<td class="text-end"><input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-view-input dil-sbid-view-x-adj" value="' + dilSbidEsc(adj) + '"></td>'
+        + '<td class="dsb-count"><span class="dil-sbid-view-x-count">0</span></td>'
+        + '</tr>';
+}
+function dilSbidViewRenderMore() {
+    const table = document.getElementById('dil-sbid-view-table');
+    if (!table) return;
+    table.querySelectorAll('tr.dil-sbid-view-x').forEach(function(tr) { tr.remove(); });
+    const cfg = currentDilSbidView || DIL_SBID_VIEW_DEFAULTS;
+    [['down', 'lt', cfg.down_more], ['up', 'gt', cfg.up_more]].forEach(function(spec) {
+        const main = table.querySelector('tr[data-view-dir="' + spec[0] + '"]');
+        if (!main) return;
+        let anchor = main;
+        (Array.isArray(spec[2]) ? spec[2] : []).forEach(function(item, i) {
+            anchor.insertAdjacentHTML('afterend', dilSbidViewMoreRow(spec[0], i, item[spec[1]], item.adj));
+            anchor = anchor.nextElementSibling;
+        });
+    });
+}
+function dilSbidViewAddMore(dir) {
+    const cfg = dilSbidViewNow();
+    if (dir === 'down') {
+        const edges = [cfg.down_lt].concat(cfg.down_more.map(function(r) { return r.lt; }));
+        cfg.down_more.push({ lt: Math.max(0, dilSbidRound(Math.min.apply(null, edges) - 10)), adj: cfg.down_adj });
+    } else {
+        const edges = [cfg.up_gt].concat(cfg.up_more.map(function(r) { return r.gt; }));
+        cfg.up_more.push({ gt: dilSbidRound(Math.max.apply(null, edges) + 30), adj: cfg.up_adj });
+    }
+    dilSbidViewRenderMore();
+    dilSbidPaintCounts();
+    dilSbidRefreshGrid();
+    dilSbidScheduleSave();
+}
+function dilSbidViewDeleteMore(tr) {
+    if (!tr) return;
+    tr.remove();
+    dilSbidViewNow();
+    dilSbidViewRenderMore();
+    dilSbidPaintCounts();
+    dilSbidRefreshGrid();
+    dilSbidScheduleSave();
+}
+function dilSbidApplyView(bid, row) {
+    const cfg = currentDilSbidView || DIL_SBID_VIEW_DEFAULTS;
+    const parts = dilSbidViewParts(row);
+    let adj = 0;
+    let why = '';
+    const hit = dilSbidViewHit(parts, cfg);
+    if (hit && hit.dir === 'down') {
+        adj = hit.rule.adj;
+        why = 'L30 View Down < ' + hit.rule.edge + ' and down arrow';
+    } else if (hit && hit.dir === 'up') {
+        adj = hit.rule.adj;
+        why = 'L30 View Up > ' + hit.rule.edge + ' and up arrow';
+    }
+    let next = dilSbidRound(bid + adj);
+    if (next < 0) next = 0;
+    return { bid: next, adj: adj, why: why };
+}
+function dilSbidBoundCap(n, fallback) {
+    if (!isFinite(n)) return fallback;
+    n = Math.round(n * 10) / 10;
+    if (n < 2) n = 2;
+    if (n > 100) n = 100;
+    return n;
+}
+function dilSbidCapNow(writeBack) {
+    const minEl = document.getElementById('dil-sbid-cap-min');
+    const maxEl = document.getElementById('dil-sbid-cap-max');
+    const fallbackMin = (currentDilSbidCap && currentDilSbidCap.min) || DIL_SBID_CAP_DEFAULTS.min;
+    const fallbackMax = (currentDilSbidCap && currentDilSbidCap.max) || DIL_SBID_CAP_DEFAULTS.max;
+    let min = dilSbidBoundCap(minEl ? parseFloat(minEl.value) : NaN, fallbackMin);
+    let max = dilSbidBoundCap(maxEl ? parseFloat(maxEl.value) : NaN, fallbackMax);
+    if (min > max) { const swap = min; min = max; max = swap; }
+    currentDilSbidCap = { min: min, max: max };
+    if (writeBack) {
+        if (minEl) minEl.value = min;
+        if (maxEl) maxEl.value = max;
+    }
+    return currentDilSbidCap;
+}
+function dilSbidPaintCap() {
+    const cap = currentDilSbidCap || DIL_SBID_CAP_DEFAULTS;
+    const minEl = document.getElementById('dil-sbid-cap-min');
+    const maxEl = document.getElementById('dil-sbid-cap-max');
+    if (minEl) minEl.value = cap.min;
+    if (maxEl) maxEl.value = cap.max;
+}
+/** Keep a real S Bid inside Min / Max. 0 stays 0 so a missing bid is not invented. */
+function dilSbidApplyCap(bid) {
+    if (!(bid > 0)) return 0;
+    const cap = currentDilSbidCap || DIL_SBID_CAP_DEFAULTS;
+    let next = Math.round((Number(bid) || 0) * 10) / 10;
+    if (next < cap.min) next = cap.min;
+    if (next > cap.max) next = cap.max;
+    if (next < 2) next = 2;
+    if (next > 100) next = 100;
+    return next;
 }
 /** Dil slab part of the S Bid: the S Bid typed on the slab Dil falls in. */
 function dilSbidDilPart(row, dil) {
@@ -602,13 +885,14 @@ function dilSbidDilPart(row, dil) {
         if (dilSbidContains(dil, slab, prevMax, openTop)) {
             const typed = parseFloat(slab.bid);
             if (!(isFinite(typed) && typed > 0)) {
-                return { bid: 0, color: '#6c757d', title: '', miss: 'Type an S Bid % on this slab' };
+                const range = dilSbidRound(parseFloat(slab.min)) + '–' + (openTop ? '∞' : dilSbidRound(parseFloat(slab.max)));
+                return { bid: 0, color: '#6c757d', title: '', short: 'Slab 0', miss: 'Dil ' + dilSbidRound(dil) + '% is in the Dil slab ' + range + ', which has no S Bid typed. Type an S Bid % on that slab.' };
             }
             return { bid: typed, color: '#0d6efd', title: 'Dil ' + dilSbidRound(dil) + '% → S Bid ' + typed + '%', miss: '' };
         }
         prevMax = parseFloat(slab.max);
     }
-    return { bid: 0, color: '#6c757d', title: '', miss: 'No matching Dil slab' };
+    return { bid: 0, color: '#6c757d', title: '', short: 'No slab', miss: 'Dil ' + dilSbidRound(dil) + '% is not inside any Dil slab. Add a slab that covers it.' };
 }
 /** Index of the first range holding value. The last range is open at the top. -1 when none. */
 function dilSbidIndexIn(slabs, value) {
@@ -665,7 +949,14 @@ function dilSbidExtBids(row) {
 function dilSbidOfRow(row) {
     const dil = dilSbidMetric(row);
     if (dil === null || !isFinite(dil)) {
-        return { bid: 0, color: '#6c757d', skip: true, off: false, title: 'No CP Master Dil' };
+        if (!dilSbidSkuKey(row)) {
+            return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'No SKU', title: 'No S Bid: this row is a parent or has no matched child SKU.' };
+        }
+        const inv = Number(row && row.shopify_inv);
+        if (row && row.shopify_inv !== undefined && row.shopify_inv !== null && row.shopify_inv !== '' && isFinite(inv) && inv <= 0) {
+            return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'Inv 0', title: 'No S Bid: Shopify inventory is 0, so Dil (OV L30 ÷ Inventory) cannot be worked out.' };
+        }
+        return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'No Dil', title: 'No S Bid: CP Master Dil is missing for this SKU (no inventory or OV L30 data).' };
     }
     const part = dilSbidDilPart(row, dil);
     const extra = DIL_SBID_EXT ? dilSbidExtBids(row) : null;
@@ -681,7 +972,10 @@ function dilSbidOfRow(row) {
     }
     const base = dilSbidRound(part.bid + extraSum);
     if (!(base > 0)) {
-        return { bid: 0, color: '#6c757d', skip: true, off: false, title: part.miss || 'S Bid sum is 0 or below' };
+        const why = part.miss
+            ? part.miss + (DIL_SBID_EXT ? ' Views, CVR, eBay Sold and Std NPFT % add ' + dilSbidRound(extraSum) + '.' : '')
+            : 'Dil, Views, CVR, eBay Sold and Std NPFT % add up to ' + base + ' or less, so there is no S Bid.';
+        return { bid: 0, color: '#6c757d', skip: true, off: false, short: part.short || 'Sum ≤ 0', title: 'No S Bid: ' + why };
     }
     let title = part.title;
     if (bits.length) {
@@ -692,7 +986,21 @@ function dilSbidOfRow(row) {
         const sign = adj.adj > 0 ? '+' : '';
         title += ' ' + sign + adj.adj + ' (' + adj.why + ') → ' + adj.bid + '%';
     }
-    return { bid: adj.bid, color: part.color, skip: false, off: false, title: title };
+    const viewAdj = dilSbidApplyView(adj.bid, row);
+    if (viewAdj.why) {
+        const sign = viewAdj.adj > 0 ? '+' : '';
+        title += ' ' + sign + viewAdj.adj + ' (' + viewAdj.why + ') → ' + viewAdj.bid + '%';
+    }
+    const capped = dilSbidApplyCap(viewAdj.bid);
+    if (!(capped > 0)) {
+        return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'Sum ≤ 0', title: 'No S Bid: after the overlays the bid is 0 or below.' };
+    }
+    const tenths = Math.round(viewAdj.bid * 10) / 10;
+    if (capped !== tenths) {
+        const cap = currentDilSbidCap || DIL_SBID_CAP_DEFAULTS;
+        title += ' → cap ' + capped + '% (min ' + cap.min + ' / max ' + cap.max + ')';
+    }
+    return { bid: capped, color: part.color, skip: false, off: false, title: title };
 }
 function dilSbidCounts() {
     const counts = currentDilSbidSlabs.map(function() { return 0; });
@@ -730,6 +1038,29 @@ function dilSbidCvrCounts() {
         if (!parts) return;
         seen[sku] = true;
         const hit = dilSbidCvrHit(parts, cfg);
+        if (!hit) return;
+        if (hit.dir === 'down') {
+            counts.downTotal++;
+            if (hit.rule.id < 0) counts.down++; else counts.downMore[hit.rule.id]++;
+        } else {
+            counts.upTotal++;
+            if (hit.rule.id < 0) counts.up++; else counts.upMore[hit.rule.id]++;
+        }
+    });
+    return counts;
+}
+function dilSbidViewCounts() {
+    const counts = { down: 0, up: 0, downMore: [], upMore: [], downTotal: 0, upTotal: 0 };
+    const cfg = currentDilSbidView || DIL_SBID_VIEW_DEFAULTS;
+    (cfg.down_more || []).forEach(function() { counts.downMore.push(0); });
+    (cfg.up_more || []).forEach(function() { counts.upMore.push(0); });
+    const rows = dilSbidRows();
+    const seen = {};
+    rows.forEach(function(d) {
+        const sku = dilSbidSkuKey(d);
+        if (!sku || seen[sku]) return;
+        seen[sku] = true;
+        const hit = dilSbidViewHit(dilSbidViewParts(d), cfg);
         if (!hit) return;
         if (hit.dir === 'down') {
             counts.downTotal++;
@@ -1012,6 +1343,16 @@ function dilSbidExtPaint() {
     dilSbidPaintLegend('dil-sbid-leg-over', overSlices);
     jobs.push({ id: 'dil-sbid-chart-over', slices: overSlices });
 
+    // L30 View up / down
+    const viewCounts = dilSbidViewCounts();
+    const viewSlices = [
+        { label: 'Down', count: viewCounts.downTotal || 0, color: '#dc3545' },
+        { label: 'Flat / no match', count: Math.max(0, rows.length - (viewCounts.downTotal || 0) - (viewCounts.upTotal || 0)), color: '#94a3b8' },
+        { label: 'Up', count: viewCounts.upTotal || 0, color: '#198754' },
+    ];
+    dilSbidPaintLegend('dil-sbid-leg-viewover', viewSlices);
+    jobs.push({ id: 'dil-sbid-chart-viewover', slices: viewSlices });
+
     // Sum S Bid
     const st = dilSbidSumStats(rows);
     const sumRows = [
@@ -1062,6 +1403,18 @@ function dilSbidPaintCounts() {
             if (el) el.textContent = String((list && list[i]) || 0);
         });
     });
+    const viewCounts = dilSbidViewCounts();
+    const viewDown = document.getElementById('dil-sbid-view-down-count');
+    const viewUp = document.getElementById('dil-sbid-view-up-count');
+    if (viewDown) viewDown.textContent = String(viewCounts.down || 0);
+    if (viewUp) viewUp.textContent = String(viewCounts.up || 0);
+    ['down', 'up'].forEach(function(dir) {
+        const list = dir === 'down' ? viewCounts.downMore : viewCounts.upMore;
+        document.querySelectorAll('#dil-sbid-view-table tr.dil-sbid-view-x[data-dir="' + dir + '"]').forEach(function(tr, i) {
+            const el = tr.querySelector('.dil-sbid-view-x-count');
+            if (el) el.textContent = String((list && list[i]) || 0);
+        });
+    });
     if (DIL_SBID_EXT) dilSbidExtPaint();
 }
 function dilSbidSave(thenApply) {
@@ -1078,7 +1431,15 @@ function dilSbidSave(thenApply) {
             return;
         }
     }
-    const payload = { slabs: currentDilSbidSlabs, enabled: !!dilSbidEnabled, cvr: dilSbidCvrNow() };
+    const cap = dilSbidCapNow(true);
+    if (!(cap.min <= cap.max)) {
+        if (errEl) {
+            errEl.textContent = 'Min bid cap must be at most Max';
+            errEl.classList.remove('d-none');
+        }
+        return;
+    }
+    const payload = { slabs: currentDilSbidSlabs, enabled: !!dilSbidEnabled, cvr: dilSbidCvrNow(), views_over: dilSbidViewNow(), cap: cap };
     if (DIL_SBID_EXT) {
         DIL_SBID_EXT_KEYS.forEach(function(key) { dilSbidExtRead(key); });
         for (let k = 0; k < DIL_SBID_EXT_KEYS.length; k++) {
@@ -1200,8 +1561,14 @@ $.get(DIL_SBID_GET_URL, function(data) {
     }
     dilSbidEnabled = !!(data && data.enabled);
     if (data && data.cvr) currentDilSbidCvr = Object.assign({}, DIL_SBID_CVR_DEFAULTS, data.cvr);
+    currentDilSbidView = Object.assign({}, DIL_SBID_VIEW_DEFAULTS, (data && data.views_over) || {});
+    currentDilSbidView.down_more = (currentDilSbidView.down_more || []).slice();
+    currentDilSbidView.up_more = (currentDilSbidView.up_more || []).slice();
+    currentDilSbidCap = Object.assign({}, DIL_SBID_CAP_DEFAULTS, (data && data.cap) || {});
     if (DIL_SBID_EXT) currentDilSbidTables = dilSbidCloneTables(data && data.tables);
     dilSbidPaintCvr();
+    dilSbidPaintView();
+    dilSbidPaintCap();
     dilSbidPaintMode();
     renderDilSbidTable();
     dilSbidRefreshGrid();
@@ -1243,6 +1610,12 @@ if (DIL_SBID_EXT) {
         const btn = ev.target.closest('.dil-sbid-cvr-x-del');
         if (btn) dilSbidCvrDeleteMore(btn.closest('tr'));
     });
+    document.getElementById('dil-sbid-view-add-down').addEventListener('click', function() { dilSbidViewAddMore('down'); });
+    document.getElementById('dil-sbid-view-add-up').addEventListener('click', function() { dilSbidViewAddMore('up'); });
+    document.getElementById('dil-sbid-view-table').addEventListener('click', function(ev) {
+        const btn = ev.target.closest('.dil-sbid-view-x-del');
+        if (btn) dilSbidViewDeleteMore(btn.closest('tr'));
+    });
 }
 document.getElementById('dil-sbid-tbody').addEventListener('input', function() {
     dilSbidRead();
@@ -1281,5 +1654,24 @@ document.getElementById('dil-sbid-cvr-table').addEventListener('input', function
     dilSbidPaintCounts();
     dilSbidRefreshGrid();
     dilSbidScheduleSave();
+});
+document.getElementById('dil-sbid-view-table').addEventListener('input', function() {
+    dilSbidViewNow();
+    dilSbidPaintCounts();
+    dilSbidRefreshGrid();
+    dilSbidScheduleSave();
+});
+['dil-sbid-cap-min', 'dil-sbid-cap-max'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', function() {
+        dilSbidCapNow(false);
+        dilSbidRefreshGrid();
+        dilSbidScheduleSave();
+    });
+    el.addEventListener('blur', function() {
+        dilSbidCapNow(true);
+        dilSbidRefreshGrid();
+    });
 });
 @endif

@@ -231,6 +231,51 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertTrue(DilVsSbidRule::usesNpft($tables));
     }
 
+    public function test_bid_cap_defaults_to_ebay_range_and_clamps(): void
+    {
+        $cap = DilVsSbidRule::defaultCap();
+        $this->assertSame(2.0, $cap['min']);
+        $this->assertSame(100.0, $cap['max']);
+
+        $this->assertSame(['min' => 5.0, 'max' => 20.0], DilVsSbidRule::normalizeCap(['min' => 5, 'max' => 20]));
+        $this->assertSame(['min' => 2.0, 'max' => 100.0], DilVsSbidRule::normalizeCap(null));
+        $this->assertSame(['min' => 2.0, 'max' => 100.0], DilVsSbidRule::normalizeCap(['min' => 1, 'max' => 150]));
+        $this->assertSame(['min' => 8.0, 'max' => 12.0], DilVsSbidRule::normalizeCap(['min' => 12, 'max' => 8]));
+
+        $this->assertSame(0.0, DilVsSbidRule::clampBid(0, ['min' => 5, 'max' => 20]));
+        $this->assertSame(5.0, DilVsSbidRule::clampBid(3, ['min' => 5, 'max' => 20]));
+        $this->assertSame(20.0, DilVsSbidRule::clampBid(30, ['min' => 5, 'max' => 20]));
+        $this->assertSame(12.0, DilVsSbidRule::clampBid(12, ['min' => 5, 'max' => 20]));
+    }
+
+    public function test_l30_view_overlay_uses_l7_vs_l30_pace(): void
+    {
+        $cfg = DilVsSbidRule::defaultViewOver();
+        $this->assertSame(30.0, $cfg['down_lt']);
+        $this->assertSame(0.0, $cfg['down_adj']);
+        $this->assertSame('flat', DilVsSbidRule::viewsTrend(0, 0));
+        $this->assertSame('down', DilVsSbidRule::viewsTrend(60, 0));
+        $this->assertSame('up', DilVsSbidRule::viewsTrend(30, 21));
+
+        $cfg['down_adj'] = -4;
+        $cfg['up_adj'] = 3;
+        $down = DilVsSbidRule::applyViewOver(10, 10, 0, $cfg);
+        $this->assertSame(-4.0, $down['adj']);
+        $this->assertSame(6.0, $down['bid']);
+
+        $up = DilVsSbidRule::applyViewOver(10, 40, 21, $cfg);
+        $this->assertSame(3.0, $up['adj']);
+        $this->assertSame(13.0, $up['bid']);
+
+        $flat = DilVsSbidRule::applyViewOver(10, 30, 7, $cfg);
+        $this->assertSame(0.0, $flat['adj']);
+        $this->assertSame(10.0, $flat['bid']);
+
+        $none = DilVsSbidRule::applyViewOver(0, 10, 0, $cfg);
+        $this->assertSame(0.0, $none['bid']);
+        $this->assertSame(0.0, $none['adj']);
+    }
+
     public function test_legacy_es_bid_zero_slab_becomes_zero_not_eight(): void
     {
         $legacy = [

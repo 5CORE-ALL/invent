@@ -133,7 +133,9 @@ class EbayCampaignAdsController extends Controller
             $request->input('slabs', []),
             $request->exists('enabled') ? $request->boolean('enabled') : null,
             $request->exists('cvr') ? $request->input('cvr') : null,
-            $request->exists('tables') ? $request->input('tables') : null
+            $request->exists('tables') ? $request->input('tables') : null,
+            $request->exists('cap') ? $request->input('cap') : null,
+            $request->exists('views_over') ? $request->input('views_over') : null
         );
 
         return response()->json($saved, ($saved['success'] ?? false) ? 200 : 422);

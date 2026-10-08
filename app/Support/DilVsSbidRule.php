@@ -16,6 +16,9 @@ use Illuminate\Support\Facades\DB;
  * S Bid = Dil + Views + CVR + eBay Sold + Std NPFT %.
  * CVR overlay then adjusts that sum the same way Sprc Dil adjusts Target NROI:
  * down arrow and CVR below the threshold, or up arrow and CVR above it.
+ * L30 View overlay then adjusts that bid the same way, using the L30 View
+ * arrow on the page (L7 pace vs L30 pace).
+ * Min / Max bid caps then keep a real S Bid inside that range (and inside 2–100).
  */
 final class DilVsSbidRule
 {
@@ -47,7 +50,77 @@ final class DilVsSbidRule
             'slabs' => self::normalize($raw),
             'cvr' => self::normalizeCvr(is_array($decoded) ? ($decoded['cvr'] ?? null) : null),
             'tables' => self::normalizeTables(is_array($decoded) ? ($decoded['tables'] ?? null) : null),
+            'cap' => self::normalizeCap(is_array($decoded) ? ($decoded['cap'] ?? null) : null),
+            'views_over' => self::normalizeViewOver(is_array($decoded) ? ($decoded['views_over'] ?? null) : null),
         ];
+    }
+
+    /**
+     * Floor and ceiling for a real S Bid after the sum and CVR overlay.
+     * eBay only accepts 2.0–100.0, so the caps never leave that range.
+     *
+     * @return array{min:float,max:float}
+     */
+    public static function defaultCap(): array
+    {
+        return ['min' => 2.0, 'max' => 100.0];
+    }
+
+    /**
+     * @return array{min:float,max:float}
+     */
+    public static function normalizeCap($raw): array
+    {
+        $out = self::defaultCap();
+        if (! is_array($raw)) {
+            return $out;
+        }
+        $min = self::num($raw['min'] ?? null);
+        $max = self::num($raw['max'] ?? null);
+        if ($min !== null) {
+            $out['min'] = self::boundCap($min);
+        }
+        if ($max !== null) {
+            $out['max'] = self::boundCap($max);
+        }
+        if ($out['min'] > $out['max']) {
+            $swap = $out['min'];
+            $out['min'] = $out['max'];
+            $out['max'] = $swap;
+        }
+
+        return $out;
+    }
+
+    /** Keep a real S Bid inside the cap. 0 stays 0 so a missing bid is not invented. */
+    public static function clampBid(float $bid, array $cap): float
+    {
+        if ($bid <= 0) {
+            return 0.0;
+        }
+        $cap = self::normalizeCap($cap);
+        $n = round($bid, 1);
+        if ($n < $cap['min']) {
+            $n = $cap['min'];
+        }
+        if ($n > $cap['max']) {
+            $n = $cap['max'];
+        }
+
+        return $n;
+    }
+
+    private static function boundCap(float $n): float
+    {
+        $n = round($n, 1);
+        if ($n < 2.0) {
+            return 2.0;
+        }
+        if ($n > 100.0) {
+            return 100.0;
+        }
+
+        return $n;
     }
 
     /**
@@ -220,7 +293,85 @@ final class DilVsSbidRule
      */
     public static function normalizeCvr($raw): array
     {
-        $out = self::defaultCvr();
+        return self::normalizeOverlay($raw, self::defaultCvr());
+    }
+
+    /**
+     * L30 View overlay. Down: L30 views below the threshold and the L30 View
+     * arrow is down (L7 pace under L30 pace). Up: L30 views above the threshold
+     * and the arrow is up. Adj starts at 0 so nothing changes until someone types.
+     *
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float,down_more:list<array{lt:float,adj:float}>,up_more:list<array{gt:float,adj:float}>}
+     */
+    public static function defaultViewOver(): array
+    {
+        return ['down_lt' => 30.0, 'down_adj' => 0.0, 'up_gt' => 30.0, 'up_adj' => 0.0, 'down_more' => [], 'up_more' => []];
+    }
+
+    /**
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float,down_more:list<array{lt:float,adj:float}>,up_more:list<array{gt:float,adj:float}>}
+     */
+    public static function normalizeViewOver($raw): array
+    {
+        return self::normalizeOverlay($raw, self::defaultViewOver());
+    }
+
+    /**
+     * Same L7-vs-L30 pace arrow as the L30 View column.
+     */
+    public static function viewsTrend(float $views, float $l7): string
+    {
+        $l30Pace = $views / 30.0;
+        $l7Pace = $l7 / 7.0;
+        $tol = max(0.05, $l30Pace * 0.05);
+        if ($l7Pace > $l30Pace + $tol) {
+            return 'up';
+        }
+        if ($l7Pace < $l30Pace - $tol) {
+            return 'down';
+        }
+
+        return 'flat';
+    }
+
+    /**
+     * @param  array{down_lt?:float,down_adj?:float,up_gt?:float,up_adj?:float}  $cvr
+     * @return array{bid:float,adj:float,why:string}
+     */
+    public static function applyCvr(float $bid, float $views, float $l30, float $l60, array $cvr): array
+    {
+        $cvr = self::normalizeCvr($cvr);
+        if ($bid <= 0 || $views <= 0) {
+            return ['bid' => $bid, 'adj' => 0.0, 'why' => ''];
+        }
+
+        $cvr30 = ($l30 / $views) * 100;
+        $cvr60 = ($l60 / $views) * 100;
+        $tol = 0.1;
+        $trend = ($cvr30 == 0.0 || $cvr30 < $cvr60 - $tol) ? 'down' : (($cvr30 > $cvr60 + $tol) ? 'up' : 'flat');
+
+        return self::applyOverlay($bid, $cvr30, $trend, $cvr, 'CVR', '%');
+    }
+
+    /**
+     * @param  array{down_lt?:float,down_adj?:float,up_gt?:float,up_adj?:float}  $cfg
+     * @return array{bid:float,adj:float,why:string}
+     */
+    public static function applyViewOver(float $bid, float $views, float $l7, array $cfg): array
+    {
+        $cfg = self::normalizeViewOver($cfg);
+        if ($bid <= 0) {
+            return ['bid' => $bid, 'adj' => 0.0, 'why' => ''];
+        }
+
+        return self::applyOverlay($bid, $views, self::viewsTrend($views, $l7), $cfg, 'L30 View', '');
+    }
+
+    /**
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float,down_more:list<array{lt:float,adj:float}>,up_more:list<array{gt:float,adj:float}>}
+     */
+    private static function normalizeOverlay($raw, array $out): array
+    {
         if (! is_array($raw)) {
             return $out;
         }
@@ -261,45 +412,36 @@ final class DilVsSbidRule
     }
 
     /**
-     * @param  array{down_lt?:float,down_adj?:float,up_gt?:float,up_adj?:float}  $cvr
+     * @param  array{down_lt:float,down_adj:float,up_gt:float,up_adj:float,down_more:list<array{lt:float,adj:float}>,up_more:list<array{gt:float,adj:float}>}  $cfg
      * @return array{bid:float,adj:float,why:string}
      */
-    public static function applyCvr(float $bid, float $views, float $l30, float $l60, array $cvr): array
+    private static function applyOverlay(float $bid, float $value, string $trend, array $cfg, string $label, string $unit): array
     {
-        $cvr = self::normalizeCvr($cvr);
-        if ($bid <= 0 || $views <= 0) {
-            return ['bid' => $bid, 'adj' => 0.0, 'why' => ''];
-        }
-
-        $cvr30 = ($l30 / $views) * 100;
-        $cvr60 = ($l60 / $views) * 100;
-        $tol = 0.1;
-        $trend = ($cvr30 == 0.0 || $cvr30 < $cvr60 - $tol) ? 'down' : (($cvr30 > $cvr60 + $tol) ? 'up' : 'flat');
         $adj = 0.0;
         $why = '';
         if ($trend === 'down') {
-            $rules = [['lt' => (float) $cvr['down_lt'], 'adj' => (float) $cvr['down_adj']]];
-            foreach ($cvr['down_more'] as $more) {
+            $rules = [['lt' => (float) $cfg['down_lt'], 'adj' => (float) $cfg['down_adj']]];
+            foreach ($cfg['down_more'] as $more) {
                 $rules[] = ['lt' => (float) $more['lt'], 'adj' => (float) $more['adj']];
             }
             usort($rules, fn ($a, $b) => $a['lt'] <=> $b['lt']);
             foreach ($rules as $rule) {
-                if ($cvr30 < $rule['lt']) {
+                if ($value < $rule['lt']) {
                     $adj = $rule['adj'];
-                    $why = 'CVR Down < '.$rule['lt'].'% and down arrow';
+                    $why = $label.' Down < '.$rule['lt'].$unit.' and down arrow';
                     break;
                 }
             }
         } elseif ($trend === 'up') {
-            $rules = [['gt' => (float) $cvr['up_gt'], 'adj' => (float) $cvr['up_adj']]];
-            foreach ($cvr['up_more'] as $more) {
+            $rules = [['gt' => (float) $cfg['up_gt'], 'adj' => (float) $cfg['up_adj']]];
+            foreach ($cfg['up_more'] as $more) {
                 $rules[] = ['gt' => (float) $more['gt'], 'adj' => (float) $more['adj']];
             }
             usort($rules, fn ($a, $b) => $b['gt'] <=> $a['gt']);
             foreach ($rules as $rule) {
-                if ($cvr30 > $rule['gt']) {
+                if ($value > $rule['gt']) {
                     $adj = $rule['adj'];
-                    $why = 'CVR Up > '.$rule['gt'].'% and up arrow';
+                    $why = $label.' Up > '.$rule['gt'].$unit.' and up arrow';
                     break;
                 }
             }
@@ -311,9 +453,9 @@ final class DilVsSbidRule
     }
 
     /**
-     * @return array{success:bool, enabled?:bool, slabs?:array, cvr?:array, tables?:array, error?:string}
+     * @return array{success:bool, enabled?:bool, slabs?:array, cvr?:array, tables?:array, cap?:array, views_over?:array, error?:string}
      */
-    public static function save(string $key, $slabs, $enabled = null, $cvr = null, $tables = null): array
+    public static function save(string $key, $slabs, $enabled = null, $cvr = null, $tables = null, $cap = null, $viewsOver = null): array
     {
         if (! is_array($slabs) || $slabs === []) {
             return ['success' => false, 'error' => 'Add at least one Dil slab'];
@@ -328,13 +470,15 @@ final class DilVsSbidRule
         $on = $enabled === null ? $stored['enabled'] : (bool) $enabled;
         $cvrClean = $cvr === null ? $stored['cvr'] : self::normalizeCvr($cvr);
         $tablesClean = $tables === null ? $stored['tables'] : self::normalizeTables($tables);
+        $capClean = $cap === null ? $stored['cap'] : self::normalizeCap($cap);
+        $viewClean = $viewsOver === null ? $stored['views_over'] : self::normalizeViewOver($viewsOver);
 
         DB::table('ebay_sbid_rules')->updateOrInsert(
             ['key' => $key],
-            ['rule' => json_encode(['enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean, 'tables' => $tablesClean]), 'updated_at' => now()]
+            ['rule' => json_encode(['enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean, 'tables' => $tablesClean, 'cap' => $capClean, 'views_over' => $viewClean]), 'updated_at' => now()]
         );
 
-        return ['success' => true, 'enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean, 'tables' => $tablesClean];
+        return ['success' => true, 'enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean, 'tables' => $tablesClean, 'cap' => $capClean, 'views_over' => $viewClean];
     }
 
     public static function normalize(array $slabs): array

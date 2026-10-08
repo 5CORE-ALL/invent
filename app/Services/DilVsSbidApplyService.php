@@ -46,6 +46,8 @@ class DilVsSbidApplyService
         $slabs = $stored['slabs'];
         $cvr = $stored['cvr'];
         $tables = $stored['tables'];
+        $cap = $stored['cap'] ?? DilVsSbidRule::defaultCap();
+        $viewsOver = $stored['views_over'] ?? DilVsSbidRule::defaultViewOver();
         $metrics = $metricClass::whereIn('item_id', $listingIds)->get()->keyBy(fn ($m) => (string) $m->item_id);
         $ads = DB::table($adsTable)
             ->whereIn('listing_id', $listingIds)
@@ -133,9 +135,16 @@ class DilVsSbidApplyService
                         (float) ($metric?->ebay_l60 ?? 0),
                         $cvr
                     );
-                    $decision['bid'] = $adjusted['bid'];
-                    if ($adjusted['why'] !== '') {
-                        $decision['label'] = trim($decision['label'].' '.$adjusted['why']);
+                    $viewAdj = DilVsSbidRule::applyViewOver(
+                        (float) $adjusted['bid'],
+                        $views,
+                        (float) ($metric?->l7_views ?? 0),
+                        $viewsOver
+                    );
+                    $decision['bid'] = DilVsSbidRule::clampBid((float) $viewAdj['bid'], $cap);
+                    $why = trim($adjusted['why'].' '.$viewAdj['why']);
+                    if ($why !== '') {
+                        $decision['label'] = trim($decision['label'].' '.$why);
                     }
                 }
 
