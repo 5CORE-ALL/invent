@@ -2588,7 +2588,19 @@
                         ? chPromoSku(d)
                         : String((d && d['(Child) sku']) || '').trim();
                     if (!sku) return;
-                    let price = ebayDgCellSpriceToSave(d);
+                    let price = 0;
+                    if (ebayDgIsBestbuy()) {
+                        // bestbuyDisplayedSprice() only echoes the already-saved S PRC, so using it here
+                        // kept every old S PRC and Sprc Dil never replaced it. Take the rule price.
+                        const bbMeta = ebayDilGroiMetaForRow(d);
+                        if (bbMeta && bbMeta.sprc > 0) {
+                            price = (typeof bestbuyCapAfterAmz === 'function')
+                                ? bestbuyCapAfterAmz(d, bbMeta.sprc)
+                                : ebayDgRound2(bbMeta.sprc);
+                        }
+                    } else {
+                        price = ebayDgCellSpriceToSave(d);
+                    }
                     if (!(price > 0)) {
                         const meta = ebayDilGroiMetaForRow(d);
                         if (!meta || !(meta.sprc > 0)) return;
