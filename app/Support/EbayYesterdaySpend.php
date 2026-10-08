@@ -10,12 +10,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Yesterday (L1) eBay ad spend for the Y Spend column.
+ * Yesterday's eBay ad spend for the Y Spend column and badges.
  *
  * Promoted listings: ebay_general_reports.ad_fees.
  * Keyword CPC: ebay_priority_reports.cpc_ad_fees_payout_currency.
- * A SKU total is both, matching the nightly ad_spend_l30 snapshot.
- * Dated report_range rows (Y-m-d) are the history the dot and chart read.
+ * The amount is the Pacific calendar day stored as report_range (Y-m-d).
+ * The L1 rollup is not used: it keeps listings that had no spend yesterday,
+ * so its sum is larger than that day's report.
+ * A SKU total is keyword CPC plus promoted fees for that listing.
  */
 class EbayYesterdaySpend
 {
@@ -126,8 +128,9 @@ class EbayYesterdaySpend
     }
 
     /**
-     * Channel Y Spend (each listing and CPC campaign once) and Y Ads% against
-     * yesterday's store sales — the Y Sales badge on /ebay/daily-sales.
+     * Channel Y Spend (yesterday's dated report, each listing and CPC campaign
+     * once) and Y Ads% against yesterday's store sales — the Y Sales badge on
+     * /ebay/daily-sales.
      *
      * @return array{y_spend: float, y_sales: float, y_ads_percent: float}
      */
@@ -179,14 +182,11 @@ class EbayYesterdaySpend
         $end = Carbon::yesterday('America/Los_Angeles')->startOfDay();
         $start = $days > 0 ? $end->copy()->subDays($days - 1) : null;
         $byDate = [];
-        $live = 0.0;
 
         if ($mode === 'row' && self::isCpc($funding)) {
             $byDate = self::datedCampaign(trim($campaignId), $start, $end);
-            $live = self::liveCampaign(trim($campaignId));
         } elseif ($mode === 'row') {
             $byDate = self::datedListing(trim($listingId), $start, $end);
-            $live = self::liveListing(trim($listingId));
         } else {
             $listingId = trim($listingId);
             if ($listingId === '' || $listingId === '0') {
@@ -196,10 +196,8 @@ class EbayYesterdaySpend
             foreach (self::datedSku($sku, $start, $end) as $date => $amount) {
                 $byDate[$date] = round(($byDate[$date] ?? 0) + $amount, 2);
             }
-            $live = round(self::liveListing($listingId) + self::liveSku($sku), 2);
         }
 
-        $byDate[$end->toDateString()] = round($live, 2);
         if ($start) {
             $startKey = $start->toDateString();
             $endKey = $end->toDateString();
@@ -228,10 +226,11 @@ class EbayYesterdaySpend
      */
     public static function maps(): array
     {
-        return Cache::remember('ebay1_y_spend_column_v1', 900, function () {
-            $before = Carbon::yesterday('America/Los_Angeles')->toDateString();
-            [$l1Listing] = self::splitListing(self::generalRows(['L1']), 'L1');
-            [$l1Campaign, , $l1Sku] = self::splitPriority(self::priorityRows(['L1']), 'L1');
+        return Cache::remember('ebay1_y_spend_column_v2', 900, function () {
+            $yesterday = Carbon::yesterday('America/Los_Angeles')->toDateString();
+            $before = $yesterday;
+            [$l1Listing] = self::splitListing(self::generalRows([$yesterday]), $yesterday);
+            [$l1Campaign, $l1Sku] = self::splitPriority(self::priorityRows([$yesterday]), $yesterday);
             [$prevListing, $prevListingDate] = self::latestListingBefore($before);
             [$prevCampaign, $prevCampaignDate, $prevSku, $prevSkuDate] = self::latestPriorityBefore($before);
 
@@ -403,68 +402,48 @@ class EbayYesterdaySpend
 
     /**
      * @param  array<int, object>  $rows
-     * @return array{0: array<string, float>, 1: array<string, float>}
+     * @return array{0: array<string, float>}
      */
-    private static function splitListing(array $rows, string $prevDate): array
+    private static function splitListing(array $rows, string $range): array
     {
-        $l1 = [];
-        $prev = [];
+        $current = [];
         foreach ($rows as $row) {
             $id = trim((string) ($row->listing_id ?? ''));
-            if ($id === '') {
-                continue;
-            }
-            $bucket = (string) ($row->report_range ?? '') === 'L1' ? 'l1' : 'prev';
-            if ($bucket === 'prev' && (string) ($row->report_range ?? '') !== $prevDate) {
+            if ($id === '' || (string) ($row->report_range ?? '') !== $range) {
                 continue;
             }
             $amount = self::money($row->ad_fees ?? 0);
-            if ($bucket === 'l1') {
-                $l1[$id] = round(($l1[$id] ?? 0) + $amount, 2);
-            } else {
-                $prev[$id] = round(($prev[$id] ?? 0) + $amount, 2);
-            }
+            $current[$id] = round(($current[$id] ?? 0) + $amount, 2);
         }
 
-        return [$l1, $prev];
+        return [$current];
     }
 
     /**
      * @param  array<int, object>  $rows
-     * @return array{0: array<string, float>, 1: array<string, float>, 2: array<string, float>, 3: array<string, float>}
+     * @return array{0: array<string, float>, 1: array<string, float>}
      */
-    private static function splitPriority(array $rows, string $prevDate): array
+    private static function splitPriority(array $rows, string $range): array
     {
-        $l1Campaign = [];
-        $prevCampaign = [];
-        $l1Sku = [];
-        $prevSku = [];
+        $campaign = [];
+        $sku = [];
         foreach ($rows as $row) {
-            $isL1 = (string) ($row->report_range ?? '') === 'L1';
-            if (! $isL1 && (string) ($row->report_range ?? '') !== $prevDate) {
+            if ((string) ($row->report_range ?? '') !== $range) {
                 continue;
             }
             $amount = self::money($row->cpc_ad_fees_payout_currency ?? 0);
             $campaignId = trim((string) ($row->campaign_id ?? ''));
             if ($campaignId !== '') {
-                if ($isL1) {
-                    $l1Campaign[$campaignId] = round(($l1Campaign[$campaignId] ?? 0) + $amount, 2);
-                } else {
-                    $prevCampaign[$campaignId] = round(($prevCampaign[$campaignId] ?? 0) + $amount, 2);
-                }
+                $campaign[$campaignId] = round(($campaign[$campaignId] ?? 0) + $amount, 2);
             }
-            $sku = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->campaign_name ?? ''));
-            if ($sku === '') {
+            $skuKey = ShopifySku::normalizeSkuForShopifyLookup((string) ($row->campaign_name ?? ''));
+            if ($skuKey === '') {
                 continue;
             }
-            if ($isL1) {
-                $l1Sku[$sku] = round(($l1Sku[$sku] ?? 0) + $amount, 2);
-            } else {
-                $prevSku[$sku] = round(($prevSku[$sku] ?? 0) + $amount, 2);
-            }
+            $sku[$skuKey] = round(($sku[$skuKey] ?? 0) + $amount, 2);
         }
 
-        return [$l1Campaign, $prevCampaign, $l1Sku, $prevSku];
+        return [$campaign, $sku];
     }
 
     /**
@@ -552,69 +531,6 @@ class EbayYesterdaySpend
         }
 
         return $out;
-    }
-
-    private static function liveListing(string $listingId): float
-    {
-        if ($listingId === '' || ! Schema::hasTable('ebay_general_reports')) {
-            return 0.0;
-        }
-
-        $sum = 0.0;
-        $rows = DB::table('ebay_general_reports')
-            ->where('report_range', 'L1')
-            ->where('listing_id', $listingId)
-            ->get(['ad_fees']);
-        foreach ($rows as $row) {
-            $sum += self::money($row->ad_fees);
-        }
-
-        return round($sum, 2);
-    }
-
-    private static function liveCampaign(string $campaignId): float
-    {
-        if ($campaignId === '' || ! Schema::hasTable('ebay_priority_reports')) {
-            return 0.0;
-        }
-
-        $sum = 0.0;
-        $rows = DB::table('ebay_priority_reports')
-            ->where('report_range', 'L1')
-            ->where('campaign_id', $campaignId)
-            ->get(['cpc_ad_fees_payout_currency']);
-        foreach ($rows as $row) {
-            $sum += self::money($row->cpc_ad_fees_payout_currency);
-        }
-
-        return round($sum, 2);
-    }
-
-    private static function liveSku(string $sku): float
-    {
-        $skuKey = ShopifySku::normalizeSkuForShopifyLookup($sku);
-        $raw = strtoupper(trim($sku));
-        if ($skuKey === '' || ! Schema::hasTable('ebay_priority_reports')) {
-            return 0.0;
-        }
-
-        $sum = 0.0;
-        $rows = DB::table('ebay_priority_reports')
-            ->where('report_range', 'L1')
-            ->where(function ($q) use ($raw, $skuKey) {
-                $q->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$raw])
-                    ->orWhereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuKey]);
-            })
-            ->get(['campaign_name', 'cpc_ad_fees_payout_currency']);
-        foreach ($rows as $row) {
-            if (ShopifySku::normalizeSkuForShopifyLookup((string) $row->campaign_name) !== $skuKey
-                && strtoupper(trim((string) $row->campaign_name)) !== $raw) {
-                continue;
-            }
-            $sum += self::money($row->cpc_ad_fees_payout_currency);
-        }
-
-        return round($sum, 2);
     }
 
     private static function listingIdForSku(string $sku): string
