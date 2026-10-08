@@ -3485,9 +3485,13 @@
                 ? chPromoLp(d)
                 : parseFloat(d && (d.LP_productmaster != null ? d.LP_productmaster : d.lp));
             if (!(sprice > 0) || !(lp > 0)) return null;
-            const ship = (typeof chPromoShipCost === 'function')
+            // Same list as NegativeSnroiPushGuard::excludeShip. These pages' SNROI has no Ship, so a row
+            // with a Ship value was judged negative here and its push was silently dropped.
+            const noShip = ['wayfair', 'doba_withoutship', 'faire', 'topdawg', 'fb_marketplace',
+                'shopify_b2b', 'mercari_woship', 'depop', 'instagram', 'alibaba'].indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
+            const ship = noShip ? 0 : ((typeof chPromoShipCost === 'function')
                 ? (Number(chPromoShipCost(d)) || 0)
-                : (parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0);
+                : (parseFloat(d && (d.Ship_productmaster != null ? d.Ship_productmaster : d.ship)) || 0));
             const margin = (typeof chPromoTakehomeMargin === 'function')
                 ? chPromoTakehomeMargin(d)
                 : 0.80;

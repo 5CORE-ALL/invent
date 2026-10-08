@@ -844,12 +844,17 @@
             function enqueueChannelPushSprice(items, opts) {
                 opts = opts || {};
                 if (Array.isArray(items) && typeof global.chPromoSnroiPushBlocked === 'function') {
+                    const beforeN = items.length;
                     items = items.filter(function(item) {
                         if (!item) return false;
                         const row = typeof chPushSpriceFindRowBySku === 'function' ? chPushSpriceFindRowBySku(item.sku) : null;
                         const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
                         return !global.chPromoSnroiPushBlocked(d, item.price);
                     });
+                    const droppedN = beforeN - items.length;
+                    if (droppedN > 0 && !opts.silent) {
+                        chPushSpriceToast('warning', droppedN + ' SKU(s) not pushed: SNROI is negative at that S PRC');
+                    }
                 }
                 if (!CH_PUSH_SPRICE_LIVE) {
                     if (!opts.silent) {

@@ -625,7 +625,13 @@
         function sheinRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
             let live = 0;
-            if (typeof window.chStdPriceForRow === 'function') {
+            const dilRuleOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
+            if (dilRuleOn) {
+                // Sprc Dil switch ON: S PRC is the Dil slab price. Std prc vs dil must not override it.
+                if (typeof window.ebaySprcDilForRow === 'function') {
+                    live = Number(window.ebaySprcDilForRow(data)) || 0;
+                }
+            } else if (typeof window.chStdPriceForRow === 'function') {
                 live = Number(window.chStdPriceForRow(data)) || 0;
             }
             if (live > 0 && typeof chPromoCapSpriceToLmp === 'function') {
