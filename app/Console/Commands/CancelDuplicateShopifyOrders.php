@@ -2,10 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\MarketplaceSyncSettings;
+use App\Services\MarketplaceManager\MarketplaceShopifyStores;
 use App\Services\MarketplaceManager\ShopifyDuplicateOrderPlanner;
 use App\Services\MarketplaceManager\ShopifyOrderCreateClaim;
-use App\Services\ShopifyStoreSelector;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -26,11 +25,6 @@ class CancelDuplicateShopifyOrders extends Command
     protected $description = 'Cancel + restock duplicate Shopify copies of one marketplace order';
 
     private const API_VERSION = '2025-01';
-
-    private const MARKETPLACES = [
-        'aliexpress', 'alibaba', 'amazon', 'b5cb2b', 'doba', 'ebay1', 'ebay2', 'ebay3', 'faire',
-        'newegg', 'reverb', 'shein', 'temu', 'temu2', 'temu3', 'tiktok', 'tiktok2', 'topdawg', 'wayfair',
-    ];
 
     /** Tables holding shopify_order_id that are not marketplace order links. */
     private const SKIP_TABLES = ['shopify_orders', 'reverb_sync_logs', ShopifyOrderCreateClaim::TABLE];
@@ -131,27 +125,7 @@ class CancelDuplicateShopifyOrders extends Command
      */
     private function stores(): array
     {
-        $selector = app(ShopifyStoreSelector::class);
-        $only = strtolower(trim((string) $this->option('store')));
-        $keys = $only !== '' ? [$only] : ['main'];
-        if ($only === '') {
-            foreach (self::MARKETPLACES as $slug) {
-                try {
-                    $keys[] = (string) (MarketplaceSyncSettings::getFor($slug)['order']['shopify_store'] ?? 'main');
-                } catch (\Throwable $e) {
-                }
-            }
-        }
-
-        $configs = [];
-        foreach (array_unique(array_filter($keys)) as $key) {
-            $config = $selector->getConfigForStore($key);
-            if (($config['store_url'] ?? '') !== '' && ($config['token'] ?? '') !== '') {
-                $configs[$config['store_url']] = $config;
-            }
-        }
-
-        return array_values($configs);
+        return MarketplaceShopifyStores::configs((string) $this->option('store'));
     }
 
     /**
