@@ -884,8 +884,15 @@ class TemuShopifySalesService
             return $empty;
         }
 
-        [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
-
+        // Computed exactly the way /temu3-tabulator's updateSummary() does, row by row,
+        // so Active Channel shows that page's L30 Sales / GPFT / GROI. That page is the
+        // source of truth for Temu 3, quirks included:
+        //  - goods base = unit − $2.99 when the unit is under $26.99
+        //  - R Price re-adds the $2.99 (temuFbPrice) and then adds it again when < $27
+        //  - Temu Price = R Price × 1.136
+        //  - GPFT$ (R Price) is summed per unit, NOT × Qty, while Sales and the GROI
+        //    profit (Temu Price) are × Qty
+        // Rows are not filtered on Product Master, same as the page.
         $margin = self::temu3MarginDecimal();
         $totalFull = 0.0;
         $totalBase = 0.0;
@@ -896,34 +903,43 @@ class TemuShopifySalesService
         $orderSet = [];
 
         foreach ($rows as $r) {
+            $parent = (string) ($r['Parent'] ?? '');
+            if ($parent !== '' && str_starts_with($parent, 'PARENT')) {
+                continue;
+            }
             $sku = trim((string) ($r['contribution_sku'] ?? ''));
             $orderId = trim((string) ($r['order_id'] ?? ''));
             if ($sku === '' || $orderId === '') {
                 continue;
             }
-            $n = self::normalizeTemu3Sku($sku);
-            $nNoSpace = str_replace(' ', '', $n);
-            if (! isset($pmSet[$n]) && ! isset($noSpaceToNormalized[$nNoSpace])) {
-                continue;
-            }
 
             $qty = (int) ($r['quantity_purchased'] ?? 0);
-            $base = (float) ($r['base_price_total'] ?? 0);
-            if ($qty <= 0 || $base <= 0) {
-                continue;
-            }
-
+            $raw = (float) ($r['base_price_total'] ?? 0);
+            $goods = $raw > 0
+                ? ($raw < 26.99 ? max(0.0, round($raw - 2.99, 2)) : round($raw, 2))
+                : 0.0;
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
-            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship);
 
-            $totalFull += $calc['sales'];
-            $totalBase += $calc['base'] * $qty;
-            $totalQty += $qty;
-            $totalGpft += $calc['profit'];
-            $totalGroiPft += $calc['profit'];
+            $displayed = ($qty > 0 && $goods > 0)
+                ? ($goods <= 26.99 ? $goods + 2.99 : $goods)
+                : 0.0;
+            $rPrice = $displayed > 0
+                ? ($displayed < 27 ? round($displayed + 2.99, 2) : round($displayed, 2))
+                : 0.0;
+            $temuPrice = $rPrice > 0 ? round($rPrice * 1.136, 2) : 0.0;
+
             $totalCogs += $lp * $qty;
-            $orderSet[$orderId] = true;
+            if ($rPrice > 0) {
+                $totalGpft += $rPrice * $margin - $lp - $ship;
+            }
+            if ($qty > 0 && $goods > 0) {
+                $totalFull += $qty * $temuPrice;
+                $totalBase += $goods * $qty;
+                $totalGroiPft += ($temuPrice * $margin - $lp - $ship) * $qty;
+                $totalQty += $qty;
+                $orderSet[$orderId] = true;
+            }
         }
 
         return [
