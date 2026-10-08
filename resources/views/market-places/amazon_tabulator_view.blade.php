@@ -6023,6 +6023,10 @@
                     $('#amazon-blue-triangle-badge').html(
                         '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                     );
+                    if (blueTriangleCount > 0 && typeof window.amzPushLeftoverBlues === 'function') {
+                        clearTimeout(window._amzLeftoverTimer);
+                        window._amzLeftoverTimer = setTimeout(window.amzPushLeftoverBlues, 2000);
+                    }
                 }
                 syncAmazonBlueTriangleBadgeState();
 

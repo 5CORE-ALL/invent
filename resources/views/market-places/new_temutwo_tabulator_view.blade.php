@@ -2323,6 +2323,7 @@
                         (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success'
                     );
                 }
+                setTimeout(ntoPushLeftoverBlues, 1500);
             }
         });
     }
@@ -2401,6 +2402,23 @@
         }
         nextChunk();
     }
+    function ntoPushLeftoverBlues() {
+        if (!ntoPageReloadPushAllowed()) return;
+        const items = collectNtoReloadPushItems();
+        if (!items.length) {
+            window._ntoLeftoverLastN = 0;
+            return;
+        }
+        if (items.length !== window._ntoLeftoverLastN) {
+            window._ntoLeftoverLastN = items.length;
+            window._ntoLeftoverPasses = 0;
+        }
+        if ((window._ntoLeftoverPasses || 0) >= 12) return;
+        window._ntoLeftoverPasses = (window._ntoLeftoverPasses || 0) + 1;
+        window._ntoReloadPushQueued = true;
+        queueNtoPushSpriceItems(items, { silent: true });
+    }
+    window.ntoPushLeftoverBlues = ntoPushLeftoverBlues;
     function ntoTryQueuePushOnReload(opts) {
         opts = opts || {};
         if (!ntoPageReloadPushAllowed()) return;
@@ -2642,6 +2660,10 @@
         $('#newtemutwo-blue-triangle-badge').html(
             '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangle.toLocaleString()
         );
+        if (blueTriangle > 0 && typeof window.ntoPushLeftoverBlues === 'function') {
+            clearTimeout(window._ntoLeftoverTimer);
+            window._ntoLeftoverTimer = setTimeout(window.ntoPushLeftoverBlues, 2000);
+        }
         $('#newtemutwo-lmp-cap-badge').text('LMP cap ' + lmpCapped.toLocaleString());
         $('#temu-amz-cap-badge').text('Amz ' + amzCap.toLocaleString());
         $('#temu-eb-cap-badge').text('EB ' + ebCap.toLocaleString());

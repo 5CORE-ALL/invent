@@ -10034,6 +10034,11 @@
         }
         /** Keep pushing leftover blue-triangle rows without a page reload. */
         function chPromoEbayPushLeftoverBlues() {
+            if (typeof window.chPushSpricePushLeftoverBlues === 'function'
+                && !/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) {
+                window.chPushSpricePushLeftoverBlues();
+                return;
+            }
             if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
             if (!chPromoPageReloadPushAllowed()) return;
             let busy = false;
@@ -10069,6 +10074,14 @@
                     window._chPromoEbayRuleReady = true;
                     chPromoTryEbayBluePush();
                 });
+                if (!window._chPromoEbayRuleWaitArmed) {
+                    window._chPromoEbayRuleWaitArmed = true;
+                    setTimeout(function() {
+                        if (window._chPromoEbayRuleReady) return;
+                        window._chPromoEbayRuleReady = true;
+                        chPromoTryEbayBluePush();
+                    }, 2000);
+                }
                 return;
             }
             window._chPromoEbayBluePushWaits = (window._chPromoEbayBluePushWaits || 0) + 1;
@@ -10100,9 +10113,6 @@
             const leftoverActive = !!(leftover && leftover.active);
             const leftoverTotal = leftover ? (Number(leftover.total) || 0) : 0;
             const blueN = chPromoEbayBlueCount();
-            const slack = blueN > 0 ? Math.max(20, Math.ceil(blueN * 0.1)) : 20;
-            const leftoverIsCatalog = leftoverActive && leftoverTotal > 0
-                && (blueN < 0 || leftoverTotal > blueN + slack);
             const startScan = function() {
                 window._chPromoEbayBlueScanStarted = true;
                 if (typeof setChannelPushSpriceProgress === 'function') {
@@ -10116,8 +10126,11 @@
                 }
                 scan(chPromoSafeTable(), { once: false, silent: false, catalog: true });
             };
-            if (leftoverIsCatalog && typeof window.chPushSpriceCancelSilent === 'function') {
+            if (leftoverActive && leftoverTotal > 0
+                && !window._chPromoEbayLeftoverCleared
+                && typeof window.chPushSpriceCancelSilent === 'function') {
                 window._chPromoEbayBlueScanStarted = true;
+                window._chPromoEbayLeftoverCleared = true;
                 if (typeof setChannelPushSpriceProgress === 'function') {
                     setChannelPushSpriceProgress({
                         active: true,
@@ -11511,6 +11524,7 @@
                         if (!on) return;
                         window._chPromoServerBluePushStarted = false;
                         window._chPromoEbayBlueScanStarted = false;
+                        window._chPromoEbayLeftoverCleared = false;
                         window._chPromoEbayBlueLeftoverPasses = 0;
                         window._chPromoEbayBlueLeftoverLastN = undefined;
                         if (typeof chPromoIsTemuPromoChannel === 'function'

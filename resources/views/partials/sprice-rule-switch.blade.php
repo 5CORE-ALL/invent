@@ -54,6 +54,9 @@
                 if (typeof window.frRefreshSpriceCells === 'function') {
                     try { window.frRefreshSpriceCells(); } catch (e) { /* ignore */ }
                 }
+                if (typeof window.mercWosRefreshSpriceCells === 'function') {
+                    try { window.mercWosRefreshSpriceCells(); } catch (e) { /* ignore */ }
+                }
                 if (typeof window.shopifyB2bRefreshSpriceCells === 'function') {
                     try { window.shopifyB2bRefreshSpriceCells(); } catch (e2) { /* ignore */ }
                 }
@@ -82,6 +85,9 @@
                 if (typeof window.frRefreshSpriceCells === 'function') {
                     try { window.frRefreshSpriceCells(); } catch (e3) { /* ignore */ }
                 }
+                if (typeof window.mercWosRefreshSpriceCells === 'function') {
+                    try { window.mercWosRefreshSpriceCells(); } catch (e4) { /* ignore */ }
+                }
             }
             function spriceSetActiveRule(rule, opts) {
                 opts = opts || {};
@@ -107,6 +113,7 @@
             window.spriceSetActiveRule = spriceSetActiveRule;
             function spriceBindRuleSwitch() {
                 spricePaintRuleSwitch();
+                spriceSettleRule(spriceActiveRule());
                 $('#sprice-rule-switch').off('change.spricerule').on('change.spricerule', 'input', function() {
                     const picked = this.id === 'sprice-rule-dil-sw' ? 'dil' : 'std';
                     if (!this.checked) {
@@ -119,6 +126,7 @@
                     url: '/channel-promo-pricing/' + encodeURIComponent(SPRICE_RULE_CHANNEL) + '/sprice-active-rule',
                     method: 'GET',
                     headers: { 'Accept': 'application/json' },
+                    timeout: 8000,
                 }).done(function(res) {
                     spriceSettleRule(res && res.rule === 'dil' ? 'dil' : 'std');
                 }).fail(function() {

@@ -743,6 +743,7 @@
                             chPushSpricePulledKey = toastKey;
                             chPushSpricePullAfterPush(chPushSpriceOkSkus(resp.tasks || []));
                         }
+                        chPushSpriceScheduleLeftover(1500);
                     }
                 });
             }
@@ -1481,6 +1482,24 @@
                         }, 700);
                         return;
                     }
+                    window._chPromoEbayBlueScanStarted = false;
+                    const stillLoading = !chPushSpriceDatasetRows().length;
+                    if (stillLoading) {
+                        if ((window._chPushSpriceLeftoverPasses || 0) > 0) {
+                            window._chPushSpriceLeftoverPasses -= 1;
+                        }
+                        if (!opts.silent) {
+                            setChannelPushSpriceProgress({
+                                active: true,
+                                done: 0,
+                                total: 0,
+                                pct: 0,
+                                msg: 'Starting…',
+                            });
+                        }
+                        chPushSpriceScheduleLeftover(2000);
+                        return;
+                    }
                     if (!opts.silent) {
                         setChannelPushSpriceProgress({
                             active: false,
@@ -1506,6 +1525,56 @@
                     });
                 }
             }
+            function chPushSpriceCountBlues() {
+                let n = 0;
+                chPushSpriceDatasetRows().forEach(function(d) {
+                    if (!chPushSpriceIsChild(d)) return;
+                    if (chPushSpricePageHasBlueTriangle(d)) n++;
+                });
+                return n;
+            }
+            function chPushSpriceAnyBusy() {
+                if (chPushSpriceUsesClientPump() && chPushClientBusy()) return true;
+                if (chPushSpriceFlushing) return true;
+                return false;
+            }
+            function chPushSpricePushLeftoverBlues() {
+                if (!chPushSpriceAutoPushAllowed()) return;
+                if (chPushSpriceAnyBusy()) return;
+                const n = chPushSpriceCountBlues();
+                if (!(n > 0)) {
+                    window._chPushSpriceLeftoverLastN = 0;
+                    return;
+                }
+                if (n !== window._chPushSpriceLeftoverLastN) {
+                    window._chPushSpriceLeftoverLastN = n;
+                    window._chPushSpriceLeftoverPasses = 0;
+                }
+                if ((window._chPushSpriceLeftoverPasses || 0) >= 12) return;
+                window._chPushSpriceLeftoverPasses = (window._chPushSpriceLeftoverPasses || 0) + 1;
+                let tbl = null;
+                try {
+                    if (typeof table !== 'undefined' && table) tbl = table;
+                } catch (e) { /* TDZ */ }
+                scanAndQueueChannelPushSprice(tbl, { once: false, silent: false, catalog: true });
+            }
+            function chPushSpriceScheduleLeftover(delayMs) {
+                clearTimeout(window._chPushSpriceLeftoverTimer);
+                window._chPushSpriceLeftoverTimer = setTimeout(chPushSpricePushLeftoverBlues, delayMs || 2000);
+            }
+            function chPushSpriceWatchBlueBadges() {
+                document.querySelectorAll('[id$="-blue-triangle-badge"]').forEach(function(el) {
+                    if (el._chPushBlueWatch) return;
+                    el._chPushBlueWatch = true;
+                    const obs = new MutationObserver(function() {
+                        const n = parseInt(String(el.textContent || '').replace(/[^\d]/g, ''), 10) || 0;
+                        if (n > 0) chPushSpriceScheduleLeftover(2000);
+                    });
+                    obs.observe(el, { childList: true, characterData: true, subtree: true });
+                });
+            }
+            setTimeout(chPushSpriceWatchBlueBadges, 800);
+            setInterval(chPushSpriceWatchBlueBadges, 4000);
 
             global.enqueueChannelPushSprice = enqueueChannelPushSprice;
             global.enqueueChannelPushSpriceAfterSave = enqueueChannelPushSpriceAfterSave;
@@ -1517,6 +1586,8 @@
             global.setChannelPushSpriceProgress = setChannelPushSpriceProgress;
             global.chPushSpriceCancelSilent = chPushSpriceCancelSilent;
             global.chPushSpriceClientBusy = chPushClientBusy;
+            global.chPushSpricePushLeftoverBlues = chPushSpricePushLeftoverBlues;
+            global.chPushSpriceScheduleLeftover = chPushSpriceScheduleLeftover;
             global._chPushSpriceChannel = CH_PUSH_SPRICE_CHANNEL;
 
             if (CH_PUSH_SPRICE_LIVE) {
@@ -1527,13 +1598,32 @@
                     timeout: 15000,
                 }).done(function(resp) {
                     window._chPromoEbayLeftoverStatus = resp || null;
-                    if (resp && resp.active && !/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
-                        startChannelPushSpricePoll();
+                    if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
+                        const leftoverActive = !!(resp && resp.active && (Number(resp.total) || 0) > 0);
+                        const afterCancel = function() {
+                            if (typeof window.chPromoTryEbayBluePush === 'function') {
+                                window.chPromoTryEbayBluePush();
+                            }
+                        };
+                        if (leftoverActive && typeof chPushSpriceCancelSilent === 'function') {
+                            window._chPromoEbayLeftoverCleared = true;
+                            setChannelPushSpriceProgress({
+                                active: true,
+                                done: 0,
+                                total: 0,
+                                pct: 0,
+                                msg: 'Starting…',
+                            });
+                            chPushSpriceCancelSilent().always(function() {
+                                window._chPromoEbayLeftoverStatus = null;
+                                afterCancel();
+                            });
+                            return;
+                        }
+                        afterCancel();
+                        return;
                     }
-                    if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)
-                        && typeof window.chPromoTryEbayBluePush === 'function') {
-                        window.chPromoTryEbayBluePush();
-                    }
+                    if (resp && resp.active) startChannelPushSpricePoll();
                 }).fail(function() {
                     window._chPromoEbayLeftoverStatus = null;
                 });

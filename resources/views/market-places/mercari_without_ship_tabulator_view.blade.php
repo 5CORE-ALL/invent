@@ -716,14 +716,18 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         width: 92,
-                        sorter: "number",
-                        headerTooltip: "S PRC = Std × (1 − (PRMT% + cvr%)/100). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                        sorter: function(a, b, aRow, bRow) {
+                            const n = function(row) {
+                                return (typeof mercWosDisplayedSprice === 'function') ? (mercWosDisplayedSprice(row.getData()) || 0) : 0;
+                            };
+                            return n(aRow) - n(bRow);
+                        },
+                        headerTooltip: "Std prc vs dil ON: S PRC = Std × (1 − discounts). Sprc Dil ON: (LP × (1 + target%/100)) / factor. Ship not used. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
-                            let value = (typeof chPromoTableSprice === 'function')
-                                ? Number(chPromoTableSprice(d)) || 0
-                                : parseFloat(cell.getValue() || d.sprice || 0);
-                            if (!(value > 0)) value = parseFloat(cell.getValue() || d.sprice || 0);
+                            let value = (typeof mercWosDisplayedSprice === 'function')
+                                ? Number(mercWosDisplayedSprice(d)) || 0
+                                : 0;
                             if (!(value > 0)) return '';
                             const live = parseFloat(d.price) || 0;
                             const lmp = parseFloat(d.lmp_price || d.lmp || d.LMP) || 0;
@@ -762,11 +766,20 @@
                         field: "SROI",
                         hozAlign: "center",
                         width: 70,
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow) {
+                            const n = function(row) {
+                                const d = row.getData();
+                                const p = (typeof mercWosDisplayedSprice === 'function') ? mercWosDisplayedSprice(d) : 0;
+                                return p > 0 ? mercWosSpriceMetrics(d, p).sroi : 0;
+                            };
+                            return n(aRow) - n(bRow);
+                        },
+                        headerTooltip: "SROI of the S PRC column. ((S PRC × factor − LP) / LP) × 100. Ship not used.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
-                            if (row.sprice === null || row.sprice === '' || isNaN(parseFloat(row.sprice))) return '—';
-                            const value = parseFloat(cell.getValue()) || 0;
+                            const sprice = (typeof mercWosDisplayedSprice === 'function') ? mercWosDisplayedSprice(row) : 0;
+                            if (!(sprice > 0)) return '—';
+                            const value = mercWosSpriceMetrics(row, sprice).sroi;
                             const color = value < 0 ? '#dc3545' : (value < 40 ? '#ffc107' : '#28a745');
                             return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
                         }
@@ -1154,14 +1167,51 @@
         let priceLt80LmpFilterActive = false;
         let blueTriangleFilterActive = false;
 
-        function mercWosRowSpriceForAlert(data) {
-            if (!data) return 0;
-            if (typeof chPromoTableSprice === 'function') {
-                const saved = Number(chPromoTableSprice(data)) || 0;
-                if (saved > 0) return saved;
-            }
-            return parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+        function mercWosSpriceRule() {
+            if (typeof window.spriceActiveRule === 'function') return window.spriceActiveRule();
+            return 'std';
         }
+        function mercWosDisplayedSprice(data) {
+            if (!data) return 0;
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(data)) return 0;
+            if (mercWosSpriceRule() === 'dil') {
+                if (typeof ebaySprcDilForRow === 'function') {
+                    const dil = Number(ebaySprcDilForRow(data)) || 0;
+                    if (dil > 0) return +dil.toFixed(2);
+                }
+                return 0;
+            }
+            if (typeof window.chStdPriceForRow === 'function') {
+                const stdRule = Number(window.chStdPriceForRow(data)) || 0;
+                if (stdRule > 0) return +stdRule.toFixed(2);
+            }
+            return 0;
+        }
+        function mercWosSpriceMetrics(data, sprice) {
+            const lp = parseFloat(data && (data.lp != null && data.lp !== '' ? data.lp : data.LP)) || 0;
+            let factor = parseFloat(data && (data.factor != null ? data.factor : data._margin));
+            if (!(factor > 0)) factor = 1;
+            if (factor > 1) factor = factor / 100;
+            const s = parseFloat(sprice) || 0;
+            const profit = (s * factor) - lp;
+            return {
+                spft: s > 0 ? Math.round((profit / s) * 100) : 0,
+                sroi: lp > 0 ? Math.round((profit / lp) * 100) : 0,
+            };
+        }
+        function mercWosRowSpriceForAlert(data) {
+            return mercWosDisplayedSprice(data);
+        }
+        function mercWosRefreshSpriceCells() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            try {
+                (table.getRows('visible') || []).forEach(function(row) {
+                    try { if (row && typeof row.reformat === 'function') row.reformat(); } catch (e) { /* ignore */ }
+                });
+            } catch (e2) { /* ignore */ }
+        }
+        window.mercWosDisplayedSprice = mercWosDisplayedSprice;
+        window.mercWosRefreshSpriceCells = mercWosRefreshSpriceCells;
         function mercWosHasBlueTriangle(data) {
             if (!data) return false;
             if (!(parseFloat(data.INV) > 0)) return false;

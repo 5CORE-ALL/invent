@@ -4100,6 +4100,9 @@
                         amzPushPrcPulledKey = toastKey;
                         queueAmzPostPushPull(amzOkSkusFromPushTasks(resp.tasks || []));
                     }
+                    if (!queuedNext) {
+                        setTimeout(amzPushLeftoverBlues, 1500);
+                    }
                 }
             }).fail(function() {
                 // Keep polling — worker may still be fine
@@ -4372,6 +4375,24 @@
             extra.forEach(function(d) { consider(d); });
             return items;
         }
+        function amzPushLeftoverBlues() {
+            if (!amzPageReloadPushAllowed()) return;
+            if (amzRuleSpriceSyncBusy || amzRuleSpricePersistActive > 0 || amzRuleSpricePersistQueue.length) return;
+            const items = collectAmzReloadPushItems();
+            if (!items.length) {
+                window._amzLeftoverLastN = 0;
+                return;
+            }
+            if (items.length !== window._amzLeftoverLastN) {
+                window._amzLeftoverLastN = items.length;
+                window._amzLeftoverPasses = 0;
+            }
+            if ((window._amzLeftoverPasses || 0) >= 12) return;
+            window._amzLeftoverPasses = (window._amzLeftoverPasses || 0) + 1;
+            window._amzReloadPushQueued = true;
+            queueAmzPushPrcItems(items, { silent: true, retryFailed: true });
+        }
+        window.amzPushLeftoverBlues = amzPushLeftoverBlues;
         function amzTryQueuePushOnReload() {
             if (!amzPageReloadPushAllowed()) return;
             if (window._amzReloadPushQueued) return;
