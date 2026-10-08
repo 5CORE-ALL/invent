@@ -10032,6 +10032,31 @@
             const n = (tbl && typeof tbl.getDataCount === 'function') ? tbl.getDataCount() : 0;
             return (n > 0 || extraN > 0) && typeof chPromoEbayBlueFn() === 'function';
         }
+        /** Keep pushing leftover blue-triangle rows without a page reload. */
+        function chPromoEbayPushLeftoverBlues() {
+            if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
+            if (!chPromoPageReloadPushAllowed()) return;
+            let busy = false;
+            try {
+                busy = typeof window.chPushSpriceClientBusy === 'function' && window.chPushSpriceClientBusy();
+            } catch (e) { busy = false; }
+            if (busy) return;
+            const n = chPromoEbayBlueCount();
+            if (!(n > 0)) {
+                window._chPromoEbayBlueLeftoverLastN = 0;
+                return;
+            }
+            if (n !== window._chPromoEbayBlueLeftoverLastN) {
+                window._chPromoEbayBlueLeftoverLastN = n;
+                window._chPromoEbayBlueLeftoverPasses = 0;
+            }
+            if ((window._chPromoEbayBlueLeftoverPasses || 0) >= 12) return;
+            window._chPromoEbayBlueLeftoverPasses = (window._chPromoEbayBlueLeftoverPasses || 0) + 1;
+            window._chPromoEbayBlueScanStarted = false;
+            window._chPromoEbayBluePushWaits = 20;
+            chPromoTryEbayBluePush();
+        }
+        window.chPromoEbayPushLeftoverBlues = chPromoEbayPushLeftoverBlues;
         /** Queue only the blue-triangle rows (S PRC ≠ Price), the same set as the badge. */
         function chPromoTryEbayBluePush() {
             if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
@@ -10067,11 +10092,6 @@
                 window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
                 return;
             }
-            if (window._chPromoEbayLeftoverStatus === undefined && window._chPromoEbayBluePushWaits < 40) {
-                clearTimeout(window._chPromoEbayBluePushTimer);
-                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
-                return;
-            }
             const scan = (typeof scanAndQueueChannelPushSprice === 'function')
                 ? scanAndQueueChannelPushSprice
                 : (window.scanAndQueueChannelPushSprice || null);
@@ -10083,23 +10103,34 @@
             const slack = blueN > 0 ? Math.max(20, Math.ceil(blueN * 0.1)) : 20;
             const leftoverIsCatalog = leftoverActive && leftoverTotal > 0
                 && (blueN < 0 || leftoverTotal > blueN + slack);
-            const leftoverIsBlue = leftoverActive && leftoverTotal > 0 && blueN >= 0
-                && leftoverTotal <= blueN + slack;
             const startScan = function() {
                 window._chPromoEbayBlueScanStarted = true;
+                if (typeof setChannelPushSpriceProgress === 'function') {
+                    setChannelPushSpriceProgress({
+                        active: true,
+                        done: 0,
+                        total: blueN > 0 ? blueN : 0,
+                        pct: 0,
+                        msg: 'Starting…',
+                    });
+                }
                 scan(chPromoSafeTable(), { once: false, silent: false, catalog: true });
             };
             if (leftoverIsCatalog && typeof window.chPushSpriceCancelSilent === 'function') {
                 window._chPromoEbayBlueScanStarted = true;
+                if (typeof setChannelPushSpriceProgress === 'function') {
+                    setChannelPushSpriceProgress({
+                        active: true,
+                        done: 0,
+                        total: 0,
+                        pct: 0,
+                        msg: 'Starting…',
+                    });
+                }
                 window.chPushSpriceCancelSilent().always(function() {
                     window._chPromoEbayLeftoverStatus = null;
-                    scan(chPromoSafeTable(), { once: false, silent: false, catalog: true });
+                    startScan();
                 });
-                return;
-            }
-            if (leftoverIsBlue && typeof startChannelPushSpricePoll === 'function') {
-                window._chPromoEbayBlueScanStarted = true;
-                startChannelPushSpricePoll();
                 return;
             }
             startScan();
@@ -11480,6 +11511,8 @@
                         if (!on) return;
                         window._chPromoServerBluePushStarted = false;
                         window._chPromoEbayBlueScanStarted = false;
+                        window._chPromoEbayBlueLeftoverPasses = 0;
+                        window._chPromoEbayBlueLeftoverLastN = undefined;
                         if (typeof chPromoIsTemuPromoChannel === 'function'
                             && chPromoIsTemuPromoChannel()
                             && typeof scanAndQueueTemuListingPush === 'function') {

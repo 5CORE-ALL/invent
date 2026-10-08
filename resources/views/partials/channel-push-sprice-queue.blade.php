@@ -213,19 +213,12 @@
                 chPushSpriceExpecting = false;
                 chPushSpriceExpectMisses = 0;
                 if (chPushSpriceUsesClientPump()) cancelChannelPushSpriceClient();
+                chPushClientCancelled = false;
                 return $.ajax({
                     url: CH_PUSH_SPRICE_URL + '/cancel',
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': chPushSpriceCsrf(), 'Accept': 'application/json' },
                     data: { _token: chPushSpriceCsrf() },
-                }).always(function() {
-                    setChannelPushSpriceProgress({
-                        active: false,
-                        done: 0,
-                        total: 0,
-                        pct: 0,
-                        msg: 'Ready',
-                    });
                 });
             }
             function chPushSpriceCancelQueued() {
@@ -655,6 +648,9 @@
                             return;
                         }
                         finishPulling(pending);
+                        if (typeof global.chPromoEbayPushLeftoverBlues === 'function') {
+                            setTimeout(global.chPromoEbayPushLeftoverBlues, 1200);
+                        }
                         if (pulled > 0 && !retry.length) {
                             chPushSpriceToast('success', 'Pulled live Price for ' + pulled + ' SKU(s)');
                         } else if (retry.length) {
@@ -1220,6 +1216,9 @@
                                 chPushClientFail = 0;
                                 chPushClientTotal = 0;
                             }, 12000);
+                            if (typeof global.chPromoEbayPushLeftoverBlues === 'function') {
+                                setTimeout(global.chPromoEbayPushLeftoverBlues, 1500);
+                            }
                         } else {
                             setTimeout(chPushClientPump, 200);
                         }
@@ -1368,7 +1367,21 @@
                         : (d.Price != null ? d.Price : 0));
                 return chPushSpriceRound2(raw);
             }
+            function chPushSpriceDilIsOn() {
+                return typeof global.spriceActiveRule === 'function' && global.spriceActiveRule() === 'dil';
+            }
             function chPushSpriceSavedFromRow(d) {
+                if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
+                    const pageFn = CH_PUSH_SPRICE_CHANNEL === 'ebay2'
+                        ? global.ebay2DisplayedSprice
+                        : (CH_PUSH_SPRICE_CHANNEL === 'ebay3'
+                            ? global.ebay3DisplayedSprice
+                            : global.ebayDisplayedSprice);
+                    if (typeof pageFn === 'function') {
+                        const shown = chPushSpriceRound2(pageFn(d));
+                        if (shown > 0) return shown;
+                    }
+                }
                 if (typeof chPromoPushSpriceAmount === 'function') {
                     const shown = chPushSpriceRound2(chPromoPushSpriceAmount(d));
                     if (shown > 0) return shown;
@@ -1380,12 +1393,13 @@
                     'ebay2DisplayedSprice',
                     'ebayDisplayedSprice',
                 ];
+                const dilOn = chPushSpriceDilIsOn();
                 for (let i = 0; i < pageShown.length; i++) {
                     const fn = global[pageShown[i]];
                     if (typeof fn !== 'function') continue;
                     const shown = chPushSpriceRound2(fn(d));
                     if (!(shown > 0)) continue;
-                    if (typeof global.ebaySprcDilForRow === 'function') {
+                    if (!dilOn && typeof global.ebaySprcDilForRow === 'function') {
                         const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
                         if (dil > 0 && Math.abs(shown - dil) < 0.005) continue;
                     }
@@ -1398,7 +1412,7 @@
                 if (!(saved > 0)) {
                     saved = chPushSpriceRound2(d && (d.SPRICE != null ? d.SPRICE : d.sprice));
                 }
-                if (saved > 0 && typeof global.ebaySprcDilForRow === 'function') {
+                if (!dilOn && saved > 0 && typeof global.ebaySprcDilForRow === 'function') {
                     const dil = chPushSpriceRound2(global.ebaySprcDilForRow(d));
                     if (dil > 0 && Math.abs(saved - dil) < 0.005) return 0;
                 }
@@ -1502,6 +1516,7 @@
             global.startChannelPushSpricePoll = startChannelPushSpricePoll;
             global.setChannelPushSpriceProgress = setChannelPushSpriceProgress;
             global.chPushSpriceCancelSilent = chPushSpriceCancelSilent;
+            global.chPushSpriceClientBusy = chPushClientBusy;
             global._chPushSpriceChannel = CH_PUSH_SPRICE_CHANNEL;
 
             if (CH_PUSH_SPRICE_LIVE) {

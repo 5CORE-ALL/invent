@@ -4704,6 +4704,10 @@
                 $('#ebay2-blue-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                 );
+                if (blueTriangleCount > 0 && typeof window.chPromoEbayPushLeftoverBlues === 'function') {
+                    clearTimeout(window._chPromoEbayBlueLeftoverTimer);
+                    window._chPromoEbayBlueLeftoverTimer = setTimeout(window.chPromoEbayPushLeftoverBlues, 2000);
+                }
                 $('#ebay2-red-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
                 );
