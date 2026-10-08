@@ -99,6 +99,97 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertSame(0.0, $noViews['adj']);
     }
 
+    public function test_extra_tables_start_at_zero_so_nothing_changes(): void
+    {
+        $tables = DilVsSbidRule::defaultTables();
+        $this->assertSame(['views', 'cvr', 'sold', 'npft'], array_keys($tables));
+        foreach ($tables as $slabs) {
+            foreach ($slabs as $slab) {
+                $this->assertSame(0.0, $slab['bid']);
+            }
+        }
+
+        $plain = DilVsSbidRule::resolve(4, 9, DilVsSbidRule::defaultSlabs());
+        $total = DilVsSbidRule::resolveTotal(4, 9, DilVsSbidRule::defaultSlabs(), $tables, [
+            'views' => 120, 'cvr' => 3.5, 'sold' => 4, 'npft' => 12,
+        ]);
+        $this->assertSame($plain['bid'], $total['bid']);
+        $this->assertSame($plain['mode'], $total['mode']);
+    }
+
+    public function test_sbid_is_the_sum_of_dil_views_cvr_sold_and_npft(): void
+    {
+        $tables = DilVsSbidRule::normalizeTables([
+            'views' => [['min' => 0, 'max' => 100, 'bid' => 1], ['min' => 100, 'max' => 99999, 'bid' => 2]],
+            'cvr' => [['min' => 0, 'max' => 5, 'bid' => 0.5], ['min' => 5, 'max' => 100, 'bid' => -1]],
+            'sold' => [['min' => 0, 'max' => 0, 'bid' => 3], ['min' => 1, 'max' => 9999, 'bid' => 4]],
+            'npft' => [['min' => -9999, 'max' => 10, 'bid' => 1.5], ['min' => 10, 'max' => 9999, 'bid' => 0.25]],
+        ]);
+
+        $total = DilVsSbidRule::resolveTotal(4, 9, DilVsSbidRule::defaultSlabs(), $tables, [
+            'views' => 150, 'cvr' => 3, 'sold' => 0, 'npft' => 12,
+        ]);
+
+        $this->assertSame(8.0, $total['parts']['dil']);
+        $this->assertSame(2.0, $total['parts']['views']);
+        $this->assertSame(0.5, $total['parts']['cvr']);
+        $this->assertSame(3.0, $total['parts']['sold']);
+        $this->assertSame(0.25, $total['parts']['npft']);
+        $this->assertSame(13.75, $total['bid']);
+        $this->assertSame('dynamic', $total['mode']);
+    }
+
+    public function test_table_ranges_use_first_match_exclusive_shared_edge_and_open_top(): void
+    {
+        $slabs = DilVsSbidRule::normalizeTables([
+            'views' => [
+                ['min' => 0, 'max' => 0, 'bid' => 1],
+                ['min' => 0, 'max' => 50, 'bid' => 2],
+                ['min' => 50, 'max' => 100, 'bid' => 3],
+            ],
+        ])['views'];
+
+        $this->assertSame(1.0, DilVsSbidRule::tableBid(0, $slabs));
+        $this->assertSame(2.0, DilVsSbidRule::tableBid(0.1, $slabs));
+        $this->assertSame(2.0, DilVsSbidRule::tableBid(50, $slabs));
+        $this->assertSame(3.0, DilVsSbidRule::tableBid(50.1, $slabs));
+        $this->assertSame(3.0, DilVsSbidRule::tableBid(5000, $slabs));
+        $this->assertSame(0.0, DilVsSbidRule::tableBid(null, $slabs));
+        $this->assertSame(0.0, DilVsSbidRule::tableBid(-1, $slabs));
+    }
+
+    public function test_extras_can_fill_the_bid_when_the_dil_slab_has_none(): void
+    {
+        $tables = DilVsSbidRule::defaultTables();
+        $tables['views'][1]['bid'] = 5.0;
+
+        $none = DilVsSbidRule::resolveTotal(0, 0, DilVsSbidRule::defaultSlabs(), $tables, ['views' => 10]);
+        $this->assertSame(5.0, $none['bid']);
+
+        $tables['views'][1]['bid'] = -20.0;
+        $negative = DilVsSbidRule::resolveTotal(4, 9, DilVsSbidRule::defaultSlabs(), $tables, ['views' => 10]);
+        $this->assertSame(0.0, $negative['bid']);
+        $this->assertSame('none', $negative['mode']);
+    }
+
+    public function test_std_npft_matches_lmp_overall(): void
+    {
+        $this->assertNull(DilVsSbidRule::stdNpft(null, 10, 1));
+        $this->assertNull(DilVsSbidRule::stdNpft(0, 10, 1));
+        // ((100 × 0.70 − 5 − 40) / 100) × 100 = 25
+        $this->assertSame(25.0, DilVsSbidRule::stdNpft(100, 40, 5));
+        // No LP counts as 0, like /lmp-overall.
+        $this->assertSame(65.0, DilVsSbidRule::stdNpft(100, null, 5));
+    }
+
+    public function test_usesnpft_only_when_that_table_adds_something(): void
+    {
+        $tables = DilVsSbidRule::defaultTables();
+        $this->assertFalse(DilVsSbidRule::usesNpft($tables));
+        $tables['npft'][2]['bid'] = 1.0;
+        $this->assertTrue(DilVsSbidRule::usesNpft($tables));
+    }
+
     public function test_missing_es_bid_does_not_invent_a_percent(): void
     {
         $zero = DilVsSbidRule::resolve(0, 0, DilVsSbidRule::defaultSlabs());

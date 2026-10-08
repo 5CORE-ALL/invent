@@ -1286,6 +1286,7 @@
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'modal',
         'account' => 'eBay 1',
+        'extended' => true,
     ])
     @include('partials.lmp-missing-badge-script')
     @include('partials.price-gt-lmp-badge-script')
@@ -1331,6 +1332,7 @@
         @include('campaign.partials.ebay-dil-sbid-rule', [
             'part' => 'script',
             'account' => 'eBay 1',
+            'extended' => true,
             'getUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
             'saveUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
             'applyUrl' => url('/ebay/campaign-ads/push-selected'),
@@ -5243,7 +5245,7 @@
                         field: "ca_suggested_bid",
                         hozAlign: "center",
                         width: 90,
-                        headerTooltip: "Dil vs SBid, then the CVR overlay. Blank only when the SKU has no matching slab.",
+                        headerTooltip: "Sum of the Dil, Views, CVR, eBay Sold and Std NPFT % S Bids (Dil vs SBid), then the CVR up / down adjustment. Hover a value for the breakdown. Blank only when the sum is 0 or the SKU has no matching Dil slab.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },

@@ -12,12 +12,18 @@ use Illuminate\Support\Facades\DB;
  * Later rows: the editable S Bid % on that slab.
  * First matching slab wins. A slab that starts where the previous one ended
  * is exclusive on From, so Dil 10 stays on 0.1–10.
- * CVR overlay then adjusts that bid the same way Sprc Dil adjusts Target NROI:
+ * Four more range tables each add their own S Bid to the Dil bid:
+ * Views, CVR %, eBay Sold (L30) and Std NPFT % (as on /lmp-overall).
+ * S Bid = Dil + Views + CVR + eBay Sold + Std NPFT %.
+ * CVR overlay then adjusts that sum the same way Sprc Dil adjusts Target NROI:
  * down arrow and CVR below the threshold, or up arrow and CVR above it.
  */
 final class DilVsSbidRule
 {
     public const KEY_EBAY1 = 'ebay1_dil_sbid';
+
+    /** Extra range tables whose S Bid is added to the Dil slab bid. */
+    public const TABLE_KEYS = ['views', 'cvr', 'sold', 'npft'];
 
     public const KEY_EBAY2 = 'ebay2_dil_sbid';
 
@@ -41,7 +47,153 @@ final class DilVsSbidRule
             'enabled' => self::isEnabled(is_array($decoded) ? $decoded : null),
             'slabs' => self::normalize($raw),
             'cvr' => self::normalizeCvr(is_array($decoded) ? ($decoded['cvr'] ?? null) : null),
+            'tables' => self::normalizeTables(is_array($decoded) ? ($decoded['tables'] ?? null) : null),
         ];
+    }
+
+    /**
+     * Ranges for Views, CVR %, eBay Sold and Std NPFT %. Every S Bid starts at 0
+     * so nothing changes for an account until someone types a value.
+     *
+     * @return array<string, list<array{min:float,max:float,bid:float}>>
+     */
+    public static function defaultTables(): array
+    {
+        $build = function (array $edges): array {
+            return array_map(fn (array $e) => ['min' => (float) $e[0], 'max' => (float) $e[1], 'bid' => 0.0], $edges);
+        };
+
+        return [
+            'views' => $build([[0, 0], [0, 50], [50, 100], [100, 250], [250, 500], [500, 9999]]),
+            'cvr' => $build([[0, 0], [0, 2], [2, 4], [4, 7], [7, 10], [10, 9999]]),
+            'sold' => $build([[0, 0], [1, 2], [3, 5], [6, 10], [11, 25], [26, 9999]]),
+            'npft' => $build([[-9999, 0], [0, 10], [10, 20], [20, 30], [30, 9999]]),
+        ];
+    }
+
+    /**
+     * Keeps valid rows only. A missing table falls back to its defaults.
+     * A saved table with every row removed stays empty (adds nothing).
+     *
+     * @return array<string, list<array{min:float,max:float,bid:float}>>
+     */
+    public static function normalizeTables($raw): array
+    {
+        $out = self::defaultTables();
+        if (! is_array($raw)) {
+            return $out;
+        }
+        foreach (self::TABLE_KEYS as $key) {
+            if (! isset($raw[$key]) || ! is_array($raw[$key])) {
+                continue;
+            }
+            $rows = [];
+            foreach (array_values($raw[$key]) as $slab) {
+                if (! is_array($slab)) {
+                    continue;
+                }
+                $min = self::num($slab['min'] ?? null);
+                $max = self::num($slab['max'] ?? null);
+                if ($min === null || $max === null || $max < $min) {
+                    continue;
+                }
+                $bid = self::num($slab['bid'] ?? null) ?? 0.0;
+                $rows[] = ['min' => $min, 'max' => $max, 'bid' => round($bid, 2)];
+            }
+            $out[$key] = $rows;
+        }
+
+        return $out;
+    }
+
+    /** True when the Std NPFT % table adds anything, so Std Price / LP / ship are worth loading. */
+    public static function usesNpft(array $tables): bool
+    {
+        foreach ($tables['npft'] ?? [] as $slab) {
+            if (abs((float) ($slab['bid'] ?? 0)) > 0.0000001) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Std NPFT % as on /lmp-overall: ((Std × 0.70 − ship − LP) / Std) × 100, 2 decimals.
+     * Null when there is no Std Price.
+     */
+    public static function stdNpft(?float $std, ?float $lp, float $ship): ?float
+    {
+        if ($std === null || $std <= 0) {
+            return null;
+        }
+        $lpVal = ($lp !== null && $lp > 0) ? $lp : 0.0;
+
+        return round((($std * 0.70 - $ship - $lpVal) / $std) * 100, 2);
+    }
+
+    /**
+     * S Bid of the first range holding $value. The last range is open at the top.
+     * A range that starts where the previous one ended is exclusive on From.
+     *
+     * @param  list<array{min:float,max:float,bid:float}>  $slabs
+     */
+    public static function tableBid(?float $value, array $slabs): float
+    {
+        if ($value === null || ! is_finite($value) || $slabs === []) {
+            return 0.0;
+        }
+        $slabs = array_values($slabs);
+        $prevMax = null;
+        foreach ($slabs as $slab) {
+            if (self::contains($value, $slab, $prevMax)) {
+                return (float) $slab['bid'];
+            }
+            $prevMax = (float) $slab['max'];
+        }
+        $last = $slabs[count($slabs) - 1];
+
+        return $value > (float) $last['max'] ? (float) $last['bid'] : 0.0;
+    }
+
+    /**
+     * Dil slab bid plus the four range tables.
+     * With every extra table at 0 this is the same decision resolve() gives.
+     *
+     * @param  array<string, list<array{min:float,max:float,bid:float}>>  $tables  Normalized tables
+     * @param  array{views?:?float,cvr?:?float,sold?:?float,npft?:?float}  $inputs
+     * @return array{mode:string,bid:float,off:bool,label:string,parts:array<string,float>}
+     */
+    public static function resolveTotal(float $dil, float $esBid, array $slabs, array $tables, array $inputs): array
+    {
+        $decision = self::resolve($dil, $esBid, $slabs);
+        $parts = ['dil' => (float) $decision['bid']];
+        $extra = 0.0;
+        foreach (self::TABLE_KEYS as $key) {
+            $value = $inputs[$key] ?? null;
+            $bid = self::tableBid(is_numeric($value) ? (float) $value : null, $tables[$key] ?? []);
+            $parts[$key] = $bid;
+            $extra += $bid;
+        }
+        $decision['parts'] = $parts;
+        if (abs($extra) < 0.0000001) {
+            return $decision;
+        }
+
+        $sum = round($parts['dil'] + $extra, 2);
+        if ($sum <= 0) {
+            $decision['mode'] = 'none';
+            $decision['bid'] = 0.0;
+            $decision['label'] = $decision['label'] !== '' ? $decision['label'] : 'No S Bid';
+
+            return $decision;
+        }
+
+        $decision['mode'] = 'dynamic';
+        $decision['bid'] = $sum;
+        $decision['label'] = 'S Bid sum';
+
+        return $decision;
     }
 
     /** Off until this account turns the switch on. Off uses View VS SBID. */
@@ -121,9 +273,9 @@ final class DilVsSbidRule
     }
 
     /**
-     * @return array{success:bool, enabled?:bool, slabs?:array, cvr?:array, error?:string}
+     * @return array{success:bool, enabled?:bool, slabs?:array, cvr?:array, tables?:array, error?:string}
      */
-    public static function save(string $key, $slabs, $enabled = null, $cvr = null): array
+    public static function save(string $key, $slabs, $enabled = null, $cvr = null, $tables = null): array
     {
         if (! is_array($slabs) || $slabs === []) {
             return ['success' => false, 'error' => 'Add at least one Dil slab'];
@@ -137,13 +289,14 @@ final class DilVsSbidRule
         $stored = self::load($key);
         $on = $enabled === null ? $stored['enabled'] : (bool) $enabled;
         $cvrClean = $cvr === null ? $stored['cvr'] : self::normalizeCvr($cvr);
+        $tablesClean = $tables === null ? $stored['tables'] : self::normalizeTables($tables);
 
         DB::table('ebay_sbid_rules')->updateOrInsert(
             ['key' => $key],
-            ['rule' => json_encode(['enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean]), 'updated_at' => now()]
+            ['rule' => json_encode(['enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean, 'tables' => $tablesClean]), 'updated_at' => now()]
         );
 
-        return ['success' => true, 'enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean];
+        return ['success' => true, 'enabled' => $on, 'slabs' => $clean, 'cvr' => $cvrClean, 'tables' => $tablesClean];
     }
 
     public static function normalize(array $slabs): array

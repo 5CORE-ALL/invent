@@ -33,6 +33,45 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
     }
 
+    public function test_tiktok_out_of_slab_is_not_priced_at_the_min_target(): void
+    {
+        $this->assertFalse(DilRuleSpriceApplyService::for('tiktok')->channelConfig()['zero_sold_min_groi']);
+        $this->assertFalse(DilRuleSpriceApplyService::for('tiktok2')->channelConfig()['zero_sold_min_groi']);
+
+        $rules = [
+            AmazonDilGroiRule::make(0.1, 5.0, 25),
+            AmazonDilGroiRule::make(5.0, 10.0, 70),
+        ];
+        $adj = AmazonDilGroiRule::defaultCvrAdj();
+        $service = DilRuleSpriceApplyService::for('tiktok');
+
+        $this->assertNull($service->computeTarget([
+            'inv' => 8,
+            'dil' => 40,
+            'ov_l30' => 0,
+            'cvr' => 0,
+            'cvr_60' => 0,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ], $rules, $adj, 0.80));
+
+        $matched = $service->computeTarget([
+            'inv' => 8,
+            'dil' => 7,
+            'ov_l30' => 0,
+            'cvr' => 8,
+            'cvr_60' => 8,
+            'lp' => 20,
+            'ship' => 0,
+            'lmp' => 0,
+        ], $rules, $adj, 0.80);
+
+        $this->assertNotNull($matched);
+        $this->assertEqualsWithDelta(70.0, $matched['groi'], 0.01);
+        $this->assertEqualsWithDelta(42.50, $matched['sprice'], 0.01);
+    }
+
     public function test_zero_sold_uses_min_target_groi(): void
     {
         $rules = [

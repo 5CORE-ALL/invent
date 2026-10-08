@@ -8,6 +8,7 @@ use App\Support\DilVsSbidRule;
 use App\Support\EbayBidPercentage;
 use App\Support\EbayCampaignAdLiveBid;
 use App\Support\EbayMarketingPushRetry;
+use App\Support\EbayStdNpftLookup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -44,6 +45,7 @@ class DilVsSbidApplyService
         $useDil = ! empty($stored['enabled']);
         $slabs = $stored['slabs'];
         $cvr = $stored['cvr'];
+        $tables = $stored['tables'];
         $metrics = $metricClass::whereIn('item_id', $listingIds)->get()->keyBy(fn ($m) => (string) $m->item_id);
         $ads = DB::table($adsTable)
             ->whereIn('listing_id', $listingIds)
@@ -63,6 +65,9 @@ class DilVsSbidApplyService
             }
         }
         $shopifyMap = $this->shopifyBySku($skus);
+        $npftMap = ($useDil && DilVsSbidRule::usesNpft($tables))
+            ? EbayStdNpftLookup::forSkus($skus)
+            : [];
 
         $service = new $apiServiceClass();
         $http = new EbayMarketingPushRetry($service);
@@ -112,12 +117,19 @@ class DilVsSbidApplyService
                     continue;
                 }
                 $esBid = (float) ($ad->suggested_bid ?? 0);
-                $decision = DilVsSbidRule::resolve((float) $dil, $esBid, $slabs);
+                $views = (float) ($metric?->views ?? 0);
+                $sold = (float) ($metric?->ebay_l30 ?? 0);
+                $decision = DilVsSbidRule::resolveTotal((float) $dil, $esBid, $slabs, $tables, [
+                    'views' => $views,
+                    'cvr' => $views > 0 ? ($sold / $views) * 100 : null,
+                    'sold' => $sold,
+                    'npft' => $npftMap[EbayStdNpftLookup::key($sku)] ?? null,
+                ]);
                 if ($decision['bid'] > 0) {
                     $adjusted = DilVsSbidRule::applyCvr(
                         (float) $decision['bid'],
-                        (float) ($metric?->views ?? 0),
-                        (float) ($metric?->ebay_l30 ?? 0),
+                        $views,
+                        $sold,
                         (float) ($metric?->ebay_l60 ?? 0),
                         $cvr
                     );

@@ -4112,7 +4112,7 @@
                         editable: false,
                         sorter: "number",
                         headerTooltip: @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-                            "S PRC = Dil Target NROI back-solve: (LP × (1 + Target%/100) + Ship) / margin. Dil = 0 uses the 0–0 slab. 0 Sold (TT L30 = 0) uses the min slab (no CVR −10). Sold rows use Dil slab + CVR overlay. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
+                            "S PRC = Dil Target SNROI back-solve: (LP × (1 + Target%/100) + Ship) / margin. Only a Dil inside a From–To slab (or Dil = 0 on the 0–0 slab). TT L30 = 0 still uses that same slab. Dil outside every slab does not set S PRC. CVR overlay adjusts the target. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
                         @else
                             "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price."
                         @endif,

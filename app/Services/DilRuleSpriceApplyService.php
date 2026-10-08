@@ -1368,6 +1368,7 @@ class DilRuleSpriceApplyService
                 'price' => 'price',
                 'l30' => 'sold',
                 'views' => 'views',
+                'zero_sold_min_groi' => false,
                 'cvr_adj' => true,
             ],
             'tiktok2' => [
@@ -1376,6 +1377,7 @@ class DilRuleSpriceApplyService
                 'price' => 'price',
                 'l30' => 'sold',
                 'views' => 'views',
+                'zero_sold_min_groi' => false,
                 'cvr_adj' => true,
             ],
             'doba' => [
