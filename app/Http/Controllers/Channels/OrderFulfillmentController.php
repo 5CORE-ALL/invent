@@ -1933,6 +1933,64 @@ class OrderFulfillmentController extends SalesOrderFulfillmentController
     }
 
     /**
+     * Look tracking up now (Veeqo → marketplace API → 4Seller) for these marketplace orders,
+     * without the usual re-check wait — Shopify still shows them unfulfilled. Hits are saved
+     * on order_fulfillment_trackings like the backfill.
+     *
+     * @param  list<array{mm_slug: string, order_id: string}>  $orders
+     * @return array<string, true> "slug|order_id" (lower case) that now have tracking
+     */
+    public function resolveTrackingNow(array $orders, int $budgetSeconds = 300): array
+    {
+        $deadline = microtime(true) + max(20, $budgetSeconds);
+        $this->ensureTrackingTable();
+
+        $key = static fn (string $slug, string $orderId): string => strtolower(trim($slug)).'|'.strtolower(ltrim(trim($orderId), '#'));
+        $wanted = [];
+        foreach ($orders as $order) {
+            $wanted[$key((string) ($order['mm_slug'] ?? ''), (string) ($order['order_id'] ?? ''))] = true;
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        $groups = [];
+        foreach ($this->attachSavedTracking($this->collectFulfillmentRows()) as $row) {
+            $slug = (string) ($row['mm_slug'] ?? '');
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            $k = $key($slug, $orderId);
+            if (! isset($wanted[$k]) || ! empty($row['manual']) || trim((string) ($row['tracking'] ?? '')) !== '') {
+                continue;
+            }
+            $groups[$k] ??= [
+                'mm_slug' => $slug,
+                'order_id' => $orderId,
+                'sku' => (string) ($row['sku'] ?? ''),
+                'source_id' => (int) ($row['source_id'] ?? 0),
+                'reference' => (string) ($row['reference'] ?? ''),
+                'rows' => [],
+            ];
+            $groups[$k]['rows'][] = ['id' => (string) $row['id'], 'sku' => (string) ($row['sku'] ?? '')];
+        }
+
+        $lookup = $this->labelTrackingLookup();
+        $found = [];
+        foreach ($groups as $k => $group) {
+            if (microtime(true) + self::TRACKING_MIN_GROUP_SECONDS >= $deadline) {
+                break;
+            }
+            foreach ($this->resolveTrackingGroup($group, min($deadline, microtime(true) + self::TRACKING_REQUEST_BUDGET), $lookup) as $update) {
+                if (trim((string) ($update['tracking'] ?? '')) !== '') {
+                    $found[$k] = true;
+                    break;
+                }
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * Batch tracking for every order still missing a number. Hits are saved as
      * source "channel" (order-fulfillment:push-tracking then fulfils Shopify).
      *
