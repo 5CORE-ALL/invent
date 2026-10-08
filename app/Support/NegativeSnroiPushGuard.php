@@ -70,10 +70,11 @@ class NegativeSnroiPushGuard
         if (! ($price > 0)) {
             return false;
         }
-        $cost = self::costForSku($sku);
+        $cost = self::costForSku($sku, self::usesShipBb($channel));
         if ($cost === null) {
             return false;
         }
+        $channel = strtolower(trim($channel));
         $ship = self::excludeShip($channel) ? 0.0 : $cost['ship'];
         $snroi = self::percent($price, self::marginFor($channel), $cost['lp'], $ship, self::adsFor($channel));
 
@@ -88,21 +89,28 @@ class NegativeSnroiPushGuard
         ], true);
     }
 
+    /** Pages that price with Ship BB (Values.ship_bb) instead of Ship. */
+    private static function usesShipBb(string $channel): bool
+    {
+        return in_array(strtolower(trim($channel)), ['bestbuy', 'purchasing_power'], true);
+    }
+
     /**
      * @return array{lp: float, ship: float}|null
      */
-    private static function costForSku(string $sku): ?array
+    private static function costForSku(string $sku, bool $shipBb = false): ?array
     {
-        $key = strtoupper(trim($sku));
-        if ($key === '') {
+        $skuKey = strtoupper(trim($sku));
+        if ($skuKey === '') {
             return null;
         }
+        $key = ($shipBb ? 'BB:' : '').$skuKey;
         if (array_key_exists($key, self::$cost)) {
             return self::$cost[$key]['lp'] > 0 ? self::$cost[$key] : null;
         }
         try {
             $master = ProductMaster::query()
-                ->whereIn('sku', array_values(array_unique([$sku, $key])))
+                ->whereIn('sku', array_values(array_unique([$sku, $skuKey])))
                 ->first(['sku', 'Values']);
         } catch (\Throwable) {
             return null;
@@ -120,6 +128,9 @@ class NegativeSnroiPushGuard
             } elseif ($n === 'ship') {
                 $ship = (float) $value;
             }
+        }
+        if ($shipBb) {
+            $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $master);
         }
         self::$cost[$key] = ['lp' => $lp, 'ship' => $ship];
 

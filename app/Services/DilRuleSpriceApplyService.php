@@ -49,6 +49,7 @@ use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
 use App\Support\AliexpressPushGuard;
 use App\Support\AmazonDilGroiRule;
+use App\Support\ProductMasterShipBb;
 use App\Support\ProductMasterTemuShip;
 use App\Support\PushedListingPrice;
 use Illuminate\Support\Facades\Log;
@@ -1088,9 +1089,14 @@ class DilRuleSpriceApplyService
         if (! ($lp > 0) && isset($master->lp)) {
             $lp = (float) $master->lp;
         }
-        $ship = in_array($this->channel, ['temu', 'temu2', 'temu3'], true)
-            ? ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $master)
-            : (isset($values['ship']) ? (float) $values['ship'] : (float) ($master->ship ?? 0));
+        if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
+            $ship = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $master);
+        } elseif ($this->channel === 'bestbuy') {
+            // /bestbuy-pricing prices with Ship BB (slab + handling + o-size), not Ship.
+            $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $master);
+        } else {
+            $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($master->ship ?? 0);
+        }
 
         return ['lp' => $lp, 'ship' => $ship];
     }
