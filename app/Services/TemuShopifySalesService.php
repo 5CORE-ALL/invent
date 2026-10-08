@@ -517,6 +517,8 @@ class TemuShopifySalesService
      * Sales = Temu Price × Qty. Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99.
      * When $profitFromRPrice (Temu 2): GPFT$ = (R Price × margin − LP − Ship) × Qty.
      * R Price = Base; +$2.99 if Base ≤ $26.99.
+     * $profitBasisUnit overrides that basis for callers that already hold a
+     * freight-safe per-unit price (see orderRowProfitBasisUnit).
      *
      * @return array{base: float, temu_price: float, sales: float, profit: float}
      */
@@ -527,14 +529,17 @@ class TemuShopifySalesService
         float $lp,
         float $ship,
         bool $stripFreightFromUnit = true,
-        bool $profitFromRPrice = false
+        bool $profitFromRPrice = false,
+        ?float $profitBasisUnit = null
     ): array {
         $base = $stripFreightFromUnit
             ? self::goodsBaseFromUnit($rawUnit)
             : ($rawUnit > 0 ? round($rawUnit, 2) : 0.0);
         $temuPrice = self::computeFullTemuPrice($base);
         $sales = $temuPrice * $qty;
-        $profitUnit = $profitFromRPrice ? self::computeFbPrice($base, $qty) : $temuPrice;
+        $profitUnit = $profitBasisUnit !== null && $profitBasisUnit > 0
+            ? $profitBasisUnit
+            : ($profitFromRPrice ? self::computeFbPrice($base, $qty) : $temuPrice);
         $profit = $profitUnit > 0 ? ($profitUnit * $margin - $lp - $ship) * $qty : 0.0;
 
         return [
@@ -543,6 +548,28 @@ class TemuShopifySalesService
             'sales' => $sales,
             'profit' => $profit,
         ];
+    }
+
+    /**
+     * Per-unit GPFT$ basis for a getChannelOrdersTableRows row.
+     *
+     * `fb_price` is the only field that is freight-safe: it is the amount-API unit
+     * (freight already inside) when that payload exists, and the R Price otherwise.
+     * `base_price_total` switches meaning with the payload, so re-deriving the
+     * R Price from it charges the $2.99 freight twice on amount-API rows.
+     *
+     * @param  array<string, mixed>  $r
+     */
+    public static function orderRowProfitBasisUnit(array $r): float
+    {
+        $fbPrice = (float) ($r['fb_price'] ?? 0);
+        if ($fbPrice > 0) {
+            return round($fbPrice, 2);
+        }
+
+        $qty = (int) ($r['quantity_purchased'] ?? 0);
+
+        return self::computeFbPrice((float) ($r['base_price_total'] ?? 0), max($qty, 1));
     }
 
     /** Line revenue using FB Prc. */
@@ -600,7 +627,16 @@ class TemuShopifySalesService
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
             $lineSales = (float) ($r['line_sales'] ?? 0);
-            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship, false, true);
+            $calc = self::temuPriceSalesAndProfit(
+                $base,
+                $qty,
+                $margin,
+                $lp,
+                $ship,
+                false,
+                true,
+                self::orderRowProfitBasisUnit($r)
+            );
 
             $totalSales += $calc['sales'];
             $totalPft += $calc['profit'];
@@ -673,7 +709,16 @@ class TemuShopifySalesService
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
             $lineSales = (float) ($r['line_sales'] ?? 0);
-            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship, false, true);
+            $calc = self::temuPriceSalesAndProfit(
+                $base,
+                $qty,
+                $margin,
+                $lp,
+                $ship,
+                false,
+                true,
+                self::orderRowProfitBasisUnit($r)
+            );
 
             $totalSales += $calc['sales'];
             $totalPft += $calc['profit'];
