@@ -833,6 +833,7 @@
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'modal',
         'account' => 'eBay 3',
+        'extended' => true,
     ])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay3'])
@@ -852,6 +853,7 @@
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'script',
         'account' => 'eBay 3',
+        'extended' => true,
         'getUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
         'saveUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
         'applyUrl' => url('/ebay3/campaign-ads/push-selected'),
@@ -3028,7 +3030,7 @@
                     field: "s_bid",
                     hozAlign: "center",
                     width: 90,
-                    headerTooltip: "Dil vs SBid, then the CVR overlay. Same S Bid as /ebay3/campaign-ads.",
+                    headerTooltip: "eBay 3 Dil vs SBid: Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Same S Bid as /ebay3/campaign-ads.",
                     sorter: function(a, b, aRow, bRow) {
                         return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                     },
@@ -3038,7 +3040,8 @@
                             return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
                         }
                         if (!res || res.skip) {
-                            return `<span class="text-muted" title="${(res && res.title) || 'No matching Dil slab'}" style="font-size:11px;">—</span>`;
+                            const why = String((res && res.title) || 'No S Bid').replace(/"/g, '&quot;');
+                            return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap; cursor:help;" title="${why}">${(res && res.short) || 'No S Bid'}</span>`;
                         }
                         const title = res.title || 'Dil vs SBid';
                         return `<span title="${title}" style="font-weight:700;">${Number(res.bid).toFixed(1)}%</span>`;

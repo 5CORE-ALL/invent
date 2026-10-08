@@ -185,6 +185,42 @@
     'account' => 'eBay 1',
 ])
 
+<div class="modal fade" id="ecaYSpendModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white py-2">
+                <h6 class="modal-title mb-0" id="ecaYSpendTitle">Y Spend</h6>
+                <div class="d-flex align-items-center gap-2">
+                    <select id="eca-y-spend-days" class="form-select form-select-sm" style="width:110px;">
+                        <option value="7">7 Days</option>
+                        <option value="14">14 Days</option>
+                        <option value="30" selected>30 Days</option>
+                        <option value="60">60 Days</option>
+                        <option value="90">90 Days</option>
+                        <option value="0">Lifetime</option>
+                    </select>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="ecaYSpendLoading" class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm text-primary"></div>
+                    <p class="mt-2 text-muted small mb-0">Loading Y Spend history…</p>
+                </div>
+                <div id="ecaYSpendEmpty" class="text-center text-muted py-4 d-none">No daily Y Spend yet.</div>
+                <div id="ecaYSpendBody" class="d-none">
+                    <div class="d-flex justify-content-end gap-3 small fw-bold mb-2">
+                        <span>High <span id="ecaYSpendHigh" class="text-danger">—</span></span>
+                        <span>Med <span id="ecaYSpendMed" class="text-secondary">—</span></span>
+                        <span>Low <span id="ecaYSpendLow" class="text-success">—</span></span>
+                    </div>
+                    <div id="ecaYSpendChart" style="height:340px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @section('css')
@@ -217,6 +253,13 @@
         font-weight: 700;
         line-height: 1;
         cursor: help;
+    }
+    .eca-y-spend-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
     }
 </style>
 @endsection
@@ -547,6 +590,37 @@ $(document).ready(function () {
                 formatter: function(cell) {
                     const v = parseFloat(cell.getValue());
                     return isNaN(v) || v === 0 ? '—' : `<span class="fw-semibold">$${v.toFixed(2)}</span>`;
+                }
+            },
+            {
+                title: 'Y Spend', field: 'y_spend', width: 110, hozAlign: 'center',
+                sorter: 'number',
+                headerTooltip: 'Yesterday ad spend (L1). Promoted rows use that listing\'s ad fees. CPC rows use that campaign\'s CPC fees. Green dot = up vs the last recorded day, red = down, gray = same. Click for history.',
+                formatter: function(cell) {
+                    const row = cell.getRow().getData();
+                    const amount = parseFloat(row.y_spend);
+                    const value = isFinite(amount) ? amount : 0;
+                    const prevRaw = row.y_spend_prev;
+                    const hasPrev = prevRaw !== null && prevRaw !== undefined && prevRaw !== '' && isFinite(parseFloat(prevRaw));
+                    const prev = hasPrev ? parseFloat(prevRaw) : null;
+                    const prevWhen = row.y_spend_prev_date ? String(row.y_spend_prev_date) : 'the last recorded day';
+                    let dotColor = '#6c757d';
+                    let dotTip = hasPrev ? ('Same as ' + prevWhen + ' ($' + prev.toFixed(2) + ')') : 'No prior Y Spend yet';
+                    if (hasPrev && value > prev) {
+                        dotColor = '#28a745';
+                        dotTip = 'Up vs ' + prevWhen + ' ($' + prev.toFixed(2) + ')';
+                    } else if (hasPrev && value < prev) {
+                        dotColor = '#a00211';
+                        dotTip = 'Down vs ' + prevWhen + ' ($' + prev.toFixed(2) + ')';
+                    }
+                    return '<span class="eca-y-spend-hist" style="white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="' + ebayEsc(dotTip) + ' — click for Y Spend history">'
+                        + '<span style="font-weight:600;">$' + value.toFixed(2) + '</span>'
+                        + '<span class="eca-y-spend-dot" style="background:' + dotColor + ';"></span></span>';
+                },
+                cellClick: function(e, cell) {
+                    if (!e.target.closest('.eca-y-spend-hist')) return;
+                    e.stopPropagation();
+                    openEcaYSpendChart(cell.getRow().getData());
                 }
             },
             {
@@ -1215,5 +1289,105 @@ document.getElementById('dil-rule-save-btn').addEventListener('click', function(
     'saveUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
     'applyUrl' => url('/ebay/campaign-ads/push-selected'),
 ])
+
+let ecaYSpendRow = null;
+let ecaYSpendChart = null;
+
+function openEcaYSpendChart(row) {
+    ecaYSpendRow = row || null;
+    const sku = (row && (row.resolved_sku || row.sku)) || '';
+    const titleEl = document.getElementById('ecaYSpendTitle');
+    if (titleEl) titleEl.textContent = 'Y Spend — ' + (sku || (row && row.listing_id) || '');
+    const modalEl = document.getElementById('ecaYSpendModal');
+    if (modalEl && window.bootstrap && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+    loadEcaYSpendChart();
+}
+
+function loadEcaYSpendChart() {
+    const row = ecaYSpendRow;
+    if (!row) return;
+    const daysEl = document.getElementById('eca-y-spend-days');
+    const days = daysEl ? daysEl.value : '30';
+    const loading = document.getElementById('ecaYSpendLoading');
+    const empty = document.getElementById('ecaYSpendEmpty');
+    const body = document.getElementById('ecaYSpendBody');
+    if (loading) loading.classList.remove('d-none');
+    if (empty) empty.classList.add('d-none');
+    if (body) body.classList.add('d-none');
+    const params = new URLSearchParams({
+        days: String(days),
+        mode: 'row',
+        listing_id: row.listing_id || '',
+        campaign_id: row.campaign_id || '',
+        funding: row.funding_strategy || '',
+        sku: row.resolved_sku || row.sku || ''
+    });
+    fetch(@json(url('/ebay/y-spend-history')) + '?' + params.toString(), { headers: { Accept: 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(rows) { renderEcaYSpendChart(Array.isArray(rows) ? rows : []); })
+        .catch(function() { renderEcaYSpendChart([]); });
+}
+
+function renderEcaYSpendChart(rows) {
+    const loading = document.getElementById('ecaYSpendLoading');
+    const empty = document.getElementById('ecaYSpendEmpty');
+    const body = document.getElementById('ecaYSpendBody');
+    if (loading) loading.classList.add('d-none');
+    const points = (rows || []).filter(function(d) {
+        return d && d.date && isFinite(parseFloat(d.y_spend));
+    });
+    if (!points.length || typeof Highcharts === 'undefined') {
+        if (body) body.classList.add('d-none');
+        if (empty) empty.classList.remove('d-none');
+        return;
+    }
+    if (empty) empty.classList.add('d-none');
+    if (body) body.classList.remove('d-none');
+    const values = points.map(function(d) { return parseFloat(d.y_spend); });
+    const sorted = values.slice().sort(function(a, b) { return a - b; });
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    const money = function(n) { return '$' + Number(n).toFixed(2); };
+    const highEl = document.getElementById('ecaYSpendHigh');
+    const medEl = document.getElementById('ecaYSpendMed');
+    const lowEl = document.getElementById('ecaYSpendLow');
+    if (highEl) highEl.textContent = money(Math.max.apply(null, values));
+    if (medEl) medEl.textContent = money(median);
+    if (lowEl) lowEl.textContent = money(Math.min.apply(null, values));
+    if (ecaYSpendChart) {
+        ecaYSpendChart.destroy();
+        ecaYSpendChart = null;
+    }
+    ecaYSpendChart = Highcharts.chart('ecaYSpendChart', {
+        chart: { type: 'line', height: 340 },
+        title: { text: null },
+        credits: { enabled: false },
+        legend: { enabled: false },
+        xAxis: {
+            categories: points.map(function(d) { return d.date_formatted || d.date; }),
+            labels: { rotation: -90, style: { fontSize: '10px', fontWeight: '600' } }
+        },
+        yAxis: {
+            title: { text: null },
+            labels: { formatter: function() { return '$' + Highcharts.numberFormat(this.value, 2); } }
+        },
+        tooltip: { pointFormatter: function() { return '<b>$' + Highcharts.numberFormat(this.y, 2) + '</b>'; } },
+        plotOptions: { series: { marker: { radius: 4, lineWidth: 1, lineColor: '#fff' } } },
+        series: [{
+            name: 'Y Spend',
+            color: '#64748b',
+            data: values.map(function(v, i) {
+                let color = '#6c757d';
+                if (i > 0 && v > values[i - 1]) color = '#28a745';
+                else if (i > 0 && v < values[i - 1]) color = '#a00211';
+                return { y: v, color: color };
+            })
+        }]
+    });
+}
+
+document.getElementById('eca-y-spend-days')?.addEventListener('change', loadEcaYSpendChart);
 </script>
 @endsection

@@ -9,6 +9,7 @@ use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\CpMasterDil;
+use App\Support\EbayYesterdaySpend;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -722,11 +723,33 @@ class EbayCampaignAdsController extends Controller
         $total = (clone $query)->count();
         $data  = $query->orderBy('ca.id', 'desc')->get();
         CpMasterDil::hydrate($data);
+        EbayYesterdaySpend::attachToCampaignRows($data);
 
         return response()->json([
             'total' => $total,
             'data'  => $data,
         ]);
+    }
+
+    /**
+     * Daily Y Spend for the history dot. mode=row is one campaign-ads line;
+     * mode=sku is keyword CPC plus promoted fees for /ebay-tabulator-view.
+     */
+    public function ySpendHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        if ($days < 0) {
+            $days = 30;
+        }
+
+        return response()->json(EbayYesterdaySpend::history(
+            (string) $request->input('sku', ''),
+            (string) $request->input('listing_id', ''),
+            (string) $request->input('campaign_id', ''),
+            (string) $request->input('funding', ''),
+            (string) $request->input('mode', 'sku'),
+            $days
+        ));
     }
 
     /**

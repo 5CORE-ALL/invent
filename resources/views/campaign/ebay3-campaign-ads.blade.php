@@ -185,6 +185,7 @@
 @include('campaign.partials.ebay-dil-sbid-rule', [
     'part' => 'modal',
     'account' => 'eBay 3',
+    'extended' => true,
 ])
 
 @endsection
@@ -545,7 +546,7 @@ $(document).ready(function () {
             },
             {
                 title: 'S Bid', field: 'ebay_l30', width: 110, hozAlign: 'center',
-                headerTooltip: 'Dil vs SBid switch on: Dil slabs, then the CVR overlay. Switch off: S Bid is not changed.',
+                headerTooltip: 'eBay 3 Dil vs SBid: Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Switch off: S Bid is not changed.',
                 sorter: function(a, b, aRow, bRow) {
                     return campaignSbid(aRow.getData()).bid - campaignSbid(bRow.getData()).bid;
                 },
@@ -556,7 +557,8 @@ $(document).ready(function () {
                         return `<span class="fw-bold" style="color:#842029;" title="${title}">OFF</span>`;
                     }
                     if (!res || res.skip) {
-                        return `<span class="text-muted" title="${title || 'No matching Dil slab'}" style="font-size:11px;">—</span>`;
+                        const why = String(title || 'No S Bid').replace(/"/g, '&quot;');
+                        return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap; cursor:help;" title="${why}">${(res && res.short) || 'No S Bid'}</span>`;
                     }
                     return `<span style="color:${res.color}; font-weight:700;" title="${title}">${res.bid.toFixed(1)}%</span>`;
                 }
@@ -1061,6 +1063,7 @@ document.getElementById('dil-rule-save-btn').addEventListener('click', function(
 @include('campaign.partials.ebay-dil-sbid-rule', [
     'part' => 'script',
     'account' => 'eBay 3',
+    'extended' => true,
     'getUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
     'saveUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
     'applyUrl' => url('/ebay3/campaign-ads/push-selected'),

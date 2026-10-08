@@ -85,7 +85,7 @@
                     <li><strong>Dil 0–0</strong> is SKUs with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the SKU falls in. A negative value subtracts. A SKU outside every range adds 0.</li>
                     <li>New tables start at 0, so nothing changes until you type an S Bid. L30 View up / down uses the same arrow as the L30 View column (L7 pace vs L30 pace). Its Adj starts at 0. The final bid is rounded to 0.1 and kept between the Min and Max caps (those caps cannot go outside 2 and 100, which eBay accepts).</li>
                     <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push. Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.</li>
-                    <li>Saved for {{ $dilSbidAccount }} only. eBay 1 and eBay 2 push the new S Bid on their own when the rules change the bid. The switch must be On.</li>
+                    <li>Saved for {{ $dilSbidAccount }} only. eBay 1, eBay 2 and eBay 3 each keep their own tables. They push the new S Bid on their own when the rules change the bid. The switch must be On.</li>
                 </ul>
                 <div class="dsb-cols">
                     <div class="dsb-col">

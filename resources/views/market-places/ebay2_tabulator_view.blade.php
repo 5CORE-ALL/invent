@@ -1030,6 +1030,7 @@
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'modal',
         'account' => 'eBay 2',
+        'extended' => true,
     ])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay2'])
 
@@ -1053,6 +1054,7 @@
         @include('campaign.partials.ebay-dil-sbid-rule', [
             'part' => 'script',
             'account' => 'eBay 2',
+            'extended' => true,
             'getUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
             'saveUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
             'applyUrl' => url('/ebay2/campaign-ads/push-selected'),
@@ -3986,7 +3988,7 @@
                         field: "s_bid",
                         hozAlign: "center",
                         width: 108,
-                        headerTooltip: "Dil vs SBid, then the CVR overlay. Orange dil means this S BID is from Dil and the listing has no ad running.",
+                        headerTooltip: "eBay 2 Dil vs SBid: Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Orange dil means this S BID is from Dil and the listing has no ad running.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -3997,7 +3999,8 @@
                                 return `<span class="fw-bold" style="color:#842029;" title="${res.title || 'Paused slab'}">OFF</span>`;
                             }
                             if (res.skip) {
-                                return `<span class="text-muted" title="${res.title || 'No matching Dil slab'}" style="font-size:11px;">—</span>`;
+                                const why = String(res.title || 'No S Bid').replace(/"/g, '&quot;');
+                                return `<span style="color:#b45309; font-size:10px; font-weight:600; white-space:nowrap; cursor:help;" title="${why}">${res.short || 'No S Bid'}</span>`;
                             }
                             const color = res.bid > EBAY2_CHANNEL_ADS_PCT ? '#a00211' : '#28a745';
                             const title = res.title || 'Dil vs SBid';

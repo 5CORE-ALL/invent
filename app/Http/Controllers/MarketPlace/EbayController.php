@@ -20,6 +20,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
+use App\Support\EbayYesterdaySpend;
 use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1004,8 +1005,12 @@ class EbayController extends Controller
         $percentage = MarketplacePercentage::takeHomeDecimal('Ebay');
         $adUpdates  = $marketplaceData ? $marketplaceData->ad_updates : 0; 
 
+        // Yesterday ad spend (L1) + the day before, for the Y Spend history dot.
+        $ySpendMaps = EbayYesterdaySpend::maps();
+
         // 6. Build Result
         $result = [];
+        $weightSlabs = app(\App\Services\ShippingSlabRateService::class);
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
@@ -1111,6 +1116,10 @@ class EbayController extends Controller
             $row = array_merge($row, EbayListingEnded::fields($ebayMetric));
             $row['price_yesterday'] = $priceYesterdayBySku[$pmNorm] ?? null;
             $row['price_yesterday_date'] = $priceYesterdayDateBySku[$pmNorm] ?? null;
+            $ySpend = EbayYesterdaySpend::forSku($pmNorm, $itemId, $ySpendMaps);
+            $row['y_spend'] = $ySpend['y_spend'];
+            $row['y_spend_prev'] = $ySpend['y_spend_prev'];
+            $row['y_spend_prev_date'] = $ySpend['y_spend_prev_date'];
             $row['sprice_yesterday'] = $spriceYesterdayBySku[$pmNorm] ?? null;
             $row['sprice_yesterday_date'] = $spriceYesterdayDateBySku[$pmNorm] ?? null;
             // inv_yesterday / l30_yesterday already set above with INV / L30
@@ -1372,6 +1381,12 @@ class EbayController extends Controller
             $row['ad_updates'] = $adUpdates;
             $row["LP_productmaster"] = $lp;
             $row["Ship_productmaster"] = $ship;
+            $row['wt_act'] = isset($values['wt_act']) && is_numeric($values['wt_act']) ? (float) $values['wt_act'] : null;
+            try {
+                $row['weight_slab'] = $weightSlabs->slabKeyFromValues(is_array($values) ? $values : []);
+            } catch (\Throwable $e) {
+                $row['weight_slab'] = 'lb_0';
+            }
 
             // Calculate CVR 30 (SCVR): (eBay L30 / views) * 100; CVR 45, CVR 60 for L45/L60
             $views = floatval($row['views'] ?? 0);

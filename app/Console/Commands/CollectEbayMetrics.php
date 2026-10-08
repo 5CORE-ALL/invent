@@ -10,6 +10,7 @@ use App\Models\EbayMetric;
 use App\Models\EbayPriorityReport;
 use App\Models\EbayGeneralReport;
 use App\Models\ShopifySku;
+use App\Support\EbayYesterdaySpend;
 use App\Services\CronMonitor\CronExecutionContext;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -59,6 +60,16 @@ class CollectEbayMetrics extends Command
             ->keyBy(function ($item) {
                 return trim((string) $item->listing_id);
             });
+        $l1CampaignBySku = EbayPriorityReport::where('report_range', 'L1')
+            ->get(['campaign_name', 'cpc_ad_fees_payout_currency'])
+            ->keyBy(function ($item) {
+                return ShopifySku::normalizeSkuForShopifyLookup((string) $item->campaign_name);
+            });
+        $l1GeneralByListing = EbayGeneralReport::where('report_range', 'L1')
+            ->get(['listing_id', 'ad_fees'])
+            ->keyBy(function ($item) {
+                return trim((string) $item->listing_id);
+            });
 
         // Shopify INV + OV L30 for tabulator trend dots (same source as /ebay-tabulator-view columns).
         $shopifyBySku = ShopifySku::query()
@@ -83,6 +94,8 @@ class CollectEbayMetrics extends Command
                 $today,
                 $campaignBySku,
                 $generalByListing,
+                $l1CampaignBySku,
+                $l1GeneralByListing,
                 $shopifyBySku,
                 &$collected,
                 &$skipped
@@ -133,6 +146,11 @@ class CollectEbayMetrics extends Command
                         $pmt_spend_l30 = (float) str_replace('USD ', '', $matchedGeneral->ad_fees ?? 0);
                         $adSpendL30 = $kw_spend_l30 + $pmt_spend_l30;
 
+                        $matchedL1Kw = $l1CampaignBySku->get(ShopifySku::normalizeSkuForShopifyLookup($sku));
+                        $matchedL1Pmt = $itemId !== null ? $l1GeneralByListing->get(trim((string) $itemId)) : null;
+                        $ySpend = EbayYesterdaySpend::money($matchedL1Kw->cpc_ad_fees_payout_currency ?? 0)
+                            + EbayYesterdaySpend::money($matchedL1Pmt->ad_fees ?? 0);
+
                         $totalRevenue = $price * $ebayL30;
                         $adPercent = $totalRevenue > 0 ? ($adSpendL30 / $totalRevenue) * 100 : 0;
 
@@ -150,6 +168,7 @@ class CollectEbayMetrics extends Command
                             'ad_percent' => round($adPercent, 2),
                             'ebay_l30' => $ebayL30,
                             'ad_spend_l30' => round($adSpendL30, 2),
+                            'y_spend' => round($ySpend, 2),
                             'inv' => (int) ($shopify->inv ?? 0),
                             'ovl30' => (int) ($shopify->quantity ?? 0),
                         ];

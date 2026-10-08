@@ -137,6 +137,7 @@ use App\Http\Controllers\MarketPlace\Business5coreController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\MarketPlace\EbayController;
+use App\Http\Controllers\MarketPlace\EbayVolumePricingController;
 use App\Http\Controllers\MarketPlace\EbayLowVisibilityController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
@@ -5059,6 +5060,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Listing Audit ebay
     Route::get('/ebay', [EbayController::class, 'ebayView'])->name('ebay');
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
+    Route::get('/ebay-volume-pricing', [EbayVolumePricingController::class, 'index'])->name('ebay.volume-pricing');
+    Route::get('/ebay-volume-pricing/rules', [EbayVolumePricingController::class, 'rules'])->name('ebay.volume-pricing.rules');
+    Route::post('/ebay-volume-pricing/rules', [EbayVolumePricingController::class, 'saveRules'])->name('ebay.volume-pricing.rules.save');
+    Route::post('/ebay-volume-pricing/push', [EbayVolumePricingController::class, 'push'])->name('ebay.volume-pricing.push');
     Route::get('/ebay-zero-sold-coupon', [EbayController::class, 'ebayZeroSoldCouponSetting'])->name('ebay.zero-sold-coupon.show');
     Route::post('/ebay-zero-sold-coupon', [EbayController::class, 'saveEbayZeroSoldCoupon'])->name('ebay.zero-sold-coupon.save');
     Route::get('/ebay2-zero-sold-coupon', [EbayController::class, 'ebayZeroSoldCouponSetting'])->defaults('channel', 'ebay2')->name('ebay2.zero-sold-coupon.show');
@@ -6912,6 +6917,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/campaign-ads', 'index')->name('ebay.campaign.ads');
         Route::get('/ebay/campaign-ads/badges', 'getBadgeSummary')->name('ebay.campaign.ads.badges');
         Route::get('/ebay/campaign-ads/data', 'getData')->name('ebay.campaign.ads.data');
+        Route::get('/ebay/y-spend-history', 'ySpendHistory')->name('ebay.y.spend.history');
         Route::get('/ebay/campaign-ads/rule', 'getRule')->name('ebay.campaign.ads.rule');
         Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
         Route::get('/ebay/campaign-ads/dil-rule', 'getDilRule')->name('ebay.campaign.ads.dil.rule');

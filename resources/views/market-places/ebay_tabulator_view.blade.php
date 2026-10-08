@@ -2898,7 +2898,7 @@
             currentSku = sku;
             $('#modalSkuName').text(sku);
             $('#sku-chart-days-filter').val('30');
-            const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC' };
+            const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC', y_spend: 'Y Spend' };
             const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
             $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30 · PT)');
             $('#skuChartLoading').show();
@@ -2922,7 +2922,10 @@
             $('#skuChartContainer').hide();
             $('#chart-no-data-message').hide();
             const daysNum = days === 0 || days === '0' ? 0 : (parseInt(days, 10) || 30);
-            fetch(`/ebay-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`)
+            const historyUrl = currentSkuChartMetric === 'y_spend'
+                ? `/ebay/y-spend-history?days=${daysNum}&mode=sku&sku=${encodeURIComponent(sku)}`
+                : `/ebay-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`;
+            fetch(historyUrl)
                 .then(response => {
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     return response.json();
@@ -2974,6 +2977,7 @@
                     const isCpn = currentSkuChartMetric === 'cpn';
                     const isPushPrc = currentSkuChartMetric === 'push_prc';
                     const isSprice = currentSkuChartMetric === 'sprice';
+                    const isYSpend = currentSkuChartMetric === 'y_spend';
                     const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
                     const cvrFmt = v => (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
                     const pctIntFmt = v => Math.round(Number(v) || 0) + '%';
@@ -2984,6 +2988,7 @@
                         : isCpn ? 'cpn_pct'
                         : isPushPrc ? 'push_prc'
                         : isSprice ? 'sprice'
+                        : isYSpend ? 'y_spend'
                         : 'price';
                     const mapped = data.map(function(d) {
                         const raw = d[valueField];
@@ -3020,10 +3025,10 @@
                     const labels = filled.map(function(d) { return d.date; });
                     const values = filled.map(function(d) { return d.value; });
 
-                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC' };
+                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC', y_spend: 'Y Spend' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
-                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900', sprice: '#0d6efd' };
-                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)', push_prc: 'rgba(255,153,0,0.12)', sprice: 'rgba(13,110,253,0.1)' };
+                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900', sprice: '#0d6efd', y_spend: '#ef4444' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)', push_prc: 'rgba(255,153,0,0.12)', sprice: 'rgba(13,110,253,0.1)', y_spend: 'rgba(239,68,68,0.12)' };
                     const refDotEl = document.getElementById('skuChartRefDot');
                     const refLabelEl = document.getElementById('skuChartRefLabel');
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
@@ -3035,7 +3040,7 @@
                     }
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
-                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isPushPrc || isSprice) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
+                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isPushPrc || isSprice || isYSpend) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
                     skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
                     skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
 
@@ -3051,6 +3056,7 @@
                         else if (isCpn) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'cvr %: ' + (context.parsed.y != null ? (Math.round(Number(context.parsed.y)) + '%') : '-'); };
                         else if (isPushPrc) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Push Prc: ' + skuChartFmtVal(context.parsed.y || 0); };
                         else if (isSprice) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'S PRC: ' + skuChartFmtVal(context.parsed.y || 0); };
+                        else if (isYSpend) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Y Spend: ' + skuChartFmtVal(context.parsed.y || 0); };
                         else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L30 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isL7) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L7 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Price: ' + skuChartFmtVal(context.parsed.y || 0); };
@@ -3410,7 +3416,7 @@
                 const days = $(this).val();
                 const daysNum = parseInt(days, 10);
                 const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
-                const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC' };
+                const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC', y_spend: 'Y Spend' };
                 const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
                 $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ' · PT)');
                 if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
@@ -4702,6 +4708,45 @@
                             return priceFormatted + purpleTri;
                         },
                         width: 80
+                    },
+
+                    {
+                        title: "Y Spend",
+                        field: "y_spend",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "Yesterday ad spend: keyword CPC (campaign name = SKU) plus promoted listing fees. Saved nightly on the SKU snapshot. Green = up vs the last recorded day, red = down. Click for history.",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            if (rowData.is_parent_summary) return '';
+                            const sku = rowData['(Child) sku'] || '';
+                            if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1) return '';
+                            const amountRaw = parseFloat(rowData.y_spend);
+                            const amount = isFinite(amountRaw) ? amountRaw : 0;
+                            const prevRaw = rowData.y_spend_prev;
+                            const hasPrev = prevRaw !== null && prevRaw !== undefined && prevRaw !== '' && isFinite(parseFloat(prevRaw));
+                            const prev = hasPrev ? parseFloat(prevRaw) : null;
+                            const prevDate = String(rowData.y_spend_prev_date || '');
+                            const prevWhen = prevDate && typeof ebay1ChartDateLabel === 'function'
+                                ? ebay1ChartDateLabel(prevDate)
+                                : 'the last recorded day';
+                            let dotColor = '#6c757d';
+                            let dotTip = hasPrev
+                                ? ('Same as ' + prevWhen + ' ($' + prev.toFixed(2) + ')')
+                                : 'No prior Y Spend yet';
+                            if (hasPrev && amount > prev) {
+                                dotColor = '#28a745';
+                                dotTip = 'Up vs ' + prevWhen + ' ($' + prev.toFixed(2) + ')';
+                            } else if (hasPrev && amount < prev) {
+                                dotColor = '#a00211';
+                                dotTip = 'Down vs ' + prevWhen + ' ($' + prev.toFixed(2) + ')';
+                            }
+                            const skuAttr = String(sku).replace(/"/g, '&quot;');
+                            const money = '$' + amount.toFixed(2);
+                            const dotBtn = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${skuAttr}" data-metric="y_spend" title="${dotTip} — click for Y Spend history" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`;
+                            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${skuAttr}" data-metric="y_spend" title="View Y Spend history" style="font-weight: 600; cursor: pointer;">${money}</span>${dotBtn}</span>`;
+                        }
                     },
 
                     {
@@ -6173,8 +6218,8 @@
 
                 // Advertisement first (views / bids / ads / promote)
                 if (
-                    /^(views|l7_views|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
-                    /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
+                    /^(views|l7_views|l7_views_prev|_ads_pct|y_spend|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
+                    /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view|y\s*spend)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
                     return 'advertisement';
@@ -6873,6 +6918,7 @@
                 'growth_percent': 'Growth',
                 'eBay Stock': 'eBay Stock',
                 'eBay Price': 'eBay Price',
+                'y_spend': 'Y Spend',
                 'lmp_price': 'LMP',
                 'T_Sale_l30': 'Total Sales L30',
                 'Total_pft': 'Total Profit',
