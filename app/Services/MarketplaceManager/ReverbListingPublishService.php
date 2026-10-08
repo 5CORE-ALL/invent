@@ -13,6 +13,7 @@ use App\Models\ShopifySku;
 use App\Services\ReverbApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -102,7 +103,7 @@ class ReverbListingPublishService
         if ($price === null || $price <= 0) {
             return [
                 'success' => false,
-                'message' => 'No price found for '.$sku.'. Set Reverb pricing or Shopify price.',
+                'message' => 'Set Std Prc on LMP Overall for '.$sku.'.',
             ];
         }
 
@@ -583,44 +584,7 @@ class ReverbListingPublishService
 
     private function resolvePrice(string $sku, ProductMaster $product): ?float
     {
-        if (Schema::hasTable('reverb_pricing_prices')) {
-            $row = ReverbPricingPrice::query()->where('sku', $sku)->first()
-                ?: ReverbPricingPrice::query()->where('sku', strtoupper($sku))->first()
-                ?: ReverbPricingPrice::query()
-                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-                    ->first();
-            if ($row && is_numeric($row->price) && (float) $row->price > 0) {
-                return round((float) $row->price, 2);
-            }
-        }
-
-        if (Schema::hasTable('reverb_metric')) {
-            $metric = ReverbMetric::query()->where('sku', $sku)->first()
-                ?: ReverbMetric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-            if ($metric && is_numeric($metric->price) && (float) $metric->price > 0) {
-                return round((float) $metric->price, 2);
-            }
-        }
-
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $price = (float) ($shopify->price ?? $shopify->b2c_price ?? 0);
-        if ($price > 0) {
-            return round($price, 2);
-        }
-
-        $values = is_array($product->Values) ? $product->Values : [];
-        $lp = isset($values['lp']) && is_numeric($values['lp']) ? (float) $values['lp'] : 0.0;
-        $ship = isset($values['ship']) && is_numeric($values['ship']) ? (float) $values['ship'] : 0.0;
-        if ($lp > 0) {
-            return round($lp + $ship, 2);
-        }
-        foreach (['msrp', 'MSRP', 'price'] as $key) {
-            if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
-                return round((float) $values[$key], 2);
-            }
-        }
-
-        return null;
+        return LmpStdPrice::forSku($sku);
     }
 
     private function shopifyInv(string $sku): int

@@ -128,9 +128,7 @@ class AlibabaListingPublishService
             return ['success' => false, 'message' => $sku.': title is missing on CP Master.'];
         }
 
-        $price = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
-            ? round((float) $overrides['price'], 2)
-            : LmpStdPrice::forSku($sku);
+        $price = LmpStdPrice::forSku($sku);
         if ($price === null || $price <= 0) {
             return ['success' => false, 'message' => $sku.': set Std Prc on LMP Overall before adding it to Alibaba.'];
         }

@@ -16,6 +16,7 @@ use App\Support\Marketplace\EbaySellAccountPolicies;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\ListingManagerEbayTradingPublisher;
 use App\Support\Marketplace\ListingManagerFamily;
 use Illuminate\Support\Facades\Cache;
@@ -133,7 +134,7 @@ class EbayListingPublishService
         } elseif ($price === null || $price <= 0) {
             return [
                 'success' => false,
-                'message' => 'No price found for '.$primarySku.'. Set Shopify / Amazon price first.',
+                'message' => 'Set Std Prc on LMP Overall for '.$primarySku.'.',
             ];
         }
 
@@ -717,17 +718,7 @@ class EbayListingPublishService
      */
     private function resolvePrice(string $sku, array $hydrated = []): ?float
     {
-        $price = isset($hydrated['price']) ? (float) $hydrated['price'] : 0.0;
-        if ($price > 0) {
-            return round($price, 2);
-        }
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $shopifyPrice = (float) ($shopify->price ?? $shopify->b2c_price ?? 0);
-        if ($shopifyPrice > 0) {
-            return round($shopifyPrice, 2);
-        }
-
-        return null;
+        return LmpStdPrice::forSku($sku);
     }
 
     /**

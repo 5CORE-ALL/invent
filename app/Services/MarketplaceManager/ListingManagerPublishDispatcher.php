@@ -7,6 +7,7 @@ use App\Models\Ebay3Metric;
 use App\Models\EbayMetric;
 use App\Models\ListingManagerChannelDraft;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerEbayTradingPublisher;
 use App\Support\Marketplace\ListingManagerFamily;
@@ -452,10 +453,7 @@ class ListingManagerPublishDispatcher
                 'variation_label' => $sku,
             ];
             $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false);
-            $price = (float) ($hydrated['price'] ?? $draft->price ?? 0);
-            if (strcasecmp($sku, (string) $draft->seller_sku) === 0 && $draft->price) {
-                $price = (float) $draft->price;
-            }
+            $price = (float) (LmpStdPrice::forSku($sku) ?? 0);
             $liveQty = ListingManagerAmazonHydrator::shopifyQuantity($sku, true);
             $qty = $liveQty ?? (int) ($hydrated['quantity'] ?? $draft->quantity ?? 0);
             $rows[] = [

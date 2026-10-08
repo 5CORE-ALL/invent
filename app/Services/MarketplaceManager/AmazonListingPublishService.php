@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Services\AmazonSpApiService;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\ListingManagerPublishStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +29,7 @@ class AmazonListingPublishService
         if ($sku === '') {
             return ['success' => false, 'message' => 'SKU is required.'];
         }
+        $details['price'] = LmpStdPrice::forSku($sku) ?? 0;
         if (! $this->api->isConfigured()) {
             return ['success' => false, 'message' => 'Amazon SP-API is not connected. Set Amazon client id, secret, refresh token, and seller id.'];
         }
@@ -219,7 +221,7 @@ class AmazonListingPublishService
         if (! isset($attributes['purchasable_offer'])) {
             return [
                 'success' => false,
-                'message' => 'Price is required to add the US offer for '.$sku.'.',
+                'message' => 'Set Std Prc on LMP Overall before adding the US offer for '.$sku.'.',
                 'skus' => [$sku],
             ];
         }

@@ -14,6 +14,7 @@ use App\Services\LmpSkuGroupService;
 use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\Temu3ApiService;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -267,7 +268,7 @@ class Temu3ListingPublishService
             }
             $price = $this->resolvePrice($sku);
             if ($price === null || $price <= 0) {
-                return ['success' => false, 'message' => 'No Std Prc found for '.$sku.'. Set Std Prc on '.$this->stdPriceHelp().'.'];
+                return ['success' => false, 'message' => 'Set Std Prc on LMP Overall for '.$sku.'.'];
             }
             $images = $this->resolveSourceImages($product, $sku);
             foreach ($images as $url) {
@@ -1345,45 +1346,7 @@ class Temu3ListingPublishService
 
     private function resolvePrice(string $sku): ?float
     {
-        $std = $this->standardPrice($sku);
-        if ($this->positivePrice($std)) {
-            return (float) $std;
-        }
-
-        foreach ($this->skuLookupKeys($sku) as $key) {
-            $mapped = $this->priceLookupMap()[$key] ?? null;
-            if ($this->positivePrice($mapped)) {
-                return (float) $mapped;
-            }
-        }
-
-        $metricPrice = $this->api->getProductPrice($sku);
-        if ($this->positivePrice($metricPrice)) {
-            return (float) $metricPrice;
-        }
-
-        $shopify = $this->shopifyRow($sku);
-        if ($shopify && $this->positivePrice($shopify->price ?? null)) {
-            return (float) $shopify->price;
-        }
-
-        $product = ProductMaster::query()
-            ->whereNull('deleted_at')
-            ->where('sku', $sku)
-            ->first();
-        if ($product) {
-            $fromValues = $this->priceFromProductValues($product);
-            if ($fromValues !== null) {
-                return $fromValues;
-            }
-
-            $sibling = $this->siblingPrice($product);
-            if ($sibling !== null) {
-                return $sibling;
-            }
-        }
-
-        return null;
+        return LmpStdPrice::forSku($sku);
     }
 
     /**
