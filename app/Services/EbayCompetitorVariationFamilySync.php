@@ -104,7 +104,10 @@ class EbayCompetitorVariationFamilySync
             return ['assigned' => [], 'variation_count' => 0];
         }
 
-        if (count($priced) >= 2 && $anchorSku !== '') {
+        // Product-type listings (Tripod / Floor) keep every option on the opened SKU.
+        // Pack listings (1PCS / 4PCS) do not: the 1-piece price must not be saved on the 4-piece SKU.
+        $isPackListing = self::listingHasPackVariations($priced);
+        if (! $isPackListing && count($priced) >= 2 && $anchorSku !== '') {
             $keepIds = [];
             foreach ($priced as $variation) {
                 $live = $this->fetcher->liveFromVariation($listingId, $variation, $anchorSku);
@@ -139,6 +142,10 @@ class EbayCompetitorVariationFamilySync
             if ($variationCount === 0) {
                 $variationCount = 1;
             }
+        }
+
+        if ($isPackListing && ! $dryRun) {
+            $this->removeMismatchedPackRows($listingId, $familySkus, $priced, $marketplace);
         }
 
         if ($variationCount > 0) {
@@ -180,6 +187,79 @@ class EbayCompetitorVariationFamilySync
             ->whereRaw('UPPER(TRIM(sku)) in ('.implode(',', array_fill(0, count($norms), '?')).')', $norms)
             ->whereNotIn('item_id', $keepItemIds)
             ->delete();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $priced
+     */
+    public static function listingHasPackVariations(array $priced): bool
+    {
+        foreach ($priced as $variation) {
+            if (EbayCompetitorVariationMatcher::extractPackQty((string) ($variation['label'] ?? '')) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Item ids that must not stay on this SKU: other pack sizes, and the parent
+     * listing row once the matching pack variation has its own id.
+     *
+     * @param  list<array<string, mixed>>  $priced
+     * @return list<string>
+     */
+    public static function mismatchedPackItemIds(string $sku, string $listingId, array $priced): array
+    {
+        $pack = EbayCompetitorVariationMatcher::extractPackQty($sku);
+        if ($pack === null) {
+            return [];
+        }
+
+        $dropIds = [];
+        $keepIds = [];
+        foreach ($priced as $variation) {
+            $qty = EbayCompetitorVariationMatcher::extractPackQty((string) ($variation['label'] ?? ''));
+            $itemId = EbayCompetitorVariationMatcher::variationItemId($variation, $listingId);
+            if ($qty === $pack) {
+                $keepIds[] = $itemId;
+                continue;
+            }
+            if ($qty !== null) {
+                $dropIds[] = $itemId;
+            }
+        }
+
+        if ($keepIds !== [] && ! in_array($listingId, $keepIds, true)) {
+            $dropIds[] = $listingId;
+        }
+
+        return array_values(array_unique(array_filter($dropIds, fn ($id) => $id !== '')));
+    }
+
+    /**
+     * @param  list<string>  $familySkus
+     * @param  list<array<string, mixed>>  $priced
+     */
+    private function removeMismatchedPackRows(
+        string $listingId,
+        array $familySkus,
+        array $priced,
+        string $marketplace
+    ): void {
+        foreach ($familySkus as $familySku) {
+            $dropIds = self::mismatchedPackItemIds((string) $familySku, $listingId, $priced);
+            if ($dropIds === []) {
+                continue;
+            }
+
+            EbaySkuCompetitor::query()
+                ->where('marketplace', $marketplace)
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $familySku))])
+                ->whereIn('item_id', $dropIds)
+                ->delete();
+        }
     }
 
     /**

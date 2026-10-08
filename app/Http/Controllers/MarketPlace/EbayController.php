@@ -4987,6 +4987,30 @@ class EbayController extends Controller
     }
 
     /**
+     * Competitors for the opened SKU and its Sku Link group, limited to the same pack size.
+     *
+     * @param  list<string>  $groupSkus
+     */
+    private function ebayLmpCompetitorsForGroup(array $groupSkus, string $sku)
+    {
+        $competitors = collect();
+        foreach ($groupSkus as $groupSku) {
+            foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($groupSku) as $lookupSku) {
+                $found = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
+                if ($found->isNotEmpty()) {
+                    $competitors = $competitors->merge($found);
+                }
+            }
+        }
+
+        $competitors = $competitors
+            ->filter(fn ($comp) => \App\Models\EbaySkuCompetitor::samePackFamily($sku, $comp->sku ?? null))
+            ->values();
+
+        return \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors, $sku);
+    }
+
+    /**
      * Get eBay LMP data for a specific SKU
      * Merges competitors across the Sku Link LMP group so the modal matches the LMP column.
      */
@@ -5029,16 +5053,8 @@ class EbayController extends Controller
             ))));
 
             // Collect competitors from every linked SKU (not just the opened row).
-            $competitors = collect();
-            foreach ($groupSkus as $groupSku) {
-                foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($groupSku) as $lookupSku) {
-                    $found = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
-                    if ($found->isNotEmpty()) {
-                        $competitors = $competitors->merge($found);
-                    }
-                }
-            }
-            $competitors = \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors, $sku);
+            // Pack size stays isolated: a 4PCS row must not show the 1-piece price.
+            $competitors = $this->ebayLmpCompetitorsForGroup($groupSkus, $sku);
 
             // Live SerpApi refresh is opt-in (?refresh=1). Default is DB-only so LMP modal
             // opens quickly. Background `ebay:update-sku-prices` keeps prices fresh.
@@ -5126,16 +5142,7 @@ class EbayController extends Controller
                     }
                 }
 
-                $competitors = collect();
-                foreach ($groupSkus as $groupSku) {
-                    foreach (\App\Models\EbaySkuCompetitor::resolveLookupKeys($groupSku) as $lookupSku) {
-                        $found = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($lookupSku, 'ebay');
-                        if ($found->isNotEmpty()) {
-                            $competitors = $competitors->merge($found);
-                        }
-                    }
-                }
-                $competitors = \App\Models\EbaySkuCompetitor::dedupeByItemId($competitors, $sku);
+                $competitors = $this->ebayLmpCompetitorsForGroup($groupSkus, $sku);
             }
 
             // Live/cached ship repair is Pull-only. Opening the modal must stay DB-only

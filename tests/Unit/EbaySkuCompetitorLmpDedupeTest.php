@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\EbaySkuCompetitor;
+use App\Services\EbayCompetitorVariationFamilySync;
 use PHPUnit\Framework\TestCase;
 
 class EbaySkuCompetitorLmpDedupeTest extends TestCase
@@ -71,5 +72,39 @@ class EbaySkuCompetitorLmpDedupeTest extends TestCase
 
         $this->assertSame(49.99, (float) $legacy->total_price);
         $this->assertSame(93.43, (float) $fixed->total_price);
+    }
+
+    public function test_pack_sku_does_not_look_up_the_one_piece_base_sku(): void
+    {
+        $keys = EbaySkuCompetitor::resolveLookupKeys('G WH 4pcs');
+
+        $this->assertContains('G WH 4PCS', $keys);
+        $this->assertNotContains('G WH', $keys);
+        $this->assertFalse(EbaySkuCompetitor::samePackFamily('G WH 4pcs', 'G WH'));
+        $this->assertTrue(EbaySkuCompetitor::samePackFamily('G WH 4pcs', 'MS DBL G D-BLU 4pcs'));
+        $this->assertTrue(EbaySkuCompetitor::samePackFamily('G WH', 'MS DBL G D-BLU'));
+    }
+
+    public function test_open_box_still_falls_back_to_the_base_sku(): void
+    {
+        $keys = EbaySkuCompetitor::resolveLookupKeys('G WH OPEN BOX');
+
+        $this->assertContains('G WH', $keys);
+    }
+
+    public function test_pull_drops_one_piece_variation_from_a_four_piece_sku(): void
+    {
+        $priced = [
+            ['id' => '111', 'label' => '1PCS', 'price' => 34.93],
+            ['id' => '444', 'label' => '4PCS', 'price' => 89.99],
+        ];
+
+        $this->assertTrue(EbayCompetitorVariationFamilySync::listingHasPackVariations($priced));
+        $drop = EbayCompetitorVariationFamilySync::mismatchedPackItemIds('G WH 4pcs', '999', $priced);
+
+        $this->assertContains('111', $drop);
+        $this->assertContains('999', $drop);
+        $this->assertNotContains('444', $drop);
+        $this->assertSame([], EbayCompetitorVariationFamilySync::mismatchedPackItemIds('G WH', '999', $priced));
     }
 }

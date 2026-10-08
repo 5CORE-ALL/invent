@@ -212,7 +212,8 @@ class EbaySkuCompetitor extends Model
     }
 
     /**
-     * Candidate SKU keys for LMP lookup (exact SKU, base SKU, common suffix variants).
+     * Candidate SKU keys for LMP lookup (exact SKU plus condition variants).
+     * Pack size is not stripped: a 4PCS row must not inherit the 1-piece competitor price.
      *
      * @return list<string>
      */
@@ -232,7 +233,7 @@ class EbaySkuCompetitor extends Model
         }
 
         $normalized = self::normalizeSkuKey($sku);
-        foreach ([' OPEN BOX', ' USED', ' 4PCS', ' 3PCS', ' 2PCS', ' WoG', ' WOG'] as $suffix) {
+        foreach ([' OPEN BOX', ' USED', ' WoG', ' WOG'] as $suffix) {
             if (str_ends_with($normalized, $suffix)) {
                 $add(trim(substr($normalized, 0, -strlen($suffix))));
             }
@@ -243,6 +244,24 @@ class EbaySkuCompetitor extends Model
         }
 
         return array_values(array_unique($keys));
+    }
+
+    /**
+     * 1-piece and 4-piece competitors are different prices. A pack row only
+     * keeps competitors stored on the same pack size.
+     */
+    public static function samePackFamily(?string $rowSku, ?string $competitorSku): bool
+    {
+        $rowPack = \App\Support\Marketplace\EbayCompetitorVariationMatcher::extractPackQty($rowSku);
+        $compPack = \App\Support\Marketplace\EbayCompetitorVariationMatcher::extractPackQty($competitorSku);
+        if ($rowPack === null && $compPack === null) {
+            return true;
+        }
+        if ($rowPack === null || $compPack === null) {
+            return false;
+        }
+
+        return $rowPack === $compPack;
     }
 
     /**
@@ -296,6 +315,9 @@ class EbaySkuCompetitor extends Model
             }
         }
 
+        $lmpEntries = $lmpEntries
+            ->filter(fn ($entry) => self::samePackFamily($sku, $entry->sku ?? null))
+            ->values();
         $lmpEntries = self::applyIgnoreToSameItemIds($lmpEntries);
         $lmpEntries = self::dedupeByItemId($lmpEntries, $sku);
         // L1 = lowest non-ignored (same as Temu)
