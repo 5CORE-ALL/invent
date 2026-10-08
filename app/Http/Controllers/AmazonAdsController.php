@@ -18,6 +18,7 @@ use App\Support\AmazonAdsBgtReviewsRule;
 use App\Support\AmazonAdsBgtViewsRule;
 use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
+use App\Support\AmazonAdsLbidDaily;
 use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbidRule;
 use App\Support\AmazonAdsLiveSyncFollowUp;
@@ -4363,6 +4364,17 @@ class AmazonAdsController extends Controller
             }
         }
 
+        // Lbid is saved once per campaign per day (amazon_ads_lbid_daily). That saved day wins
+        // over whatever the report row happened to hold.
+        if ($column === 'last_sbid') {
+            $lbidChannel = AmazonAdsLbidDaily::channelForTable($table);
+            if ($lbidChannel !== null) {
+                foreach (AmazonAdsLbidDaily::historyByDate($lbidChannel, $cid) as $day => $saved) {
+                    $byDate[$day] = $saved;
+                }
+            }
+        }
+
         foreach (self::moneyHistoryPushesByDate($table, $column, $cid) as $day => $pushed) {
             if (! array_key_exists($day, $byDate) || $byDate[$day] === null) {
                 $byDate[$day] = $pushed;
@@ -4538,6 +4550,11 @@ class AmazonAdsController extends Controller
         $prevSbid = self::previousDailyMoneyMap($table, array_keys($ids), 'sbid');
         $prevSbgt = self::previousDailyMoneyMap($table, array_keys($ids), 'sbgt');
         $prevLbid = self::previousDailyMoneyMap($table, array_keys($ids), 'last_sbid');
+        $lbidChannel = AmazonAdsLbidDaily::channelForTable($table);
+        if ($lbidChannel !== null) {
+            // Saved daily Lbid wins over the report-row fallback.
+            $prevLbid = AmazonAdsLbidDaily::previousByCampaign($lbidChannel, array_map('strval', array_keys($ids))) + $prevLbid;
+        }
         foreach ($rows as $i => $row) {
             $cid = trim((string) ($row['campaign_id'] ?? ''));
             $sbidPrev = $prevSbid[$cid] ?? null;

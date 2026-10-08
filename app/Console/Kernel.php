@@ -91,6 +91,7 @@ class Kernel extends ConsoleKernel
         AmazonSbCampaignReports::class,
         \App\Console\Commands\AmazonAdsSyncEnabledCampaigns::class,
         \App\Console\Commands\AmazonAdsLiveBidBgtSync::class,
+        \App\Console\Commands\AmazonAdsLbidDailySnapshot::class,
         AmazonSdCampaignReports::class,
         AmazonSpKeywordReports::class,
         AmazonSpNegativeKeywords::class,
@@ -1624,6 +1625,16 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('amazon-ads-live-bid-bgt-sync-followup')
             ->withoutOverlapping(25)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Saves each campaign's Lbid once per California day (last value of that day) for the Lbid
+        // history dot. Verified live pulls also write today's value as they happen.
+        $schedule->command('amazon:ads-lbid-daily-snapshot')
+            ->dailyAt('23:55')
+            ->timezone('America/Los_Angeles')
+            ->name('amazon-ads-lbid-daily-snapshot')
+            ->withoutOverlapping(30)
             ->runInBackground()
             ->appendOutputTo($log);
 

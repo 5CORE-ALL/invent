@@ -8,6 +8,7 @@ use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPushLog;
 use App\Support\AmazonAdsApiRetry;
+use App\Support\AmazonAdsLbidDaily;
 use App\Support\AmazonAdsLiveSyncStatus;
 use App\Support\AmazonAdsSbgt;
 use Illuminate\Support\Facades\Cache;
@@ -837,6 +838,10 @@ class AmazonAdsLiveBidBgtSyncService
                 ->where('campaign_id', $campaignId)
                 ->whereIn('report_date_range', $ranges)
                 ->update($payload);
+            if ($field === 'bid') {
+                // Keep one Lbid per campaign per day for the Lbid history dot.
+                AmazonAdsLbidDaily::record($channel === 'sb' ? 'sb' : 'sp', $campaignId, $live);
+            }
         } catch (Throwable $e) {
             Log::warning('amazon-ads live sync: persist live failed', [
                 'table' => $table,
