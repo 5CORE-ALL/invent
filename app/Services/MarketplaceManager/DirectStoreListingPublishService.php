@@ -87,11 +87,14 @@ class DirectStoreListingPublishService
 
         $label = ['pls' => 'PLS', 'b5cb2b' => 'Business 5 Core (B2B)', 'doba' => 'Doba'][$channel] ?? $channel;
         if ($ok !== []) {
-            try {
-                ListingChannelCounts::refreshChannelOnMissingListingPage($channel);
-            } catch (\Throwable $e) {
-                Log::warning('Missing Listing refresh after publish failed', ['channel' => $channel, 'error' => $e->getMessage()]);
-            }
+            $refreshChannel = $channel;
+            app()->terminating(static function () use ($refreshChannel): void {
+                try {
+                    ListingChannelCounts::refreshChannelOnMissingListingPage($refreshChannel);
+                } catch (\Throwable $e) {
+                    Log::warning('Missing Listing refresh after publish failed', ['channel' => $refreshChannel, 'error' => $e->getMessage()]);
+                }
+            });
         }
         if ($ok === []) {
             return ['success' => false, 'message' => $label.': '.implode(' ', $errors)];
@@ -144,7 +147,7 @@ class DirectStoreListingPublishService
             static fn (string $u) => preg_match('#^https?://#i', $u) === 1
         )));
 
-        $quantity = ListingManagerAmazonHydrator::shopifyQuantity($sku, true);
+        $quantity = ListingManagerAmazonHydrator::shopifyQuantity($sku, false);
         if ($quantity === null && $primary && isset($overrides['quantity']) && is_numeric($overrides['quantity'])) {
             $quantity = (int) $overrides['quantity'];
         }
@@ -199,8 +202,7 @@ class DirectStoreListingPublishService
         }
 
         $sku = $item['sku'];
-        $existing = $this->plsCatalogIds($sku)
-            ?? app(ShopifyPLSApiService::class)->findProductBySkuViaGraphQL($domain, $token, $sku);
+        $existing = $this->plsCatalogIds($sku) ?? $this->plsFindBySku($sku);
 
         if ($existing) {
             $productId = (string) $existing['product_id'];
@@ -246,7 +248,7 @@ class DirectStoreListingPublishService
             }
 
             $this->savePlsCatalog($productId, $variantId, $sku, $item);
-            $this->pushPlsQty($sku);
+            $this->plsSetAvailable($variantId, $item['quantity']);
 
             return ['success' => true, 'message' => 'Updated', 'id' => $productId, 'created' => false];
         }
@@ -279,19 +281,21 @@ class DirectStoreListingPublishService
             'status' => 'active',
             'variants' => [$variant],
             'images' => array_map(static fn ($src) => ['src' => $src], $item['images']),
-        ]]);
+        ]], 40);
         if (! $res['ok']) {
             return ['success' => false, 'message' => 'Create failed: '.$res['message']];
         }
 
         $productId = (string) ($res['json']['product']['id'] ?? '');
-        $variantId = (string) ($res['json']['product']['variants'][0]['id'] ?? '');
+        $variant = $res['json']['product']['variants'][0] ?? [];
+        $variantId = (string) ($variant['id'] ?? '');
+        $inventoryItemId = (int) ($variant['inventory_item_id'] ?? 0);
         if ($productId === '' || $variantId === '') {
             return ['success' => false, 'message' => 'Shopify PLS did not return a product id.'];
         }
 
         $this->savePlsCatalog($productId, $variantId, $sku, $item, true);
-        $this->pushPlsQty($sku);
+        $this->plsSetAvailable($variantId, $item['quantity'], $inventoryItemId);
 
         return ['success' => true, 'message' => 'Created', 'id' => $productId, 'created' => true];
     }
@@ -382,12 +386,90 @@ class DirectStoreListingPublishService
         }
     }
 
-    private function pushPlsQty(string $sku): void
+    /**
+     * One exact SKU search. A full-catalog scan here is what made Publish time out.
+     *
+     * @return array{product_id: string, variant_id: string}|null
+     */
+    private function plsFindBySku(string $sku): ?array
     {
+        $quoted = str_replace(['\\', '"'], ['\\\\', '\\"'], $sku);
+        $res = $this->plsRequest('POST', 'graphql.json', [
+            'query' => 'query ($query: String!) { productVariants(first: 1, query: $query) { edges { node { id product { id } } } } }',
+            'variables' => ['query' => 'sku:"'.$quoted.'"'],
+        ], 15);
+        if (! $res['ok']) {
+            return null;
+        }
+
+        $node = $res['json']['data']['productVariants']['edges'][0]['node'] ?? null;
+        if (! is_array($node)) {
+            return null;
+        }
+
+        $productId = (int) preg_replace('/\D+/', '', (string) ($node['product']['id'] ?? ''));
+        $variantId = preg_replace('/\D+/', '', (string) ($node['id'] ?? ''));
+        if ($productId <= 0 || $variantId === '') {
+            return null;
+        }
+
+        return [
+            'product_id' => (string) $productId,
+            'variant_id' => (string) $variantId,
+        ];
+    }
+
+    private function plsSetAvailable(string $variantId, mixed $qty, int $inventoryItemId = 0): void
+    {
+        if (! is_numeric($qty)) {
+            return;
+        }
+        $qty = max(0, (int) $qty);
+
         try {
-            app(PlsInventorySyncService::class)->syncSkusFromShopify([$sku]);
+            if ($inventoryItemId <= 0) {
+                $variantId = preg_replace('/\D+/', '', $variantId) ?? '';
+                if ($variantId === '') {
+                    return;
+                }
+                $variant = $this->plsRequest('GET', 'variants/'.$variantId.'.json', [], 15);
+                $inventoryItemId = (int) ($variant['json']['variant']['inventory_item_id'] ?? 0);
+            }
+            if ($inventoryItemId <= 0) {
+                return;
+            }
+
+            $locationId = Cache::get('mm.pls.primary_location_id');
+            if (! is_numeric($locationId) || (int) $locationId <= 0) {
+                $locations = $this->plsRequest('GET', 'locations.json', [], 15);
+                $locationId = (int) ($locations['json']['locations'][0]['id'] ?? 0);
+                if ($locationId > 0) {
+                    Cache::put('mm.pls.primary_location_id', $locationId, now()->addHours(6));
+                }
+            }
+            $locationId = (int) $locationId;
+            if ($locationId <= 0) {
+                return;
+            }
+
+            $set = $this->plsRequest('POST', 'inventory_levels/set.json', [
+                'location_id' => $locationId,
+                'inventory_item_id' => $inventoryItemId,
+                'available' => $qty,
+            ], 15);
+            if (! $set['ok'] && str_contains(strtolower($set['message']), 'not stocked')) {
+                $this->plsRequest('POST', 'inventory_levels/connect.json', [
+                    'location_id' => $locationId,
+                    'inventory_item_id' => $inventoryItemId,
+                ], 15);
+                $this->plsRequest('POST', 'inventory_levels/set.json', [
+                    'location_id' => $locationId,
+                    'inventory_item_id' => $inventoryItemId,
+                    'available' => $qty,
+                ], 15);
+            }
         } catch (\Throwable $e) {
-            Log::warning('PLS qty push after publish failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            Log::warning('PLS qty set after publish failed', ['variant_id' => $variantId, 'error' => $e->getMessage()]);
         }
     }
 
@@ -395,7 +477,7 @@ class DirectStoreListingPublishService
      * @param  array<string, mixed>  $payload
      * @return array{ok: bool, json: array, message: string}
      */
-    private function plsRequest(string $method, string $path, array $payload = []): array
+    private function plsRequest(string $method, string $path, array $payload = [], int $timeout = 20): array
     {
         $tokens = app(ShopifyPlsTokenService::class);
         $domain = $tokens->getDomain();
@@ -407,7 +489,7 @@ class DirectStoreListingPublishService
             $http = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
                 'Content-Type' => 'application/json',
-            ])->timeout(60)->connectTimeout(20);
+            ])->timeout($timeout)->connectTimeout(10);
 
             $response = strtoupper($method) === 'GET'
                 ? $http->get($url, $payload)
