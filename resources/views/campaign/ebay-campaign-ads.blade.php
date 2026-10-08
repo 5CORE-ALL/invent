@@ -39,6 +39,7 @@
         'badgesUrl' => route('ebay.campaign.ads.badges'),
         'storeSalesTitle' => 'eBay L30 store sales',
         'showCbidNullBadge' => true,
+        'showYSpendBadges' => true,
     ])
 
     {{-- Filters --}}

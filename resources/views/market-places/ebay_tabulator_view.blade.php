@@ -888,6 +888,14 @@
                             data-metric="tcos_percent" data-live-value="{{ round((float) ($channelAdsPercent ?? 0)) }}" data-format="pct" data-invert="1"
                             style="background-color: #d63384; color: white; font-weight: bold; cursor: pointer;"
                             title="Ads%. Lower is better (inverted 3-color). Click dot for rolling history.">Ads {{ round((float) ($channelAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="tcos_percent" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-spend-badge"
+                            data-metric="y_spend" data-live-value="{{ round((float) ($ySpendTotal ?? 0)) }}" data-format="money"
+                            style="background-color:#be123c;color:#fff;font-weight:bold;cursor:pointer;"
+                            title="Sum of yesterday's ad spend (keyword CPC + promoted listing fees). Each campaign and listing is counted once. Click dot for rolling history.">Y Spend: ${{ number_format((float) ($ySpendTotal ?? 0)) }}<span class="summary-trend-dot none" data-metric="y_spend" title="Rolling history"></span></span>
+                        <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-ads-percent-badge"
+                            data-metric="y_ads_percent" data-live-value="{{ round((float) ($yAdsPercent ?? 0)) }}" data-format="pct" data-invert="1"
+                            style="background-color:#9d174d;color:#fff;font-weight:bold;cursor:pointer;"
+                            title="Y Ads% = Y Spend ÷ Y Sales. Y Sales is yesterday's store sales (${{ number_format((float) ($ySalesTotal ?? 0), 2) }}), the same Y Sales badge on /ebay/daily-sales. Lower is better. Click dot for rolling history.">Y Ads%: {{ round((float) ($yAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="y_ads_percent" title="Rolling history"></span></span>
                         <span class="badge fs-6 p-2 ebay1-badge-chart" id="npft-percent-badge"
                             data-metric="npft_percent" data-live-value="{{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}" data-format="pct"
                             style="background-color: #0f766e; color: white; font-weight: bold; cursor: pointer;"
@@ -1324,6 +1332,9 @@
          *  Same value shown for eBay on /all-marketplace-master (per-SKU spend isn't
          *  available in this page's data, so the Ads % column shows the channel figure). */
         const EBAY_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
+        const Y_SPEND_TOTAL = {{ (float) ($ySpendTotal ?? 0) }};
+        const Y_SALES_TOTAL = {{ (float) ($ySalesTotal ?? 0) }};
+        const Y_ADS_PERCENT = {{ (float) ($yAdsPercent ?? 0) }};
         /** Take-home from marketplace_percentages (Ebay). Used when a row has no percentage. */
         const EBAY_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
@@ -1568,6 +1579,8 @@
             gpft_percent: 'GPFT%',
             groi_percent: 'GROI%',
             tcos_percent: 'Ads%',
+            y_spend: 'Y Spend',
+            y_ads_percent: 'Y Ads%',
             npft_percent: 'NPFT%',
             nroi_percent: 'NROI%',
             cvr_percent: 'CVR%',
@@ -1575,7 +1588,7 @@
             lmp_missing_count: 'LMP M.',
         };
         /** Metrics where lower is better → invert 3-color (up=red, down=green) */
-        const ebay1BadgeInvertMetrics = { tcos_percent: true, lmp_missing_count: true };
+        const ebay1BadgeInvertMetrics = { tcos_percent: true, y_ads_percent: true, lmp_missing_count: true };
         let ebay1ChartInstance = null;
         let ebay1ChartAjax = null;
         let ebay1ChartDays = 30;
@@ -6096,6 +6109,8 @@
                 setSummaryBadge($('#nroi-percent-badge'), 'NROI: ' + Math.round(nroiBadge) + '%', Math.round(nroiBadge));
                 setSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%', Math.round(ORDERS_L30_GPFT));
                 setSummaryBadge($('#ads-percent-badge'), 'Ads ' + Math.round(EBAY_CHANNEL_ADS_PCT) + '%', Math.round(EBAY_CHANNEL_ADS_PCT));
+                setSummaryBadge($('#y-spend-badge'), 'Y Spend: $' + Math.round(Y_SPEND_TOTAL).toLocaleString(), Math.round(Y_SPEND_TOTAL));
+                setSummaryBadge($('#y-ads-percent-badge'), 'Y Ads%: ' + Math.round(Y_ADS_PERCENT) + '%', Math.round(Y_ADS_PERCENT));
                 setSummaryBadge($('#total-sales-amt-badge'), 'Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString(), Math.round(ORDERS_L30_TOTAL_SALES));
                 setSummaryBadge($('#qty-sold-badge'), 'Qty: ' + Math.round(ORDERS_L30_TOTAL_QTY).toLocaleString(), Math.round(ORDERS_L30_TOTAL_QTY));
 

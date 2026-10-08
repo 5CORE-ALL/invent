@@ -92,6 +92,7 @@ class EbayController extends Controller
         // sales the /all-marketplace-master value uses).
         $ebayAdSpend = app(ChannelMasterController::class)->getEbayMasterAdSpend();
         $channelAdsPercent = $this->tabulatorChannelAdsPercent((float) ($agg['sales'] ?? 0));
+        $ySpendBadge = EbayYesterdaySpend::channelTotals();
 
         // NROI% = (GPFT$ − Ad Spend) / COGS × 100 — same shape as Amazon NROI badge
         // (do not cut Ads% from GROI%).
@@ -110,6 +111,9 @@ class EbayController extends Controller
             'ordersL30Pft'        => $agg['pft'],
             'ordersL30Cogs'       => $agg['cogs'],
             'ordersL30Nroi'       => $ordersL30Nroi,
+            'ySpendTotal'         => $ySpendBadge['y_spend'],
+            'ySalesTotal'         => $ySpendBadge['y_sales'],
+            'yAdsPercent'         => $ySpendBadge['y_ads_percent'],
             'lastGoodCvrViews'    => (float) (ChannelMasterViewsGuard::lastTrusted('ebay')['views'] ?? 0),
         ]);
     }
@@ -2681,6 +2685,8 @@ class EbayController extends Controller
                 'dil_ov_percent',
                 'dil_eb1_percent',
                 'lmp_missing_count',
+                'y_spend',
+                'y_ads_percent',
             ];
 
             if (! in_array($metric, $allowedMetrics, true)) {
@@ -2783,6 +2789,10 @@ class EbayController extends Controller
                 }
                 // Older snapshots have no LMP M. key. Do not plot those days as 0.
                 if ($metric === 'lmp_missing_count' && ! array_key_exists('lmp_missing_count', $summary)) {
+                    return null;
+                }
+                // Y Spend / Y Ads% start the day they are first saved. Do not plot older days as 0.
+                if (in_array($metric, ['y_spend', 'y_ads_percent'], true) && ! array_key_exists($metric, $summary)) {
                     return null;
                 }
 
@@ -4714,6 +4724,8 @@ class EbayController extends Controller
                 'gpft_percent' => round($gpftPercent, 2),
                 'npft_percent' => round($npftPercent, 2),
                 'cvr_percent' => round($cvrPercent, 2),
+                'y_spend' => ($yBadge = EbayYesterdaySpend::channelTotals())['y_spend'],
+                'y_ads_percent' => $yBadge['y_ads_percent'],
                 'total_inv' => round($totalInvAvailable, 2),
                 'total_ebay_listing_l30' => round($listingEbayL30, 2),
                 'dil_ov_percent' => $totalInvAvailable > 0

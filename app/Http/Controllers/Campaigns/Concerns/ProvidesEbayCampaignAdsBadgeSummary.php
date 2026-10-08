@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Campaigns\Concerns;
 
 use App\Support\Ads\EbayMissingListingQuery;
+use App\Support\EbayYesterdaySpend;
 use Illuminate\Http\JsonResponse;
 
 trait ProvidesEbayCampaignAdsBadgeSummary
@@ -38,7 +39,7 @@ trait ProvidesEbayCampaignAdsBadgeSummary
         $netSales = static::advertisementMasterNetSales();
         $tcos = self::tcosPercent($spend, $netSales, $sales);
 
-        return response()->json([
+        $payload = [
             'spend' => $spend,
             'clicks' => $clicks,
             'sold' => $sold,
@@ -49,7 +50,22 @@ trait ProvidesEbayCampaignAdsBadgeSummary
             'net_sales' => $netSales,
             'cbid_null' => $this->cbidNullInStockCount(),
             'missing_ads' => $this->cbidNullInStockCount(),
-        ]);
+        ];
+
+        if ($this->includeYSpendBadges()) {
+            $y = EbayYesterdaySpend::channelTotals();
+            $payload['y_spend'] = $y['y_spend'];
+            $payload['y_sales'] = $y['y_sales'];
+            $payload['y_ads_percent'] = $y['y_ads_percent'];
+        }
+
+        return response()->json($payload);
+    }
+
+    /** eBay 1 badge strip shows Y Spend and Y Ads%. Other accounts leave them off. */
+    protected function includeYSpendBadges(): bool
+    {
+        return false;
     }
 
     /**

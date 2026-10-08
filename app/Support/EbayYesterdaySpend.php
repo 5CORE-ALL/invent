@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\ShopifySku;
+use App\Services\EbayChannelMetricsService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -122,6 +123,34 @@ class EbayYesterdaySpend
             'y_spend_prev' => round($prev, 2),
             'y_spend_prev_date' => $date,
         ];
+    }
+
+    /**
+     * Channel Y Spend (each listing and CPC campaign once) and Y Ads% against
+     * yesterday's store sales — the Y Sales badge on /ebay/daily-sales.
+     *
+     * @return array{y_spend: float, y_sales: float, y_ads_percent: float}
+     */
+    public static function channelTotals(): array
+    {
+        $maps = self::maps();
+        $spend = round(array_sum($maps['l1_listing']) + array_sum($maps['l1_campaign']), 2);
+        $sales = round((float) (EbayChannelMetricsService::computeYSales(1) ?? 0), 2);
+
+        return [
+            'y_spend' => $spend,
+            'y_sales' => $sales,
+            'y_ads_percent' => self::adsPercent($spend, $sales),
+        ];
+    }
+
+    public static function adsPercent(float $spend, float $sales): float
+    {
+        if ($sales <= 0) {
+            return 0.0;
+        }
+
+        return round(($spend / $sales) * 100, 1);
     }
 
     public static function money(mixed $raw): float

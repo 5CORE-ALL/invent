@@ -8,6 +8,12 @@
     <div class="card-body py-2">
         <div class="d-flex flex-wrap align-items-center gap-2 overflow-x-auto py-1">
             <span class="ebay-ca-stat-badge ebay-ca-stat-badge--spend">SPEND: <span id="{{ $badgePrefix }}-badge-spend">$0</span></span>
+            @if (! empty($showYSpendBadges))
+            <span class="ebay-ca-stat-badge ebay-ca-stat-badge--yspend" id="{{ $badgePrefix }}-badge-yspend-wrap"
+                  title="Sum of yesterday's ad spend: keyword CPC fees plus promoted listing fees. Each campaign and listing is counted once.">Y SPEND: <span id="{{ $badgePrefix }}-badge-yspend">$0</span></span>
+            <span class="ebay-ca-stat-badge ebay-ca-stat-badge--yads" id="{{ $badgePrefix }}-badge-yads-wrap"
+                  title="Y Ads% = Y Spend ÷ Y Sales. Y Sales is yesterday's eBay store sales, the same number as the Y Sales badge on /ebay/daily-sales.">Y ADS%: <span id="{{ $badgePrefix }}-badge-yads">0%</span></span>
+            @endif
             <span class="ebay-ca-stat-badge ebay-ca-stat-badge--clicks">CLICKS: <span id="{{ $badgePrefix }}-badge-clicks">0</span></span>
             <span class="ebay-ca-stat-badge ebay-ca-stat-badge--sold">SOLD: <span id="{{ $badgePrefix }}-badge-sold">0</span></span>
             <span class="ebay-ca-stat-badge ebay-ca-stat-badge--sales">ADS SALES: <span id="{{ $badgePrefix }}-badge-sales">$0</span></span>
@@ -39,6 +45,8 @@
         line-height: 1.2;
     }
     .ebay-ca-stat-badge--spend  { background: #ef4444; }
+    .ebay-ca-stat-badge--yspend { background: #be123c; }
+    .ebay-ca-stat-badge--yads   { background: #9d174d; }
     .ebay-ca-stat-badge--clicks { background: #4c7ed8; }
     .ebay-ca-stat-badge--sold   { background: #f59e0b; }
     .ebay-ca-stat-badge--sales  { background: #16a34a; }
@@ -79,6 +87,19 @@
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                 }));
+                const ySpendEl = $('#' + prefix + '-badge-yspend');
+                if (ySpendEl.length && m.y_spend != null) {
+                    ySpendEl.text('$' + Math.round(Number(m.y_spend)).toLocaleString());
+                }
+                const yAdsEl = $('#' + prefix + '-badge-yads');
+                if (yAdsEl.length && m.y_ads_percent != null) {
+                    yAdsEl.text(Math.round(Number(m.y_ads_percent)) + '%');
+                    const ySales = Number(m.y_sales || 0);
+                    $('#' + prefix + '-badge-yads-wrap').attr('title',
+                        'Y Ads% = Y Spend $' + Math.round(Number(m.y_spend || 0)).toLocaleString()
+                        + ' ÷ Y Sales $' + ySales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        + '. Y Sales is yesterday\'s eBay store sales, the same number as the Y Sales badge on /ebay/daily-sales.');
+                }
                 const cbidEl = $('#' + prefix + '-badge-cbidnull');
                 if (cbidEl.length) {
                     cbidEl.text(Math.round(Number(m.missing_ads || m.cbid_null || 0)).toLocaleString());

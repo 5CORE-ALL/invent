@@ -18,6 +18,12 @@ use Illuminate\Support\Facades\Schema;
 class EbayCampaignAdsController extends Controller
 {
     use ProvidesEbayCampaignAdsBadgeSummary;
+
+    protected function includeYSpendBadges(): bool
+    {
+        return true;
+    }
+
     public function index()
     {
         $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();

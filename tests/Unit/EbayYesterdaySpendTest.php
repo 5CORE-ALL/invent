@@ -7,6 +7,14 @@ use PHPUnit\Framework\TestCase;
 
 class EbayYesterdaySpendTest extends TestCase
 {
+    public function test_y_ads_percent_is_spend_divided_by_sales(): void
+    {
+        $this->assertSame(10.0, EbayYesterdaySpend::adsPercent(50, 500));
+        $this->assertSame(9.7, EbayYesterdaySpend::adsPercent(48.6, 500));
+        $this->assertSame(0.0, EbayYesterdaySpend::adsPercent(0, 0));
+        $this->assertSame(0.0, EbayYesterdaySpend::adsPercent(12, 0));
+    }
+
     public function test_money_strips_currency_text(): void
     {
         $this->assertSame(12.5, EbayYesterdaySpend::money('USD 12.50'));
