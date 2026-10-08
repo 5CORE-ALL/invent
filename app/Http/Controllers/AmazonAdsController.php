@@ -5628,7 +5628,7 @@ class AmazonAdsController extends Controller
                 $ltForBgt = (isset($arr['ltAcos']) && is_numeric($arr['ltAcos'])) ? (float) $arr['ltAcos'] : null;
                 $arr['bgtAcos'] = $ltForBgt === null
                     ? null
-                    : AmazonAcosSbgtRule::sbgtFromAcosL30($ltForBgt);
+                    : AmazonAcosSbgtRule::bgtAcosDecimal($ltForBgt);
             }
             if (in_array('sbgt', $columns, true)) {
                 $arr['sbgt'] = self::summedSbgtFromParts(

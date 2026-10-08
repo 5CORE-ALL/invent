@@ -1411,7 +1411,7 @@
             function amzBgtAcosFromAcos(acos) {
                 var band = amzBandForAcos(acos);
                 if (!band) return null;
-                var t = parseInt(band.sbgt, 10);
+                var t = amzBgtPartNum(band.sbgt);
                 return isNaN(t) ? null : t;
             }
             function amzSumSbgtFromRow(row) {
@@ -1419,12 +1419,14 @@
                 var sum = 0, has = false;
                 for (var i = 0; i < parts.length; i++) {
                     if (parts[i] === null || parts[i] === undefined || parts[i] === '') continue;
-                    var n = parseInt(parts[i], 10);
+                    var n = parseFloat(parts[i]);
                     if (isNaN(n)) continue;
                     has = true;
                     sum += n;
                 }
                 if (!has) return null;
+                // Parts may carry decimals (e.g. 1.5); the SBGT total is floored (4.5 → 4) before push.
+                sum = Math.floor(Math.round(sum * 1e6) / 1e6);
                 return sum < 1 ? 0 : sum;
             }
             function amzApplyAcosDrivenBgt(rows) {
@@ -1813,7 +1815,7 @@
                     if (fromAcos !== null) v = fromAcos;
                 }
                 if (v === null || v === undefined || v === '') return amzDash();
-                var t = parseInt(v, 10);
+                var t = amzBgtPartNum(v);
                 if (isNaN(t)) return amzDash();
                 if (t === 0) {
                     return '<span class="fw-semibold" style="color:#dc2626;" title="This part adds $0">0</span>';
@@ -4214,7 +4216,7 @@
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
                         + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose LT ACOS falls in this band')
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -4222,7 +4224,7 @@
                     inp.addEventListener('input', function () {
                         var idx = +this.dataset.idx, fld = this.dataset.field;
                         if (!amzCurrentBands[idx]) return;
-                        amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseInt(this.value, 10))
+                        amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseFloat(this.value))
                             : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
                         if (fld === 'acos_from' || fld === 'acos_to') amzAcosRefreshCounts();
@@ -4270,7 +4272,7 @@
                         return {
                             acos_from: (b.acos_from === '' || b.acos_from == null) ? NaN : parseFloat(b.acos_from),
                             acos_to: (b.acos_to === '' || b.acos_to == null) ? NaN : parseFloat(b.acos_to),
-                            sbgt: (b.sbgt === '' || b.sbgt == null) ? NaN : parseInt(b.sbgt, 10),
+                            sbgt: (b.sbgt === '' || b.sbgt == null) ? NaN : parseFloat(b.sbgt),
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });

@@ -167,6 +167,25 @@ class AmazonAdsSbgtTest extends TestCase
         $this->assertSame(12, AmazonAcosSbgtRule::sbgtFromAcosAndBands(0.0, $bands));
     }
 
+    public function test_acos_rule_keeps_decimal_bands_for_grid_but_floors_for_crons(): void
+    {
+        // A decimal BGT ACOS tier (e.g. 1.5) must survive normalization so it can add its
+        // decimal to the 6-part SBGT sum on /amazon-ads/all before the total is floored.
+        $rule = AmazonAcosSbgtRule::normalizeRule([
+            'bands' => [
+                ['acos_from' => 0, 'acos_to' => 9999, 'sbgt' => 1.5, 'label' => 'Half', 'color' => '#16a34a'],
+            ],
+        ]);
+        $this->assertSame(1.5, $rule['bands'][0]['sbgt']);
+
+        $bands = $rule['bands'];
+        // Grid accessor keeps the decimal.
+        $this->assertSame(1.5, AmazonAcosSbgtRule::sbgtFromAcosAndBands(10.0, $bands));
+
+        // Budget crons / direct pushes only take whole dollars → floored.
+        $this->assertSame(4, AmazonAdsSbgt::floorBudget((float) AmazonAcosSbgtRule::sbgtFromAcosAndBands(10.0, $bands) + 2.9));
+    }
+
     public function test_sbgt_cell_is_stored_like_sbid_and_keeps_zero(): void
     {
         $this->assertSame('4.00', AmazonAdsSbgt::storageValue(4));

@@ -135,7 +135,7 @@ final class AmazonAcosSbgtRule
             $out[] = [
                 'acos_from' => (float) ($band['acos_from'] ?? 0),
                 'acos_to' => (float) ($band['acos_to'] ?? 9999),
-                'sbgt' => (int) round((float) ($band['sbgt'] ?? 0)),
+                'sbgt' => AmazonAdsSbgt::normalizeBgtValue($band['sbgt'] ?? 0),
                 'label' => (string) ($band['label'] ?? ''),
                 'color' => (string) ($band['color'] ?? '#6c757d'),
             ];
@@ -155,7 +155,7 @@ final class AmazonAcosSbgtRule
         foreach ($bands as $i => $band) {
             $from = (float) ($band['acos_from'] ?? NAN);
             $to = (float) ($band['acos_to'] ?? NAN);
-            $sbgt = (int) ($band['sbgt'] ?? 0);
+            $sbgt = (float) ($band['sbgt'] ?? 0);
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('SBGT band '.($i + 1).': From and To must be finite numbers.');
             }
@@ -373,7 +373,20 @@ final class AmazonAcosSbgtRule
         return self::sbgtFromAcosL30($acos);
     }
 
+    /**
+     * Whole-dollar BGT ACOS tier (floored). Used by budget crons and any direct Amazon push,
+     * which only take whole dollars. The grid uses {@see bgtAcosDecimal} so a decimal band
+     * (e.g. 1.5) can contribute its decimal to the 6-part SBGT sum before the total is floored.
+     */
     public static function sbgtFromAcosL30(float $acos): int
+    {
+        return AmazonAdsSbgt::floorBudget((float) self::sbgtFromAcosAndBands($acos, self::resolvedRule()['bands']));
+    }
+
+    /**
+     * BGT ACOS tier keeping decimals (e.g. 1.5). For the /amazon-ads/all SBGT column only.
+     */
+    public static function bgtAcosDecimal(float $acos): int|float
     {
         return self::sbgtFromAcosAndBands($acos, self::resolvedRule()['bands']);
     }
@@ -385,7 +398,7 @@ final class AmazonAcosSbgtRule
      *
      * @param  array<int, array<string, mixed>>  $bands
      */
-    public static function sbgtFromAcosAndBands(float $acos, array $bands): int
+    public static function sbgtFromAcosAndBands(float $acos, array $bands): int|float
     {
         if ($bands === []) {
             return 1;
@@ -395,7 +408,7 @@ final class AmazonAcosSbgtRule
                 $from = (float) ($band['acos_from'] ?? 0);
                 $to = (float) ($band['acos_to'] ?? 9999);
                 if ($acos >= $from && $acos <= $to) {
-                    return (int) ($band['sbgt'] ?? 1);
+                    return AmazonAdsSbgt::normalizeBgtValue($band['sbgt'] ?? 1);
                 }
             }
 
@@ -408,7 +421,7 @@ final class AmazonAcosSbgtRule
     /**
      * @param  array<int, array<string, mixed>>  $bands
      */
-    private static function clampSbgtFromBands(array $bands, float $acos): int
+    private static function clampSbgtFromBands(array $bands, float $acos): int|float
     {
         $highest = null;
         $lowest = null;
@@ -422,16 +435,16 @@ final class AmazonAcosSbgtRule
             }
         }
         if ($highest !== null && $acos >= (float) ($highest['acos_from'] ?? 0)) {
-            return (int) ($highest['sbgt'] ?? 1);
+            return AmazonAdsSbgt::normalizeBgtValue($highest['sbgt'] ?? 1);
         }
 
-        return $lowest !== null ? (int) ($lowest['sbgt'] ?? 1) : 1;
+        return $lowest !== null ? AmazonAdsSbgt::normalizeBgtValue($lowest['sbgt'] ?? 1) : 1;
     }
 
     /**
      * @param  array<int, array<string, mixed>>  $bands
      */
-    private static function fallbackSbgtFromBands(array $bands): int
+    private static function fallbackSbgtFromBands(array $bands): int|float
     {
         return self::clampSbgtFromBands($bands, 9999.0);
     }
@@ -463,10 +476,10 @@ final class AmazonAcosSbgtRule
         foreach ($bands as $band) {
             $from = self::sqlNumberLiteral((float) ($band['acos_from'] ?? 0));
             $to = self::sqlNumberLiteral((float) ($band['acos_to'] ?? 9999));
-            $sbgt = (int) ($band['sbgt'] ?? 1);
+            $sbgt = self::sqlNumberLiteral((float) ($band['sbgt'] ?? 1));
             $sql .= ' WHEN ('.$acosExpr.') >= '.$from.' AND ('.$acosExpr.') <= '.$to.' THEN '.$sbgt;
         }
-        $sql .= ' ELSE '.self::fallbackSbgtFromBands($bands).' END';
+        $sql .= ' ELSE '.self::sqlNumberLiteral((float) self::fallbackSbgtFromBands($bands)).' END';
 
         return $sql;
     }

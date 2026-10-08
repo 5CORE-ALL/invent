@@ -90,13 +90,13 @@ final class AmazonAdsDesiredSbgtResolver
 
             if ($useLifetime) {
                 $lt = $lifetimeAcosByCid[$cid] ?? null;
-                $bgtAcos = is_numeric($lt) ? AmazonAcosSbgtRule::sbgtFromAcosL30((float) $lt) : null;
+                $bgtAcos = is_numeric($lt) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $lt) : null;
             } else {
                 $acos = $arr['acos_L30'] ?? $arr['acos'] ?? $arr['ACOS'] ?? null;
                 if ($acos === null || ! is_numeric($acos)) {
                     $acos = AmazonAcosSbgtRule::acosPercentForSbgtFromReportRow($arr);
                 }
-                $bgtAcos = is_numeric($acos) ? AmazonAcosSbgtRule::sbgtFromAcosL30((float) $acos) : null;
+                $bgtAcos = is_numeric($acos) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $acos) : null;
             }
 
             $bgtPrc = AmazonAdsBgtPrcRule::apply($gm['price'] ?? null)['bgt'] ?? null;
