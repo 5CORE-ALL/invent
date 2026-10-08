@@ -946,6 +946,86 @@ class Temu3ApiService extends TemuApiService
     }
 
     /**
+     * Live per-SKU stock + status straight from Temu (bg.local.goods.sku.list.query, not-on-sale
+     * then on-sale so an on-sale row wins). Nothing is written; the Marketplace Manager read-back
+     * uses this to compare the real Temu qty instead of the last push target.
+     *
+     * @return array<string, array{sku: string, sku_id: string, goods_id: string, qty: int|null, status: string}> keyed by UPPER(seller SKU)
+     */
+    public function skuStockSnapshotFromApi(): array
+    {
+        $out = [];
+        $url = $this->openApiRouterUrl();
+
+        foreach ([3 => 'inactive', 2 => 'active'] as $skuSearchType => $status) {
+            $pageNumber = 1;
+            $pageSize = 100;
+            $totalPages = null;
+
+            do {
+                $requestBody = [
+                    'type' => 'bg.local.goods.sku.list.query',
+                    'pageSize' => $pageSize,
+                    'pageNumber' => $pageNumber,
+                    'skuSearchType' => $skuSearchType,
+                ];
+                $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(45);
+                if (config('filesystems.default') === 'local') {
+                    $request = $request->withoutVerifying();
+                }
+                try {
+                    $response = $request->post($url, $this->generateSignValue($requestBody));
+                } catch (\Throwable $e) {
+                    Log::warning('Temu3 SKU stock snapshot HTTP exception', ['skuSearchType' => $skuSearchType, 'page' => $pageNumber, 'error' => $e->getMessage()]);
+                    break;
+                }
+                $data = $response->json() ?? [];
+                if (! ($data['success'] ?? false)) {
+                    Log::info('Temu3 SKU stock snapshot page skipped', ['skuSearchType' => $skuSearchType, 'page' => $pageNumber, 'error' => $data['errorMsg'] ?? $response->status()]);
+                    break;
+                }
+                $result = $data['result'] ?? [];
+                $items = $result['skuList'] ?? [];
+                if (! is_array($items) || $items === []) {
+                    break;
+                }
+                foreach ($items as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+                    // Seller SKU first: skuSn is Temu's own code and does not match Shopify.
+                    $sku = trim((string) ($item['outSkuSn'] ?? $item['sku'] ?? $item['skuSn'] ?? ''));
+                    if ($sku === '') {
+                        continue;
+                    }
+                    $qty = null;
+                    foreach (['stock', 'quantity', 'skuStockQuantity', 'virtualStock'] as $k) {
+                        if (isset($item[$k]) && is_numeric($item[$k])) {
+                            $qty = max(0, (int) $item[$k]);
+                            break;
+                        }
+                    }
+                    $out[strtoupper($sku)] = [
+                        'sku' => $sku,
+                        'sku_id' => isset($item['skuId']) ? (string) $item['skuId'] : '',
+                        'goods_id' => isset($item['goodsId']) ? (string) $item['goodsId'] : '',
+                        'qty' => $qty,
+                        'status' => $status,
+                    ];
+                }
+                if ($totalPages === null) {
+                    $total = (int) ($result['total'] ?? 0);
+                    $totalPages = $total > 0 ? (int) ceil($total / $pageSize) : $pageNumber;
+                }
+                $pageNumber++;
+                usleep(200000);
+            } while ($pageNumber <= ($totalPages ?? 1) && $pageNumber <= 1000);
+        }
+
+        return $out;
+    }
+
+    /**
      * Pull on-sale (2) and not-on-sale (3) SKUs from Temu and store listing_status + inactive_reason.
      */
     public function syncSkuListingStatuses(): int

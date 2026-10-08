@@ -235,6 +235,76 @@ class PlsInventorySyncService
     }
 
     /**
+     * Live PLS store qty per SKU (Admin variants.json), for the marketplace read-back.
+     * SKUs not in the PLS catalog or whose read fails are left out.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, int>
+     */
+    public function readLiveQtyBySkus(array $skus): array
+    {
+        if (! $this->tokenService->isConfigured()) {
+            return [];
+        }
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $variant = $this->catalogVariantForSku($sku);
+            $variantId = $variant ? preg_replace('/\D+/', '', (string) ($variant->shopify_variant_id ?? '')) : '';
+            if ($variantId === '') {
+                continue;
+            }
+            $qty = $this->readVariantQuantity($variantId);
+            if ($qty !== null) {
+                $out[$sku] = max(0, $qty);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Store what the PLS store really reports (read-back) on the PLS catalog rows and the
+     * live-inventory overlay, so the compare uses the live PLS qty and not the 09:55/17:55
+     * catalog snapshot or the last push target.
+     *
+     * @param  array<string, int>  $qtyBySku
+     */
+    public function recordMarketplaceQty(array $qtyBySku): void
+    {
+        $overlay = [];
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $qty = max(0, (int) $qty);
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            if ($norm !== '') {
+                $overlay[$norm] = $qty;
+            }
+            if (! Schema::hasTable('shopify_catalog_variants')) {
+                continue;
+            }
+            $variant = $this->catalogVariantForSku($sku);
+            if ($variant) {
+                DB::table('shopify_catalog_variants')
+                    ->where('store', 'pls')
+                    ->where('id', $variant->id)
+                    ->update(['inventory_quantity' => $qty, 'updated_at' => now()]);
+            }
+        }
+        if ($overlay === []) {
+            return;
+        }
+        MarketplaceListingsAfterPush::refresh('pls');
+        app(ShopifyCatalogSyncService::class)->overlayCachedInventory('pls', $overlay);
+    }
+
+    /**
      * Live 5Core (main) Shopify inventory. PLS store qty is never used as the source.
      *
      * @param  array<int, string>  $skus

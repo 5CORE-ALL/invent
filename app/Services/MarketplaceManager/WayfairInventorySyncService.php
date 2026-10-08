@@ -305,6 +305,29 @@ class WayfairInventorySyncService
     /**
      * @param  array<int, array{sku: string, quantity: int}>  $rows
      */
+    /**
+     * Store the qty Wayfair itself reports (read-back). The inventory feed is applied
+     * asynchronously, so an accepted push is not an applied push; recording the target
+     * hid SKUs Wayfair never updated. Also clears the listings/mismatch caches.
+     *
+     * @param  array<string, int>  $qtyBySku
+     */
+    public function recordMarketplaceQty(array $qtyBySku): void
+    {
+        $rows = [];
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $rows[] = ['sku' => $sku, 'quantity' => max(0, (int) $qty)];
+            }
+        }
+        if ($rows === []) {
+            return;
+        }
+        $this->persistLocalStock($rows);
+        MarketplaceListingsAfterPush::refresh('wayfair');
+    }
+
     protected function persistLocalStock(array $rows): void
     {
         foreach ($rows as $row) {

@@ -244,6 +244,60 @@ class Temu3InventorySyncService
     }
 
     /**
+     * Store what Temu 3 really reports (read-back), so the listings page and the
+     * mismatch pass compare the live listing, not the last push target. Also fills
+     * sku_id / goods_id / listing_status when Temu returned them and the row lacks them
+     * (variation SKUs created from the goods list had no sku_id, so pushes failed with
+     * "no Temu goods/SKU id").
+     *
+     * @param  array<string, int>  $qtyBySku
+     * @param  array<string, array{sku_id?: string, goods_id?: string, status?: string}>  $metaBySku  keyed by the same SKU
+     */
+    public function recordMarketplaceQty(array $qtyBySku, array $metaBySku = []): void
+    {
+        $rows = [];
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $rows[] = ['goods_id' => '', 'sku' => $sku, 'quantity' => max(0, (int) $qty)];
+
+            $meta = $metaBySku[$sku] ?? null;
+            if (! is_array($meta)) {
+                continue;
+            }
+            $patch = [];
+            $skuId = trim((string) ($meta['sku_id'] ?? ''));
+            $goodsId = trim((string) ($meta['goods_id'] ?? ''));
+            $status = strtolower(trim((string) ($meta['status'] ?? '')));
+            $query = Temu3Metric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)]);
+            $metric = $query->first();
+            if (! $metric) {
+                continue;
+            }
+            if ($skuId !== '' && trim((string) $metric->sku_id) === '') {
+                $patch['sku_id'] = $skuId;
+            }
+            if ($goodsId !== '' && trim((string) $metric->goods_id) === '') {
+                $patch['goods_id'] = $goodsId;
+            }
+            if (in_array($status, ['active', 'inactive'], true)
+                && Schema::hasColumn('temu3_metrics', 'listing_status')
+                && strtolower(trim((string) $metric->listing_status)) !== $status) {
+                $patch['listing_status'] = $status;
+            }
+            if ($patch !== []) {
+                $query->update($patch);
+            }
+        }
+        if ($rows === []) {
+            return;
+        }
+        $this->persistLocalStock($rows);
+    }
+
+    /**
      * @param  array<int, array{goods_id: string, sku_id?: mixed, sku: string, quantity: int}>  $rows
      */
     protected function persistLocalStock(array $rows): void

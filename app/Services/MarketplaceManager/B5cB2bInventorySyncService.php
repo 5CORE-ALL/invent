@@ -132,6 +132,33 @@ class B5cB2bInventorySyncService
     }
 
     /**
+     * Store what the Business 5 Core B2B store really reports (read-back from /api/inventory),
+     * so b5c_b2b_products.qty is the live listing qty, not the last push target.
+     *
+     * @param  array<string, int>  $qtyBySku
+     */
+    public function recordMarketplaceQty(array $qtyBySku): void
+    {
+        if (! Schema::hasTable('b5c_b2b_products')) {
+            return;
+        }
+        $written = 0;
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $qty = max(0, (int) $qty);
+            $written += B5cB2bProduct::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->update(['qty' => $qty, 'in_stock' => $qty > 0]);
+        }
+        if ($written > 0) {
+            $this->forgetListingCaches();
+        }
+    }
+
+    /**
      * @param  list<string>  $skus
      * @param  array{store_url?: string, token?: string}|null  $shopifyConfig
      * @return array<string, int>

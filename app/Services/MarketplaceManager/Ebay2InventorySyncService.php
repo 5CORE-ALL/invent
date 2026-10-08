@@ -702,6 +702,55 @@ class Ebay2InventorySyncService
      * Keep the variation qty Seller Hub shows. A failed revise used to leave ebay_stock at 0
      * while the variation still had stock, so Inv SKU Mismatch never matched the listing.
      */
+    /**
+     * Store what eBay (GetItem) really reports for each SKU (read-back), plus the
+     * listing status when known, so "—" rows get a real qty/state and the mismatch
+     * pass compares the live listing instead of the last ReviseInventoryStatus target.
+     *
+     * @param  array<string, int>  $qtyBySku
+     * @param  array<string, array{item_id?: string, status?: string}>  $metaBySku
+     */
+    public function recordMarketplaceQty(array $qtyBySku, array $metaBySku = []): void
+    {
+        $rows = [];
+        $hasStatus = Schema::hasTable('ebay_2_metrics') && Schema::hasColumn('ebay_2_metrics', 'listing_status');
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $meta = $metaBySku[$sku] ?? [];
+            $itemId = trim((string) ($meta['item_id'] ?? ''));
+            $rows[] = ['product_id' => $itemId, 'sku_code' => $sku, 'inventory' => max(0, (int) $qty)];
+
+            $status = strtolower(trim((string) ($meta['status'] ?? '')));
+            if (! $hasStatus || $itemId === '' || $status === '') {
+                continue;
+            }
+            $listingStatus = match ($status) {
+                'active' => 'ACTIVE',
+                'completed', 'ended' => 'ENDED',
+                default => null,
+            };
+            if ($listingStatus === null) {
+                continue;
+            }
+            $update = ['listing_status' => $listingStatus];
+            if (Schema::hasColumn('ebay_2_metrics', 'inactive_reason')) {
+                $update['inactive_reason'] = $listingStatus === 'ENDED' ? 'Unsold / ended' : null;
+            }
+            Ebay2Metric::query()
+                ->where('item_id', $itemId)
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->update($update);
+        }
+        if ($rows === []) {
+            return;
+        }
+        $this->updateLocalStock($rows);
+        MarketplaceListingsAfterPush::refresh('ebay2');
+    }
+
     protected function rememberObservedQty(string $itemId, string $sku, int $qty): void
     {
         $row = [
