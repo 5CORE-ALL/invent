@@ -2368,6 +2368,7 @@
                 </a>
                 <div class="collapse" id="sidebarAlibaba">
                     <ul class="side-nav-third-level">
+                        <li><a href="{{ route('listing.alibaba') }}">Listing Alibaba</a></li>
                         <li><a href="{{ route('alibaba.analytics') }}">Alibaba Analytics</a></li>
                         <li><a href="{{ route('channel.title.ads', ['channel' => 'alibaba', 'title' => 'Alibaba']) }}">Alibaba Ads</a></li>
 <li><a href="{{ route('channel.ads.missing', ['channel' => 'alibaba']) }}">Missing Ads</a></li>

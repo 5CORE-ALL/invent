@@ -268,7 +268,15 @@
         return String(cfg().channel || '').toLowerCase().replace(/[\s_-]/g, '') === 'shein';
     }
 
+    function isAlibabaChannel() {
+        return String(cfg().channel || '').toLowerCase() === 'alibaba';
+    }
+
     function selectedCategoryId() {
+        if (isAlibabaChannel()) {
+            const ab = document.getElementById('listing-publish-alibaba-category-id');
+            if (ab) return String(ab.value || '').replace(/\D+/g, '');
+        }
         if (isWayfairChannel()) {
             const wf = document.getElementById('listing-publish-wayfair-class-id');
             if (wf) return String(wf.value || '').replace(/\D+/g, '');
@@ -922,6 +930,8 @@
         const sheinBox = document.getElementById('listing-publish-shein-category');
         if (sheinBox) sheinBox.hidden = !isSheinChannel();
         if (isSheinChannel()) applySuggestedSheinCategory(null);
+        const alibabaBox = document.getElementById('listing-publish-alibaba-category');
+        if (alibabaBox) alibabaBox.hidden = !isAlibabaChannel();
         updateModalCopy();
     }
 

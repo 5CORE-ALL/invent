@@ -2,6 +2,7 @@
 
 namespace App\Support\Marketplace;
 
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAlibabaController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAliexpressController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAmazonController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAppscenicController;
@@ -88,6 +89,7 @@ class ListingChannelCounts
         'shopifyb2b' => ListingShopifyWholesaleController::class,
         'reverb' => ListingReverbController::class,
         'aliexpress' => ListingAliexpressController::class,
+        'alibaba' => ListingAlibabaController::class,
         'shein' => ListingSheinController::class,
         'tiktokshop' => ListingTiktokShopController::class,
         'tiktok' => ListingTiktokShopController::class,
@@ -167,7 +169,7 @@ class ListingChannelCounts
         'newegg' => '/listing-neweggb2c',
         'topdawg' => '/listing-topdawg',
         'purchasingpower' => '/listing-purchasingpower',
-        'alibaba' => '/marketplace-manager/alibaba',
+        'alibaba' => '/listing-alibaba',
         'fbmarketplace' => '/listing-fbmarketplace',
         'facebookmarketplace' => '/listing-fbmarketplace',
         'fbshop' => '/listing-fbshop',

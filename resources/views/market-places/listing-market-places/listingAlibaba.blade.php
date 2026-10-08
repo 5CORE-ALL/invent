@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Listing Ebay 3', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Listing Alibaba', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -10,13 +10,13 @@
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
         /* ========== TABLE SHELL ========== */
-        #ebaythree-listing-wrap {
+        #alibaba-listing-wrap {
             overflow-x: auto;
             overflow-y: visible;
             width: 100%;
         }
 
-        #ebaythree-listing-wrap .tabulator {
+        #alibaba-listing-wrap .tabulator {
             border: 1px solid #dee2e6;
             border-radius: 8px;
             font-size: 13px;
@@ -24,33 +24,33 @@
             width: 100% !important;
         }
 
-        .card-body:has(#ebaythree-listing-toolbar) {
+        .card-body:has(#alibaba-listing-toolbar) {
             width: 100%;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-tableholder {
+        #alibaba-listing-wrap .tabulator .tabulator-tableholder {
             background: #fff;
         }
 
         /* ========== HEADER ========== */
-        #ebaythree-listing-wrap .tabulator .tabulator-header {
+        #alibaba-listing-wrap .tabulator .tabulator-header {
             background: #00d5d5;
             border-bottom: 1px solid #ffffff;
         }
 
-        #ebaythree-listing-wrap .tabulator-col .tabulator-col-sorter {
+        #alibaba-listing-wrap .tabulator-col .tabulator-col-sorter {
             display: none !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
-        #ebaythree-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+        #alibaba-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        #alibaba-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
             white-space: normal !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+        #alibaba-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
             writing-mode: horizontal-tb !important;
             text-orientation: mixed !important;
             transform: none !important;
@@ -68,13 +68,13 @@
             color: #000 !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+        #alibaba-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
             height: auto !important;
             min-height: 34px;
             padding: 0;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-header .tabulator-col {
+        #alibaba-listing-wrap .tabulator .tabulator-header .tabulator-col {
             height: auto !important;
             min-height: 34px;
             vertical-align: middle;
@@ -84,13 +84,13 @@
             font-weight: bold;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
+        #alibaba-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-col-content-holder {
             padding-left: 2px !important;
             padding-right: 2px !important;
         }
 
         /* Header filters */
-        #ebaythree-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
+        #alibaba-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input {
             width: 100%;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
@@ -101,26 +101,26 @@
             box-shadow: none;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
+        #alibaba-listing-wrap .tabulator .tabulator-header .tabulator-col .tabulator-header-filter input:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
         /* ========== ROWS / CELLS ========== */
-        #ebaythree-listing-wrap .tabulator .tabulator-row {
+        #alibaba-listing-wrap .tabulator .tabulator-row {
             min-height: 36px;
             border-bottom: 1px solid #f1f5f9;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-row .tabulator-cell {
+        #alibaba-listing-wrap .tabulator .tabulator-row .tabulator-cell {
             padding: 5px 6px !important;
             border-right: 1px solid #f1f5f9;
             vertical-align: middle;
         }
 
-        #ebaythree-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
-        #ebaythree-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
+        #alibaba-listing-wrap .tabulator-row .tabulator-cell input[type="checkbox"],
+        #alibaba-listing-wrap .tabulator-header .tabulator-col input[type="checkbox"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
@@ -129,38 +129,38 @@
             vertical-align: middle;
         }
 
-        #ebaythree-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
+        #alibaba-listing-wrap .tabulator-row.parent-row .tabulator-cell input[type="checkbox"] {
             display: none;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-row:hover {
+        #alibaba-listing-wrap .tabulator .tabulator-row:hover {
             background-color: #f8fafc !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
+        #alibaba-listing-wrap .tabulator .tabulator-row.tabulator-row-even {
             background-color: #fcfcfd;
         }
 
-        #ebaythree-listing-wrap .tabulator-row.parent-row,
-        #ebaythree-listing-wrap .tabulator-row.parent-row .tabulator-cell {
+        #alibaba-listing-wrap .tabulator-row.parent-row,
+        #alibaba-listing-wrap .tabulator-row.parent-row .tabulator-cell {
             background-color: #fffef2 !important;
             font-weight: 700 !important;
             color: #0f172a;
         }
 
-        #ebaythree-listing-wrap .tabulator-row.parent-row:hover,
-        #ebaythree-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
+        #alibaba-listing-wrap .tabulator-row.parent-row:hover,
+        #alibaba-listing-wrap .tabulator-row.parent-row:hover .tabulator-cell {
             background-color: #fefce8 !important;
         }
 
         /* ========== FOOTER / PAGINATION ========== */
-        #ebaythree-listing-wrap .tabulator .tabulator-footer {
+        #alibaba-listing-wrap .tabulator .tabulator-footer {
             background: #f8fafc !important;
             border-top: 1px solid #e2e8f0 !important;
             padding: 10px 16px !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
+        #alibaba-listing-wrap .tabulator .tabulator-footer .tabulator-paginator {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -168,14 +168,14 @@
             flex-wrap: wrap;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
+        #alibaba-listing-wrap .tabulator .tabulator-footer .tabulator-paginator label {
             margin-right: 6px;
             font-size: 12px;
             color: #475569;
             font-weight: 600;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
+        #alibaba-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page-size {
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             padding: 4px 8px;
@@ -185,7 +185,7 @@
             min-height: 36px;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
+        #alibaba-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
             font-size: 14px !important;
             font-weight: 500 !important;
             min-width: 36px !important;
@@ -201,13 +201,13 @@
             text-align: center !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
+        #alibaba-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover {
             background: #f1f5f9 !important;
             border-color: #cbd5e1 !important;
             color: #1e293b !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
+        #alibaba-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active {
             background: #4361ee !important;
             border-color: #4361ee !important;
             color: #fff !important;
@@ -215,19 +215,19 @@
             box-shadow: 0 2px 6px rgba(67, 97, 238, 0.3) !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
+        #alibaba-listing-wrap .tabulator .tabulator-footer .tabulator-paginator .tabulator-page[disabled] {
             opacity: 0.4 !important;
             cursor: not-allowed !important;
         }
 
-        #ebaythree-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
+        #alibaba-listing-wrap .tabulator .tabulator-footer .tabulator-page-counter {
             margin: 0 0.5rem;
             font-size: 12px;
             color: #334155;
         }
 
         /* ========== TOOLBAR (badges + filters, one line, autofit page) ========== */
-        #ebaythree-listing-toolbar {
+        #alibaba-listing-toolbar {
             background: transparent;
             border: none;
             border-radius: 0;
@@ -237,7 +237,7 @@
             box-sizing: border-box;
         }
 
-        #ebaythree-listing-toolbar .ebaythree-listing-toolbar-row {
+        #alibaba-listing-toolbar .alibaba-listing-toolbar-row {
             display: flex;
             flex-wrap: nowrap;
             align-items: center;
@@ -248,7 +248,7 @@
             box-sizing: border-box;
         }
 
-        #ebaythree-listing-toolbar .listing-stat-badges {
+        #alibaba-listing-toolbar .listing-stat-badges {
             display: inline-flex;
             flex: 0 0 auto;
             align-items: stretch;
@@ -257,22 +257,22 @@
             padding: 0;
         }
 
-        #ebaythree-listing-toolbar .listing-stat-badge {
+        #alibaba-listing-toolbar .listing-stat-badge {
             flex: 0 0 auto;
             justify-content: center;
             margin: 0 !important;
             border-radius: 0;
         }
 
-        #ebaythree-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
+        #alibaba-listing-toolbar .listing-stat-badges .listing-stat-badge:first-child {
             border-radius: 8px 0 0 8px;
         }
 
-        #ebaythree-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
+        #alibaba-listing-toolbar .listing-stat-badges .listing-stat-badge:last-child {
             border-radius: 0 8px 8px 0;
         }
 
-        #ebaythree-listing-toolbar .filter-select {
+        #alibaba-listing-toolbar .filter-select {
             flex: 0 0 auto;
             min-width: 0;
             width: 92px !important;
@@ -288,20 +288,20 @@
             line-height: 1.2;
         }
 
-        #ebaythree-listing-toolbar .filter-select:focus {
+        #alibaba-listing-toolbar .filter-select:focus {
             outline: none;
             border-color: #4361ee;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.15);
         }
 
-        #ebaythree-listing-toolbar .toolbar-actions {
+        #alibaba-listing-toolbar .toolbar-actions {
             display: flex;
             flex: 0 0 auto;
             align-items: center;
             margin-left: 0;
         }
 
-        #ebaythree-listing-toolbar .listing-io-btn {
+        #alibaba-listing-toolbar .listing-io-btn {
             border-radius: 5px;
             font-weight: 600;
             font-size: 14px;
@@ -314,16 +314,16 @@
             line-height: 1;
         }
 
-        #ebaythree-listing-toolbar .listing-io-btn::after {
+        #alibaba-listing-toolbar .listing-io-btn::after {
             display: none;
         }
 
-        #ebaythree-listing-toolbar .listing-io-menu {
+        #alibaba-listing-toolbar .listing-io-menu {
             min-width: 42px;
             padding: 4px;
         }
 
-        #ebaythree-listing-toolbar .listing-io-menu .dropdown-item {
+        #alibaba-listing-toolbar .listing-io-menu .dropdown-item {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -334,7 +334,7 @@
             font-size: 14px;
         }
 
-        #ebaythree-listing-toolbar .listing-io-menu .dropdown-item:hover {
+        #alibaba-listing-toolbar .listing-io-menu .dropdown-item:hover {
             background: #f1f5f9;
         }
 
@@ -378,8 +378,8 @@
         .listing-stat-badge--rows { background: #334155; color: #fff; }
 
         /* ========== DROPDOWNS ========== */
-        #ebaythree-listing-wrap select.nr-req-dropdown,
-        #ebaythree-listing-wrap select.listed-dropdown {
+        #alibaba-listing-wrap select.nr-req-dropdown,
+        #alibaba-listing-wrap select.listed-dropdown {
             border: 1px solid transparent;
             border-radius: 6px;
             font-weight: 700;
@@ -390,32 +390,32 @@
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        #ebaythree-listing-wrap select.nr-req-dropdown:focus,
-        #ebaythree-listing-wrap select.listed-dropdown:focus {
+        #alibaba-listing-wrap select.nr-req-dropdown:focus,
+        #alibaba-listing-wrap select.listed-dropdown:focus {
             outline: none;
             box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.25);
         }
 
-        #ebaythree-listing-wrap select.nr-req-dropdown[data-val="REQ"],
-        #ebaythree-listing-wrap select.nr-req-dropdown option.req-option {
+        #alibaba-listing-wrap select.nr-req-dropdown[data-val="REQ"],
+        #alibaba-listing-wrap select.nr-req-dropdown option.req-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #ebaythree-listing-wrap select.nr-req-dropdown[data-val="NR"],
-        #ebaythree-listing-wrap select.nr-req-dropdown option.nr-option {
+        #alibaba-listing-wrap select.nr-req-dropdown[data-val="NR"],
+        #alibaba-listing-wrap select.nr-req-dropdown option.nr-option {
             background-color: #dc3545;
             color: #fff;
         }
 
-        #ebaythree-listing-wrap select.listed-dropdown[data-val="Listed"],
-        #ebaythree-listing-wrap select.listed-dropdown option.listed-option {
+        #alibaba-listing-wrap select.listed-dropdown[data-val="Listed"],
+        #alibaba-listing-wrap select.listed-dropdown option.listed-option {
             background-color: #28a745;
             color: #fff;
         }
 
-        #ebaythree-listing-wrap select.listed-dropdown[data-val="Pending"],
-        #ebaythree-listing-wrap select.listed-dropdown option.pending-option {
+        #alibaba-listing-wrap select.listed-dropdown[data-val="Pending"],
+        #alibaba-listing-wrap select.listed-dropdown option.pending-option {
             background-color: #dc3545;
             color: #fff;
         }
@@ -459,13 +459,13 @@
         }
 
         /* ========== LINK CELL ========== */
-        #ebaythree-listing-wrap a.listing-item-link {
+        #alibaba-listing-wrap a.listing-item-link {
             font-weight: 600;
             color: #0d6efd;
             text-decoration: none;
         }
 
-        #ebaythree-listing-wrap a.listing-item-link:hover {
+        #alibaba-listing-wrap a.listing-item-link:hover {
             color: #1d4ed8 !important;
             text-decoration: underline;
         }
@@ -498,7 +498,7 @@
         }
 
         /* ========== PLACEHOLDER ========== */
-        #ebaythree-listing-wrap .tabulator-placeholder {
+        #alibaba-listing-wrap .tabulator-placeholder {
             color: #64748b;
             font-weight: 600;
             padding: 24px;
@@ -508,14 +508,14 @@
 @endsection
 
 @section('content')
-    @include('layouts.shared/page-title', ['page_title' => 'Listing Ebay 3', 'sub_title' => 'Ebay 3'])
+    @include('layouts.shared/page-title', ['page_title' => 'Listing Alibaba', 'sub_title' => 'Alibaba'])
 
     <div class="row">
         <div class="col-12">
             <div class="card position-relative">
                 <div class="card-body">
-                    <div id="ebaythree-listing-toolbar" class="mb-3">
-                        <div class="ebaythree-listing-toolbar-row">
+                    <div id="alibaba-listing-toolbar" class="mb-3">
+                        <div class="alibaba-listing-toolbar-row">
                             <div class="listing-stat-badges">
                                 <span class="listing-stat-badge listing-stat-badge--req">REQ:<span id="req-total">0</span></span>
                                 <span class="listing-stat-badge listing-stat-badge--nrl">NRL:<span id="nrl-total">0</span></span>
@@ -592,11 +592,11 @@
                         </div>
                     </div>
 
-                    @include('market-places.listing-market-places._listing_publish_modal', ['publishChannel' => 'ebaythree'])
+                    @include('market-places.listing-market-places._listing_publish_modal')
 
 
-                    <div id="ebaythree-listing-wrap">
-                        <div id="ebaythreeListing-table"></div>
+                    <div id="alibaba-listing-wrap">
+                        <div id="alibabaListing-table"></div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -619,7 +619,7 @@
     <script>
         document.body.style.zoom = "80%";
 
-        let ebaythreeListingTable = null;
+        let alibabaListingTable = null;
         let allListingData = [];
 
         function isParentSku(sku) {
@@ -659,7 +659,7 @@
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
                 const itemId = String(item.eBay_item_id || '').trim();
-                // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
+                // Automated: NRL is automatic; Listed from alibaba_metrics listing
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
                 const listed = itemId ? 'Listed' : 'Pending';
                 return {
@@ -688,12 +688,15 @@
 
         function calculateTotals() {
             try {
-                if (!ebaythreeListingTable) {
+                if (!alibabaListingTable) {
                     resetMetricsToZero();
                     return;
                 }
 
-                const rows = ebaythreeListingTable.getData('active') || [];
+                const source = (allListingData && allListingData.length)
+                    ? allListingData
+                    : (alibabaListingTable.getData() || []);
+                const rows = alibabaListingTable.getData('active') || [];
                 const metrics = {
                     invTotal: 0,
                     reqTotal: 0,
@@ -703,13 +706,13 @@
                     pendingTotal: 0
                 };
 
-                rows.forEach(item => {
+                source.forEach(item => {
                     if (parseFloat(item.INV) > 0 && !isParentSku(item.sku)) {
                         metrics.invTotal += parseFloat(item.INV) || 0;
 
                         if (item.nr_req === 'REQ') {
                             metrics.reqTotal++;
-                            // No Link: REQ rows with no ebay item id (dynamic link unavailable)
+                            // No Link: REQ rows with no Alibaba product id (dynamic link unavailable)
                             if (!String(item.eBay_item_id || '').trim()) {
                                 metrics.withoutLinkTotal++;
                             }
@@ -750,7 +753,7 @@
         }
 
         function applyListingFilters() {
-            if (!ebaythreeListingTable) return;
+            if (!alibabaListingTable) return;
 
             const dataType = $('#row-data-type').val();
             const invFilter = $('#inv-filter').val();
@@ -758,7 +761,7 @@
             const linkFilter = $('#link-filter').val();
             const listedFilter = $('#listed-filter').val();
 
-            ebaythreeListingTable.setFilter(function (data) {
+            alibabaListingTable.setFilter(function (data) {
                 if (dataType === 'parent' && !data.is_parent) return false;
                 if (dataType === 'sku' && data.is_parent) return false;
 
@@ -786,9 +789,9 @@
 
             const value = data.nr_req || 'REQ';
             if (value === 'NR') {
-                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From ebay2 NRL (EbayTwoDataView)">NRL</span>`;
+                return `<span class="listing-auto-badge listing-auto-badge--nrl" title="From channel DataView NRL">NRL</span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--req" title="From ebay2 NRL (EbayTwoDataView)">REQ</span>`;
+            return `<span class="listing-auto-badge listing-auto-badge--req" title="From channel DataView NRL">REQ</span>`;
         }
 
         function showBsModal(id) {
@@ -813,26 +816,16 @@
 
         function formatEbayItemLink(cell, type) {
             const data = cell.getRow().getData();
-            if (data.is_parent) return '';
-
-            const itemId = String(data.eBay_item_id || '').trim();
-            if (!itemId) {
-                return `<span class="text-muted" title="No ebay item id">—</span>`;
-            }
-
             const isBuyer = type === 'buyer';
-            const href = isBuyer
-                ? ('https://www.ebay.com/itm/' + encodeURIComponent(itemId))
-                : ('https://www.ebay.com/sh/lst/active?keyword=' + encodeURIComponent(itemId) + '&source=filterbar&action=search');
-            const label = isBuyer ? 'Buyer' : 'Seller';
-            const title = isBuyer
-                ? ('Buyer link — eBay Item ' + itemId)
-                : ('Seller active listings search — eBay Item ' + itemId);
-
-            return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
-                title="${escapeHtml(title)}" onclick="event.stopPropagation();">
-                <i class="fas fa-external-link-alt me-1"></i>${label}
+            const stored = String(isBuyer ? (data.buyer_link || '') : (data.seller_link || '')).trim();
+            if (stored) {
+                const label = isBuyer ? 'Buyer' : 'Seller';
+                return `<a href="${escapeHtml(stored)}" target="_blank" rel="noopener noreferrer" class="listing-item-link"
+                title="${escapeHtml(label + ' link')}" onclick="event.stopPropagation();">
+                <i class="fas fa-external-link-alt"></i> ${label}
             </a>`;
+            }
+            return '<span class="listing-link-empty">—</span>';
         }
 
         function formatBuyerLink(cell) {
@@ -847,21 +840,22 @@
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
 
-            // Missing Listing logic (same as /ebay2-tabulator-view): has eBay item id = Listed
+            // Missing Listing: channel listing id / price signal = Listed
             const itemId = String(data.eBay_item_id || '').trim();
             if (itemId) {
-                return `<span class="listing-listed-tick" title="Listed (ebay_2_metrics.item_id)" aria-label="Listed">
+                return `<span class="listing-listed-tick" title="Listed (alibaba_metrics listing)" aria-label="Listed">
                     <i class="fas fa-check"></i>
                 </span>`;
             }
-            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no ebay item id">Missing L</span>`;
+            return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Alibaba product id">Missing L</span>`;
         }
 
         $(document).ready(function () {
             showLoader();
+            let missingLFilterActive = false;
 
-            ebaythreeListingTable = new Tabulator('#ebaythreeListing-table', {
-                ajaxURL: '/listing_ebaythree/view-data',
+            alibabaListingTable = new Tabulator('#alibabaListing-table', {
+                ajaxURL: '/listing_alibaba/view-data',
                 ajaxResponse: function (url, params, response) {
                     const rows = Array.isArray(response) ? response : (response.data || []);
                     allListingData = normalizeListingRows(rows);
@@ -933,33 +927,19 @@
                             return v.toLocaleString();
                         }
                     },
-
                     {
-
                         title: 'Std Prc',
-
                         field: 'std_price',
-
                         hozAlign: 'center',
-
                         headerHozAlign: 'center',
-
                         sorter: 'number',
-
                         width: 100,
-
                         headerTooltip: 'Std Prc from LMP Overall. Same STANDARD_PRICE, including linked SKUs.',
-
                         formatter: function (cell) {
-
                             const v = parseFloat(cell.getValue());
-
                             if (!isFinite(v) || v <= 0) return '\u2014';
-
                             return '<span style="color:#198754;font-weight:600;">$' + v.toFixed(2) + '</span>';
-
                         }
-
                     },
                     {
                         title: 'NRL/REQ',
@@ -968,7 +948,7 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 110,
-                        headerTooltip: 'Automatic from EbayTwoDataView NRL (same source as /ebay2-tabulator-view NRL column)',
+                        headerTooltip: 'Automatic from channel DataView NRL',
                         formatter: formatNrReq
                     },
                     {
@@ -979,7 +959,7 @@
                         headerSort: false,
                         minWidth: 100,
                         widthGrow: 1,
-                        headerTooltip: 'Dynamic buyer link: https://www.ebay.com/itm/{item_id}',
+                        headerTooltip: 'Buyer link from listing status',
                         formatter: formatBuyerLink
                     },
                     {
@@ -1000,20 +980,30 @@
                         headerHozAlign: 'center',
                         headerSort: false,
                         width: 130,
-                        headerTooltip: 'Automatic from ebay_2_metrics.item_id (same Missing Listing logic as /ebay2-tabulator-view)',
+                        headerTooltip: 'Automatic from channel listing signal (EbayTwo Missing L pattern)',
                         formatter: formatListed
                     }
                 ]
             });
 
-            ebaythreeListingTable.on('dataProcessed', function () {
+            alibabaListingTable.on('dataProcessed', function () {
                 hideLoader();
+                if (new URLSearchParams(window.location.search).get('missing') === '1' && !window.__alibabaMissingApplied) {
+                    window.__alibabaMissingApplied = true;
+                    $('#row-data-type').val('sku');
+                    $('#inv-filter').val('inv-only');
+                    $('#nr-req-filter').val('REQ');
+                    $('#link-filter').val('all');
+                    $('#listed-filter').val('Pending');
+                    $('#missing-l-badge').addClass('is-active');
+                    missingLFilterActive = true;
+                }
                 applyListingFilters();
             });
-            ebaythreeListingTable.on('dataFiltered', function () {
+            alibabaListingTable.on('dataFiltered', function () {
                 calculateTotals();
             });
-            ebaythreeListingTable.on('dataLoadError', function () {
+            alibabaListingTable.on('dataLoadError', function () {
                 hideLoader();
                 showNotification('danger', 'Failed to load data. Please try again.');
             });
@@ -1021,7 +1011,6 @@
             $('#row-data-type, #inv-filter, #nr-req-filter, #link-filter, #listed-filter').on('change', applyListingFilters);
 
             // Missing L badge → filter table to unlisted REQ SKUs (toggle)
-            let missingLFilterActive = false;
             function applyMissingLBadgeFilter(forceOff) {
                 if (forceOff === true) {
                     missingLFilterActive = false;
@@ -1081,7 +1070,7 @@
 
                 showLoader();
                 $.ajax({
-                    url: "{{ route('listing_ebaythree.import') }}",
+                    url: "{{ route('listing_alibaba.import') }}",
                     type: 'POST',
                     data: formData,
                     processData: false,
@@ -1101,7 +1090,7 @@
                             }
                         }
                         showNotification('success', message);
-                        ebaythreeListingTable.setData('/listing_ebaythree/view-data');
+                        alibabaListingTable.setData('/listing_alibaba/view-data');
                     },
                     error: function (xhr) {
                         hideLoader();
@@ -1119,14 +1108,14 @@
 
     <script>
         window.listingPageConfig = {
-            wrap: '#ebaythree-listing-wrap',
-            tableId: 'ebaythreeListing-table',
-            exportName: 'ebay3_listing',
-            channel: 'ebaythree',
-            channelLabel: "eBay 3",
-            previewUrl: '/listing_ebaythree/save-status',
-            publishUrl: '/listing_ebaythree/save-status'
+            wrap: '#alibaba-listing-wrap',
+            tableId: 'alibabaListing-table',
+            exportName: 'alibaba_listing',
+            channel: 'alibaba',
+            channelLabel: "Alibaba",
+            previewUrl: '/listing_alibaba/save-status',
+            publishUrl: '/listing_alibaba/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v={{ @filemtime(public_path('js/listing-page-tools.js')) }}"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=7"></script>
 @endsection

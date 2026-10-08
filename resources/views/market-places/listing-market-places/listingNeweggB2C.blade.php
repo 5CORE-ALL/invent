@@ -927,6 +927,34 @@
                             return v.toLocaleString();
                         }
                     },
+
+                    {
+
+                        title: 'Std Prc',
+
+                        field: 'std_price',
+
+                        hozAlign: 'center',
+
+                        headerHozAlign: 'center',
+
+                        sorter: 'number',
+
+                        width: 100,
+
+                        headerTooltip: 'Std Prc from LMP Overall. Same STANDARD_PRICE, including linked SKUs.',
+
+                        formatter: function (cell) {
+
+                            const v = parseFloat(cell.getValue());
+
+                            if (!isFinite(v) || v <= 0) return '\u2014';
+
+                            return '<span style="color:#198754;font-weight:600;">$' + v.toFixed(2) + '</span>';
+
+                        }
+
+                    },
                     {
                         title: 'NRL/REQ',
                         field: 'nr_req',
