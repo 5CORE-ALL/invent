@@ -1460,43 +1460,46 @@
          * where ad spend $ = SPRICE × Ads%/100 and COGS = LP.
          * Returns null when SPRICE/LP are missing.
          */
-        function amazonRowSprice(rowData) {
-            if (typeof amzDisplayedSprice === 'function') {
-                const live = amzDisplayedSprice(rowData);
-                if (live > 0) return live;
-            }
-            const stored = parseFloat(rowData && rowData.SPRICE);
-            return (isFinite(stored) && stored > 0) ? stored : 0;
-        }
-
-        /** Same S PRC the column paints (live plan + LMP cap). No stored-SPRICE fallback. */
-        function amazonVisibleSprice(rowData) {
-            if (!rowData) return 0;
-            let raw = 0;
-            if (typeof computeAmzPushPrcPlan === 'function') {
-                const plan = computeAmzPushPrcPlan(rowData);
-                if (plan && plan.effective > 0) raw = Number(plan.effective);
-            }
-            if (!(raw > 0)) return 0;
-            return (typeof amazonCapSpriceToLmp === 'function')
-                ? amazonCapSpriceToLmp(rowData, raw)
-                : +Number(raw).toFixed(2);
-        }
-
-        /** S PRC the S PRC column paints, including the stored fallback. */
+        /** S PRC the column paints: ON rule, then the same LMP / Std cap. */
         function amazonShownSprice(rowData) {
             if (!rowData || rowData.is_parent_summary) return 0;
             let raw = 0;
-            if (typeof computeAmzPushPrcPlan === 'function') {
+            if (typeof amzDisplayedSprice === 'function') {
+                raw = Number(amzDisplayedSprice(rowData)) || 0;
+            }
+            if (!(raw > 0) && typeof computeAmzPushPrcPlan === 'function') {
                 const plan = computeAmzPushPrcPlan(rowData);
                 if (plan && plan.effective > 0) raw = Number(plan.effective);
             }
-            if (!(raw > 0)) raw = amazonRowSprice(rowData);
+            if (!(raw > 0)) raw = parseFloat(rowData && rowData.SPRICE) || 0;
             if (!(raw > 0)) return 0;
             const shown = (typeof amazonCapSpriceToLmp === 'function')
                 ? amazonCapSpriceToLmp(rowData, raw)
-                : raw;
-            return shown > 0 ? shown : raw;
+                : +Number(raw).toFixed(2);
+            return shown > 0 ? shown : 0;
+        }
+        function amazonRowSprice(rowData) {
+            return amazonShownSprice(rowData);
+        }
+        function amazonVisibleSprice(rowData) {
+            return amazonShownSprice(rowData);
+        }
+        function amazonComputeGpftAt(price, rowData) {
+            if (!rowData) return null;
+            const p = parseFloat(price);
+            if (!(p > 0)) return null;
+            const lp = parseFloat(rowData.LP_productmaster);
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            const cost = (isFinite(lp) && lp > 0) ? lp : 0;
+            return ((p * 0.80 - ship - cost) / p) * 100;
+        }
+        function amazonComputeGroiAt(price, rowData) {
+            if (!rowData) return null;
+            const p = parseFloat(price);
+            const lp = parseFloat(rowData.LP_productmaster);
+            if (!(p > 0) || !(lp > 0)) return null;
+            const ship = parseFloat(rowData.Ship_productmaster) || 0;
+            return ((p * 0.80 - ship - lp) / lp) * 100;
         }
 
         /**
@@ -1551,12 +1554,7 @@
          * Returns null when SPRICE/LP are missing.
          */
         function amazonComputeSroi(rowData) {
-            if (!rowData) return null;
-            const sprice = amazonRowSprice(rowData);
-            const lp = parseFloat(rowData.LP_productmaster);
-            if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
-            const ship = parseFloat(rowData.Ship_productmaster) || 0;
-            return ((sprice * 0.80 - ship - lp) / lp) * 100;
+            return amazonComputeGroiAt(amazonShownSprice(rowData), rowData);
         }
 
         /**
@@ -1564,13 +1562,7 @@
          *   ((SPRICE × 0.80 − ship − lp) / SPRICE) × 100
          */
         function amazonComputeSgpft(rowData) {
-            if (!rowData) return null;
-            const sprice = amazonRowSprice(rowData);
-            if (!isFinite(sprice) || sprice <= 0) return null;
-            const lp = parseFloat(rowData.LP_productmaster);
-            const ship = parseFloat(rowData.Ship_productmaster) || 0;
-            const cost = (isFinite(lp) && lp > 0 ? lp : 0);
-            return ((sprice * 0.80 - ship - cost) / sprice) * 100;
+            return amazonComputeGpftAt(amazonShownSprice(rowData), rowData);
         }
 
         /** SNPFT = live S GPFT − Ads% */
@@ -4891,11 +4883,14 @@
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const currentPrice = parseFloat(rowData.price) || 0;
                             let raw = 0;
-                            if (typeof computeAmzPushPrcPlan === 'function') {
+                            if (typeof amzLiveRuleSprice === 'function') {
+                                raw = Number(amzLiveRuleSprice(rowData)) || 0;
+                            }
+                            if (!(raw > 0) && typeof computeAmzPushPrcPlan === 'function') {
                                 const plan = computeAmzPushPrcPlan(rowData);
                                 if (plan && plan.effective > 0) raw = Number(plan.effective);
                             }
-                            if (!(raw > 0)) raw = amazonRowSprice(rowData);
+                            if (!(raw > 0)) raw = parseFloat(rowData.SPRICE) || 0;
 
                             if (!(raw > 0)) return '';
 
@@ -5125,9 +5120,8 @@
                         field: "GROI%",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '0.00%';
-                            const percent = parseFloat(value);
+                            const percent = amazonComputeGroiAt(cell.getRow().getData().price, cell.getRow().getData());
+                            if (percent === null || !isFinite(percent)) return '0.00%';
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GROI%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
@@ -5141,8 +5135,9 @@
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
-                            const value = cell.getValue();
-                            const percent = parseFloat(value) || 0;
+                            const d = cell.getRow().getData();
+                            const percent = amazonComputeGpftAt(d && d.price, d);
+                            if (percent === null || !isFinite(percent)) return '';
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GPFT%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
@@ -5174,13 +5169,15 @@
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
                             const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
-                            return ((parseFloat(aRow.getData()['GPFT%'] || 0) - ads) - (parseFloat(bRow.getData()['GPFT%'] || 0) - ads));
+                            const aGpft = amazonComputeGpftAt(aRow.getData().price, aRow.getData()) || 0;
+                            const bGpft = amazonComputeGpftAt(bRow.getData().price, bRow.getData()) || 0;
+                            return (aGpft - ads) - (bGpft - ads);
                         },
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
-                            // PFT% = GPFT% − Ads% (channel TACOS)
-                            const percent = (parseFloat(rowData['GPFT%'] || 0)) - ads;
+                            const gpft = amazonComputeGpftAt(rowData && rowData.price, rowData);
+                            const percent = (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
                             const _st = (window.MetricPctColors && MetricPctColors.styleFor('npft', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
