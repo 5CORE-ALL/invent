@@ -1660,12 +1660,15 @@
                 var trend = kind === 'lbid' ? (row.lbid_trend || 'na') : (kind === 'sbid' ? (row.sbid_trend || 'na') : (row.sbgt_trend || 'na'));
                 var current = parseFloat(kind === 'lbid' ? row.last_sbid : (kind === 'sbid' ? row.sbid : row.sbgt));
                 if (kind === 'sbgt' && isFinite(current) && current === 0) trend = 'down';
+                // Lbid starts green: first day (no previous day yet) shows green, not gray.
+                if (kind === 'lbid' && trend === 'na' && isFinite(current)) trend = 'up';
                 var cls = trend === 'up' ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
                 var prev = kind === 'lbid' ? row.lbid_prev : (kind === 'sbid' ? row.sbid_prev : row.sbgt_prev);
                 var prevTxt = (prev === null || prev === undefined || prev === '') ? '—' : Number(prev).toFixed(2);
                 var nowTxt = isFinite(current) ? current.toFixed(2) : '—';
                 var tip = 'Daily ' + label + ' history';
-                if (trend === 'na') tip += ' · No previous day saved yet';
+                if (trend === 'up' && (prev === null || prev === undefined || prev === '')) tip += ' · First day saved';
+                else if (trend === 'na') tip += ' · No previous day saved yet';
                 else if (trend === 'up') tip += ' · Up vs previous day $' + prevTxt + ' → $' + nowTxt;
                 else if (trend === 'down') tip += ' · Down vs previous day $' + prevTxt + ' → $' + nowTxt;
                 else tip += ' · Same as previous day $' + prevTxt;
