@@ -155,7 +155,7 @@
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;" title="Sum of GPFT$">GPFT$: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="L30 Sales = Σ sales amount. Sales amount = base + shipping received when the sales price is under $30.">L30 Sales: $0</span>
+                            title="L30 Sales = Σ Price × Qty — Price = R Price × 1.136">L30 Sales: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;" title="Sum of COGS">COGS: $0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'temu3'])
                     </div>
@@ -271,42 +271,24 @@
         if (!(rPrice > 0)) return 0;
         return +(rPrice * TEMU_PRICE_MULT).toFixed(2);
     }
-    const TEMU_REPORT_MARGIN = 0.95;
-    const TEMU_SALES_CAP = 30;
-    function temuReportSalesUnit(row) {
-        const qty = parseInt(row && row.quantity_purchased) || 0;
-        const listed = parseFloat(row && row.listing_base_price) || 0;
-        const line = parseFloat(row && row.line_sales) || 0;
-        const lineUnit = (qty > 0 && line > 0) ? line / qty : 0;
-        const catalog = (listed > 0 && !(lineUnit > 0 && listed > lineUnit + 0.5)) ? listed : 0;
-        if (catalog > 0) {
-            if (catalog >= TEMU_SALES_CAP) return +catalog.toFixed(2);
-            if (lineUnit > catalog + 0.009) return +lineUnit.toFixed(2);
-            return +(catalog + TEMU_FREIGHT).toFixed(2);
-        }
-        if (lineUnit > 0) return +lineUnit.toFixed(2);
-        const goods = parseFloat(row && row.base_price_total) || 0;
-        if (!(goods > 0)) return 0;
-        if (goods >= TEMU_SALES_CAP) return +goods.toFixed(2);
-        return +(goods + TEMU_FREIGHT).toFixed(2);
-    }
-    function temuReportProfitUnit(row) {
-        const salesUnit = temuReportSalesUnit(row);
-        if (!(salesUnit > 0)) return 0;
+    function temuRowTemuProfit(row) {
+        const temuPrice = temuRowTemuPrice(row);
+        if (!(temuPrice > 0)) return 0;
         const lp = parseFloat(row && row.lp) || 0;
         const ship = parseFloat(row && row.temu_ship) || 0;
-        return salesUnit * TEMU_REPORT_MARGIN - lp - ship;
-    }
-    function temuRowTemuProfit(row) {
-        return temuReportProfitUnit(row);
+        return temuPrice * TEMU_MARGIN - lp - ship;
     }
     function temuRowGpftDollar(row) {
-        return temuReportProfitUnit(row);
+        const rPrice = temuRowRPrice(row);
+        if (!(rPrice > 0)) return 0;
+        const lp = parseFloat(row && row.lp) || 0;
+        const ship = parseFloat(row && row.temu_ship) || 0;
+        return rPrice * TEMU_MARGIN - lp - ship;
     }
     function temuRowGpftPercent(row) {
-        const salesUnit = temuReportSalesUnit(row);
-        if (!(salesUnit > 0)) return 0;
-        return (temuReportProfitUnit(row) / salesUnit) * 100;
+        const price = temuRowTemuPrice(row);
+        if (!(price > 0)) return 0;
+        return (temuRowGpftDollar(row) / price) * 100;
     }
     function temuRowGroiPercent(row) {
         const lp = parseFloat(row && row.lp) || 0;
@@ -724,20 +706,22 @@
                 if (!row.contribution_sku || row.contribution_sku === '' || !row.order_id || row.order_id === '') return;
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
+                const basePrice = temuRowBase(row);
+                const temuPrice = temuRowTemuPrice(row);
                 const lp = parseFloat(row.lp) || 0;
                 const rowCogs = parseFloat(row.cogs);
                 totalQuantity += quantity;
-                const profit = temuReportProfitUnit(row) * quantity;
-                totalGpftDollar += profit;
-                totalPft += profit;
+                totalGpftDollar += temuRowGpftDollar(row);
                 totalCogs += isFinite(rowCogs) ? rowCogs : (quantity * lp);
-                if (quantity > 0) {
-                    totalL30Sales += temuReportSalesUnit(row) * quantity;
+                if (quantity > 0 && basePrice > 0) {
+                    const profit = temuRowTemuProfit(row) * quantity;
+                    totalPft += profit;
+                    totalL30Sales += quantity * temuPrice;
                 }
             });
 
             const pftPercentage = totalL30Sales > 0
-                ? (totalPft / totalL30Sales) * 100
+                ? (totalGpftDollar / totalL30Sales) * 100
                 : 0;
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
