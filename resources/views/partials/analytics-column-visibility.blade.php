@@ -335,33 +335,50 @@
                 menu._analyticsColVisBound = true;
                 menu.classList.add('analytics-col-vis-menu', 'dropdown-menu-end');
 
-                function pinMenuInViewport() {
-                    menu.style.removeProperty('transform');
-                    requestAnimationFrame(function () {
-                        const rect = menu.getBoundingClientRect();
-                        const pad = 12;
-                        let dx = 0;
-                        if (rect.right > window.innerWidth - pad) {
-                            dx -= rect.right - (window.innerWidth - pad);
-                        }
-                        if (rect.left + dx < pad) {
-                            dx += pad - (rect.left + dx);
-                        }
-                        if (dx) {
-                            menu.style.transform = 'translateX(' + dx + 'px)';
-                        }
-                    });
-                }
                 const dropdownEl = menu.closest('.dropdown');
+                const pinToggle = dropdownEl
+                    ? dropdownEl.querySelector('[data-bs-toggle="dropdown"]')
+                    : null;
+                // Popper + our right:0 override double-offset the wide panel (it ends up
+                // off-screen to the left). Let CSS/JS place it instead of Popper.
+                if (pinToggle && !pinToggle.getAttribute('data-bs-display')) {
+                    pinToggle.setAttribute('data-bs-display', 'static');
+                }
+
+                /** Place the panel under the eye button, right-aligned to it, clamped to the viewport. */
+                function pinMenuInViewport() {
+                    if (!pinToggle || !menu.classList.contains('show')) return;
+                    const pad = 12;
+                    const btnRect = pinToggle.getBoundingClientRect();
+                    const w = menu.offsetWidth;
+                    let left = btnRect.right - w;
+                    left = Math.min(left, window.innerWidth - w - pad);
+                    left = Math.max(left, pad);
+                    const top = btnRect.bottom + 2;
+                    const set = function (k, v) { menu.style.setProperty(k, v, 'important'); };
+                    set('position', 'fixed');
+                    set('left', left + 'px');
+                    set('top', top + 'px');
+                    set('right', 'auto');
+                    set('bottom', 'auto');
+                    set('inset', top + 'px auto auto ' + left + 'px');
+                    set('transform', 'none');
+                    set('margin', '0');
+                    set('max-height', Math.max(200, window.innerHeight - top - pad) + 'px');
+                }
+                function unpinMenu() {
+                    ['position', 'left', 'top', 'right', 'bottom', 'inset', 'transform', 'margin', 'max-height']
+                        .forEach(function (k) { menu.style.removeProperty(k); });
+                }
                 if (dropdownEl && !dropdownEl._analyticsColVisPin) {
                     dropdownEl._analyticsColVisPin = true;
-                    dropdownEl.addEventListener('shown.bs.dropdown', pinMenuInViewport);
-                    dropdownEl.addEventListener('hidden.bs.dropdown', function () {
-                        menu.style.removeProperty('transform');
+                    dropdownEl.addEventListener('shown.bs.dropdown', function () {
+                        pinMenuInViewport();
+                        requestAnimationFrame(pinMenuInViewport);
                     });
-                    window.addEventListener('resize', function () {
-                        if (menu.classList.contains('show')) pinMenuInViewport();
-                    });
+                    dropdownEl.addEventListener('hidden.bs.dropdown', unpinMenu);
+                    window.addEventListener('resize', pinMenuInViewport);
+                    window.addEventListener('scroll', pinMenuInViewport, true);
                 }
 
                 const toggle = document.querySelector('[data-bs-toggle="dropdown"][aria-labelledby="' + inst.menuId + '"], [aria-controls="' + inst.menuId + '"]');

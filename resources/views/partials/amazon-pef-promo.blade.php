@@ -4383,6 +4383,10 @@
         }
         function amzPushLeftoverBlues() {
             if (!amzPageReloadPushAllowed()) return;
+            // A job is already running/polling — re-queuing here only "appends" again and
+            // bumps the job's updated_at/worker_spawned_at, so a dead job never looks stale.
+            // The poll calls this again once the job finishes.
+            if (amzPushPrcPollTimer) return;
             const items = collectAmzReloadPushItems();
             if (!items.length) {
                 window._amzLeftoverLastN = 0;
