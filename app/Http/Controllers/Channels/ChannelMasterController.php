@@ -1064,6 +1064,14 @@ class ChannelMasterController extends Controller
         $sales = (float) ($m['sales'] ?? 0);
         $pft = (float) ($m['pft'] ?? 0);
         $cogs = (float) ($m['cogs'] ?? 0);
+        // /temu2-tabulator divides GPFT$ by Temu Full Price Sales (Temu Price × Qty), not by
+        // its L30 Sales badge. Temu 2 reports L30 Sales as API/base dollars and keeps the
+        // Temu Price total in full_sales; Temu 1 and Temu 3 have no separate figure, so they
+        // keep dividing by sales.
+        $gpftBase = (float) ($m['full_sales'] ?? 0);
+        if ($gpftBase <= 0) {
+            $gpftBase = $sales;
+        }
 
         return [
             'total_orders' => (int) ($m['orders'] ?? 0),
@@ -1071,7 +1079,7 @@ class ChannelMasterController extends Controller
             'total_revenue' => round($sales, 2),
             'total_pft' => round($pft, 2),
             'total_cogs' => round($cogs, 2),
-            'gpft_percent' => $sales > 0 ? round(($pft / $sales) * 100, 2) : 0.0,
+            'gpft_percent' => $gpftBase > 0 ? round(($pft / $gpftBase) * 100, 2) : 0.0,
             'groi_percent' => $cogs > 0 ? round(($pft / $cogs) * 100, 2) : 0.0,
         ];
     }
