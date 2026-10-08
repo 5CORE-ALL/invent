@@ -600,16 +600,59 @@
             .then(function(res) { vpAmzMap = (res && res.metrics) || {}; vpRefreshGrid(); })
             .catch(function() {});
 
+        function vpParseJson(text) {
+            const raw = String(text == null ? '' : text).replace(/^\uFEFF/, '');
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                const msg = String((e && e.message) || '');
+                const m = msg.match(/position\s+(\d+)/i);
+                if (m) {
+                    const pos = Number(m[1]);
+                    if (pos > 0) {
+                        try { return JSON.parse(raw.slice(0, pos)); } catch (e2) { /* keep the original error */ }
+                    }
+                }
+                throw e;
+            }
+        }
+        function vpRowsFromPayload(payload) {
+            if (Array.isArray(payload)) return payload;
+            if (payload && Array.isArray(payload.data)) return payload.data;
+            return [];
+        }
+        function vpLoadRows() {
+            const status = document.getElementById('vp-status');
+            status.textContent = 'Loading eBay 1…';
+            return fetch(VP_DATA_URL, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function(res) {
+                return res.text().then(function(text) {
+                    if (!res.ok) {
+                        let message = 'eBay 1 data failed (' + res.status + ')';
+                        try {
+                            const body = vpParseJson(text);
+                            if (body && body.error) message = String(body.error);
+                        } catch (e) { /* keep the status code */ }
+                        throw new Error(message);
+                    }
+                    const rows = vpRowsFromPayload(vpParseJson(text));
+                    return vpTable.setData(rows).then(function() {
+                        status.textContent = rows.length + ' rows from eBay 1';
+                        document.getElementById('vp-rows-badge').textContent = 'Rows: ' + rows.length;
+                    });
+                });
+            }).catch(function(err) {
+                status.textContent = (err && err.message) ? err.message : 'Could not load eBay 1 data';
+                vpToast('error', status.textContent);
+            });
+        }
+
         vpTable = new Tabulator('#vp-table', {
-            ajaxURL: VP_DATA_URL,
-            ajaxResponse: function(url, params, response) {
-                const rows = (response && response.data) || [];
-                document.getElementById('vp-status').textContent = rows.length + ' rows from eBay 1';
-                return rows;
-            },
-            ajaxError: function() {
-                document.getElementById('vp-status').textContent = 'Could not load eBay 1 data';
-            },
+            data: [],
+            paginationMode: 'local',
             layout: 'fitDataStretch',
             height: 'calc(100vh - 210px)',
             placeholder: 'No eBay 1 rows',
@@ -740,5 +783,6 @@
             document.getElementById('vp-rows-badge').textContent = 'Rows: ' + n;
             if (document.getElementById('vpRuleModal').classList.contains('show')) vpPaintModal();
         });
+        vpLoadRows();
     </script>
 @endsection

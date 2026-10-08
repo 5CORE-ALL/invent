@@ -893,13 +893,13 @@
                             style="background-color:#be123c;color:#fff;font-weight:bold;cursor:pointer;"
                             title="Sum of yesterday's ad spend (keyword CPC + promoted listing fees). Each campaign and listing is counted once. Click dot for rolling history.">Y Spend: ${{ number_format((float) ($ySpendTotal ?? 0)) }}<span class="summary-trend-dot none" data-metric="y_spend" title="Rolling history"></span></span>
                         <span class="badge fs-6 p-2 ebay1-badge-chart" id="y-ads-percent-badge"
-                            data-metric="y_ads_percent" data-live-value="{{ round((float) ($yAdsPercent ?? 0)) }}" data-format="pct" data-invert="1"
+                            data-metric="y_ads_percent" data-live-value="{{ number_format((float) ($yAdsPercent ?? 0), 1, '.', '') }}" data-format="pct" data-invert="1"
                             style="background-color:#9d174d;color:#fff;font-weight:bold;cursor:pointer;"
-                            title="Y Ads% = Y Spend ÷ Y Sales. Y Sales is yesterday's store sales (${{ number_format((float) ($ySalesTotal ?? 0), 2) }}), the same Y Sales badge on /ebay/daily-sales. Lower is better. Click dot for rolling history.">Y Ads%: {{ round((float) ($yAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="y_ads_percent" title="Rolling history"></span></span>
+                            title="Y Ads% = Y Spend ÷ Y Sales. Y Sales is yesterday's store sales (${{ number_format((float) ($ySalesTotal ?? 0), 2) }}), the same Y Sales badge on /ebay/daily-sales. Lower is better. Click dot for rolling history.">Y Ads%: {{ number_format((float) ($yAdsPercent ?? 0), 1) }}%<span class="summary-trend-dot none" data-metric="y_ads_percent" title="Rolling history"></span></span>
                         <span class="badge fs-6 p-2 ebay1-badge-chart" id="npft-percent-badge"
-                            data-metric="npft_percent" data-live-value="{{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}" data-format="pct"
+                            data-metric="npft_percent" data-live-value="{{ number_format((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0), 1, '.', '') }}" data-format="pct"
                             style="background-color: #0f766e; color: white; font-weight: bold; cursor: pointer;"
-                            title="NPFT% = GPFT% − Ads%. Click dot for rolling history.">NPFT: {{ round((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0)) }}%<span class="summary-trend-dot none" data-metric="npft_percent" title="Rolling history"></span></span>
+                            title="NPFT% = GPFT% − Ads%. Click dot for rolling history.">NPFT: {{ number_format((float) ($ordersL30Gpft ?? 0) - (float) ($channelAdsPercent ?? 0), 1) }}%<span class="summary-trend-dot none" data-metric="npft_percent" title="Rolling history"></span></span>
                         <span class="badge fs-6 p-2 ebay1-badge-chart" id="nroi-percent-badge"
                             data-metric="nroi_percent" data-live-value="{{ round((float) ($ordersL30Nroi ?? 0)) }}" data-format="pct"
                             style="background-color: #6f42c1; color: white; font-weight: bold; cursor: pointer;"
@@ -6101,8 +6101,8 @@
 
                 setSummaryBadge($('#groi-percent-badge'), 'GROI: ' + Math.round(ORDERS_L30_GROI) + '%', Math.round(ORDERS_L30_GROI));
                 // NPFT% = GPFT% − Ads%. NROI% = (GPFT$ − Ad Spend) / COGS × 100 (Amazon formula).
-                const npftBadge = Math.round(ORDERS_L30_GPFT - EBAY_CHANNEL_ADS_PCT);
-                setSummaryBadge($('#npft-percent-badge'), 'NPFT: ' + npftBadge + '%', npftBadge);
+                const npftBadge = Math.round((ORDERS_L30_GPFT - EBAY_CHANNEL_ADS_PCT) * 10) / 10;
+                setSummaryBadge($('#npft-percent-badge'), 'NPFT: ' + npftBadge.toFixed(1) + '%', npftBadge);
                 const nroiBadge = (ORDERS_L30_COGS > 0)
                     ? ((ORDERS_L30_PFT - EBAY_AD_SPEND) / ORDERS_L30_COGS) * 100
                     : ORDERS_L30_NROI;
@@ -6110,7 +6110,8 @@
                 setSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%', Math.round(ORDERS_L30_GPFT));
                 setSummaryBadge($('#ads-percent-badge'), 'Ads ' + Math.round(EBAY_CHANNEL_ADS_PCT) + '%', Math.round(EBAY_CHANNEL_ADS_PCT));
                 setSummaryBadge($('#y-spend-badge'), 'Y Spend: $' + Math.round(Y_SPEND_TOTAL).toLocaleString(), Math.round(Y_SPEND_TOTAL));
-                setSummaryBadge($('#y-ads-percent-badge'), 'Y Ads%: ' + Math.round(Y_ADS_PERCENT) + '%', Math.round(Y_ADS_PERCENT));
+                const yAdsShown = Math.round(Y_ADS_PERCENT * 10) / 10;
+                setSummaryBadge($('#y-ads-percent-badge'), 'Y Ads%: ' + yAdsShown.toFixed(1) + '%', yAdsShown);
                 setSummaryBadge($('#total-sales-amt-badge'), 'Sales: $' + Math.round(ORDERS_L30_TOTAL_SALES).toLocaleString(), Math.round(ORDERS_L30_TOTAL_SALES));
                 setSummaryBadge($('#qty-sold-badge'), 'Qty: ' + Math.round(ORDERS_L30_TOTAL_QTY).toLocaleString(), Math.round(ORDERS_L30_TOTAL_QTY));
 

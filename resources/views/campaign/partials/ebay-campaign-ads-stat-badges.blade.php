@@ -93,7 +93,7 @@
                 }
                 const yAdsEl = $('#' + prefix + '-badge-yads');
                 if (yAdsEl.length && m.y_ads_percent != null) {
-                    yAdsEl.text(Math.round(Number(m.y_ads_percent)) + '%');
+                    yAdsEl.text((Math.round(Number(m.y_ads_percent) * 10) / 10).toFixed(1) + '%');
                     const ySales = Number(m.y_sales || 0);
                     $('#' + prefix + '-badge-yads-wrap').attr('title',
                         'Y Ads% = Y Spend $' + Math.round(Number(m.y_spend || 0)).toLocaleString()
