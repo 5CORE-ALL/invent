@@ -99,6 +99,39 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertSame(0.0, $noViews['adj']);
     }
 
+    public function test_cvr_overlay_extra_ranges_pick_the_most_specific_threshold(): void
+    {
+        $cvr = DilVsSbidRule::normalizeCvr([
+            'down_lt' => 7, 'down_adj' => -2,
+            'down_more' => [['lt' => 4, 'adj' => -5], ['lt' => 'x', 'adj' => 1]],
+            'up_gt' => 10, 'up_adj' => 2,
+            'up_more' => [['gt' => 15, 'adj' => 6]],
+        ]);
+        $this->assertCount(1, $cvr['down_more']);
+        $this->assertCount(1, $cvr['up_more']);
+
+        // CVR 3% under both Down ranges: the lowest threshold (4) wins.
+        $deep = DilVsSbidRule::applyCvr(10, 100, 3, 12, $cvr);
+        $this->assertSame(-5.0, $deep['adj']);
+        $this->assertSame(5.0, $deep['bid']);
+
+        // CVR 5% is under 7 only.
+        $mild = DilVsSbidRule::applyCvr(10, 100, 5, 12, $cvr);
+        $this->assertSame(-2.0, $mild['adj']);
+
+        // CVR 20% is over 10 and 15: the highest threshold (15) wins.
+        $high = DilVsSbidRule::applyCvr(10, 100, 20, 5, $cvr);
+        $this->assertSame(6.0, $high['adj']);
+
+        // CVR 12% is over 10 only.
+        $up = DilVsSbidRule::applyCvr(10, 100, 12, 5, $cvr);
+        $this->assertSame(2.0, $up['adj']);
+
+        // A config saved before extra ranges existed still works.
+        $old = DilVsSbidRule::applyCvr(8, 100, 4, 12, ['down_lt' => 7, 'down_adj' => -10, 'up_gt' => 10, 'up_adj' => 10]);
+        $this->assertSame(0.0, $old['bid']);
+    }
+
     public function test_extra_tables_start_at_zero_so_nothing_changes(): void
     {
         $tables = DilVsSbidRule::defaultTables();

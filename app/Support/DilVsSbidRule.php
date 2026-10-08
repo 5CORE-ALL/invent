@@ -205,22 +205,41 @@ final class DilVsSbidRule
     /**
      * Down: CVR below the threshold and a down arrow (CVR L30 under CVR L60).
      * Up: CVR above the threshold and an up arrow. Adj is added to the slab S Bid.
+     * down_more / up_more hold extra ranges. With several Down ranges the lowest
+     * threshold that CVR is under wins. With several Up ranges the highest
+     * threshold that CVR is over wins.
      *
-     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float,down_more:list<array{lt:float,adj:float}>,up_more:list<array{gt:float,adj:float}>}
      */
     public static function defaultCvr(): array
     {
-        return ['down_lt' => 7.0, 'down_adj' => -10.0, 'up_gt' => 10.0, 'up_adj' => 10.0];
+        return ['down_lt' => 7.0, 'down_adj' => -10.0, 'up_gt' => 10.0, 'up_adj' => 10.0, 'down_more' => [], 'up_more' => []];
     }
 
     /**
-     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float}
+     * @return array{down_lt:float,down_adj:float,up_gt:float,up_adj:float,down_more:list<array{lt:float,adj:float}>,up_more:list<array{gt:float,adj:float}>}
      */
     public static function normalizeCvr($raw): array
     {
         $out = self::defaultCvr();
         if (! is_array($raw)) {
             return $out;
+        }
+        foreach (['down_more' => 'lt', 'up_more' => 'gt'] as $listKey => $edgeKey) {
+            if (! isset($raw[$listKey]) || ! is_array($raw[$listKey])) {
+                continue;
+            }
+            foreach (array_values($raw[$listKey]) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $edge = self::num($item[$edgeKey] ?? null);
+                $adj = self::num($item['adj'] ?? null);
+                if ($edge === null || $edge < 0 || $adj === null) {
+                    continue;
+                }
+                $out[$listKey][] = [$edgeKey => $edge, 'adj' => $adj];
+            }
         }
         $downLt = self::num($raw['down_lt'] ?? null);
         $downAdj = self::num($raw['down_adj'] ?? null);
@@ -259,12 +278,32 @@ final class DilVsSbidRule
         $trend = ($cvr30 == 0.0 || $cvr30 < $cvr60 - $tol) ? 'down' : (($cvr30 > $cvr60 + $tol) ? 'up' : 'flat');
         $adj = 0.0;
         $why = '';
-        if ($trend === 'down' && $cvr30 < (float) $cvr['down_lt']) {
-            $adj = (float) $cvr['down_adj'];
-            $why = 'CVR Down < '.$cvr['down_lt'].'% and down arrow';
-        } elseif ($trend === 'up' && $cvr30 > (float) $cvr['up_gt']) {
-            $adj = (float) $cvr['up_adj'];
-            $why = 'CVR Up > '.$cvr['up_gt'].'% and up arrow';
+        if ($trend === 'down') {
+            $rules = [['lt' => (float) $cvr['down_lt'], 'adj' => (float) $cvr['down_adj']]];
+            foreach ($cvr['down_more'] as $more) {
+                $rules[] = ['lt' => (float) $more['lt'], 'adj' => (float) $more['adj']];
+            }
+            usort($rules, fn ($a, $b) => $a['lt'] <=> $b['lt']);
+            foreach ($rules as $rule) {
+                if ($cvr30 < $rule['lt']) {
+                    $adj = $rule['adj'];
+                    $why = 'CVR Down < '.$rule['lt'].'% and down arrow';
+                    break;
+                }
+            }
+        } elseif ($trend === 'up') {
+            $rules = [['gt' => (float) $cvr['up_gt'], 'adj' => (float) $cvr['up_adj']]];
+            foreach ($cvr['up_more'] as $more) {
+                $rules[] = ['gt' => (float) $more['gt'], 'adj' => (float) $more['adj']];
+            }
+            usort($rules, fn ($a, $b) => $b['gt'] <=> $a['gt']);
+            foreach ($rules as $rule) {
+                if ($cvr30 > $rule['gt']) {
+                    $adj = $rule['adj'];
+                    $why = 'CVR Up > '.$rule['gt'].'% and up arrow';
+                    break;
+                }
+            }
         }
 
         $next = round($bid + $adj, 2);

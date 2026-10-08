@@ -167,19 +167,16 @@ class DilVsSbidApplyService
             }
         }
 
-        foreach ($bidsByCampaign as $campaignId => $requests) {
-            $this->pushUntilMatched(
-                $http,
-                $adsTable,
-                (string) $campaignId,
-                $requests,
-                $results,
-                $success,
-                $failed,
-                $unchanged,
-                ! $onlyChanged
-            );
-        }
+        $this->pushUntilMatched(
+            $http,
+            $adsTable,
+            $bidsByCampaign,
+            $results,
+            $success,
+            $failed,
+            $unchanged,
+            ! $onlyChanged
+        );
 
         foreach ($offsByCampaign as $campaignId => $requests) {
             foreach (array_chunk($requests, 200) as $chunk) {
@@ -227,55 +224,65 @@ class DilVsSbidApplyService
      * they match or the verify rounds run out. Local C Bid is written only
      * from a listing-level live pull.
      *
-     * @param  list<array{listingId:string,adId:?string,bidPercentage:string}>  $requests
+     * Every campaign goes through each round together, so the verify wait
+     * happens once per round for the whole run, not once per campaign.
+     * A campaign drops out as soon as all its listings match.
+     *
+     * @param  array<string, list<array{listingId:string,adId:?string,bidPercentage:string}>>  $bidsByCampaign
      */
     private function pushUntilMatched(
         EbayMarketingPushRetry $http,
         string $adsTable,
-        string $campaignId,
-        array $requests,
+        array $bidsByCampaign,
         array &$results,
         int &$success,
         int &$failed,
         int &$unchanged,
         bool $resumeFirst
     ): void {
-        $pending = $requests;
+        $pending = $bidsByCampaign;
         $first = true;
         for ($round = 1; $round <= self::VERIFY_ROUNDS && $pending !== []; $round++) {
             if (! $first) {
                 $this->pauseVerify($round - 1);
             }
-            $live = $this->pullListingBids($http, $campaignId, $pending);
-            $needPush = [];
-            foreach ($pending as $r) {
-                $want = (float) $r['bidPercentage'];
-                $got = $live[(string) $r['listingId']] ?? null;
-                if (EbayCampaignAdLiveBid::matches($got, $want)) {
-                    $this->storeLiveBid($adsTable, $campaignId, $r, (float) $got);
-                    if ($first) {
-                        $unchanged++;
-                    } else {
-                        $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => number_format($want, 1, '.', '').'%'];
-                        $success++;
+            $next = [];
+            foreach ($pending as $campaignId => $requests) {
+                $campaignId = (string) $campaignId;
+                $live = $this->pullListingBids($http, $campaignId, $requests);
+                $needPush = [];
+                foreach ($requests as $r) {
+                    $want = (float) $r['bidPercentage'];
+                    $got = $live[(string) $r['listingId']] ?? null;
+                    if (EbayCampaignAdLiveBid::matches($got, $want)) {
+                        $this->storeLiveBid($adsTable, $campaignId, $r, (float) $got);
+                        if ($first) {
+                            $unchanged++;
+                        } else {
+                            $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => number_format($want, 1, '.', '').'%'];
+                            $success++;
+                        }
+                        continue;
                     }
+                    $needPush[] = $r;
+                }
+                if ($needPush === []) {
                     continue;
                 }
-                $needPush[] = $r;
-            }
-            if ($needPush === []) {
-                return;
-            }
-            if ($first && $resumeFirst) {
-                $this->resumeAds($http, $adsTable, $campaignId, $needPush);
+                if ($first && $resumeFirst) {
+                    $this->resumeAds($http, $adsTable, $campaignId, $needPush);
+                }
+                $sent = $this->sendBids($http, $adsTable, $campaignId, $needPush);
+                foreach ($sent['failed'] as $fail) {
+                    $results[] = ['listing_id' => $fail['listingId'], 'status' => 'failed', 'reason' => $fail['reason']];
+                    $failed++;
+                }
+                if ($sent['accepted'] !== []) {
+                    $next[$campaignId] = $sent['accepted'];
+                }
             }
             $first = false;
-            $sent = $this->sendBids($http, $adsTable, $campaignId, $needPush);
-            foreach ($sent['failed'] as $fail) {
-                $results[] = ['listing_id' => $fail['listingId'], 'status' => 'failed', 'reason' => $fail['reason']];
-                $failed++;
-            }
-            $pending = $sent['accepted'];
+            $pending = $next;
         }
 
         if ($pending === []) {
@@ -283,26 +290,29 @@ class DilVsSbidApplyService
         }
 
         $this->pauseVerify(self::VERIFY_ROUNDS);
-        $live = $this->pullListingBids($http, $campaignId, $pending);
-        foreach ($pending as $r) {
-            $want = (float) $r['bidPercentage'];
-            $got = $live[(string) $r['listingId']] ?? null;
-            if (EbayCampaignAdLiveBid::matches($got, $want)) {
-                $this->storeLiveBid($adsTable, $campaignId, $r, (float) $got);
-                $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => number_format($want, 1, '.', '').'%'];
-                $success++;
-                continue;
+        foreach ($pending as $campaignId => $requests) {
+            $campaignId = (string) $campaignId;
+            $live = $this->pullListingBids($http, $campaignId, $requests);
+            foreach ($requests as $r) {
+                $want = (float) $r['bidPercentage'];
+                $got = $live[(string) $r['listingId']] ?? null;
+                if (EbayCampaignAdLiveBid::matches($got, $want)) {
+                    $this->storeLiveBid($adsTable, $campaignId, $r, (float) $got);
+                    $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => number_format($want, 1, '.', '').'%'];
+                    $success++;
+                    continue;
+                }
+                if ($got !== null) {
+                    $this->storeLiveBid($adsTable, $campaignId, $r, (float) $got);
+                }
+                $liveText = $got !== null ? number_format((float) $got, 1, '.', '').'%' : 'empty';
+                $results[] = [
+                    'listing_id' => $r['listingId'],
+                    'status' => 'failed',
+                    'reason' => 'Live C Bid '.$liveText.' still does not match S Bid '.number_format($want, 1, '.', '').'%',
+                ];
+                $failed++;
             }
-            if ($got !== null) {
-                $this->storeLiveBid($adsTable, $campaignId, $r, (float) $got);
-            }
-            $liveText = $got !== null ? number_format((float) $got, 1, '.', '').'%' : 'empty';
-            $results[] = [
-                'listing_id' => $r['listingId'],
-                'status' => 'failed',
-                'reason' => 'Live C Bid '.$liveText.' still does not match S Bid '.number_format($want, 1, '.', '').'%',
-            ];
-            $failed++;
         }
     }
 

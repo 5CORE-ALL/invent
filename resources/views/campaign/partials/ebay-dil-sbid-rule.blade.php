@@ -136,13 +136,13 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr>
+                                    <tr data-cvr-dir="down">
                                         <td>Down</td>
                                         <td class="text-center">&lt; <input type="number" min="0" step="0.1" class="form-control form-control-sm text-end dil-sbid-cvr-input" id="dil-sbid-cvr-down-lt" value="7"></td>
                                         <td class="text-end"><input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-cvr-input" id="dil-sbid-cvr-down-adj" value="-10"></td>
                                         <td class="dsb-count"><span id="dil-sbid-cvr-down-count">0</span></td>
                                     </tr>
-                                    <tr>
+                                    <tr data-cvr-dir="up">
                                         <td>Up</td>
                                         <td class="text-center">&gt; <input type="number" min="0" step="0.1" class="form-control form-control-sm text-end dil-sbid-cvr-input" id="dil-sbid-cvr-up-gt" value="10"></td>
                                         <td class="text-end"><input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-cvr-input" id="dil-sbid-cvr-up-adj" value="10"></td>
@@ -150,6 +150,10 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="d-flex gap-1 mt-auto pt-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary dsb-add flex-fill mt-0" id="dil-sbid-cvr-add-down" title="Add a Down range. The lowest threshold CVR is under wins."><i class="fas fa-plus me-1"></i>Down range</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary dsb-add flex-fill mt-0" id="dil-sbid-cvr-add-up" title="Add an Up range. The highest threshold CVR is over wins."><i class="fas fa-plus me-1"></i>Up range</button>
                         </div>
                     </div>
                     <div class="dsb-col dsb-col-sum">
@@ -416,11 +420,32 @@ function dilSbidCvrNow() {
         const n = el ? parseFloat(el.value) : NaN;
         return isFinite(n) ? n : fallback;
     };
+    const prev = currentDilSbidCvr || {};
+    let downMore = Array.isArray(prev.down_more) ? prev.down_more : [];
+    let upMore = Array.isArray(prev.up_more) ? prev.up_more : [];
+    if (DIL_SBID_EXT) {
+        // Extra ranges live in the table. It is the source while the modal is built.
+        const readMore = function(dir, edgeKey) {
+            const out = [];
+            document.querySelectorAll('#dil-sbid-cvr-table tr.dil-sbid-cvr-x[data-dir="' + dir + '"]').forEach(function(tr) {
+                const edge = parseFloat(tr.querySelector('.dil-sbid-cvr-x-edge').value);
+                const adj = parseFloat(tr.querySelector('.dil-sbid-cvr-x-adj').value);
+                const item = { adj: isFinite(adj) ? adj : 0 };
+                item[edgeKey] = isFinite(edge) ? Math.max(0, edge) : 0;
+                out.push(item);
+            });
+            return out;
+        };
+        downMore = readMore('down', 'lt');
+        upMore = readMore('up', 'gt');
+    }
     currentDilSbidCvr = {
         down_lt: Math.max(0, num('dil-sbid-cvr-down-lt', DIL_SBID_CVR_DEFAULTS.down_lt)),
         down_adj: num('dil-sbid-cvr-down-adj', DIL_SBID_CVR_DEFAULTS.down_adj),
         up_gt: Math.max(0, num('dil-sbid-cvr-up-gt', DIL_SBID_CVR_DEFAULTS.up_gt)),
-        up_adj: num('dil-sbid-cvr-up-adj', DIL_SBID_CVR_DEFAULTS.up_adj)
+        up_adj: num('dil-sbid-cvr-up-adj', DIL_SBID_CVR_DEFAULTS.up_adj),
+        down_more: downMore,
+        up_more: upMore
     };
     return currentDilSbidCvr;
 }
@@ -434,6 +459,89 @@ function dilSbidPaintCvr() {
     set('dil-sbid-cvr-down-adj', cfg.down_adj);
     set('dil-sbid-cvr-up-gt', cfg.up_gt);
     set('dil-sbid-cvr-up-adj', cfg.up_adj);
+    if (DIL_SBID_EXT) dilSbidCvrRenderMore();
+}
+/**
+ * Down / Up ranges in match order. Several Down ranges: the lowest threshold CVR is under wins.
+ * Several Up ranges: the highest threshold CVR is over wins. id -1 is the main row.
+ */
+function dilSbidCvrRules(cfg) {
+    const down = [{ edge: parseFloat(cfg.down_lt), adj: parseFloat(cfg.down_adj) || 0, id: -1 }];
+    (Array.isArray(cfg.down_more) ? cfg.down_more : []).forEach(function(r, i) {
+        down.push({ edge: parseFloat(r.lt), adj: parseFloat(r.adj) || 0, id: i });
+    });
+    const up = [{ edge: parseFloat(cfg.up_gt), adj: parseFloat(cfg.up_adj) || 0, id: -1 }];
+    (Array.isArray(cfg.up_more) ? cfg.up_more : []).forEach(function(r, i) {
+        up.push({ edge: parseFloat(r.gt), adj: parseFloat(r.adj) || 0, id: i });
+    });
+    return {
+        down: down.filter(function(r) { return isFinite(r.edge); }).sort(function(a, b) { return a.edge - b.edge; }),
+        up: up.filter(function(r) { return isFinite(r.edge); }).sort(function(a, b) { return b.edge - a.edge; })
+    };
+}
+/** The Down or Up range this CVR falls in, or null. */
+function dilSbidCvrHit(parts, cfg) {
+    if (!parts) return null;
+    const trend = dilSbidCvrTrend(parts);
+    const rules = dilSbidCvrRules(cfg);
+    if (trend === 'down') {
+        for (let i = 0; i < rules.down.length; i++) {
+            if (parts.cvr < rules.down[i].edge) return { dir: 'down', rule: rules.down[i] };
+        }
+    } else if (trend === 'up') {
+        for (let i = 0; i < rules.up.length; i++) {
+            if (parts.cvr > rules.up[i].edge) return { dir: 'up', rule: rules.up[i] };
+        }
+    }
+    return null;
+}
+function dilSbidCvrMoreRow(dir, idx, edge, adj) {
+    const sign = dir === 'down' ? '&lt;' : '&gt;';
+    return '<tr class="dil-sbid-cvr-x" data-dir="' + dir + '" data-idx="' + idx + '">'
+        + '<td>' + (dir === 'down' ? 'Down' : 'Up') + ' <button type="button" class="btn btn-sm btn-outline-danger dsb-del dil-sbid-cvr-x-del" title="Remove range">&times;</button></td>'
+        + '<td class="text-center">' + sign + ' <input type="number" min="0" step="0.1" class="form-control form-control-sm text-end dil-sbid-cvr-input dil-sbid-cvr-x-edge" value="' + dilSbidEsc(edge) + '"></td>'
+        + '<td class="text-end"><input type="number" step="1" class="form-control form-control-sm text-end dil-sbid-cvr-input dil-sbid-cvr-x-adj" value="' + dilSbidEsc(adj) + '"></td>'
+        + '<td class="dsb-count"><span class="dil-sbid-cvr-x-count">0</span></td>'
+        + '</tr>';
+}
+/** Rebuild the extra Down / Up rows under their main row. */
+function dilSbidCvrRenderMore() {
+    const table = document.getElementById('dil-sbid-cvr-table');
+    if (!table) return;
+    table.querySelectorAll('tr.dil-sbid-cvr-x').forEach(function(tr) { tr.remove(); });
+    const cfg = currentDilSbidCvr || DIL_SBID_CVR_DEFAULTS;
+    [['down', 'lt', cfg.down_more], ['up', 'gt', cfg.up_more]].forEach(function(spec) {
+        const main = table.querySelector('tr[data-cvr-dir="' + spec[0] + '"]');
+        if (!main) return;
+        let anchor = main;
+        (Array.isArray(spec[2]) ? spec[2] : []).forEach(function(item, i) {
+            anchor.insertAdjacentHTML('afterend', dilSbidCvrMoreRow(spec[0], i, item[spec[1]], item.adj));
+            anchor = anchor.nextElementSibling;
+        });
+    });
+}
+function dilSbidCvrAddMore(dir) {
+    const cfg = dilSbidCvrNow();
+    if (dir === 'down') {
+        const edges = [cfg.down_lt].concat(cfg.down_more.map(function(r) { return r.lt; }));
+        cfg.down_more.push({ lt: Math.max(0, dilSbidRound(Math.min.apply(null, edges) - 3)), adj: cfg.down_adj });
+    } else {
+        const edges = [cfg.up_gt].concat(cfg.up_more.map(function(r) { return r.gt; }));
+        cfg.up_more.push({ gt: dilSbidRound(Math.max.apply(null, edges) + 5), adj: cfg.up_adj });
+    }
+    dilSbidCvrRenderMore();
+    dilSbidPaintCounts();
+    dilSbidRefreshGrid();
+    dilSbidScheduleSave();
+}
+function dilSbidCvrDeleteMore(tr) {
+    if (!tr) return;
+    tr.remove();
+    dilSbidCvrNow();
+    dilSbidCvrRenderMore();
+    dilSbidPaintCounts();
+    dilSbidRefreshGrid();
+    dilSbidScheduleSave();
 }
 function dilSbidCvrParts(row) {
     const views = parseFloat(row && row.views) || 0;
@@ -467,12 +575,13 @@ function dilSbidApplyCvr(bid, row) {
     const trend = dilSbidCvrTrend(parts);
     let adj = 0;
     let why = '';
-    if (parts && trend === 'down' && parts.cvr < cfg.down_lt) {
-        adj = cfg.down_adj;
-        why = 'CVR Down < ' + cfg.down_lt + '% and down arrow';
-    } else if (parts && trend === 'up' && parts.cvr > cfg.up_gt) {
-        adj = cfg.up_adj;
-        why = 'CVR Up > ' + cfg.up_gt + '% and up arrow';
+    const hit = dilSbidCvrHit(parts, cfg);
+    if (hit && hit.dir === 'down') {
+        adj = hit.rule.adj;
+        why = 'CVR Down < ' + hit.rule.edge + '% and down arrow';
+    } else if (hit && hit.dir === 'up') {
+        adj = hit.rule.adj;
+        why = 'CVR Up > ' + hit.rule.edge + '% and up arrow';
     }
     let next = dilSbidRound(bid + adj);
     if (next < 0) next = 0;
@@ -613,8 +722,11 @@ function dilSbidCounts() {
     return counts;
 }
 function dilSbidCvrCounts() {
-    const counts = { down: 0, up: 0 };
+    // down / up: SKUs on the main row. downMore / upMore: SKUs on each extra range. A SKU counts once, on the range that wins.
+    const counts = { down: 0, up: 0, downMore: [], upMore: [], downTotal: 0, upTotal: 0 };
     const cfg = currentDilSbidCvr || DIL_SBID_CVR_DEFAULTS;
+    (cfg.down_more || []).forEach(function() { counts.downMore.push(0); });
+    (cfg.up_more || []).forEach(function() { counts.upMore.push(0); });
     const rows = dilSbidRows();
     const seen = {};
     rows.forEach(function(d) {
@@ -623,9 +735,15 @@ function dilSbidCvrCounts() {
         const parts = dilSbidCvrParts(d);
         if (!parts) return;
         seen[sku] = true;
-        const trend = dilSbidCvrTrend(parts);
-        if (trend === 'down' && parts.cvr < cfg.down_lt) counts.down++;
-        else if (trend === 'up' && parts.cvr > cfg.up_gt) counts.up++;
+        const hit = dilSbidCvrHit(parts, cfg);
+        if (!hit) return;
+        if (hit.dir === 'down') {
+            counts.downTotal++;
+            if (hit.rule.id < 0) counts.down++; else counts.downMore[hit.rule.id]++;
+        } else {
+            counts.upTotal++;
+            if (hit.rule.id < 0) counts.up++; else counts.upMore[hit.rule.id]++;
+        }
     });
     return counts;
 }
@@ -896,9 +1014,9 @@ function dilSbidExtPaint() {
     let withCvr = 0;
     rows.forEach(function(row) { if (dilSbidCvrParts(row)) withCvr++; });
     const overSlices = [
-        { label: 'Down', count: cvrCounts.down || 0, color: '#dc3545' },
-        { label: 'Flat / no match', count: Math.max(0, withCvr - (cvrCounts.down || 0) - (cvrCounts.up || 0)), color: '#94a3b8' },
-        { label: 'Up', count: cvrCounts.up || 0, color: '#198754' },
+        { label: 'Down', count: cvrCounts.downTotal || 0, color: '#dc3545' },
+        { label: 'Flat / no match', count: Math.max(0, withCvr - (cvrCounts.downTotal || 0) - (cvrCounts.upTotal || 0)), color: '#94a3b8' },
+        { label: 'Up', count: cvrCounts.upTotal || 0, color: '#198754' },
         { label: 'No views', count: Math.max(0, rows.length - withCvr), color: '#e2e8f0' },
     ];
     dilSbidPaintLegend('dil-sbid-leg-over', overSlices);
@@ -947,6 +1065,13 @@ function dilSbidPaintCounts() {
     const up = document.getElementById('dil-sbid-cvr-up-count');
     if (down) down.textContent = String(cvrCounts.down || 0);
     if (up) up.textContent = String(cvrCounts.up || 0);
+    ['down', 'up'].forEach(function(dir) {
+        const list = dir === 'down' ? cvrCounts.downMore : cvrCounts.upMore;
+        document.querySelectorAll('#dil-sbid-cvr-table tr.dil-sbid-cvr-x[data-dir="' + dir + '"]').forEach(function(tr, i) {
+            const el = tr.querySelector('.dil-sbid-cvr-x-count');
+            if (el) el.textContent = String((list && list[i]) || 0);
+        });
+    });
     if (DIL_SBID_EXT) dilSbidExtPaint();
 }
 function dilSbidSave(thenApply) {
@@ -1026,14 +1151,27 @@ function dilSbidApply() {
     const btn = document.getElementById('dil-sbid-apply-btn');
     const ids = [];
     const seenIds = {};
+    let alreadyMatching = 0;
     dilSbidRows().forEach(function(d) {
         const id = d && (d.listing_id || d.eBay_item_id || d.ebay_item_id);
         if (!id || seenIds[id]) return;
         seenIds[id] = true;
+        // Extended mode: a running ad whose C Bid already equals the S Bid needs no push.
+        // The server still checks live before it writes anything.
+        if (DIL_SBID_EXT && dilSbidEnabled) {
+            const res = dilSbidOfRow(d);
+            const live = parseFloat(d.ca_bid_percentage != null ? d.ca_bid_percentage : d.bid_percentage);
+            const running = String(d.ca_campaign_status || d.campaign_status || '').trim().toUpperCase() === 'RUNNING';
+            if (running && res && !res.skip && res.bid > 0 && isFinite(live)
+                && Math.round(live * 10) === Math.round(res.bid * 10)) {
+                alreadyMatching++;
+                return;
+            }
+        }
         ids.push(String(id));
     });
     if (!ids.length) {
-        if (statusEl) statusEl.textContent = 'No listings loaded';
+        if (statusEl) statusEl.textContent = alreadyMatching ? ('All ' + alreadyMatching + ' listings already match') : 'No listings loaded';
         return;
     }
     if (btn) btn.disabled = true;
@@ -1108,6 +1246,12 @@ if (DIL_SBID_EXT) {
     });
     document.querySelectorAll('#dilSbidRuleModal .dil-sbid-x-add').forEach(function(btn) {
         btn.addEventListener('click', function() { dilSbidExtAdd(btn.getAttribute('data-table')); });
+    });
+    document.getElementById('dil-sbid-cvr-add-down').addEventListener('click', function() { dilSbidCvrAddMore('down'); });
+    document.getElementById('dil-sbid-cvr-add-up').addEventListener('click', function() { dilSbidCvrAddMore('up'); });
+    document.getElementById('dil-sbid-cvr-table').addEventListener('click', function(ev) {
+        const btn = ev.target.closest('.dil-sbid-cvr-x-del');
+        if (btn) dilSbidCvrDeleteMore(btn.closest('tr'));
     });
 }
 document.getElementById('dil-sbid-tbody').addEventListener('input', function() {
