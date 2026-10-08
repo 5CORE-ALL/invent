@@ -200,6 +200,7 @@ class FetchEbay3Metrics extends Command
             
             $this->info("✅ Updated {$updateCount} SKU metrics");
             $this->info('✅ eBay Metrics updated');
+            \App\Support\DilVsSbidAutoPush::afterDataChange('ebay3');
             return 0;
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());

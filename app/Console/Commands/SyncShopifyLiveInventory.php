@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\ShopifyApiInventoryController;
 use App\Models\ShopifySku;
+use App\Support\DilVsSbidAutoPush;
 
 /**
  * Logs each run (mode + outcome) to channel `shopify_live_inventory`:
@@ -92,6 +93,7 @@ class SyncShopifyLiveInventory extends Command
                 'ok' => true,
                 'duration_seconds' => round(microtime(true) - $t0, 2),
             ]);
+            DilVsSbidAutoPush::afterDataChange();
 
             return 0;
         }
@@ -160,6 +162,7 @@ class SyncShopifyLiveInventory extends Command
                 'ok' => true,
                 'duration_seconds' => round(microtime(true) - $t0, 2),
             ]);
+            DilVsSbidAutoPush::afterDataChange();
 
             return 0;
         }
@@ -206,6 +209,7 @@ class SyncShopifyLiveInventory extends Command
                 ],
                 'duration_seconds' => round(microtime(true) - $t0, 2),
             ]);
+            DilVsSbidAutoPush::afterDataChange();
 
             return 0;
         }
@@ -226,6 +230,7 @@ class SyncShopifyLiveInventory extends Command
         if ($success) {
             $this->newLine();
             $this->info('Successfully synced live Shopify inventory (Ohio)');
+            DilVsSbidAutoPush::afterDataChange();
         } else {
             $this->error('Failed to sync live Shopify inventory');
         }

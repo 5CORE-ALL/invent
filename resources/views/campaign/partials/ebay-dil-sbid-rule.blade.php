@@ -394,7 +394,7 @@
 </div>
 @elseif(($part ?? 'modal') === 'button')
 <button type="button" class="btn btn-sm btn-warning text-dark pricing-filter-item dil-sbid-push-btn"
-    title="Push the saved Dil vs SBid rule to listings on this page. Same push as the morning and evening auto-push.">
+    title="Push the saved Dil vs SBid rule to listings on this page. Same push as auto-push after Dil / views / CVR change.">
     <i class="fas fa-cloud-upload-alt me-1"></i>Push SBID
 </button>
 @else
@@ -454,8 +454,8 @@ function dilSbidPaintMode() {
     if (note) {
         note.textContent = on
             ? (DIL_SBID_EXT
-                ? 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap.'
-                : 'On. S Bid uses these Dil slabs, then the CVR overlay, then the L30 View overlay, then the Min / Max cap.')
+                ? 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.'
+                : 'On. S Bid uses these Dil slabs, then the CVR overlay, then the L30 View overlay, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
             : 'Off. S Bid is not changed.';
         note.className = on ? 'small mb-2 text-success' : 'small mb-2 text-muted';
     }

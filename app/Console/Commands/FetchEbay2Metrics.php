@@ -168,6 +168,7 @@ class FetchEbay2Metrics extends Command
             }
 
             $this->info('✅ eBay Metrics updated');
+            \App\Support\DilVsSbidAutoPush::afterDataChange('ebay2');
             return 0;
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());

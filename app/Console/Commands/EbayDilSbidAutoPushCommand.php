@@ -17,9 +17,10 @@ use Throwable;
 class EbayDilSbidAutoPushCommand extends Command
 {
     protected $signature = 'ebay:dil-sbid-auto-push
-        {account=all : ebay1, ebay2, ebay3, or all}';
+        {account=all : ebay1, ebay2, ebay3, or all}
+        {--mismatch : Only ads whose stored C Bid differs from S Bid}';
 
-    protected $description = 'eBay 1, 2, and 3: push Dil vs SBid only where Dil or CVR changed the bid.';
+    protected $description = 'eBay 1, 2, and 3: push Dil vs SBid when Dil, views, or CVR changed the bid.';
 
     public function handle(DilVsSbidApplyService $apply): int
     {
@@ -85,12 +86,13 @@ class EbayDilSbidAutoPushCommand extends Command
 
     private function pushAccount(DilVsSbidApplyService $apply, string $account): void
     {
+        $mismatch = (bool) $this->option('mismatch');
         if ($account === 'ebay3') {
-            $result = $apply->applyChanged(DilVsSbidRule::KEY_EBAY3, 'ebay3_campaign_ads', Ebay3Metric::class, EbayThreeApiService::class);
+            $result = $apply->applyChanged(DilVsSbidRule::KEY_EBAY3, 'ebay3_campaign_ads', Ebay3Metric::class, EbayThreeApiService::class, $mismatch);
         } elseif ($account === 'ebay2') {
-            $result = $apply->applyChanged(DilVsSbidRule::KEY_EBAY2, 'ebay2_campaign_ads', Ebay2Metric::class, Ebay2ApiService::class);
+            $result = $apply->applyChanged(DilVsSbidRule::KEY_EBAY2, 'ebay2_campaign_ads', Ebay2Metric::class, Ebay2ApiService::class, $mismatch);
         } else {
-            $result = $apply->applyChanged(DilVsSbidRule::KEY_EBAY1, 'ebay_campaign_ads', EbayMetric::class, EbayApiService::class);
+            $result = $apply->applyChanged(DilVsSbidRule::KEY_EBAY1, 'ebay_campaign_ads', EbayMetric::class, EbayApiService::class, $mismatch);
         }
 
         if (! empty($result['error']) && ($result['error'] ?? '') === 'Dil vs SBid is off') {

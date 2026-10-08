@@ -866,6 +866,7 @@ class EbayTwoController extends Controller
             $row['views'] = $ebayMetric->views ?? 0;
             $row['l7_views'] = $ebayMetric->l7_views ?? 0;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
+            $row['listing_id'] = $ebayMetric->item_id ?? null;
             $row['E Stock'] = $ebayMetric->ebay_stock ?? 0;
             
             // Amazon Price for comparison
@@ -1191,6 +1192,7 @@ class EbayTwoController extends Controller
                 $row['views'] = $metric->views ?? 0;
                 $row['l7_views'] = $metric->l7_views ?? 0;
                 $row['eBay_item_id'] = $metric->item_id ?? null;
+                $row['listing_id'] = $metric->item_id ?? null;
                 $row['E Stock'] = $metric->ebay_stock ?? 0;
 
                 EbaySkuCompetitor::applyLinkedGroupToRow(
@@ -1558,6 +1560,7 @@ class EbayTwoController extends Controller
                 return $fields;
             }
             $fields['eBay_item_id'] = $picked['eBay_item_id'];
+            $fields['listing_id'] = $picked['eBay_item_id'];
 
             return $fields;
         };
@@ -1639,6 +1642,7 @@ class EbayTwoController extends Controller
                     'SROI' => null,
                     'SGROI' => null,
                     'eBay_item_id' => null,
+                    'listing_id' => null,
                     'Missing' => null,
                     'fba' => '',
                     'base_sku' => '',

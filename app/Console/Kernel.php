@@ -425,12 +425,11 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        // Dil vs SBid autopush. Morning follows the 09:00 Shopify quantity sync (Dil).
-        // Evening follows eBay metrics (CVR) and the 18:00 quantity sync. Only ads
-        // whose rule bid changed are pushed. eBay 3 stays manual.
-        // Campaign-ads sync (20:30/20:32) pulls listing C Bid only — never the
-        // campaign default — then runs the same verify push so a stale pull
-        // cannot leave yellow pending rows overnight.
+        // Dil vs SBid autopush. Morning / evening still do a full live C Bid
+        // verify. Every 30 minutes (and after inventory / metrics jobs) pushes
+        // only ads whose stored C Bid no longer matches S Bid, so Dil / views
+        // / CVR changes do not sit yellow until the next 09:50 / 19:50 run.
+        // eBay 3 stays off the clock — switch On still pushes after its metrics fetch.
         foreach ([
             ['09:50', 'ebay:dil-sbid-auto-push ebay1', 'ebay1-dil-sbid-morning'],
             ['09:55', 'ebay:dil-sbid-auto-push ebay2', 'ebay2-dil-sbid-morning'],
@@ -441,6 +440,15 @@ class Kernel extends ConsoleKernel
                 ->dailyAt($at)
                 ->timezone('Asia/Kolkata')
                 ->name($name)
+                ->withoutOverlapping(90)
+                ->runInBackground()
+                ->appendOutputTo($log));
+        }
+        foreach (['ebay1', 'ebay2'] as $account) {
+            $ist($schedule->command('ebay:dil-sbid-auto-push '.$account.' --mismatch')
+                ->everyThirtyMinutes()
+                ->timezone('Asia/Kolkata')
+                ->name($account.'-dil-sbid-onchange')
                 ->withoutOverlapping(90)
                 ->runInBackground()
                 ->appendOutputTo($log));

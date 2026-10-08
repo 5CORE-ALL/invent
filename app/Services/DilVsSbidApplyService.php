@@ -104,51 +104,26 @@ class DilVsSbidApplyService
 
                 $metric = $metrics->get($lid);
                 $sku = (string) ($metric?->sku ?? $ad->sku ?? '');
+                $wanted = $this->listingDecision(
+                    $useDil,
+                    $ad,
+                    $metric,
+                    $shopifyMap[trim($sku)] ?? null,
+                    $slabs,
+                    $cvr,
+                    $tables,
+                    $cap,
+                    $viewsOver,
+                    $npftMap
+                );
 
-                if (! $useDil) {
-                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Dil vs SBid is off'];
+                if ($wanted['skip'] !== null) {
+                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => $wanted['skip']];
                     $skipped++;
                     continue;
                 }
 
-                $shopify = $shopifyMap[trim($sku)] ?? null;
-                $dil = CpMasterDil::slabPercent($shopify->quantity ?? null, $shopify->inv ?? null);
-                if ($dil === null) {
-                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'No CP Master Dil'];
-                    $skipped++;
-                    continue;
-                }
-                $esBid = (float) ($ad->suggested_bid ?? 0);
-                $views = (float) ($metric?->views ?? 0);
-                $sold = (float) ($metric?->ebay_l30 ?? 0);
-                $decision = DilVsSbidRule::resolveTotal((float) $dil, $esBid, $slabs, $tables, [
-                    'views' => $views,
-                    'cvr' => $views > 0 ? ($sold / $views) * 100 : null,
-                    'sold' => $sold,
-                    'npft' => $npftMap[EbayStdNpftLookup::key($sku)] ?? null,
-                ]);
-                if ($decision['bid'] > 0) {
-                    $adjusted = DilVsSbidRule::applyCvr(
-                        (float) $decision['bid'],
-                        $views,
-                        $sold,
-                        (float) ($metric?->ebay_l60 ?? 0),
-                        $cvr
-                    );
-                    $viewAdj = DilVsSbidRule::applyViewOver(
-                        (float) $adjusted['bid'],
-                        $views,
-                        (float) ($metric?->l7_views ?? 0),
-                        $viewsOver
-                    );
-                    $decision['bid'] = DilVsSbidRule::clampBid((float) $viewAdj['bid'], $cap);
-                    $why = trim($adjusted['why'].' '.$viewAdj['why']);
-                    if ($why !== '') {
-                        $decision['label'] = trim($decision['label'].' '.$why);
-                    }
-                }
-
-                if ($decision['off']) {
+                if ($wanted['off']) {
                     if (empty($ad->ad_id)) {
                         $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => 'Pause but no ad id'];
                         $skipped++;
@@ -161,17 +136,10 @@ class DilVsSbidApplyService
                     continue;
                 }
 
-                $formatted = EbayBidPercentage::forPush((float) $decision['bid']);
-                if ($formatted === null) {
-                    $results[] = ['listing_id' => $lid, 'status' => 'skipped', 'reason' => $decision['label'] !== '' ? $decision['label'] : 'No S Bid for this Dil'];
-                    $skipped++;
-                    continue;
-                }
-
                 $bidsByCampaign[(string) $ad->campaign_id][] = [
                     'listingId' => $lid,
                     'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
-                    'bidPercentage' => $formatted,
+                    'bidPercentage' => $wanted['formatted'],
                 ];
             }
         }
@@ -210,7 +178,7 @@ class DilVsSbidApplyService
      * @param  class-string  $apiServiceClass
      * @return array{success:int,failed:int,skipped:int,unchanged?:int,results:array<int,array<string,mixed>>,error?:string}
      */
-    public function applyChanged(string $ruleKey, string $adsTable, string $metricClass, string $apiServiceClass): array
+    public function applyChanged(string $ruleKey, string $adsTable, string $metricClass, string $apiServiceClass, bool $onlyLocalMismatch = false): array
     {
         $stored = DilVsSbidRule::load($ruleKey);
         if (empty($stored['enabled'])) {
@@ -225,7 +193,174 @@ class DilVsSbidApplyService
             ->pluck('listing_id')
             ->all();
 
+        if ($onlyLocalMismatch) {
+            $listingIds = $this->filterLocalMismatches($ruleKey, $adsTable, $metricClass, $listingIds);
+            if ($listingIds === []) {
+                return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'unchanged' => 0, 'results' => []];
+            }
+        }
+
         return $this->apply($ruleKey, $adsTable, $metricClass, $apiServiceClass, $listingIds, true);
+    }
+
+    /**
+     * Stored C Bid vs current Dil vs SBid. Used after Dil / views / CVR /
+     * inventory change so the live pull only runs for yellow pending rows.
+     *
+     * @param  class-string  $metricClass
+     * @param  array<int, mixed>  $listingIds
+     * @return list<string>
+     */
+    public function filterLocalMismatches(string $ruleKey, string $adsTable, string $metricClass, array $listingIds): array
+    {
+        $listingIds = array_values(array_unique(array_map('strval', $listingIds)));
+        if ($listingIds === []) {
+            return [];
+        }
+
+        $stored = DilVsSbidRule::load($ruleKey);
+        if (empty($stored['enabled'])) {
+            return [];
+        }
+
+        $slabs = $stored['slabs'];
+        $cvr = $stored['cvr'];
+        $tables = $stored['tables'];
+        $cap = $stored['cap'] ?? DilVsSbidRule::defaultCap();
+        $viewsOver = $stored['views_over'] ?? DilVsSbidRule::defaultViewOver();
+        $metrics = $metricClass::whereIn('item_id', $listingIds)->get()->keyBy(fn ($m) => (string) $m->item_id);
+        $ads = DB::table($adsTable)
+            ->whereIn('listing_id', $listingIds)
+            ->whereNotNull('campaign_id')
+            ->where('campaign_id', '!=', '')
+            ->where('funding_strategy', 'COST_PER_SALE')
+            ->get()
+            ->groupBy(fn ($ad) => (string) $ad->listing_id);
+
+        $skus = [];
+        foreach ($listingIds as $lid) {
+            $metric = $metrics->get($lid);
+            $ad = $ads->get($lid)?->first();
+            $sku = (string) ($metric->sku ?? $ad->sku ?? '');
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $shopifyMap = $this->shopifyBySku($skus);
+        $npftMap = DilVsSbidRule::usesNpft($tables) ? EbayStdNpftLookup::forSkus($skus) : [];
+
+        $out = [];
+        foreach ($listingIds as $lid) {
+            $campaignAds = $ads->get($lid);
+            if ($campaignAds === null || $campaignAds->isEmpty()) {
+                continue;
+            }
+            foreach ($campaignAds as $ad) {
+                if (! $ad->campaign_id) {
+                    continue;
+                }
+                $metric = $metrics->get($lid);
+                $sku = (string) ($metric?->sku ?? $ad->sku ?? '');
+                $wanted = $this->listingDecision(
+                    true,
+                    $ad,
+                    $metric,
+                    $shopifyMap[trim($sku)] ?? null,
+                    $slabs,
+                    $cvr,
+                    $tables,
+                    $cap,
+                    $viewsOver,
+                    $npftMap
+                );
+                if ($wanted['skip'] !== null || $wanted['off'] || $wanted['formatted'] === null) {
+                    continue;
+                }
+                $local = isset($ad->bid_percentage) && is_numeric($ad->bid_percentage)
+                    ? (float) $ad->bid_percentage
+                    : null;
+                if (! EbayCampaignAdLiveBid::matches($local, (float) $wanted['formatted'])) {
+                    $out[] = $lid;
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @param  object  $ad
+     * @param  object|null  $metric
+     * @param  object|null  $shopify
+     * @return array{skip:?string, off:bool, formatted:?string, label:string}
+     */
+    private function listingDecision(
+        bool $useDil,
+        object $ad,
+        $metric,
+        $shopify,
+        array $slabs,
+        array $cvr,
+        array $tables,
+        array $cap,
+        array $viewsOver,
+        array $npftMap
+    ): array {
+        if (! $useDil) {
+            return ['skip' => 'Dil vs SBid is off', 'off' => false, 'formatted' => null, 'label' => ''];
+        }
+
+        $sku = (string) ($metric?->sku ?? $ad->sku ?? '');
+        $dil = CpMasterDil::slabPercent($shopify?->quantity ?? null, $shopify?->inv ?? null);
+        if ($dil === null) {
+            return ['skip' => 'No CP Master Dil', 'off' => false, 'formatted' => null, 'label' => ''];
+        }
+
+        $esBid = (float) ($ad->suggested_bid ?? 0);
+        $views = (float) ($metric?->views ?? 0);
+        $sold = (float) ($metric?->ebay_l30 ?? 0);
+        $decision = DilVsSbidRule::resolveTotal((float) $dil, $esBid, $slabs, $tables, [
+            'views' => $views,
+            'cvr' => $views > 0 ? ($sold / $views) * 100 : null,
+            'sold' => $sold,
+            'npft' => $npftMap[EbayStdNpftLookup::key($sku)] ?? null,
+        ]);
+        if ($decision['bid'] > 0) {
+            $adjusted = DilVsSbidRule::applyCvr(
+                (float) $decision['bid'],
+                $views,
+                $sold,
+                (float) ($metric?->ebay_l60 ?? 0),
+                $cvr
+            );
+            $viewAdj = DilVsSbidRule::applyViewOver(
+                (float) $adjusted['bid'],
+                $views,
+                (float) ($metric?->l7_views ?? 0),
+                $viewsOver
+            );
+            $decision['bid'] = DilVsSbidRule::clampBid((float) $viewAdj['bid'], $cap);
+            $why = trim($adjusted['why'].' '.$viewAdj['why']);
+            if ($why !== '') {
+                $decision['label'] = trim($decision['label'].' '.$why);
+            }
+        }
+
+        if ($decision['off']) {
+            return ['skip' => null, 'off' => true, 'formatted' => null, 'label' => (string) ($decision['label'] ?? '')];
+        }
+
+        $formatted = EbayBidPercentage::forPush((float) $decision['bid']);
+        if ($formatted === null) {
+            return [
+                'skip' => $decision['label'] !== '' ? $decision['label'] : 'No S Bid for this Dil',
+                'off' => false,
+                'formatted' => null,
+                'label' => (string) ($decision['label'] ?? ''),
+            ];
+        }
+
+        return ['skip' => null, 'off' => false, 'formatted' => $formatted, 'label' => (string) ($decision['label'] ?? '')];
     }
 
     /**

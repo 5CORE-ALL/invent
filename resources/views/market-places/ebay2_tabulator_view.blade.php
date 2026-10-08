@@ -1352,11 +1352,6 @@
             if (!ebay2HasCampaignAdsRow(row)) {
                 return { bid: 0, color: '#6c757d', skip: true, title: 'No bid on /ebay2/campaign-ads' };
             }
-            const esBid = ebay2CampaignBidValue(row, 'ca_suggested_bid');
-            const cBid = ebay2CampaignBidValue(row, 'ca_bid_percentage');
-            if (!(esBid > 0) && !(cBid > 0)) {
-                return { bid: 0, color: '#6c757d', skip: true, title: 'No ES Bid or C Bid on /ebay2/campaign-ads' };
-            }
             if (typeof campaignSbid === 'function') return campaignSbid(row);
             return { bid: 0, color: '#6c757d', skip: true, title: 'No Dil vs SBid' };
         }

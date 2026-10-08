@@ -16,6 +16,7 @@ class FetchApiForEbayDataMetricData extends Command
 
         if ($service->fetchAndInsertEbayMetrics()) {
             $this->info('✅ eBay data metrics inserted successfully!');
+            \App\Support\DilVsSbidAutoPush::afterDataChange('ebay1');
         } else {
             $this->error('❌ Failed to fetch or insert eBay metrics.');
         }
