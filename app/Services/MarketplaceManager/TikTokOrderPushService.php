@@ -119,7 +119,17 @@ class TikTokOrderPushService
         if (trim((string) ($order->shopify_order_id ?? '')) !== '') {
             return (string) $order->shopify_order_id;
         }
-        $shopifyOrderId = $this->postTikTokOrder($config, $plan['payload']);
+        $refs = $this->tikTokShopifyDuplicateRefs($orderId, 'TT-');
+        $shopifyOrderId = $this->createShopifyOrderOnce(
+            'TikTokOrderPushService',
+            $refs,
+            function () use ($config, $refs) {
+                $found = $this->findExistingShopifyOrderByRefs($config, $refs, ['tiktok-'], ['tiktok_order_id'], 'TikTokOrderPushService');
+                // TikTok has always created when the search itself fails; the claim still stops parallel creates.
+                return ['id' => $found['id'] ?? null, 'matched_by' => $found['matched_by'] ?? null, 'error' => null];
+            },
+            fn () => $this->postTikTokOrder($config, $plan['payload'])
+        );
         if (! $shopifyOrderId) {
             return null;
         }
@@ -544,7 +554,8 @@ class TikTokOrderPushService
                     return $id;
                 }
 
-                $retryable = $response->status() === 429 || $response->status() >= 500;
+                // 429 = not created, safe to resend. A 5xx may have created the order; the claim re-searches before any retry.
+                $retryable = $response->status() === 429;
                 if ($retryable && $attempt < $maxAttempts) {
                     sleep($backoff[$attempt - 1] ?? 30);
 
@@ -597,6 +608,10 @@ class TikTokOrderPushService
         $id = $this->postOrder($config, ['order' => $orderPayload]);
         if ($id) {
             return $id;
+        }
+        // The slim retry is only for a rejected payload; after a 5xx/timeout Shopify may already have the order.
+        if (! ShopifyOrderCreateClaim::definitelyNotCreated($this->lastApiStatus)) {
+            return null;
         }
 
         $reason = strtolower((string) $this->lastFailureReason);

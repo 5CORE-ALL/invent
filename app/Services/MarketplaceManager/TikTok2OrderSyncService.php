@@ -7,9 +7,7 @@ use App\Models\MarketplaceSyncSettings;
 use App\Models\Tiktok2Order;
 use App\Services\TikTok2ShopService;
 use Carbon\Carbon;
-use Illuminate\Bus\UniqueLock;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 
 class TikTok2OrderSyncService
@@ -185,12 +183,12 @@ class TikTok2OrderSyncService
             }
 
             try {
-                $job = new ImportTikTok2OrderToShopify((int) $order->id);
-                (new UniqueLock(app('cache.store')))->release($job);
-                Queue::connection('database')->pushOn(
-                    MarketplaceManagerRegistry::queueFor('tiktok2'),
-                    $job
-                );
+                if (! MarketplaceShopifyImportQueue::push(
+                    new ImportTikTok2OrderToShopify((int) $order->id),
+                    MarketplaceManagerRegistry::queueFor('tiktok2')
+                )) {
+                    continue;
+                }
                 Tiktok2Order::query()
                     ->where('order_id', $orderId)
                     ->whereNull('shopify_order_id')

@@ -665,7 +665,8 @@ class WayfairOrderPushService
                     return $id;
                 }
 
-                $retryable = $response->status() === 429 || $response->status() >= 500;
+                // 429 = not created, safe to resend. A 5xx may have created the order; the claim re-searches before any retry.
+                $retryable = $response->status() === 429;
                 if ($retryable && $attempt < $maxAttempts) {
                     $wait = $backoff[$attempt - 1] ?? 30;
                     Log::warning('WayfairOrderPushService: Shopify order create retrying', [

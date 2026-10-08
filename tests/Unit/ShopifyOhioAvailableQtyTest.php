@@ -57,7 +57,25 @@ class ShopifyOhioAvailableQtyTest extends TestCase
     {
         $this->assertTrue(MarketplaceQtyReadBack::supports('amazon'));
         $this->assertTrue(MarketplaceQtyReadBack::supports('Faire'));
-        $this->assertFalse(MarketplaceQtyReadBack::supports('ebay2'));
+        foreach (['wayfair', 'ebay2', 'temu3', 'aliexpress', 'pls', 'b5cb2b', 'topdawg'] as $channel) {
+            $this->assertTrue(MarketplaceQtyReadBack::supports($channel), $channel);
+        }
         $this->assertFalse(MarketplaceQtyReadBack::supports('tiktok'));
+        $this->assertFalse(MarketplaceQtyReadBack::supports('bestbuy'));
+    }
+
+    public function test_sweep_slice_size_matches_how_each_marketplace_answers(): void
+    {
+        // One API call per SKU/listing: keep a run small.
+        $this->assertSame(MarketplaceQtyReadBack::PER_SKU_CAP, MarketplaceQtyReadBack::sweepSliceSize('ebay2'));
+        $this->assertSame(MarketplaceQtyReadBack::PER_SKU_CAP, MarketplaceQtyReadBack::sweepSliceSize('topdawg'));
+        $this->assertSame(MarketplaceQtyReadBack::PER_SKU_CAP, MarketplaceQtyReadBack::sweepSliceSize('aliexpress'));
+        // Batch lookups: larger but bounded.
+        $this->assertSame(MarketplaceQtyReadBack::BATCH_CAP, MarketplaceQtyReadBack::sweepSliceSize('wayfair'));
+        $this->assertSame(MarketplaceQtyReadBack::BATCH_CAP, MarketplaceQtyReadBack::sweepSliceSize('faire'));
+        // One paged pull answers the whole shop: take everything.
+        $this->assertSame(PHP_INT_MAX, MarketplaceQtyReadBack::sweepSliceSize('temu3'));
+        $this->assertSame(PHP_INT_MAX, MarketplaceQtyReadBack::sweepSliceSize('b5cb2b'));
+        $this->assertSame(PHP_INT_MAX, MarketplaceQtyReadBack::sweepSliceSize('pls'));
     }
 }

@@ -177,19 +177,63 @@ trait FindsExistingShopifyOrderByChannelRef
             return $localShopifyId;
         }
 
-        $existing = $this->findExistingShopifyOrderByRefs(
-            $config,
+        return $this->createShopifyOrderOnce(
+            $logContext,
             $refs,
-            $tagPrefixes,
-            $noteAttributeKeys,
-            $logContext
+            function () use ($config, $refs, $tagPrefixes, $noteAttributeKeys, $logContext) {
+                return $this->findExistingShopifyOrderByRefs($config, $refs, $tagPrefixes, $noteAttributeKeys, $logContext);
+            },
+            fn () => $this->postOrder($config, $payload)
         );
+    }
+
+    /**
+     * Claim the marketplace order, re-check Shopify, then create — so two processes can
+     * never both create it. A null return with "Push blocked to avoid duplicates" in
+     * lastFailureReason means retry later (the job treats it as retryable).
+     *
+     * @param  list<string>  $refs
+     * @param  callable(): array{id: ?string, matched_by: ?string, error: ?string}  $findExisting
+     * @param  callable(): ?string  $create
+     */
+    protected function createShopifyOrderOnce(string $logContext, array $refs, callable $findExisting, callable $create): ?string
+    {
+        $claim = ShopifyOrderCreateClaim::claim($logContext, $refs);
+        if ($claim['state'] === 'exists') {
+            if (property_exists($this, 'lastDuplicateLinkMessage')) {
+                $this->lastDuplicateLinkMessage = 'Already created on Shopify as '.$claim['shopify_order_id'].' (create claim). Create skipped.';
+            }
+            Log::info($logContext.': Shopify order already created for this marketplace order — linking', [
+                'shopify_order_id' => $claim['shopify_order_id'],
+                'refs' => $refs,
+            ]);
+
+            return (string) $claim['shopify_order_id'];
+        }
+        if ($claim['state'] === 'busy') {
+            $this->lastFailureReason = 'Another import is creating this order on Shopify right now. Push blocked to avoid duplicates.';
+            if (property_exists($this, 'lastApiStatus')) {
+                $this->lastApiStatus = null;
+            }
+            Log::info($logContext.': create already in progress elsewhere — skipped', ['refs' => $refs]);
+
+            return null;
+        }
+
+        try {
+            $existing = $findExisting();
+        } catch (\Throwable $e) {
+            ShopifyOrderCreateClaim::release($logContext, $refs);
+            throw $e;
+        }
         if (($existing['error'] ?? null) !== null) {
+            ShopifyOrderCreateClaim::release($logContext, $refs);
             $this->lastFailureReason = $existing['error'].' Push blocked to avoid duplicates.';
 
             return null;
         }
         if (! empty($existing['id'])) {
+            ShopifyOrderCreateClaim::complete($logContext, $refs, (string) $existing['id']);
             if (property_exists($this, 'lastDuplicateLinkMessage')) {
                 $this->lastDuplicateLinkMessage = 'Already exists in Shopify as '.$existing['id']
                     .' (matched '.$existing['matched_by'].'). Create skipped.';
@@ -202,8 +246,34 @@ trait FindsExistingShopifyOrderByChannelRef
 
             return (string) $existing['id'];
         }
+        if ($claim['taken_over']) {
+            Log::warning($logContext.': earlier create never confirmed; Shopify search found no copy — creating', ['refs' => $refs]);
+        }
 
-        return $this->postOrder($config, $payload);
+        if (property_exists($this, 'lastApiStatus')) {
+            $this->lastApiStatus = null;
+        }
+        $shopifyOrderId = null;
+        try {
+            $shopifyOrderId = $create();
+        } finally {
+            $shopifyOrderId = is_string($shopifyOrderId) ? trim($shopifyOrderId) : '';
+            if ($shopifyOrderId !== '') {
+                ShopifyOrderCreateClaim::complete($logContext, $refs, $shopifyOrderId);
+            } elseif (ShopifyOrderCreateClaim::definitelyNotCreated(property_exists($this, 'lastApiStatus') ? $this->lastApiStatus : null)) {
+                ShopifyOrderCreateClaim::release($logContext, $refs);
+            } else {
+                // 5xx / timeout: Shopify may have created it. Keep the claim; after
+                // STALE_MINUTES the next attempt searches Shopify again before creating.
+                Log::warning($logContext.': Shopify create result unknown — holding claim, will re-search before retrying', [
+                    'refs' => $refs,
+                    'status' => property_exists($this, 'lastApiStatus') ? $this->lastApiStatus : null,
+                    'reason' => property_exists($this, 'lastFailureReason') ? $this->lastFailureReason : null,
+                ]);
+            }
+        }
+
+        return $shopifyOrderId !== '' ? $shopifyOrderId : null;
     }
 
     /**

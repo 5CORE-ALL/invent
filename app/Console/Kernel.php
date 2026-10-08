@@ -1443,6 +1443,21 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Missing Mapping read-back sweep: every 15 min read the live marketplace qty for the next
+        // slice of linked SKUs and store it locally. Pushes write their target as the local qty, so
+        // without this a SKU the marketplace never applied (Wayfair feed, TopDawg review, PLS sale)
+        // looked "matched" forever. One process per channel; the pass/push above fix what surfaces.
+        foreach (\App\Services\MarketplaceManager\MarketplaceQtyReadBack::SUPPORTED as $i => $rbChannel) {
+            $minute = $i % 15;
+            $schedule->command('mm:readback-marketplace-qty', ['--channel' => [$rbChannel]])
+                ->cron($minute.','.($minute + 15).','.($minute + 30).','.($minute + 45).' * * * *')
+                ->timezone('Asia/Kolkata')
+                ->name('mm-readback-marketplace-qty-'.$rbChannel)
+                ->withoutOverlapping(25)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
         // Missing Mapping (/map-issues) — daily badge count task → tech-support@5core.com
         $ist($schedule->command('tasks:assign-missing-mapping-daily')
             ->dailyAt('15:00')
@@ -2978,6 +2993,14 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('mm-dispatch-unpushed-shopify')
             ->withoutOverlapping(40)
+            ->appendOutputTo($log);
+
+        // Hourly: cancel + restock any second Shopify copy of one marketplace order.
+        $schedule->command('mm:cancel-duplicate-shopify-orders --cancel --days=3')
+            ->hourlyAt(20)
+            ->timezone('Asia/Kolkata')
+            ->name('mm-cancel-duplicate-shopify-orders')
+            ->withoutOverlapping(50)
             ->appendOutputTo($log);
 
         // Every 30 minutes: fulfill leftover Shopify copies and push tracking to every channel.

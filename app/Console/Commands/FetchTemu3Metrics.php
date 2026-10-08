@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Temu3Metric;
 use App\Models\Temu3Pricing;
 use App\Services\Temu3AdsApiReportService;
+use App\Services\Temu3ApiService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -463,14 +464,23 @@ class FetchTemu3Metrics extends Command
                         continue;
                     }
 
-                    $skuSn = (string) ($sku['skuSn'] ?? $sku['outSkuSn'] ?? '');
+                    // Seller SKU (outSkuSn) is what temu3_metrics.sku holds; skuSn is Temu's own
+                    // code and matched nothing, so variation SKUs kept quantity NULL ("—").
+                    $outSkuSn = trim((string) ($sku['outSkuSn'] ?? ''));
+                    $skuSn = trim((string) ($sku['skuSn'] ?? ''));
                     $skuId = (string) ($sku['skuId'] ?? '');
                     $n = 0;
-                    if ($skuSn !== '') {
-                        $n = Temu3Metric::where('sku', $skuSn)->update(['quantity' => (int) $stock]);
+                    if ($outSkuSn !== '') {
+                        $n = Temu3Metric::where('sku', $outSkuSn)->update(['quantity' => (int) $stock]);
+                        if (! $n) {
+                            $n = Temu3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($outSkuSn)])->update(['quantity' => (int) $stock]);
+                        }
                     }
                     if (! $n && $skuId !== '') {
                         $n = Temu3Metric::where('sku_id', $skuId)->update(['quantity' => (int) $stock]);
+                    }
+                    if (! $n && $skuSn !== '') {
+                        $n = Temu3Metric::where('sku', $skuSn)->update(['quantity' => (int) $stock]);
                     }
                     $updated += $n;
                 }
@@ -481,6 +491,16 @@ class FetchTemu3Metrics extends Command
         } while (count($goodsList) >= 50 && ($pageNumber - 1) * 50 < $total);
 
         $this->info("Stock updated: {$updated} row(s)");
+
+        // Goods list omits stock for many variation SKUs. The per-SKU stock query (same as Temu 1)
+        // fills those in; it existed on Temu3ApiService but was never called.
+        try {
+            $skuUpdates = app(Temu3ApiService::class)->syncSkuListStock();
+            $this->info("SKU-list stock updates: {$skuUpdates} row(s)");
+        } catch (\Throwable $e) {
+            $this->warn('SKU-list stock sync failed: '.$e->getMessage());
+            Log::warning('FetchTemu3Metrics: syncSkuListStock failed', ['error' => $e->getMessage()]);
+        }
     }
 
     private function fetchBasePrice(): void

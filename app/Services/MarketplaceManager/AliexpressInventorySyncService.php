@@ -502,6 +502,37 @@ class AliexpressInventorySyncService
     }
 
     /**
+     * Store the qty AliExpress itself reports for each SKU (read-back from product info),
+     * so the AE Qty column and the mismatch pass judge the live listing rather than the
+     * last batch-update target that AliExpress may not have applied.
+     *
+     * @param  array<string, int>  $qtyBySku
+     */
+    public function recordMarketplaceQty(array $qtyBySku): void
+    {
+        $rows = [];
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $rows[] = ['product_id' => '', 'sku_code' => $sku, 'inventory' => max(0, (int) $qty)];
+            }
+        }
+        if ($rows === []) {
+            return;
+        }
+        $this->updateLocalStock($rows);
+        if (Schema::hasTable('product_stock_mappings') && Schema::hasColumn('product_stock_mappings', 'inventory_aliexpress')) {
+            foreach ($rows as $row) {
+                ProductStockMapping::query()
+                    ->where(function ($q) use ($row) {
+                        $q->where('sku', $row['sku_code'])->orWhere('sku', strtoupper($row['sku_code']));
+                    })
+                    ->update(['inventory_aliexpress' => $row['inventory']]);
+            }
+        }
+    }
+
+    /**
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
      */
     protected function updateLocalStock(array $rows): void

@@ -693,10 +693,9 @@ class B5cB2bOrderPushService
                 $this->lastFailureReason = $e->getMessage();
                 $this->lastApiStatus = null;
                 Log::error('B5cB2bOrderPushService: exception', ['error' => $e->getMessage()]);
-                if ($attempt >= 5) {
-                    return null;
-                }
-                sleep(2 * $attempt);
+
+                // A timed-out create may still have landed on Shopify; the claim re-searches before any retry.
+                return null;
             }
         }
 

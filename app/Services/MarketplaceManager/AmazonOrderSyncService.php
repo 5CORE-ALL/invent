@@ -157,7 +157,7 @@ class AmazonOrderSyncService
                     ->orWhereIn('import_status', MarketplaceShopifyImportQueue::DISPATCHABLE_IMPORT_STATUSES)
                     ->orWhere(function ($queued) {
                         $queued->where('import_status', 'queued')
-                            ->where('updated_at', '<', now()->subMinutes(2));
+                            ->where('updated_at', '<', now()->subMinutes(20));
                     });
             })
             ->where(function ($q) {
@@ -282,7 +282,7 @@ class AmazonOrderSyncService
                 $q->whereIn('import_status', ['ready', 'import_failed', 'failed'])
                     ->orWhere(function ($queued) {
                         $queued->where('import_status', 'queued')
-                            ->where('updated_at', '<', now()->subMinutes(2));
+                            ->where('updated_at', '<', now()->subMinutes(20));
                     });
             })
             ->where(function ($q) {
