@@ -90,7 +90,7 @@ final class AmazonAdsBgtReviewsRule
             $bands[] = [
                 'rev_from' => (float) ($band['rev_from'] ?? 0),
                 'rev_to' => (float) ($band['rev_to'] ?? 5),
-                'bgt' => (int) max(1, round((float) ($band['bgt'] ?? 1))),
+                'bgt' => AmazonAdsSbgt::normalizeBgtValue(max(1, (float) ($band['bgt'] ?? 1))),
                 'label' => (string) ($band['label'] ?? ''),
                 'color' => (string) ($band['color'] ?? '#6c757d'),
             ];
@@ -115,7 +115,7 @@ final class AmazonAdsBgtReviewsRule
         foreach ($bands as $i => $band) {
             $from = (float) ($band['rev_from'] ?? NAN);
             $to = (float) ($band['rev_to'] ?? NAN);
-            $bgt = (int) ($band['bgt'] ?? 0);
+            $bgt = (float) ($band['bgt'] ?? 0);
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
             }
@@ -167,7 +167,7 @@ final class AmazonAdsBgtReviewsRule
             if (! $hit) {
                 continue;
             }
-            $bgt = (int) ($band['bgt'] ?? 0);
+            $bgt = AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0);
 
             return [
                 'bgt' => $bgt > 0 ? $bgt : null,

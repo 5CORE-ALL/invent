@@ -91,7 +91,7 @@ final class AmazonAdsBgtPrcRule
             $bands[] = [
                 'prc_from' => (float) ($band['prc_from'] ?? 0),
                 'prc_to' => (float) ($band['prc_to'] ?? 9999),
-                'bgt' => (int) round((float) ($band['bgt'] ?? 0)),
+                'bgt' => AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0),
                 'label' => (string) ($band['label'] ?? ''),
                 'color' => (string) ($band['color'] ?? '#6c757d'),
             ];
@@ -139,7 +139,7 @@ final class AmazonAdsBgtPrcRule
         foreach ($bands as $i => $band) {
             $from = (float) ($band['prc_from'] ?? NAN);
             $to = (float) ($band['prc_to'] ?? NAN);
-            $bgt = (int) ($band['bgt'] ?? 0);
+            $bgt = (float) ($band['bgt'] ?? 0);
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
             }
@@ -188,7 +188,7 @@ final class AmazonAdsBgtPrcRule
             $from = (float) ($band['prc_from'] ?? 0);
             $to = (float) ($band['prc_to'] ?? 9999);
             if ($price >= $from && $price <= $to) {
-                $bgt = (int) ($band['bgt'] ?? 0);
+                $bgt = AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0);
                 if ($bgt < 0) {
                     return $empty;
                 }

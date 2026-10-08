@@ -35,6 +35,34 @@ class AmazonAdsSbgtTest extends TestCase
         $this->assertSame(0, AmazonAdsSbgt::sumFromParts(0, null, null));
     }
 
+    public function test_sum_with_decimal_parts_is_floored_to_minimum_whole_number(): void
+    {
+        $this->assertSame(4, AmazonAdsSbgt::sumFromParts(1.5, 1, 2, null, null)); // 4.5 → 4
+        $this->assertSame(4, AmazonAdsSbgt::sumFromParts(1.9, 1, 2, null, null)); // 4.9 → 4
+        $this->assertSame(5, AmazonAdsSbgt::sumFromParts(2.3, 2.7, null)); // float noise safe
+        $this->assertSame(6, AmazonAdsSbgt::sumFromParts(0.5, 0.5, 1, 1, 1, 2)); // 6.0
+        $this->assertSame(0, AmazonAdsSbgt::sumFromParts(0.4, 0.3, null)); // < 1 → pause
+    }
+
+    public function test_decimal_budget_is_pushed_as_floor(): void
+    {
+        $this->assertSame(4, AmazonAdsSbgt::parsePushableBudget(4.5));
+        $this->assertSame(4, AmazonAdsSbgt::parsePushableBudget('4.9'));
+        $this->assertSame(4, AmazonAdsSbgt::parsePushableBudget('4.00'));
+        $this->assertNull(AmazonAdsSbgt::parsePushableBudget(0.9));
+        $this->assertSame(4, AmazonAdsSbgt::floorBudget(4.5));
+        $this->assertSame(4, AmazonAdsSbgt::floorBudget(4.9));
+    }
+
+    public function test_normalize_bgt_value_keeps_decimals_and_whole_numbers(): void
+    {
+        $this->assertSame(3, AmazonAdsSbgt::normalizeBgtValue(3));
+        $this->assertSame(3, AmazonAdsSbgt::normalizeBgtValue('3.00'));
+        $this->assertSame(1.5, AmazonAdsSbgt::normalizeBgtValue('1.5'));
+        $this->assertSame(1.25, AmazonAdsSbgt::normalizeBgtValue(1.254));
+        $this->assertSame(0, AmazonAdsSbgt::normalizeBgtValue('x'));
+    }
+
     public function test_is_explicit_zero(): void
     {
         $this->assertTrue(AmazonAdsSbgt::isExplicitZero(0));

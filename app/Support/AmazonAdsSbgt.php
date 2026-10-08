@@ -19,7 +19,7 @@ final class AmazonAdsSbgt
 public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null): ?int
 {
     $has = false;
-        $sum = 0;
+        $sum = 0.0;
         foreach ([$bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil] as $part) {
             if ($part === null || $part === '') {
                 continue;
@@ -28,13 +28,41 @@ public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAc
                 continue;
             }
             $has = true;
-            $sum += (int) $part;
+            // Parts may carry decimals (e.g. 1.5); they are summed exactly and only the total is floored.
+            $sum += (float) $part;
         }
         if (! $has) {
             return null;
         }
 
-        return $sum < 1 ? 0 : $sum;
+        return self::floorBudget($sum);
+    }
+
+    /**
+     * Minimum whole dollar value (floor) of a decimal budget: 4.5 → 4, 4.9 → 4.
+     * Anything below 1 becomes 0 (pause suggestion). Float noise (e.g. 2.9999999999) is trimmed first.
+     */
+    public static function floorBudget(float $value): int
+    {
+        if (! is_finite($value)) {
+            return 0;
+        }
+        $n = (int) floor(round($value, 6));
+
+        return $n < 1 ? 0 : $n;
+    }
+
+    /**
+     * Rule slab BGT value. Whole numbers stay int (existing behaviour); decimals (e.g. 1.5) are kept to 2 places.
+     */
+    public static function normalizeBgtValue(mixed $raw): int|float
+    {
+        $n = is_numeric($raw) ? round((float) $raw, 2) : 0.0;
+        if (! is_finite($n)) {
+            return 0;
+        }
+
+        return $n == floor($n) ? (int) $n : $n;
     }
 
     public static function isExplicitZero(mixed $raw): bool
@@ -46,11 +74,12 @@ public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAc
             return false;
         }
 
-        return (int) $raw === 0;
+        return (int) round((float) $raw, 6) === 0;
     }
 
     /**
      * Daily budget dollars Amazon will accept (whole dollars 1–9999). 0 is not pushable.
+     * A decimal value is pushed as its floor (4.5 → 4, 4.9 → 4).
      */
     public static function parsePushableBudget(mixed $raw): ?int
     {
@@ -60,7 +89,7 @@ public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAc
         if (! is_numeric($raw)) {
             return null;
         }
-        $n = (int) $raw;
+        $n = self::floorBudget((float) $raw);
 
         return ($n >= 1 && $n <= 9999) ? $n : null;
     }

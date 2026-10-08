@@ -1337,6 +1337,7 @@
             var ltAcosHistoryUrl = @json(route('amazon.ads.lt-acos-history'));
             var sbidHistoryUrl = @json(route('amazon.ads.sbid-history'));
             var sbgtHistoryUrl = @json(route('amazon.ads.sbgt-history'));
+            var lbidHistoryUrl = @json(route('amazon.ads.lbid-history'));
             var u7PieDistribUrl = @json(url('/amazon-ads/u7-distribution')) + '/';
             var u7PieHistoryUrl = @json(url('/amazon-ads/u7-distribution-history')) + '/';
             window.amazonAdsBgtRule = @json($amazonAdsBgtRule ?? null);
@@ -1356,7 +1357,7 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value'];
-            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
+            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'lbidHistory', 'sbidHistory', 'sbgtHistory'];
             var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
@@ -1651,11 +1652,11 @@
                 var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
                 var name = row && row.campaignName != null ? String(row.campaignName) : '';
                 var ad = row && row.ad_type != null ? String(row.ad_type) : '';
-                var trend = kind === 'sbid' ? (row.sbid_trend || 'na') : (row.sbgt_trend || 'na');
-                var current = parseFloat(kind === 'sbid' ? row.sbid : row.sbgt);
+                var trend = kind === 'lbid' ? (row.lbid_trend || 'na') : (kind === 'sbid' ? (row.sbid_trend || 'na') : (row.sbgt_trend || 'na'));
+                var current = parseFloat(kind === 'lbid' ? row.last_sbid : (kind === 'sbid' ? row.sbid : row.sbgt));
                 if (kind === 'sbgt' && isFinite(current) && current === 0) trend = 'down';
                 var cls = trend === 'up' ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
-                var prev = kind === 'sbid' ? row.sbid_prev : row.sbgt_prev;
+                var prev = kind === 'lbid' ? row.lbid_prev : (kind === 'sbid' ? row.sbid_prev : row.sbgt_prev);
                 var prevTxt = (prev === null || prev === undefined || prev === '') ? '—' : Number(prev).toFixed(2);
                 var nowTxt = isFinite(current) ? current.toFixed(2) : '—';
                 var tip = 'Daily ' + label + ' history';
@@ -1781,6 +1782,12 @@
                 if (dil < 50) return '#28a745';
                 return '#e83e8c';
             }
+            // Rule parts (Views / CVR / PRC / Reviews / Dil) may carry decimals (e.g. 1.5).
+            // Only the SBGT total is floored (4.5 → 4) when it is saved / pushed.
+            function amzBgtPartNum(v) {
+                var n = parseFloat(v);
+                return isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+            }
             function fmtSbgt(cell) {
                 var v = cell.getValue();
                 var row = cell.getRow ? cell.getRow().getData() : {};
@@ -1804,17 +1811,21 @@
                 var t = parseInt(v, 10);
                 if (isNaN(t)) return amzDash();
                 var row = cell.getRow ? cell.getRow().getData() : {};
-                var views = parseInt(row && row.bgtViews, 10);
-                var cvr = parseInt(row && row.bgtCvr, 10);
-                var acos = parseInt(row && row.bgtAcos, 10);
-                var prc = parseInt(row && row.bgtPrc, 10);
-                var rev = parseInt(row && row.bgtReviews, 10);
-                var dilBgt = parseInt(row && row.bgtDil, 10);
+                var views = amzBgtPartNum(row && row.bgtViews);
+                var cvr = amzBgtPartNum(row && row.bgtCvr);
+                var acos = amzBgtPartNum(row && row.bgtAcos);
+                var prc = amzBgtPartNum(row && row.bgtPrc);
+                var rev = amzBgtPartNum(row && row.bgtReviews);
+                var dilBgt = amzBgtPartNum(row && row.bgtDil);
                 var bgt = parseFloat(row && row.bgt);
                 var inSync = isFinite(bgt) && Math.round(bgt) === t;
                 var color = t === 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
                 var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil';
+                var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0);
                 tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0);
+                if (Math.abs(partsSum - Math.round(partsSum)) > 0.0001) {
+                    tip += ' = ' + (Math.round(partsSum * 100) / 100) + ' → floored to ' + t;
+                }
                 if (t === 0) {
                     tip += ' · total is $0 — cannot push $0, campaign will be paused';
                 } else if (isFinite(bgt)) {
@@ -1825,7 +1836,7 @@
             function fmtBgtViews(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || v === '') return amzDash();
-                var t = parseInt(v, 10);
+                var t = amzBgtPartNum(v);
                 if (isNaN(t)) return amzDash();
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var color = (row && row.bgt_views_color) ? String(row.bgt_views_color) : '#6c757d';
@@ -1841,7 +1852,7 @@
             function fmtBgtCvr(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || v === '') return amzDash();
-                var t = parseInt(v, 10);
+                var t = amzBgtPartNum(v);
                 if (isNaN(t)) return amzDash();
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var color = (row && row.bgt_cvr_color) ? String(row.bgt_cvr_color) : '#6c757d';
@@ -1857,7 +1868,7 @@
             function fmtBgtPrc(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || v === '') return amzDash();
-                var t = parseInt(v, 10);
+                var t = amzBgtPartNum(v);
                 if (isNaN(t)) return amzDash();
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var color = (row && row.bgt_prc_color) ? String(row.bgt_prc_color) : '#6c757d';
@@ -1871,7 +1882,7 @@
             function fmtBgtReviews(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || v === '') return amzDash();
-                var t = parseInt(v, 10);
+                var t = amzBgtPartNum(v);
                 if (isNaN(t)) return amzDash();
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var color = (row && row.bgt_reviews_color) ? String(row.bgt_reviews_color) : '#6c757d';
@@ -1885,7 +1896,7 @@
             function fmtBgtDil(cell) {
                 var v = cell.getValue();
                 if (v === null || v === undefined || v === '') return amzDash();
-                var t = parseInt(v, 10);
+                var t = amzBgtPartNum(v);
                 if (isNaN(t)) return amzDash();
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var color = (row && row.bgt_dil_color) ? String(row.bgt_dil_color) : '#6c757d';
@@ -2156,6 +2167,15 @@
                     col.headerSort = false;
                     col.width = 48;
                     col.minWidth = 44;
+                    return;
+                }
+                if (c === 'lbidHistory') {
+                    col.title = 'Lbid History';
+                    col.headerTooltip = 'Daily live Amazon bid (Lbid). Dot opens the history chart.';
+                    col.formatter = function (cell) { return fmtMoneyHistoryDot(cell, 'lbid', 'Lbid'); };
+                    col.headerSort = false;
+                    col.width = 96;
+                    col.minWidth = 88;
                     return;
                 }
                 if (c === 'sbidHistory') {
@@ -2793,7 +2813,7 @@
             function amzClassifyColumn(field, title) {
                 var f = String(field || '');
                 var t = String(title || field || '').toLowerCase();
-                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
+                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|lbidHistory|sbidHistory|sbgtHistory)$/i.test(f)
                     || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
                     return 'ads';
                 }
@@ -3341,6 +3361,7 @@
             function amzHistoryMetricLabel() {
                 if (amzHistoryKind === 'cvr') return 'CVR';
                 if (amzHistoryKind === 'acos') return 'ACOS';
+                if (amzHistoryKind === 'lbid') return 'Lbid';
                 if (amzHistoryKind === 'sbid') return 'SBID';
                 if (amzHistoryKind === 'sbgt') return 'SBGT';
                 return 'CPC';
@@ -3370,6 +3391,7 @@
                 var values = points.map(function (p) {
                     if (amzHistoryKind === 'cvr') return Number(p.cvr);
                     if (amzHistoryKind === 'acos') return Number(p.acos);
+                    if (amzHistoryKind === 'lbid') return Number(p.lbid);
                     if (amzHistoryKind === 'sbid') return Number(p.sbid);
                     if (amzHistoryKind === 'sbgt') return Number(p.sbgt);
                     return Number(p.cpc);
@@ -3541,6 +3563,7 @@
                 var historyUrl = cpcAvgHistoryUrl;
                 if (amzHistoryKind === 'cvr') historyUrl = ltCvrHistoryUrl;
                 else if (amzHistoryKind === 'acos') historyUrl = ltAcosHistoryUrl;
+                else if (amzHistoryKind === 'lbid') historyUrl = lbidHistoryUrl;
                 else if (amzHistoryKind === 'sbid') historyUrl = sbidHistoryUrl;
                 else if (amzHistoryKind === 'sbgt') historyUrl = sbgtHistoryUrl;
                 var qs = '?campaign_id=' + encodeURIComponent(cid)
@@ -3572,7 +3595,7 @@
             }
             function amzOpenCpcAvgHistory(row) {
                 amzCpcAvgRow = row || {};
-                amzHistoryKind = (row && ['cvr', 'acos', 'sbid', 'sbgt'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
+                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
                 amzCpcAvgDays = 30;
                 var range = document.getElementById('amazonAdsCpcAvgRange');
                 if (range) range.value = '30';
@@ -4298,7 +4321,7 @@
                     if (!keep || typeof keep !== 'object') return;
                     var from = parseFloat(keep.views_from);
                     var to = parseFloat(keep.views_to);
-                    var bgt = parseInt(keep.bgt, 10);
+                    var bgt = parseFloat(keep.bgt);
                     out.push({
                         views_from: isFinite(from) ? from : '',
                         views_to: isFinite(to) ? to : '',
@@ -4346,7 +4369,7 @@
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
                         + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
                         + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose View L7 falls in this slab')
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -4355,7 +4378,7 @@
                         var idx = +el.dataset.idx, fld = el.dataset.field;
                         if (!amzBgtViewsBands[idx]) return;
                         if (fld === 'bgt') {
-                            amzBgtViewsBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                            amzBgtViewsBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         } else if (fld === 'views_from' || fld === 'views_to') {
                             amzBgtViewsBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         } else {
@@ -4411,7 +4434,7 @@
                         return {
                             views_from: (b.views_from === '' || b.views_from == null) ? NaN : parseFloat(b.views_from),
                             views_to: (b.views_to === '' || b.views_to == null) ? NaN : parseFloat(b.views_to),
-                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseFloat(b.bgt),
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
@@ -4469,7 +4492,7 @@
                     if (!keep || typeof keep !== 'object') return;
                     var from = parseFloat(keep.cvr_from);
                     var to = parseFloat(keep.cvr_to);
-                    var bgt = parseInt(keep.bgt, 10);
+                    var bgt = parseFloat(keep.bgt);
                     out.push({
                         cvr_from: isFinite(from) ? from : '',
                         cvr_to: isFinite(to) ? to : '',
@@ -4517,7 +4540,7 @@
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
                         + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose CVR L30 falls in this slab')
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -4526,7 +4549,7 @@
                         var idx = +el.dataset.idx, fld = el.dataset.field;
                         if (!amzBgtCvrBands[idx]) return;
                         if (fld === 'bgt') {
-                            amzBgtCvrBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                            amzBgtCvrBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         } else if (fld === 'cvr_from' || fld === 'cvr_to') {
                             amzBgtCvrBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         } else {
@@ -4582,7 +4605,7 @@
                         return {
                             cvr_from: (b.cvr_from === '' || b.cvr_from == null) ? NaN : parseFloat(b.cvr_from),
                             cvr_to: (b.cvr_to === '' || b.cvr_to == null) ? NaN : parseFloat(b.cvr_to),
-                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseFloat(b.bgt),
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
@@ -4639,7 +4662,7 @@
                     if (!keep || typeof keep !== 'object') return;
                     var from = parseFloat(keep.prc_from);
                     var to = parseFloat(keep.prc_to);
-                    var bgt = parseInt(keep.bgt, 10);
+                    var bgt = parseFloat(keep.bgt);
                     out.push({
                         prc_from: isFinite(from) ? from : '',
                         prc_to: isFinite(to) ? to : '',
@@ -4687,7 +4710,7 @@
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
                         + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose Price falls in this slab')
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -4695,7 +4718,7 @@
                     var writeBand = function (el) {
                         var idx = +el.dataset.idx, fld = el.dataset.field;
                         if (!amzBgtPrcBands[idx]) return;
-                        if (fld === 'bgt') amzBgtPrcBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        if (fld === 'bgt') amzBgtPrcBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         else if (fld === 'prc_from' || fld === 'prc_to') amzBgtPrcBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         else amzBgtPrcBands[idx][fld] = el.value;
                     };
@@ -4748,7 +4771,7 @@
                         return {
                             prc_from: (b.prc_from === '' || b.prc_from == null) ? NaN : parseFloat(b.prc_from),
                             prc_to: (b.prc_to === '' || b.prc_to == null) ? NaN : parseFloat(b.prc_to),
-                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseFloat(b.bgt),
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
@@ -4798,7 +4821,7 @@
                     if (!keep || typeof keep !== 'object') return;
                     var from = parseFloat(keep.rev_from);
                     var to = parseFloat(keep.rev_to);
-                    var bgt = parseInt(keep.bgt, 10);
+                    var bgt = parseFloat(keep.bgt);
                     out.push({
                         rev_from: isFinite(from) ? from : '',
                         rev_to: isFinite(to) ? to : '',
@@ -4849,7 +4872,7 @@
                 var lastTo = last ? parseFloat(last.rev_to) : NaN;
                 var from = isFinite(lastTo) ? +(lastTo + 0.01).toFixed(2) : 2.99;
                 var to = +(from + 0.49).toFixed(2);
-                var bgt = last ? (parseInt(last.bgt, 10) || 0) + 1 : 1;
+                var bgt = last ? (Math.floor(parseFloat(last.bgt)) || 0) + 1 : 1;
                 if (!isFinite(bgt) || bgt < 1) bgt = 1;
                 var i = amzBgtReviewsBands.length;
                 return {
@@ -4874,7 +4897,7 @@
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
                         + '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '" title="Campaigns on this grid page in this Reviews range">' + (counts[i] != null ? counts[i] : 0) + '</span></td>'
-                        + '<td><input type="number" step="1" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>'
+                        + '<td><input type="number" step="0.01" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -4882,7 +4905,7 @@
                     var writeBand = function (el) {
                         var idx = +el.dataset.idx, fld = el.dataset.field;
                         if (!amzBgtReviewsBands[idx]) return;
-                        if (fld === 'bgt') amzBgtReviewsBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                        if (fld === 'bgt') amzBgtReviewsBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         else if (fld === 'rev_from' || fld === 'rev_to') amzBgtReviewsBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         else amzBgtReviewsBands[idx][fld] = el.value;
                     };
@@ -4936,7 +4959,7 @@
                         return {
                             rev_from: (b.rev_from === '' || b.rev_from == null) ? NaN : parseFloat(b.rev_from),
                             rev_to: (b.rev_to === '' || b.rev_to == null) ? NaN : parseFloat(b.rev_to),
-                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseFloat(b.bgt),
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });
@@ -4984,7 +5007,7 @@
                     if (!keep || typeof keep !== 'object') return;
                     var from = parseFloat(keep.dil_from);
                     var to = parseFloat(keep.dil_to);
-                    var bgt = parseInt(keep.bgt, 10);
+                    var bgt = parseFloat(keep.bgt);
                     out.push({
                         dil_from: isFinite(from) ? from : '',
                         dil_to: isFinite(to) ? to : '',
@@ -5037,7 +5060,7 @@
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
                         + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose Dil% falls in this slab')
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed"></td>'
+                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5046,7 +5069,7 @@
                         var idx = +el.dataset.idx, fld = el.dataset.field;
                         if (!amzBgtDilBands[idx]) return;
                         if (fld === 'bgt') {
-                            amzBgtDilBands[idx][fld] = (el.value === '' ? '' : parseInt(el.value, 10));
+                            amzBgtDilBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         } else if (fld === 'dil_from' || fld === 'dil_to') {
                             amzBgtDilBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
                         } else {
@@ -5102,7 +5125,7 @@
                         return {
                             dil_from: (b.dil_from === '' || b.dil_from == null) ? NaN : parseFloat(b.dil_from),
                             dil_to: (b.dil_to === '' || b.dil_to == null) ? NaN : parseFloat(b.dil_to),
-                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseFloat(b.bgt),
                             label: (b.label || '').toString(), color: (b.color || '#6c757d').toString()
                         };
                     });

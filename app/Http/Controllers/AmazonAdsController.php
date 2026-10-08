@@ -186,7 +186,7 @@ class AmazonAdsController extends Controller
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
      * `campaignStatus` (Stat) sits immediately before `bgt` (Lbgt); `ruleStatus` follows Stat; `activeAgain` is the last column; `sbgt` and `sbgtAlert` sit beside Lbgt, then `bgtAcos`, `bgtViews`, `bgtCvr`, `bgtPrc`, `bgtReviews`, `bgtDil`.
-     * `sbidHistory` sits beside SBID and `sbgtHistory` beside SBGT. Both open the daily history chart.
+     * `lbidHistory` sits beside Lbid, `sbidHistory` beside SBID and `sbgtHistory` beside SBGT. All open the daily history chart.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -315,6 +315,13 @@ class AmazonAdsController extends Controller
 
         // History dots sit on the value they chart. They are not database columns.
         if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
+            if (in_array('last_sbid', $ordered, true)) {
+                $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'lbidHistory'));
+                $idxLbidHist = array_search('last_sbid', $ordered, true);
+                if ($idxLbidHist !== false) {
+                    array_splice($ordered, $idxLbidHist + 1, 0, ['lbidHistory']);
+                }
+            }
             if (in_array('sbid', $ordered, true)) {
                 $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sbidHistory'));
                 $idxSbidHist = array_search('sbid', $ordered, true);
@@ -4299,8 +4306,17 @@ class AmazonAdsController extends Controller
         return $this->dailyStoredMoneyHistory($request, 'sbgt', 'SBGT');
     }
 
-    private function dailyStoredMoneyHistory(Request $request, string $column, string $label): JsonResponse
+    /**
+     * Daily Lbid (live Amazon bid) history for the Lbid History dot. Stored `last_sbid` on each calendar report row.
+     */
+    public function lbidHistory(Request $request): JsonResponse
     {
+        return $this->dailyStoredMoneyHistory($request, 'last_sbid', 'Lbid', 'lbid');
+    }
+
+    private function dailyStoredMoneyHistory(Request $request, string $column, string $label, ?string $pointKey = null): JsonResponse
+    {
+        $pointKey = $pointKey ?? $column;
         $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
         if ($cid === '') {
             return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
@@ -4342,6 +4358,10 @@ class AmazonAdsController extends Controller
                 continue;
             }
             $parsed = self::moneyHistoryValue($r[$column] ?? null);
+            // A blank or 0 live bid is "not recorded yet" (see AmazonAdsStoredLiveBid), not a real $0 bid.
+            if ($column === 'last_sbid' && $parsed !== null && $parsed <= 0) {
+                $parsed = null;
+            }
             if (! array_key_exists($day, $byDate)) {
                 $byDate[$day] = $parsed;
             } elseif ($byDate[$day] === null && $parsed !== null) {
@@ -4357,7 +4377,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'ok' => true,
-            'points' => self::filledMoneyHistoryPoints($byDate, $days, $column),
+            'points' => self::filledMoneyHistoryPoints($byDate, $days, $pointKey),
         ]);
     }
 
@@ -4454,7 +4474,8 @@ class AmazonAdsController extends Controller
     private static function moneyHistoryPushTypes(string $table, string $column): array
     {
         $brand = $table === 'amazon_sb_campaign_reports';
-        if ($column === 'sbid') {
+        // A successful SBID push becomes the live bid, so it also fills gaps in the Lbid history.
+        if ($column === 'sbid' || $column === 'last_sbid') {
             return [$brand ? 'sb_sbid' : 'sp_sbid'];
         }
         if ($column === 'sbgt') {
@@ -4522,12 +4543,16 @@ class AmazonAdsController extends Controller
         }
         $prevSbid = self::previousDailyMoneyMap($table, array_keys($ids), 'sbid');
         $prevSbgt = self::previousDailyMoneyMap($table, array_keys($ids), 'sbgt');
+        $prevLbid = self::previousDailyMoneyMap($table, array_keys($ids), 'last_sbid');
         foreach ($rows as $i => $row) {
             $cid = trim((string) ($row['campaign_id'] ?? ''));
             $sbidPrev = $prevSbid[$cid] ?? null;
             $sbgtPrev = $prevSbgt[$cid] ?? null;
+            $lbidPrev = $prevLbid[$cid] ?? null;
             $rows[$i]['sbid_prev'] = $sbidPrev;
             $rows[$i]['sbgt_prev'] = $sbgtPrev;
+            $rows[$i]['lbid_prev'] = $lbidPrev;
+            $rows[$i]['lbid_trend'] = self::moneyHistoryTrend($row['last_sbid'] ?? null, $lbidPrev);
             $rows[$i]['sbid_trend'] = self::moneyHistoryTrend($row['sbid'] ?? null, $sbidPrev);
             $rows[$i]['sbgt_trend'] = self::moneyHistoryTrend($row['sbgt'] ?? null, $sbgtPrev);
         }
@@ -4576,16 +4601,19 @@ class AmazonAdsController extends Controller
         $today = Carbon::now(config('app.timezone'))->toDateString();
         $out = [];
         foreach (array_chunk($campaignIds, 200) as $chunk) {
-            $maxes = DB::table($table)
+            $maxesQuery = DB::table($table)
                 ->select('campaign_id', DB::raw('MAX(report_date_range) as md'))
                 ->whereIn('campaign_id', $chunk)
                 ->where('report_date_range', '<', $today)
                 ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
                 ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
                 ->whereNotNull($column)
-                ->where($column, '<>', '')
-                ->groupBy('campaign_id')
-                ->get();
+                ->where($column, '<>', '');
+            if ($column === 'last_sbid') {
+                // A blank or 0 live bid means "not recorded", so skip it like the Lbid column does.
+                $maxesQuery->whereRaw('(`last_sbid` + 0) > 0');
+            }
+            $maxes = $maxesQuery->groupBy('campaign_id')->get();
             if ($maxes->isEmpty()) {
                 continue;
             }
@@ -5695,7 +5723,7 @@ class AmazonAdsController extends Controller
             );
         }
         if ($forceLength === null
-            && (in_array('sbidHistory', $columns, true) || in_array('sbgtHistory', $columns, true))) {
+            && (in_array('sbidHistory', $columns, true) || in_array('sbgtHistory', $columns, true) || in_array('lbidHistory', $columns, true))) {
             $data = self::attachMoneyHistoryTrends($data, $table);
         }
 

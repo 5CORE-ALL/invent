@@ -89,7 +89,7 @@ final class AmazonAdsBgtDilRule
             $bands[] = [
                 'dil_from' => (float) ($band['dil_from'] ?? 0),
                 'dil_to' => (float) ($band['dil_to'] ?? 9999),
-                'bgt' => (int) round((float) ($band['bgt'] ?? 0)),
+                'bgt' => AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0),
                 'label' => (string) ($band['label'] ?? ''),
                 'color' => (string) ($band['color'] ?? '#6c757d'),
             ];
@@ -114,7 +114,7 @@ final class AmazonAdsBgtDilRule
         foreach ($bands as $i => $band) {
             $from = (float) ($band['dil_from'] ?? NAN);
             $to = (float) ($band['dil_to'] ?? NAN);
-            $bgt = (int) ($band['bgt'] ?? 0);
+            $bgt = (float) ($band['bgt'] ?? 0);
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
             }
@@ -163,7 +163,7 @@ final class AmazonAdsBgtDilRule
             $from = (float) ($band['dil_from'] ?? 0);
             $to = (float) ($band['dil_to'] ?? 9999);
             if ($dil >= $from && $dil <= $to) {
-                $bgt = (int) ($band['bgt'] ?? 0);
+                $bgt = AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0);
                 if ($bgt < 0) {
                     return $empty;
                 }

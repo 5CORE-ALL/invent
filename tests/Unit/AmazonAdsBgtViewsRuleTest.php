@@ -66,6 +66,18 @@ class AmazonAdsBgtViewsRuleTest extends TestCase
         $this->assertSame('Low', AmazonAdsBgtViewsRule::apply(0.0, $rule)['label']);
     }
 
+    public function test_slab_bgt_keeps_decimals(): void
+    {
+        $rule = AmazonAdsBgtViewsRule::normalizeRule([
+            'bands' => [
+                ['views_from' => 100, 'views_to' => 9999, 'bgt' => '2.5', 'label' => 'High', 'color' => '#111111'],
+                ['views_from' => 0, 'views_to' => 99, 'bgt' => 1, 'label' => 'Low', 'color' => '#222222'],
+            ],
+        ]);
+        $this->assertSame(2.5, AmazonAdsBgtViewsRule::apply(150.0, $rule)['bgt']);
+        $this->assertSame(1, AmazonAdsBgtViewsRule::apply(10.0, $rule)['bgt']);
+    }
+
     public function test_normalize_rejects_from_greater_than_to(): void
     {
         $this->expectException(\InvalidArgumentException::class);

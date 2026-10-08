@@ -4407,6 +4407,41 @@
             queueAmzPushPrcItems(items, { silent: true, retryFailed: true });
         }
         window.amzPushLeftoverBlues = amzPushLeftoverBlues;
+        /** Console helper: window.amzDebugBlueSkip() — why blue-badge SKUs are not queued by Push on reload. */
+        window.amzDebugBlueSkip = function() {
+            const why = { missing_amazon: [], no_plan: [], plan_equals_live: [], neg_snroi: [], queueable: [] };
+            const seen = {};
+            const rows = [];
+            if (typeof table !== 'undefined' && table && table.getRows) {
+                table.getRows().forEach(function(r) { rows.push(r.getData()); });
+            }
+            if (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) {
+                allTableData.forEach(function(d) { rows.push(d); });
+            }
+            rows.forEach(function(d) {
+                if (!amzPefIsChildRow(d)) return;
+                const sku = amzPefSku(d);
+                const key = String(sku).toUpperCase();
+                if (!sku || seen[key]) return;
+                if (typeof amazonHasBlueTriangle === 'function' && !amazonHasBlueTriangle(d)) return;
+                seen[key] = true;
+                if (d.is_missing_amazon) { why.missing_amazon.push(sku); return; }
+                const plan = (typeof amzRuleSpricePlanForRow === 'function') ? amzRuleSpricePlanForRow(d) : amzPushPrcPlanForQueue(d);
+                if (!plan || !(plan.effective > 0)) { why.no_plan.push(sku); return; }
+                const live = amzPefRound2(Number(d.price) || 0);
+                if (!(live > 0) || amzPefNearlyEqual(plan.effective, live)) {
+                    why.plan_equals_live.push(sku + ' (plan ' + plan.effective + ' / shown ' + amazonVisibleSprice(d) + ' / live ' + live + ')');
+                    return;
+                }
+                if (amzPushBlockedByNegSnroi(planToAmzPushPrcQueueItem(d, plan))) { why.neg_snroi.push(sku); return; }
+                why.queueable.push(sku);
+            });
+            console.log('reload push allowed:', amzPageReloadPushAllowed(),
+                '| _amzReloadPushQueued:', window._amzReloadPushQueued,
+                '| leftover passes:', window._amzLeftoverPasses, 'lastN:', window._amzLeftoverLastN);
+            Object.keys(why).forEach(function(k) { console.log(k, why[k].length, why[k]); });
+            return why;
+        };
         function amzTryQueuePushOnReload() {
             if (!amzPageReloadPushAllowed()) return;
             if (window._amzReloadPushQueued) return;
