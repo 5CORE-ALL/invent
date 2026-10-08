@@ -25,6 +25,7 @@ class RebuildTemuChannelHistory extends Command
         {--from= : First snapshot date YYYY-MM-DD (default: earliest day with a full order window)}
         {--to= : Last snapshot date YYYY-MM-DD (default: yesterday, Pacific; today is rewritten by channel:calculate-data)}
         {--channels=temu,temu2,temu3 : Comma list of channel keys}
+        {--with-y : Also recompute Y Sales / L7 Sales per day (slow: 8 single-day order scans per snapshot)}
         {--allow-partial : Also rebuild days whose 30-day window starts before the first stored order}
         {--dry-run : Show old vs new without writing}';
 
@@ -40,7 +41,8 @@ class RebuildTemuChannelHistory extends Command
         $to = $this->option('to')
             ? Carbon::parse((string) $this->option('to'), self::TZ)->startOfDay()
             : $today->copy()->subDay();
-        $ySvc = app(YesterdayMarketplaceMetricsService::class);
+        $withY = (bool) $this->option('with-y');
+        $ySvc = $withY ? app(YesterdayMarketplaceMetricsService::class) : null;
 
         foreach ($channels as $key) {
             if (! in_array($key, ['temu', 'temu2', 'temu3'], true)) {
@@ -122,14 +124,15 @@ class RebuildTemuChannelHistory extends Command
                 $sd['cogs'] = round($cogs, 2);
                 $sd['total_pft'] = round($pft, 2);
 
-                // Y Sales / L7 Sales for the same basis (same helper RebuildChannelMasterSnapshot uses).
-                $ySales = $ySvc->salesForPacificDate($key, $asOf->toDateString());
-                if ($ySales !== null && ($ySales > 0 || (float) ($sd['y_sales'] ?? 0) <= 0)) {
-                    $sd['y_sales'] = $ySales;
-                }
-                $l7Sales = $ySvc->salesForPacificWindow($key, $asOf->toDateString(), 7);
-                if ($l7Sales !== null && ($l7Sales > 0 || (float) ($sd['l7_sales'] ?? 0) <= 0)) {
-                    $sd['l7_sales'] = $l7Sales;
+                if ($withY && $ySvc !== null) {
+                    $ySales = $ySvc->salesForPacificDate($key, $asOf->toDateString());
+                    if ($ySales !== null && ($ySales > 0 || (float) ($sd['y_sales'] ?? 0) <= 0)) {
+                        $sd['y_sales'] = $ySales;
+                    }
+                    $l7Sales = $ySvc->salesForPacificWindow($key, $asOf->toDateString(), 7);
+                    if ($l7Sales !== null && ($l7Sales > 0 || (float) ($sd['l7_sales'] ?? 0) <= 0)) {
+                        $sd['l7_sales'] = $l7Sales;
+                    }
                 }
 
                 $sd['temu_history_rebuilt_at'] = now()->toDateTimeString();
