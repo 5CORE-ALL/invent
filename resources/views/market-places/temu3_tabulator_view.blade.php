@@ -148,14 +148,14 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;"
-                            title="GPFT % = GPFT$ ÷ L30 Sales">GPFT: 0%</span>
+                            title="GPFT % = Σ GPFT$ ÷ Σ (Temu Price × Qty) × 100">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
                             style="background-color: purple; color: white; font-weight: bold;"
-                            title="GROI % = Σ (Temu Price × margin − LP − Ship) × Qty ÷ Σ (LP × Qty) × 100">GROI: 0%</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;" title="Sum of GPFT$">GPFT$: $0</span>
+                            title="GROI % = Σ GPFT$ ÷ Σ (LP × Qty) × 100">GROI: 0%</span>
+                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;" title="GPFT$ = Σ (R Price × margin − LP − Temu Ship) × Qty">GPFT$: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="L30 Sales = Σ Price × Qty — Price = R Price × 1.136">L30 Sales: $0</span>
+                            title="L30 Sales = Σ Temu Price × Qty">L30 Sales: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;" title="Sum of COGS">COGS: $0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'temu3'])
                     </div>
@@ -227,15 +227,14 @@
 <script>
     // Same margin as /temu-tabulator — marketplace_percentages.Temu (no hardcode)
     const TEMU_MARGIN = {{ (float) $temuMargin }};
-    const TEMU_PRICE_MULT = 1.136;
+    // Same formula as /temu-tabulator (Temu 1): Base -> R Price (+$2.99 once) -> Temu Price = Base x 1.1364 (+$2.99 if <= $26.99).
+    const TEMU_PRICE_MULT = 1.1364;
     const TEMU_FREIGHT = 2.99;
     const TEMU_FREIGHT_CAP = 26.99;
+    /** Base = stored sheet unit as-is (goods-only); the $2.99 is added once in R Price / Temu Price. */
     function temuGoodsBase(rawUnit) {
         const b = parseFloat(rawUnit) || 0;
         if (b <= 0) return 0;
-        if (b < TEMU_FREIGHT_CAP) {
-            return Math.max(0, +(b - TEMU_FREIGHT).toFixed(2));
-        }
         return +b.toFixed(2);
     }
     function temuRowBase(row) {
@@ -254,30 +253,14 @@
         if (qty <= 0 || base <= 0) return 0;
         return base <= TEMU_FREIGHT_CAP ? base + TEMU_FREIGHT : base;
     }
-    function temuRPriceFromBase(basePrice) {
-        const b = parseFloat(basePrice) || 0;
-        if (b <= 0) return 0;
-        return b < 27 ? +(b + TEMU_FREIGHT).toFixed(2) : +b.toFixed(2);
-    }
-    function temuRowDisplayedBase(row) {
-        const quantity = parseInt(row && row.quantity_purchased) || 0;
-        return temuFbPrice(temuRowBase(row), quantity);
-    }
     function temuRowRPrice(row) {
-        return temuRPriceFromBase(temuRowDisplayedBase(row));
+        const qty = parseInt(row && row.quantity_purchased) || 0;
+        return temuFbPrice(temuRowBase(row), qty);
     }
     function temuRowTemuPrice(row) {
-        const rPrice = temuRowRPrice(row);
-        if (!(rPrice > 0)) return 0;
-        return +(rPrice * TEMU_PRICE_MULT).toFixed(2);
+        return temuPriceFromBase(temuRowBase(row));
     }
-    function temuRowTemuProfit(row) {
-        const temuPrice = temuRowTemuPrice(row);
-        if (!(temuPrice > 0)) return 0;
-        const lp = parseFloat(row && row.lp) || 0;
-        const ship = parseFloat(row && row.temu_ship) || 0;
-        return temuPrice * TEMU_MARGIN - lp - ship;
-    }
+    /** Per-unit profit on R Price (x Qty for totals) — GPFT$ / GPFT % / GROI %. */
     function temuRowGpftDollar(row) {
         const rPrice = temuRowRPrice(row);
         if (!(rPrice > 0)) return 0;
@@ -482,13 +465,11 @@
                     sorter: "number",
                     width: 62,
                     minWidth: 54,
-                    headerTooltip: "R Price = Base Price + $2.99 if Base Price < $27; otherwise Base Price",
+                    headerTooltip: "R Price = Base Price + $2.99 if Base Price ≤ $26.99; otherwise Base Price",
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "", precision: 2 },
                     mutator: function(value, data) {
-                        const quantity = parseInt(data.quantity_purchased) || 0;
-                        const basePrice = temuFbPrice(temuRowBase(data), quantity);
-                        return temuRPriceFromBase(basePrice).toFixed(2);
+                        return temuRowRPrice(data).toFixed(2);
                     }
                 },
                 {
@@ -498,7 +479,7 @@
                     sorter: "number",
                     width: 62,
                     minWidth: 54,
-                    headerTooltip: "Price = R Price × 1.136",
+                    headerTooltip: "Temu Price = Base × 1.1364; +$2.99 if that result ≤ $26.99",
                     mutator: function(value, data) {
                         return temuRowTemuPrice(data);
                     },
@@ -506,7 +487,7 @@
                         const rPrice = temuRowRPrice(cell.getRow().getData());
                         const price = parseFloat(cell.getValue()) || temuRowTemuPrice(cell.getRow().getData());
                         if (!(price > 0)) return '';
-                        const tip = 'Price = R Price × 1.136 → ' + rPrice.toFixed(2) + ' × 1.136 = ' + price.toFixed(2);
+                        const tip = 'Temu Price = Base × 1.1364 (+$2.99 if ≤ $26.99) → ' + price.toFixed(2);
                         return `<span title="${tip}">${price.toFixed(2)}</span>`;
                     }
                 },
@@ -577,9 +558,10 @@
                         const color = value >= 0 ? '#28a745' : '#dc3545';
                         return `<span style="color: ${color}; font-weight: bold;">${parseFloat(value).toFixed(2)}</span>`;
                     },
-                    headerTooltip: "GPFT$ = R Price × margin − LP − Temu Ship",
+                    headerTooltip: "GPFT$ = (R Price × margin − LP − Temu Ship) × Qty",
                     mutator: function(value, data) {
-                        return temuRowGpftDollar(data).toFixed(2);
+                        const quantity = parseInt(data.quantity_purchased) || 0;
+                        return (temuRowGpftDollar(data) * quantity).toFixed(2);
                     }
                 },
                 {
@@ -626,7 +608,7 @@
                     sorter: "number",
                     width: 62,
                     minWidth: 54,
-                    headerTooltip: "L30 Sales = Price × Qty. Price = R Price × 1.136",
+                    headerTooltip: "L30 Sales = Temu Price × Qty",
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "", precision: 2 },
                     mutator: function(value, data) {
@@ -711,10 +693,10 @@
                 const lp = parseFloat(row.lp) || 0;
                 const rowCogs = parseFloat(row.cogs);
                 totalQuantity += quantity;
-                totalGpftDollar += temuRowGpftDollar(row);
+                if (quantity > 0 && basePrice > 0) totalGpftDollar += temuRowGpftDollar(row) * quantity;
                 totalCogs += isFinite(rowCogs) ? rowCogs : (quantity * lp);
                 if (quantity > 0 && basePrice > 0) {
-                    const profit = temuRowTemuProfit(row) * quantity;
+                    const profit = temuRowGpftDollar(row) * quantity;
                     totalPft += profit;
                     totalL30Sales += quantity * temuPrice;
                 }
@@ -845,7 +827,7 @@
                             ...row,
                             base_price_total: temuRowBase(row),
                             temu_price: temuPrice,
-                            pft: temuRowGpftDollar(row).toFixed(2),
+                            pft: (temuRowGpftDollar(row) * qty).toFixed(2),
                             gpft_percent: temuRowGpftPercent(row),
                             groi_percent: temuRowGroiPercent(row),
                             l30_sales: l7Sales

@@ -905,33 +905,25 @@ class TemuShopifySalesService
                 continue;
             }
 
+            // Same formula as /temu-tabulator (Temu 1): sheet unit is the goods base, R Price adds
+            // the $2.99 once, Temu Price = base x 1.1364, GPFT$ x Qty, GROI = GPFT$ / COGS.
             $qty = (int) ($r['quantity_purchased'] ?? 0);
-            $raw = (float) ($r['base_price_total'] ?? 0);
-            $goods = $raw > 0
-                ? ($raw < 26.99 ? max(0.0, round($raw - 2.99, 2)) : round($raw, 2))
-                : 0.0;
+            $base = (float) ($r['base_price_total'] ?? 0);
+            if ($qty <= 0 || $base <= 0) {
+                continue;
+            }
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
 
-            $displayed = ($qty > 0 && $goods > 0)
-                ? ($goods <= 26.99 ? $goods + 2.99 : $goods)
-                : 0.0;
-            $rPrice = $displayed > 0
-                ? ($displayed < 27 ? round($displayed + 2.99, 2) : round($displayed, 2))
-                : 0.0;
-            $temuPrice = $rPrice > 0 ? round($rPrice * 1.136, 2) : 0.0;
+            $calc = self::temuPriceSalesAndProfit($base, $qty, $margin, $lp, $ship, false, true);
 
             $totalCogs += $lp * $qty;
-            if ($rPrice > 0) {
-                $totalGpft += $rPrice * $margin - $lp - $ship;
-            }
-            if ($qty > 0 && $goods > 0) {
-                $totalFull += $qty * $temuPrice;
-                $totalBase += $goods * $qty;
-                $totalGroiPft += ($temuPrice * $margin - $lp - $ship) * $qty;
-                $totalQty += $qty;
-                $orderSet[$orderId] = true;
-            }
+            $totalFull += $calc['sales'];
+            $totalBase += $base * $qty;
+            $totalGpft += $calc['profit'];
+            $totalGroiPft += $calc['profit'];
+            $totalQty += $qty;
+            $orderSet[$orderId] = true;
         }
 
         return [
