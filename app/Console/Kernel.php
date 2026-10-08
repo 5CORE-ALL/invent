@@ -2986,6 +2986,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Hourly from Shopify's side: any open unfulfilled marketplace order whose tracking is on
+        // /order-fulfillment is fulfilled, even if the row-based push above marked it done.
+        $schedule->command('order-fulfillment:reconcile-shopify --days=14 --limit=250 --budget=1500')
+            ->hourlyAt(35)
+            ->timezone('Asia/Kolkata')
+            ->name('order-fulfillment-reconcile-shopify')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Backup: queue Shopify imports for unpushed MM orders even if fetch jobs are stuck.
         // Must run inline — runInBackground() sits on the default queue and never dispatches mm-* imports.
         $schedule->command('mm:dispatch-unpushed-shopify')

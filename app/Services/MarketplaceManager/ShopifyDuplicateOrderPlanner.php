@@ -61,6 +61,36 @@ final class ShopifyDuplicateOrderPlanner
     }
 
     /**
+     * Marketplace slug + order ref from the order-ref tags, ref in its original case,
+     * e.g. [['slug' => 'temu', 'ref' => 'PO-211-123']].
+     *
+     * @param  array<string, mixed>  $order
+     * @return list<array{slug: string, ref: string}>
+     */
+    public static function orderRefs(array $order): array
+    {
+        $prefixes = self::TAG_PREFIXES;
+        usort($prefixes, fn ($a, $b) => strlen($b) <=> strlen($a));
+
+        $out = [];
+        foreach (preg_split('/\s*,\s*/', (string) ($order['tags'] ?? '')) ?: [] as $tag) {
+            $tag = trim((string) $tag);
+            foreach ($prefixes as $prefix) {
+                if (stripos($tag, $prefix) !== 0) {
+                    continue;
+                }
+                $ref = substr($tag, strlen($prefix));
+                if (self::looksLikeOrderRef(strtolower($ref))) {
+                    $out[strtolower($prefix.$ref)] = ['slug' => rtrim($prefix, '-'), 'ref' => $ref];
+                }
+                break;
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $orders  Non-cancelled Shopify orders sharing one key.
      * @param  array<string, true>  $referencedIds  Shopify order ids stored on local marketplace rows.
      * @return array{keeper: ?string, cancel: list<string>, review: ?string}

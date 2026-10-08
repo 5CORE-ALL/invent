@@ -39,6 +39,17 @@ class ShopifyDuplicateOrderPlannerTest extends TestCase
         $this->assertSame(['tiktok2-5799'], ShopifyDuplicateOrderPlanner::groupKeys(['tags' => 'tiktok2-5799']));
     }
 
+    public function test_order_refs_keep_case_and_pick_longest_prefix(): void
+    {
+        $refs = ShopifyDuplicateOrderPlanner::orderRefs(['tags' => 'temu2, temu2-PO-211-13492, ebay1-10-15266-07006, tiktok2-5799123, amazon']);
+
+        $this->assertSame([
+            ['slug' => 'temu2', 'ref' => 'PO-211-13492'],
+            ['slug' => 'ebay1', 'ref' => '10-15266-07006'],
+            ['slug' => 'tiktok2', 'ref' => '5799123'],
+        ], $refs);
+    }
+
     public function test_b5c_b2b_groups_by_source_identifier(): void
     {
         $keys = ShopifyDuplicateOrderPlanner::groupKeys([
