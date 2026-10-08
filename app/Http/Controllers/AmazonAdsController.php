@@ -186,7 +186,8 @@ class AmazonAdsController extends Controller
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
      * `campaignStatus` (Stat) sits immediately before `bgt` (Lbgt); `ruleStatus` follows Stat; `activeAgain` is the last column; `sbgt` and `sbgtAlert` sit beside Lbgt, then `bgtAcos`, `bgtViews`, `bgtCvr`, `bgtPrc`, `bgtReviews`, `bgtDil`.
-     * `lbidHistory` sits beside Lbid, `sbidHistory` beside SBID and `sbgtHistory` beside SBGT. All open the daily history chart.
+     * `sbidHistory` sits beside SBID and `sbgtHistory` beside SBGT. Both open the daily history chart.
+     * Lbid has no column of its own: its history dot sits inside the Lbid cell.
      */
     private static function displayColumnsForTable(string $table): array
     {
@@ -315,13 +316,6 @@ class AmazonAdsController extends Controller
 
         // History dots sit on the value they chart. They are not database columns.
         if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports', 'amazon_sd_campaign_reports'], true)) {
-            if (in_array('last_sbid', $ordered, true)) {
-                $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'lbidHistory'));
-                $idxLbidHist = array_search('last_sbid', $ordered, true);
-                if ($idxLbidHist !== false) {
-                    array_splice($ordered, $idxLbidHist + 1, 0, ['lbidHistory']);
-                }
-            }
             if (in_array('sbid', $ordered, true)) {
                 $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'sbidHistory'));
                 $idxSbidHist = array_search('sbid', $ordered, true);
@@ -5723,7 +5717,7 @@ class AmazonAdsController extends Controller
             );
         }
         if ($forceLength === null
-            && (in_array('sbidHistory', $columns, true) || in_array('sbgtHistory', $columns, true) || in_array('lbidHistory', $columns, true))) {
+            && (in_array('sbidHistory', $columns, true) || in_array('sbgtHistory', $columns, true) || in_array('last_sbid', $columns, true))) {
             $data = self::attachMoneyHistoryTrends($data, $table);
         }
 

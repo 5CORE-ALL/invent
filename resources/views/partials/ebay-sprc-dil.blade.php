@@ -2775,6 +2775,23 @@
         let ebayDgAutosaveTimer = null;
         let ebayDgAutosaveXhr = null;
         let ebayDgAutosaveSeq = 0;
+        /** Slabs / CVR / clearance NROI changed since S PRC was last written from the rules. */
+        let ebayDgRulesDirty = false;
+        /**
+         * Sprc Dil rule ON: write S PRC from the saved Target NROI (save only, no marketplace push).
+         * Macys / Purchasing Power / Shopify B2C already get a server-side apply when rules are saved.
+         */
+        async function ebayDgApplyAfterRulesSaved() {
+            if (!ebayDilOwnsSprice()) return 0;
+            if (ebayDgUsesBackgroundRuleApply() || ebayDgIsShopifyB2c()) {
+                ebayDgRulesDirty = false;
+                return 0;
+            }
+            if (typeof table === 'undefined' || !table) return 0;
+            const n = await ebayApplySprcDilToTable({ persist: true, push: false });
+            ebayDgRulesDirty = false;
+            return n;
+        }
         function postEbayDilGroiRules() {
             const rules = readEbayDilGroiRulesFromModal();
             const cvrAdj = ebayCvrGroiAdjNow();
@@ -2808,6 +2825,7 @@
             });
         }
         function ebayScheduleDilGroiAutosave() {
+            ebayDgRulesDirty = true;
             if (ebayDgAutosaveTimer) clearTimeout(ebayDgAutosaveTimer);
             ebayDgAutosaveTimer = setTimeout(function() {
                 ebayDgAutosaveTimer = null;
@@ -2815,7 +2833,11 @@
                 $('#ebay-dil-groi-status').text('Autosaving Dil slabs…');
                 postEbayDilGroiRules().then(function() {
                     if (seq !== ebayDgAutosaveSeq) return;
-                    $('#ebay-dil-groi-status').text('Autosaved. Rules only — S PRC was not changed.');
+                    $('#ebay-dil-groi-status').text(
+                        ebayDilOwnsSprice() && !ebayDgUsesBackgroundRuleApply() && !ebayDgIsShopifyB2c()
+                            ? 'Autosaved. S PRC updates from these targets when you press Save or close this window.'
+                            : 'Autosaved. Rules only — S PRC was not changed.'
+                    );
                 }, function(xhr) {
                     if (seq !== ebayDgAutosaveSeq) return;
                     if (xhr && xhr.statusText === 'abort') return;
@@ -2874,7 +2896,13 @@
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
                 try {
                     await saveEbayDilGroiRules();
-                    ebayDgToast('success', 'Sprc Dil rules saved');
+                    const applied = await ebayDgApplyAfterRulesSaved();
+                    if (applied > 0) {
+                        $('#ebay-dil-groi-status').text('Saved. S PRC updated on ' + applied + ' SKU(s) from the targets (not pushed).');
+                        ebayDgToast('success', 'Sprc Dil rules saved — S PRC updated on ' + applied + ' SKU(s)');
+                    } else {
+                        ebayDgToast('success', 'Sprc Dil rules saved');
+                    }
                 } catch (xhr) {
                     ebayDgToast('error', 'Save failed: ' + (
                         (xhr && xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
@@ -2910,7 +2938,12 @@
             });
             $('#ebayDilGroiModal').off('hidden.bs.modal.ebaydg').on('hidden.bs.modal.ebaydg', function() {
                 destroyEbayDilGroiPies();
-                ebayFlushDilGroiAutosave().then(null, function() { /* ignore abort / close */ });
+                ebayFlushDilGroiAutosave().then(function() {
+                    if (!ebayDgRulesDirty) return;
+                    return ebayDgApplyAfterRulesSaved().then(function(n) {
+                        if (n > 0) ebayDgToast('success', 'S PRC updated on ' + n + ' SKU(s) from the new targets (not pushed)');
+                    });
+                }).then(null, function() { /* ignore abort / close */ });
             });
             $('#ebayDilGroiModal').off('click.ebaydghist').on('click.ebaydghist', '.ebay-dg-hist-dot, #ebay-dil-groi-table .ebay-dg-count', function(e) {
                 const $dot = $(this).hasClass('ebay-dg-hist-dot')

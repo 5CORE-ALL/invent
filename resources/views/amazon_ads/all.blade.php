@@ -1357,7 +1357,7 @@
             var amzU7PieRefreshTimer = null;
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value'];
-            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'lbidHistory', 'sbidHistory', 'sbgtHistory'];
+            var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
             var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
@@ -1649,6 +1649,11 @@
             }
             function fmtMoneyHistoryDot(cell, kind, label) {
                 var row = cell.getRow ? cell.getRow().getData() : {};
+                return '<span class="amz-cpc-avg-cell">' + amzMoneyHistoryDotButton(row, kind, label) + '</span>';
+            }
+            // History dot button only (no wrapper), so it can sit inside another cell such as Lbid.
+            function amzMoneyHistoryDotButton(row, kind, label) {
+                row = row || {};
                 var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
                 var name = row && row.campaignName != null ? String(row.campaignName) : '';
                 var ad = row && row.ad_type != null ? String(row.ad_type) : '';
@@ -1664,10 +1669,8 @@
                 else if (trend === 'up') tip += ' · Up vs previous day $' + prevTxt + ' → $' + nowTxt;
                 else if (trend === 'down') tip += ' · Down vs previous day $' + prevTxt + ' → $' + nowTxt;
                 else tip += ' · Same as previous day $' + prevTxt;
-                return '<span class="amz-cpc-avg-cell">'
-                    + '<button type="button" class="amz-cpc-avg-history-dot ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
-                    + ' data-history="' + amzEsc(kind) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '"></button>'
-                    + '</span>';
+                return '<button type="button" class="amz-cpc-avg-history-dot ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
+                    + ' data-history="' + amzEsc(kind) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '"></button>';
             }
             function fmtLtAcos(cell) {
                 var v = cell.getValue();
@@ -2145,10 +2148,10 @@
                 if (c === 'impressions') { col.title = 'Impr'; col.formatter = fmtDashInt; return; }
                 if (c === 'last_sbid') {
                     col.title = 'Lbid';
-                    col.formatter = function (cell) { return amzFmtMoneyWithSync(cell, 'bid'); };
-                    col.headerTooltip = 'Live Amazon BID sync vs SBID. Green = verified live match.';
-                    col.minWidth = 64;
-                    col.width = 72;
+                    col.formatter = function (cell) { return amzFmtMoneyWithSync(cell, 'bid', 'lbid'); };
+                    col.headerTooltip = 'Live Amazon BID sync vs SBID. Green = verified live match. The small dot after the value opens the daily Lbid history chart.';
+                    col.minWidth = 78;
+                    col.width = 88;
                     return;
                 }
                 if (c === 'pushAlert') {
@@ -2167,15 +2170,6 @@
                     col.headerSort = false;
                     col.width = 48;
                     col.minWidth = 44;
-                    return;
-                }
-                if (c === 'lbidHistory') {
-                    col.title = 'Lbid History';
-                    col.headerTooltip = 'Daily live Amazon bid (Lbid). Dot opens the history chart.';
-                    col.formatter = function (cell) { return fmtMoneyHistoryDot(cell, 'lbid', 'Lbid'); };
-                    col.headerSort = false;
-                    col.width = 96;
-                    col.minWidth = 88;
                     return;
                 }
                 if (c === 'sbidHistory') {
@@ -2449,7 +2443,7 @@
                 var want = parseFloat(row && row.sbgt);
                 return isFinite(live) && isFinite(want) && Math.abs(live - want) > 0.015;
             }
-            function amzFmtMoneyWithSync(cell, field) {
+            function amzFmtMoneyWithSync(cell, field, historyKind) {
                 var row = cell.getRow ? cell.getRow().getData() : {};
                 var color = (row && row[field + '_sync_color']) ? String(row[field + '_sync_color']) : 'yellow';
                 var tip = (row && row[field + '_sync_tip'])
@@ -2458,7 +2452,8 @@
                         ? 'Pending — BID has not been pulled from Amazon and verified yet'
                         : 'Pending — BGT has not been pulled from Amazon and verified yet');
                 var valueHtml = field === 'bid' ? fmtSbid(cell) : fmtDashNumberRaw(cell);
-                return '<span class="amz-sync-cell">' + amzSyncDotHtml(color, tip) + valueHtml + '</span>';
+                var historyHtml = historyKind === 'lbid' ? amzMoneyHistoryDotButton(row, 'lbid', 'Lbid') : '';
+                return '<span class="amz-sync-cell">' + amzSyncDotHtml(color, tip) + valueHtml + historyHtml + '</span>';
             }
             function amzSyncBadgeHtml(color, count, field, active) {
                 var label = color === 'green' ? 'Updated' : (color === 'red' ? 'Not updated' : 'Pending');
@@ -2813,7 +2808,7 @@
             function amzClassifyColumn(field, title) {
                 var f = String(field || '');
                 var t = String(title || field || '').toLowerCase();
-                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|lbidHistory|sbidHistory|sbgtHistory)$/i.test(f)
+                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
                     || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
                     return 'ads';
                 }
