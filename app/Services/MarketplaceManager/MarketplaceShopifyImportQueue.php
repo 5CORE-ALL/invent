@@ -4,6 +4,7 @@ namespace App\Services\MarketplaceManager;
 
 use App\Models\MarketplaceSyncSettings;
 use Illuminate\Bus\UniqueLock;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -108,17 +109,28 @@ class MarketplaceShopifyImportQueue
         return $updated;
     }
 
-    public static function push(object $job, string $queue): void
+    /**
+     * Queue an import job. A unique job whose lock is held (same marketplace order already
+     * queued or running) is not queued again — releasing that lock here used to put two
+     * imports of one order on the queue. Returns false when skipped for that reason.
+     */
+    public static function push(object $job, string $queue): bool
     {
-        try {
-            (new UniqueLock(app('cache.store')))->release($job);
-        } catch (\Throwable $e) {
-            Log::debug('MarketplaceShopifyImportQueue: unique lock release skipped', [
-                'error' => $e->getMessage(),
-            ]);
+        if ($job instanceof ShouldBeUnique) {
+            try {
+                if (! (new UniqueLock(app('cache.store')))->acquire($job)) {
+                    return false;
+                }
+            } catch (\Throwable $e) {
+                Log::debug('MarketplaceShopifyImportQueue: unique lock check skipped', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         Queue::connection('database')->pushOn($queue, $job);
+
+        return true;
     }
 
     /**

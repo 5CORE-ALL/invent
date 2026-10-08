@@ -2995,6 +2995,14 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(40)
             ->appendOutputTo($log);
 
+        // Hourly: cancel + restock any second Shopify copy of one marketplace order.
+        $schedule->command('mm:cancel-duplicate-shopify-orders --cancel --days=3')
+            ->hourlyAt(20)
+            ->timezone('Asia/Kolkata')
+            ->name('mm-cancel-duplicate-shopify-orders')
+            ->withoutOverlapping(50)
+            ->appendOutputTo($log);
+
         // Every 30 minutes: fulfill leftover Shopify copies and push tracking to every channel.
         // Per-marketplace try/catch inside the command so one channel cannot stop the rest.
         $schedule->command('mm:push-orders-tracking --days=14 --skip-fetch --skip-inventory --tracking-limit=150')
