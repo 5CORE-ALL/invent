@@ -3657,6 +3657,10 @@
                     && window.spriceActiveRuleReady
                     && typeof window.spriceActiveRuleReady.then === 'function') {
                     window.spriceActiveRuleReady.then(start);
+                    setTimeout(function() {
+                        if (amzRuleSpriceSyncBusy || amzRuleSpricePersistActive > 0) return;
+                        start();
+                    }, 2000);
                     return;
                 }
                 start();
@@ -4357,7 +4361,9 @@
                 // used to hide these forever after Amazon INVALID.
                 if (d.is_missing_amazon) return;
                 if (typeof amazonHasBlueTriangle === 'function' && !amazonHasBlueTriangle(d)) return;
-                const plan = amzPushPrcPlanForQueue(d);
+                const plan = (typeof amzRuleSpricePlanForRow === 'function')
+                    ? amzRuleSpricePlanForRow(d)
+                    : amzPushPrcPlanForQueue(d);
                 if (!plan || !(plan.effective > 0)) return;
                 const live = amzPefRound2(Number(d.price) || 0);
                 if (!(live > 0) || amzPefNearlyEqual(plan.effective, live)) return;
@@ -4377,7 +4383,6 @@
         }
         function amzPushLeftoverBlues() {
             if (!amzPageReloadPushAllowed()) return;
-            if (amzRuleSpriceSyncBusy || amzRuleSpricePersistActive > 0 || amzRuleSpricePersistQueue.length) return;
             const items = collectAmzReloadPushItems();
             if (!items.length) {
                 window._amzLeftoverLastN = 0;
@@ -4390,23 +4395,63 @@
             if ((window._amzLeftoverPasses || 0) >= 12) return;
             window._amzLeftoverPasses = (window._amzLeftoverPasses || 0) + 1;
             window._amzReloadPushQueued = true;
+            if (typeof setAmzPushPrcProgress === 'function') {
+                setAmzPushPrcProgress({
+                    active: true,
+                    done: 0,
+                    total: items.length,
+                    pct: 0,
+                    msg: 'Starting…',
+                });
+            }
             queueAmzPushPrcItems(items, { silent: true, retryFailed: true });
         }
         window.amzPushLeftoverBlues = amzPushLeftoverBlues;
         function amzTryQueuePushOnReload() {
             if (!amzPageReloadPushAllowed()) return;
             if (window._amzReloadPushQueued) return;
-            if (!amzRuleSpriceSlabsReady) {
+            window._amzReloadPushWaits = (window._amzReloadPushWaits || 0) + 1;
+            if (!amzRuleSpriceSlabsReady && window._amzReloadPushWaits < 25) {
                 setTimeout(amzTryQueuePushOnReload, 400);
                 return;
             }
-            if (amzRuleSpriceSyncBusy || amzRuleSpricePersistActive > 0 || amzRuleSpricePersistQueue.length) {
-                setTimeout(amzTryQueuePushOnReload, 600);
+            const extraN = (typeof allTableData !== 'undefined' && Array.isArray(allTableData))
+                ? allTableData.length
+                : 0;
+            const tblN = (typeof table !== 'undefined' && table && typeof table.getDataCount === 'function')
+                ? table.getDataCount()
+                : 0;
+            if (!(extraN > 0) && !(tblN > 0) && window._amzReloadPushWaits < 50) {
+                setTimeout(amzTryQueuePushOnReload, 400);
                 return;
             }
             const items = collectAmzReloadPushItems();
+            if (!items.length) {
+                if (window._amzReloadPushWaits < 40) {
+                    if (typeof setAmzPushPrcProgress === 'function') {
+                        setAmzPushPrcProgress({
+                            active: true,
+                            done: 0,
+                            total: 0,
+                            pct: 0,
+                            msg: 'Starting…',
+                        });
+                    }
+                    setTimeout(amzTryQueuePushOnReload, 700);
+                    return;
+                }
+                return;
+            }
             window._amzReloadPushQueued = true;
-            if (!items.length) return;
+            if (typeof setAmzPushPrcProgress === 'function') {
+                setAmzPushPrcProgress({
+                    active: true,
+                    done: 0,
+                    total: items.length,
+                    pct: 0,
+                    msg: 'Starting…',
+                });
+            }
             queueAmzPushPrcItems(items, { silent: true, retryFailed: true });
         }
         function bindAmzReloadPushOnTable() {
