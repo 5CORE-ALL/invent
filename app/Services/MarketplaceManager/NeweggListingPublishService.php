@@ -11,6 +11,7 @@ use App\Models\NeweggPricing;
 use App\Models\NeweggPricingPrice;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use App\Support\Marketplace\LmpStdPrice;
 use App\Services\NeweggApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
@@ -104,13 +105,11 @@ class NeweggListingPublishService
             return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
         }
 
-        $price = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
-            ? round((float) $overrides['price'], 2)
-            : $this->resolvePrice($sku, $product);
+        $price = $this->resolvePrice($sku, $product);
         if ($price === null || $price <= 0) {
             return [
                 'success' => false,
-                'message' => 'No price found for '.$sku.'. Set Newegg pricing or Shopify price.',
+                'message' => 'Set Std Prc on LMP Overall for '.$sku.'.',
             ];
         }
 
@@ -481,37 +480,7 @@ class NeweggListingPublishService
 
     private function resolvePrice(string $sku, ProductMaster $product): ?float
     {
-        if (Schema::hasTable('newegg_pricing_prices')) {
-            $row = NeweggPricingPrice::query()->where('sku', $sku)->first()
-                ?: NeweggPricingPrice::query()->where('sku', strtoupper($sku))->first()
-                ?: NeweggPricingPrice::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-            if ($row && is_numeric($row->price) && (float) $row->price > 0) {
-                return round((float) $row->price, 2);
-            }
-        }
-
-        if (Schema::hasTable('newegg_pricing')) {
-            $row = NeweggPricing::query()->where('seller_part_number', $sku)->first()
-                ?: NeweggPricing::query()->whereRaw('UPPER(TRIM(seller_part_number)) = ?', [strtoupper($sku)])->first();
-            if ($row && is_numeric($row->selling_price) && (float) $row->selling_price > 0) {
-                return round((float) $row->selling_price, 2);
-            }
-        }
-
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $price = (float) ($shopify->price ?? $shopify->b2c_price ?? 0);
-        if ($price > 0) {
-            return round($price, 2);
-        }
-
-        $values = is_array($product->Values) ? $product->Values : [];
-        $lp = isset($values['lp']) && is_numeric($values['lp']) ? (float) $values['lp'] : 0.0;
-        $ship = isset($values['ship']) && is_numeric($values['ship']) ? (float) $values['ship'] : 0.0;
-        if ($lp > 0) {
-            return round($lp + $ship, 2);
-        }
-
-        return null;
+        return LmpStdPrice::forSku($sku);
     }
 
     private function resolveManufacturer(ProductMaster $product): string

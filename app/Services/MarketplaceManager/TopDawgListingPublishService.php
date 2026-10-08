@@ -12,6 +12,7 @@ use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -128,13 +129,11 @@ class TopDawgListingPublishService
             return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
         }
 
-        $price = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
-            ? round((float) $overrides['price'], 2)
-            : $this->resolvePrice($sku, $product);
+        $price = $this->resolvePrice($sku, $product);
         if ($price === null || $price <= 0) {
             return [
                 'success' => false,
-                'message' => 'No price found for '.$sku.'. Set TopDawg SPRICE or Shopify price.',
+                'message' => 'Set Std Prc on LMP Overall for '.$sku.'.',
             ];
         }
 
@@ -449,39 +448,7 @@ class TopDawgListingPublishService
 
     private function resolvePrice(string $sku, ProductMaster $product): ?float
     {
-        if (Schema::hasTable('topdawg_data_views')) {
-            $view = TopDawgDataView::query()->where('sku', $sku)->first()
-                ?: TopDawgDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-            $meta = is_array($view?->value) ? $view->value : [];
-            foreach (['sprice', 'SPRICE'] as $key) {
-                if (isset($meta[$key]) && is_numeric($meta[$key]) && (float) $meta[$key] > 0) {
-                    return round((float) $meta[$key], 2);
-                }
-            }
-        }
-
-        if (Schema::hasTable('topdawg_products')) {
-            $row = TopDawgProduct::query()->where('sku', $sku)->first()
-                ?: TopDawgProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-            if ($row && is_numeric($row->price) && (float) $row->price > 0) {
-                return round((float) $row->price, 2);
-            }
-        }
-
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $price = (float) ($shopify->price ?? $shopify->b2c_price ?? 0);
-        if ($price > 0) {
-            return round($price, 2);
-        }
-
-        $values = is_array($product->Values) ? $product->Values : [];
-        $lp = isset($values['lp']) && is_numeric($values['lp']) ? (float) $values['lp'] : 0.0;
-        $ship = isset($values['ship']) && is_numeric($values['ship']) ? (float) $values['ship'] : 0.0;
-        if ($lp > 0) {
-            return round($lp + $ship, 2);
-        }
-
-        return null;
+        return LmpStdPrice::forSku($sku);
     }
 
     private function resolveMsrp(string $sku, ProductMaster $product, float $price): float

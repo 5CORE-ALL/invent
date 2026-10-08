@@ -13,6 +13,7 @@ use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\ListingManagerFamily;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -127,7 +128,7 @@ class TikTokListingPublishService
 
         $price = $this->resolvePrice($primarySku, $hydrated);
         if ($price === null || $price <= 0) {
-            return ['success' => false, 'message' => 'No price found for '.$primarySku.'. Set Shopify / Amazon price first.'];
+            return ['success' => false, 'message' => 'Set Std Prc on LMP Overall for '.$primarySku.'.'];
         }
 
         $uploaded = $api->uploadImageMasterForListing($imageSku, (string) ($product->parent ?? ''));
@@ -149,7 +150,7 @@ class TikTokListingPublishService
             $childHydrated = $sku === $primarySku ? $hydrated : ListingManagerAmazonHydrator::hydrate($sku, false);
             $childPrice = $this->resolvePrice($sku, $childHydrated);
             if ($childPrice === null || $childPrice <= 0) {
-                return ['success' => false, 'message' => 'No price found for '.$sku.'.'];
+                return ['success' => false, 'message' => 'Set Std Prc on LMP Overall for '.$sku.'.'];
             }
             $qty = max(1, $this->resolveQuantity($sku, $childHydrated));
             $row = [
@@ -537,14 +538,7 @@ class TikTokListingPublishService
      */
     private function resolvePrice(string $sku, array $hydrated = []): ?float
     {
-        $price = isset($hydrated['price']) ? (float) $hydrated['price'] : 0.0;
-        if ($price > 0) {
-            return round($price, 2);
-        }
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $shopifyPrice = (float) ($shopify->price ?? $shopify->b2c_price ?? 0);
-
-        return $shopifyPrice > 0 ? round($shopifyPrice, 2) : null;
+        return LmpStdPrice::forSku($sku);
     }
 
     /**

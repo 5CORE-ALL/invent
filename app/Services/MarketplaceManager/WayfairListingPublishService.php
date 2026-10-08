@@ -12,6 +12,7 @@ use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\WayfairPartnerClassCatalog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -230,14 +231,16 @@ class WayfairListingPublishService
                 return ['success' => false, 'message' => 'No public https image for '.$sku.'. Add images on CP / Image Master.'];
             }
             $pkg = $this->packageSize($product, $sku);
+            $price = $this->resolvePrice($sku, $product);
+            if ($price === null || $price <= 0) {
+                return ['success' => false, 'message' => 'Set Std Prc on LMP Overall for '.$sku.'.'];
+            }
             $prepared[] = [
                 'sku' => $sku,
                 'product' => $product,
                 'title' => $title,
                 'images' => $images,
-                'price' => (isset($this->overrides['price']) && is_numeric($this->overrides['price']) && (float) $this->overrides['price'] > 0)
-                    ? (float) $this->overrides['price']
-                    : $this->resolvePrice($sku, $product),
+                'price' => $price,
                 'inv' => $this->shopifyInv($sku),
                 'pkg' => $pkg,
             ];
@@ -1141,27 +1144,7 @@ class WayfairListingPublishService
 
     private function resolvePrice(string $sku, ProductMaster $product): ?float
     {
-        if (Schema::hasTable('wayfair_pricing_prices')) {
-            $row = WayfairPricingPrice::query()
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-                ->first();
-            if ($row && is_numeric($row->price) && (float) $row->price > 0) {
-                return round((float) $row->price, 2);
-            }
-        }
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $price = (float) ($shopify->price ?? $shopify->b2c_price ?? 0);
-        if ($price > 0) {
-            return round($price, 2);
-        }
-        $values = is_array($product->Values) ? $product->Values : [];
-        foreach (['lp', 'LP', 'sprice', 'SPRICE', 'price'] as $key) {
-            if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
-                return round((float) $values[$key], 2);
-            }
-        }
-
-        return null;
+        return LmpStdPrice::forSku($sku);
     }
 
     private function shopifyInv(string $sku): int

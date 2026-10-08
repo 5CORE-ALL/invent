@@ -10,6 +10,7 @@ use App\Services\ShopifyPLSApiService;
 use App\Services\ShopifyPlsTokenService;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -132,10 +133,7 @@ class DirectStoreListingPublishService
         $descriptionFromDraft = $description !== '';
         $description = $description !== '' ? $description : trim((string) ($hydrated['description'] ?? ''));
 
-        $price = null;
-        if ($primary && isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0) {
-            $price = round((float) $overrides['price'], 2);
-        }
+        $price = LmpStdPrice::forSku($sku);
 
         $images = $primary && is_array($overrides['images'] ?? null) ? $overrides['images'] : [];
         if ($images === []) {
@@ -177,7 +175,7 @@ class DirectStoreListingPublishService
             'width_in' => $dims['width'],
             'height_in' => $dims['height'],
             'price' => $price,
-            'create_price' => $price ?? (isset($hydrated['price']) && (float) $hydrated['price'] > 0 ? round((float) $hydrated['price'], 2) : null),
+            'create_price' => $price,
             'quantity' => $quantity,
             'images' => array_slice($images, 0, 10),
             'upc' => $upc,
@@ -257,7 +255,7 @@ class DirectStoreListingPublishService
             return ['success' => false, 'message' => 'Title is required to create a PLS listing.'];
         }
         if ($item['create_price'] === null) {
-            return ['success' => false, 'message' => 'Price is required to create a PLS listing.'];
+            return ['success' => false, 'message' => 'Set Std Prc on LMP Overall before creating a PLS listing.'];
         }
 
         $variant = [
@@ -626,7 +624,7 @@ class DirectStoreListingPublishService
         if ($categoryId !== null) {
             $payload['categories'] = [$categoryId];
         }
-        $price = $local ? $item['price'] : ($item['price'] ?? $this->b2bPricingSprice($sku) ?? $item['create_price']);
+        $price = $item['price'] ?? $item['create_price'];
         if ($price !== null) {
             $payload['price'] = $price;
         }
@@ -645,7 +643,7 @@ class DirectStoreListingPublishService
                 return ['success' => false, 'message' => 'Title is required to create a B2B listing.'];
             }
             if ($price === null) {
-                return ['success' => false, 'message' => 'No B2B price for '.$sku.'. Set S PRC on /shopify-b2b-pricing, then publish again.'];
+                return ['success' => false, 'message' => 'Set Std Prc on LMP Overall before creating a B2B listing for '.$sku.'.'];
             }
             if (! isset($payload['brand_id'])) {
                 $payload['brand'] = '5 CORE';

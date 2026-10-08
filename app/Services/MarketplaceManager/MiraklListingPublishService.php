@@ -12,6 +12,7 @@ use App\Models\ProductMaster;
 use App\Models\PurchasingPowerListingStatus;
 use App\Models\PurchasingPowerProduct;
 use App\Models\ShopifySku;
+use App\Support\Marketplace\LmpStdPrice;
 use App\Services\BestBuyApiService;
 use App\Services\MacysApiService;
 use App\Services\PurchasingPowerApiService;
@@ -120,13 +121,11 @@ class MiraklListingPublishService
             return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
         }
 
-        $price = isset($overrides['price']) && is_numeric($overrides['price']) && (float) $overrides['price'] > 0
-            ? round((float) $overrides['price'], 2)
-            : $this->resolvePrice($sku, $product, $channel);
+        $price = $this->resolvePrice($sku, $product, $channel);
         if ($price === null || $price <= 0) {
             return [
                 'success' => false,
-                'message' => 'No price found for '.$sku.'. Set '.$label.' price or Shopify price.',
+                'message' => 'Set Std Prc on LMP Overall for '.$sku.'.',
             ];
         }
 
@@ -735,19 +734,7 @@ class MiraklListingPublishService
 
     private function resolvePrice(string $sku, ProductMaster $product, string $channel): ?float
     {
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $price = (float) ($shopify->price ?? $shopify->b2c_price ?? 0);
-        if ($price > 0) {
-            return round($price, 2);
-        }
-        $values = is_array($product->Values) ? $product->Values : [];
-        $lp = isset($values['lp']) && is_numeric($values['lp']) ? (float) $values['lp'] : 0.0;
-        $ship = isset($values['ship']) && is_numeric($values['ship']) ? (float) $values['ship'] : 0.0;
-        if ($lp > 0) {
-            return round($lp + $ship, 2);
-        }
-
-        return null;
+        return LmpStdPrice::forSku($sku);
     }
 
     private function resolveDescription(ProductMaster $product, string $title): string

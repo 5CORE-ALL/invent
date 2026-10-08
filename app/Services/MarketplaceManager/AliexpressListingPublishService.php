@@ -10,6 +10,7 @@ use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
 use App\Support\Marketplace\AliexpressListingCounts;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -126,11 +127,11 @@ class AliexpressListingPublishService
                 return ['success' => false, 'message' => 'SKU not found in product master: '.$sku];
             }
             $isSeed = strcasecmp($sku, $seedSku) === 0;
-            $price = $isSeed && $overridePrice !== null ? $overridePrice : $this->resolvePrice($sku, $product);
+            $price = $this->resolvePrice($sku, $product);
             if ($price === null || $price <= 0) {
                 return [
                     'success' => false,
-                    'message' => 'No price found for '.$sku.'. Set Shopify price or AliExpress Std Prc.',
+                    'message' => 'Set Std Prc on LMP Overall for '.$sku.'.',
                 ];
             }
             $images = $isSeed && $overrideImages !== [] ? $overrideImages : $this->productImages($product, $sku);
@@ -931,30 +932,7 @@ class AliexpressListingPublishService
 
     private function resolvePrice(string $sku, ProductMaster $product): ?float
     {
-        if (Schema::hasTable('aliexpress_pricing_prices')) {
-            $row = AliexpressPricingPrice::query()->where('sku', $sku)->first()
-                ?: AliexpressPricingPrice::query()
-                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-                    ->first();
-            if ($row && is_numeric($row->price) && (float) $row->price > 0) {
-                return round((float) $row->price, 2);
-            }
-        }
-
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $price = (float) ($shopify->price ?? $shopify->b2c_price ?? 0);
-        if ($price > 0) {
-            return round($price, 2);
-        }
-
-        $values = is_array($product->Values) ? $product->Values : [];
-        foreach (['lp', 'LP', 'sprice', 'SPRICE', 'price'] as $key) {
-            if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
-                return round((float) $values[$key], 2);
-            }
-        }
-
-        return null;
+        return LmpStdPrice::forSku($sku);
     }
 
     private function shopifyInv(string $sku): int

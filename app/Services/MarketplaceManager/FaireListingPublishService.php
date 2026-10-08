@@ -11,6 +11,7 @@ use App\Services\FaireApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -104,13 +105,10 @@ class FaireListingPublishService
         foreach ($publishSkus as $sku) {
             $product = $products->get($sku);
             $price = $this->resolveWholesalePrice($sku, $product);
-            if (($price === null || $price <= 0) && $overridePrice !== null && $overridePrice > 0) {
-                $price = $overridePrice;
-            }
             if ($price === null || $price <= 0) {
                 return [
                     'success' => false,
-                    'message' => 'No Faire wholesale price (SPRICE) for '.$sku.'. Set SPRICE on Faire pricing first.',
+                    'message' => 'Set Std Prc on LMP Overall for '.$sku.'.',
                 ];
             }
             $images = $this->productImages($product);
@@ -909,30 +907,7 @@ class FaireListingPublishService
 
     private function resolveWholesalePrice(string $sku, ProductMaster $product): ?float
     {
-        $view = FaireDataView::query()->where('sku', $sku)->first();
-        $meta = is_array($view?->value) ? $view->value : [];
-        foreach (['SPRICE', 'sprice'] as $key) {
-            if (isset($meta[$key]) && is_numeric($meta[$key]) && (float) $meta[$key] > 0) {
-                return round((float) $meta[$key], 2);
-            }
-        }
-
-        $metric = FaireMetric::query()->where('sku', $sku)->first();
-        if ($metric && is_numeric($metric->price) && (float) $metric->price > 0) {
-            return round((float) $metric->price, 2);
-        }
-
-        $values = is_array($product->Values) ? $product->Values : [];
-        foreach (['SPRICE', 'sprice', 'lp'] as $key) {
-            if (isset($values[$key]) && is_numeric($values[$key]) && (float) $values[$key] > 0) {
-                return round((float) $values[$key], 2);
-            }
-        }
-
-        $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
-        $price = (float) ($shopify->price ?? 0);
-
-        return $price > 0 ? round($price, 2) : null;
+        return LmpStdPrice::forSku($sku);
     }
 
     private function resolveRetailPrice(string $sku, ProductMaster $product, float $wholesale): float
