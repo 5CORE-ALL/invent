@@ -1433,11 +1433,11 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            // Temu / Temu 2 / Temu 3: NROI% = GROI% − Ads% (same as /temu-decrease after Ads reduce).
-            // Fixes stale cache rows that still store (PFT−Spend)/COGS.
-            $adsPctForNroi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Ads%'] ?? $row['TACOS %'] ?? 0));
-            $gRoi = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['G Roi'] ?? 0));
-            $row['N ROI'] = round($gRoi - $adsPctForNroi, 2);
+            // NROI% = NPFT$ / COGS. NPFT$ = GPFT$ − ad spend.
+            $pftDollars = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
+            $cogsDollars = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
+            $spendDollars = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? $row['KW Spent'] ?? 0));
+            $row['N ROI'] = round(TemuShopifySalesService::nroiPercent($pftDollars, $spendDollars, $cogsDollars), 2);
         }
         unset($row);
 
@@ -1453,13 +1453,14 @@ class ChannelMasterController extends Controller
     {
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            $temuKey = $this->temuMasterChannelKey($name);
-            if (! in_array($name, ['Temu', 'Temu 2', 'Temu 3', 'Temu3'], true)) {
+            $temuKey = strtolower(str_replace([' ', '-', '&', '/'], '', $name));
+            if (! in_array($temuKey, ['temu', 'temu2', 'temutwo', 'temu3', 'temuthree'], true)) {
                 continue;
             }
 
-            $isTemu2 = $name === 'Temu 2';
-            $isTemu3 = $temuKey === 'temu3';
+            $isTemu2 = in_array($temuKey, ['temu2', 'temutwo'], true);
+            $isTemu3 = in_array($temuKey, ['temu3', 'temuthree'], true);
+            $temuKey = $isTemu3 ? 'temu3' : ($isTemu2 ? 'temu2' : 'temu');
             try {
                 $liveSales = $isTemu3
                     ? $this->getTemu3TabulatorSalesSummary()
@@ -1483,7 +1484,11 @@ class ChannelMasterController extends Controller
                     $row['cogs'] = round((float) ($liveSales['total_cogs'] ?? 0), 2);
                     if ($isTemu3) {
                         $row['N PFT'] = round($gProfitPct, 2).'%';
-                        $row['N ROI'] = round($gRoi, 2);
+                        $row['N ROI'] = round(TemuShopifySalesService::nroiPercent(
+                            (float) ($liveSales['total_pft'] ?? 0),
+                            0.0,
+                            (float) ($liveSales['total_cogs'] ?? 0)
+                        ), 2);
                         $row['sales_page_link'] = '/temu3-tabulator';
                         if (empty($row['missing_link'])) {
                             $row['missing_link'] = '/temu3-decrease';
@@ -1494,7 +1499,9 @@ class ChannelMasterController extends Controller
                         $row['TACOS %'] = round($tacos, 2).'%';
                         $row['Ads%'] = round($tacos, 2).'%';
                         $row['N PFT'] = round($gProfitPct - $tacos, 2).'%';
-                        $row['N ROI'] = round($gRoi - $tacos, 2);
+                        $pftDollars = (float) ($liveSales['total_pft'] ?? 0);
+                        $cogsDollars = (float) ($liveSales['total_cogs'] ?? 0);
+                        $row['N ROI'] = round(TemuShopifySalesService::nroiPercent($pftDollars, $spend, $cogsDollars), 2);
                     }
                 }
             }
@@ -1586,7 +1593,9 @@ class ChannelMasterController extends Controller
             $row['TACOS %'] = round($adsPct, 2).'%';
             $row['TACOS'] = round($adsPct, 2);
             $row['N PFT'] = round($gProfitPct - $adsPct, 2).'%';
-            $row['N ROI'] = round($gRoi - $adsPct, 2);
+            $pftDollars = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
+            $cogsDollars = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
+            $row['N ROI'] = round(TemuShopifySalesService::nroiPercent($pftDollars, $sp, $cogsDollars), 2);
         }
         unset($row);
 
@@ -2237,6 +2246,7 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
+            $rows = $this->overlayLiveTemuSalesOnChannelRows($rows);
             $rows = $this->overlayLiveTemu1AdsOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
             $rows = $this->overlayLiveTemuViewsOnChannelRows($rows);
@@ -2487,7 +2497,9 @@ class ChannelMasterController extends Controller
             $row['TACOS %'] = round($adsPct, 2).'%';
             $row['TACOS'] = round($adsPct, 2);
             $row['N PFT'] = round($gProfitPct - $adsPct, 2).'%';
-            $row['N ROI'] = round($gRoi - $adsPct, 2);
+            $pftDollars = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total PFT'] ?? 0));
+            $cogsDollars = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['cogs'] ?? 0));
+            $row['N ROI'] = round(TemuShopifySalesService::nroiPercent($pftDollars, $totalAdSpend, $cogsDollars), 2);
         }
         unset($row);
 
@@ -7787,9 +7799,9 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast method: Get channel data from channel_master_calculated_data only.
-     * Page load does not recompute sales/views/reviews. Refresh that table with
-     * php artisan channel:calculate-data.
+     * Fast method: Get channel data from channel_master_calculated_data.
+     * Temu, Temu 2, and Temu 3 sales and profit are replaced from orders on this request.
+     * Refresh the saved table with php artisan channel:calculate-data.
      */
     public function getViewChannelDataFast(Request $request)
     {
@@ -8736,18 +8748,10 @@ class ChannelMasterController extends Controller
                 $nPftRecalculated = $gpftPercent - $adsPercentage;
                 $row['N PFT'] = round($nPftRecalculated, 2) . '%';
 
-                // Temu / Temu 2: NROI% = GROI% − Ads% (matches /temu-decrease & /temu2-decrease).
-                // Other channels: NROI% = (Gross Profit − Ad Spend) / COGS × 100.
-                if (in_array($key, ['temu', 'temu2', 'temu3', 'temuthree'], true)) {
-                    $gRoi = (float) str_replace(['$', ',', '%'], '', $row['G Roi'] ?? 0);
-                    $row['N ROI'] = round($gRoi - $adsPercentage, 2);
-                } else {
-                    $totalPft = (float) str_replace(['$', ',', '%'], '', $row['Total PFT'] ?? 0);
-                    $cogs = (float) str_replace(['$', ',', '%'], '', $row['cogs'] ?? 0);
-                    $netProfitAmount = $totalPft - $totalAdSpend;
-                    $nRoiRecalculated = $cogs > 0 ? ($netProfitAmount / $cogs) * 100 : 0;
-                    $row['N ROI'] = round($nRoiRecalculated, 2);
-                }
+                // NROI% = (GPFT$ − ad spend) / COGS × 100 for every channel, including Temu.
+                $totalPft = (float) str_replace(['$', ',', '%'], '', $row['Total PFT'] ?? 0);
+                $cogs = (float) str_replace(['$', ',', '%'], '', $row['cogs'] ?? 0);
+                $row['N ROI'] = round(TemuShopifySalesService::nroiPercent($totalPft, $totalAdSpend, $cogs), 2);
             } else {
                 // Reverb: Ads%/TACOS stay as Bump%; expose bump fees as Total Ad Spend
                 // so the toolbar Spend / Ads% / NPFT badges include Reverb.
@@ -12129,12 +12133,9 @@ class ChannelMasterController extends Controller
         $temuAdMetrics = $this->fetchAdMetricsFromTables('temu');
         $totalAdSpend = (float) ($temuAdMetrics['Total Ad Spend'] ?? $this->fetchTotalAdSpendFromTables('temu'));
         $tacosPercentage = $l30Sales > 0 ? round(($totalAdSpend / $l30Sales) * 100, 2) : 0.0;
-        $adsPercentage = isset($temuAdMetrics['Ads%'])
-            ? (float) $temuAdMetrics['Ads%']
-            : $tacosPercentage;
-        $nPft = round($gProfitPct - $tacosPercentage, 2);
-        // Match /temu-decrease badge: NROI% = GROI% − Ads% (updates in lockstep when Ads% drops).
-        $nRoi = round($gRoi - $adsPercentage, 2);
+        $adsPercentage = $tacosPercentage;
+        $nPft = round($gProfitPct - $adsPercentage, 2);
+        $nRoi = round(TemuShopifySalesService::nroiPercent($totalProfit, $totalAdSpend, $totalCogs), 2);
         $adClicks = (int) ($temuAdMetrics['clicks'] ?? 0);
         $adSales = (float) ($temuAdMetrics['ad_sales'] ?? 0);
         $adSold = (int) ($temuAdMetrics['ad_sold'] ?? 0);
@@ -12280,8 +12281,7 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
         $adsPercentage = $tacosPercentage;
         $nPft = $gProfitPct - $tacosPercentage;
-        // Match /temu2-decrease: NROI% = GROI% − Ads%.
-        $nRoi = $gRoi - $adsPercentage;
+        $nRoi = TemuShopifySalesService::nroiPercent($totalProfit, $totalAdSpend, $totalCogs);
 
         // Growth = ((L30 - L60) / L60) * 100.
         // Final fallback only if neither historical snapshot nor static file gave us a value.
@@ -17482,6 +17482,19 @@ class ChannelMasterController extends Controller
 
             // Yesterday-page charts: one point per Pacific day from saved snapshots.
             // never L30 rolling snapshots (those mixed ~43k L30 with a 1.5k last day).
+            $temuReportChart = $this->buildTemuReportMetricChart($channel, $metric, $days, $isAll);
+            if ($temuReportChart !== null) {
+                $temuReportChart = $this->pinChartSeriesLastToTable(
+                    $temuReportChart,
+                    $channel,
+                    $metric,
+                    $request->input('badge_value'),
+                    $isAll
+                );
+
+                return response()->json(['success' => true, 'data' => $temuReportChart]);
+            }
+
             $dailyChartMetrics = ['y_sales', 'l30_orders', 'qty', 'total_views', 'cvr', 'gprofit', 'groi', 'ad_spend', 'ads_pct', 'npft', 'nroi'];
             if ($useDailyWindow && in_array($metric, $dailyChartMetrics, true)) {
                 $chartData = $metric === 'y_sales'
@@ -19844,10 +19857,20 @@ class ChannelMasterController extends Controller
 
             foreach ($rows as $row) {
                 $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data);
-                if (array_key_exists('l30_sales', $sd) && abs((float) $sd['l30_sales'] - $live) < 1) {
+                $sales = (float) ($m['sales'] ?? 0);
+                $pft = (float) ($m['pft'] ?? 0);
+                $cogs = (float) ($m['cogs'] ?? 0);
+                $gp = $sales > 0 ? round(($pft / $sales) * 100, 2) : 0.0;
+                $salesMatch = array_key_exists('l30_sales', $sd) && abs((float) $sd['l30_sales'] - $live) < 1;
+                $gpMatch = abs((float) ($sd['gprofit_percent'] ?? 0) - $gp) < 0.05;
+                if ($salesMatch && $gpMatch) {
                     continue;
                 }
                 $sd['l30_sales'] = $live;
+                $sd['total_pft'] = round($pft, 2);
+                $sd['cogs'] = round($cogs, 2);
+                $sd['gprofit_percent'] = $gp;
+                $sd['groi_percent'] = $cogs > 0 ? round(($pft / $cogs) * 100, 2) : 0.0;
                 if (isset($m['orders'])) {
                     $sd['l30_orders'] = (int) $m['orders'];
                 }
@@ -21308,6 +21331,85 @@ class ChannelMasterController extends Controller
      *
      * @return array<int, array{date: string, value: float}>
      */
+    /**
+     * Rolling L30 for Temu / Temu 2 / Temu 3 using sales amount, GPFT$, and COGS.
+     * Each point is the same window the table cell uses, so the last dot is not
+     * a different formula spliced onto older percents.
+     *
+     * @return list<array{date: string, value: float}>|null
+     */
+    private function buildTemuReportMetricChart(string $channel, string $metric, int $days, bool $isAll): ?array
+    {
+        if ($isAll || ! in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
+            return null;
+        }
+        if (! in_array($metric, ['l30_sales', 'gprofit', 'groi', 'npft', 'nroi', 'pft'], true)) {
+            return null;
+        }
+
+        $end = Carbon::yesterday('America/Los_Angeles')->startOfDay();
+        $span = $days > 0 ? $days : 30;
+        $start = $end->copy()->subDays($span - 1);
+        $byDay = TemuShopifySalesService::reportTotalsByDate(
+            $start->copy()->subDays(29)->startOfDay(),
+            $end->copy()->endOfDay(),
+            $channel
+        );
+
+        $spendByDate = [];
+        $snapshots = \App\Models\ChannelMasterSummary::query()
+            ->where('channel', $channel)
+            ->whereBetween('snapshot_date', [$start->toDateString(), $end->copy()->addDay()->toDateString()])
+            ->get(['snapshot_date', 'summary_data']);
+        foreach ($snapshots as $row) {
+            $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
+            $chartDate = Carbon::parse($row->snapshot_date)->subDay()->toDateString();
+            $spendByDate[$chartDate] = (float) ($sd['total_ad_spend'] ?? 0);
+        }
+        $liveSpend = $channel === 'temu3' ? 0.0 : $this->fetchTotalAdSpendFromTables($channel);
+
+        $out = [];
+        $cursor = $start->copy();
+        $carriedSpend = 0.0;
+        while ($cursor->lte($end)) {
+            $sales = 0.0;
+            $pft = 0.0;
+            $cogs = 0.0;
+            for ($i = 0; $i < 30; $i++) {
+                $cell = $byDay[$cursor->copy()->subDays($i)->toDateString()] ?? null;
+                if (! is_array($cell)) {
+                    continue;
+                }
+                $sales += (float) ($cell['sales'] ?? 0);
+                $pft += (float) ($cell['pft'] ?? 0);
+                $cogs += (float) ($cell['cogs'] ?? 0);
+            }
+            $ymd = $cursor->toDateString();
+            if (isset($spendByDate[$ymd])) {
+                $carriedSpend = $spendByDate[$ymd];
+            }
+            $spend = $cursor->equalTo($end) ? $liveSpend : $carriedSpend;
+            $value = match ($metric) {
+                'l30_sales' => round($sales, 2),
+                'gprofit' => $sales > 0 ? round(($pft / $sales) * 100, 1) : null,
+                'groi' => $cogs > 0 ? round(($pft / $cogs) * 100, 1) : null,
+                'npft' => $sales > 0 ? round((($pft - $spend) / $sales) * 100, 1) : null,
+                'nroi' => $cogs > 0 ? round(TemuShopifySalesService::nroiPercent($pft, $spend, $cogs), 1) : null,
+                'pft' => round($pft - $spend, 2),
+                default => null,
+            };
+            if ($value !== null) {
+                $out[] = [
+                    'date' => $cursor->format('M d'),
+                    'value' => $value,
+                ];
+            }
+            $cursor->addDay();
+        }
+
+        return $out;
+    }
+
     private function buildDailyWindowChart(string $channel, string $metric, int $days, bool $isAll): array
     {
         $end = now('America/Los_Angeles')->subDay();

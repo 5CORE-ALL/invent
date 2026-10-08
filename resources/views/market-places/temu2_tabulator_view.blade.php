@@ -131,16 +131,16 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;"
-                            title="GPFT % = Σ GPFT$ ÷ Σ (Temu Price × Qty) × 100">GPFT: 0%</span>
+                            title="GPFT % = Σ GPFT$ ÷ Σ Sales amount × 100. GPFT$ = (Sales × 0.95) − LP − Ship. Sales = base + shipping received when price &lt; $30.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
                             style="background-color: purple; color: white; font-weight: bold;"
                             title="GROI % = Σ GPFT$ ÷ Σ (LP × Qty) × 100">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
-                            title="GPFT$ = Σ (R Price × margin − LP − Temu Ship) × Qty">GPFT$: $0</span>
+                            title="GPFT$ = Σ (Sales amount × 0.95 − LP − Ship) × Qty">GPFT$: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                             style="color: white; font-weight: bold;"
-                            title="L30 Sales = Σ official line sales (base + freight) — same dollars as Y Sales / Temu Seller Central. SKU match = /new-temu2 (normalize + no-space).">L30 Sales: $0</span>
+                            title="L30 Sales = Σ sales amount. Sales amount = base + shipping received when the sales price is under $30.">L30 Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge"
                             style="color: white; font-weight: bold;"
                             title="Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">Temu Full Price Sales: $0</span>
@@ -226,18 +226,41 @@
         const base = temuRowBase(row);
         return (qty > 0 && base > 0) ? qty * base : 0;
     }
-    /** Per-unit profit on R Price — GPFT$ / GPFT % / GROI %. */
-    function temuRowRPriceProfit(row) {
-        const rPrice = temuRowRPrice(row);
-        if (!(rPrice > 0)) return 0;
+    const TEMU_REPORT_MARGIN = 0.95;
+    const TEMU_SALES_CAP = 30;
+    /** Sales amount per unit: base + shipping received when the sales price is under $30. */
+    function temuReportSalesUnit(row) {
+        const qty = parseInt(row && row.quantity_purchased) || 0;
+        const listed = parseFloat(row && row.listing_base_price) || 0;
+        const line = parseFloat(row && row.line_sales) || 0;
+        const lineUnit = (qty > 0 && line > 0) ? line / qty : 0;
+        const goods = (listed > 0 && !(lineUnit > 0 && listed > lineUnit + 0.5)) ? listed : 0;
+        if (goods > 0) {
+            if (goods >= TEMU_SALES_CAP) return +goods.toFixed(2);
+            if (lineUnit > goods + 0.009) return +lineUnit.toFixed(2);
+            return +(goods + TEMU_FREIGHT).toFixed(2);
+        }
+        if (lineUnit > 0) return +lineUnit.toFixed(2);
+        const base = parseFloat(row && row.base_price_total) || 0;
+        if (!(base > 0)) return 0;
+        if (base >= TEMU_SALES_CAP) return +base.toFixed(2);
+        return +(base + TEMU_FREIGHT).toFixed(2);
+    }
+    function temuReportProfitUnit(row) {
+        const salesUnit = temuReportSalesUnit(row);
+        if (!(salesUnit > 0)) return 0;
         const lp = parseFloat(row && row.lp) || 0;
         const ship = parseFloat(row && row.temu_ship) || 0;
-        return rPrice * TEMU_MARGIN - lp - ship;
+        return salesUnit * TEMU_REPORT_MARGIN - lp - ship;
+    }
+    /** Per-unit GPFT$ = (sales amount × 0.95) − LP − ship. */
+    function temuRowRPriceProfit(row) {
+        return temuReportProfitUnit(row);
     }
     function temuRowGpftPercent(row) {
-        const temuPrice = temuRowTemuPrice(row);
-        if (!(temuPrice > 0)) return 0;
-        return (temuRowRPriceProfit(row) / temuPrice) * 100;
+        const salesUnit = temuReportSalesUnit(row);
+        if (!(salesUnit > 0)) return 0;
+        return (temuReportProfitUnit(row) / salesUnit) * 100;
     }
     function temuRowGroiPercent(row) {
         const lp = parseFloat(row && row.lp) || 0;
@@ -683,16 +706,16 @@
                 if (quantity > 0 && basePrice > 0) {
                     totalWeightedPrice += basePrice * quantity;
                     totalQuantityForPrice += quantity;
-                    totalPft += temuRowRPriceProfit(row) * quantity;
-                    totalL30Sales += temu2LineSales(row);
+                    totalPft += temuReportProfitUnit(row) * quantity;
+                    totalL30Sales += temuReportSalesUnit(row) * quantity;
                     totalTemuFullPriceSales += quantity * temuPrice;
                     totalCogs += lp * quantity;
                 }
             });
 
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-            const pftPercentage = totalTemuFullPriceSales > 0
-                ? (totalPft / totalTemuFullPriceSales) * 100
+            const pftPercentage = totalL30Sales > 0
+                ? (totalPft / totalL30Sales) * 100
                 : 0;
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 

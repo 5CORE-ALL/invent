@@ -455,16 +455,17 @@ class YesterdayMarketplaceMetricsService
 
         $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
         $ads = $this->temuAdMetrics('temu_campaign_reports', $date);
+        $sales = (float) ($m['sales'] ?? 0);
 
         return $this->pack(
-            (float) $m['base_sales'],
-            (float) $m['sales'],
+            $sales,
+            $sales,
             (float) $m['pft'],
             (float) $m['cogs'],
             $ads['spend'],
             (int) $m['orders'],
             (int) $m['qty'],
-            (float) $m['sales'],
+            $sales,
             $ads['sales']
         );
     }
@@ -482,23 +483,23 @@ class YesterdayMarketplaceMetricsService
 
         $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, true);
         $ads = $this->temuAdMetrics('temu2_campaign_reports', $date);
-        $full = (float) ($m['full_sales'] ?? $m['sales'] ?? 0);
+        $sales = (float) ($m['sales'] ?? 0);
 
         return $this->pack(
-            (float) ($m['base_sales'] ?? $m['sales'] ?? 0),
-            $full,
+            $sales,
+            $sales,
             (float) $m['pft'],
             (float) $m['cogs'],
             $ads['spend'],
             (int) $m['orders'],
             (int) $m['qty'],
-            $full,
+            $sales,
             $ads['sales']
         );
     }
 
     /**
-     * Temu 3 sheet: Full Temu Price sales, no ads.
+     * Temu 3: sales amount and GPFT$ at margin 0.95, no ads.
      *
      * @return array<string, mixed>
      */

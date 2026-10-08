@@ -3604,8 +3604,7 @@
                         title: "NROI %",
                         field: "N ROI",
                         hozAlign: "center",
-                        // Most channels: (Gross Profit − Ad Spend) / COGS × 100.
-                        // Temu / Temu 2 / Temu 3: GROI% − Ads% (same as /temu-decrease after Ads reduce).
+                        // NROI% = (GPFT$ − ad spend) / COGS × 100. NPFT% = GPFT% − Ads%.
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
@@ -5273,7 +5272,7 @@
                 const avgNpft = avgGprofit - avgAdsPercent;
 
                 // NROI% = COGS-weighted average of each active channel's N ROI column.
-                // Temu / Temu 2 / Temu 3 are GROI% − Ads%, not (PFT − Spend) / COGS.
+                // Each channel's N ROI is (GPFT$ − ad spend) / COGS.
                 const netProfit = totalPft - totalAdSpend;
                 const avgNroi = nroiWeight > 0 ? (nroiWeighted / nroiWeight) : 0;
 
