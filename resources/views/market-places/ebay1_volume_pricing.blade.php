@@ -9,23 +9,34 @@
         #vp-filter-bar .form-control, #vp-filter-bar .btn { height: 28px; font-size: 12px; }
         #vp-table { min-height: 70vh; }
         .vp-buy { font-weight: 700; color: #1d4ed8; }
-        #vpRuleModal .modal-dialog { width: calc(100vw - 1.25rem); max-width: calc(100vw - 1.25rem); height: calc(100vh - 1.25rem); margin: 0.625rem auto; }
-        #vpRuleModal .modal-content { height: 100%; border: 0; border-radius: 16px; overflow: hidden; }
+        #vpRuleModal .modal-dialog { width: calc(100vw - 1.25rem); max-width: calc(100vw - 1.25rem); height: calc(100vh - 1.25rem); max-height: calc(100vh - 1.25rem); margin: 0.625rem auto; }
+        #vpRuleModal .modal-content { height: 100%; border: 0; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18); }
         #vpRuleModal .modal-header, #vpRuleModal .modal-footer { background: #fff; }
-        #vpRuleModal .modal-body { background: #f4f7fb; overflow: auto; }
-        #vpRuleModal .vp-sub { color: #64748b; font-size: 12px; }
-        #vpRuleModal .vp-cols { display: grid; grid-template-columns: 1.35fr 1fr 1fr 0.9fr; gap: 10px; min-width: 1100px; }
-        #vpRuleModal .vp-col { background: #fff; border: 1px solid #e6edf5; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; min-width: 0; }
-        #vpRuleModal .vp-col-sum { border-color: #b6d4fe; box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.08); }
-        #vpRuleModal .vp-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
-        #vpRuleModal .table { font-size: 11px; margin-bottom: 0; }
-        #vpRuleModal .table th, #vpRuleModal .table td { padding: 3px 4px; vertical-align: middle; }
-        #vpRuleModal .table thead th { background: #e7f1fb; color: #1e3a5f; font-size: 10px; text-transform: uppercase; text-align: center; }
-        #vpRuleModal .vp-input { width: 52px; height: 24px; text-align: center; font-weight: 600; font-size: 12px; padding: 0 2px; margin: 0 auto; }
+        #vpRuleModal .modal-header { border-bottom: 1px solid #e8eef5; }
+        #vpRuleModal .modal-body { background: #f4f7fb; overflow: auto; padding: 14px 16px 16px; }
+        #vpRuleModal .vp-sub { color: #64748b; font-size: 12px; margin-top: 2px; }
+        #vpRuleModal .vp-proj { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+        #vpRuleModal .vp-proj-card { display: flex; justify-content: space-between; gap: 16px; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px 16px; background: #fff; }
+        #vpRuleModal .vp-proj-card strong { display: block; font-size: 26px; letter-spacing: -0.03em; color: #166534; }
+        #vpRuleModal .vp-metric { display: grid; grid-template-columns: 3.6rem auto auto; gap: 4px 12px; width: max-content; font-size: 12px; align-items: center; }
+        #vpRuleModal .vp-cols { display: grid; grid-template-columns: repeat(3, minmax(430px, 1.3fr)) repeat(3, minmax(200px, 0.85fr)); gap: 12px; align-items: stretch; min-width: 1890px; }
+        #vpRuleModal .vp-col { min-width: 0; display: flex; flex-direction: column; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px; background: #fff; }
+        #vpRuleModal .vp-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: #0f172a; }
+        #vpRuleModal .vp-canvas { position: relative; width: 100%; height: 150px; }
+        #vpRuleModal .vp-canvas canvas { display: block; width: 100% !important; height: 150px !important; }
+        #vpRuleModal .vp-legend { width: 100%; font-size: 12px; margin: 8px 0; color: #334155; max-height: 140px; overflow: auto; }
+        #vpRuleModal .vp-leg { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 2px 0; }
+        #vpRuleModal .vp-swatch { width: 8px; height: 8px; border-radius: 50%; }
+        #vpRuleModal .vp-leg-pct { color: #94a3b8; min-width: 2.2rem; text-align: right; }
+        #vpRuleModal .table { font-size: 12px; margin-bottom: 0; }
+        #vpRuleModal .table th, #vpRuleModal .table td { padding: 5px 6px; vertical-align: middle; }
+        #vpRuleModal .table thead th { background: #f8fafc; color: #64748b; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; text-align: center; }
+        #vpRuleModal .vp-input { width: 52px; height: 28px; text-align: center; font-weight: 600; font-size: 13px; padding: 0 4px; margin: 0 auto; border-radius: 7px; }
         #vpRuleModal input[type=number]::-webkit-inner-spin-button,
         #vpRuleModal input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         #vpRuleModal input[type=number] { -moz-appearance: textfield; appearance: textfield; }
-        #vpRuleModal.is-off .vp-cols { opacity: 0.55; }
+        #vpRuleModal .vp-add { margin-top: auto; width: 100%; border-radius: 8px; border-style: dashed; font-weight: 600; }
+        #vpRuleModal.is-off .vp-cols, #vpRuleModal.is-off .vp-proj { opacity: 0.55; }
         #vpRuleModal .vp-count { font-weight: 700; text-align: center; }
         .vp-toast { position: fixed; right: 16px; bottom: 16px; z-index: 20000; min-width: 260px; }
     </style>
@@ -65,7 +76,7 @@
                             <i class="fas fa-tags me-2 text-primary"></i>Volume Pricing discount
                             <span class="badge bg-secondary ms-2" style="font-size:11px;">eBay 1 only</span>
                         </h5>
-                        <div class="vp-sub">Buy 2, Buy 3, and Buy 4 = Weight slab + Dil + Std NPFT %. The SUM card is what fills those three columns.</div>
+                        <div class="vp-sub">Buy 2, Buy 3, and Buy 4 = Weight + Dil + Std NPFT %, one discount per SKU. On Weight, Dil, and Std NPFT, the next slab drops those percents by 1. From / To on weight are pounds. Dil is OV L30 ÷ INV. Std NPFT % is ((Std Prc × 0.70 − ship − LP) ÷ Std Prc) × 100.</div>
                     </div>
                     <div class="form-check form-switch mb-0 ms-3 me-3">
                         <input class="form-check-input" type="checkbox" role="switch" id="vp-enabled">
@@ -75,86 +86,91 @@
                 </div>
                 <div class="modal-body">
                     <p class="small mb-2" id="vp-mode-note">Off. Buy 2, Buy 3, and Buy 4 stay blank.</p>
-                    <ul class="small text-muted">
-                        <li>Weight slabs are pounds from CP Master ACT weight. Change From and To, add a slab, or remove one. Each slab sets Buy 2, Buy 3, and Buy 4. The next slab drops those percents by 1.</li>
-                        <li>Dil is OV L30 ÷ INV. Dil 0–0 is OV L30 sold = 0. Std NPFT % is ((Std Prc × 0.70 − ship − LP) ÷ Std Prc) × 100. A range that starts where the one above ended is exclusive on From. The last range stays open above To.</li>
-                        <li>Negative numbers subtract. The SUM of the three tables is written into Buy 2, Buy 3, and Buy 4. eBay only accepts a higher percent as the quantity goes up, and nothing above 80. Push raises a tie by 0.1 and skips a 0.</li>
-                    </ul>
+                    <div class="vp-proj">
+                        <div class="vp-proj-card">
+                            <div>
+                                <div class="small text-muted">Projected discount · E L30 sales</div>
+                                <strong id="vp-proj-l30">—</strong>
+                                <div class="small text-muted" id="vp-proj-l30-sub"></div>
+                            </div>
+                            <div class="vp-metric" id="vp-proj-l30-metrics"></div>
+                        </div>
+                        <div class="vp-proj-card">
+                            <div>
+                                <div class="small text-muted">Projected discount · total INV</div>
+                                <strong id="vp-proj-inv">—</strong>
+                                <div class="small text-muted" id="vp-proj-inv-sub"></div>
+                            </div>
+                            <div class="vp-metric" id="vp-proj-inv-metrics"></div>
+                        </div>
+                    </div>
                     <div class="vp-cols">
                         <div class="vp-col">
-                            <div class="vp-title">Weight slabs</div>
+                            <div class="vp-title">Weight</div>
+                            <div class="vp-canvas"><canvas id="vp-chart-weight"></canvas></div>
+                            <div class="vp-legend" id="vp-leg-weight"></div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle">
-                                    <thead>
-                                        <tr>
-                                            <th title="Pounds">From</th>
-                                            <th title="Pounds">To</th>
-                                            <th>Count</th>
-                                            <th>Buy 2</th>
-                                            <th>Buy 3</th>
-                                            <th>Buy 4</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
+                                    <thead><tr><th title="Pounds">From</th><th title="Pounds">To</th><th>Count</th><th>Buy 2</th><th>Buy 3</th><th>Buy 4</th><th></th></tr></thead>
                                     <tbody id="vp-weight-body"></tbody>
                                 </table>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="vp-add-weight"><i class="fas fa-plus me-1"></i>Add slab</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary vp-add" id="vp-add-weight"><i class="fas fa-plus me-1"></i>Add slab</button>
                         </div>
                         <div class="vp-col">
                             <div class="vp-title">Dil</div>
+                            <div class="vp-canvas"><canvas id="vp-chart-dil"></canvas></div>
+                            <div class="vp-legend" id="vp-leg-dil"></div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle">
-                                    <thead>
-                                        <tr>
-                                            <th>From</th>
-                                            <th>To</th>
-                                            <th>Count</th>
-                                            <th>Buy 2</th>
-                                            <th>Buy 3</th>
-                                            <th>Buy 4</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
+                                    <thead><tr><th>From</th><th>To</th><th>Count</th><th>Buy 2</th><th>Buy 3</th><th>Buy 4</th><th></th></tr></thead>
                                     <tbody id="vp-dil-body"></tbody>
                                 </table>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="vp-add-dil"><i class="fas fa-plus me-1"></i>Add slab</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary vp-add" id="vp-add-dil"><i class="fas fa-plus me-1"></i>Add slab</button>
                         </div>
                         <div class="vp-col">
                             <div class="vp-title">Std NPFT %</div>
+                            <div class="vp-canvas"><canvas id="vp-chart-npft"></canvas></div>
+                            <div class="vp-legend" id="vp-leg-npft"></div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle">
-                                    <thead>
-                                        <tr>
-                                            <th>From</th>
-                                            <th>To</th>
-                                            <th>Count</th>
-                                            <th>Buy 2</th>
-                                            <th>Buy 3</th>
-                                            <th>Buy 4</th>
-                                            <th></th>
-                                        </tr>
-                                    </thead>
+                                    <thead><tr><th>From</th><th>To</th><th>Count</th><th>Buy 2</th><th>Buy 3</th><th>Buy 4</th><th></th></tr></thead>
                                     <tbody id="vp-npft-body"></tbody>
                                 </table>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="vp-add-npft"><i class="fas fa-plus me-1"></i>Add range</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary vp-add" id="vp-add-npft"><i class="fas fa-plus me-1"></i>Add range</button>
                         </div>
-                        <div class="vp-col vp-col-sum">
-                            <div class="vp-title">SUM</div>
-                            <p class="small mb-2">This sum is applied to Buy 2, Buy 3, and Buy 4.</p>
+                        <div class="vp-col">
+                            <div class="vp-title">Buy 2</div>
+                            <div class="vp-canvas"><canvas id="vp-chart-buy2"></canvas></div>
+                            <div class="vp-legend" id="vp-leg-buy2"></div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle">
-                                    <thead>
-                                        <tr>
-                                            <th>Buy 2</th>
-                                            <th>Buy 3</th>
-                                            <th>Buy 4</th>
-                                            <th>SKUs</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="vp-sum-body"></tbody>
+                                    <thead><tr><th>Discount</th><th>SKUs</th></tr></thead>
+                                    <tbody id="vp-buy2-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="vp-col">
+                            <div class="vp-title">Buy 3</div>
+                            <div class="vp-canvas"><canvas id="vp-chart-buy3"></canvas></div>
+                            <div class="vp-legend" id="vp-leg-buy3"></div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle">
+                                    <thead><tr><th>Discount</th><th>SKUs</th></tr></thead>
+                                    <tbody id="vp-buy3-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="vp-col">
+                            <div class="vp-title">Buy 4</div>
+                            <div class="vp-canvas"><canvas id="vp-chart-buy4"></canvas></div>
+                            <div class="vp-legend" id="vp-leg-buy4"></div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle">
+                                    <thead><tr><th>Discount</th><th>SKUs</th></tr></thead>
+                                    <tbody id="vp-buy4-body"></tbody>
                                 </table>
                             </div>
                         </div>
@@ -371,21 +387,174 @@
             });
             return counts;
         }
+        const VP_BAR_COLORS = ['#7c3aed', '#3b82f6', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444', '#ec4899', '#0ea5e9', '#64748b', '#a16207'];
+        let vpChartState = [];
         function vpCounts() {
-            const combos = {};
-            if (vpRules.enabled) {
-                vpChildRows().forEach(function(d) {
-                    const sum = vpSum(d);
-                    const sig = sum.buy2 + ' / ' + sum.buy3 + ' / ' + sum.buy4;
-                    combos[sig] = (combos[sig] || 0) + 1;
-                });
-            }
             return {
                 weight: vpCountRanges(vpRules.weight, vpWeightLb),
                 dil: vpCountRanges(vpRules.dil, vpDil),
-                npft: vpCountRanges(vpRules.npft, vpNpft),
-                combos: combos
+                npft: vpCountRanges(vpRules.npft, vpNpft)
             };
+        }
+        function vpMoney0(n) {
+            const v = Math.round(vpNum(n));
+            return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US');
+        }
+        function vpRangeLabel(row) {
+            const a = vpNum(row && row.min);
+            const b = vpNum(row && row.max);
+            if (Math.abs(a) < 0.0001 && Math.abs(b) < 0.0001) return '0';
+            return a + '–' + b;
+        }
+        function vpDrawBars(canvas, counts) {
+            if (!canvas) return;
+            const parent = canvas.parentElement;
+            const w = Math.max(80, parent ? parent.clientWidth : 160);
+            const h = 150;
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            const values = counts && counts.length ? counts : [0];
+            const max = Math.max.apply(null, values.concat([1]));
+            const n = values.length;
+            const slot = w / n;
+            values.forEach(function(v, i) {
+                const barW = Math.max(3, slot - (n > 16 ? 2 : 8));
+                const bh = v > 0 ? Math.max(4, Math.round((v / max) * (h - 8))) : 0;
+                const x = i * slot + (slot - barW) / 2;
+                const y = h - bh;
+                ctx.fillStyle = VP_BAR_COLORS[i % VP_BAR_COLORS.length];
+                ctx.beginPath();
+                if (bh > 0 && ctx.roundRect) ctx.roundRect(x, y, barW, bh, [4, 4, 0, 0]);
+                else ctx.rect(x, y, barW, Math.max(bh, 0));
+                ctx.fill();
+            });
+        }
+        function vpLegend(el, items, total) {
+            if (!el) return;
+            el.innerHTML = items.map(function(item, i) {
+                const pct = total ? Math.round((item.count / total) * 100) : 0;
+                return '<div class="vp-leg"><span class="vp-swatch" style="background:' + VP_BAR_COLORS[i % VP_BAR_COLORS.length] + '"></span><span>' + item.label + '</span><span>' + item.count + '</span><span class="vp-leg-pct">' + pct + '%</span></div>';
+            }).join('');
+        }
+        function vpDiscountBands(key) {
+            const map = {};
+            vpChildRows().forEach(function(d) {
+                const n = vpSum(d)[key];
+                const k = String(n);
+                map[k] = (map[k] || 0) + 1;
+            });
+            return Object.keys(map).map(function(k) {
+                const pct = Number(k) || 0;
+                return { pct: pct, count: map[k], label: pct + '%' };
+            }).sort(function(a, b) { return b.pct - a.pct; });
+        }
+        function vpWithOutside(rows, counts) {
+            const items = (rows || []).map(function(row, i) {
+                return { label: vpRangeLabel(row), count: counts[i] || 0 };
+            });
+            const used = items.reduce(function(sum, item) { return sum + item.count; }, 0);
+            const outside = Math.max(0, vpChildRows().length - used);
+            if (outside) items.push({ label: 'Outside', count: outside });
+            return items;
+        }
+        function vpProject() {
+            const kids = vpChildRows();
+            const blank = function() { return { dollars: { buy2: 0, buy3: 0, buy4: 0 }, sales: 0, units: 0 }; };
+            const l30 = blank();
+            const inv = blank();
+            const pct = { buy2: 0, buy3: 0, buy4: 0 };
+            kids.forEach(function(d) {
+                const sum = vpSum(d);
+                pct.buy2 += sum.buy2;
+                pct.buy3 += sum.buy3;
+                pct.buy4 += sum.buy4;
+                const price = vpNum(d['eBay Price']);
+                const l30u = vpNum(d['eBay L30']);
+                const invu = vpNum(d.INV);
+                ['buy2', 'buy3', 'buy4'].forEach(function(key) {
+                    const rate = sum[key] / 100;
+                    l30.dollars[key] += price * l30u * rate;
+                    inv.dollars[key] += price * invu * rate;
+                });
+                l30.sales += price * l30u;
+                l30.units += l30u;
+                inv.sales += price * invu;
+                inv.units += invu;
+            });
+            const n = kids.length;
+            return {
+                n: n,
+                avg: {
+                    buy2: n ? pct.buy2 / n : 0,
+                    buy3: n ? pct.buy3 / n : 0,
+                    buy4: n ? pct.buy4 / n : 0
+                },
+                l30: l30,
+                inv: inv
+            };
+        }
+        function vpPaintCharts() {
+            if (!vpRules) return;
+            const counts = vpCounts();
+            ['weight', 'dil', 'npft'].forEach(function(name) {
+                document.querySelectorAll('#vp-' + name + '-body .vp-count').forEach(function(cell, i) {
+                    cell.textContent = (counts[name] && counts[name][i]) || 0;
+                });
+            });
+            const buy2 = vpDiscountBands('buy2');
+            const buy3 = vpDiscountBands('buy3');
+            const buy4 = vpDiscountBands('buy4');
+            vpChartState = [
+                ['vp-chart-weight', 'vp-leg-weight', vpWithOutside(vpRules.weight, counts.weight)],
+                ['vp-chart-dil', 'vp-leg-dil', vpWithOutside(vpRules.dil, counts.dil)],
+                ['vp-chart-npft', 'vp-leg-npft', vpWithOutside(vpRules.npft, counts.npft)],
+                ['vp-chart-buy2', 'vp-leg-buy2', buy2],
+                ['vp-chart-buy3', 'vp-leg-buy3', buy3],
+                ['vp-chart-buy4', 'vp-leg-buy4', buy4]
+            ];
+            vpRedrawCharts();
+            function bandRows(items) {
+                if (!items.length) return '<tr><td colspan="2" class="text-muted">No SKUs</td></tr>';
+                return items.map(function(item) {
+                    return '<tr><td class="text-center fw-bold">' + item.label + '</td><td class="vp-count">' + item.count + '</td></tr>';
+                }).join('');
+            }
+            document.getElementById('vp-buy2-body').innerHTML = bandRows(buy2);
+            document.getElementById('vp-buy3-body').innerHTML = bandRows(buy3);
+            document.getElementById('vp-buy4-body').innerHTML = bandRows(buy4);
+            const project = vpProject();
+            function fillCard(id, bucket, word) {
+                const dollars = bucket.dollars.buy4;
+                const head = document.getElementById(id);
+                head.textContent = vpMoney0(dollars);
+                head.style.color = dollars < 0 ? '#dc3545' : '#166534';
+                const share = bucket.sales > 0 ? Math.round((dollars / bucket.sales) * 100) : 0;
+                const avg4 = Math.round(project.avg.buy4 * 10) / 10;
+                document.getElementById(id + '-sub').textContent = Math.round(bucket.units) + ' units · ' + share + '% of ' + word + ' · Buy 4 avg ' + avg4 + '% · ' + project.n + ' SKUs';
+                const rows = [
+                    ['Buy 2', bucket.dollars.buy2, project.avg.buy2],
+                    ['Buy 3', bucket.dollars.buy3, project.avg.buy3],
+                    ['Buy 4', bucket.dollars.buy4, project.avg.buy4]
+                ];
+                document.getElementById(id + '-metrics').innerHTML = rows.map(function(row) {
+                    const color = row[1] < 0 ? '#dc3545' : '#166534';
+                    return '<span>' + row[0] + '</span><span style="text-align:right;font-weight:700;color:' + color + '">' + vpMoney0(row[1]) + '</span><span style="text-align:right;font-weight:700;">' + (Math.round(row[2] * 10) / 10) + '%</span>';
+                }).join('');
+            }
+            fillCard('vp-proj-l30', project.l30, 'sales');
+            fillCard('vp-proj-inv', project.inv, 'retail');
+        }
+        function vpRedrawCharts() {
+            vpChartState.forEach(function(row) {
+                const items = row[2] || [];
+                const total = items.reduce(function(sum, item) { return sum + item.count; }, 0);
+                vpDrawBars(document.getElementById(row[0]), items.map(function(item) { return item.count; }));
+                vpLegend(document.getElementById(row[1]), items, total);
+            });
         }
         function vpPaintModal() {
             if (!vpRules) return;
@@ -395,31 +564,20 @@
             document.getElementById('vp-enabled').checked = on;
             document.getElementById('vp-enabled-label').textContent = on ? 'On' : 'Off';
             document.getElementById('vp-mode-note').textContent = on
-                ? 'On. Buy 2, Buy 3, and Buy 4 fill from the SUM.'
-                : 'Off. Buy 2, Buy 3, and Buy 4 stay blank.';
-            function rangeRows(name, rows, counts) {
+                ? 'On. Each SKU gets Buy 2, Buy 3, and Buy 4 from Weight + Dil + Std NPFT.'
+                : 'Off. Buy 2, Buy 3, and Buy 4 stay blank on the grid.';
+            function rangeRows(name, rows, rowCounts) {
                 return rows.map(function(row, i) {
                     return '<tr><td><input type="number" step="0.01" class="form-control form-control-sm vp-input vp-min" value="' + row.min + '"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm vp-input vp-max" value="' + row.max + '"></td>'
-                        + '<td class="vp-count">' + (counts[i] || 0) + '</td><td>' + vpInput('vp-b2', row.buy2) + '</td><td>' + vpInput('vp-b3', row.buy3) + '</td><td>' + vpInput('vp-b4', row.buy4) + '</td>'
+                        + '<td class="vp-count">' + (rowCounts[i] || 0) + '</td><td>' + vpInput('vp-b2', row.buy2) + '</td><td>' + vpInput('vp-b3', row.buy3) + '</td><td>' + vpInput('vp-b4', row.buy4) + '</td>'
                         + '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 vp-del" data-table="' + name + '" data-i="' + i + '">×</button></td></tr>';
                 }).join('');
             }
             document.getElementById('vp-weight-body').innerHTML = rangeRows('weight', vpRules.weight || [], counts.weight);
             document.getElementById('vp-dil-body').innerHTML = rangeRows('dil', vpRules.dil || [], counts.dil);
             document.getElementById('vp-npft-body').innerHTML = rangeRows('npft', vpRules.npft || [], counts.npft);
-            const comboRows = Object.keys(counts.combos).map(function(sig) {
-                const bits = sig.split(' / ').map(function(n) { return Number(n) || 0; });
-                return { sig: sig, n: counts.combos[sig], buy2: bits[0], buy3: bits[1], buy4: bits[2] };
-            }).sort(function(a, b) {
-                return (b.buy4 - a.buy4) || (b.buy3 - a.buy3) || (b.buy2 - a.buy2);
-            });
-            document.getElementById('vp-sum-body').innerHTML = comboRows.length
-                ? comboRows.map(function(row) {
-                    const bits = row.sig.split(' / ');
-                    return '<tr><td class="text-center fw-bold">' + bits[0] + '%</td><td class="text-center fw-bold">' + bits[1] + '%</td><td class="text-center fw-bold">' + bits[2] + '%</td><td class="vp-count">' + row.n + '</td></tr>';
-                }).join('')
-                : '<tr><td colspan="4" class="text-muted">Turn the rules on to see the sum.</td></tr>';
+            vpPaintCharts();
         }
         function vpRefreshGrid() {
             if (!vpTable) return;
@@ -455,8 +613,8 @@
             vpPaintModal();
             vpRefreshGrid();
         });
-        function vpCascadeWeight(input) {
-            const row = input.closest('#vp-weight-body tr');
+        function vpCascadeBuys(input) {
+            const row = input.closest('#vp-weight-body tr, #vp-dil-body tr, #vp-npft-body tr');
             if (!row) return;
             const field = input.classList.contains('vp-b2') ? 'vp-b2' : (input.classList.contains('vp-b3') ? 'vp-b3' : (input.classList.contains('vp-b4') ? 'vp-b4' : ''));
             if (!field) return;
@@ -469,11 +627,14 @@
                 next = next.nextElementSibling;
             }
         }
+        let vpLiveTimer = null;
         document.getElementById('vpRuleModal').addEventListener('input', function(e) {
             if (!e.target.classList.contains('vp-input')) return;
-            vpCascadeWeight(e.target);
+            vpCascadeBuys(e.target);
             vpReadRulesFromDom();
             vpRefreshGrid();
+            clearTimeout(vpLiveTimer);
+            vpLiveTimer = setTimeout(vpPaintCharts, 120);
         });
         document.getElementById('vpRuleModal').addEventListener('click', function(e) {
             const del = e.target.closest('.vp-del');
@@ -493,13 +654,11 @@
             const last = rows[rows.length - 1] || { max: 0, buy2: 0, buy3: 0, buy4: 0 };
             const bump = step == null ? 10 : step;
             const min = vpNum(last.max);
-            const buys = name === 'weight'
-                ? {
-                    buy2: Math.max(0, vpPct(last.buy2) - 1),
-                    buy3: Math.max(0, vpPct(last.buy3) - 1),
-                    buy4: Math.max(0, vpPct(last.buy4) - 1)
-                }
-                : { buy2: 0, buy3: 0, buy4: 0 };
+            const buys = {
+                buy2: Math.max(0, vpPct(last.buy2) - 1),
+                buy3: Math.max(0, vpPct(last.buy3) - 1),
+                buy4: Math.max(0, vpPct(last.buy4) - 1)
+            };
             rows.push(Object.assign({ min: min, max: Math.round((min + bump) * 100) / 100 }, buys));
             vpRules[name] = rows;
             vpPaintModal();
@@ -508,6 +667,7 @@
         document.getElementById('vp-add-dil').addEventListener('click', function() { vpAddRange('dil'); });
         document.getElementById('vp-add-npft').addEventListener('click', function() { vpAddRange('npft'); });
         document.getElementById('vpRuleModal').addEventListener('show.bs.modal', function() { vpPaintModal(); });
+        document.getElementById('vpRuleModal').addEventListener('shown.bs.modal', function() { vpRedrawCharts(); });
 
         document.getElementById('vp-save-btn').addEventListener('click', function() {
             if (!vpRules) return;
