@@ -4302,16 +4302,36 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Daily Lbid (live Amazon bid) history for the Lbid History dot. Stored `last_sbid` on each calendar report row.
+     * Daily Lbid (live Amazon bid) history for the Lbid dot.
+     * Only the days saved in amazon_ads_lbid_daily (one value per campaign per California day,
+     * starting the day saving began). Old report rows are not used.
      */
     public function lbidHistory(Request $request): JsonResponse
     {
-        return $this->dailyStoredMoneyHistory($request, 'last_sbid', 'Lbid', 'lbid');
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
+        }
+
+        $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
+        $channel = $table !== null ? AmazonAdsLbidDaily::channelForTable($table) : null;
+        if ($channel === null) {
+            return response()->json(['ok' => false, 'message' => 'Daily Lbid is saved for SP and SB campaigns only.', 'points' => []], 404);
+        }
+
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+
+        return response()->json([
+            'ok' => true,
+            'points' => self::filledMoneyHistoryPoints(AmazonAdsLbidDaily::historyByDate($channel, $cid), $days, 'lbid'),
+        ]);
     }
 
-    private function dailyStoredMoneyHistory(Request $request, string $column, string $label, ?string $pointKey = null): JsonResponse
+    private function dailyStoredMoneyHistory(Request $request, string $column, string $label): JsonResponse
     {
-        $pointKey = $pointKey ?? $column;
         $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
         if ($cid === '') {
             return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
@@ -4353,25 +4373,10 @@ class AmazonAdsController extends Controller
                 continue;
             }
             $parsed = self::moneyHistoryValue($r[$column] ?? null);
-            // A blank or 0 live bid is "not recorded yet" (see AmazonAdsStoredLiveBid), not a real $0 bid.
-            if ($column === 'last_sbid' && $parsed !== null && $parsed <= 0) {
-                $parsed = null;
-            }
             if (! array_key_exists($day, $byDate)) {
                 $byDate[$day] = $parsed;
             } elseif ($byDate[$day] === null && $parsed !== null) {
                 $byDate[$day] = $parsed;
-            }
-        }
-
-        // Lbid is saved once per campaign per day (amazon_ads_lbid_daily). That saved day wins
-        // over whatever the report row happened to hold.
-        if ($column === 'last_sbid') {
-            $lbidChannel = AmazonAdsLbidDaily::channelForTable($table);
-            if ($lbidChannel !== null) {
-                foreach (AmazonAdsLbidDaily::historyByDate($lbidChannel, $cid) as $day => $saved) {
-                    $byDate[$day] = $saved;
-                }
             }
         }
 
@@ -4383,7 +4388,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'ok' => true,
-            'points' => self::filledMoneyHistoryPoints($byDate, $days, $pointKey),
+            'points' => self::filledMoneyHistoryPoints($byDate, $days, $column),
         ]);
     }
 
@@ -4480,8 +4485,7 @@ class AmazonAdsController extends Controller
     private static function moneyHistoryPushTypes(string $table, string $column): array
     {
         $brand = $table === 'amazon_sb_campaign_reports';
-        // A successful SBID push becomes the live bid, so it also fills gaps in the Lbid history.
-        if ($column === 'sbid' || $column === 'last_sbid') {
+        if ($column === 'sbid') {
             return [$brand ? 'sb_sbid' : 'sp_sbid'];
         }
         if ($column === 'sbgt') {
@@ -4549,12 +4553,11 @@ class AmazonAdsController extends Controller
         }
         $prevSbid = self::previousDailyMoneyMap($table, array_keys($ids), 'sbid');
         $prevSbgt = self::previousDailyMoneyMap($table, array_keys($ids), 'sbgt');
-        $prevLbid = self::previousDailyMoneyMap($table, array_keys($ids), 'last_sbid');
+        // Lbid trend uses only the days saved in amazon_ads_lbid_daily.
         $lbidChannel = AmazonAdsLbidDaily::channelForTable($table);
-        if ($lbidChannel !== null) {
-            // Saved daily Lbid wins over the report-row fallback.
-            $prevLbid = AmazonAdsLbidDaily::previousByCampaign($lbidChannel, array_map('strval', array_keys($ids))) + $prevLbid;
-        }
+        $prevLbid = $lbidChannel !== null
+            ? AmazonAdsLbidDaily::previousByCampaign($lbidChannel, array_map('strval', array_keys($ids)))
+            : [];
         foreach ($rows as $i => $row) {
             $cid = trim((string) ($row['campaign_id'] ?? ''));
             $sbidPrev = $prevSbid[$cid] ?? null;
@@ -4612,19 +4615,16 @@ class AmazonAdsController extends Controller
         $today = Carbon::now(config('app.timezone'))->toDateString();
         $out = [];
         foreach (array_chunk($campaignIds, 200) as $chunk) {
-            $maxesQuery = DB::table($table)
+            $maxes = DB::table($table)
                 ->select('campaign_id', DB::raw('MAX(report_date_range) as md'))
                 ->whereIn('campaign_id', $chunk)
                 ->where('report_date_range', '<', $today)
                 ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
                 ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
                 ->whereNotNull($column)
-                ->where($column, '<>', '');
-            if ($column === 'last_sbid') {
-                // A blank or 0 live bid means "not recorded", so skip it like the Lbid column does.
-                $maxesQuery->whereRaw('(`last_sbid` + 0) > 0');
-            }
-            $maxes = $maxesQuery->groupBy('campaign_id')->get();
+                ->where($column, '<>', '')
+                ->groupBy('campaign_id')
+                ->get();
             if ($maxes->isEmpty()) {
                 continue;
             }
