@@ -93,8 +93,7 @@ final class MarketplaceListingStockResolver
     }
 
     /**
-     * Refresh one shopify_skus row from Shopify Admin inventory_quantity (fast).
-     * Keeps detail pages from showing stale Ohio/local zeros when live store stock differs.
+     * Refresh one shopify_skus row from live Shopify (Ohio available, same qty every push uses).
      */
     public static function refreshShopifyRowFromLiveVariantApi(ShopifySku $row): ShopifySku
     {
@@ -109,27 +108,12 @@ final class MarketplaceListingStockResolver
         $qty = null;
 
         if ($variantId !== '') {
-            for ($attempt = 1; $attempt <= 6; $attempt++) {
-                try {
-                    $response = \Illuminate\Support\Facades\Http::withHeaders([
-                        'X-Shopify-Access-Token' => $token,
-                    ])->timeout(25)->get("https://{$store}/admin/api/2025-01/variants/{$variantId}.json", [
-                        'fields' => 'id,sku,inventory_quantity',
-                    ]);
-                    if ($response->status() === 429) {
-                        sleep(max(1, (int) ($response->header('Retry-After') ?: $attempt)));
-                        continue;
-                    }
-                    if ($response->successful()) {
-                        $variant = $response->json('variant');
-                        if (is_array($variant) && array_key_exists('inventory_quantity', $variant)) {
-                            $qty = (int) $variant['inventory_quantity'];
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    // fall through to GraphQL
-                }
-                break;
+            $upper = strtoupper($sku);
+            $map = self::liveShopifyQtyByVariantGids($store, $token, ['gid://shopify/ProductVariant/'.$variantId => $upper]);
+            if (array_key_exists($upper, $map)) {
+                $qty = (int) $map[$upper];
+            } elseif (count($map) === 1) {
+                $qty = (int) reset($map);
             }
         }
 
@@ -192,13 +176,16 @@ final class MarketplaceListingStockResolver
     protected static function liveShopifyQtyBySkuGraphql(string $store, string $token, string $sku): ?int
     {
         $escaped = addslashes($sku);
-        $query = <<<'GQL'
-        query ($q: String!) {
-          productVariants(first: 5, query: $q) {
+        $locationGid = ShopifyOhioAvailableQty::locationGid();
+        $selection = ShopifyOhioAvailableQty::variantSelection($locationGid);
+        $query = <<<GQL
+        query (\$q: String!) {
+          productVariants(first: 5, query: \$q) {
             edges {
               node {
                 sku
                 inventoryQuantity
+                {$selection}
               }
             }
           }
@@ -225,11 +212,12 @@ final class MarketplaceListingStockResolver
                 $target = strtoupper(trim($sku));
                 foreach ($edges as $edge) {
                     $node = $edge['node'] ?? [];
-                    if (strtoupper(trim((string) ($node['sku'] ?? ''))) !== $target) {
+                    if (! is_array($node) || strtoupper(trim((string) ($node['sku'] ?? ''))) !== $target) {
                         continue;
                     }
-                    if (array_key_exists('inventoryQuantity', $node)) {
-                        return (int) $node['inventoryQuantity'];
+                    $qty = ShopifyOhioAvailableQty::qtyFromVariantNode($node, $locationGid !== null);
+                    if ($qty !== null) {
+                        return $qty;
                     }
                 }
             } catch (\Throwable $e) {
@@ -353,13 +341,16 @@ final class MarketplaceListingStockResolver
             return [];
         }
 
-        $query = <<<'GQL'
-        query ($ids: [ID!]!) {
-          nodes(ids: $ids) {
+        $locationGid = ShopifyOhioAvailableQty::locationGid();
+        $selection = ShopifyOhioAvailableQty::variantSelection($locationGid);
+        $query = <<<GQL
+        query (\$ids: [ID!]!) {
+          nodes(ids: \$ids) {
             ... on ProductVariant {
               id
               sku
               inventoryQuantity
+              {$selection}
             }
           }
         }
@@ -386,13 +377,17 @@ final class MarketplaceListingStockResolver
                     if (! is_array($node) || ! array_key_exists('inventoryQuantity', $node)) {
                         continue;
                     }
+                    $qty = ShopifyOhioAvailableQty::qtyFromVariantNode($node, $locationGid !== null);
+                    if ($qty === null) {
+                        continue;
+                    }
                     $sku = strtoupper(trim((string) ($node['sku'] ?? '')));
                     $id = (string) ($node['id'] ?? '');
                     $upper = $sku !== '' ? $sku : ($gidToUpperSku[$id] ?? '');
                     if ($upper === '') {
                         continue;
                     }
-                    $out[$upper] = (int) $node['inventoryQuantity'];
+                    $out[$upper] = $qty;
                 }
 
                 return $out;
@@ -425,13 +420,16 @@ final class MarketplaceListingStockResolver
             return [];
         }
 
-        $query = <<<'GQL'
-        query ($q: String!) {
-          productVariants(first: 50, query: $q) {
+        $locationGid = ShopifyOhioAvailableQty::locationGid();
+        $selection = ShopifyOhioAvailableQty::variantSelection($locationGid);
+        $query = <<<GQL
+        query (\$q: String!) {
+          productVariants(first: 50, query: \$q) {
             edges {
               node {
                 sku
                 inventoryQuantity
+                {$selection}
               }
             }
           }
@@ -461,11 +459,18 @@ final class MarketplaceListingStockResolver
                 $out = [];
                 foreach ($response->json('data.productVariants.edges') ?? [] as $edge) {
                     $node = $edge['node'] ?? [];
-                    $sku = strtoupper(trim((string) ($node['sku'] ?? '')));
-                    if ($sku === '' || ! isset($wanted[$sku]) || ! array_key_exists('inventoryQuantity', $node)) {
+                    if (! is_array($node)) {
                         continue;
                     }
-                    $out[$sku] = (int) $node['inventoryQuantity'];
+                    $sku = strtoupper(trim((string) ($node['sku'] ?? '')));
+                    if ($sku === '' || ! isset($wanted[$sku])) {
+                        continue;
+                    }
+                    $qty = ShopifyOhioAvailableQty::qtyFromVariantNode($node, $locationGid !== null);
+                    if ($qty === null) {
+                        continue;
+                    }
+                    $out[$sku] = $qty;
                 }
 
                 return $out;

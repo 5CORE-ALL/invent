@@ -150,15 +150,14 @@ class ShopifyCatalogSyncService
                     );
                     $variantCount++;
 
-                    // Shared live store: keep shopify_skus qty in sync for marketplace listings (one sync for all MPs).
+                    // Shared live store: keep shopify_skus catalog columns in sync for marketplace listings.
+                    // inventory_quantity is the all-locations total; Ohio available (inventory_levels
+                    // webhook/poller) is the qty every marketplace compares against, so existing rows keep it.
                     $sku = isset($variant['sku']) ? trim((string) $variant['sku']) : '';
                     if ($store === 'main' && $sku !== '' && stripos($sku, 'PARENT') === false) {
                         $qty = (int) ($variant['inventory_quantity'] ?? 0);
                         $skuPayload = array_merge([
                             'variant_id' => (string) $vid,
-                            'available_to_sell' => $qty,
-                            'inv' => $qty,
-                            'on_hand' => $qty,
                             'product_title' => $product['title'] ?? null,
                             'variant_title' => $variant['title'] ?? null,
                             'updated_at' => $now,
@@ -166,10 +165,13 @@ class ShopifyCatalogSyncService
                         if ($imageUrl !== '') {
                             $skuPayload['image_src'] = $imageUrl;
                         }
-                        ShopifySku::query()->updateOrCreate(
-                            ['sku' => $sku],
-                            $skuPayload
-                        );
+                        $skuRow = ShopifySku::query()->firstOrNew(['sku' => $sku]);
+                        if (! $skuRow->exists) {
+                            $skuPayload['available_to_sell'] = $qty;
+                            $skuPayload['inv'] = $qty;
+                            $skuPayload['on_hand'] = $qty;
+                        }
+                        $skuRow->fill($skuPayload)->save();
                     }
                 }
             }

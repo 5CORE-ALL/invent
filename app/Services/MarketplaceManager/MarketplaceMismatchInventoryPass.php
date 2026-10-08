@@ -104,6 +104,7 @@ final class MarketplaceMismatchInventoryPass
         ]);
 
         $result = $this->pushSkus($channel, $mismatch);
+        $this->readBack($channel, $mismatch);
 
         $updated = (int) ($result['updated'] ?? 0);
         $failed = (int) ($result['failed'] ?? 0);
@@ -204,6 +205,23 @@ final class MarketplaceMismatchInventoryPass
             'tiktok2' => app(TikTok2InventorySyncService::class)->syncSkusFromShopify($skus, null, true),
             default => ['updated' => 0, 'failed' => 0, 'skipped' => count($skus), 'message' => 'Channel not supported.'],
         };
+    }
+
+    /**
+     * Ask the marketplace what it now holds for these SKUs and store that locally.
+     * Null when the channel has no per-SKU read (its local qty stays the push target).
+     *
+     * @param  list<string>  $skus
+     * @return array<string, int>|null
+     */
+    public function readBack(string $channel, array $skus): ?array
+    {
+        $channel = strtolower(trim($channel));
+        if ($skus === [] || ! MarketplaceQtyReadBack::supports($channel)) {
+            return null;
+        }
+
+        return app(MarketplaceQtyReadBack::class)->record($channel, $skus);
     }
 
     /**

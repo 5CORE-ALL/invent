@@ -6,6 +6,7 @@ use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\ShopifySku;
 use App\Models\ShopifyVariant;
+use App\Services\MarketplaceManager\ShopifyOhioAvailableQty;
 use App\Services\Support\Concerns\ShopifyAdminRateLimitRetry;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\ShopifyBulletPointsFormatter;
@@ -2130,10 +2131,12 @@ class ShopifyApiService
 
     /**
      * Return map SKU => inventory quantity from Shopify (no DB writes). Used for Reverb inventory sync.
+     * Qty is "available" at the Ohio location (variant inventory_quantity counts every location).
      */
     public function getInventoryQuantitiesBySku(array $limitToSkus = []): array
     {
         $map = [];
+        $itemIdBySku = [];
         $pageInfo = null;
         $hasMore = true;
         $limitToLookup = null;
@@ -2195,6 +2198,9 @@ class ShopifyApiService
                         $remaining--;
                     }
                     $map[$sku] = (int) ($variant['inventory_quantity'] ?? 0);
+                    if (! empty($variant['inventory_item_id'])) {
+                        $itemIdBySku[$sku] = (string) $variant['inventory_item_id'];
+                    }
                     // Also index by the requested casing so callers can look up AE metric SKUs directly.
                     if ($limitToLookup !== null) {
                         $requested = $limitToLookup[$skuKey];
@@ -2211,6 +2217,25 @@ class ShopifyApiService
             $hasMore = (bool) $pageInfo;
             if ($hasMore) {
                 usleep(300000);
+            }
+        }
+
+        if ($itemIdBySku !== []) {
+            $ohio = ShopifyOhioAvailableQty::byInventoryItemIds(array_values($itemIdBySku));
+            if ($ohio === null) {
+                Log::warning('ShopifyApiService: Ohio available lookup failed, using variant inventory_quantity', [
+                    'skus' => count($itemIdBySku),
+                ]);
+            } else {
+                foreach ($itemIdBySku as $sku => $itemId) {
+                    if (! array_key_exists($itemId, $ohio)) {
+                        continue;
+                    }
+                    $map[$sku] = $ohio[$itemId];
+                    if ($limitToLookup !== null && isset($limitToLookup[strtoupper($sku)])) {
+                        $map[$limitToLookup[strtoupper($sku)]] = $ohio[$itemId];
+                    }
+                }
             }
         }
 

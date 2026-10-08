@@ -436,6 +436,25 @@ class NeweggInventorySyncService
     }
 
     /**
+     * Store the qty Newegg reports for these SKUs as the local listing qty.
+     *
+     * @param  array<string, int>  $qtyBySku
+     */
+    public function recordMarketplaceQty(array $qtyBySku): void
+    {
+        $rows = [];
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $rows[] = ['product_id' => '', 'sku_code' => $sku, 'inventory' => max(0, (int) $qty)];
+            }
+        }
+        if ($rows !== []) {
+            $this->updateLocalStock($rows);
+        }
+    }
+
+    /**
      * @param  array<int, array{product_id: string, sku_code: string, inventory: int, shopify_qty?: int}>  $rows
      */
     protected function updateLocalStock(array $rows): void
