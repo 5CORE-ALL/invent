@@ -42,7 +42,7 @@ class RebuildTemuChannelHistory extends Command
             ? Carbon::parse((string) $this->option('to'), self::TZ)->startOfDay()
             : $today->copy()->subDay();
         $withY = (bool) $this->option('with-y');
-        $ySvc = $withY ? app(YesterdayMarketplaceMetricsService::class) : null;
+        $ySvc = app(YesterdayMarketplaceMetricsService::class);
 
         foreach ($channels as $key) {
             if (! in_array($key, ['temu', 'temu2', 'temu3'], true)) {
@@ -124,7 +124,25 @@ class RebuildTemuChannelHistory extends Command
                 $sd['cogs'] = round($cogs, 2);
                 $sd['total_pft'] = round($pft, 2);
 
-                if ($withY && $ySvc !== null) {
+                // Measured one-day profit / COGS for the Y GROI% / Y NPFT% charts (same fields
+                // channel:calculate-data stores for yesterday). Needs only that day's orders.
+                $day = $ySvc->metricsForPacificDate($key, $asOf->toDateString());
+                if (is_array($day) && ($day['computed'] ?? false) && (float) ($day['gpft_sales'] ?? 0) > 0) {
+                    $daySales = (float) ($day['pft_sales'] ?? 0);
+                    if ($daySales <= 0) {
+                        $daySales = (float) ($day['sales'] ?? 0);
+                    }
+                    $sd['y_pft'] = round((float) ($day['pft'] ?? 0), 2);
+                    $sd['y_cogs'] = round((float) ($day['cogs'] ?? 0), 2);
+                    $sd['y_day_sales'] = round($daySales > 0 ? $daySales : (float) $day['gpft_sales'], 2);
+                    $sd['y_measured'] = 1;
+                    $yCogs = (float) $sd['y_cogs'];
+                    $this->line(sprintf('      one-day %s: sales %.2f pft %.2f cogs %.2f  Y GROI %s%%',
+                        $asOf->toDateString(), $sd['y_day_sales'], $sd['y_pft'], $yCogs,
+                        $yCogs > 0 ? round($sd['y_pft'] / $yCogs * 100, 1) : '—'));
+                }
+
+                if ($withY) {
                     $ySales = $ySvc->salesForPacificDate($key, $asOf->toDateString());
                     if ($ySales !== null && ($ySales > 0 || (float) ($sd['y_sales'] ?? 0) <= 0)) {
                         $sd['y_sales'] = $ySales;

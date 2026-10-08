@@ -17751,7 +17751,13 @@ class ChannelMasterController extends Controller
                             if ($channelNpft == 0.0) {
                                 $channelNpft = $channelGprofit - floatval($sd['tcos_percent'] ?? 0);
                             }
-                            if ($metric === 'y_groi_pct' || $metric === 'y_nroi_pct') {
+                            $yMeasured = $this->measuredYesterdayFromSummary($sd);
+                            if ($yMeasured !== null) {
+                                // Measured one-day dollars (Temu): same maths as the table's Y columns.
+                                $spend = ($metric === 'y_pft' || $metric === 'y_groi_pct') ? 0.0 : $yMeasured['spend'];
+                                $totalPft += $yMeasured['pft'] - $spend;
+                                $totalCogs += $yMeasured['cogs'];
+                            } elseif ($metric === 'y_groi_pct' || $metric === 'y_nroi_pct') {
                                 $rate = $metric === 'y_groi_pct' ? $channelGprofit : $channelNpft;
                                 $totalPft += ($rate / 100) * $ySales;
                                 $totalCogs += $this->yCogsDollars($ySales, $channelL30Sales, $channelGprofit, $channelCogs);
@@ -17759,7 +17765,7 @@ class ChannelMasterController extends Controller
                                 $rate = $metric === 'y_pft' ? $channelGprofit : $channelNpft;
                                 $totalPft += ($rate / 100) * $ySales;
                             }
-                            $totalSales += $ySales;
+                            $totalSales += $yMeasured !== null ? $yMeasured['sales'] : $ySales;
                         } elseif ($metric === 'groi' || $metric === 'nroi') {
                             $totalPft += $channelPft;
                             $totalCogs += $channelCogs;
@@ -19268,6 +19274,22 @@ class ChannelMasterController extends Controller
             }
 
             $ySales = floatval($summaryData['y_sales'] ?? 0);
+            $measured = $this->measuredYesterdayFromSummary($summaryData);
+            if ($measured !== null) {
+                $netPft = $measured['pft'] - $measured['spend'];
+                switch ($metric) {
+                    case 'y_pft':
+                        return round($measured['pft'], 2);
+                    case 'y_npft_amt':
+                        return round($netPft, 2);
+                    case 'y_npft_pct':
+                        return $measured['sales'] > 0 ? round(($netPft / $measured['sales']) * 100, 1) : null;
+                    case 'y_groi_pct':
+                        return $measured['cogs'] > 0 ? round(($measured['pft'] / $measured['cogs']) * 100, 1) : null;
+                    case 'y_nroi_pct':
+                        return $measured['cogs'] > 0 ? round(($netPft / $measured['cogs']) * 100, 1) : null;
+                }
+            }
             if ($metric === 'y_pft') {
                 return $this->yProfitDollars($ySales, $summaryData['gprofit_percent'] ?? 0);
             }
@@ -20242,6 +20264,33 @@ class ChannelMasterController extends Controller
         }
 
         return $ySales * max(0.0, 1.0 - ($gprofitPercent / 100.0));
+    }
+
+    /**
+     * Measured one-day profit / COGS / sales / ad spend stored on a snapshot (Temu channels).
+     * Null when the snapshot only has L30 figures, so callers fall back to the old rescaling.
+     *
+     * @param  array<string, mixed>  $summaryData
+     * @return array{pft: float, cogs: float, sales: float, spend: float}|null
+     */
+    private function measuredYesterdayFromSummary(array $summaryData): ?array
+    {
+        if (empty($summaryData['y_measured'])
+            || ! array_key_exists('y_pft', $summaryData)
+            || ! array_key_exists('y_cogs', $summaryData)) {
+            return null;
+        }
+        $sales = (float) ($summaryData['y_day_sales'] ?? 0);
+        if ($sales <= 0) {
+            $sales = (float) ($summaryData['y_sales'] ?? 0);
+        }
+
+        return [
+            'pft' => (float) $summaryData['y_pft'],
+            'cogs' => (float) $summaryData['y_cogs'],
+            'sales' => $sales,
+            'spend' => $this->yesterdayAdSpend($sales, $summaryData['tcos_percent'] ?? 0),
+        ];
     }
 
     /**
@@ -22432,6 +22481,17 @@ class ChannelMasterController extends Controller
                     // Metadata
                     'calculated_at' => now()->toDateTimeString(),
                 ];
+
+                // Temu channels: keep the measured one-day profit/COGS next to the L30 figures so the
+                // Y GROI% / Y NPFT% charts plot each day's own value, not that day's L30 rate.
+                if (in_array($channelName, ['temu', 'temu2', 'temu3'], true)
+                    && ($row['Y GPFT $'] ?? null) !== null
+                    && ($row['Y COGS'] ?? null) !== null) {
+                    $summaryData['y_pft'] = round((float) $row['Y GPFT $'], 2);
+                    $summaryData['y_cogs'] = round((float) $row['Y COGS'], 2);
+                    $summaryData['y_day_sales'] = round((float) ($row['Y Day Sales'] ?? 0), 2);
+                    $summaryData['y_measured'] = 1;
+                }
 
                 if ((float) ($summaryData['inventory_value_amazon'] ?? 0) > 0
                     || (float) ($summaryData['inv_at_sp'] ?? 0) > 0
