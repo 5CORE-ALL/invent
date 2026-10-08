@@ -76,7 +76,7 @@
                 <div class="modal-body">
                     <p class="small mb-2" id="vp-mode-note">Off. Buy 2, Buy 3, and Buy 4 stay blank.</p>
                     <ul class="small text-muted">
-                        <li>Weight slabs are the Shipping Master bands. Each slab sets its own Buy 2, Buy 3, and Buy 4. Weight comes from CP Master ACT weight.</li>
+                        <li>Weight slabs are pounds from CP Master ACT weight. Change From and To, add a slab, or remove one. Each slab sets Buy 2, Buy 3, and Buy 4. The next slab drops those percents by 1.</li>
                         <li>Dil is OV L30 ÷ INV. Dil 0–0 is OV L30 sold = 0. Std NPFT % is ((Std Prc × 0.70 − ship − LP) ÷ Std Prc) × 100. A range that starts where the one above ended is exclusive on From. The last range stays open above To.</li>
                         <li>Negative numbers subtract. The SUM of the three tables is written into Buy 2, Buy 3, and Buy 4. eBay only accepts a higher percent as the quantity goes up, and nothing above 80. Push raises a tie by 0.1 and skips a 0.</li>
                     </ul>
@@ -87,16 +87,19 @@
                                 <table class="table table-sm table-bordered align-middle">
                                     <thead>
                                         <tr>
-                                            <th>Slab</th>
+                                            <th title="Pounds">From</th>
+                                            <th title="Pounds">To</th>
                                             <th>Count</th>
                                             <th>Buy 2</th>
                                             <th>Buy 3</th>
                                             <th>Buy 4</th>
+                                            <th></th>
                                         </tr>
                                     </thead>
                                     <tbody id="vp-weight-body"></tbody>
                                 </table>
                             </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="vp-add-weight"><i class="fas fa-plus me-1"></i>Add slab</button>
                         </div>
                         <div class="vp-col">
                             <div class="vp-title">Dil</div>
@@ -245,11 +248,7 @@
         function vpSum(d) {
             const zero = { buy2: 0, buy3: 0, buy4: 0, parts: { weight: { buy2: 0, buy3: 0, buy4: 0 }, dil: { buy2: 0, buy3: 0, buy4: 0 }, npft: { buy2: 0, buy3: 0, buy4: 0 } } };
             if (!vpRules || vpIsParent(d)) return zero;
-            let weight = { buy2: 0, buy3: 0, buy4: 0 };
-            const key = String(d.weight_slab || 'lb_0');
-            (vpRules.weight || []).forEach(function(row) {
-                if (String(row.key) === key) weight = vpTier(row);
-            });
+            const weight = vpRangeTier(vpWeightLb(d), vpRules.weight || []);
             const dil = vpRangeTier(vpDil(d), vpRules.dil || []);
             const npft = vpRangeTier(vpNpft(d), vpRules.npft || []);
             const round1 = function(n) { return Math.round(n * 10) / 10; };
@@ -334,18 +333,13 @@
         function vpInput(cls, value) {
             return '<input type="number" step="0.1" class="form-control form-control-sm vp-input ' + cls + '" value="' + vpPct(value) + '">';
         }
+        function vpWeightLb(d) {
+            const n = Number(d && d.wt_act);
+            return isFinite(n) ? n : null;
+        }
         function vpReadRulesFromDom() {
             if (!vpRules) return;
-            document.querySelectorAll('#vp-weight-body tr').forEach(function(tr) {
-                const key = tr.getAttribute('data-key');
-                (vpRules.weight || []).forEach(function(row) {
-                    if (String(row.key) !== key) return;
-                    row.buy2 = vpPct(tr.querySelector('.vp-b2').value);
-                    row.buy3 = vpPct(tr.querySelector('.vp-b3').value);
-                    row.buy4 = vpPct(tr.querySelector('.vp-b4').value);
-                });
-            });
-            ['dil', 'npft'].forEach(function(name) {
+            ['weight', 'dil', 'npft'].forEach(function(name) {
                 const rows = [];
                 document.querySelectorAll('#vp-' + name + '-body tr').forEach(function(tr) {
                     rows.push({
@@ -360,64 +354,38 @@
             });
             vpRules.enabled = !!document.getElementById('vp-enabled').checked;
         }
-        function vpCounts() {
-            const weight = {};
-            const dil = (vpRules.dil || []).map(function() { return 0; });
-            const npft = (vpRules.npft || []).map(function() { return 0; });
-            const combos = {};
+        function vpCountRanges(rows, valueOf) {
+            const counts = (rows || []).map(function() { return 0; });
             vpChildRows().forEach(function(d) {
-                const key = String(d.weight_slab || 'lb_0');
-                weight[key] = (weight[key] || 0) + 1;
-                const dilVal = vpDil(d);
+                const value = valueOf(d);
+                if (value === null || !isFinite(Number(value))) return;
                 let prev = null;
-                (vpRules.dil || []).forEach(function(range, i) {
-                    if (dil[i] === 0 && vpContains(dilVal, range, prev)) dil[i] += 1;
-                    else if (vpContains(dilVal, range, prev)) dil[i] += 1;
+                let hit = false;
+                (rows || []).forEach(function(range, i) {
+                    if (!hit && vpContains(Number(value), range, prev)) { counts[i] += 1; hit = true; }
                     prev = vpNum(range.max);
                 });
-                const np = vpNpft(d);
-                if (np !== null) {
-                    prev = null;
-                    let hit = false;
-                    (vpRules.npft || []).forEach(function(range, i) {
-                        if (!hit && vpContains(np, range, prev)) { npft[i] += 1; hit = true; }
-                        prev = vpNum(range.max);
-                    });
-                    if (!hit && vpRules.npft && vpRules.npft.length && np > vpNum(vpRules.npft[vpRules.npft.length - 1].max)) {
-                        npft[npft.length - 1] += 1;
-                    }
+                if (!hit && rows && rows.length && Number(value) > vpNum(rows[rows.length - 1].max)) {
+                    counts[counts.length - 1] += 1;
                 }
-                if (vpRules.enabled) {
+            });
+            return counts;
+        }
+        function vpCounts() {
+            const combos = {};
+            if (vpRules.enabled) {
+                vpChildRows().forEach(function(d) {
                     const sum = vpSum(d);
                     const sig = sum.buy2 + ' / ' + sum.buy3 + ' / ' + sum.buy4;
                     combos[sig] = (combos[sig] || 0) + 1;
-                }
-            });
-            const dilFixed = (vpRules.dil || []).map(function() { return 0; });
-            const npftFixed = (vpRules.npft || []).map(function() { return 0; });
-            vpChildRows().forEach(function(d) {
-                let prev = null;
-                let hit = false;
-                (vpRules.dil || []).forEach(function(range, i) {
-                    if (!hit && vpContains(vpDil(d), range, prev)) { dilFixed[i] += 1; hit = true; }
-                    prev = vpNum(range.max);
                 });
-                if (!hit && vpRules.dil && vpRules.dil.length && vpDil(d) > vpNum(vpRules.dil[vpRules.dil.length - 1].max)) {
-                    dilFixed[dilFixed.length - 1] += 1;
-                }
-                const np = vpNpft(d);
-                if (np === null) return;
-                prev = null;
-                hit = false;
-                (vpRules.npft || []).forEach(function(range, i) {
-                    if (!hit && vpContains(np, range, prev)) { npftFixed[i] += 1; hit = true; }
-                    prev = vpNum(range.max);
-                });
-                if (!hit && vpRules.npft && vpRules.npft.length && np > vpNum(vpRules.npft[vpRules.npft.length - 1].max)) {
-                    npftFixed[npftFixed.length - 1] += 1;
-                }
-            });
-            return { weight: weight, dil: dilFixed, npft: npftFixed, combos: combos };
+            }
+            return {
+                weight: vpCountRanges(vpRules.weight, vpWeightLb),
+                dil: vpCountRanges(vpRules.dil, vpDil),
+                npft: vpCountRanges(vpRules.npft, vpNpft),
+                combos: combos
+            };
         }
         function vpPaintModal() {
             if (!vpRules) return;
@@ -429,10 +397,6 @@
             document.getElementById('vp-mode-note').textContent = on
                 ? 'On. Buy 2, Buy 3, and Buy 4 fill from the SUM.'
                 : 'Off. Buy 2, Buy 3, and Buy 4 stay blank.';
-            document.getElementById('vp-weight-body').innerHTML = (vpRules.weight || []).map(function(row) {
-                return '<tr data-key="' + row.key + '"><td>' + row.label + '</td><td class="vp-count">' + (counts.weight[row.key] || 0) + '</td><td>'
-                    + vpInput('vp-b2', row.buy2) + '</td><td>' + vpInput('vp-b3', row.buy3) + '</td><td>' + vpInput('vp-b4', row.buy4) + '</td></tr>';
-            }).join('');
             function rangeRows(name, rows, counts) {
                 return rows.map(function(row, i) {
                     return '<tr><td><input type="number" step="0.01" class="form-control form-control-sm vp-input vp-min" value="' + row.min + '"></td>'
@@ -441,11 +405,15 @@
                         + '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 vp-del" data-table="' + name + '" data-i="' + i + '">×</button></td></tr>';
                 }).join('');
             }
+            document.getElementById('vp-weight-body').innerHTML = rangeRows('weight', vpRules.weight || [], counts.weight);
             document.getElementById('vp-dil-body').innerHTML = rangeRows('dil', vpRules.dil || [], counts.dil);
             document.getElementById('vp-npft-body').innerHTML = rangeRows('npft', vpRules.npft || [], counts.npft);
             const comboRows = Object.keys(counts.combos).map(function(sig) {
-                return { sig: sig, n: counts.combos[sig] };
-            }).sort(function(a, b) { return b.n - a.n; }).slice(0, 12);
+                const bits = sig.split(' / ').map(function(n) { return Number(n) || 0; });
+                return { sig: sig, n: counts.combos[sig], buy2: bits[0], buy3: bits[1], buy4: bits[2] };
+            }).sort(function(a, b) {
+                return (b.buy4 - a.buy4) || (b.buy3 - a.buy3) || (b.buy2 - a.buy2);
+            });
             document.getElementById('vp-sum-body').innerHTML = comboRows.length
                 ? comboRows.map(function(row) {
                     const bits = row.sig.split(' / ');
@@ -487,8 +455,23 @@
             vpPaintModal();
             vpRefreshGrid();
         });
+        function vpCascadeWeight(input) {
+            const row = input.closest('#vp-weight-body tr');
+            if (!row) return;
+            const field = input.classList.contains('vp-b2') ? 'vp-b2' : (input.classList.contains('vp-b3') ? 'vp-b3' : (input.classList.contains('vp-b4') ? 'vp-b4' : ''));
+            if (!field) return;
+            let value = vpPct(input.value);
+            let next = row.nextElementSibling;
+            while (next) {
+                value = Math.max(0, Math.round((value - 1) * 10) / 10);
+                const box = next.querySelector('.' + field);
+                if (box) box.value = value;
+                next = next.nextElementSibling;
+            }
+        }
         document.getElementById('vpRuleModal').addEventListener('input', function(e) {
             if (!e.target.classList.contains('vp-input')) return;
+            vpCascadeWeight(e.target);
             vpReadRulesFromDom();
             vpRefreshGrid();
         });
@@ -503,15 +486,25 @@
             vpPaintModal();
             vpRefreshGrid();
         });
-        function vpAddRange(name) {
+        function vpAddRange(name, step) {
             if (!vpRules) return;
             vpReadRulesFromDom();
             const rows = vpRules[name] || [];
-            const last = rows[rows.length - 1] || { max: 0 };
-            rows.push({ min: vpNum(last.max), max: vpNum(last.max) + 10, buy2: 0, buy3: 0, buy4: 0 });
+            const last = rows[rows.length - 1] || { max: 0, buy2: 0, buy3: 0, buy4: 0 };
+            const bump = step == null ? 10 : step;
+            const min = vpNum(last.max);
+            const buys = name === 'weight'
+                ? {
+                    buy2: Math.max(0, vpPct(last.buy2) - 1),
+                    buy3: Math.max(0, vpPct(last.buy3) - 1),
+                    buy4: Math.max(0, vpPct(last.buy4) - 1)
+                }
+                : { buy2: 0, buy3: 0, buy4: 0 };
+            rows.push(Object.assign({ min: min, max: Math.round((min + bump) * 100) / 100 }, buys));
             vpRules[name] = rows;
             vpPaintModal();
         }
+        document.getElementById('vp-add-weight').addEventListener('click', function() { vpAddRange('weight', 1); });
         document.getElementById('vp-add-dil').addEventListener('click', function() { vpAddRange('dil'); });
         document.getElementById('vp-add-npft').addEventListener('click', function() { vpAddRange('npft'); });
         document.getElementById('vpRuleModal').addEventListener('show.bs.modal', function() { vpPaintModal(); });
@@ -550,7 +543,7 @@
                 return {
                     sku: d['(Child) sku'] || '',
                     item_id: d.eBay_item_id || '',
-                    weight_slab: d.weight_slab || 'lb_0',
+                    weight_lb: vpWeightLb(d),
                     dil: vpDil(d),
                     npft: vpNpft(d)
                 };
@@ -640,6 +633,7 @@
                     }
                     const rows = vpRowsFromPayload(vpParseJson(text));
                     return vpTable.setData(rows).then(function() {
+                        vpTable.setSort('buy4', 'desc');
                         status.textContent = rows.length + ' rows from eBay 1';
                         document.getElementById('vp-rows-badge').textContent = 'Rows: ' + rows.length;
                     });
@@ -658,6 +652,7 @@
             placeholder: 'No eBay 1 rows',
             pagination: true,
             paginationSize: 100,
+            initialSort: [{ column: 'buy4', dir: 'desc' }],
             paginationCounter: 'rows',
             columnDefaults: { headerSort: true, resizable: true, vertAlign: 'middle' },
             columns: [

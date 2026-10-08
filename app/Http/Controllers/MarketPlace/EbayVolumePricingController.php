@@ -4,7 +4,6 @@ namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
 use App\Services\Ebay1VolumePricingService;
-use App\Services\ShippingSlabRateService;
 use App\Support\EbayVolumePricingRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -71,7 +70,7 @@ class EbayVolumePricingController extends Controller
     private function storeRules(array $raw, bool $keepIdsOnly): array
     {
         $existing = $this->loadRules();
-        $rules = EbayVolumePricingRule::merge($raw, $this->slabs());
+        $rules = EbayVolumePricingRule::merge($raw);
         $rules['promotion_ids'] = $existing['promotion_ids'] ?? [];
         if (! $keepIdsOnly) {
             $this->persist($rules);
@@ -85,9 +84,8 @@ class EbayVolumePricingController extends Controller
      */
     private function loadRules(): array
     {
-        $slabs = $this->slabs();
         if (! Schema::hasTable('ebay_sbid_rules')) {
-            return EbayVolumePricingRule::defaults($slabs);
+            return EbayVolumePricingRule::defaults();
         }
         $row = DB::table('ebay_sbid_rules')->where('key', EbayVolumePricingRule::KEY)->first();
         $saved = null;
@@ -96,7 +94,7 @@ class EbayVolumePricingController extends Controller
             $saved = is_array($decoded) ? $decoded : null;
         }
 
-        return EbayVolumePricingRule::merge($saved, $slabs);
+        return EbayVolumePricingRule::merge($saved);
     }
 
     /**
@@ -120,13 +118,5 @@ class EbayVolumePricingController extends Controller
             ['key' => EbayVolumePricingRule::KEY],
             $values
         );
-    }
-
-    /**
-     * @return list<array{key:string,label:string}>
-     */
-    private function slabs(): array
-    {
-        return app(ShippingSlabRateService::class)->slabDefinitions();
     }
 }

@@ -26,7 +26,7 @@ class Ebay1VolumePricingService
 
     /**
      * @param  array<string, mixed>  $rules
-     * @param  list<array{sku?:string,item_id?:string,weight_slab?:string,dil?:mixed,npft?:mixed}>  $rows
+     * @param  list<array{sku?:string,item_id?:string,weight_lb?:mixed,dil?:mixed,npft?:mixed}>  $rows
      * @return array{success:bool,message:string,pushed:int,groups:int,skipped:int,errors:list<string>,promotion_ids:array<string,string>}
      */
     public function push(array $rules, array $rows): array
@@ -45,7 +45,7 @@ class Ebay1VolumePricingService
                 continue;
             }
             $sum = EbayVolumePricingRule::sum(
-                (string) ($row['weight_slab'] ?? 'lb_0'),
+                is_numeric($row['weight_lb'] ?? null) ? (float) $row['weight_lb'] : null,
                 is_numeric($row['dil'] ?? null) ? (float) $row['dil'] : null,
                 is_numeric($row['npft'] ?? null) ? (float) $row['npft'] : null,
                 $rules

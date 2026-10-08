@@ -12,25 +12,52 @@ class EbayVolumePricingRule
 
     public const MAX_PCT = 80.0;
 
+    /** Shipping Master bands in pounds, without the 0 lb slab. From/To can be edited. */
+    private const DEFAULT_WEIGHT = [
+        [0.01, 0.25],
+        [0.25, 0.50],
+        [0.50, 0.75],
+        [0.75, 1],
+        [1, 2],
+        [2.01, 3],
+        [3.01, 4],
+        [4.01, 5],
+        [5.01, 10],
+        [10.01, 20],
+        [20.01, 25],
+        [25.01, 30],
+        [30.01, 40],
+        [40.01, 50],
+        [50.01, 999],
+    ];
+
+    /** Older saves stored a shipping-master slab key instead of From/To. */
+    private const LEGACY_WEIGHT_KEYS = [
+        'oz_4' => [0.01, 0.25],
+        'oz_6' => [0.25, 0.50],
+        'oz_12' => [0.50, 0.75],
+        'oz_1599' => [0.75, 1],
+        'lb_101_2' => [1, 2],
+        'lb_201_3' => [2.01, 3],
+        'lb_301_4' => [3.01, 4],
+        'lb_401_5' => [4.01, 5],
+        'lb_501_10' => [5.01, 10],
+        'lb_1001_20' => [10.01, 20],
+        'lb_20_30' => [20.01, 25],
+        'lb_2501_30' => [25.01, 30],
+        'lb_30_40' => [30.01, 40],
+        'lb_40_50' => [40.01, 50],
+        'lb_gt50' => [50.01, 999],
+    ];
+
     /**
-     * @param  list<array{key:string,label:string}>  $slabs
      * @return array<string, mixed>
      */
-    public static function defaults(array $slabs): array
+    public static function defaults(): array
     {
         $weight = [];
-        foreach ($slabs as $slab) {
-            $key = trim((string) ($slab['key'] ?? ''));
-            if ($key === '') {
-                continue;
-            }
-            $weight[] = [
-                'key' => $key,
-                'label' => (string) ($slab['label'] ?? $key),
-                'buy2' => 0.0,
-                'buy3' => 0.0,
-                'buy4' => 0.0,
-            ];
+        foreach (self::DEFAULT_WEIGHT as [$min, $max]) {
+            $weight[] = ['min' => $min, 'max' => $max, 'buy2' => 0.0, 'buy3' => 0.0, 'buy4' => 0.0];
         }
 
         return [
@@ -56,29 +83,19 @@ class EbayVolumePricingRule
     }
 
     /**
-     * Keep saved percents, and add any new shipping-master slabs at 0.
-     *
      * @param  array<string, mixed>|null  $saved
-     * @param  list<array{key:string,label:string}>  $slabs
      * @return array<string, mixed>
      */
-    public static function merge(?array $saved, array $slabs): array
+    public static function merge(?array $saved): array
     {
-        $base = self::defaults($slabs);
+        $base = self::defaults();
         if (! is_array($saved)) {
             return $base;
         }
-        $clean = self::normalize($saved, $slabs);
-        $byKey = [];
-        foreach ($clean['weight'] as $row) {
-            $byKey[$row['key']] = $row;
+        $clean = self::normalize($saved);
+        if ($clean['weight'] === []) {
+            $clean['weight'] = $base['weight'];
         }
-        $weight = [];
-        foreach ($base['weight'] as $row) {
-            $weight[] = $byKey[$row['key']] ?? $row;
-            $weight[count($weight) - 1]['label'] = $row['label'];
-        }
-        $clean['weight'] = $weight;
         if ($clean['dil'] === []) {
             $clean['dil'] = $base['dil'];
         }
@@ -91,35 +108,14 @@ class EbayVolumePricingRule
 
     /**
      * @param  array<string, mixed>  $raw
-     * @param  list<array{key:string,label:string}>  $slabs
      * @return array<string, mixed>
      */
-    public static function normalize(array $raw, array $slabs): array
+    public static function normalize(array $raw): array
     {
-        $labels = [];
-        foreach ($slabs as $slab) {
-            $key = trim((string) ($slab['key'] ?? ''));
-            if ($key !== '') {
-                $labels[$key] = (string) ($slab['label'] ?? $key);
-            }
-        }
-        $weight = [];
-        foreach (is_array($raw['weight'] ?? null) ? $raw['weight'] : [] as $row) {
-            if (! is_array($row)) {
-                continue;
-            }
-            $key = trim((string) ($row['key'] ?? ''));
-            if ($key === '' || ! isset($labels[$key]) || isset($weight[$key])) {
-                continue;
-            }
-            $tier = self::tier($row);
-            $weight[$key] = [
-                'key' => $key,
-                'label' => $labels[$key],
-                'buy2' => $tier['buy2'],
-                'buy3' => $tier['buy3'],
-                'buy4' => $tier['buy4'],
-            ];
+        $weightRaw = $raw['weight'] ?? null;
+        $weight = self::ranges($weightRaw);
+        if ($weight === [] && is_array($weightRaw)) {
+            $weight = self::legacyWeight($weightRaw);
         }
 
         $ids = [];
@@ -133,7 +129,7 @@ class EbayVolumePricingRule
 
         return [
             'enabled' => (bool) ($raw['enabled'] ?? false),
-            'weight' => array_values($weight),
+            'weight' => $weight,
             'dil' => self::ranges($raw['dil'] ?? null),
             'npft' => self::ranges($raw['npft'] ?? null),
             'promotion_ids' => $ids,
@@ -144,15 +140,9 @@ class EbayVolumePricingRule
      * @param  array<string, mixed>  $rules  Normalized rules
      * @return array{buy2:float,buy3:float,buy4:float,parts:array<string,array{buy2:float,buy3:float,buy4:float}>}
      */
-    public static function sum(string $slabKey, ?float $dil, ?float $npft, array $rules): array
+    public static function sum(?float $weightLb, ?float $dil, ?float $npft, array $rules): array
     {
-        $weight = ['buy2' => 0.0, 'buy3' => 0.0, 'buy4' => 0.0];
-        foreach ($rules['weight'] ?? [] as $row) {
-            if (is_array($row) && (string) ($row['key'] ?? '') === $slabKey) {
-                $weight = self::tier($row);
-                break;
-            }
-        }
+        $weight = self::rangeTier($weightLb, is_array($rules['weight'] ?? null) ? $rules['weight'] : []);
         $dilTier = self::rangeTier($dil, is_array($rules['dil'] ?? null) ? $rules['dil'] : []);
         $npftTier = self::rangeTier($npft, is_array($rules['npft'] ?? null) ? $rules['npft'] : []);
 
@@ -244,6 +234,41 @@ class EbayVolumePricingRule
             'buy3' => self::pct($row['buy3'] ?? 0),
             'buy4' => self::pct($row['buy4'] ?? 0),
         ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array{min:float,max:float,buy2:float,buy3:float,buy4:float}>
+     */
+    private static function legacyWeight(array $rows): array
+    {
+        $byKey = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $key = trim((string) ($row['key'] ?? ''));
+            if ($key === '' || ! isset(self::LEGACY_WEIGHT_KEYS[$key])) {
+                continue;
+            }
+            $byKey[$key] = $row;
+        }
+        $out = [];
+        foreach (self::LEGACY_WEIGHT_KEYS as $key => [$min, $max]) {
+            if (! isset($byKey[$key])) {
+                continue;
+            }
+            $tier = self::tier($byKey[$key]);
+            $out[] = [
+                'min' => (float) $min,
+                'max' => (float) $max,
+                'buy2' => $tier['buy2'],
+                'buy3' => $tier['buy3'],
+                'buy4' => $tier['buy4'],
+            ];
+        }
+
+        return $out;
     }
 
     /**
