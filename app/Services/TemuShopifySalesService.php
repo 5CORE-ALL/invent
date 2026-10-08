@@ -122,6 +122,22 @@ class TemuShopifySalesService
         return self::marginDecimalFromMarketplace('Temu 2', 'TemuTwo', 'Temu2');
     }
 
+    /** Take-home decimal from marketplace_percentages for Temu 3; falls back to the Temu row. */
+    public static function temu3MarginDecimal(): float
+    {
+        return self::marginDecimalFromMarketplace('Temu 3', 'TemuThree', 'Temu3', 'Temu');
+    }
+
+    /** Take-home decimal for a Temu channel key (temu / temu2 / temu3). */
+    public static function temuChannelMarginDecimal(string $channel): float
+    {
+        return match (strtolower(str_replace([' ', '-', '_'], '', $channel))) {
+            'temu2', 'temutwo' => self::temu2MarginDecimal(),
+            'temu3', 'temuthree' => self::temu3MarginDecimal(),
+            default => self::temuMarginDecimal(),
+        };
+    }
+
     /** Full Temu Price multiplier — inverse of S Recovery 0.88. */
     public const FULL_PRICE_MULT = 1.1364;
 
@@ -600,7 +616,7 @@ class TemuShopifySalesService
         }
 
         [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
-        $margin = self::temuMarginDecimal();
+        $margin = self::temu2MarginDecimal();
         $totalSales = 0.0;
         $totalBaseSales = 0.0;
         $totalQty = 0;
@@ -867,7 +883,7 @@ class TemuShopifySalesService
 
         [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
 
-        $margin = self::temuMarginDecimal();
+        $margin = self::temu3MarginDecimal();
         $totalFull = 0.0;
         $totalBase = 0.0;
         $totalQty = 0;
@@ -955,7 +971,7 @@ class TemuShopifySalesService
 
         [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
         $productMasters = self::productMastersForSkus($items->pluck('contribution_sku'));
-        $margin = self::temuMarginDecimal();
+        $margin = self::temu3MarginDecimal();
 
         $totalFull = 0.0;
         $totalBase = 0.0;
@@ -1382,7 +1398,7 @@ class TemuShopifySalesService
             return [];
         }
 
-        $margin = self::temuMarginDecimal();
+        $margin = self::temu3MarginDecimal();
         $skus = $orders->map(fn ($o) => trim((string) ($o->contribution_sku ?? '')));
         $productMasters = self::productMastersForSkus($skus);
 
@@ -1476,8 +1492,9 @@ class TemuShopifySalesService
             return [];
         }
 
-        // Same marketplace_percentages.Temu take-home as /temu-decrease and /temu2-decrease.
-        $margin = self::temuMarginDecimal();
+        // Per-channel take-home from marketplace_percentages: the Temu row for Temu 1,
+        // the Temu 2 row for Temu 2 (same as /temu-decrease and /temu2-decrease).
+        $margin = $isTemu2 ? self::temu2MarginDecimal() : self::temuMarginDecimal();
         $skus = $orders->map(function ($o) {
             $sku = trim((string) ($o->ext_code ?? ''));
             if ($sku === '') {

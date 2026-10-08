@@ -861,8 +861,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             return str_replace(' ', '', $normalizeSku($pm->sku ?? ''));
         });
 
-        // Same Temu margin as /temu2-tabulator (marketplace_percentages.Temu).
-        $percentage = \App\Services\TemuShopifySalesService::temuMarginDecimal();
+        // Same Temu 2 margin as /temu2-tabulator (marketplace_percentages."Temu 2").
+        $percentage = \App\Services\TemuShopifySalesService::temu2MarginDecimal();
 
         $totalOrders = 0;
         $totalQuantity = 0;

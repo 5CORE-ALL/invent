@@ -31,7 +31,7 @@ class Temu3Controller extends TemuController
 {
     public function temu3DecreaseView()
     {
-        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
+        $temuMargin = TemuShopifySalesService::temu3MarginDecimal();
 
         return view('market-places.temu3_decrease', compact('temuMargin'));
     }
@@ -53,7 +53,7 @@ class Temu3Controller extends TemuController
      */
     public function temu3TabulatorView()
     {
-        $temuMargin = TemuShopifySalesService::temuMarginDecimal();
+        $temuMargin = TemuShopifySalesService::temu3MarginDecimal();
         $temu3YSales = TemuShopifySalesService::computeYSalesFromTemu3Orders();
         $temu3YDate = Carbon::now(TemuShopifySalesService::PST)->subDay()->toDateString();
 
@@ -161,7 +161,7 @@ class Temu3Controller extends TemuController
             $pmByNormalized = ProductMaster::whereIn('sku', $productMasterSkus)->get()
                 ->keyBy(fn ($pm) => $normalizeSku($pm->sku));
 
-            $margin = TemuShopifySalesService::temuMarginDecimal();
+            $margin = TemuShopifySalesService::temu3MarginDecimal();
             $result = [];
             foreach ($allTemuData as $item) {
                 $sku = $item->contribution_sku;

@@ -1104,8 +1104,8 @@
 @section('script-bottom')
     @include('partials.lazy-chart-js')
 <script>
-    // Same margin as /temu-decrease — marketplace_percentages.Temu (TEMU_MARGIN)
-    const TEMU_MARGIN = {{ (float) ($temuMargin ?? \App\Services\TemuShopifySalesService::temuMarginDecimal()) }};
+    // marketplace_percentages."Temu 3" take-home, falling back to the Temu row (TEMU_MARGIN)
+    const TEMU_MARGIN = {{ (float) ($temuMargin ?? \App\Services\TemuShopifySalesService::temu3MarginDecimal()) }};
     function temuSpriceMargin(rowData) {
         const marginRaw = parseFloat(rowData && rowData.percentage);
         return (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : TEMU_MARGIN;

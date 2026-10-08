@@ -465,7 +465,9 @@ class PricingErrorsFixCvrCacheBuilder
             'ebay1' => 0.83,
             'ppower' => 0.65,
             'macy', 'macys' => 0.75,
-            'temu', 'temu2' => TemuShopifySalesService::temuMarginDecimal(),
+            'temu' => TemuShopifySalesService::temuMarginDecimal(),
+            'temu2' => TemuShopifySalesService::temu2MarginDecimal(),
+            'temu3' => TemuShopifySalesService::temu3MarginDecimal(),
             default => 0.80,
         };
     }

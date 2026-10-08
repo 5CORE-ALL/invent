@@ -38,7 +38,7 @@ class NewTemutwoController extends Controller
     public function index()
     {
         return view('market-places.new_temutwo_tabulator_view', [
-            'temuMargin' => TemuShopifySalesService::temuMarginDecimal(),
+            'temuMargin' => TemuShopifySalesService::temu2MarginDecimal(),
             'temuAds' => $this->temuChannelAdsSummary(),
             'newtemutwoPageReloadPushEnabled' => ChannelPromoPricingController::isPageReloadPushEnabled('newtemutwo'),
             'newtemutwoPushSpriceLive' => ChannelPushSpriceRunner::livePushAllowed(),
@@ -280,7 +280,7 @@ class NewTemutwoController extends Controller
             $cvrAdj = $dilStore['cvr_adj'] ?? null;
             $suggestedStore = new NewTemutwoSuggestedPriceStore();
             $suggestedStore->loadForSkus($skus);
-            $percentage = TemuShopifySalesService::temuMarginDecimal();
+            $percentage = TemuShopifySalesService::temu2MarginDecimal();
             // One channel-level Ads% nets every row, same as /temu2-decrease.
             $adsPercent = (float) $this->temuChannelAdsSummary()['percent'];
 
