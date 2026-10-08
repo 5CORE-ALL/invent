@@ -629,6 +629,7 @@
                         title="Set S Bid from Dil. eBay 3 keeps its own slabs.">
                         Dil vs SBid
                     </button>
+                    @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 3'])
                     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay3'])
 

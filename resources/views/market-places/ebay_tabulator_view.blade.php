@@ -807,6 +807,7 @@
                         title="Set S Bid from Dil. eBay 1 keeps its own slabs.">
                         Dil vs SBid
                     </button>
+                    @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 1'])
                     <button type="button" id="ebay1-zero-sold-coupon-btn" class="btn btn-outline-secondary btn-sm pricing-filter-item"
                         title="Public eBay coupon on 0 sold only. Turns off as soon as E L30 is 1.">
                         <i class="fas fa-ticket-alt"></i> 0 Sold CPN Off

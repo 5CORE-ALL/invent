@@ -222,9 +222,14 @@
             </div>
             <div class="modal-footer py-2 d-flex justify-content-between">
                 <span class="small text-muted" id="dil-sbid-status"></span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dil-sbid-apply-btn">
-                    <i class="fas fa-save me-1"></i>Save and Apply
-                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-warning text-dark dil-sbid-push-btn" title="Push the saved Dil vs SBid rule to listings on this page.">
+                        <i class="fas fa-cloud-upload-alt me-1"></i>Push SBID
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dil-sbid-apply-btn">
+                        <i class="fas fa-save me-1"></i>Save and Apply
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -375,13 +380,23 @@
             </div>
             <div class="modal-footer py-2 d-flex justify-content-between">
                 <span class="small text-muted" id="dil-sbid-status"></span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dil-sbid-apply-btn">
-                    <i class="fas fa-save me-1"></i>Save and Apply
-                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-warning text-dark dil-sbid-push-btn" title="Push the saved Dil vs SBid rule to listings on this page.">
+                        <i class="fas fa-cloud-upload-alt me-1"></i>Push SBID
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="dil-sbid-apply-btn">
+                        <i class="fas fa-save me-1"></i>Save and Apply
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
+@elseif(($part ?? 'modal') === 'button')
+<button type="button" class="btn btn-sm btn-warning text-dark pricing-filter-item dil-sbid-push-btn"
+    title="Push the saved Dil vs SBid rule to listings on this page. Same push as the morning and evening auto-push.">
+    <i class="fas fa-cloud-upload-alt me-1"></i>Push SBID
+</button>
 @else
 const DIL_SBID_GET_URL = @json($getUrl);
 const DIL_SBID_SAVE_URL = @json($saveUrl);
@@ -1496,15 +1511,27 @@ function dilSbidPaintStatus(resp) {
         else if (running[id]) row.update({ campaign_status: 'RUNNING' });
     });
 }
+function dilSbidPushButtons() {
+    return Array.prototype.slice.call(document.querySelectorAll('#dil-sbid-apply-btn, .dil-sbid-push-btn'));
+}
+function dilSbidSetPushBusy(on, label) {
+    dilSbidPushButtons().forEach(function(btn) {
+        btn.disabled = !!on;
+        if (!btn.classList.contains('dil-sbid-push-btn')) return;
+        if (!btn.getAttribute('data-label')) btn.setAttribute('data-label', btn.innerHTML);
+        btn.innerHTML = on
+            ? ('<i class="fas fa-spinner fa-spin me-1"></i>' + (label || 'Pushing…'))
+            : btn.getAttribute('data-label');
+    });
+}
 function dilSbidApply() {
     const errEl = document.getElementById('dil-sbid-err');
     const statusEl = document.getElementById('dil-sbid-status');
-    const btn = document.getElementById('dil-sbid-apply-btn');
     const ids = [];
     const seenIds = {};
     let alreadyMatching = 0;
     dilSbidRows().forEach(function(d) {
-        const id = d && (d.listing_id || d.eBay_item_id || d.ebay_item_id);
+        const id = d && (d.listing_id || d.eBay_item_id || d.ebay_item_id || d.item_id);
         if (!id || seenIds[id]) return;
         seenIds[id] = true;
         // Extended mode: a running ad whose C Bid already equals the S Bid needs no push.
@@ -1522,10 +1549,11 @@ function dilSbidApply() {
         ids.push(String(id));
     });
     if (!ids.length) {
-        if (statusEl) statusEl.textContent = alreadyMatching ? ('All ' + alreadyMatching + ' listings already match') : 'No listings loaded';
+        const msg = alreadyMatching ? ('All ' + alreadyMatching + ' listings already match') : 'No listings loaded';
+        if (statusEl) statusEl.textContent = msg;
         return;
     }
-    if (btn) btn.disabled = true;
+    dilSbidSetPushBusy(true, 'Pushing ' + ids.length + '…');
     if (statusEl) statusEl.textContent = 'Applying ' + ids.length + '…';
     $.ajax({
         url: DIL_SBID_APPLY_URL,
@@ -1535,7 +1563,7 @@ function dilSbidApply() {
         data: JSON.stringify({ listing_ids: ids }),
         timeout: 300000,
         success: function(resp) {
-            if (btn) btn.disabled = false;
+            dilSbidSetPushBusy(false);
             if (resp && resp.error) {
                 if (errEl) { errEl.textContent = resp.error; errEl.classList.remove('d-none'); }
                 if (statusEl) statusEl.textContent = '';
@@ -1546,7 +1574,7 @@ function dilSbidApply() {
             if (statusEl) statusEl.textContent = 'Applied: ' + s + ' pushed · ' + f + ' failed · ' + sk + ' skipped';
         },
         error: function(xhr) {
-            if (btn) btn.disabled = false;
+            dilSbidSetPushBusy(false);
             if (errEl) {
                 errEl.textContent = (xhr.responseJSON && xhr.responseJSON.error) || xhr.responseText || 'Apply failed';
                 errEl.classList.remove('d-none');
@@ -1648,6 +1676,12 @@ document.getElementById('dil-sbid-add-btn').addEventListener('click', function()
 document.getElementById('dil-sbid-apply-btn').addEventListener('click', function() {
     clearTimeout(dilSbidSaveTimer);
     dilSbidSave(true);
+});
+document.querySelectorAll('.dil-sbid-push-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        clearTimeout(dilSbidSaveTimer);
+        dilSbidApply();
+    });
 });
 document.getElementById('dil-sbid-cvr-table').addEventListener('input', function() {
     dilSbidCvrNow();

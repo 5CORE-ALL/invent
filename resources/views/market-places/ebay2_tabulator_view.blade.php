@@ -549,6 +549,7 @@
                         title="Set S Bid from Dil. eBay 2 keeps its own slabs.">
                         Dil vs SBid
                     </button>
+                    @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 2'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay2'])
 
                     {{-- Price (eBay Price) min–max range filter --}}

@@ -33,13 +33,6 @@ class EbayDilSbidAutoPushCommand extends Command
             return self::FAILURE;
         }
 
-        $lock = Cache::lock('ebay-dil-sbid-auto-push', 7200);
-        if (! $lock->get()) {
-            $this->warn('Already running — skip');
-
-            return self::FAILURE;
-        }
-
         try {
             foreach ($accounts as $account) {
                 $this->runAccount($apply, $account);
@@ -48,11 +41,14 @@ class EbayDilSbidAutoPushCommand extends Command
             $this->error($e->getMessage());
 
             return self::FAILURE;
-        } finally {
-            $lock->release();
         }
 
         return self::SUCCESS;
+    }
+
+    public static function lockName(string $account): string
+    {
+        return 'ebay-dil-sbid-auto-push-'.$account;
     }
 
     /**
@@ -72,6 +68,22 @@ class EbayDilSbidAutoPushCommand extends Command
     }
 
     private function runAccount(DilVsSbidApplyService $apply, string $account): void
+    {
+        $lock = Cache::lock(self::lockName($account), 7200);
+        if (! $lock->get()) {
+            $this->warn($account.': already running — skip');
+
+            return;
+        }
+
+        try {
+            $this->pushAccount($apply, $account);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function pushAccount(DilVsSbidApplyService $apply, string $account): void
     {
         if ($account === 'ebay3') {
             $result = $apply->applyChanged(DilVsSbidRule::KEY_EBAY3, 'ebay3_campaign_ads', Ebay3Metric::class, EbayThreeApiService::class);

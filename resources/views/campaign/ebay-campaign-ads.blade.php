@@ -28,6 +28,7 @@
                     title="Set S Bid from Dil. This account keeps its own slabs.">
                 <i class="fas fa-percent me-1"></i>Dil vs SBid
             </button>
+            @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 1'])
             <button class="btn btn-sm btn-outline-secondary" onclick="table.download('csv','ebay_campaign_ads.csv')">
                 <i class="fas fa-download me-1"></i>CSV
             </button>
