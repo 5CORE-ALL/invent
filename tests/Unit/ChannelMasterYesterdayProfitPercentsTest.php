@@ -47,6 +47,33 @@ class ChannelMasterYesterdayProfitPercentsTest extends TestCase
         $this->assertNull($out['nroi']);
     }
 
+    public function test_spend_comes_from_ads_percent_not_the_per_day_ad_tables(): void
+    {
+        // eBay 3 reports 0% Ads% on the page, but its campaign tables held $131.98
+        // for the day against $89.02 of sales — charging that gave a -130% YNPFT%.
+        $this->assertSame(0.0, $this->adSpend(89.02, 0));
+
+        $out = $this->percents(15.84, 33.43, $this->adSpend(89.02, 0), 89.02);
+        $this->assertSame(17.8, $out['npft']);
+        $this->assertSame(47.4, $out['nroi']);
+    }
+
+    public function test_ads_percent_is_charged_against_yesterdays_own_sales(): void
+    {
+        // Amazon: 21.99% Ads% on $4,677.03 of yesterday sales.
+        $this->assertSame(1028.48, $this->adSpend(4677.03, 21.99));
+        $this->assertSame(0.0, $this->adSpend(null, 21.99));
+    }
+
+    private function adSpend(mixed $daySales, mixed $adsPercent): float
+    {
+        $controller = app(ChannelMasterController::class);
+        $method = new ReflectionMethod($controller, 'yesterdayAdSpend');
+        $method->setAccessible(true);
+
+        return $method->invoke($controller, $daySales, $adsPercent);
+    }
+
     /**
      * @return array{groi: float|null, npft: float|null, nroi: float|null}
      */

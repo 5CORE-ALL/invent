@@ -1642,9 +1642,10 @@
             const gp = parseNumber(row['Gprofit%'] || 0);
             return (l30 * gp) / 100 - rowAdSpendFromRow(row);
         }
-        // Yesterday's own measured gross profit / COGS / ad spend / sales, written by
-        // channel:calculate-data. Null until that runs, then we fall back to the L30
-        // rates below. Deriving Y% from the L30 rates cancels the Y Sales factor
+        // Yesterday's own measured gross profit / COGS / sales, written by
+        // channel:calculate-data, plus the spend the server derived from the channel's
+        // Ads%. Null until that runs, then we fall back to the L30 rates below.
+        // Deriving Y% from the L30 rates cancels the Y Sales factor
         // (Y×GP ÷ COGS×Y/L30 reduces to L30 GPFT$ ÷ L30 COGS), which made Y GROI% /
         // YNPFT% / YNROI% identical to G Roi / N PFT / N ROI on every row.
         function yMeasuredFromRow(row) {

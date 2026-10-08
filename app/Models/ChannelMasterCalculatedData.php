@@ -23,7 +23,9 @@ class ChannelMasterCalculatedData extends Model
         'l60_sales',
         'l30_sales',
         'yesterday_sales',
-        // Measured one-day figures behind Y GROI% / YNPFT% / YNROI%.
+        // Measured one-day figures behind Y GROI% / YNPFT% / YNROI%. The net columns
+        // charge spend via the channel's Ads% instead of y_ad_spend, which is kept for
+        // comparison until the per-day and L30 ad-spend sources are reconciled.
         'y_day_sales',
         'y_pft',
         'y_cogs',

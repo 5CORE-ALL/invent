@@ -210,9 +210,10 @@ class AllMarketplaceMasterBadgeAggregator
     }
 
     /**
-     * Yesterday's own gross profit / COGS / ad spend / sales when the nightly
-     * calculation measured them. Null means fall back to rescaling the L30 rates,
-     * which cancels the Y Sales factor and reproduces the L30 percentages.
+     * Yesterday's own gross profit / COGS / sales when the nightly calculation
+     * measured them, plus the spend the controller derived from the channel's Ads%.
+     * Null means fall back to rescaling the L30 rates, which cancels the Y Sales
+     * factor and reproduces the L30 percentages.
      *
      * @param  array<string, mixed>  $row
      * @return array{pft: float, cogs: float, spend: float, sales: float}|null

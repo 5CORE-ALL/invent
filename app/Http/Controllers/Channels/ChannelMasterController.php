@@ -7959,14 +7959,16 @@ class ChannelMasterController extends Controller
                         ? round((float) $channel->y_pft, 2)
                         : $this->yProfitDollars($channel->yesterday_sales, $channel->gprofit_pct),
                     'Y NPFT' => $channel->y_pft !== null
-                        ? round((float) $channel->y_pft - (float) ($channel->y_ad_spend ?? 0), 2)
+                        ? round((float) $channel->y_pft - $this->yesterdayAdSpend($channel->y_day_sales, $channel->ads_percentage), 2)
                         : $this->yProfitDollars($channel->yesterday_sales, $channel->n_pft),
                     // Measured one-day figures: Y GROI% / YNPFT% / YNROI% come from these,
                     // not from rescaling the L30 percentages.
                     'Y Day Sales' => $channel->y_day_sales !== null ? (float) $channel->y_day_sales : null,
                     'Y GPFT $' => $channel->y_pft !== null ? (float) $channel->y_pft : null,
                     'Y COGS' => $channel->y_cogs !== null ? (float) $channel->y_cogs : null,
-                    'Y Spend' => $channel->y_ad_spend !== null ? (float) $channel->y_ad_spend : null,
+                    'Y Spend' => $channel->y_pft !== null
+                        ? $this->yesterdayAdSpend($channel->y_day_sales, $channel->ads_percentage)
+                        : null,
                     'Growth' => round($channel->growth, 2) . '%',
                     'L7 vs 30 pace %' => $channel->l7_vs_30_pace,
                     
@@ -19360,15 +19362,16 @@ class ChannelMasterController extends Controller
             $ySales = 0.0;
             $yPft = 0.0;
             $yCogs = 0.0;
-            $columns = ['yesterday_sales', 'gprofit_pct', 'n_pft', 'l30_sales', 'cogs', 'y_day_sales', 'y_pft', 'y_cogs', 'y_ad_spend'];
+            $columns = ['yesterday_sales', 'gprofit_pct', 'n_pft', 'l30_sales', 'cogs', 'ads_percentage', 'y_day_sales', 'y_pft', 'y_cogs'];
             foreach (\App\Models\ChannelMasterCalculatedData::query()->get($columns) as $row) {
                 $ys = (float) ($row->yesterday_sales ?? 0);
                 $gp = (float) ($row->gprofit_pct ?? 0);
                 // Measured one-day dollars when channel:calculate-data stored them.
                 $measured = $row->y_pft !== null && $row->y_cogs !== null;
+                $ySpend = $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage);
                 if ($metric === 'y_groi_pct' || $metric === 'y_nroi_pct') {
                     if ($measured) {
-                        $spend = $metric === 'y_nroi_pct' ? (float) ($row->y_ad_spend ?? 0) : 0.0;
+                        $spend = $metric === 'y_nroi_pct' ? $ySpend : 0.0;
                         $yPft += (float) $row->y_pft - $spend;
                         $yCogs += (float) $row->y_cogs;
 
@@ -19381,7 +19384,7 @@ class ChannelMasterController extends Controller
                     continue;
                 }
                 if ($measured) {
-                    $spend = $metric === 'y_pft' ? 0.0 : (float) ($row->y_ad_spend ?? 0);
+                    $spend = $metric === 'y_pft' ? 0.0 : $ySpend;
                     $ySales += (float) ($row->y_day_sales ?? $ys);
                     $yPft += (float) $row->y_pft - $spend;
 
@@ -20170,6 +20173,21 @@ class ChannelMasterController extends Controller
     private function yProfitDollars(mixed $ySales, mixed $percent): float
     {
         return round(((float) $ySales * (float) $percent) / 100, 2);
+    }
+
+    /**
+     * Ad spend to charge against yesterday.
+     *
+     * The per-day campaign tables and the page's own Total Ad Spend disagree for
+     * some channels: eBay 3 reports $0 L30 spend and 0% Ads% while its campaign
+     * tables hold a one-day figure, which charged it $131.98 against $89 of sales
+     * and produced a −130% YNPFT%. Using Ads% keeps the net Y columns built the
+     * same way N PFT is, so the two stay comparable. The measured figure is still
+     * stored in y_ad_spend for when that wiring is reconciled.
+     */
+    private function yesterdayAdSpend(mixed $yDaySales, mixed $adsPercent): float
+    {
+        return round(((float) $yDaySales * (float) $adsPercent) / 100, 2);
     }
 
     /**
@@ -21655,7 +21673,7 @@ class ChannelMasterController extends Controller
             $units = $qty > 0 ? $qty : (float) ($row->l30_orders ?? 0);
             $cvr = $views > 0 ? round(($units / $views) * 100, 2) : null;
         }
-        $yPct = $this->yesterdayProfitPercents($row->y_pft, $row->y_cogs, $row->y_ad_spend, $row->y_day_sales);
+        $yPct = $this->yesterdayProfitPercents($row->y_pft, $row->y_cogs, $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage), $row->y_day_sales);
 
         return match ($metric) {
             'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
@@ -21720,7 +21738,7 @@ class ChannelMasterController extends Controller
                 $units = $qty > 0 ? $qty : (float) ($row->l30_orders ?? 0);
                 $cvr = $views > 0 ? round(($units / $views) * 100, 2) : null;
             }
-            $yPct = $this->yesterdayProfitPercents($row->y_pft, $row->y_cogs, $row->y_ad_spend, $row->y_day_sales);
+            $yPct = $this->yesterdayProfitPercents($row->y_pft, $row->y_cogs, $this->yesterdayAdSpend($row->y_day_sales, $row->ads_percentage), $row->y_day_sales);
             $live = [
                 'y_sales' => $row->yesterday_sales !== null ? (float) $row->yesterday_sales : null,
                 'l7_sales' => $row->l7_sales !== null ? (float) $row->l7_sales : null,
