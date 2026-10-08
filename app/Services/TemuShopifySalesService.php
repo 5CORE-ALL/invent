@@ -725,6 +725,10 @@ class TemuShopifySalesService
             $lp = (float) ($r['lp'] ?? 0);
             $ship = (float) ($r['temu_ship'] ?? 0);
             $lineSales = (float) ($r['line_sales'] ?? 0);
+            // Temu 1 profit is the /temu-tabulator figure on purpose: R Price rebuilt from
+            // base_price_total (computeFbPrice), exactly what that page's GPFT$ / GPFT % /
+            // GROI % compute. Active Channel has to show the same numbers as that page, so
+            // do not pass a profit basis override here (Temu 2 above does).
             $calc = self::temuPriceSalesAndProfit(
                 $base,
                 $qty,
@@ -732,8 +736,7 @@ class TemuShopifySalesService
                 $lp,
                 $ship,
                 false,
-                true,
-                self::orderRowProfitBasisUnit($r)
+                true
             );
 
             $totalSales += $calc['sales'];
