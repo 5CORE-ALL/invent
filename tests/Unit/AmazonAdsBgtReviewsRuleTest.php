@@ -75,4 +75,28 @@ class AmazonAdsBgtReviewsRuleTest extends TestCase
             ],
         ]);
     }
+
+    public function test_bgt_reviews_allows_decimals_below_one(): void
+    {
+        $rule = AmazonAdsBgtReviewsRule::normalizeRule([
+            'bands' => [
+                ['rev_from' => 4.01, 'rev_to' => 4.5, 'bgt' => 0.5, 'label' => 'Blue', 'color' => '#2563eb'],
+                ['rev_from' => 4.51, 'rev_to' => 5, 'bgt' => 1.5, 'label' => 'Green', 'color' => '#28a745'],
+            ],
+        ]);
+        $this->assertSame(0.5, $rule['bands'][0]['bgt']);
+        $this->assertSame(1.5, $rule['bands'][1]['bgt']);
+        $this->assertSame(0.5, AmazonAdsBgtReviewsRule::apply(4.3, $rule)['bgt']);
+        $this->assertSame(1.5, AmazonAdsBgtReviewsRule::apply(4.8, $rule)['bgt']);
+    }
+
+    public function test_bgt_reviews_rejects_zero(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        AmazonAdsBgtReviewsRule::normalizeRule([
+            'bands' => [
+                ['rev_from' => 4.01, 'rev_to' => 5, 'bgt' => 0, 'label' => 'Zero', 'color' => '#111111'],
+            ],
+        ]);
+    }
 }

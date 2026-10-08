@@ -4907,7 +4907,7 @@
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
                         + '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '" title="Campaigns on this grid page in this Reviews range">' + (counts[i] != null ? counts[i] : 0) + '</span></td>'
-                        + '<td><input type="number" step="0.01" min="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="number" step="0.01" min="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Decimals allowed, including below 1 (e.g. 0.5). Must be greater than 0 — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -4978,7 +4978,7 @@
                         var rb = cleaned[ri];
                         if (!isFinite(rb.rev_from) || !isFinite(rb.rev_to) || !isFinite(rb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Reviews values.'; err.classList.remove('d-none'); } return; }
                         if (rb.rev_from > rb.rev_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                        if (rb.bgt < 1) { if (err) { err.textContent = 'Every slab needs a Bgt Reviews of 1 or more.'; err.classList.remove('d-none'); } return; }
+                        if (!(rb.bgt > 0)) { if (err) { err.textContent = 'Every slab needs a Bgt Reviews greater than 0 (decimals like 0.5 are allowed).'; err.classList.remove('d-none'); } return; }
                     }
                     bgtReviewsSaveBtn.disabled = true;
                     fetch(bgtReviewsRuleSaveUrl, {

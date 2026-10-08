@@ -90,7 +90,7 @@ final class AmazonAdsBgtReviewsRule
             $bands[] = [
                 'rev_from' => (float) ($band['rev_from'] ?? 0),
                 'rev_to' => (float) ($band['rev_to'] ?? 5),
-                'bgt' => AmazonAdsSbgt::normalizeBgtValue(max(1, (float) ($band['bgt'] ?? 1))),
+                'bgt' => AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 1),
                 'label' => (string) ($band['label'] ?? ''),
                 'color' => (string) ($band['color'] ?? '#6c757d'),
             ];
@@ -122,8 +122,8 @@ final class AmazonAdsBgtReviewsRule
             if ($from > $to) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
             }
-            if ($bgt < 1 || $bgt > 100_000) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Reviews must be between 1 and 100000.');
+            if ($bgt <= 0 || $bgt > 100_000) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Reviews must be greater than 0 (decimals like 0.5 are allowed) and at most 100000.');
             }
         }
     }
@@ -145,7 +145,7 @@ final class AmazonAdsBgtReviewsRule
     }
 
     /**
-     * @return array{bgt: int|null, color: string, label: string}
+     * @return array{bgt: int|float|null, color: string, label: string}
      */
     public static function apply(?float $rating, ?array $rule = null): array
     {
