@@ -195,6 +195,7 @@
                                 title="PFT = Σ ((sales × margin) − LP × AB L30). Ship is not subtracted.">PFT: $0</span>
                             <span class="badge fs-6 p-2" id="ab-groi-badge" style="background-color:#6f42c1;color:#fff;"
                                 title="GROI = PFT ÷ COGS. COGS = Σ (LP × AB L30) on SKUs with sales. Ship is not subtracted.">GROI: 0%</span>
+                            @include('partials.analytics-dil-badge', ['dilChannel' => 'alibaba'])
                             <span class="badge bg-success fs-6 p-2 ab-filter-badge" id="ab-sold-badge" data-filter="more" style="cursor:pointer;"
                                 title="AB L30 &gt; 0 and INV &gt; 0">Sold &gt;0: <span id="ab-more-sold">0</span></span>
                             <span class="badge bg-danger fs-6 p-2 ab-filter-badge" id="ab-zero-badge" data-filter="zero" style="cursor:pointer;"
@@ -480,6 +481,10 @@
             const soldF = document.getElementById('ab-sold-filter').value;
             if (soldF === 'more') document.getElementById('ab-sold-badge').classList.add('active-filter');
             if (soldF === 'zero') document.getElementById('ab-zero-badge').classList.add('active-filter');
+            if (window.AnalyticsDilBadge) {
+                var __dilRows = (typeof abAllRows !== 'undefined' && Array.isArray(abAllRows) && abAllRows.length) ? abAllRows : (rows || []);
+                AnalyticsDilBadge.paintFromRows(__dilRows);
+            }
         }
 
         const AB_COL_GROUPS = ['basic', 'price', 'other'];

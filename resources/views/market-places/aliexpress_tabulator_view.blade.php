@@ -269,6 +269,7 @@
             dataLoaded: function(data) {
                 console.log("Data loaded:", data.length, "rows");
                 loadBadgeStats();
+                if (window.AnalyticsDilBadge) AnalyticsDilBadge.paintFromRows(data || []);
             },
             langs: {
                 "default": {

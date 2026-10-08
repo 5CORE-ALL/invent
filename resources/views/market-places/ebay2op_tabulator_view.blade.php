@@ -4673,6 +4673,14 @@
                 $('#avg-cvr-badge').text('CVR: ' + Math.round(avgCVR) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 $('#total-inv-badge').text('E Stock: ' + Math.round(totalFbaInv).toLocaleString());
+            
+                if (window.AnalyticsDilBadge) {
+                    var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
+                        : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
+                        : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                        : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
+                    AnalyticsDilBadge.paintFromRows(__dilRows);
+                }
             }
 
             function fetchEbay2opColumnVisibility() {

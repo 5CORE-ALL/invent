@@ -227,6 +227,7 @@
                             title="7-day CVR. Click for trend + date range.">
                             <span class="summary-trend-dot none" data-metric="cvr" title="Rolling history"></span>CVR: <span id="avg-cvr">—</span>
                         </span>
+                        @include('partials.analytics-dil-badge', ['dilChannel' => 'allmarketplace_l7'])
                         <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;"
                             title="7-day blended GPFT%. Click for trend + date range.">
                             <span class="summary-trend-dot none" data-metric="gprofit" title="Rolling history"></span>GPFT: <span id="avg-gprofit">0%</span>
@@ -739,6 +740,14 @@
                 ajaxResponse: function(url, params, response) {
                     if (response && response.status === 200 && response.data) {
                         updateSummaryStats(response.data);
+                        if (window.AnalyticsDilBadge) {
+                            const ovL30 = parseFloat(response.total_ov_l30) || 0;
+                            const dilInv = parseFloat(response.total_inv) || 0;
+                            const fromSums = dilInv > 0 ? (ovL30 / dilInv) * 100 : 0;
+                            const dilPct = parseFloat(response.dil_ov_percent);
+                            const pct = (isFinite(dilPct) && !(dilPct === 0 && fromSums > 0)) ? dilPct : fromSums;
+                            AnalyticsDilBadge.set(pct, ovL30, dilInv);
+                        }
                         loadMetricDotTrends(response.data);
                         if (response.label) {
                             const $badge = $('#summary-stats').prev().find('.badge').last();

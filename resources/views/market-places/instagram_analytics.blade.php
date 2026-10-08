@@ -633,6 +633,14 @@
         rows.forEach(function(row) { if (dpHasBlueTriangle(row)) blue++; });
         $('#instagram-blue-triangle-badge').html('<i class="fas fa-exclamation-triangle"></i> ' + blue.toLocaleString());
         syncDpTriangleBadgeState();
+    
+        if (window.AnalyticsDilBadge) {
+            var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
+                : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
+                : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
+            AnalyticsDilBadge.paintFromRows(__dilRows);
+        }
     }
 
     $(document).ready(function() {

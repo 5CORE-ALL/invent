@@ -706,6 +706,14 @@
             $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
             $('#temu-full-price-sales-badge').text('Temu Full Price Sales: $' + Math.round(totalTemuFullPriceSales).toLocaleString());
             $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
+        
+            if (window.AnalyticsDilBadge) {
+                var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
+                    : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
+                    : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                    : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
+                AnalyticsDilBadge.paintFromRows(__dilRows);
+            }
         }
 
         function buildColumnDropdown() {

@@ -6053,6 +6053,17 @@
 
                 setSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%', parseFloat(avgCVR.toFixed(1)));
                 setSummaryBadge($('#total-views-badge'), 'Views: ' + totalViews.toLocaleString(), totalViews);
+                // Dil% = Σ OV L30 ÷ Σ INV. Full child dataset (PARENT rows excluded), same as /ebay2-tabulator-view.
+                let dilOvL30 = 0, dilInv = 0;
+                const dilRows = (Array.isArray(allTableData) && allTableData.length) ? allTableData : allData;
+                (dilRows || []).forEach(function(row) {
+                    if (typeof ebayIsParentRowData === 'function' && ebayIsParentRowData(row)) return;
+                    dilOvL30 += parseFloat(row['L30'] || 0) || 0;
+                    dilInv += parseFloat(row['INV'] || 0) || 0;
+                });
+                if (window.AnalyticsDilBadge) {
+                    AnalyticsDilBadge.set(dilInv > 0 ? (dilOvL30 / dilInv) * 100 : 0, dilOvL30, dilInv);
+                }
                 // Always reformat L7 cells so below-avg values show RED (not stale green HTML).
                 if (table) {
                     try {

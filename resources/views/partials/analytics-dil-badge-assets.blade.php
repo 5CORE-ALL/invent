@@ -86,8 +86,8 @@
 (function() {
     if (window.AnalyticsDilBadge) return;
 
-    const INV_FIELDS = ['INV', 'inventory', 'inv', 'Inv', 'Shopify INV'];
-    const L30_FIELDS = ['OV L30', 'ov_l30', 'OV_L30', 'ovl30', 'L30', 'quantity'];
+    const INV_FIELDS = ['INV', 'shopify_inv', 'inventory', 'inv', 'Inv', 'Shopify INV'];
+    const L30_FIELDS = ['OV L30', 'ov_l30', 'OV_L30', 'ovl30', 'L30', 'l30', 'quantity'];
     let prevDil = null;
     let prevLoaded = false;
     let lastPosted = '';
@@ -153,10 +153,19 @@
         }
         return [];
     }
+    function eachDilRow(rows, fn) {
+        (rows || []).forEach(function(row) {
+            if (!row) return;
+            if (isParent(row)) {
+                if (Array.isArray(row._children) && row._children.length) eachDilRow(row._children, fn);
+                return;
+            }
+            fn(row);
+        });
+    }
     function totalsFromRows(rows) {
         let ov = 0, inv = 0;
-        (rows || []).forEach(function(row) {
-            if (isParent(row)) return;
+        eachDilRow(rows, function(row) {
             ov += num(row, L30_FIELDS);
             inv += num(row, INV_FIELDS);
         });
@@ -377,14 +386,18 @@
         }
         loadChart();
     }
-    function refreshFromTable() {
-        const t = totalsFromRows(defaultRows());
+    function paintFromRows(rows) {
+        const list = Array.isArray(rows) ? rows : [];
+        const t = totalsFromRows(list);
         if (t.inv <= 0 && t.ovL30 <= 0) {
-            if (!inited) return;
             const live = parseFloat($('#analytics-dil-badge').attr('data-live-value'));
             if (isFinite(live) && live > 0) return;
+            if (!list.length) return;
         }
         set(t.dil, t.ovL30, t.inv);
+    }
+    function refreshFromTable() {
+        paintFromRows(defaultRows());
     }
 
     window.AnalyticsDilBadge = {
@@ -396,6 +409,7 @@
             refreshFromTable();
         },
         set: set,
+        paintFromRows: paintFromRows,
         refreshFromTable: refreshFromTable
     };
 

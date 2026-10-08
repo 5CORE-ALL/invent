@@ -7586,6 +7586,18 @@ class ChannelMasterController extends Controller
                 }
             }
 
+            $dilOv = 0;
+            $dilInv = 0;
+            $dilPct = 0;
+            try {
+                $dilMetrics = $this->getShopifyInvLpMetrics();
+                $dilOv = $dilMetrics['ov_l30_sum'] ?? 0;
+                $dilInv = $dilMetrics['dil_inv_sum'] ?? ($dilMetrics['inv_sum'] ?? 0);
+                $dilPct = $dilMetrics['dil_ov_percent'] ?? 0;
+            } catch (\Throwable $e) {
+                Log::warning('Active channel Dil badge metrics failed: '.$e->getMessage());
+            }
+
             return response()->json([
                 'status' => 200,
                 'date' => $payload['date'] ?? null,
@@ -7594,6 +7606,9 @@ class ChannelMasterController extends Controller
                 'days' => $payload['days'] ?? $days,
                 'label' => $payload['label'] ?? null,
                 'data' => $data,
+                'total_ov_l30' => $dilOv,
+                'total_inv' => $dilInv,
+                'dil_ov_percent' => $dilPct,
             ]);
         } catch (\Throwable $e) {
             Log::error($logMessage.': '.$e->getMessage());

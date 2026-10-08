@@ -2599,6 +2599,14 @@
             $('#missing-badge').text(`Miss: ${missingCount}`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount.toLocaleString()}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount.toLocaleString()}`);
+        
+            if (window.AnalyticsDilBadge) {
+                var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
+                    : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
+                    : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                    : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
+                AnalyticsDilBadge.paintFromRows(__dilRows);
+            }
         }
 
         // Build Column Visibility Dropdown

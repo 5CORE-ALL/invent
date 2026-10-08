@@ -6042,6 +6042,14 @@
                         total_l30_orders: SERVER_AMZ_QTY_L30
                     });
                 }
+            
+                if (window.AnalyticsDilBadge) {
+                    var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
+                        : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
+                        : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                        : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
+                    AnalyticsDilBadge.paintFromRows(__dilRows);
+                }
             }
             window.updateAmazonSummary = updateSummary;
 

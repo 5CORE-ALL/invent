@@ -1891,6 +1891,14 @@
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-walmart-l30-badge').text('Total Walmart L30: $' + Math.round(totalWalmartL30).toLocaleString());
             $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
+        
+            if (window.AnalyticsDilBadge) {
+                var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
+                    : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
+                    : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                    : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
+                AnalyticsDilBadge.paintFromRows(__dilRows);
+            }
         }
 
         // Color functions (same as Temu)

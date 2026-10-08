@@ -5568,6 +5568,14 @@
                 $('#tt-gmv-spend-l30-badge').text('GMV Spend L30: $' + Math.round(sumGmvSpendL30).toLocaleString());
                 $('#tt-gmv-spend-l1-badge').text('GMV Spend L1: $' + Math.round(sumGmvSpendL1).toLocaleString());
                 $('#tt-gmv-budget-badge').text('GMV Budget: $' + Math.round(sumGmvBudget).toLocaleString());
+            
+                if (window.AnalyticsDilBadge) {
+                    var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
+                        : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
+                        : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                        : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
+                    AnalyticsDilBadge.paintFromRows(__dilRows);
+                }
             }
 
             // Update Ads/Utilized count section (from table data: campaign, NR, spend, etc.)

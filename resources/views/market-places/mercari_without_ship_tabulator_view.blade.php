@@ -1470,6 +1470,14 @@
             );
             if (typeof syncMercWosTriangleBadgeState === 'function') syncMercWosTriangleBadgeState();
             document.getElementById('revenue-badge').textContent = 'Revenue: $' + revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        
+            if (window.AnalyticsDilBadge) {
+                var __dilRows = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) ? allTableData
+                    : (typeof summaryDataCache !== 'undefined' && Array.isArray(summaryDataCache) && summaryDataCache.length) ? summaryDataCache
+                    : (typeof table !== 'undefined' && table && typeof table.getData === 'function') ? (function () { try { return table.getData() || []; } catch (e) { return []; } })()
+                    : (typeof tableData !== 'undefined' && Array.isArray(tableData) ? tableData : []);
+                AnalyticsDilBadge.paintFromRows(__dilRows);
+            }
         }
 
         function saveMercariStatus(sku, payload) {
