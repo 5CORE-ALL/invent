@@ -469,6 +469,27 @@ class AmazonInventorySyncService
         }
     }
 
+    /**
+     * Store the qty Amazon reports for these SKUs as the local listing qty.
+     *
+     * @param  array<string, int>  $qtyBySku
+     */
+    public function recordMarketplaceQty(array $qtyBySku): void
+    {
+        $rows = [];
+        foreach ($qtyBySku as $sku => $qty) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $rows[] = ['product_id' => '', 'sku_code' => $sku, 'inventory' => max(0, (int) $qty)];
+            }
+        }
+        if ($rows === []) {
+            return;
+        }
+        $this->persistLocalStock($rows);
+        $this->clearListingCaches();
+    }
+
     protected function clearListingCaches(): void
     {
         try {

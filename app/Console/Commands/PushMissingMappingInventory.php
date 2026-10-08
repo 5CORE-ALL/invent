@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\MarketplaceManager\MarketplaceListingQtyMatchService;
 use App\Services\MarketplaceManager\MarketplaceMismatchInventoryPass;
+use App\Services\MarketplaceManager\MarketplaceQtyReadBack;
 use App\Support\Marketplace\MappingChannelCounts;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -72,7 +73,7 @@ class PushMissingMappingInventory extends Command
             try {
                 $row = $this->pushChannel($pass, $match, $channel, $chunk, $dryRun);
             } catch (\Throwable $e) {
-                $row = ['channel' => $channel, 'skus' => 0, 'fixed' => 0, 'still' => [], 'note' => 'Error: '.$e->getMessage()];
+                $row = ['channel' => $channel, 'skus' => 0, 'fixed' => 0, 'still' => [], 'note' => 'Error: '.$e->getMessage(), 'verified' => false, 'already_ok' => 0];
                 Log::error('inventory:push-missing-mapping channel failed', ['channel' => $channel, 'error' => $e->getMessage()]);
             }
             $summary[] = $row;
@@ -84,6 +85,8 @@ class PushMissingMappingInventory extends Command
                     'still' => count($row['still']),
                     'still_sample' => array_slice($row['still'], 0, 10),
                     'note' => $row['note'],
+                    'verified' => $row['verified'],
+                    'already_ok' => $row['already_ok'],
                 ], now()->addDays(14));
             }
             $totals['skus'] += $row['skus'];
@@ -91,6 +94,11 @@ class PushMissingMappingInventory extends Command
             $totals['still'] += count($row['still']);
 
             $line = sprintf('%-16s %4d mismatched, %4d fixed, %4d still off', $channel, $row['skus'], $row['fixed'], count($row['still']));
+            $line .= $row['verified'] ? ' (read back from marketplace' : ' (unverified: no per-SKU read';
+            if ($row['already_ok'] > 0) {
+                $line .= sprintf(', %d already matched on the marketplace', $row['already_ok']);
+            }
+            $line .= ')';
             if ($row['note'] !== '') {
                 $line .= ' — '.$row['note'];
             }
@@ -107,7 +115,7 @@ class PushMissingMappingInventory extends Command
     }
 
     /**
-     * @return array{channel: string, skus: int, fixed: int, still: list<string>, note: string}
+     * @return array{channel: string, skus: int, fixed: int, still: list<string>, note: string, verified: bool, already_ok: int}
      */
     private function pushChannel(
         MarketplaceMismatchInventoryPass $pass,
@@ -116,7 +124,8 @@ class PushMissingMappingInventory extends Command
         int $chunk,
         bool $dryRun
     ): array {
-        $row = ['channel' => $channel, 'skus' => 0, 'fixed' => 0, 'still' => [], 'note' => ''];
+        $verified = MarketplaceQtyReadBack::supports($channel);
+        $row = ['channel' => $channel, 'skus' => 0, 'fixed' => 0, 'still' => [], 'note' => '', 'verified' => $verified, 'already_ok' => 0];
         if (! MarketplaceMismatchInventoryPass::syncEnabled($channel)) {
             $row['note'] = 'channel sync toggle is off; pushing the Missing Mapping list anyway';
         }
@@ -140,10 +149,22 @@ class PushMissingMappingInventory extends Command
 
         $errors = [];
         $still = $skus;
+        // The local marketplace qty may be a stale report or an earlier push target.
+        // Ask the marketplace first so SKUs it already matches are not pushed again.
+        if ($verified) {
+            $pass->readBack($channel, $still);
+            $still = $match->stillMismatched($channel, $still);
+            $row['already_ok'] = max(0, count($skus) - count($still));
+        }
         $round = 0;
         while ($still !== [] && $round < 4 && (time() - $started) < $budgetSeconds) {
             $before = count($still);
             $this->pushInChunks($pass, $channel, $still, $chunk, $errors);
+            if ($verified) {
+                // Marketplaces apply inventory updates asynchronously; give them a moment before reading.
+                sleep(5);
+                $pass->readBack($channel, $still);
+            }
             $still = $match->stillMismatched($channel, $still);
             $round++;
             if (count($still) >= $before) {
@@ -155,11 +176,14 @@ class PushMissingMappingInventory extends Command
         }
 
         $row['still'] = array_values($still);
-        $row['fixed'] = max(0, $row['skus'] - count($still));
+        $row['fixed'] = max(0, $row['skus'] - count($still) - $row['already_ok']);
         MappingChannelCounts::rememberMmChannelCount($channel, count($still));
         if ($still !== [] && $errors !== []) {
             $extra = 'push errors: '.mb_substr(implode(' | ', array_slice(array_unique($errors), 0, 3)), 0, 500);
             $row['note'] = trim($row['note'].' '.$extra);
+        }
+        if ($still !== [] && $verified && $errors === []) {
+            $row['note'] = trim($row['note'].' marketplace has not applied the new qty yet; next run re-reads before pushing');
         }
 
         return $row;
@@ -196,11 +220,12 @@ class PushMissingMappingInventory extends Command
         $rows = [];
         foreach (self::CHANNELS as $channel) {
             $last = Cache::get(self::LAST_RUN_CACHE_PREFIX.$channel);
+            $verified = MarketplaceQtyReadBack::supports($channel) ? 'read back' : 'unverified';
             $rows[] = is_array($last)
-                ? [$channel, $last['at'], $last['skus'], $last['fixed'], $last['still'], mb_substr((string) $last['note'], 0, 90)]
-                : [$channel, 'never (or not since this version)', '', '', '', MarketplaceMismatchInventoryPass::syncEnabled($channel) ? '' : 'sync off in channel settings'];
+                ? [$channel, $last['at'], $last['skus'], $last['fixed'], $last['still'], $verified, mb_substr((string) $last['note'], 0, 90)]
+                : [$channel, 'never (or not since this version)', '', '', '', $verified, MarketplaceMismatchInventoryPass::syncEnabled($channel) ? '' : 'sync off in channel settings'];
         }
-        $this->table(['channel', 'last run', 'mismatched', 'fixed', 'still off', 'note'], $rows);
+        $this->table(['channel', 'last run', 'mismatched', 'fixed', 'still off', 'marketplace qty', 'note'], $rows);
 
         return self::SUCCESS;
     }

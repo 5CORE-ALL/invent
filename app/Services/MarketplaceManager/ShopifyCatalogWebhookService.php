@@ -111,18 +111,21 @@ class ShopifyCatalogWebhookService
                 if (isset($priceCols['price']) && Schema::hasColumn('shopify_skus', 'price_updated_manually_at')) {
                     $priceCols['price_updated_manually_at'] = $now;
                 }
-                ShopifySku::query()->updateOrCreate(
-                    ['sku' => $sku],
-                    array_merge([
-                        'variant_id' => (string) $vid,
-                        'available_to_sell' => $qty ?? 0,
-                        'inv' => $qty ?? 0,
-                        'on_hand' => $qty ?? 0,
-                        'product_title' => $product['title'] ?? null,
-                        'variant_title' => $variant['title'] ?? null,
-                        'updated_at' => $now,
-                    ], $priceCols)
-                );
+                // inventory_quantity here is the all-locations total; Ohio available is
+                // written by the inventory_levels webhook/poller, so existing rows keep it.
+                $row = ShopifySku::query()->firstOrNew(['sku' => $sku]);
+                $cols = array_merge([
+                    'variant_id' => (string) $vid,
+                    'product_title' => $product['title'] ?? null,
+                    'variant_title' => $variant['title'] ?? null,
+                    'updated_at' => $now,
+                ], $priceCols);
+                if (! $row->exists) {
+                    $cols['available_to_sell'] = $qty ?? 0;
+                    $cols['inv'] = $qty ?? 0;
+                    $cols['on_hand'] = $qty ?? 0;
+                }
+                $row->fill($cols)->save();
             } catch (\Throwable $e) {
                 // non-fatal
             }
@@ -132,7 +135,7 @@ class ShopifyCatalogWebhookService
                     $sku,
                     $itemId,
                     (string) $vid,
-                    $qty,
+                    null,
                     'webhook',
                 );
             } catch (\Throwable $e) {
