@@ -47,6 +47,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingYamibuyController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingZendropController;
 use App\Models\ApiVsSheetSetting;
 use App\Models\ChannelMaster;
+use App\Models\ChannelMasterSummary;
 use App\Services\Support\MarketplaceApiConfigService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -575,6 +576,7 @@ class ListingChannelCounts
             Cache::forget('listing_channel_counts_v2:'.$mode.':'.$key);
         }
         $counts = self::forChannel($channel, true);
+        self::snapshotMissingListing($key, $counts);
 
         try {
             $pageKey = \App\Http\Controllers\MarketPlace\MissingListingController::PAGE_CACHE_KEY;
@@ -602,6 +604,28 @@ class ListingChannelCounts
         }
 
         return $counts;
+    }
+
+    /**
+     * @param  array{REQ: int, NRL: int, Listed: int, Pending: int}  $counts
+     */
+    private static function snapshotMissingListing(string $normalizedKey, array $counts): void
+    {
+        if ($normalizedKey === '' || ! Schema::hasTable('channel_master_daily_data')) {
+            return;
+        }
+
+        try {
+            ChannelMasterSummary::mergeTodaySummary($normalizedKey, [
+                'listing_miss_count' => (int) ($counts['Pending'] ?? 0),
+                'listing_req' => (int) ($counts['REQ'] ?? 0),
+                'listing_nrl' => (int) ($counts['NRL'] ?? 0),
+                'listing_listed' => (int) ($counts['Listed'] ?? 0),
+                'listing_captured_at' => now('America/Los_Angeles')->toDateTimeString(),
+            ], 'Listing Missing L snapshot (California)');
+        } catch (\Throwable $e) {
+            Log::warning('ListingChannelCounts missing-listing snapshot failed ('.$normalizedKey.'): '.$e->getMessage());
+        }
     }
 
     /**

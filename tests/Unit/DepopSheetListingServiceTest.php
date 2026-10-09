@@ -95,4 +95,20 @@ class DepopSheetListingServiceTest extends TestCase
         $this->assertSame($canonical, $match->invoke($service, 'CS042W', $master));
         $this->assertNull($match->invoke($service, 'NOT-ON-MASTER', $master));
     }
+
+    #[Test]
+    public function a_listed_flag_counts_even_when_an_older_state_says_pending(): void
+    {
+        $this->assertTrue(ListingCountsEngine::statusValueIsListed([
+            'listed' => 'Listed',
+            'state' => 'pending',
+        ]));
+        $this->assertFalse(ListingCountsEngine::statusValueIsListed([
+            'listed' => 'Pending',
+        ]));
+        $this->assertFalse(ListingCountsEngine::statusValueIsListed([
+            'state' => 'uploaded',
+            'listing_id' => 'ABC',
+        ]));
+    }
 }

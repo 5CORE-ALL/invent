@@ -60,19 +60,20 @@ class ListingSheetCatalogController extends Controller
             'seller_link' => 'nullable|string',
         ]);
 
-        $sku = trim((string) $validated['sku']);
-        $status = $statusClass::where('sku', $sku)->first();
-        $existing = $status && is_array($status->value) ? $status->value : [];
-
+        $fields = [];
         foreach (['nr_req', 'listed', 'buyer_link', 'seller_link'] as $field) {
-            if ($request->has($field)) {
-                $existing[$field] = $validated[$field] ?? '';
+            if ($request->exists($field)) {
+                $fields[$field] = $validated[$field] ?? '';
             }
         }
 
-        $statusClass::updateOrCreate(['sku' => $sku], ['value' => $existing]);
+        $counts = app(SheetListingCatalogService::class)->saveStatusFields(
+            $slug,
+            trim((string) $validated['sku']),
+            $fields
+        );
 
-        return response()->json(['status' => 'success']);
+        return response()->json(['status' => 'success', 'counts' => $counts]);
     }
 
     public function import(Request $request, string $channel): JsonResponse
@@ -84,7 +85,7 @@ class ListingSheetCatalogController extends Controller
 
         try {
             $result = app(SheetListingCatalogService::class)->importUploadedCatalog($slug, $request->file('file'));
-            $counts = ListingChannelCounts::forChannel($slug, false);
+            $counts = $result['counts'] ?? ListingChannelCounts::forChannel($slug, false);
 
             return response()->json([
                 'success' => true,
