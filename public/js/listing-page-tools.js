@@ -1058,7 +1058,10 @@
 
     function groupsForPublish() {
         const groups = selectedGroups();
-        if (selectedPublishMode() !== 'single') return groups;
+        // Business 5 Core stores one listing per SKU. Sending a whole parent
+        // in one request outlasts the gateway and the dialog says publish failed.
+        const oneEach = selectedPublishMode() === 'single' || String(cfg().channel || '').toLowerCase() === 'b5cb2b';
+        if (!oneEach) return groups;
         const out = [];
         groups.forEach(function (group) {
             group.skus.forEach(function (sku) {

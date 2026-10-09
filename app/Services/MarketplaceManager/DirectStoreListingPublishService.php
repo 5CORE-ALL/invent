@@ -717,9 +717,11 @@ class DirectStoreListingPublishService
         if ($item['weight_lb'] !== null) {
             $payload['weight'] = $item['weight_lb'];
         }
-        if ($item['images'] !== [] && (! $local || $item['primary'])) {
-            $payload['image_urls'] = $item['images'];
-        }
+        // The store downloads image_urls inside the create call. That, plus the
+        // Missing L recount after the response, runs past the gateway limit and
+        // the browser reports a timeout even though the listing was saved.
+        // Create the listing first; attach pictures after the browser is released.
+        $images = ($item['images'] !== [] && (! $local || $item['primary'])) ? $item['images'] : [];
         if (! $local) {
             if (! isset($payload['name'])) {
                 return ['success' => false, 'message' => 'Title is required to create a B2B listing.'];
@@ -733,7 +735,18 @@ class DirectStoreListingPublishService
             $payload['is_active'] = true;
         }
 
-        return $this->sendB2bListing($sku, $payload, $local);
+        $result = $this->sendB2bListing($sku, $payload, $local);
+        if (($result['success'] ?? false) && $images !== []) {
+            app()->terminating(function () use ($sku, $images): void {
+                try {
+                    $this->sendB2bListing($sku, ['sku' => $sku, 'image_urls' => $images], null, 90);
+                } catch (\Throwable $e) {
+                    Log::warning('B2B listing image attach failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                }
+            });
+        }
+
+        return $result;
     }
 
     /**
@@ -753,17 +766,26 @@ class DirectStoreListingPublishService
             ? B5cB2bProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
             : null;
 
-        return $this->sendB2bListing($sku, ['sku' => $sku] + $fields, $local);
+        return $this->sendB2bListing($sku, ['sku' => $sku] + $fields, $local, $api->timeout());
     }
 
     /**
      * @param  array<string, mixed>  $payload
      * @return array{success: bool, message: string, id?: string, created?: bool, data?: array<string, mixed>}
      */
-    private function sendB2bListing(string $sku, array $payload, ?B5cB2bProduct $local): array
+    private function sendB2bListing(string $sku, array $payload, ?B5cB2bProduct $local, int $timeout = 20): array
     {
         $api = app(Business5CoreB2bApiService::class);
-        $res = $api->send('POST', '/api/listings', [], $payload);
+        try {
+            // Stay inside the gateway window: short timeout, no long 429 sleeps.
+            $res = $api->send('POST', '/api/listings', [], $payload, 2, 3, $timeout);
+        } catch (\Throwable $e) {
+            $found = $this->b2bListingBySku($sku);
+            if ($found === null) {
+                return ['success' => false, 'message' => $e->getMessage()];
+            }
+            $res = ['status' => 'updated', 'data' => $found, 'message' => 'ok'];
+        }
         $status = (string) ($res['status'] ?? '');
         if (! in_array($status, ['created', 'updated'], true)) {
             return ['success' => false, 'message' => trim((string) ($res['message'] ?? 'B2B store rejected the listing.'))];
@@ -793,6 +815,26 @@ class DirectStoreListingPublishService
         }
 
         return ['success' => true, 'message' => ucfirst($status), 'id' => $id, 'created' => $status === 'created', 'data' => $data];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function b2bListingBySku(string $sku): ?array
+    {
+        try {
+            $probe = app(Business5CoreB2bApiService::class)->fetchListings(1, 5, ['sku' => $sku]);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        foreach ((array) ($probe['data'] ?? []) as $row) {
+            if (is_array($row) && strcasecmp(trim((string) ($row['sku'] ?? '')), trim($sku)) === 0) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     // ---------------------------------------------------------------- Doba
