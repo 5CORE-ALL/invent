@@ -3521,6 +3521,38 @@ class NeweggApiService
     }
 
     /**
+     * Every enabled subcategory from the Newegg Seller Management API.
+     *
+     * @return array{success: bool, categories: list<array{id: string, path: string, name: string}>, message?: string}
+     */
+    public function allListingCategories(string $platform = 'b2c'): array
+    {
+        try {
+            $leaves = $this->listingCategoryLeaves($platform);
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'Newegg subcategory list failed: '.$e->getMessage(),
+            ];
+        }
+
+        if ($leaves === []) {
+            return [
+                'success' => false,
+                'categories' => [],
+                'message' => 'Newegg returned no enabled subcategories. Confirm Seller Management API access.',
+            ];
+        }
+
+        usort($leaves, static function (array $a, array $b): int {
+            return strcasecmp((string) ($a['path'] ?? ''), (string) ($b['path'] ?? ''));
+        });
+
+        return ['success' => true, 'categories' => array_values($leaves)];
+    }
+
+    /**
      * @return list<array{id: string, path: string, name: string}>
      */
     public function listingCategoryLeaves(string $platform = 'b2c'): array

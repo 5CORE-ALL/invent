@@ -157,6 +157,9 @@
 .listing-publish-cat-results:not(:empty) {
     display: block !important;
 }
+#listing-publish-newegg-category-results {
+    max-height: 360px;
+}
 .listing-publish-cat-item {
     display: block;
     width: 100%;

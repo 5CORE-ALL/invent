@@ -134,7 +134,7 @@ class NeweggListingPublishService
         if ($subcategoryId === '' || ! preg_match('/^\d+$/', $subcategoryId)) {
             return [
                 'success' => false,
-                'message' => $sku.': select a Newegg subcategory on the Category tab before Save & Publish.',
+                'message' => $sku.': pick a Newegg subcategory in the publish window before publishing.',
             ];
         }
 

@@ -220,6 +220,8 @@
     let reverbCatXhr = null;
     let ebayCatTimer = null;
     let ebayCatXhr = null;
+    let neweggCatTimer = null;
+    let neweggCatXhr = null;
     let tiktokCatTimer = null;
     let tiktokCatXhr = null;
     let sheinCatTimer = null;
@@ -268,6 +270,11 @@
         return String(cfg().channel || '').toLowerCase().replace(/[\s_-]/g, '') === 'shein';
     }
 
+    function isNeweggChannel() {
+        const c = String(cfg().channel || '').toLowerCase().replace(/[\s_-]/g, '');
+        return c === 'newegg' || c === 'neweggb2c' || c === 'neweggb2b';
+    }
+
     function isAlibabaChannel() {
         return String(cfg().channel || '').toLowerCase() === 'alibaba';
     }
@@ -293,6 +300,10 @@
             const shein = document.getElementById('listing-publish-shein-category-id');
             if (shein) return String(shein.value || '').replace(/\D+/g, '');
         }
+        if (isNeweggChannel()) {
+            const newegg = document.getElementById('listing-publish-newegg-category-id');
+            if (newegg) return String(newegg.value || '').replace(/\D+/g, '');
+        }
         const el = document.getElementById('listing-publish-category-id');
         return el ? String(el.value || '').replace(/\D+/g, '') : '';
     }
@@ -317,6 +328,10 @@
         if (isWayfairChannel()) {
             const wf = document.getElementById('listing-publish-wayfair-class-name');
             if (wf) return String(wf.value || '').trim();
+        }
+        if (isNeweggChannel()) {
+            const newegg = document.getElementById('listing-publish-newegg-category-name');
+            if (newegg) return String(newegg.value || '').trim();
         }
         const el = document.getElementById('listing-publish-category-name');
         return el ? String(el.value || '').trim() : '';
@@ -640,6 +655,124 @@
         hideEbayCategoryResults();
     }
 
+    function hideNeweggCategoryResults() {
+        const box = document.getElementById('listing-publish-newegg-category-results');
+        if (!box) return;
+        box.classList.remove('is-open');
+        box.innerHTML = '';
+    }
+
+    function showNeweggCategoryResults(html) {
+        const box = document.getElementById('listing-publish-newegg-category-results');
+        if (!box) return;
+        box.innerHTML = html;
+        box.classList.add('is-open');
+        box.hidden = false;
+    }
+
+    let neweggCategoryCatalog = null;
+
+    function neweggCategoryLabel(row) {
+        return String((row && (row.path || row.name || row.id)) || '');
+    }
+
+    function renderNeweggCategoryRows(rows) {
+        const pathEl = document.getElementById('listing-publish-newegg-category-path');
+        const picked = selectedCategoryId();
+        if (!rows.length) {
+            showNeweggCategoryResults('<div class="listing-publish-cat-empty">No Newegg subcategories matched.</div>');
+            if (pathEl && !picked) pathEl.textContent = 'No Newegg subcategories matched.';
+            return;
+        }
+        if (pathEl && !picked) {
+            pathEl.textContent = rows.length + (neweggCategoryCatalog && rows.length === neweggCategoryCatalog.length
+                ? ' Newegg subcategories from the API. Click one.'
+                : ' matching Newegg subcategories. Click one.');
+        }
+        showNeweggCategoryResults(rows.map(function (row) {
+            const label = neweggCategoryLabel(row);
+            return '<button type="button" class="listing-publish-cat-item listing-publish-newegg-cat-item" data-id="' +
+                escapeHtml(row.id || '') + '" data-path="' + escapeHtml(label) + '">' +
+                escapeHtml(label) + '</button>';
+        }).join(''));
+    }
+
+    function filterNeweggCatalog(query) {
+        query = String(query || '').trim().toLowerCase();
+        const all = neweggCategoryCatalog || [];
+        if (!query) return all.slice();
+        return all.filter(function (row) {
+            const hay = (String(row.path || '') + ' ' + String(row.name || '') + ' ' + String(row.id || '')).toLowerCase();
+            return hay.indexOf(query) !== -1;
+        });
+    }
+
+    function showLoadedNeweggCategories(query) {
+        renderNeweggCategoryRows(filterNeweggCatalog(query));
+    }
+
+    function loadNeweggCategories() {
+        const box = document.getElementById('listing-publish-newegg-category-results');
+        if (!box || !isNeweggChannel()) return;
+        const nameEl = document.getElementById('listing-publish-newegg-category-name');
+        const query = nameEl ? String(nameEl.value || '').trim() : '';
+        if (neweggCategoryCatalog) {
+            showLoadedNeweggCategories(query);
+            return;
+        }
+        showNeweggCategoryResults('<div class="listing-publish-cat-empty">Loading Newegg subcategories…</div>');
+        if (neweggCatXhr && neweggCatXhr.abort) neweggCatXhr.abort();
+        neweggCatXhr = $.ajax({
+            url: cfg().categorySearchUrl || '/listing-manager/ebay/categories',
+            type: 'GET',
+            data: {
+                all: 1,
+                q: '',
+                channel: cfg().channel || 'neweggb2c'
+            },
+            dataType: 'json',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            success: function (res) {
+                neweggCategoryCatalog = (res && res.categories) || [];
+                if (!neweggCategoryCatalog.length) {
+                    showNeweggCategoryResults('<div class="listing-publish-cat-empty">' +
+                        escapeHtml((res && res.message) || 'Newegg returned no subcategories.') + '</div>');
+                    return;
+                }
+                showLoadedNeweggCategories(query);
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                showNeweggCategoryResults('<div class="listing-publish-cat-empty">' +
+                    escapeHtml(ajaxError(xhr) || 'Could not load Newegg categories.') + '</div>');
+            }
+        });
+    }
+
+    function searchNeweggCategories(query) {
+        if (!isNeweggChannel()) return;
+        if (!neweggCategoryCatalog) {
+            loadNeweggCategories();
+            return;
+        }
+        showLoadedNeweggCategories(query);
+    }
+
+    function scheduleNeweggCategorySearch(query) {
+        clearTimeout(neweggCatTimer);
+        neweggCatTimer = setTimeout(function () { searchNeweggCategories(query); }, 280);
+    }
+
+    function pickNeweggCategory(id, path) {
+        const idEl = document.getElementById('listing-publish-newegg-category-id');
+        const nameEl = document.getElementById('listing-publish-newegg-category-name');
+        const pathEl = document.getElementById('listing-publish-newegg-category-path');
+        if (idEl) idEl.value = String(id || '').replace(/\D+/g, '');
+        if (nameEl) nameEl.value = String(path || '').trim();
+        if (pathEl) pathEl.textContent = String(path || '').trim() || 'Newegg subcategory selected.';
+        hideNeweggCategoryResults();
+    }
+
     function applySuggestedTiktokCategory(suggested) {
         const pathEl = document.getElementById('listing-publish-tiktok-category-path');
         const idEl = document.getElementById('listing-publish-tiktok-category-id');
@@ -932,6 +1065,9 @@
         if (isSheinChannel()) applySuggestedSheinCategory(null);
         const alibabaBox = document.getElementById('listing-publish-alibaba-category');
         if (alibabaBox) alibabaBox.hidden = !isAlibabaChannel();
+        const neweggBox = document.getElementById('listing-publish-newegg-category');
+        if (neweggBox) neweggBox.hidden = !isNeweggChannel();
+        if (isNeweggChannel()) loadNeweggCategories();
         updateModalCopy();
     }
 
@@ -1310,7 +1446,7 @@
                 channel: c.channel || '',
                 mode: selectedPublishMode(),
                 parent: parent || '',
-                category_id: (isAliexpressChannel() || isWayfairChannel() || isEbayChannel() || isTiktokChannel() || isSheinChannel()) ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
+                category_id: (isAliexpressChannel() || isWayfairChannel() || isEbayChannel() || isTiktokChannel() || isSheinChannel() || isNeweggChannel()) ? selectedCategoryId() : (selectedCategoryName() ? '' : selectedCategoryId()),
                 category_name: selectedCategoryName(),
                 category_uuid: selectedCategoryUuid(),
                 weight_lb: (isAliexpressChannel() || isTiktokChannel() || isSheinChannel()) ? selectedWeightLb() : '',
@@ -1449,6 +1585,12 @@
                 if (weightEl) weightEl.focus();
                 return;
             }
+            if (isNeweggChannel() && !selectedCategoryId()) {
+                notify('danger', 'Type a Newegg subcategory and pick one from the list.');
+                const catEl = document.getElementById('listing-publish-newegg-category-name');
+                if (catEl) catEl.focus();
+                return;
+            }
             if (isEbayChannel() && !$btn.data('specificsChecked')) {
                 const checkHtml = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Checking eBay fields');
@@ -1552,7 +1694,8 @@
                 if (this.classList.contains('listing-publish-ebay-cat-item')
                     || this.classList.contains('listing-publish-tiktok-cat-item')
                     || this.classList.contains('listing-publish-shein-cat-item')
-                    || this.classList.contains('listing-publish-wayfair-cat-item')) {
+                    || this.classList.contains('listing-publish-wayfair-cat-item')
+                    || this.classList.contains('listing-publish-newegg-cat-item')) {
                     return;
                 }
                 e.preventDefault();
@@ -1568,6 +1711,7 @@
                 hideTiktokCategoryResults();
                 hideSheinCategoryResults();
                 hideWayfairClassResults();
+                hideNeweggCategoryResults();
             });
     }
 
@@ -1740,12 +1884,58 @@
             });
     }
 
+    function bindNeweggCategorySearch() {
+        function onNeweggCategoryTyped(el) {
+            if (!el) return;
+            el.dataset.userTyped = '1';
+            const idEl = document.getElementById('listing-publish-newegg-category-id');
+            if (idEl) idEl.value = '';
+            const pathEl = document.getElementById('listing-publish-newegg-category-path');
+            const q = String(el.value || '').trim();
+            if (pathEl) {
+                pathEl.textContent = q
+                    ? 'Narrowing the Newegg list…'
+                    : 'Loading Newegg subcategories…';
+            }
+            scheduleNeweggCategorySearch(q);
+        }
+
+        $(document).off('input.listingPageToolsNewegg', '#listing-publish-newegg-category-name')
+            .on('input.listingPageToolsNewegg', '#listing-publish-newegg-category-name', function () {
+                onNeweggCategoryTyped(this);
+            });
+
+        $(document).off('keyup.listingPageToolsNewegg', '#listing-publish-newegg-category-name')
+            .on('keyup.listingPageToolsNewegg', '#listing-publish-newegg-category-name', function () {
+                onNeweggCategoryTyped(this);
+            });
+
+        $(document).off('focus.listingPageToolsNewegg', '#listing-publish-newegg-category-name')
+            .on('focus.listingPageToolsNewegg', '#listing-publish-newegg-category-name', function () {
+                loadNeweggCategories();
+            });
+
+        $('#listingPublishModal').off('shown.bs.modal.listingPageToolsNewegg')
+            .on('shown.bs.modal.listingPageToolsNewegg', function () {
+                const nameEl = document.getElementById('listing-publish-newegg-category-name');
+                if (nameEl) nameEl.dataset.userTyped = '';
+            });
+
+        $(document).off('click.listingPageToolsNewegg', '.listing-publish-newegg-cat-item')
+            .on('click.listingPageToolsNewegg', '.listing-publish-newegg-cat-item', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                pickNeweggCategory($(this).attr('data-id'), $(this).attr('data-path'));
+            });
+    }
+
     $(function () {
         bindReverbCategorySearch();
         bindEbayCategorySearch();
         bindTiktokCategorySearch();
         bindSheinCategorySearch();
         bindWayfairClassSearch();
+        bindNeweggCategorySearch();
         $(document).off('click.listingPageTools', '#listing-publish-status-close')
             .on('click.listingPageTools', '#listing-publish-status-close', function () {
                 hidePublishStatus();

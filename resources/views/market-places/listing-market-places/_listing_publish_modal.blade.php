@@ -97,6 +97,17 @@
                                         </div>
                                         <small>Type to search Reverb categories. Click one from the list to use it.</small>
                                     </div>
+                                    <div id="listing-publish-newegg-category" class="listing-publish-category" hidden>
+                                        <label>Newegg subcategory</label>
+                                        <div id="listing-publish-newegg-category-path" class="listing-publish-category-path">Type a subcategory, such as speaker or stand, then pick one from the list.</div>
+                                        <input type="hidden" id="listing-publish-newegg-category-id" value="">
+                                        <label for="listing-publish-newegg-category-name">Category</label>
+                                        <div class="listing-publish-cat-wrap">
+                                            <input type="text" id="listing-publish-newegg-category-name" class="form-control form-control-sm" placeholder="e.g. speaker stand" autocomplete="off">
+                                            <div id="listing-publish-newegg-category-results" class="listing-publish-cat-results"></div>
+                                        </div>
+                                        <small>Every enabled subcategory comes from the Newegg API. Type to narrow the list, then click one.</small>
+                                    </div>
                                     <div id="listing-publish-alibaba-category" class="listing-publish-category" @if(($publishChannel ?? '') !== 'alibaba') hidden @endif>
                                         <label for="listing-publish-alibaba-category-id">Alibaba category id</label>
                                         <input type="text" id="listing-publish-alibaba-category-id" class="form-control form-control-sm" placeholder="Only if this parent has no listed Alibaba SKU" inputmode="numeric" autocomplete="off">
