@@ -108,8 +108,8 @@
         #vam-thumb-pop {
             position: fixed;
             z-index: 10050;
-            width: 420px;
-            height: 236px;
+            width: 480px;
+            height: 270px;
             border-radius: 10px;
             overflow: hidden;
             background: #000;
@@ -1232,15 +1232,17 @@
                 return m ? m[1] : '';
             }
 
-            // How to preview the LINK cell: a video frame, a still image, or a
-            // folder icon when the Dropbox link is a whole folder.
-            function thumbKind(url) {
+            // How to preview the LINK cell. Dropbox shared folders hold an
+            // uploaded poster (the jpg/png next to the video); that image is
+            // loaded through our thumb endpoint and matched to the row's hook.
+            function thumbKind(url, row) {
                 let parsed;
                 try { parsed = new URL(url); } catch (e) { return null; }
                 const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
                 const path = decodeURIComponent(parsed.pathname || '');
                 const videoExt = /\.(mp4|webm|mov|m4v|ogg|ogv|mkv)$/i.test(path);
                 const imageExt = /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(path);
+                const dropbox = host === 'dropbox.com' || host.endsWith('.dropbox.com');
 
                 const yt = extractYoutubeId(url);
                 if (yt) return { type: 'image', src: 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' };
@@ -1248,14 +1250,20 @@
                 const drive = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
                 if (drive) return { type: 'image', src: 'https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w640' };
 
-                if (host === 'dropbox.com' || host.endsWith('.dropbox.com')) {
-                    if (/\/scl\/fo\//i.test(path) || /\/sh\//i.test(path)) return { type: 'folder' };
-                    if (videoExt || /\/scl\/fi\//i.test(path)) return { type: 'video', proxy: true };
+                if (dropbox && /\/scl\/fo\//i.test(path) && !videoExt && !imageExt) {
+                    const hooks = parseTags(row && row.hook_name).map(displayHookName).join('|');
+                    return {
+                        type: 'image',
+                        src: '/video-ads-master/thumb?u=' + encodeURIComponent(url) + '&hooks=' + encodeURIComponent(hooks),
+                    };
+                }
+
+                if (dropbox) {
+                    if (videoExt || (/\/scl\/fi\//i.test(path) && !imageExt)) return { type: 'video', proxy: true };
                     if (imageExt) {
-                        let raw = url.replace(/([?&])dl=[01](&|$)/ig, '$1raw=1$2');
-                        if (!/[?&]raw=1(&|$)/i.test(raw)) raw += (raw.indexOf('?') === -1 ? '?' : '&') + 'raw=1';
-                        return { type: 'image', src: raw };
+                        return { type: 'image', src: '/video-ads-master/thumb?u=' + encodeURIComponent(url) };
                     }
+                    if (/\/sh\//i.test(path)) return { type: 'folder' };
                     return null;
                 }
 
@@ -1275,7 +1283,7 @@
             function thumbFormatter(cell) {
                 const url = normalizeUrl(cell.getRow().getData().link);
                 if (!isLikelyUrl(url)) return '<span class="vam-dash">—</span>';
-                const kind = thumbKind(url);
+                const kind = thumbKind(url, cell.getRow().getData());
                 if (!kind) return '<span class="vam-dash">—</span>';
                 if (kind.type === 'folder') {
                     return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-folder" title="This link is a folder"><i class="fas fa-folder"></i></a>`;
@@ -1345,7 +1353,7 @@
                     }
                 }
                 const rect = box.getBoundingClientRect();
-                const w = 420, h = 236, gap = 12;
+                const w = 480, h = 270, gap = 12;
                 let left = rect.right + gap;
                 if (left + w > window.innerWidth - 8) left = Math.max(8, rect.left - w - gap);
                 let top = rect.top + rect.height / 2 - h / 2;
@@ -1974,6 +1982,8 @@
                 if (field === 'link') {
                     const missingCell = row.getCell('_missing');
                     if (missingCell) missingCell.reformat();
+                }
+                if (field === 'link' || field === 'hook_name') {
                     const thumbCell = row.getCell('_thumb');
                     if (thumbCell) thumbCell.reformat();
                 }
