@@ -282,6 +282,25 @@
             font-weight: 600;
             color: #111827;
         }
+        #vamAddUserList {
+            overflow: hidden;
+        }
+        #vamAddUserList .vam-pick-option {
+            display: flex;
+            width: 100%;
+            margin: 0;
+            border: 0;
+            border-bottom: 1px solid #eef2f7;
+            border-radius: 0;
+            background: #fff;
+            text-align: left;
+            align-items: center;
+        }
+        #vamAddUserList .vam-pick-option:last-child { border-bottom: 0; }
+        #vamAddUserList .vam-pick-option:hover {
+            background: #eff6ff;
+            color: #1a56b7;
+        }
         .vam-pick-option-meta {
             font-size: 11px;
             font-weight: 400;
