@@ -183,8 +183,9 @@
         <div class="card shadow-sm">
             <div class="card-body py-3">
                 <div class="d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-danger badge-ml-stat badge-ml-chart" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from API and sheet-CSV channels (same INV &gt; 0 rule as listing pages)" style="background-color:#a71d2a !important;">
+                    <span class="badge bg-danger badge-ml-stat" id="stat-missing-listing" data-metric="missing_l" title="Missing L total from API and sheet-CSV channels (same INV &gt; 0 rule as listing pages)" style="background-color:#a71d2a !important;">
                         Missing L: <span id="total-missing-listing">{{ number_format(\App\Support\Marketplace\ListingChannelCounts::totalMissingL(true)) }}</span>
+                        <i class="fas fa-circle ml-overall-chart-dot ms-1" title="View overall history" style="cursor:pointer;color:#fff;font-size:10px;vertical-align:middle;"></i>
                     </span>
                 </div>
             </div>
@@ -193,25 +194,7 @@
                     <input type="text" id="missing-listing-search" class="form-control form-control-sm" placeholder="Search by Channel...">
                     <input type="file" id="ml-sheet-csv-input" accept=".csv,text/csv,text/plain" hidden>
                 </div>
-                <div class="px-2 py-2 border-bottom bg-white">
-                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
-                        <h6 class="mb-0" style="font-size: 13px;">Missing Listing history</h6>
-                        <select id="mlOverallRange" class="form-select form-select-sm" style="width: 110px; height: 26px; font-size: 11px;">
-                            <option value="7">7 Days</option>
-                            <option value="30">30 Days</option>
-                            <option value="32" selected>32 Days</option>
-                            <option value="60">60 Days</option>
-                            <option value="90">90 Days</option>
-                            <option value="0">Lifetime</option>
-                        </select>
-                    </div>
-                    <div id="mlOverallLoading" class="text-muted small py-4 text-center">Loading history…</div>
-                    <div id="mlOverallEmpty" class="text-muted small py-4 text-center" style="display: none;">No Missing Listing history yet.</div>
-                    <div id="mlOverallPlot" style="height: 180px; position: relative; display: none;">
-                        <canvas id="mlOverallChart"></canvas>
-                    </div>
-                </div>
-                <div id="missing-listing-table" style="height: calc(100vh - 480px);"></div>
+                <div id="missing-listing-table" style="height: calc(100vh - 280px);"></div>
             </div>
         </div>
     </div>
@@ -287,9 +270,6 @@
     let mlCurrentMetricKey = 'missing_l';
     let mlCurrentChartDays = 32;
     let mlCurrentBadgeValue = null;
-    let mlOverallChartInstance = null;
-    let mlOverallDays = 32;
-    let mlOverallAjax = null;
 
     function updateStats(rows, totalMissingL) {
         if (totalMissingL !== undefined && totalMissingL !== null && !isNaN(Number(totalMissingL))) {
@@ -631,92 +611,11 @@
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
-        function loadOverallHistory() {
-            if (mlOverallAjax) mlOverallAjax.abort();
+        $('#stat-missing-listing').on('click', '.ml-overall-chart-dot', function(e) {
+            e.stopPropagation();
             const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
             const badgeValue = parseFloat(badgeText);
-            $('#mlOverallEmpty').hide();
-            $('#mlOverallPlot').hide();
-            $('#mlOverallLoading').show();
-            const params = { channel: 'All', metric: 'missing_l', days: mlOverallDays };
-            if (!isNaN(badgeValue)) params.badge_value = badgeValue;
-            mlOverallAjax = $.ajax({
-                url: "{{ route('missing.listing.chart.data') }}",
-                method: 'GET',
-                data: params,
-            }).done(function(response) {
-                mlOverallAjax = null;
-                $('#mlOverallLoading').hide();
-                if (response && response.success !== false && response.data && response.data.length > 0) {
-                    $('#mlOverallPlot').show();
-                    renderOverallHistory(response.data);
-                } else {
-                    $('#mlOverallEmpty').show();
-                }
-            }).fail(function(_xhr, status) {
-                mlOverallAjax = null;
-                if (status === 'abort') return;
-                $('#mlOverallLoading').hide();
-                $('#mlOverallEmpty').show();
-            });
-        }
-
-        function renderOverallHistory(data) {
-            const canvas = document.getElementById('mlOverallChart');
-            if (!canvas || typeof Chart === 'undefined') return;
-            if (mlOverallChartInstance) mlOverallChartInstance.destroy();
-            const labels = data.map(function(d) { return d.date; });
-            const values = data.map(function(d) { return Number(d.value || 0); });
-            mlOverallChartInstance = new Chart(canvas.getContext('2d'), {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Missing Listing',
-                        data: values,
-                        borderColor: '#a71d2a',
-                        backgroundColor: 'rgba(167, 29, 42, 0.08)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.25,
-                        pointRadius: 3,
-                        pointBackgroundColor: '#a71d2a',
-                    }],
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return 'Missing Listing: ' + mlFmtVal(context.raw);
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: { font: { size: 10 }, callback: function(value) { return mlFmtVal(value); } }
-                        },
-                        x: { ticks: { maxRotation: 45, minRotation: 0, font: { size: 10 } } }
-                    }
-                }
-            });
-        }
-
-        loadOverallHistory();
-        $('#mlOverallRange').on('change', function() {
-            mlOverallDays = parseInt($(this).val(), 10) || 0;
-            loadOverallHistory();
-        });
-
-        $('#stat-missing-listing').on('click', function() {
-            const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
-            const badgeValue = parseFloat(badgeText) || null;
-            showMlMetricChart('All', badgeValue);
+            showMlMetricChart('All', isNaN(badgeValue) ? null : badgeValue);
         });
 
         $('#mlChartRangeSelect').on('change', function() {
@@ -759,7 +658,6 @@
                 }
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_missing_l);
-                loadOverallHistory();
                 if (response && response.partial && (window.__mlCountsRetries || 0) < 3) {
                     window.__mlCountsRetries = (window.__mlCountsRetries || 0) + 1;
                     setTimeout(function() {
