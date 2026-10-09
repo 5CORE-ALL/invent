@@ -494,10 +494,22 @@
         const flag = String(rowData.live_inactive || rowData.listing_status || '').toLowerCase();
         return ['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1;
     }
+    function bestbuyRuleSprice(d) {
+        if (!d || isBestbuyParentRow(d)) return 0;
+        if (typeof chStdUsesMinNpft === 'function' && !chStdUsesMinNpft()) return 0;
+        if (typeof chStdMinNpftNow === 'function' && !(Number(chStdMinNpftNow()) > 0)) return 0;
+        if (typeof chStdIsClearance === 'function' && chStdIsClearance(d)) return 0;
+        if (typeof chStdPriceForRow !== 'function') return 0;
+        const rule = Number(chStdPriceForRow(d)) || 0;
+        return rule > 0 ? Math.round(rule * 100) / 100 : 0;
+    }
     function bestbuyPushPriceValue(d) {
         let p = bestbuyDisplayedSprice(d);
+        const rule = bestbuyRuleSprice(d);
+        if (rule > p) p = rule;
         if (typeof chPromoFinalSpriceToSave === 'function' && p > 0) {
-            p = Number(chPromoFinalSpriceToSave(d, p)) || p;
+            const saved = Number(chPromoFinalSpriceToSave(d, p)) || 0;
+            if (saved > p) p = saved;
         }
         return Math.round((Number(p) || 0) * 100) / 100;
     }
@@ -698,15 +710,21 @@
         if (!data || isBestbuyParentRow(data)) return 0;
         const amz = bestbuyAmazonPrice(data);
         const lmp = bestbuyRowLmp(data);
-        // Ignored competitors are not LMP. A live LMP below Amazon stays at A Price.
-        if (amz > 0 && lmp > 0 && lmp + 0.0001 < amz) return amz;
+        // Ignored competitors are not LMP. A live LMP below Amazon stays at A Price,
+        // unless Min NPFT % needs a higher S PRC.
+        if (amz > 0 && lmp > 0 && lmp + 0.0001 < amz) {
+            const ruleEarly = bestbuyRuleSprice(data);
+            return ruleEarly > amz ? ruleEarly : amz;
+        }
         let base = 0;
         const saved = bestbuySavedSprice(data);
         if (saved > 0 && !bestbuyPriceIsIgnoredLmp(data, saved)) base = saved;
-        if (!(base > 0)) return 0;
+        if (!(base > 0)) return bestbuyRuleSprice(data);
         const capped = bestbuyCapAfterAmz(data, base);
-        if (bestbuyPriceIsIgnoredLmp(data, capped)) return amz > 0 ? amz : 0;
-        return capped;
+        let shown = bestbuyPriceIsIgnoredLmp(data, capped) ? (amz > 0 ? amz : 0) : capped;
+        const rule = bestbuyRuleSprice(data);
+        if (rule > shown) shown = rule;
+        return shown;
     }
     function bestbuyRowSpriceForAlert(data) {
         return bestbuyDisplayedSprice(data);

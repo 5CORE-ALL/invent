@@ -318,21 +318,11 @@ class AmazonSprcDilAutoPushService
         $cvrDisc = StdPrcVsDilPricer::scaleRuleDisc($cvrDisc, $std);
         $reviewDisc = StdPrcVsDilPricer::scaleRuleDisc($reviewDisc, $std);
         $bussDisc = $this->discForStdRange($std, is_array($stdPromo['buss'] ?? null) ? $stdPromo['buss'] : []);
-        $listingPrice = (float) ($row['price'] ?? 0);
-        $roiPct = ($lp > 0 && $listingPrice > 0)
-            ? ((($listingPrice * 0.80) - $ship - $lp) / $lp) * 100
-            : null;
-        $roiDisc = $roiPct === null
-            ? 0.0
-            : StdPrcVsDilPricer::scaleRuleDisc(
-                $this->discForStdRange($roiPct, is_array($stdPromo['roi'] ?? null) ? $stdPromo['roi'] : [], true),
-                $std
-            );
         $aL30Sold = (float) ($row['a_l30'] ?? 0);
         $zeroSoldDisc = ! ($aL30Sold > 0)
             ? StdPrcVsDilPricer::scaleRuleDisc((float) ($stdPromo['zero_sold_disc'] ?? 0), $std)
             : 0.0;
-        $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $roiDisc)), 2);
+        $totalDisc = round(min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc)), 2);
 
         if (! ($std > 0)) {
             return null;
@@ -380,7 +370,7 @@ class AmazonSprcDilAutoPushService
             'review_disc' => $reviewDisc,
             'buss_disc' => $bussDisc,
             'zero_sold_disc' => $zeroSoldDisc,
-            'roi_disc' => $roiDisc,
+            'roi_disc' => 0.0,
             'dil_disc' => $dilDisc,
             'age_disc' => $ageDisc,
             'sum_disc' => $totalDisc,

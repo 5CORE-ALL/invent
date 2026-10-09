@@ -25,7 +25,6 @@
         .tabulator-row .tabulator-cell[tabulator-field="buss_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="zero_sold_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"],
-        .tabulator-row .tabulator-cell[tabulator-field="roi_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="review_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="sum_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="t_discounts"] {
@@ -2960,37 +2959,13 @@
                     },
                 },
                 {
-                    title: 'ROI disc',
-                    field: 'roi_discount',
-                    width: 68,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: true,
-                    headerTooltip: 'ROI disc from GROI% slabs in Std prc vs dil. INV=0 → 0%. Std Prc under $15 is 0.5×. Read-only.',
-                    sorter: function(a, b, aRow, bRow) {
-                        const av = (typeof computeAmzRoiDiscountPct === 'function' ? computeAmzRoiDiscountPct(aRow.getData()) : 0) || 0;
-                        const bv = (typeof computeAmzRoiDiscountPct === 'function' ? computeAmzRoiDiscountPct(bRow.getData()) : 0) || 0;
-                        return av - bv;
-                    },
-                    formatter: function(cell) {
-                        const d = cell.getRow().getData() || {};
-                        if (!amzPefIsChildRow(d)) return '';
-                        const pct = (typeof computeAmzRoiDiscountPct === 'function') ? computeAmzRoiDiscountPct(d) : 0;
-                        const roi = (typeof amzStdRoiPct === 'function') ? amzStdRoiPct(d) : 0;
-                        const tip = 'GROI ' + (isFinite(roi) ? Number(roi).toFixed(0) : '0') + '% → discount ' + (pct || 0) + '%';
-                        return '<span title="' + amzPefEscAttr(tip) + '">'
-                            + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'dil') : (pct || '—'))
-                            + '</span>';
-                    },
-                },
-                {
                     title: 'Sum disc',
                     field: 'sum_discount',
                     width: 72,
                     hozAlign: 'center',
                     vertAlign: 'middle',
                     headerSort: true,
-                    headerTooltip: 'Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc + ROI disc. S PRC = Std Prc × (1 − this % / 100).',
+                    headerTooltip: 'Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc. S PRC = Std Prc × (1 − this % / 100).',
                     sorter: function(a, b, aRow, bRow) {
                         const fn = typeof computeAmzSumDiscountPct === 'function' ? computeAmzSumDiscountPct : function() { return 0; };
                         return (Number(fn(aRow.getData())) || 0) - (Number(fn(bRow.getData())) || 0);
@@ -3006,7 +2981,6 @@
                             + ' + Rev ' + (stack.reviewDisc || 0)
                             + ' + B Disc ' + (stack.bussDisc || 0)
                             + ' + 0 Sold ' + (stack.zeroSoldDisc || 0)
-                            + ' + ROI ' + (stack.roiDisc || 0)
                             + ' = ' + (pct || 0) + '%';
                         return '<span title="' + amzPefEscAttr(tip) + '">'
                             + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'sum') : (pct || '—'))
@@ -3117,7 +3091,7 @@
 
         /**
          * Live rule stack for this SKU.
-         * Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc + ROI disc, each a % off Std Prc.
+         * Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc, each a % off Std Prc.
          * CVR Disc = Std prc vs dil up/down/flat disc only. INV=0 → 0.
          */
         function computeAmzRuleStack(d) {
@@ -3139,15 +3113,12 @@
             const zeroSoldDisc = (typeof amzStdDisc === 'function')
                 ? amzStdDisc(typeof computeAmzZeroSoldDiscountPct === 'function' ? computeAmzZeroSoldDiscountPct(d) : 0)
                 : (Number(typeof computeAmzZeroSoldDiscountPct === 'function' ? computeAmzZeroSoldDiscountPct(d) : 0) || 0);
-            const roiDisc = (typeof amzStdDisc === 'function')
-                ? amzStdDisc(typeof computeAmzRoiDiscountPct === 'function' ? computeAmzRoiDiscountPct(d) : 0)
-                : (Number(typeof computeAmzRoiDiscountPct === 'function' ? computeAmzRoiDiscountPct(d) : 0) || 0);
             const zeroSold = typeof amzIsZeroSoldRow === 'function' && amzIsZeroSoldRow(d);
             const dilGroiMeta = (typeof amzDilGroiMetaForRow === 'function')
                 ? amzDilGroiMetaForRow(d)
                 : null;
             const dilGroi = !!(dilGroiMeta && dilGroiMeta.sprc > 0);
-            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + reviewDisc + bussDisc + zeroSoldDisc + roiDisc)));
+            const totalDisc = amzPefRound2(Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + reviewDisc + bussDisc + zeroSoldDisc)));
             return {
                 prmt: 0,
                 ageDisc: ageDisc,
@@ -3156,7 +3127,7 @@
                 reviewDisc: reviewDisc,
                 bussDisc: bussDisc,
                 zeroSoldDisc: zeroSoldDisc,
-                roiDisc: roiDisc,
+                roiDisc: 0,
                 cvrUpDn: 0,
                 zeroSold: !!zeroSold,
                 zeroSoldGroi: (zeroSold && dilGroi) ? dilGroiMeta.groi : null,
@@ -3178,7 +3149,6 @@
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
             if (plan.bussDisc) parts.push('B Disc ' + plan.bussDisc + '%');
             if (plan.zeroSoldDisc) parts.push('0 Sold ' + plan.zeroSoldDisc + '%');
-            if (plan.roiDisc) parts.push('ROI disc ' + plan.roiDisc + '%');
             if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
             else if (plan.stdCapped) parts.push('Std cap');
             if (plan.lmpCapped) parts.push('LMP cap');

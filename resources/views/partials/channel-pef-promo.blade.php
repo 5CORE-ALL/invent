@@ -3630,6 +3630,20 @@
             }
             return chPromoCapToStdWhenNoLmp(d, s);
         }
+        /**
+         * Best Buy Min NPFT % can sit above Std. Save and Push must keep that suggested price.
+         * Clearance SKUs stay on the discount price.
+         */
+        function chPromoKeepBestbuyMinNpft(d, price) {
+            const n = chPromoRound2(price);
+            if (CHANNEL_PROMO_CHANNEL !== 'bestbuy' || !d) return n;
+            if (typeof chStdUsesMinNpft === 'function' && !chStdUsesMinNpft()) return n;
+            if (typeof chStdMinNpftNow === 'function' && !(Number(chStdMinNpftNow()) > 0)) return n;
+            if (typeof chStdIsClearance === 'function' && chStdIsClearance(d)) return n;
+            if (typeof chStdPriceForRow !== 'function') return n;
+            const rule = chPromoRound2(chStdPriceForRow(d));
+            return rule > n ? rule : n;
+        }
         /** Discounted or LMP-capped value that must be persisted after a wipe. */
         function chPromoFinalSpriceToSave(d, fill, extra) {
             extra = extra || {};
@@ -3677,7 +3691,7 @@
                 ? chPromoRound2(afterAmz)
                 : (d ? chPromoCapSpriceToLmp(d, afterAmz, extra) : chPromoRound2(afterAmz));
             const out = d ? chPromoFloorShopifySpriceToAmz(d, capped) : capped;
-            return finish(out);
+            return chPromoKeepBestbuyMinNpft(d, finish(out));
         }
         function chPromoWipeSpriceRow(row) {
             if (!row || typeof row.update !== 'function') return;

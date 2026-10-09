@@ -159,7 +159,7 @@ class StdPrcVsDilPricerTest extends TestCase
         ]));
     }
 
-    public function test_roi_discount_uses_groi_slabs_and_halves_under_15(): void
+    public function test_saved_roi_slabs_do_not_change_the_price(): void
     {
         $pricer = new StdPrcVsDilPricer([
             'dil' => [],
@@ -171,62 +171,16 @@ class StdPrcVsDilPricerTest extends TestCase
                 ['min' => 0, 'max' => 50, 'disc' => 10],
                 ['min' => 50, 'max' => 9999, 'disc' => 2],
             ],
-        ], 'shopify_b2b');
+        ], 'bestbuy');
 
-        // Price $20 × 0.95 − LP $10 = GROI 90% → 2%. $100 × 0.98 = $98.
-        $this->assertSame(98.0, $pricer->priceFromRow([
-            'inv' => 1,
-            'std' => 100,
-            'live' => 20,
-            'lp' => 10,
-            'margin' => 0.95,
-        ]));
-        // Price $12 × 0.95 − $10 = GROI 14% → 10%. $100 × 0.90 = $90.
-        $this->assertSame(90.0, $pricer->priceFromRow([
+        $this->assertSame(100.0, $pricer->priceFromRow([
             'inv' => 1,
             'std' => 100,
             'live' => 12,
-            'lp' => 10,
-            'margin' => 0.95,
-        ]));
-        // Std under $15 halves the 10% ROI disc. $10 × 0.95 = $9.50.
-        $this->assertSame(9.5, $pricer->priceFromRow([
-            'inv' => 1,
-            'std' => 10,
-            'live' => 12,
-            'lp' => 10,
-            'margin' => 0.95,
-        ]));
-    }
-
-    public function test_no_ship_channels_exclude_ship_from_roi_discount(): void
-    {
-        $rules = [
-            'dil' => [],
-            'age' => [],
-            'cvr' => ['flat_disc' => 0],
-            'reviews' => [],
-            'review_max' => 4,
-            'roi' => [
-                ['min' => 0, 'max' => 50, 'disc' => 10],
-                ['min' => 50, 'max' => 9999, 'disc' => 2],
-            ],
-        ];
-        $row = [
-            'inv' => 1,
-            'std' => 100,
-            'live' => 30,
             'lp' => 10,
             'ship' => 8,
-            'margin' => 0.75,
-        ];
-
-        // ($30 × 0.75 − LP $10) / LP = GROI 125% with ship ignored → 2%. $100 × 0.98 = $98.
-        foreach (['faire', 'wayfair', 'topdawg', 'depop', 'mercari_woship'] as $channel) {
-            $this->assertSame(98.0, (new StdPrcVsDilPricer($rules, $channel))->priceFromRow($row), $channel);
-        }
-        // Same row with ship counted: GROI 45% → 10%. $100 × 0.90 = $90.
-        $this->assertSame(90.0, (new StdPrcVsDilPricer($rules, 'ebay1'))->priceFromRow($row));
+            'margin' => 0.80,
+        ]));
     }
 
     public function test_bestbuy_raises_price_to_the_saved_min_npft_and_skips_clearance(): void
