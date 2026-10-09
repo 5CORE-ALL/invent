@@ -487,6 +487,13 @@ class AmazonAdsController extends Controller
             if ($idxPageCvr !== false) {
                 array_splice($ordered, $idxPageCvr + 1, 0, ['pageCvr', 'viewsL30', 'viewsL7']);
             }
+            if (in_array('viewsL7', $ordered, true) && in_array('clicks', $ordered, true)) {
+                $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'clicks'));
+                $idxViewsL7 = array_search('viewsL7', $ordered, true);
+                if ($idxViewsL7 !== false) {
+                    array_splice($ordered, $idxViewsL7 + 1, 0, ['clicks']);
+                }
+            }
         }
 
         if ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports') {

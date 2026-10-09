@@ -2802,7 +2802,7 @@
                 if (c === 'CPC2') { col.title = 'CPC2'; col.formatter = fmt2dec; return; }
                 if (c === 'costPerClick') { col.title = 'CPC1'; col.formatter = fmt2dec; return; }
                 if (c === 'sales30d') { col.title = 'SL 30'; col.formatter = fmtDashRounded; return; }
-                if (c === 'clicks') { col.title = 'Click'; col.formatter = fmtDashInt; return; }
+                if (c === 'clicks') { col.title = 'Clicks'; col.headerTooltip = 'Amazon Ads clicks (L30).'; col.formatter = fmtDashInt; return; }
             }
 
             function amzBuildColumns(source) {
@@ -3429,6 +3429,7 @@
 
             function amzApplyColumnVisibility(map) {
                 if (!table || !map || typeof map !== 'object') return;
+                if (map.clicks === false) map.clicks = true;
                 table.getColumns().forEach(function (col) {
                     var field = col.getField();
                     if (amzSkipColVisField(field) || !Object.prototype.hasOwnProperty.call(map, field)) return;
