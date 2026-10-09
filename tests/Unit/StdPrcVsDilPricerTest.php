@@ -229,6 +229,68 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(90.0, (new StdPrcVsDilPricer($rules, 'ebay1'))->priceFromRow($row));
     }
 
+    public function test_bestbuy_raises_price_to_the_saved_min_npft_and_skips_clearance(): void
+    {
+        $rules = [
+            'dil' => [['min' => 0, 'max' => 100, 'disc' => 30]],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'min_npft' => 10,
+        ];
+        $row = [
+            'inv' => 1,
+            'std' => 100,
+            'dil' => 5,
+            'lp' => 40,
+            'ship' => 10,
+            'margin' => 0.80,
+            'clearance' => false,
+        ];
+
+        // 30% off $100 is $70, NPFT 8.57%. Floor for 10% is (40+10)/(0.80−0.10) = $71.43.
+        $price = (new StdPrcVsDilPricer($rules, 'bestbuy'))->priceFromRow($row);
+        $this->assertSame(71.43, $price);
+        $this->assertGreaterThanOrEqual(10, (($price * 0.80 - 10 - 40) / $price) * 100);
+
+        $row['clearance'] = 'YES';
+        $this->assertSame(70.0, (new StdPrcVsDilPricer($rules, 'bestbuy'))->priceFromRow($row));
+
+        $rules['min_npft'] = 15;
+        // (40+10)/(0.80−0.15) = $76.93.
+        $row['clearance'] = false;
+        $this->assertSame(76.93, (new StdPrcVsDilPricer($rules, 'bestbuy'))->priceFromRow($row));
+
+        $rules['min_npft'] = 0;
+        $this->assertSame(70.0, (new StdPrcVsDilPricer($rules, 'bestbuy'))->priceFromRow($row));
+
+        $rules['min_npft'] = 10;
+        $this->assertSame(70.0, (new StdPrcVsDilPricer($rules, 'ebay1'))->priceFromRow($row));
+    }
+
+    public function test_bestbuy_keeps_the_discount_when_npft_is_already_above_the_floor(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [['min' => 0, 'max' => 100, 'disc' => 10]],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'min_npft' => 10,
+        ], 'bestbuy');
+
+        $this->assertSame(90.0, $pricer->priceFromRow([
+            'inv' => 1,
+            'std' => 100,
+            'dil' => 5,
+            'lp' => 10,
+            'ship' => 5,
+            'margin' => 0.80,
+            'clearance' => false,
+        ]));
+    }
+
     public function test_zero_inventory_skips(): void
     {
         $pricer = new StdPrcVsDilPricer([

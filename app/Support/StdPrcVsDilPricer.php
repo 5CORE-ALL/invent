@@ -3,12 +3,16 @@
 namespace App\Support;
 
 use App\Models\ChannelTabulatorColumnSetting;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * S PRC from a channel's saved Std prc vs dil slabs.
  * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review + Buss + 0 Sold + ROI) / 100).
  * Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  * ROI disc uses GROI% at the current listing price.
+ * Best Buy then raises S PRC so NPFT% stays at or above the saved Min NPFT % (default 10).
+ * Clearance SKUs (inv days clearance = YES) keep the discount price.
  * Used by the unattended apply commands. The page does not have to be open.
  */
 class StdPrcVsDilPricer
@@ -19,6 +23,9 @@ class StdPrcVsDilPricer
     public const LOW_STD_FACTOR = 0.5;
     /** @var array<string, self> */
     private static array $cache = [];
+
+    /** @var array<string, true>|null */
+    private static ?array $clearanceKeys = null;
 
     /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss?:list<array<string,float>>,roi?:list<array<string,float>>,zero_sold_disc?:float} $rules */
     public function __construct(private array $rules, private string $channel = '') {}
@@ -42,6 +49,7 @@ class StdPrcVsDilPricer
             'buss' => self::ranges($saved['buss'] ?? null, $defaults['buss']),
             'roi' => self::ranges($saved['roi'] ?? null, $defaults['roi']),
             'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
+            'min_npft' => self::minNpftPercent($saved['min_npft'] ?? null, $channel === 'bestbuy' ? 10.0 : 0.0),
         ];
 
         return self::$cache[$channel] = new self($rules, $channel);
@@ -80,8 +88,163 @@ class StdPrcVsDilPricer
             : 0.0;
         $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $roiDisc));
         $price = round($std * (1 - $sum / 100), 2);
+        if (! ($price > 0)) {
+            return null;
+        }
+        $price = $this->applyMinNpft($price, $row);
 
         return $price > 0 ? $price : null;
+    }
+
+    /**
+     * Best Buy NPFT% is GPFT% (no ads): ((price × margin − ship − LP) / price) × 100.
+     * Raise to the cent that keeps NPFT at or above the saved floor. Clearance SKUs are unchanged.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function applyMinNpft(float $price, array $row): float
+    {
+        if ($this->channel !== 'bestbuy') {
+            return $price;
+        }
+        $min = (float) ($this->rules['min_npft'] ?? 0);
+        if (! ($min > 0) || $this->rowIsClearance($row)) {
+            return $price;
+        }
+        $lp = (float) ($row['lp'] ?? $row['LP'] ?? $row['LP_productmaster'] ?? 0);
+        $ship = (float) ($row['ship'] ?? $row['Ship'] ?? $row['Ship_productmaster'] ?? 0);
+        $margin = $this->marginFor($row);
+        if ($this->npftAt($price, $lp, $ship, $margin) >= $min - 0.001) {
+            return $price;
+        }
+        $floor = $this->priceForMinNpft($lp, $ship, $margin, $min);
+        if ($floor === null || $floor <= $price) {
+            return $price;
+        }
+
+        return $floor;
+    }
+
+    private function npftAt(float $price, float $lp, float $ship, float $margin): float
+    {
+        if (! ($price > 0)) {
+            return 0.0;
+        }
+
+        return (($price * $margin - $ship - $lp) / $price) * 100;
+    }
+
+    private function priceForMinNpft(float $lp, float $ship, float $margin, float $minNpft): ?float
+    {
+        $denom = $margin - ($minNpft / 100);
+        if (! ($denom > 0.0001)) {
+            return null;
+        }
+        $raw = ($lp + $ship) / $denom;
+        if (! ($raw > 0)) {
+            return null;
+        }
+        $cents = (int) ceil($raw * 100 - 1e-6);
+        $floor = $cents / 100;
+        if ($this->npftAt($floor, $lp, $ship, $margin) + 1e-6 < $minNpft) {
+            $floor = round($floor + 0.01, 2);
+        }
+
+        return $floor > 0 ? $floor : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function marginFor(array $row): float
+    {
+        foreach (['margin', '_margin', 'percentage'] as $key) {
+            if (! isset($row[$key]) || ! is_numeric($row[$key])) {
+                continue;
+            }
+            $m = (float) $row[$key];
+            if ($m > 1) {
+                $m /= 100;
+            }
+            if ($m > 0 && $m <= 1) {
+                return $m;
+            }
+        }
+
+        return 0.80;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function rowIsClearance(array $row): bool
+    {
+        if (array_key_exists('clearance', $row)) {
+            $value = $row['clearance'];
+            if (is_bool($value)) {
+                return $value;
+            }
+            if (is_numeric($value)) {
+                return (int) $value === 1;
+            }
+            $flag = strtoupper(trim((string) $value));
+
+            return in_array($flag, ['YES', 'Y', 'TRUE'], true);
+        }
+        $sku = trim((string) ($row['sku'] ?? $row['(Child) sku'] ?? ''));
+        if ($sku === '') {
+            return false;
+        }
+
+        return isset($this->clearanceYesKeys()[self::clearanceKey($sku)]);
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function clearanceYesKeys(): array
+    {
+        if (self::$clearanceKeys !== null) {
+            return self::$clearanceKeys;
+        }
+        if (! function_exists('app')) {
+            return [];
+        }
+        try {
+            if (! app()->bound('db') || ! Schema::hasTable('inv_days_clearances')) {
+                return self::$clearanceKeys = [];
+            }
+            $set = [];
+            foreach (DB::table('inv_days_clearances')->where('value', 'YES')->get(['sku', 'sku_key']) as $hit) {
+                foreach ([(string) ($hit->sku ?? ''), (string) ($hit->sku_key ?? '')] as $raw) {
+                    $key = self::clearanceKey($raw);
+                    if ($key !== '') {
+                        $set[$key] = true;
+                    }
+                }
+            }
+
+            return self::$clearanceKeys = $set;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    private static function clearanceKey(string $sku): string
+    {
+        $sku = str_replace("\u{00a0}", ' ', trim($sku));
+        $sku = preg_replace('/\s+/u', ' ', $sku) ?? $sku;
+
+        return strtolower($sku);
+    }
+
+    private static function minNpftPercent(mixed $value, float $fallback): float
+    {
+        if (! is_numeric($value)) {
+            return $fallback;
+        }
+
+        return round(min(99, max(0, (float) $value)), 2);
     }
 
     /** Std Prc under $15 → rule discount × 0.5. $15 and above keep the saved discount. */
