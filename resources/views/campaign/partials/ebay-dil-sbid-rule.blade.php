@@ -1609,21 +1609,58 @@ function dilSbidSave(thenApply) {
         }
     });
 }
+function dilSbidRowListingId(d) {
+    return String((d && (d.listing_id || d.eBay_item_id || d.ebay_item_id || d.item_id)) || '').trim();
+}
 function dilSbidPaintStatus(resp) {
-    if (typeof table === 'undefined' || !table || !resp || !Array.isArray(resp.results)) return;
+    if (!resp || !Array.isArray(resp.results)) return;
     const paused = {};
     const running = {};
+    const bids = {};
     resp.results.forEach(function(r) {
-        if (!r || r.listing_id == null || r.status !== 'pushed') return;
+        if (!r || r.listing_id == null) return;
         const id = String(r.listing_id);
-        if (r.bid === 'OFF') paused[id] = true;
-        else running[id] = true;
+        if (r.status === 'pushed' && r.bid === 'OFF') {
+            paused[id] = true;
+            return;
+        }
+        if (r.status !== 'pushed' && r.status !== 'unchanged') return;
+        running[id] = true;
+        const n = parseFloat(r.bid);
+        if (isFinite(n)) bids[id] = n;
     });
-    table.getRows().forEach(function(row) {
-        const id = String((row.getData() || {}).listing_id || '');
-        if (paused[id]) row.update({ campaign_status: 'PAUSED' });
-        else if (running[id]) row.update({ campaign_status: 'RUNNING' });
-    });
+    function patchRow(d) {
+        if (!d) return null;
+        const id = dilSbidRowListingId(d);
+        if (!id || (!paused[id] && !running[id] && bids[id] == null)) return null;
+        const patch = {};
+        if (paused[id]) {
+            patch.ca_campaign_status = 'PAUSED';
+            patch.campaign_status = 'PAUSED';
+        } else if (running[id]) {
+            patch.ca_campaign_status = 'RUNNING';
+            patch.campaign_status = 'RUNNING';
+        }
+        if (bids[id] != null) {
+            patch.ca_bid_percentage = bids[id];
+            patch.bid_percentage = bids[id];
+        }
+        return Object.keys(patch).length ? patch : null;
+    }
+    if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+        table.getRows().forEach(function(row) {
+            const patch = patchRow(row.getData() || {});
+            if (patch) row.update(patch);
+        });
+    }
+    if (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) {
+        allTableData.forEach(function(d) {
+            const patch = patchRow(d);
+            if (patch) Object.assign(d, patch);
+        });
+    }
+    if (typeof dilSbidClearListingCache === 'function') dilSbidClearListingCache();
+    if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
 }
 function dilSbidPushButtons() {
     return Array.prototype.slice.call(document.querySelectorAll('#dil-sbid-apply-btn, .dil-sbid-push-btn'));
@@ -1645,12 +1682,16 @@ function dilSbidApply() {
     const seenIds = {};
     let alreadyMatching = 0;
     dilSbidRows().forEach(function(d) {
-        const id = d && (d.listing_id || d.eBay_item_id || d.ebay_item_id || d.item_id);
+        if (DIL_SBID_LISTING_WISE && !dilSbidIsChildRow(d) && dilSbidListingKey(d)) {
+            // Parent rows share the child listing id. Count the listing once from a child.
+            return;
+        }
+        const id = dilSbidRowListingId(d);
         if (!id || seenIds[id]) return;
         seenIds[id] = true;
-        // Extended mode: a running ad whose C Bid already equals the S Bid needs no push.
-        // The server still checks live before it writes anything.
-        if (DIL_SBID_EXT && dilSbidEnabled) {
+        // Listing-wise: always send the parent item so the server pulls live C Bid
+        // and writes it onto the listing. SKU-wise still skips a local match.
+        if (!DIL_SBID_LISTING_WISE && DIL_SBID_EXT && dilSbidEnabled) {
             const res = dilSbidOfRow(d);
             const live = parseFloat(d.ca_bid_percentage != null ? d.ca_bid_percentage : d.bid_percentage);
             const running = String(d.ca_campaign_status || d.campaign_status || '').trim().toUpperCase() === 'RUNNING';

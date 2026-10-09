@@ -469,10 +469,14 @@ class DilVsSbidApplyService
                     $got = $live[(string) $r['listingId']] ?? null;
                     if (EbayCampaignAdLiveBid::matches($got, $want)) {
                         $this->storeLiveBid($adsTable, $campaignId, $r, (float) $got);
+                        $results[] = [
+                            'listing_id' => $r['listingId'],
+                            'status' => $first ? 'unchanged' : 'pushed',
+                            'bid' => number_format((float) $got, 1, '.', '').'%',
+                        ];
                         if ($first) {
                             $unchanged++;
                         } else {
-                            $results[] = ['listing_id' => $r['listingId'], 'status' => 'pushed', 'bid' => number_format($want, 1, '.', '').'%'];
                             $success++;
                         }
                         continue;
