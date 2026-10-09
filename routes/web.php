@@ -434,6 +434,14 @@ Route::controller(GoogleYoutubeAdsCampaignsController::class)->group(function ()
 Route::get('/barcode-image', [MastersBarcodeController::class, 'publicIndex'])->name('barcode.image');
 Route::get('/barcode-image-data', [MastersBarcodeController::class, 'getData'])->name('barcode.image.data');
 
+// 5Core Drive — public "anyone with the link" pages and direct file URLs (usable in listings).
+Route::controller(\App\Http\Controllers\DriveController::class)->prefix('drive/s/{token}')->where(['token' => '[A-Za-z0-9]{20,64}'])->name('drive.public.')->group(function () {
+    Route::get('/', 'publicShow')->name('show');
+    Route::get('/download', 'publicZip')->name('download');
+    Route::get('/raw/{filename?}', 'publicRaw')->where('filename', '[^/]+')->name('raw');
+    Route::get('/f/{uuid}/{filename?}', 'publicChild')->where('filename', '[^/]+')->name('child');
+});
+
 // Supplier Portal — public (no login). Share /supplier-portal with suppliers.
 Route::get('/supplier-portal', [\App\Http\Controllers\SupplierPortalController::class, 'index'])->name('supplier-portal.index');
 Route::get('/supplier-portal/file/{asset}', [\App\Http\Controllers\SupplierPortalController::class, 'show'])->name('supplier-portal.show');
@@ -3637,6 +3645,38 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/chat/search', 'search')->name('chat.search');
         Route::match(['get', 'post'], '/chat/prefs', 'prefs')->name('chat.prefs');
         Route::post('/chat/health-event', 'healthEvent')->name('chat.health-event');
+    });
+
+    Route::controller(\App\Http\Controllers\DriveController::class)->middleware('auth')->prefix('drive')->name('drive.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/api/list', 'list')->name('list');
+        Route::get('/api/stats', 'stats')->name('stats');
+        Route::get('/api/folders', 'folders')->name('folders');
+        Route::get('/api/users', 'users')->name('users');
+        Route::post('/api/folders', 'createFolder')->name('folders.store');
+        Route::post('/api/text-files', 'createTextFile')->name('text.store');
+        Route::post('/api/upload', 'upload')->name('upload');
+        Route::post('/api/items/move', 'move')->name('move');
+        Route::post('/api/items/copy', 'copy')->name('copy');
+        Route::post('/api/items/star', 'star')->name('star');
+        Route::post('/api/items/trash', 'trash')->name('trash');
+        Route::post('/api/items/restore', 'restore')->name('restore');
+        Route::post('/api/items/delete', 'destroy')->name('destroy');
+        Route::post('/api/items/links', 'bulkLinks')->name('links');
+        Route::post('/api/trash/empty', 'emptyTrash')->name('trash.empty');
+        Route::get('/api/items/{uuid}', 'show')->name('show');
+        Route::post('/api/items/{uuid}/rename', 'rename')->name('rename');
+        Route::post('/api/items/{uuid}/meta', 'updateMeta')->name('meta');
+        Route::get('/api/items/{uuid}/content', 'content')->name('content');
+        Route::post('/api/items/{uuid}/content', 'saveContent')->name('content.save');
+        Route::post('/api/items/{uuid}/share', 'share')->name('share');
+        Route::post('/api/items/{uuid}/share/{share}/role', 'updateShare')->whereNumber('share')->name('share.role');
+        Route::post('/api/items/{uuid}/share/{share}/remove', 'removeShare')->whereNumber('share')->name('share.remove');
+        Route::post('/api/items/{uuid}/link', 'linkAccess')->name('link');
+        Route::post('/api/items/{uuid}/versions/{version}/restore', 'restoreVersion')->whereNumber('version')->name('version.restore');
+        Route::get('/file/{uuid}', 'file')->name('file');
+        Route::get('/file/{uuid}/versions/{version}', 'versionFile')->whereNumber('version')->name('version.file');
+        Route::get('/zip', 'zip')->name('zip');
     });
 
     Route::controller(\App\Http\Controllers\ChatHealthController::class)->middleware('auth')->group(function () {
