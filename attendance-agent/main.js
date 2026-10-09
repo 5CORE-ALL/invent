@@ -6,7 +6,7 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const axios = require('axios');
 const FormData = require('form-data');
@@ -255,7 +255,52 @@ function applyWindowResult(result) {
     return false;
 }
 
+const MAC_ACTIVE_WINDOW_SCRIPT = `
+tell application "System Events"
+    set frontApp to first application process whose frontmost is true
+    set appName to name of frontApp
+    set windowTitle to ""
+    try
+        set windowTitle to name of front window of frontApp
+    end try
+    return windowTitle & "|||" & appName
+end tell
+`.trim();
+
+function runOsascript(source) {
+    return new Promise((resolve, reject) => {
+        const child = spawn('osascript', []);
+        const out = [];
+        const err = [];
+        const timer = setTimeout(() => {
+            child.kill('SIGKILL');
+            reject(new Error('osascript timeout'));
+        }, 5000);
+        child.stdout.on('data', (d) => out.push(d));
+        child.stderr.on('data', (d) => err.push(d));
+        child.on('error', (e) => {
+            clearTimeout(timer);
+            reject(e);
+        });
+        child.on('close', (code) => {
+            clearTimeout(timer);
+            if (code === 0) resolve(Buffer.concat(out).toString('utf8'));
+            else reject(new Error(Buffer.concat(err).toString('utf8') || `osascript exited ${code}`));
+        });
+        child.stdin.end(source);
+    });
+}
+
 async function getActiveWindow() {
+    if (process.platform === 'darwin') {
+        try {
+            const stdout = await runOsascript(MAC_ACTIVE_WINDOW_SCRIPT);
+            const parts = String(stdout || '').trim().split('|||');
+            return { title: (parts[0] || '').trim(), process: (parts[1] || '').trim() };
+        } catch {
+            return { title: lastKnownWindow.title || '', process: lastKnownWindow.process || '' };
+        }
+    }
     if (process.platform !== 'win32') {
         return { title: '', process: '' };
     }
@@ -1293,12 +1338,15 @@ function createWindow() {
         }
         // NSIS / Task Manager send WM_CLOSE. Hiding to tray makes the
         // installer think the app never died and loop "cannot be closed".
-        const now = Date.now();
-        if (now - lastCloseAttempt < 4000) {
-            requestAppQuit();
-            return;
+        // On macOS, closing the window only hides it to the menu bar / Dock.
+        if (process.platform === 'win32') {
+            const now = Date.now();
+            if (now - lastCloseAttempt < 4000) {
+                requestAppQuit();
+                return;
+            }
+            lastCloseAttempt = now;
         }
-        lastCloseAttempt = now;
         e.preventDefault();
         win.hide();
     });
@@ -1607,7 +1655,46 @@ ipcMain.handle('snoozeUpdate', () => {
 ipcMain.handle('getAgentVersion', () => ({
     current: AGENT_VERSION,
     latest: config.agent_version || AGENT_VERSION,
+    platform: process.platform,
 }));
+
+function installMacMenu() {
+    if (process.platform !== 'darwin') return;
+    const template = [
+        {
+            label: app.name,
+            submenu: [
+                { role: 'about' },
+                { type: 'separator' },
+                { role: 'hide' },
+                { role: 'hideOthers' },
+                { role: 'unhide' },
+                { type: 'separator' },
+                { label: 'Quit', accelerator: 'Command+Q', click: () => { app.isQuitting = true; app.quit(); } },
+            ],
+        },
+        {
+            label: 'Edit',
+            submenu: [
+                { role: 'undo' },
+                { role: 'redo' },
+                { type: 'separator' },
+                { role: 'cut' },
+                { role: 'copy' },
+                { role: 'paste' },
+                { role: 'selectAll' },
+            ],
+        },
+        {
+            label: 'Window',
+            submenu: [
+                { role: 'minimize' },
+                { label: 'Show 5Core Attendance', click: () => showWindow() },
+            ],
+        },
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 app.on('second-instance', (_event, argv) => {
         if (argvWantsQuit(argv)) {
@@ -1624,6 +1711,7 @@ app.whenReady().then(async () => {
         return;
     }
     enableAutoLaunch();
+    installMacMenu();
     createTray();
     createWindow();
     scheduleUpdateChecks();
@@ -1660,4 +1748,9 @@ app.on('window-all-closed', (e) => {
     if (!app.isQuitting) {
         e.preventDefault();
     }
+});
+
+app.on('activate', () => {
+    if (app.isQuitting) return;
+    showWindow();
 });

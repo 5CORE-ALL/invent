@@ -344,7 +344,8 @@ class AttendanceService
      *   latest_version: string,
      *   update_available: bool,
      *   up_to_date: bool,
-     *   device_name: string|null
+     *   device_name: string|null,
+     *   os_name: string|null
      * }
      */
     public function desktopAgentStatusForUser(User $user): array
@@ -377,6 +378,7 @@ class AttendanceService
             'update_available' => $updateAvailable,
             'up_to_date' => $upToDate,
             'device_name' => $device?->device_name,
+            'os_name' => $device?->os_name,
         ];
     }
 

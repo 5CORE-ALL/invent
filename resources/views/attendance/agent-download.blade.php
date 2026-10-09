@@ -191,6 +191,27 @@
         z-index: 1;
     }
     .da-download-btn.btn-warning { color: #1c1917; }
+    a.btn.da-mac-btn {
+        background: #111827;
+        border-color: #111827;
+        color: #fff;
+        font-weight: 600;
+    }
+    a.btn.da-mac-btn:hover,
+    a.btn.da-mac-btn:focus {
+        background: #1f2937;
+        border-color: #1f2937;
+        color: #fff;
+    }
+    a.btn.da-mac-btn[aria-busy="true"] { opacity: .75; pointer-events: none; }
+    .mac-dl-status { font-size: .8rem; margin-top: .4rem; min-height: 1.1em; }
+    .mac-dl-status.loading { color: #1d4ed8; }
+    .mac-dl-status.ok { color: #166534; }
+    .mac-dl-status.err { color: #b91c1c; }
+    .da-mac-card {
+        border-color: #d1d5db;
+        background: linear-gradient(135deg, #f8fafc 0%, #fff 62%);
+    }
 </style>
 @endsection
 
@@ -224,7 +245,7 @@
                 You only need to download again if you moved to a new PC.
             </p>
         @else
-            <span class="da-badge"><i class="ri-windows-fill"></i> Windows · v{{ $agent_version }}</span>
+            <span class="da-badge"><i class="ri-computer-line"></i> Windows &amp; Mac · v{{ $agent_version }}</span>
             <h1>5Core Attendance — Desktop App</h1>
             <p class="lead mb-0">
                 Install this small app on your work computer to clock in, track your work time, and stay connected with your team.
@@ -281,6 +302,10 @@
                     <strong>{{ $download_filename }}</strong> to the downloads folder, or contact HR for a copy.
                 </div>
             @endif
+
+            <div class="mt-3">
+                @include('attendance.partials.mac-download-actions')
+            </div>
         </div>
     </div>
 
@@ -310,12 +335,37 @@
         @endif
     </div>
 
+    <div class="da-card da-mac-card mb-4" style="height:auto">
+        <span class="da-badge"><i class="ri-apple-fill"></i> Mac · v{{ $agent_version }}</span>
+        <h3 class="mb-2">Install on a Mac</h3>
+        @if(!empty($mac_downloads))
+            <p class="da-step-desc mb-0">
+                Use <strong>Download for Mac</strong> above. Open the disk image, drag <strong>5Core Attendance</strong> into Applications, then open it.
+                @if(count($mac_downloads) === 1 && ($mac_downloads[0]['arch'] ?? '') === 'universal')
+                    This build runs on Apple Silicon (M1–M4) and Intel Macs.
+                @else
+                    Download the file that matches your chip: Apple Silicon (M1–M4) or Intel.
+                @endif
+                If macOS says the app is from an unidentified developer, right-click it and choose <strong>Open</strong>.
+                Allow Screen Recording and Accessibility when prompted so screenshots and the active app can be recorded while you are clocked in.
+            </p>
+        @else
+            <p class="da-step-desc mb-0">
+                A Mac build is not available yet, so there is nothing to install. The message above stays until IT uploads
+                <strong>5Core-Attendance-Mac.dmg</strong>.
+            </p>
+        @endif
+    </div>
+
     @if($needsUpdate)
         @include('partials.attendance-agent-update-modal', [
             'agent_update_available' => true,
             'agent_installed_version' => $agent_installed_version,
             'agent_latest_version' => $agent_latest_version,
-            'download_url' => $download_url,
+            'download_url' => $update_download_url ?? $download_url,
+            'agent_platform' => $agent_platform ?? 'windows',
+            'agent_mac_download_available' => !empty($mac_downloads),
+            'mac_downloads' => $mac_downloads ?? [],
         ])
     @endif
 
@@ -333,8 +383,9 @@
                                     Quit the running app from the tray, then click <strong>Update installed app</strong>.
                                     Keep the default install location so Windows replaces the same program — you will not get a second app.
                                 @else
-                                    Click <strong>Download for Windows</strong> above and run the installer.
+                                    On Windows, click <strong>Download for Windows</strong> and run the installer.
                                     If the app is already installed, the same installer updates it in place.
+                                    On a Mac, click <strong>Download for Mac</strong>, open the disk image, and drag the app into Applications.
                                 @endif
                                 You may see a Windows security notice; choose <strong>Run anyway</strong> or ask IT if you are unsure.
                             </p>
@@ -456,6 +507,10 @@
                     <p class="da-faq-a">Check the footer at the bottom of the app. It must show <strong>v{{ $agent_version }}</strong> (or higher). If it still shows v1.2.x, the update did not install — download again and run the installer.</p>
                 </div>
                 <div class="da-faq-item">
+                    <div class="da-faq-q">How do I install it on a Mac?</div>
+                    <p class="da-faq-a">Open the downloaded disk image and drag <strong>5Core Attendance</strong> into Applications. The same file runs on Apple Silicon (M1–M4) and Intel Macs. If macOS says the developer cannot be verified, right-click the app, choose <strong>Open</strong>, then <strong>Open</strong> again. Allow Screen Recording and Accessibility when macOS asks, or app names and screenshots cannot be captured.</p>
+                </div>
+                <div class="da-faq-item">
                     <div class="da-faq-q">Do I need to keep the browser open?</div>
                     <p class="da-faq-a">No. The desktop app works independently. You only need the browser to download it or view Team Monitoring as a manager.</p>
                 </div>
@@ -479,4 +534,66 @@
         </div>
     </div>
 </div>
+@endsection
+
+@section('script')
+<script>
+(function () {
+    function setStatus(slot, kind, message) {
+        var status = slot.querySelector('[data-mac-status]');
+        if (!status) return;
+        status.className = 'mac-dl-status' + (kind ? ' ' + kind : '');
+        status.textContent = message || '';
+    }
+
+    document.querySelectorAll('[data-mac-download]').forEach(function (link) {
+        link.addEventListener('click', function (event) {
+            if (link.getAttribute('data-confirmed') === '1') {
+                link.removeAttribute('data-confirmed');
+                var slot = link.closest('.mac-download-slot');
+                if (slot) setStatus(slot, 'ok', 'Download started. Open the file when it finishes.');
+                return;
+            }
+            event.preventDefault();
+            var slot = link.closest('.mac-download-slot');
+            var url = link.getAttribute('href');
+            var filename = link.getAttribute('data-filename') || '5Core-Attendance-Mac.dmg';
+            link.setAttribute('aria-busy', 'true');
+            if (slot) setStatus(slot, 'loading', 'Preparing download…');
+
+            fetch(url, { method: 'HEAD', credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/octet-stream, application/x-apple-diskimage, application/zip' } })
+                .then(function (response) {
+                    if (response.status === 405 || response.status === 501) {
+                        return response;
+                    }
+                    if (response.status === 404) {
+                        throw new Error('The Mac build is not available right now. Contact IT or HR for a copy.');
+                    }
+                    if (!response.ok) {
+                        throw new Error('Download failed (' + response.status + '). Try again or contact IT.');
+                    }
+                    var type = (response.headers.get('content-type') || '').toLowerCase();
+                    if (type.indexOf('text/html') !== -1) {
+                        throw new Error('The server returned a page instead of the Mac app. Contact IT.');
+                    }
+                    var length = parseInt(response.headers.get('content-length') || '0', 10);
+                    if (length > 0 && length < 1024 * 1024) {
+                        throw new Error('The Mac file on the server looks incomplete. Contact IT.');
+                    }
+                    return response;
+                })
+                .then(function () {
+                    link.setAttribute('data-confirmed', '1');
+                    link.setAttribute('aria-busy', 'false');
+                    if (slot) setStatus(slot, 'ok', 'Download started for ' + filename + '.');
+                    link.click();
+                })
+                .catch(function (error) {
+                    link.setAttribute('aria-busy', 'false');
+                    if (slot) setStatus(slot, 'err', (error && error.message) ? error.message : 'Download failed.');
+                });
+        });
+    });
+})();
+</script>
 @endsection

@@ -12,6 +12,7 @@ use App\Services\Attendance\AttendanceAnalysisService;
 use App\Services\Attendance\AttendanceService;
 use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
+use App\Support\AttendanceMacBuilds;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -268,6 +269,10 @@ class AttendanceMonitorController extends Controller
         $installer = $this->resolveAgentInstaller();
         $agentStatus = $this->attendanceService->desktopAgentStatusForUser($request->user());
         $chinaInstaller = public_path('downloads/5core-attendance-setup-cn.exe');
+        $agentOs = strtolower((string) ($agentStatus['os_name'] ?? ''));
+        $agentIsMac = $agentOs === 'darwin' || str_starts_with($agentOs, 'mac');
+        $macDownloads = $this->macDownloadViewData();
+        $macForUpdate = $agentIsMac && $macDownloads !== [] ? $macDownloads[0] : null;
 
         return view('attendance.agent-download', [
             'china_download_url' => is_file($chinaInstaller)
@@ -279,6 +284,10 @@ class AttendanceMonitorController extends Controller
             'download_available' => $installer !== null,
             'download_url' => $installer ? route('attendance.agent.download') : null,
             'download_filename' => config('attendance.agent_download_filename', '5Core-Attendance-Setup.exe'),
+            'agent_is_mac' => $agentIsMac,
+            'agent_platform' => $agentIsMac ? 'mac' : 'windows',
+            'mac_downloads' => $macDownloads,
+            'update_download_url' => $macForUpdate['url'] ?? ($installer ? route('attendance.agent.download') : null),
             'screenshots_enabled' => (bool) config('attendance.screenshots_enabled', true),
             'agent_has_installed' => $agentStatus['has_installed'],
             'agent_update_available' => $agentStatus['update_available'],
@@ -299,6 +308,38 @@ class AttendanceMonitorController extends Controller
             $installer,
             (string) config('attendance.agent_download_filename', '5Core-Attendance-Setup.exe'),
         );
+    }
+
+    public function agentMacDownload(string $arch): BinaryFileResponse
+    {
+        abort_unless(AttendanceAccess::canSeeMenu(), 403);
+
+        $arch = strtolower($arch);
+        abort_unless(in_array($arch, AttendanceMacBuilds::ARCHS, true), 404, 'Unknown Mac architecture.');
+
+        $build = AttendanceMacBuilds::located()[$arch] ?? null;
+        abort_unless($build, 404, 'The Mac build is not available yet. Please contact IT.');
+
+        return response()->download($build['path'], $build['filename'], [
+            'Content-Type' => AttendanceMacBuilds::mime($build['format']),
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function macDownloadViewData(): array
+    {
+        $rows = [];
+        foreach (AttendanceMacBuilds::forDisplay(AttendanceMacBuilds::located()) as $build) {
+            $rows[] = $build + [
+                'url' => route('attendance.agent.download.mac', ['arch' => $build['arch']]),
+            ];
+        }
+
+        return $rows;
     }
 
     public function markAgentUninstalled(Request $request)

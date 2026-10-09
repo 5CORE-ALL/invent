@@ -30,6 +30,8 @@ id_ed25519
 
 # Ignore compiled files
 /public/downloads/*.exe
+/public/downloads/*.dmg
+/public/downloads/*.zip
 /public/downloads/*.blockmap
 /public/storage
 /public/images/products

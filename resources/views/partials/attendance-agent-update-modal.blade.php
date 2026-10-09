@@ -5,6 +5,8 @@
     $latest = $agent_latest_version ?? config('attendance.agent_version', '1.0.0');
     $dl = $download_url ?? ($agent_download_url ?? route('attendance.agent.download'));
     $showAuto = !empty($agent_update_available);
+    $agentPlatform = $agent_platform ?? 'windows';
+    $macReady = $agentPlatform !== 'mac' || !empty($agent_mac_download_available) || !empty($mac_downloads);
 @endphp
 <style>
     .att-upd-modal {
@@ -92,16 +94,29 @@
             <span class="text-muted">→</span>
             <span class="badge bg-primary">Latest v{{ $latest }}</span>
         </div>
-        <ol class="att-upd-steps">
-            <li>Click <strong>Download update</strong> and run the installer.</li>
-            <li>You do <strong>not</strong> need to quit the app first — the installer closes it and updates the same install.</li>
-            <li>Keep the default folder. When it finishes, the app reopens on <strong>v{{ $latest }}</strong>.</li>
-        </ol>
+        @if($agentPlatform === 'mac')
+            <ol class="att-upd-steps">
+                <li>Click <strong>Download for Mac</strong> and open the disk image when it finishes.</li>
+                <li>Drag <strong>5Core Attendance</strong> into Applications, replacing the existing app.</li>
+                <li>Open it from Applications. If macOS blocks it, right-click the app and choose <strong>Open</strong>.</li>
+            </ol>
+            @if(empty($macReady))
+                <p class="mb-3" style="color:#b91c1c;font-size:.84rem">The Mac build is not available right now. Contact IT before replacing the app.</p>
+            @endif
+        @else
+            <ol class="att-upd-steps">
+                <li>Click <strong>Download update</strong> and run the installer.</li>
+                <li>You do <strong>not</strong> need to quit the app first — the installer closes it and updates the same install.</li>
+                <li>Keep the default folder. When it finishes, the app reopens on <strong>v{{ $latest }}</strong>.</li>
+            </ol>
+        @endif
         <div class="att-upd-actions">
             <button type="button" class="btn btn-light" data-att-upd-close>Later</button>
-            @if(!empty($dl))
+            @if($agentPlatform === 'mac' && empty($macReady))
+                <a href="{{ route('attendance.agent') }}" class="btn btn-primary">View download page</a>
+            @elseif(!empty($dl))
                 <a href="{{ $dl }}" class="btn btn-primary" id="attUpdDownloadBtn">
-                    <i class="ri-download-cloud-line me-1"></i> Download update
+                    <i class="ri-download-cloud-line me-1"></i> {{ $agentPlatform === 'mac' ? 'Download for Mac' : 'Download update' }}
                 </a>
             @else
                 <a href="{{ route('attendance.agent') }}" class="btn btn-primary">Go to download page</a>

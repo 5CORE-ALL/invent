@@ -8,7 +8,8 @@
     "prestart": "npm run icons",
     "start": "electron .",
     "build": "electron-builder --win nsis",
-    "build:portable": "electron-builder --win portable"
+    "build:portable": "electron-builder --win portable",
+    "build:mac": "node scripts/prepare-mac-icon.js && electron-builder --mac dmg zip --universal"
   },
   "author": "5Core",
   "license": "UNLICENSED",
@@ -63,6 +64,27 @@
     },
     "portable": {
       "artifactName": "5Core-Attendance-Portable.exe"
+    },
+    "mac": {
+      "category": "public.app-category.business",
+      "icon": "assets/icon-mac.png",
+      "identity": null,
+      "gatekeeperAssess": false,
+      "hardenedRuntime": false,
+      "artifactName": "5Core-Attendance-Mac.${ext}",
+      "target": [
+        { "target": "dmg", "arch": ["universal"] },
+        { "target": "zip", "arch": ["universal"] }
+      ],
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "5Core Attendance captures the screen while you are clocked in so your manager can review work activity.",
+        "NSAppleEventsUsageDescription": "5Core Attendance reads the name of the frontmost app while you are clocked in."
+      }
+    },
+    "dmg": {
+      "title": "5Core Attendance",
+      "sign": false,
+      "writeUpdateInfo": false
     }
   }
 }

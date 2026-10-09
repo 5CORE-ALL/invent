@@ -7839,6 +7839,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/policies', [AttendanceMonitorController::class, 'storePolicy'])->name('policies.store');
         Route::get('/agent', [AttendanceMonitorController::class, 'agentDownload'])->name('agent');
         Route::get('/agent/download', [AttendanceMonitorController::class, 'agentInstallerDownload'])->name('agent.download');
+        Route::get('/agent/download/mac/{arch}', [AttendanceMonitorController::class, 'agentMacDownload'])
+            ->where('arch', 'universal|arm64|x64')
+            ->name('agent.download.mac');
         Route::post('/agent/mark-uninstalled', [AttendanceMonitorController::class, 'markAgentUninstalled'])->name('agent.mark-uninstalled');
         Route::get('/screenshots/{screenshot}', [AttendanceAgentController::class, 'showScreenshot'])->name('screenshots.show');
     });

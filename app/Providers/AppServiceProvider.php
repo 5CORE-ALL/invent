@@ -24,6 +24,7 @@ use App\Support\DarL30Metrics;
 use App\Support\TaskBusinessTime;
 use App\Observers\FbaManualDataObserver;
 use App\Services\Attendance\AttendanceService;
+use App\Support\AttendanceMacBuilds;
 use App\Support\StoragePathGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
@@ -442,11 +443,24 @@ class AppServiceProvider extends ServiceProvider
 
         try {
             $status = app(AttendanceService::class)->desktopAgentStatusForUser($user);
+            $os = strtolower((string) ($status['os_name'] ?? ''));
+            $isMac = $os === 'darwin' || str_starts_with($os, 'mac');
+            $macUrl = null;
+            if ($isMac) {
+                $macDisplay = AttendanceMacBuilds::forDisplay(AttendanceMacBuilds::located());
+                $macUrl = isset($macDisplay[0]['arch'])
+                    ? route('attendance.agent.download.mac', ['arch' => $macDisplay[0]['arch']])
+                    : null;
+            }
             $view->with([
                 'agent_update_available' => ! empty($status['update_available']),
                 'agent_installed_version' => $status['installed_version'] ?? null,
                 'agent_latest_version' => $status['latest_version'] ?? config('attendance.agent_version'),
-                'agent_download_url' => route('attendance.agent.download'),
+                'agent_download_url' => $isMac
+                    ? ($macUrl ?: route('attendance.agent'))
+                    : route('attendance.agent.download'),
+                'agent_platform' => $isMac ? 'mac' : 'windows',
+                'agent_mac_download_available' => $macUrl !== null,
             ]);
         } catch (\Throwable $e) {
             $view->with('agent_update_available', false);

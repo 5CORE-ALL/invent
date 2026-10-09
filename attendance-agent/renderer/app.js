@@ -286,6 +286,13 @@ function showUpdateOverlay(payload) {
     if ($('updateCurrent')) $('updateCurrent').textContent = `v${payload.current_version || '—'}`;
     if ($('updateLatest')) $('updateLatest').textContent = `v${payload.latest_version || '—'}`;
     if ($('updateMessage') && payload.message) $('updateMessage').textContent = payload.message;
+    if ($('updateHint') && window.agent && typeof window.agent.getAgentVersion === 'function') {
+        window.agent.getAgentVersion().then((info) => {
+            if (info && info.platform === 'darwin' && $('updateHint')) {
+                $('updateHint').textContent = 'Open the downloaded disk image and drag 5Core Attendance into Applications, replacing the old app. Login and settings stay saved.';
+            }
+        }).catch(() => {});
+    }
     if ($('updateBannerVersions')) {
         $('updateBannerVersions').textContent = `v${payload.current_version || '—'} → v${payload.latest_version}`;
     }
