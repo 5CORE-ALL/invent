@@ -4130,6 +4130,7 @@ class AmazonAdsController extends Controller
         );
         $skus = $resolved['skus'];
         $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus(array_column($skus, 'sku'));
+        $priceLmp = AmazonAdsCampaignSkuMetrics::priceAndLmpBySkus(array_column($skus, 'sku'));
         $shopify = Schema::hasTable('shopify_skus')
             ? ShopifySku::mapByProductSkus(array_column($skus, 'sku'))
             : collect();
@@ -4137,6 +4138,15 @@ class AmazonAdsController extends Controller
             $sku = (string) ($skuRow['sku'] ?? '');
             $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
             $hit = $reviews[$key] ?? null;
+            $pl = $priceLmp[$key] ?? null;
+            if ($pl === null && $key !== '') {
+                foreach ($priceLmp as $pk => $row) {
+                    if (strcasecmp((string) $pk, $key) === 0) {
+                        $pl = $row;
+                        break;
+                    }
+                }
+            }
             $sh = $shopify->get($sku);
             if ($sh === null && $sku !== '') {
                 foreach ($shopify as $pmSku => $row) {
@@ -4154,6 +4164,10 @@ class AmazonAdsController extends Controller
             $skus[$i]['amz_review_count'] = is_array($hit) ? (int) ($hit['review_count'] ?? 0) : null;
             $skus[$i]['inv'] = $inv;
             $skus[$i]['image'] = $image !== '' ? $image : null;
+            $skus[$i]['price'] = is_array($pl) ? ($pl['price'] ?? null) : null;
+            $skus[$i]['lmp'] = is_array($pl) ? ($pl['lmp'] ?? null) : null;
+            $skus[$i]['lmp_count'] = is_array($pl) ? (int) ($pl['lmp_count'] ?? 0) : 0;
+            $skus[$i]['competitors'] = is_array($pl) ? ($pl['competitors'] ?? []) : [];
         }
 
         return response()->json([

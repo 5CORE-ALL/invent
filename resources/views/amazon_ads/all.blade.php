@@ -304,6 +304,9 @@
         .amz-sku-inv-num.is-low { color: #dc2626; }
         .amz-sku-img-cell { text-align: center; width: 64px; }
         .amz-sku-inv-img { width: 48px; height: 48px; object-fit: contain; border-radius: 4px; background: #f8fafc; }
+        .amz-sku-lmp-btn { font-weight: 700; text-decoration: none; padding: 0; }
+        #amazonAdsSkuLmpModal { z-index: 1065; }
+        #amazonAdsSkuLmpModal .amz-sku-lmp-low { background: #dcfce7; }
         .amz-cpc-avg-cell {
             display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;
         }
@@ -366,6 +369,12 @@
         #amz-ads-raw-wrap .tabulator .tabulator-cell.green-bg { color: #16a34a !important; font-weight: 600; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell.pink-bg { color: #db2777 !important; font-weight: 600; }
         #amz-ads-raw-wrap .tabulator .tabulator-cell.red-bg { color: #dc2626 !important; font-weight: 600; }
+        #amz-ads-raw-wrap .tabulator .tabulator-cell.amz-spl30-high,
+        #amz-ads-raw-wrap .tabulator .tabulator-cell.amz-spl30-high .fw-semibold {
+            background: #dc2626 !important;
+            color: #fff !important;
+            font-weight: 700;
+        }
         /* Toolbar + badges */
         .amz-ads-toolbar { min-width: 0; }
         .amz-stat-badges {
@@ -425,6 +434,7 @@
         .amz-toolbar-title { font-size: 1rem; flex-shrink: 0; }
         .amz-stat-badge--campaign { background: #4c7ed8; }
         .amz-stat-badge--acos     { background: #ea580c; }
+        .amz-stat-badge--acos.is-high { background: #dc2626; }
         .amz-stat-badge--spend    { background: #ef4444; }
         .amz-stat-badge--clicks   { background: #f59e0b; }
         .amz-stat-badge--sold     { background: #8b5cf6; }
@@ -957,8 +967,8 @@
                 <div class="card-body">
                     <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="amz-stat-badges py-1">
-                            <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30 (all campaigns matching Stat / search / U% filters — not only the calendar day's rows)">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
                             <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
+                            <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30. Turns red when ACOS is above 40%.">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
                             <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
                             <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
                             <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) — same Amazon L30 universe as Spend">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
@@ -1245,7 +1255,7 @@
     </div>
 
     <div class="modal fade" id="amazonAdsCampaignSkusModal" tabindex="-1" aria-labelledby="amazonAdsCampaignSkusModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-scrollable modal-lg modal-fullscreen-sm-down">
+        <div class="modal-dialog modal-dialog-scrollable modal-xl modal-fullscreen-sm-down">
             <div class="modal-content">
                 <div class="modal-header py-2">
                     <h5 class="modal-title" id="amazonAdsCampaignSkusModalLabel">Campaign SKUs</h5>
@@ -1263,11 +1273,46 @@
                                     <th>Inv</th>
                                     <th>SKU</th>
                                     <th>ASIN</th>
+                                    <th>Item Price</th>
+                                    <th>LMP</th>
                                     <th>Reviews</th>
                                     <th>State</th>
                                 </tr>
                             </thead>
                             <tbody id="amazonAdsCampaignSkusTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="amazonAdsSkuLmpModal" tabindex="-1" aria-labelledby="amazonAdsSkuLmpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg modal-fullscreen-sm-down">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsSkuLmpModalLabel">LMP</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <p class="small text-muted mb-2" id="amazonAdsSkuLmpModalSub">Item price plus paid shipping. Free shipping does not add.</p>
+                    <div class="table-responsive" style="max-height: 60vh;">
+                        <table class="table table-sm table-bordered align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Image</th>
+                                    <th>ASIN</th>
+                                    <th>Item Price</th>
+                                    <th>Ship</th>
+                                    <th>LMP</th>
+                                    <th>Seller</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="amazonAdsSkuLmpTableBody"></tbody>
                         </table>
                     </div>
                 </div>
@@ -1966,6 +2011,14 @@
             }
             function fmtDashRounded(cell) {
                 var n = amzFiniteNumber(cell.getValue());
+                if (isNaN(n)) return amzDash();
+                return '<span class="fw-semibold">' + Math.round(n).toLocaleString() + '</span>';
+            }
+            function fmtSpl30(cell) {
+                var td = cell.getElement();
+                var n = amzFiniteNumber(cell.getValue());
+                var high = !isNaN(n) && n > 29.99;
+                if (td) td.classList.toggle('amz-spl30-high', high);
                 if (isNaN(n)) return amzDash();
                 return '<span class="fw-semibold">' + Math.round(n).toLocaleString() + '</span>';
             }
@@ -2730,7 +2783,7 @@
                     return;
                 }
                 if (c === 'sales') { col.title = 'Sales'; col.formatter = fmtDashNumberRaw; return; }
-                if (c === 'cost') { col.title = 'SPL30'; col.formatter = fmtDashRounded; return; }
+                if (c === 'cost') { col.title = 'SPL30'; col.headerTooltip = 'L30 spend. Above 29.99 is red.'; col.formatter = fmtSpl30; return; }
                 if (c === 'L7spend') { col.title = 'L7SP'; col.formatter = fmtDashNumberRaw; return; }
                 if (c === 'L2spend') { col.title = 'L2SP'; col.formatter = fmtDashNumberRaw; return; }
                 if (c === 'L1spend') { col.title = 'L1SP'; col.formatter = fmtDashNumberRaw; return; }
@@ -3108,6 +3161,8 @@
 
                 amzSetText('amazonAdsCampaignBadgeValue', camp === null ? '0' : Number(camp).toLocaleString('en-US'));
                 amzSetText('amazonAdsOverallAcosBadgeValue', acos === null ? '—' : (Math.round(acos) + '%'));
+                var acosWrap = document.getElementById('amazonAdsOverallAcosBadgeWrap');
+                if (acosWrap) acosWrap.classList.toggle('is-high', acos !== null && acos > 40);
                 amzSetText('amazonAdsSpendBadgeValue', spend === null ? '$0' : ('$' + Number(spend).toLocaleString('en-US', { maximumFractionDigits: 0 })));
                 amzSetText('amazonAdsClicksBadgeValue', clicks === null ? '0' : Number(clicks).toLocaleString('en-US'));
                 amzSetText('amazonAdsSoldBadgeValue', sold === null ? '0' : Number(sold).toLocaleString('en-US'));
@@ -3694,6 +3749,55 @@
             });
 
             var amzCampSkusCache = {};
+            var amzCampSkusLast = [];
+            function amzMoneyHtml(n) {
+                var x = parseFloat(n);
+                if (!isFinite(x) || x <= 0) return '<span class="text-muted">—</span>';
+                return '$' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+            function amzOpenSkuLmp(idx) {
+                var s = amzCampSkusLast[idx] || {};
+                var title = document.getElementById('amazonAdsSkuLmpModalLabel');
+                var sub = document.getElementById('amazonAdsSkuLmpModalSub');
+                var body = document.getElementById('amazonAdsSkuLmpTableBody');
+                var comps = Array.isArray(s.competitors) ? s.competitors : [];
+                if (title) title.textContent = 'LMP — ' + (s.sku || '');
+                if (sub) {
+                    var ours = parseFloat(s.price);
+                    sub.textContent = (isFinite(ours) && ours > 0 ? ('Item price ' + '$' + ours.toFixed(2) + '. ') : '')
+                        + 'LMP is item price plus paid shipping. Free shipping does not add.';
+                }
+                if (body) {
+                    if (!comps.length) {
+                        body.innerHTML = '<tr><td colspan="7" class="text-muted">No LMP competitors for this SKU.</td></tr>';
+                    } else {
+                        var lowest = parseFloat(s.lmp);
+                        body.innerHTML = comps.map(function (c) {
+                            var landed = parseFloat(c.lmp);
+                            var isLow = isFinite(lowest) && isFinite(landed) && Math.abs(landed - lowest) < 0.01 && !c.ignored;
+                            var ship = c.ship;
+                            var shipHtml = '<span class="text-muted">—</span>';
+                            if (ship === 0 || ship === '0') shipHtml = '<span style="color:#16a34a;font-weight:600;">Free</span>';
+                            else if (isFinite(parseFloat(ship)) && parseFloat(ship) > 0) shipHtml = amzMoneyHtml(ship);
+                            var img = c.image ? '<img class="amz-sku-inv-img" src="' + amzEsc(c.image) + '" alt="">' : '<span class="text-muted">—</span>';
+                            var link = c.link
+                                ? '<a href="' + amzEsc(c.link) + '" target="_blank" rel="noopener">Open</a>'
+                                : '<span class="text-muted">—</span>';
+                            return '<tr class="' + (isLow ? 'amz-sku-lmp-low' : '') + (c.ignored ? ' text-muted' : '') + '">'
+                                + '<td>' + img + '</td>'
+                                + '<td>' + amzEsc(c.asin || '—') + (c.ignored ? ' <span class="badge bg-secondary">Ignored</span>' : '') + '</td>'
+                                + '<td>' + amzMoneyHtml(c.item_price) + '</td>'
+                                + '<td>' + shipHtml + '</td>'
+                                + '<td class="fw-semibold">' + amzMoneyHtml(c.lmp) + '</td>'
+                                + '<td>' + amzEsc(c.seller || '—') + '</td>'
+                                + '<td>' + link + '</td>'
+                                + '</tr>';
+                        }).join('');
+                    }
+                }
+                var modalEl = document.getElementById('amazonAdsSkuLmpModal');
+                if (modalEl && typeof bootstrap !== 'undefined') bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
             function amzFormatSkuReviews(s) {
                 var rating = s && s.amz_avg_rating != null ? parseFloat(s.amz_avg_rating) : NaN;
                 if (!isFinite(rating) || rating <= 0) {
@@ -3736,7 +3840,8 @@
                         return;
                     }
                     if (!body || !tbl) return;
-                    body.innerHTML = skus.map(function (s) {
+                    amzCampSkusLast = skus;
+                    body.innerHTML = skus.map(function (s, i) {
                         var state = String(s.state || '—');
                         var color = state.toUpperCase() === 'ENABLED' ? '#16a34a' : (state.toUpperCase() === 'PAUSED' ? '#dc2626' : '#6b7280');
                         var inv = s && s.inv != null && s.inv !== '' ? parseFloat(s.inv) : NaN;
@@ -3747,11 +3852,23 @@
                         var imgHtml = img
                             ? '<img class="amz-sku-inv-img" src="' + amzEsc(img) + '" alt="' + amzEsc(s.sku || '') + '">'
                             : '<span class="amz-sku-inv-img d-inline-flex align-items-center justify-content-center text-muted">—</span>';
+                        var price = parseFloat(s.price);
+                        var lmp = parseFloat(s.lmp);
+                        var lmpCount = parseInt(s.lmp_count, 10) || (Array.isArray(s.competitors) ? s.competitors.length : 0);
+                        var lmpColor = (isFinite(lmp) && isFinite(price) && price > 0 && lmp < price) ? '#dc2626' : '#16a34a';
+                        var lmpHtml = (isFinite(lmp) && lmp > 0) || lmpCount > 0
+                            ? '<button type="button" class="btn btn-link btn-sm amz-sku-lmp-btn" data-sku-lmp-idx="' + i + '" style="color:' + lmpColor + ';">'
+                                + ((isFinite(lmp) && lmp > 0) ? ('$' + lmp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : 'LMP')
+                                + (lmpCount ? (' (' + lmpCount + ')') : '')
+                                + '</button>'
+                            : '<span class="text-muted">—</span>';
                         return '<tr>'
                             + '<td class="amz-sku-img-cell">' + imgHtml + '</td>'
                             + '<td class="text-center">' + invHtml + '</td>'
                             + '<td class="fw-semibold">' + amzEsc(s.sku || '—') + '</td>'
                             + '<td>' + amzEsc(s.asin || '—') + '</td>'
+                            + '<td>' + amzMoneyHtml(s.price) + '</td>'
+                            + '<td>' + lmpHtml + '</td>'
                             + '<td>' + amzFormatSkuReviews(s) + '</td>'
                             + '<td><span style="color:' + color + ';font-weight:600;">' + amzEsc(state) + '</span></td>'
                             + '</tr>';
@@ -3797,6 +3914,13 @@
                     e.stopPropagation();
                     e.preventDefault();
                     amzOpenCampaignSkus(opener.getAttribute('data-campaign-id') || '', opener.getAttribute('data-campaign-name') || '');
+                    return;
+                }
+                var lmpBtn = e.target.closest ? e.target.closest('.amz-sku-lmp-btn') : null;
+                if (lmpBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    amzOpenSkuLmp(+lmpBtn.getAttribute('data-sku-lmp-idx'));
                     return;
                 }
                 var cpcDot = e.target.closest ? e.target.closest('.amz-cpc-avg-history-dot') : null;
@@ -4663,6 +4787,83 @@
                 var r = Math.round(n * 100) / 100;
                 return r === Math.floor(r) ? String(r) : r.toFixed(2);
             }
+            function amzBgtRound2(n) {
+                return Math.round(Number(n) * 100) / 100;
+            }
+            function amzBgtSlabSpan(from, to) {
+                var f = parseFloat(from), t = parseFloat(to);
+                if (!isFinite(f) || !isFinite(t) || t >= 9999 || t <= f) return null;
+                return t - f;
+            }
+            function amzBgtApplyNextSlab(bands, index, fromKey, toKey) {
+                if (!bands[index] || !bands[index + 1]) return false;
+                var to = parseFloat(bands[index][toKey]);
+                if (!isFinite(to)) return false;
+                var next = bands[index + 1];
+                var nextFrom = parseFloat(next[fromKey]);
+                var nextTo = parseFloat(next[toKey]);
+                var open = isFinite(nextTo) && nextTo >= 9999;
+                var width = amzBgtSlabSpan(nextFrom, nextTo);
+                next[fromKey] = amzBgtRound2(to);
+                if (open) return true;
+                if (width != null) {
+                    next[toKey] = amzBgtRound2(to + width);
+                    return true;
+                }
+                var curSpan = amzBgtSlabSpan(bands[index][fromKey], to);
+                if (curSpan != null && (!isFinite(nextTo) || nextTo <= to)) next[toKey] = amzBgtRound2(to + curSpan);
+                return true;
+            }
+            function amzBgtPaintSlabInputs(tbody, bands, fromKey, toKey) {
+                if (!tbody) return;
+                bands.forEach(function (b, i) {
+                    var fromInp = tbody.querySelector('input[data-idx="' + i + '"][data-field="' + fromKey + '"]');
+                    var toInp = tbody.querySelector('input[data-idx="' + i + '"][data-field="' + toKey + '"]');
+                    if (fromInp && document.activeElement !== fromInp) fromInp.value = b[fromKey] != null ? b[fromKey] : '';
+                    if (toInp && document.activeElement !== toInp) toInp.value = b[toKey] != null ? b[toKey] : '';
+                });
+            }
+            function amzBgtCascadeNextSlabs(bands, index, fromKey, toKey, tbody) {
+                var changed = false;
+                for (var i = index; i < bands.length - 1; i++) {
+                    if (!amzBgtApplyNextSlab(bands, i, fromKey, toKey)) break;
+                    changed = true;
+                }
+                if (changed) amzBgtPaintSlabInputs(tbody, bands, fromKey, toKey);
+            }
+            function amzBgtNextAddedSlab(bands, fromKey, toKey, amtKey) {
+                var n = bands.length;
+                var last = n ? bands[n - 1] : null;
+                var prev = n > 1 ? bands[n - 2] : null;
+                var lastFrom = last ? parseFloat(last[fromKey]) : NaN;
+                var lastTo = last ? parseFloat(last[toKey]) : NaN;
+                var span = amzBgtSlabSpan(lastFrom, lastTo);
+                if (span == null && prev) span = amzBgtSlabSpan(prev[fromKey], prev[toKey]);
+                if (span == null && prev) {
+                    var prevFrom = parseFloat(prev[fromKey]);
+                    if (isFinite(lastFrom) && isFinite(prevFrom) && lastFrom !== prevFrom) span = Math.abs(lastFrom - prevFrom);
+                }
+                if (span == null || span <= 0) span = 10;
+                var lastAmt = last ? parseFloat(last[amtKey]) : NaN;
+                var prevAmt = prev ? parseFloat(prev[amtKey]) : NaN;
+                var delta = (isFinite(lastAmt) && isFinite(prevAmt)) ? (lastAmt - prevAmt) : 1;
+                if (!isFinite(delta) || delta === 0) delta = 1;
+                var nextAmt = isFinite(lastAmt) ? amzBgtRound2(lastAmt + delta) : 1;
+                var open = isFinite(lastTo) && lastTo >= 9999;
+                var from, to;
+                if (!last) {
+                    from = 0;
+                    to = amzBgtRound2(span);
+                } else if (open) {
+                    from = isFinite(lastFrom) ? amzBgtRound2(lastFrom + span) : amzBgtRound2(span);
+                    to = 9999;
+                    last[toKey] = from;
+                } else {
+                    from = amzBgtRound2(lastTo);
+                    to = amzBgtRound2(lastTo + span);
+                }
+                return { from: from, to: to, amt: nextAmt };
+            }
             function amzBgtBandRangeLabel(band) {
                 var pairs = [
                     ['acos_from', 'acos_to'],
@@ -4890,6 +5091,7 @@
                         amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseFloat(this.value))
                             : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
+                        if (fld === 'acos_to') amzBgtCascadeNextSlabs(amzCurrentBands, idx, 'acos_from', 'acos_to', tbody);
                         if (fld === 'acos_from' || fld === 'acos_to' || fld === 'label') amzAcosRefreshCounts();
                     });
                 });
@@ -4924,8 +5126,9 @@
             var bgtAddBtn = document.getElementById('amazonAdsBgtRuleAddBandBtn');
             if (bgtAddBtn) {
                 bgtAddBtn.addEventListener('click', function () {
-                    var lastTo = amzCurrentBands.length ? Number(amzCurrentBands[amzCurrentBands.length - 1].acos_to || 0) : 0;
-                    amzCurrentBands.push({ acos_from: lastTo, acos_to: 9999, sbgt: 1, label: 'New band', color: '#6c757d' });
+                    var next = amzBgtNextAddedSlab(amzCurrentBands, 'acos_from', 'acos_to', 'sbgt');
+                    var i = amzCurrentBands.length;
+                    amzCurrentBands.push({ acos_from: next.from, acos_to: next.to, sbgt: next.amt, label: 'Band ' + (i + 1), color: AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length] });
                     amzRenderBands(amzCurrentBands);
                 });
             }
@@ -5008,16 +5211,14 @@
                 return out.length ? out : AMZ_BGT_VIEWS_DEFAULTS.map(function (d) { return Object.assign({}, d); });
             }
             function amzBgtViewsNewBand() {
-                var last = amzBgtViewsBands.length ? amzBgtViewsBands[amzBgtViewsBands.length - 1] : null;
-                var lastTo = last ? parseFloat(last.views_to) : NaN;
-                var from = isFinite(lastTo) ? lastTo : 0;
+                var next = amzBgtNextAddedSlab(amzBgtViewsBands, 'views_from', 'views_to', 'bgt');
                 var i = amzBgtViewsBands.length;
                 return {
-                    views_from: from,
-                    views_to: 9999,
-                    bgt: 0,
+                    views_from: next.from,
+                    views_to: next.to,
+                    bgt: next.amt,
                     label: AMZ_BGT_VIEWS_LABELS[i] || ('Slab ' + (i + 1)),
-                    color: AMZ_BGT_VIEWS_COLORS[i] || '#6c757d'
+                    color: AMZ_BGT_VIEWS_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
                 };
             }
             function amzBgtViewsValueOfRow(row) {
@@ -5063,9 +5264,14 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
+                        if (this.dataset.field === 'views_to') amzBgtCascadeNextSlabs(amzBgtViewsBands, +this.dataset.idx, 'views_from', 'views_to', tbody);
                         if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts(); });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        if (this.dataset.field === 'views_to') amzBgtCascadeNextSlabs(amzBgtViewsBands, +this.dataset.idx, 'views_from', 'views_to', tbody);
+                        if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
+                    });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -5179,16 +5385,14 @@
                 return out.length ? out : AMZ_BGT_CVR_DEFAULTS.map(function (d) { return Object.assign({}, d); });
             }
             function amzBgtCvrNewBand() {
-                var last = amzBgtCvrBands.length ? amzBgtCvrBands[amzBgtCvrBands.length - 1] : null;
-                var lastTo = last ? parseFloat(last.cvr_to) : NaN;
-                var from = isFinite(lastTo) ? lastTo : 0;
+                var next = amzBgtNextAddedSlab(amzBgtCvrBands, 'cvr_from', 'cvr_to', 'bgt');
                 var i = amzBgtCvrBands.length;
                 return {
-                    cvr_from: from,
-                    cvr_to: 9999,
-                    bgt: 0,
+                    cvr_from: next.from,
+                    cvr_to: next.to,
+                    bgt: next.amt,
                     label: AMZ_BGT_CVR_LABELS[i] || ('Slab ' + (i + 1)),
-                    color: AMZ_BGT_CVR_COLORS[i] || '#6c757d'
+                    color: AMZ_BGT_CVR_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
                 };
             }
             function amzBgtCvrValueOfRow(row) {
@@ -5234,9 +5438,14 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
+                        if (this.dataset.field === 'cvr_to') amzBgtCascadeNextSlabs(amzBgtCvrBands, +this.dataset.idx, 'cvr_from', 'cvr_to', tbody);
                         if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts(); });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        if (this.dataset.field === 'cvr_to') amzBgtCascadeNextSlabs(amzBgtCvrBands, +this.dataset.idx, 'cvr_from', 'cvr_to', tbody);
+                        if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
+                    });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -5349,16 +5558,14 @@
                 return out.length ? out : AMZ_BGT_PRC_DEFAULTS.map(function (d) { return Object.assign({}, d); });
             }
             function amzBgtPrcNewBand() {
-                var last = amzBgtPrcBands.length ? amzBgtPrcBands[amzBgtPrcBands.length - 1] : null;
-                var lastTo = last ? parseFloat(last.prc_to) : NaN;
-                var from = isFinite(lastTo) ? lastTo : 0;
+                var next = amzBgtNextAddedSlab(amzBgtPrcBands, 'prc_from', 'prc_to', 'bgt');
                 var i = amzBgtPrcBands.length;
                 return {
-                    prc_from: from,
-                    prc_to: 9999,
-                    bgt: 0,
+                    prc_from: next.from,
+                    prc_to: next.to,
+                    bgt: next.amt,
                     label: AMZ_BGT_PRC_LABELS[i] || ('Slab ' + (i + 1)),
-                    color: AMZ_BGT_PRC_COLORS[i] || '#6c757d'
+                    color: AMZ_BGT_PRC_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
                 };
             }
             function amzBgtPrcValueOfRow(row) {
@@ -5400,9 +5607,14 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
+                        if (this.dataset.field === 'prc_to') amzBgtCascadeNextSlabs(amzBgtPrcBands, +this.dataset.idx, 'prc_from', 'prc_to', tbody);
                         if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts(); });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        if (this.dataset.field === 'prc_to') amzBgtCascadeNextSlabs(amzBgtPrcBands, +this.dataset.idx, 'prc_from', 'prc_to', tbody);
+                        if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
+                    });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -5541,19 +5753,14 @@
                 amzBgtPaintColumn('reviews', amzBgtReviewsBands, counts);
             }
             function amzBgtReviewsNewBand() {
-                var last = amzBgtReviewsBands.length ? amzBgtReviewsBands[amzBgtReviewsBands.length - 1] : null;
-                var lastTo = last ? parseFloat(last.rev_to) : NaN;
-                var from = isFinite(lastTo) ? +(lastTo + 0.01).toFixed(2) : 2.99;
-                var to = +(from + 0.49).toFixed(2);
-                var bgt = last ? (Math.floor(parseFloat(last.bgt)) || 0) + 1 : 1;
-                if (!isFinite(bgt) || bgt < 1) bgt = 1;
+                var next = amzBgtNextAddedSlab(amzBgtReviewsBands, 'rev_from', 'rev_to', 'bgt');
                 var i = amzBgtReviewsBands.length;
                 return {
-                    rev_from: from,
-                    rev_to: to,
-                    bgt: bgt,
+                    rev_from: next.from,
+                    rev_to: next.to,
+                    bgt: next.amt,
                     label: AMZ_BGT_REVIEWS_LABELS[i] || ('Slab ' + (i + 1)),
-                    color: AMZ_BGT_REVIEWS_COLORS[i] || '#6c757d'
+                    color: AMZ_BGT_REVIEWS_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
                 };
             }
             function amzRenderBgtReviewsBands(bands) {
@@ -5583,10 +5790,14 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        var fld = this.dataset.field;
-                        if (fld === 'rev_from' || fld === 'rev_to' || fld === 'label') amzBgtReviewsRefreshCounts();
+                        if (this.dataset.field === 'rev_to') amzBgtCascadeNextSlabs(amzBgtReviewsBands, +this.dataset.idx, 'rev_from', 'rev_to', tbody);
+                        if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts(); });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        if (this.dataset.field === 'rev_to') amzBgtCascadeNextSlabs(amzBgtReviewsBands, +this.dataset.idx, 'rev_from', 'rev_to', tbody);
+                        if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts();
+                    });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -5691,16 +5902,14 @@
                 return out.length ? out : AMZ_BGT_DIL_DEFAULTS.map(function (d) { return Object.assign({}, d); });
             }
             function amzBgtDilNewBand() {
-                var last = amzBgtDilBands.length ? amzBgtDilBands[amzBgtDilBands.length - 1] : null;
-                var lastTo = last ? parseFloat(last.dil_to) : NaN;
-                var from = isFinite(lastTo) ? lastTo : 0;
+                var next = amzBgtNextAddedSlab(amzBgtDilBands, 'dil_from', 'dil_to', 'bgt');
                 var i = amzBgtDilBands.length;
                 return {
-                    dil_from: from,
-                    dil_to: 9999,
-                    bgt: 0,
+                    dil_from: next.from,
+                    dil_to: next.to,
+                    bgt: next.amt,
                     label: AMZ_BGT_DIL_LABELS[i] || ('Slab ' + (i + 1)),
-                    color: AMZ_BGT_DIL_COLORS[i] || '#6c757d'
+                    color: AMZ_BGT_DIL_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
                 };
             }
             function amzBgtDilValueOfRow(row) {
@@ -5751,9 +5960,14 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
+                        if (this.dataset.field === 'dil_to') amzBgtCascadeNextSlabs(amzBgtDilBands, +this.dataset.idx, 'dil_from', 'dil_to', tbody);
                         if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts(); });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        if (this.dataset.field === 'dil_to') amzBgtCascadeNextSlabs(amzBgtDilBands, +this.dataset.idx, 'dil_from', 'dil_to', tbody);
+                        if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
+                    });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -5858,16 +6072,14 @@
                 return out.length ? out : AMZ_BGT_SPEND_DEFAULTS.map(function (d) { return Object.assign({}, d); });
             }
             function amzBgtSpendNewBand() {
-                var last = amzBgtSpendBands.length ? amzBgtSpendBands[amzBgtSpendBands.length - 1] : null;
-                var lastTo = last ? parseFloat(last.spend_to) : NaN;
-                var from = isFinite(lastTo) ? lastTo : 0;
+                var next = amzBgtNextAddedSlab(amzBgtSpendBands, 'spend_from', 'spend_to', 'bgt');
                 var i = amzBgtSpendBands.length;
                 return {
-                    spend_from: from,
-                    spend_to: 9999,
-                    bgt: 0,
+                    spend_from: next.from,
+                    spend_to: next.to,
+                    bgt: next.amt,
                     label: AMZ_BGT_SPEND_LABELS[i] || ('Slab ' + (i + 1)),
-                    color: AMZ_BGT_SPEND_COLORS[i] || '#6c757d'
+                    color: AMZ_BGT_SPEND_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
                 };
             }
             function amzBgtSpendValueOfRow(row) {
@@ -5911,9 +6123,14 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
+                        if (this.dataset.field === 'spend_to') amzBgtCascadeNextSlabs(amzBgtSpendBands, +this.dataset.idx, 'spend_from', 'spend_to', tbody);
                         if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts(); });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        if (this.dataset.field === 'spend_to') amzBgtCascadeNextSlabs(amzBgtSpendBands, +this.dataset.idx, 'spend_from', 'spend_to', tbody);
+                        if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts();
+                    });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {

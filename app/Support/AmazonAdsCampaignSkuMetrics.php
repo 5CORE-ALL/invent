@@ -547,6 +547,113 @@ final class AmazonAdsCampaignSkuMetrics
     }
 
     /**
+     * Amazon list price and LMP competitors for the Campaign SKUs modal.
+     * Item price is amazon_datsheets.price. LMP is the lowest non-ignored landed price
+     * (item price + paid delivery).
+     *
+     * @param  list<string>  $skus
+     * @return array<string, array{price: ?float, lmp: ?float, lmp_count: int, competitors: list<array<string, mixed>>}>
+     */
+    public static function priceAndLmpBySkus(array $skus): array
+    {
+        $keys = [];
+        foreach ($skus as $sku) {
+            $k = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $sku)));
+            if ($k !== '') {
+                $keys[$k] = true;
+            }
+        }
+        if ($keys === []) {
+            return [];
+        }
+
+        $list = array_keys($keys);
+        $sheets = self::datasheetByCompactSku($list);
+        $byCompact = [];
+        if (Schema::hasTable('amazon_sku_competitors')) {
+            $spaceKeys = [];
+            $compactKeys = [];
+            foreach ($list as $key) {
+                $space = AmazonDatasheet::normalizeSkuSpaces($key);
+                if ($space !== '') {
+                    $spaceKeys[] = $space;
+                }
+                $compact = AmazonDatasheet::normalizeSkuForLookup($key);
+                if ($compact !== '') {
+                    $compactKeys[] = $compact;
+                }
+            }
+            $spaceKeys = array_values(array_unique($spaceKeys));
+            $compactKeys = array_values(array_unique($compactKeys));
+            if ($spaceKeys !== [] || $compactKeys !== []) {
+                $q = AmazonSkuCompetitor::query()
+                    ->forMarketplace('amazon')
+                    ->wherePositivePrice()
+                    ->where(function ($w) use ($spaceKeys, $compactKeys) {
+                        if ($spaceKeys !== []) {
+                            $ph = implode(',', array_fill(0, count($spaceKeys), '?'));
+                            $w->whereRaw('UPPER(TRIM(sku)) IN ('.$ph.')', $spaceKeys);
+                        }
+                        if ($compactKeys !== []) {
+                            $ph = implode(',', array_fill(0, count($compactKeys), '?'));
+                            $expr = 'UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) IN ('.$ph.')';
+                            if ($spaceKeys !== []) {
+                                $w->orWhereRaw($expr, $compactKeys);
+                            } else {
+                                $w->whereRaw($expr, $compactKeys);
+                            }
+                        }
+                    });
+                foreach ($q->get() as $row) {
+                    $ck = AmazonDatasheet::normalizeSkuForLookup((string) ($row->sku ?? ''));
+                    if ($ck === '') {
+                        continue;
+                    }
+                    $byCompact[$ck][] = $row;
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($list as $key) {
+            $ck = AmazonDatasheet::normalizeSkuForLookup($key);
+            $sheet = $sheets[$ck] ?? null;
+            $priceRaw = $sheet !== null ? $sheet->price : null;
+            $price = ($priceRaw !== null && $priceRaw !== '' && is_finite((float) $priceRaw) && (float) $priceRaw > 0)
+                ? round((float) $priceRaw, 2)
+                : null;
+            $items = $byCompact[$ck] ?? [];
+            $sorted = AmazonSkuCompetitor::sortCollectionByNumericPrice($items)->take(40);
+            $lowest = AmazonSkuCompetitor::lowestFromCollection($items);
+            $lmp = $lowest !== null ? AmazonSkuCompetitor::landedPrice($lowest) : null;
+            $competitors = [];
+            foreach ($sorted as $row) {
+                $itemPrice = (float) ($row->price ?? 0);
+                $ship = AmazonSkuCompetitor::parseShipCost($row->delivery ?? null);
+                $landed = AmazonSkuCompetitor::landedPrice($row);
+                $competitors[] = [
+                    'asin' => $row->asin !== null ? (string) $row->asin : null,
+                    'image' => $row->image !== null && trim((string) $row->image) !== '' ? (string) $row->image : null,
+                    'seller' => $row->seller_name !== null && trim((string) $row->seller_name) !== '' ? (string) $row->seller_name : null,
+                    'item_price' => $itemPrice > 0 ? round($itemPrice, 2) : null,
+                    'ship' => $ship,
+                    'lmp' => ($landed !== null && $landed > 0) ? round($landed, 2) : null,
+                    'link' => $row->product_link !== null && trim((string) $row->product_link) !== '' ? (string) $row->product_link : null,
+                    'ignored' => (bool) ($row->ignored ?? false),
+                ];
+            }
+            $out[$key] = [
+                'price' => $price,
+                'lmp' => ($lmp !== null && $lmp > 0) ? round((float) $lmp, 2) : null,
+                'lmp_count' => count($competitors),
+                'competitors' => $competitors,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Avg rating + review count from amazon_product_reviews, keyed by uppercase SKU.
      *
      * @param  list<string>  $skus
