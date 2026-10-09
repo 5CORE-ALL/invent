@@ -63,6 +63,69 @@
         .vam-link-icon:hover { color: #0a3d8f; }
         .vam-dash { color: #adb5bd; }
 
+        /* Thumbnail column — the frame fills the cell, and hover lifts a larger
+           copy out of the table so Tabulator's overflow does not clip it. */
+        .vam-thumb-box {
+            display: block;
+            width: 104px;
+            height: 58px;
+            margin: 0 auto;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #0f172a;
+            position: relative;
+        }
+        .vam-thumb-box video,
+        .vam-thumb-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            background: #0f172a;
+            pointer-events: none;
+        }
+        .vam-thumb-fallback {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            color: #fff;
+            font-size: 22px;
+        }
+        .vam-thumb-folder {
+            display: grid;
+            place-items: center;
+            width: 104px;
+            height: 58px;
+            margin: 0 auto;
+            border-radius: 6px;
+            background: #e0f2fe;
+            color: #0369a1;
+            font-size: 22px;
+            text-decoration: none;
+        }
+        .vam-thumb-folder:hover { background: #bae6fd; color: #0369a1; }
+        #vam-thumb-pop {
+            position: fixed;
+            z-index: 10050;
+            width: 420px;
+            height: 236px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+            pointer-events: none;
+        }
+        #vam-thumb-pop[hidden] { display: none; }
+        #vam-thumb-pop video,
+        #vam-thumb-pop img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            background: #000;
+        }
+
         .vam-target-pill {
             display: inline-block;
             font-size: 10px;
@@ -139,6 +202,7 @@
            look "editable". */
         #video-ads-master-table .tabulator-cell { cursor: text; }
         #video-ads-master-table .tabulator-cell[tabulator-field="id"],
+        #video-ads-master-table .tabulator-cell[tabulator-field="_thumb"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_missing"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_check"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_adcheck"],
@@ -1162,6 +1226,149 @@
                 return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-link-icon" title="Open link"><i class="fas fa-link"></i></a>`;
             }
 
+            function extractYoutubeId(value) {
+                const s = String(value || '');
+                const m = s.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/|youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/);
+                return m ? m[1] : '';
+            }
+
+            // How to preview the LINK cell: a video frame, a still image, or a
+            // folder icon when the Dropbox link is a whole folder.
+            function thumbKind(url) {
+                let parsed;
+                try { parsed = new URL(url); } catch (e) { return null; }
+                const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+                const path = decodeURIComponent(parsed.pathname || '');
+                const videoExt = /\.(mp4|webm|mov|m4v|ogg|ogv|mkv)$/i.test(path);
+                const imageExt = /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(path);
+
+                const yt = extractYoutubeId(url);
+                if (yt) return { type: 'image', src: 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' };
+
+                const drive = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+                if (drive) return { type: 'image', src: 'https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w640' };
+
+                if (host === 'dropbox.com' || host.endsWith('.dropbox.com')) {
+                    if (/\/scl\/fo\//i.test(path) || /\/sh\//i.test(path)) return { type: 'folder' };
+                    if (videoExt || /\/scl\/fi\//i.test(path)) return { type: 'video', proxy: true };
+                    if (imageExt) {
+                        let raw = url.replace(/([?&])dl=[01](&|$)/ig, '$1raw=1$2');
+                        if (!/[?&]raw=1(&|$)/i.test(raw)) raw += (raw.indexOf('?') === -1 ? '?' : '&') + 'raw=1';
+                        return { type: 'image', src: raw };
+                    }
+                    return null;
+                }
+
+                if (videoExt) return { type: 'video', proxy: false, src: url };
+                if (imageExt) return { type: 'image', src: url };
+                return null;
+            }
+
+            window._vamThumbFail = function (el) {
+                const box = el.closest('.vam-thumb-box');
+                if (!box || box.querySelector('.vam-thumb-fallback')) return;
+                el.remove();
+                box.removeAttribute('data-zoom');
+                box.insertAdjacentHTML('beforeend', '<i class="fas fa-play-circle vam-thumb-fallback"></i>');
+            };
+
+            function thumbFormatter(cell) {
+                const url = normalizeUrl(cell.getRow().getData().link);
+                if (!isLikelyUrl(url)) return '<span class="vam-dash">—</span>';
+                const kind = thumbKind(url);
+                if (!kind) return '<span class="vam-dash">—</span>';
+                if (kind.type === 'folder') {
+                    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-folder" title="This link is a folder"><i class="fas fa-folder"></i></a>`;
+                }
+                const src = kind.type === 'video' && kind.proxy
+                    ? ('/video-ads-master/media?u=' + encodeURIComponent(url))
+                    : kind.src;
+                const preview = kind.type === 'video' ? (src + '#t=0.2') : src;
+                const media = kind.type === 'video'
+                    ? `<video muted playsinline preload="metadata" src="${escapeHtml(preview)}" onerror="window._vamThumbFail(this)"></video>`
+                    : `<img src="${escapeHtml(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="window._vamThumbFail(this)">`;
+                return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-box" data-zoom="${kind.type}" data-src="${escapeHtml(preview)}" title="Open link">${media}</a>`;
+            }
+
+            // Enlarged preview is attached to <body> so the table cannot clip it.
+            // A decoded video frame is copied to a canvas (same-origin proxy),
+            // which avoids loading the file a second time.
+            let vamZoomed = null;
+            function vamThumbPop() {
+                let pop = document.getElementById('vam-thumb-pop');
+                if (pop) return pop;
+                pop = document.createElement('div');
+                pop.id = 'vam-thumb-pop';
+                pop.hidden = true;
+                document.body.appendChild(pop);
+                return pop;
+            }
+            function hideThumbPop() {
+                const pop = document.getElementById('vam-thumb-pop');
+                if (pop) { pop.hidden = true; pop.innerHTML = ''; }
+                vamZoomed = null;
+            }
+            function showThumbPop(box) {
+                if (vamZoomed === box) return;
+                const pop = vamThumbPop();
+                const media = box.querySelector('video, img');
+                const src = box.getAttribute('data-src');
+                if (!media || !src) return;
+                pop.innerHTML = '';
+                let drawn = false;
+                if (media.tagName === 'VIDEO' && media.readyState >= 2 && media.videoWidth) {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const ratio = media.videoWidth / media.videoHeight;
+                        canvas.width = 840;
+                        canvas.height = Math.max(2, Math.round(840 / (ratio || (16 / 9))));
+                        canvas.getContext('2d').drawImage(media, 0, 0, canvas.width, canvas.height);
+                        const img = document.createElement('img');
+                        img.src = canvas.toDataURL('image/jpeg', 0.86);
+                        pop.appendChild(img);
+                        drawn = true;
+                    } catch (err) { drawn = false; }
+                }
+                if (!drawn) {
+                    if (box.getAttribute('data-zoom') === 'image') {
+                        const img = document.createElement('img');
+                        img.src = src;
+                        img.referrerPolicy = 'no-referrer';
+                        pop.appendChild(img);
+                    } else {
+                        const video = document.createElement('video');
+                        video.muted = true;
+                        video.playsInline = true;
+                        video.preload = 'auto';
+                        video.src = src;
+                        pop.appendChild(video);
+                    }
+                }
+                const rect = box.getBoundingClientRect();
+                const w = 420, h = 236, gap = 12;
+                let left = rect.right + gap;
+                if (left + w > window.innerWidth - 8) left = Math.max(8, rect.left - w - gap);
+                let top = rect.top + rect.height / 2 - h / 2;
+                top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+                pop.style.left = left + 'px';
+                pop.style.top = top + 'px';
+                pop.hidden = false;
+                vamZoomed = box;
+            }
+            document.addEventListener('mouseover', (e) => {
+                const box = e.target.closest && e.target.closest('.vam-thumb-box[data-zoom]');
+                if (box) { showThumbPop(box); return; }
+                if (vamZoomed) hideThumbPop();
+            });
+            document.addEventListener('scroll', hideThumbPop, true);
+            document.addEventListener('loadedmetadata', (e) => {
+                const video = e.target;
+                if (!video || video.tagName !== 'VIDEO' || !video.closest('.vam-thumb-box')) return;
+                if (video.currentTime < 0.05) {
+                    try { video.currentTime = 0.2; } catch (err) {}
+                }
+            }, true);
+
             // MISSING column — shows a red dot when the row has no valid link,
             // making it easy to scan for rows that still need one. Rows that
             // already have a link show nothing.
@@ -1767,6 +1974,8 @@
                 if (field === 'link') {
                     const missingCell = row.getCell('_missing');
                     if (missingCell) missingCell.reformat();
+                    const thumbCell = row.getCell('_thumb');
+                    if (thumbCell) thumbCell.reformat();
                 }
 
                 fetch(`/video-ads-master/${data.id}`, {
@@ -1806,6 +2015,8 @@
                 row.update(updates);
                 const missingCell = row.getCell('_missing');
                 if (missingCell) missingCell.reformat();
+                const thumbCell = row.getCell('_thumb');
+                if (thumbCell) thumbCell.reformat();
                 const id = row.getData().id;
                 if (!id) return;
 
@@ -2151,6 +2362,13 @@
                             formatter: linkFormatter,
                             editor: 'input',
                             cellEdited: persistCell,
+                        },
+                        {
+                            title: 'THUMB', field: '_thumb', hozAlign: 'center',
+                            headerSort: false,
+                            width: 124,
+                            minWidth: 116,
+                            formatter: thumbFormatter,
                         },
                         {
                             title: 'Creator', field: 'creators',
