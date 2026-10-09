@@ -147,11 +147,8 @@ final class AmazonAdsBgtCvrRule
             if ($from > $to) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
             }
-            if ($from < 0) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be 0 or more.');
-            }
-            if ($bgt < 0 || $bgt > 100_000) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Cvr must be between 0 and 100000.');
+            if ($bgt < -100_000 || $bgt > 100_000) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Cvr must be between -100000 and 100000.');
             }
         }
     }
@@ -188,9 +185,6 @@ final class AmazonAdsBgtCvrRule
             $to = (float) ($band['cvr_to'] ?? 9999);
             if ($v >= $from && $v <= $to) {
                 $bgt = AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0);
-                if ($bgt < 0) {
-                    return $empty;
-                }
 
                 return [
                     'bgt' => $bgt,

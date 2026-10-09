@@ -122,8 +122,8 @@ final class AmazonAdsBgtReviewsRule
             if ($from > $to) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
             }
-            if ($bgt <= 0 || $bgt > 100_000) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Reviews must be greater than 0 (decimals like 0.5 are allowed) and at most 100000.');
+            if ($bgt < -100_000 || $bgt > 100_000) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Reviews must be between -100000 and 100000.');
             }
         }
     }
@@ -170,7 +170,7 @@ final class AmazonAdsBgtReviewsRule
             $bgt = AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0);
 
             return [
-                'bgt' => $bgt > 0 ? $bgt : null,
+                'bgt' => $bgt,
                 'color' => (string) ($band['color'] ?? '#6c757d'),
                 'label' => (string) ($band['label'] ?? ''),
             ];

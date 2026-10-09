@@ -569,61 +569,86 @@
             border-radius: 3px;
         }
         #amazonAdsBgtRulesModal .modal-dialog {
-            width: calc(100vw - 1.25rem);
-            max-width: calc(100vw - 1.25rem);
-            height: calc(100vh - 1.25rem);
-            max-height: calc(100vh - 1.25rem);
-            margin: 0.625rem auto;
+            width: calc(100vw - 0.75rem);
+            max-width: calc(100vw - 0.75rem);
+            height: calc(100vh - 0.75rem);
+            max-height: calc(100vh - 0.75rem);
+            margin: 0.375rem auto;
         }
         #amazonAdsBgtRulesModal .modal-content {
             height: 100%;
             max-height: 100%;
+            display: flex;
+            flex-direction: column;
             border: 0;
-            border-radius: 16px;
+            border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
         }
         #amazonAdsBgtRulesModal .modal-header {
             background: #fff;
             border-bottom: 1px solid #e8eef5;
-            padding: 14px 18px;
+            padding: 8px 12px;
+            flex: 0 0 auto;
         }
         #amazonAdsBgtRulesModal .modal-title { font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
-        #amazonAdsBgtRulesModal .amz-bgt-sub { color: #64748b; font-size: 12px; font-weight: 500; margin-top: 2px; }
+        #amazonAdsBgtRulesModal .amz-bgt-sub {
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 500;
+            margin-top: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: calc(100vw - 5rem);
+        }
         #amazonAdsBgtRulesModal .modal-body {
             background: #f4f7fb;
-            overflow: auto;
-            padding: 14px 16px 16px;
+            overflow: hidden;
+            padding: 8px;
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
         }
         #amazonAdsBgtRulesModal .modal-footer {
             background: #fff;
             border-top: 1px solid #e8eef5;
-            padding: 10px 16px;
+            padding: 6px 12px;
+            flex: 0 0 auto;
         }
         #amazonAdsBgtRulesModal .amz-bgt-cols {
             display: flex;
-            gap: 12px;
+            gap: 8px;
             align-items: stretch;
             width: 100%;
+            height: 100%;
             min-width: 0;
+            min-height: 0;
+            flex: 1 1 auto;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col {
             flex: 1 1 0;
-            min-width: 240px;
+            min-width: 0;
+            min-height: 0;
             display: flex;
             flex-direction: column;
             border: 1px solid #e6edf5;
-            border-radius: 14px;
-            padding: 12px;
+            border-radius: 10px;
+            padding: 8px;
             background: #fff;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            overflow: hidden;
         }
-        #amazonAdsBgtRulesModal .amz-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 4px; }
         #amazonAdsBgtRulesModal .amz-bgt-title {
             font-weight: 700;
-            font-size: 13px;
+            font-size: 12px;
             color: #0f172a;
             letter-spacing: -0.01em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         #amazonAdsBgtRulesModal .amz-bgt-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
         #amazonAdsBgtRulesModal .amz-bgt-min-btn,
@@ -639,47 +664,78 @@
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min > :not(.amz-bgt-col-head) { display: none !important; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
-        #amazonAdsBgtRulesModal .amz-bgt-chart { display: flex; flex-direction: column; margin-bottom: 10px; }
-        #amazonAdsBgtRulesModal .amz-bgt-chart-canvas { position: relative; width: 100%; height: 120px; flex: 0 0 120px; }
-        #amazonAdsBgtRulesModal .amz-bgt-chart-canvas canvas { display: block; width: 100% !important; height: 120px !important; }
-        #amazonAdsBgtRulesModal .amz-bgt-legend { width: 100%; font-size: 12px; margin-top: 8px; color: #334155; }
+        #amazonAdsBgtRulesModal .amz-bgt-chart { display: flex; flex-direction: column; margin-bottom: 4px; flex: 0 0 auto; }
+        #amazonAdsBgtRulesModal .amz-bgt-chart-canvas { position: relative; width: 100%; height: 64px; flex: 0 0 64px; }
+        #amazonAdsBgtRulesModal .amz-bgt-chart-canvas canvas { display: block; width: 100% !important; height: 64px !important; }
+        #amazonAdsBgtRulesModal .amz-bgt-legend { width: 100%; font-size: 10px; margin-top: 2px; color: #334155; line-height: 1.2; }
         #amazonAdsBgtRulesModal .amz-bgt-leg-row {
             display: grid;
             grid-template-columns: 8px minmax(0, 1fr) auto auto;
-            gap: 6px;
+            gap: 4px;
             align-items: center;
-            padding: 2px 0;
+            padding: 0;
         }
         #amazonAdsBgtRulesModal .amz-bgt-leg-row strong { font-variant-numeric: tabular-nums; }
         #amazonAdsBgtRulesModal .amz-bgt-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
         #amazonAdsBgtRulesModal .amz-bgt-swatch { width: 8px; height: 8px; border-radius: 50%; }
-        #amazonAdsBgtRulesModal .amz-bgt-col .table { font-size: 12px; margin-bottom: 0; border-color: #e8eef5; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table { font-size: 11px; margin-bottom: 0; border-color: #e8eef5; }
         #amazonAdsBgtRulesModal .amz-bgt-col .table thead th {
             background: #f8fafc;
             color: #64748b;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 700;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.03em;
             text-transform: uppercase;
             border-color: #e8eef5;
             white-space: nowrap;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col .table th,
-        #amazonAdsBgtRulesModal .amz-bgt-col .table td { padding: 4px 4px; border-color: #eef2f7; vertical-align: middle; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table td { padding: 1px 3px; border-color: #eef2f7; vertical-align: middle; }
         #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) th:first-child,
         #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) td:first-child { display: none; }
         #amazonAdsBgtRulesModal .amz-bgt-sum-table tr.fw-semibold { background: #f8fafc; }
-        #amazonAdsBgtRulesModal .amz-bgt-col .form-control-sm { padding: 2px 4px; font-size: 11px; min-width: 0; }
-        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger { padding: 0 6px; line-height: 1.4; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .form-control-sm {
+            padding: 0 2px;
+            font-size: 11px;
+            min-width: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col .form-control-sm:focus {
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger {
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+            padding: 0;
+            line-height: 1;
+            font-size: 0.8em;
+            border-radius: 0;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger:hover,
+        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger:focus,
+        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger:disabled {
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger:disabled { opacity: 0.35; }
         #amazonAdsBgtRulesModal .amz-bgt-add,
         #amazonAdsBgtRulesModal .amz-bgt-save {
             width: 100%;
-            border-radius: 8px;
+            border-radius: 6px;
             font-weight: 600;
+            padding: 3px 8px;
+            font-size: 12px;
         }
-        #amazonAdsBgtRulesModal .amz-bgt-add { margin-top: 8px; border-style: dashed; }
+        #amazonAdsBgtRulesModal .amz-bgt-add { margin-top: 4px; border-style: dashed; }
         #amazonAdsBgtRulesModal .amz-bgt-save { margin-top: auto; }
-        #amazonAdsBgtRulesModal .amz-bgt-col .table-responsive { margin-bottom: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table-responsive { margin-bottom: 0; flex: 1 1 auto; min-height: 0; overflow: auto; }
         #amazonAdsSbidRuleModal .modal-dialog {
             width: min(1120px, calc(100vw - 1.25rem));
             max-width: calc(100vw - 1.25rem);
@@ -1177,10 +1233,8 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>#</th>
-                                            <th>Label</th>
                                             <th>From</th>
                                             <th>To</th>
-                                            <th title="Campaigns on this grid page whose LT ACOS falls in this band">Count</th>
                                             <th>SBGT</th>
                                             <th></th>
                                         </tr>
@@ -1207,10 +1261,8 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>#</th>
-                                            <th>Label</th>
                                             <th>From</th>
                                             <th>To</th>
-                                            <th title="Campaigns on this grid page whose View L7 falls in this slab">Count</th>
                                             <th>Bgt</th>
                                             <th></th>
                                         </tr>
@@ -1237,10 +1289,8 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>#</th>
-                                            <th>Label</th>
                                             <th>From</th>
                                             <th>To</th>
-                                            <th title="Campaigns on this grid page whose CVR L30 falls in this slab">Count</th>
                                             <th>Bgt</th>
                                             <th></th>
                                         </tr>
@@ -1267,10 +1317,8 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>#</th>
-                                            <th>Label</th>
                                             <th>From</th>
                                             <th>To</th>
-                                            <th title="Campaigns on this grid page whose Price falls in this slab">Count</th>
                                             <th>Bgt</th>
                                             <th></th>
                                         </tr>
@@ -1297,10 +1345,8 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>#</th>
-                                            <th>Label</th>
                                             <th>From</th>
                                             <th>To</th>
-                                            <th title="Campaigns on this grid page whose Reviews rating falls in this slab">Count</th>
                                             <th>Bgt</th>
                                             <th></th>
                                         </tr>
@@ -1327,10 +1373,8 @@
                                     <thead class="table-light">
                                         <tr>
                                             <th>#</th>
-                                            <th>Label</th>
                                             <th>From</th>
                                             <th>To</th>
-                                            <th title="Campaigns on this grid page whose Dil% falls in this slab">Count</th>
                                             <th>Bgt</th>
                                             <th></th>
                                         </tr>
@@ -4420,11 +4464,29 @@
                     el.textContent = String(counts[i] != null ? counts[i] : 0);
                 });
             }
-            function amzBgtCountCellHtml(i, n, tip) {
-                return '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '" title="' + String(tip || '').replace(/"/g, '&quot;') + '">' + (n != null ? n : 0) + '</span></td>';
-            }
             var amzBgtColCharts = {};
             var AMZ_BGT_COL_COLORS = ['#7c3aed', '#2563eb', '#16a34a', '#f59e0b', '#f97316', '#dc2626', '#64748b', '#0ea5e9'];
+            function amzBgtFmtRange(v) {
+                var n = parseFloat(v);
+                if (!isFinite(n)) return '';
+                var r = Math.round(n * 100) / 100;
+                return r === Math.floor(r) ? String(r) : r.toFixed(2);
+            }
+            function amzBgtBandRangeLabel(band) {
+                var pairs = [
+                    ['acos_from', 'acos_to'],
+                    ['views_from', 'views_to'],
+                    ['cvr_from', 'cvr_to'],
+                    ['prc_from', 'prc_to'],
+                    ['rev_from', 'rev_to'],
+                    ['dil_from', 'dil_to']
+                ];
+                for (var i = 0; i < pairs.length; i++) {
+                    if (!band || band[pairs[i][0]] == null || band[pairs[i][0]] === '' || band[pairs[i][1]] == null || band[pairs[i][1]] === '') continue;
+                    return amzBgtFmtRange(band[pairs[i][0]]) + '–' + amzBgtFmtRange(band[pairs[i][1]]);
+                }
+                return '';
+            }
             function amzBgtPaintColumn(key, bands, counts) {
                 var legend = document.getElementById('amz-bgt-leg-' + key);
                 var canvas = document.getElementById('amz-bgt-chart-' + key);
@@ -4432,7 +4494,7 @@
                 var rows = (bands || []).map(function (b, i) {
                     var n = counts && counts[i] != null ? Number(counts[i]) : 0;
                     if (!isFinite(n)) n = 0;
-                    var label = (b && b.label) ? String(b.label) : ('Band ' + (i + 1));
+                    var label = amzBgtBandRangeLabel(b) || ('Band ' + (i + 1));
                     var color = (b && b.color) ? String(b.color) : AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length];
                     return { label: label, n: n, color: color };
                 });
@@ -4615,11 +4677,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
-                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose LT ACOS falls in this band')
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="number" step="0.1" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="0.1" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -4687,7 +4747,6 @@
                         var b = cleaned[i];
                         if (!isFinite(b.acos_from) || !isFinite(b.acos_to) || !isFinite(b.sbgt)) { if (err) { err.textContent = 'Every band needs numeric From, To, and SBGT values.'; err.classList.remove('d-none'); } return; }
                         if (b.acos_from > b.acos_to) { if (err) { err.textContent = 'Each band needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                        if (b.sbgt < 0) { if (err) { err.textContent = 'SBGT must be 0 or more (0 pauses the campaign).'; err.classList.remove('d-none'); } return; }
                     }
                     bgtSaveBtn.disabled = true;
                     fetch(bgtRuleSaveUrl, {
@@ -4741,7 +4800,7 @@
                     out.push({
                         views_from: isFinite(from) ? from : '',
                         views_to: isFinite(to) ? to : '',
-                        bgt: isFinite(bgt) && bgt >= 0 ? bgt : '',
+                        bgt: isFinite(bgt) ? bgt : '',
                         label: keep.label != null ? String(keep.label) : '',
                         color: keep.color || '#6c757d'
                     });
@@ -4783,11 +4842,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
-                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose View L7 falls in this slab')
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -4862,8 +4919,6 @@
                         var vb = cleaned[i];
                         if (!isFinite(vb.views_from) || !isFinite(vb.views_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Views values.'; err.classList.remove('d-none'); } return; }
                         if (vb.views_from > vb.views_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                        if (vb.views_from < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
-                        if (vb.bgt < 0) { if (err) { err.textContent = 'Bgt Views must be 0 or more.'; err.classList.remove('d-none'); } return; }
                     }
                     bgtViewsSaveBtn.disabled = true;
                     fetch(bgtViewsRuleSaveUrl, {
@@ -4915,7 +4970,7 @@
                     out.push({
                         cvr_from: isFinite(from) ? from : '',
                         cvr_to: isFinite(to) ? to : '',
-                        bgt: isFinite(bgt) && bgt >= 0 ? bgt : '',
+                        bgt: isFinite(bgt) ? bgt : '',
                         label: keep.label != null ? String(keep.label) : '',
                         color: keep.color || '#6c757d'
                     });
@@ -4957,11 +5012,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
-                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose CVR L30 falls in this slab')
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5036,8 +5089,6 @@
                         var vb = cleaned[i];
                         if (!isFinite(vb.cvr_from) || !isFinite(vb.cvr_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Cvr values.'; err.classList.remove('d-none'); } return; }
                         if (vb.cvr_from > vb.cvr_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                        if (vb.cvr_from < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
-                        if (vb.bgt < 0) { if (err) { err.textContent = 'Bgt Cvr must be 0 or more.'; err.classList.remove('d-none'); } return; }
                     }
                     bgtCvrSaveBtn.disabled = true;
                     fetch(bgtCvrRuleSaveUrl, {
@@ -5088,7 +5139,7 @@
                     out.push({
                         prc_from: isFinite(from) ? from : '',
                         prc_to: isFinite(to) ? to : '',
-                        bgt: isFinite(bgt) && bgt >= 0 ? bgt : '',
+                        bgt: isFinite(bgt) ? bgt : '',
                         label: keep.label != null ? String(keep.label) : '',
                         color: keep.color || '#6c757d'
                     });
@@ -5130,11 +5181,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
-                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose Price falls in this slab')
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5205,8 +5254,6 @@
                         var pb = cleaned[i];
                         if (!isFinite(pb.prc_from) || !isFinite(pb.prc_to) || !isFinite(pb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Prc values.'; err.classList.remove('d-none'); } return; }
                         if (pb.prc_from > pb.prc_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                        if (pb.prc_from < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
-                        if (pb.bgt < 0) { if (err) { err.textContent = 'Bgt Prc must be 0 or more.'; err.classList.remove('d-none'); } return; }
                     }
                     bgtPrcSaveBtn.disabled = true;
                     fetch(bgtPrcRuleSaveUrl, {
@@ -5319,11 +5366,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
-                        + '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '" title="Campaigns on this grid page in this Reviews range">' + (counts[i] != null ? counts[i] : 0) + '</span></td>'
-                        + '<td><input type="number" step="0.01" min="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Decimals allowed, including below 1 (e.g. 0.5). Must be greater than 0 — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. Decimals allowed (e.g. 1.5 or -0.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5395,7 +5440,6 @@
                         var rb = cleaned[ri];
                         if (!isFinite(rb.rev_from) || !isFinite(rb.rev_to) || !isFinite(rb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Reviews values.'; err.classList.remove('d-none'); } return; }
                         if (rb.rev_from > rb.rev_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                        if (!(rb.bgt > 0)) { if (err) { err.textContent = 'Every slab needs a Bgt Reviews greater than 0 (decimals like 0.5 are allowed).'; err.classList.remove('d-none'); } return; }
                     }
                     bgtReviewsSaveBtn.disabled = true;
                     fetch(bgtReviewsRuleSaveUrl, {
@@ -5438,7 +5482,7 @@
                     out.push({
                         dil_from: isFinite(from) ? from : '',
                         dil_to: isFinite(to) ? to : '',
-                        bgt: isFinite(bgt) && bgt >= 0 ? bgt : '',
+                        bgt: isFinite(bgt) ? bgt : '',
                         label: keep.label != null ? String(keep.label) : '',
                         color: keep.color || '#6c757d'
                     });
@@ -5485,11 +5529,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
-                        + amzBgtCountCellHtml(i, counts[i], 'Campaigns on this grid page whose Dil% falls in this slab')
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
+                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5564,8 +5606,6 @@
                         var vb = cleaned[i];
                         if (!isFinite(vb.dil_from) || !isFinite(vb.dil_to) || !isFinite(vb.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt Dil values.'; err.classList.remove('d-none'); } return; }
                         if (vb.dil_from > vb.dil_to) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                        if (vb.dil_from < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
-                        if (vb.bgt < 0) { if (err) { err.textContent = 'Bgt Dil must be 0 or more.'; err.classList.remove('d-none'); } return; }
                     }
                     bgtDilSaveBtn.disabled = true;
                     fetch(bgtDilRuleSaveUrl, {
