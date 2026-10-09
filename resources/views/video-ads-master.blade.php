@@ -214,20 +214,16 @@
         }
         .vam-tag--audience { background: #e0f2fe; color: #0369a1; }
         .vam-tag--hook     { background: #f3e8ff; color: #7e22ce; }
-        .vam-tag--creator {
-            display: inline-flex;
+        .vam-creator-cell {
+            display: flex;
             flex-direction: column;
-            align-items: flex-start;
-            background: #ecfdf5;
-            color: #047857;
-            white-space: normal;
-            line-height: 1.2;
-            max-width: 180px;
+            align-items: center;
+            gap: 4px;
         }
-        .vam-creator-date {
-            font-size: 9px;
-            font-weight: 500;
-            color: #059669;
+        .vam-creator-select {
+            width: 120px;
+            font-size: 12px;
+            padding: 2px 6px;
         }
         .vam-tag-cell {
             display: flex;
@@ -529,31 +525,6 @@
         </div>
     </div>
 
-    {{-- Modal: pick one or more users from the users table for the Creator column. --}}
-    <div class="modal fade" id="vamPickCreatorsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Select Creators</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="text" id="vamPickCreatorsSearch" class="form-control form-control-sm mb-3" placeholder="Search user name…">
-                    <div id="vamPickCreatorsList" class="border rounded" style="max-height: 360px; overflow: auto;">
-                        <div class="text-muted text-center py-3">Loading…</div>
-                    </div>
-                    <div class="form-text mt-2">Names come from the user table. The date a user is added is saved in California time.</div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="vamPickCreatorsApplyBtn">
-                        <i class="fas fa-check me-1"></i>Apply
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     {{-- Modal: manage HOOK tag options (add / edit / delete). --}}
     <div class="modal fade" id="vamHookManageModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-scrollable modal-lg">
@@ -643,16 +614,13 @@
             let channelOptions     = [];
             let hookOptions        = [];     // [{id, name, hook, link}, …]
             let audienceOptions    = [];     // [{id, name}, …] from video_ad_audience_options
-            let userOptions        = [];     // [{id, name}, …] from users, for the Creator column
+            let creatorOptions     = [];     // [{id, name}] Mariya and Rahul from the user table
             let rowModal           = null;   // bootstrap.Modal — Add / Edit form
             let addHookModal       = null;   // bootstrap.Modal — add / edit one hook
             let hookManageModal    = null;   // bootstrap.Modal — manage hook tags
             let audienceManageModal = null;  // bootstrap.Modal — manage audience tags
             let pickTagsModal      = null;   // bootstrap.Modal — pick tags for a row cell
-            let pickCreatorsModal  = null;   // bootstrap.Modal — pick users for the Creator column
             let checkHistoryModal  = null;   // bootstrap.Modal — per-row check audit trail
-            let pickCreatorsRow    = null;   // Tabulator row whose Creator cell is open
-            let pickCreatorsSelected = new Set();
             let editingId          = null;   // id of the row currently in the form (null = add mode)
             let editingHookId      = null;   // id of hook option being edited in Add Hook modal
             let pickTagsContext    = null;   // { row, field: 'audience'|'hook_name' }
@@ -782,82 +750,46 @@
             const audienceFormatter = tagFormatter('audience');
             const hookFormatter     = tagFormatter('hook');
 
-            const DEFAULT_CREATOR_NAMES = ['mariya', 'suman'];
-
-            function defaultCreatorUsers() {
-                const picked = [];
-                DEFAULT_CREATOR_NAMES.forEach(wanted => {
-                    const exact = (userOptions || []).find(o => String(o.name || '').trim().toLowerCase() === wanted);
-                    const prefix = (userOptions || []).find(o => String(o.name || '').trim().toLowerCase().indexOf(wanted) === 0);
-                    const match = exact || prefix;
-                    if (match && !picked.some(p => Number(p.id) === Number(match.id))) picked.push(match);
-                });
-                return picked;
-            }
-
-            function creatorsForRow(data) {
+            function creatorSlots(data) {
                 const saved = Array.isArray(data && data.creators) ? data.creators : [];
-                if (saved.length) return saved;
-                return defaultCreatorUsers().map(u => ({ user_id: u.id, name: u.name, created_at: '' }));
+                return saved.length ? saved : [{ user_id: '' }];
             }
 
             function creatorFormatter(cell) {
-                const creators = creatorsForRow(cell.getRow().getData());
-                const pills = creators.length
-                    ? creators.map(c => {
-                        const name = c && c.name ? c.name : 'Unknown';
-                        const when = c && c.created_at ? c.created_at : '';
-                        const title = when ? `${name} · added ${when} PT` : name;
-                        return `<span class="vam-tag vam-tag--creator" title="${escapeHtml(title)}"><span>${escapeHtml(name)}</span>${when ? `<span class="vam-creator-date">${escapeHtml(when)} PT</span>` : ''}</span>`;
-                    }).join('')
-                    : '<span class="vam-dash">—</span>';
-                return `<div class="vam-tag-cell">${pills}<button type="button" class="vam-tag-add-btn" title="Add creator"><i class="fas fa-plus"></i></button></div>`;
-            }
-
-            function openPickCreatorsModal(row) {
-                pickCreatorsRow = row;
-                pickCreatorsSelected = new Set(
-                    creatorsForRow(row.getData()).map(c => Number(c.user_id)).filter(id => id > 0)
-                );
-                document.getElementById('vamPickCreatorsSearch').value = '';
-                renderPickCreatorsList();
-                pickCreatorsModal.show();
-            }
-
-            function renderPickCreatorsList() {
-                const wrap = document.getElementById('vamPickCreatorsList');
-                if (!wrap) return;
-                const q = (document.getElementById('vamPickCreatorsSearch').value || '').trim().toLowerCase();
-                let options = (userOptions || []).slice().sort((a, b) => {
-                    const aOn = pickCreatorsSelected.has(Number(a.id)) ? 0 : 1;
-                    const bOn = pickCreatorsSelected.has(Number(b.id)) ? 0 : 1;
-                    if (aOn !== bOn) return aOn - bOn;
-                    return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
-                });
-                if (q) {
-                    options = options.filter(o => String(o.name || '').toLowerCase().includes(q));
-                }
-                if (!options.length) {
-                    wrap.innerHTML = '<div class="text-muted text-center py-3">No users found.</div>';
-                    return;
-                }
-                wrap.innerHTML = options.map(o => {
-                    const checked = pickCreatorsSelected.has(Number(o.id)) ? 'checked' : '';
-                    const cls = pickCreatorsSelected.has(Number(o.id)) ? 'is-checked' : '';
-                    return `
-                        <label class="vam-pick-option ${cls}">
-                            <input type="checkbox" value="${Number(o.id)}" ${checked}>
-                            <span class="vam-pick-option-label">${escapeHtml(o.name)}</span>
-                        </label>`;
+                const slots = creatorSlots(cell.getRow().getData());
+                const selects = slots.map(c => {
+                    const selectedId = Number(c && c.user_id) || 0;
+                    const opts = (creatorOptions || []).map(o => {
+                        const selected = Number(o.id) === selectedId ? 'selected' : '';
+                        return `<option value="${Number(o.id)}" ${selected}>${escapeHtml(o.name)}</option>`;
+                    }).join('');
+                    return `<select class="form-select form-select-sm vam-creator-select"><option value="">Select</option>${opts}</select>`;
                 }).join('');
+                return `<div class="vam-creator-cell">${selects}<button type="button" class="vam-tag-add-btn vam-creator-add" title="Add creator"><i class="fas fa-plus"></i></button></div>`;
             }
 
-            function applyCreatorSelection() {
-                if (!pickCreatorsRow) return;
-                const data = pickCreatorsRow.getData();
+            function addCreatorSelect(row) {
+                const slots = creatorSlots(row.getData()).slice();
+                if (slots.some(c => !Number(c.user_id))) return;
+                slots.push({ user_id: '' });
+                row.update({ creators: slots });
+            }
+
+            function saveCreatorSelects(row) {
+                const data = row.getData();
                 if (!data.id) return;
-                const userIds = Array.from(pickCreatorsSelected);
-                const row = pickCreatorsRow;
+                const cell = row.getCell('creators');
+                const el = cell && cell.getElement();
+                if (!el) return;
+                const seen = new Set();
+                const userIds = [];
+                el.querySelectorAll('.vam-creator-select').forEach(sel => {
+                    const id = Number(sel.value);
+                    if (id > 0 && !seen.has(id)) {
+                        seen.add(id);
+                        userIds.push(id);
+                    }
+                });
 
                 fetch(`/video-ads-master/${data.id}/creators`, {
                     method: 'PUT',
@@ -871,15 +803,12 @@
                 .then(r => r.json().then(j => ({ ok: r.ok, j })))
                 .then(({ ok, j }) => {
                     if (!ok || !j.success) {
-                        showToast((j && j.message) || 'Failed to save creators', 'error');
+                        showToast((j && j.message) || 'Failed to save creator', 'error');
                         return;
                     }
                     row.update({ creators: j.creators || [] });
-                    pickCreatorsModal.hide();
-                    pickCreatorsRow = null;
-                    showToast('Creators saved', 'success');
                 })
-                .catch(e => { console.error(e); showToast('Network error while saving creators', 'error'); });
+                .catch(e => { console.error(e); showToast('Network error while saving creator', 'error'); });
             }
 
             // Open the pick-tags modal for a row's AUDIENCE or HOOK cell.
@@ -1844,7 +1773,6 @@
                 hookManageModal     = new bootstrap.Modal(document.getElementById('vamHookManageModal'));
                 audienceManageModal = new bootstrap.Modal(document.getElementById('vamAudienceManageModal'));
                 pickTagsModal       = new bootstrap.Modal(document.getElementById('vamPickTagsModal'));
-                pickCreatorsModal   = new bootstrap.Modal(document.getElementById('vamPickCreatorsModal'));
                 checkHistoryModal   = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
 
                 fetch('/video-ads-master/data', { headers: { 'Accept': 'application/json' } })
@@ -1857,7 +1785,7 @@
                         channelOptions = payload.channels       || [];
                         setHookOptions(payload.hook_options || []);
                         setAudienceOptions(payload.audience_options || []);
-                        userOptions = payload.users || [];
+                        creatorOptions = payload.users || [];
 
                         refreshChannelDatalist();
                         initTable(payload.rows || []);
@@ -1918,15 +1846,11 @@
                     if (e.key === 'Enter') { e.preventDefault(); saveNewHook(); }
                 });
 
-                document.getElementById('vamPickCreatorsApplyBtn').addEventListener('click', applyCreatorSelection);
-                document.getElementById('vamPickCreatorsSearch').addEventListener('input', renderPickCreatorsList);
-                document.getElementById('vamPickCreatorsList').addEventListener('change', (e) => {
-                    const opt = e.target.closest('.vam-pick-option');
-                    if (!opt || e.target.type !== 'checkbox') return;
-                    const id = Number(e.target.value);
-                    if (e.target.checked) pickCreatorsSelected.add(id);
-                    else pickCreatorsSelected.delete(id);
-                    opt.classList.toggle('is-checked', e.target.checked);
+                document.getElementById('video-ads-master-table').addEventListener('change', (e) => {
+                    if (!e.target.classList.contains('vam-creator-select') || !table) return;
+                    const rowEl = e.target.closest('.tabulator-row');
+                    const row = table.getRows().find(r => r.getElement() === rowEl);
+                    if (row) saveCreatorSelects(row);
                 });
 
                 document.getElementById('vamPickTagsApplyBtn').addEventListener('click', applyPickTagsSelection);
@@ -2037,9 +1961,9 @@
                             headerSort: false,
                             editable: false,
                             cellClick: (e, cell) => {
-                                if (e.target.closest('.vam-tag-add-btn')) {
+                                if (e.target.closest('.vam-creator-add')) {
                                     e.stopPropagation();
-                                    openPickCreatorsModal(cell.getRow());
+                                    addCreatorSelect(cell.getRow());
                                 }
                             },
                         },
@@ -2251,7 +2175,7 @@
                         channelOptions = payload.channels     || [];
                         setHookOptions(payload.hook_options || []);
                         setAudienceOptions(payload.audience_options || []);
-                        userOptions = payload.users || [];
+                        creatorOptions = payload.users || [];
                         refreshChannelDatalist();
                         table.setData((payload.rows || []).map(normalizeRowTags));
                         updateCount();
