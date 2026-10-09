@@ -376,20 +376,6 @@
                     width: 120
                 },
                 {
-                    title: "Qty Shipped",
-                    field: "quantity_shipped",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 120
-                },
-                {
-                    title: "Qty To Ship",
-                    field: "quantity_to_ship",
-                    hozAlign: "center",
-                    sorter: "number",
-                    width: 120
-                },
-                {
                     title: "Listing Base",
                     field: "listing_base_price",
                     hozAlign: "right",

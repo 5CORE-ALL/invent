@@ -173,6 +173,35 @@ final class AmazonAdsLbidDaily
     }
 
     /**
+     * Lbid saved for today (California), per campaign. Present only after a live pull or the daily snapshot wrote that day.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, float>
+     */
+    public static function todayByCampaign(string $channel, array $campaignIds): array
+    {
+        if (! in_array($channel, ['sp', 'sb'], true) || $campaignIds === [] || ! self::available()) {
+            return [];
+        }
+        $today = self::today();
+        $out = [];
+        foreach (array_chunk($campaignIds, 200) as $chunk) {
+            $rows = DB::table(self::TABLE)
+                ->where('channel', $channel)
+                ->whereIn('campaign_id', $chunk)
+                ->where('report_date', $today)
+                ->get(['campaign_id', 'lbid']);
+            foreach ($rows as $row) {
+                if (is_numeric($row->lbid)) {
+                    $out[(string) $row->campaign_id] = round((float) $row->lbid, 2);
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Most recent saved Lbid strictly before today, per campaign.
      *
      * @param  list<string>  $campaignIds

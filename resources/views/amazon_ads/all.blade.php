@@ -1673,7 +1673,8 @@
                 if (kind === 'sbgt' && isFinite(current) && current === 0) trend = 'down';
                 // Lbid starts green: first day (no previous day yet) shows green, not gray.
                 if (kind === 'lbid' && trend === 'na' && isFinite(current)) trend = 'up';
-                var cls = trend === 'up' ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
+                // API already saved today and the bid is unchanged: green, not gray.
+                var cls = (trend === 'up' || trend === 'same') ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
                 var prev = kind === 'lbid' ? row.lbid_prev : (kind === 'sbid' ? row.sbid_prev : row.sbgt_prev);
                 var prevTxt = (prev === null || prev === undefined || prev === '') ? '—' : Number(prev).toFixed(2);
                 var nowTxt = isFinite(current) ? current.toFixed(2) : '—';
@@ -3388,7 +3389,7 @@
                 return values.map(function (v, i) {
                     if (i === 0) return gray;
                     var diff = v - values[i - 1];
-                    if (Math.abs(diff) <= eps) return gray;
+                    if (Math.abs(diff) <= eps) return amzHistoryKind === 'lbid' ? green : gray;
                     var improved = amzHistoryLowerIsBetter() ? diff < 0 : diff > 0;
                     return improved ? green : red;
                 });

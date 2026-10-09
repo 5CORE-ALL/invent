@@ -4535,6 +4535,7 @@ class AmazonAdsController extends Controller
     /**
      * History-column dots: green when today's amount is above the previous saved day,
      * red when below, gray when unchanged or there is no prior day.
+     * Lbid is green (not gray) when today's California value was saved and it still matches the previous day.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
@@ -4555,8 +4556,12 @@ class AmazonAdsController extends Controller
         $prevSbgt = self::previousDailyMoneyMap($table, array_keys($ids), 'sbgt');
         // Lbid trend uses only the days saved in amazon_ads_lbid_daily.
         $lbidChannel = AmazonAdsLbidDaily::channelForTable($table);
+        $lbidIds = array_map('strval', array_keys($ids));
         $prevLbid = $lbidChannel !== null
-            ? AmazonAdsLbidDaily::previousByCampaign($lbidChannel, array_map('strval', array_keys($ids)))
+            ? AmazonAdsLbidDaily::previousByCampaign($lbidChannel, $lbidIds)
+            : [];
+        $todayLbid = $lbidChannel !== null
+            ? AmazonAdsLbidDaily::todayByCampaign($lbidChannel, $lbidIds)
             : [];
         foreach ($rows as $i => $row) {
             $cid = trim((string) ($row['campaign_id'] ?? ''));
@@ -4566,7 +4571,12 @@ class AmazonAdsController extends Controller
             $rows[$i]['sbid_prev'] = $sbidPrev;
             $rows[$i]['sbgt_prev'] = $sbgtPrev;
             $rows[$i]['lbid_prev'] = $lbidPrev;
-            $rows[$i]['lbid_trend'] = self::moneyHistoryTrend($row['last_sbid'] ?? null, $lbidPrev);
+            $lbidTrend = self::moneyHistoryTrend($row['last_sbid'] ?? null, $lbidPrev);
+            // Live API (or today's snapshot) already stored this California day, and the bid did not move.
+            if ($lbidTrend === 'flat' && array_key_exists($cid, $todayLbid)) {
+                $lbidTrend = 'same';
+            }
+            $rows[$i]['lbid_trend'] = $lbidTrend;
             $rows[$i]['sbid_trend'] = self::moneyHistoryTrend($row['sbid'] ?? null, $sbidPrev);
             $rows[$i]['sbgt_trend'] = self::moneyHistoryTrend($row['sbgt'] ?? null, $sbgtPrev);
         }
