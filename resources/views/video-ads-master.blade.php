@@ -782,8 +782,27 @@
             const audienceFormatter = tagFormatter('audience');
             const hookFormatter     = tagFormatter('hook');
 
+            const DEFAULT_CREATOR_NAMES = ['mariya', 'suman'];
+
+            function defaultCreatorUsers() {
+                const picked = [];
+                DEFAULT_CREATOR_NAMES.forEach(wanted => {
+                    const exact = (userOptions || []).find(o => String(o.name || '').trim().toLowerCase() === wanted);
+                    const prefix = (userOptions || []).find(o => String(o.name || '').trim().toLowerCase().indexOf(wanted) === 0);
+                    const match = exact || prefix;
+                    if (match && !picked.some(p => Number(p.id) === Number(match.id))) picked.push(match);
+                });
+                return picked;
+            }
+
+            function creatorsForRow(data) {
+                const saved = Array.isArray(data && data.creators) ? data.creators : [];
+                if (saved.length) return saved;
+                return defaultCreatorUsers().map(u => ({ user_id: u.id, name: u.name, created_at: '' }));
+            }
+
             function creatorFormatter(cell) {
-                const creators = Array.isArray(cell.getValue()) ? cell.getValue() : [];
+                const creators = creatorsForRow(cell.getRow().getData());
                 const pills = creators.length
                     ? creators.map(c => {
                         const name = c && c.name ? c.name : 'Unknown';
@@ -798,7 +817,7 @@
             function openPickCreatorsModal(row) {
                 pickCreatorsRow = row;
                 pickCreatorsSelected = new Set(
-                    ((row.getData().creators) || []).map(c => Number(c.user_id)).filter(id => id > 0)
+                    creatorsForRow(row.getData()).map(c => Number(c.user_id)).filter(id => id > 0)
                 );
                 document.getElementById('vamPickCreatorsSearch').value = '';
                 renderPickCreatorsList();
@@ -809,7 +828,12 @@
                 const wrap = document.getElementById('vamPickCreatorsList');
                 if (!wrap) return;
                 const q = (document.getElementById('vamPickCreatorsSearch').value || '').trim().toLowerCase();
-                let options = (userOptions || []).slice();
+                let options = (userOptions || []).slice().sort((a, b) => {
+                    const aOn = pickCreatorsSelected.has(Number(a.id)) ? 0 : 1;
+                    const bOn = pickCreatorsSelected.has(Number(b.id)) ? 0 : 1;
+                    if (aOn !== bOn) return aOn - bOn;
+                    return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+                });
                 if (q) {
                     options = options.filter(o => String(o.name || '').toLowerCase().includes(q));
                 }

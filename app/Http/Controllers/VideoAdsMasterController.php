@@ -19,6 +19,9 @@ class VideoAdsMasterController extends Controller
     /** Creator assignment timestamps are stored as California wall-clock time. */
     private const CREATOR_TZ = 'America/Los_Angeles';
 
+    /** Shown on every row until someone changes the Creator list. */
+    private const DEFAULT_CREATOR_NAMES = ['Mariya', 'Suman'];
+
     public function index()
     {
         return view('video-ads-master');
@@ -59,6 +62,7 @@ class VideoAdsMasterController extends Controller
 
         // Re-load rows after hook renames so the grid shows cleaned tags.
         $rows = VideoAdsMaster::orderByDesc('id')->get();
+        $this->ensureDefaultCreators($rows);
 
         return response()->json([
             'success'          => true,
@@ -88,6 +92,7 @@ class VideoAdsMasterController extends Controller
         ]);
 
         $row = VideoAdsMaster::create($data);
+        $this->assignDefaultCreators($row);
 
         return response()->json(['success' => true, 'row' => $this->presentRow($row)]);
     }
@@ -143,7 +148,9 @@ class VideoAdsMasterController extends Controller
         $copy->ad_checked    = false;
         $copy->ad_checked_by = null;
         $copy->ad_checked_at = null;
+        $copy->creators_initialized = false;
         $copy->save();
+        $this->assignDefaultCreators($copy);
 
         return response()->json(['success' => true, 'row' => $this->presentRow($copy)]);
     }
@@ -263,6 +270,11 @@ class VideoAdsMasterController extends Controller
                 $remove->whereNotIn('user_id', $validIds)->delete();
             }
         });
+
+        if (!$row->creators_initialized) {
+            $row->creators_initialized = true;
+            $row->save();
+        }
 
         return response()->json([
             'success'  => true,
@@ -730,7 +742,7 @@ class VideoAdsMasterController extends Controller
             }
 
             try {
-                VideoAdsMaster::create([
+                $createdRow = VideoAdsMaster::create([
                     'target_type' => $type,
                     'name'        => $get('name'),
                     'channel'     => $get('channel'),
@@ -739,6 +751,7 @@ class VideoAdsMasterController extends Controller
                     'hook'        => $get('hook'),
                     'link'        => $get('link'),
                 ]);
+                $this->assignDefaultCreators($createdRow);
                 $created++;
             } catch (\Throwable $e) {
                 $skipped++;
@@ -1016,6 +1029,66 @@ class VideoAdsMasterController extends Controller
         }
 
         return Carbon::parse($value, self::CREATOR_TZ)->format('M j, Y g:i A');
+    }
+
+    /**
+     * Rows that have never had a Creator list get Mariya and Suman.
+     * A later edit (including clearing the list) is left as the user saved it.
+     */
+    private function ensureDefaultCreators($rows): void
+    {
+        $pending = $rows->filter(fn ($row) => !$row->creators_initialized);
+        foreach ($pending as $row) {
+            $this->assignDefaultCreators($row);
+        }
+    }
+
+    private function assignDefaultCreators(VideoAdsMaster $row): void
+    {
+        $already = VideoAdsMasterCreator::where('video_ads_master_id', $row->id)->exists();
+        if (!$already) {
+            $nowPt = Carbon::now(self::CREATOR_TZ)->format('Y-m-d H:i:s');
+            foreach ($this->defaultCreatorUsers() as $user) {
+                VideoAdsMasterCreator::firstOrCreate(
+                    [
+                        'video_ads_master_id' => $row->id,
+                        'user_id'             => $user->id,
+                    ],
+                    ['created_at' => $nowPt]
+                );
+            }
+        }
+
+        if (!$row->creators_initialized) {
+            $row->creators_initialized = true;
+            $row->save();
+        }
+    }
+
+    /**
+     * Active users whose name is Mariya or Suman (prefix match so "Mariya K" counts).
+     */
+    private function defaultCreatorUsers()
+    {
+        $users = User::query()
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $picked = [];
+        foreach (self::DEFAULT_CREATOR_NAMES as $wanted) {
+            $exact = $users->first(fn ($user) => strcasecmp(trim($user->name), $wanted) === 0);
+            $prefix = $users->first(fn ($user) => stripos(trim($user->name), $wanted) === 0);
+            $match = $exact ?: $prefix;
+            if ($match && !isset($picked[$match->id])) {
+                $picked[$match->id] = $match;
+            }
+        }
+
+        return collect($picked)->values();
     }
 
     /**
