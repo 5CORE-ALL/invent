@@ -625,8 +625,16 @@
             color: #0f172a;
             letter-spacing: -0.01em;
         }
-        #amazonAdsBgtRulesModal .amz-bgt-min-btn { border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; }
-        #amazonAdsBgtRulesModal .amz-bgt-min-btn:hover { background: #e2e8f0; }
+        #amazonAdsBgtRulesModal .amz-bgt-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-min-btn,
+        #amazonAdsBgtRulesModal .amz-bgt-exp-btn { border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; font-size: 13px; }
+        #amazonAdsBgtRulesModal .amz-bgt-min-btn:hover,
+        #amazonAdsBgtRulesModal .amz-bgt-exp-btn:hover { background: #e2e8f0; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-exp-btn { display: none; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols.is-expanded .amz-bgt-col:not(.is-max) { display: none; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-max { flex: 1 1 100%; min-width: 0; max-width: none; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-max .amz-bgt-chart-canvas { height: 220px; flex: 0 0 220px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-max .amz-bgt-chart-canvas canvas { height: 220px !important; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min { flex: 0 0 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min > :not(.amz-bgt-col-head) { display: none !important; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
@@ -825,8 +833,8 @@
                 <div class="card-body">
                     <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="amz-stat-badges py-1">
-                            <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
                             <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30 (all campaigns matching Stat / search / U% filters — not only the calendar day's rows)">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
+                            <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
                             <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
                             <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
                             <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) — same Amazon L30 universe as Spend">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
@@ -1158,7 +1166,7 @@
                         <div class="amz-bgt-col" data-amz-bgt-panel="acos">
                             <div class="amz-bgt-col-head">
                                 <div class="amz-bgt-title" title="Inclusive LT ACOS range. Use 9999 on To for the highest band. A $0 here is added as zero. The campaign pauses only when the six-part SBGT total is $0.">BGT Vs ACOS</div>
-                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs ACOS" aria-label="Minimize BGT Vs ACOS">−</button>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs ACOS" aria-label="Minimize BGT Vs ACOS">−</button></span>
                             </div>
                             <div class="amz-bgt-chart">
                                 <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-acos"></canvas></div>
@@ -1188,7 +1196,7 @@
                         <div class="amz-bgt-col" data-amz-bgt-panel="views">
                             <div class="amz-bgt-col-head">
                                 <div class="amz-bgt-title" title="Inclusive Amz page View L7 (parent Sess7). 0 is allowed for From and Bgt Views.">BGT Vs VIEWS</div>
-                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs VIEWS" aria-label="Minimize BGT Vs VIEWS">−</button>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs VIEWS" aria-label="Minimize BGT Vs VIEWS">−</button></span>
                             </div>
                             <div class="amz-bgt-chart">
                                 <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-views"></canvas></div>
@@ -1218,7 +1226,7 @@
                         <div class="amz-bgt-col" data-amz-bgt-panel="cvr">
                             <div class="amz-bgt-col-head">
                                 <div class="amz-bgt-title" title="Inclusive Amz page CVR L30 (parent A L30 ÷ Sess30 × 100). 0 is allowed for From and Bgt Cvr.">BGT Vs CVR</div>
-                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs CVR" aria-label="Minimize BGT Vs CVR">−</button>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs CVR" aria-label="Minimize BGT Vs CVR">−</button></span>
                             </div>
                             <div class="amz-bgt-chart">
                                 <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-cvr"></canvas></div>
@@ -1248,7 +1256,7 @@
                         <div class="amz-bgt-col" data-amz-bgt-panel="prc">
                             <div class="amz-bgt-col-head">
                                 <div class="amz-bgt-title" title="Inclusive Price range (Amz list, else LMP). 0 is allowed for From and Bgt Prc.">BGT PRC</div>
-                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT PRC" aria-label="Minimize BGT PRC">−</button>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT PRC" aria-label="Minimize BGT PRC">−</button></span>
                             </div>
                             <div class="amz-bgt-chart">
                                 <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-prc"></canvas></div>
@@ -1278,7 +1286,7 @@
                         <div class="amz-bgt-col" data-amz-bgt-panel="reviews">
                             <div class="amz-bgt-col-head">
                                 <div class="amz-bgt-title" title="Inclusive Reviews star range, same rating as the Reviews column.">BGT Vs REVIEWS</div>
-                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs REVIEWS" aria-label="Minimize BGT Vs REVIEWS">−</button>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs REVIEWS" aria-label="Minimize BGT Vs REVIEWS">−</button></span>
                             </div>
                             <div class="amz-bgt-chart">
                                 <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-reviews"></canvas></div>
@@ -1308,7 +1316,7 @@
                         <div class="amz-bgt-col" data-amz-bgt-panel="dil">
                             <div class="amz-bgt-col-head">
                                 <div class="amz-bgt-title" title="Inclusive Dil% (ovl30 ÷ Inv × 100). Defaults: Pink 50%+, Green 25–50, Red under 25. 0 is allowed for From and Bgt Dil.">BGT Vs Dil</div>
-                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs Dil" aria-label="Minimize BGT Vs Dil">−</button>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs Dil" aria-label="Minimize BGT Vs Dil">−</button></span>
                             </div>
                             <div class="amz-bgt-chart">
                                 <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-dil"></canvas></div>
@@ -1338,7 +1346,7 @@
                         <div class="amz-bgt-col" data-amz-bgt-panel="sum">
                             <div class="amz-bgt-col-head">
                                 <div class="amz-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil. The total is floored. A total of 0 pauses the campaign.">Sum</div>
-                                <button type="button" class="amz-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
                             </div>
                             <div class="amz-bgt-chart">
                                 <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-sum"></canvas></div>
@@ -5582,6 +5590,7 @@
 
             (function () {
                 var minKey = 'amzBgtPanelMin';
+                var maxKey = null;
                 function minSet() {
                     try {
                         var raw = JSON.parse(localStorage.getItem(minKey) || '[]');
@@ -5591,23 +5600,57 @@
                 function saveMin(set) {
                     try { localStorage.setItem(minKey, JSON.stringify(Array.from(set))); } catch (e) {}
                 }
-                function paintMin() {
-                    var min = minSet();
-                    document.querySelectorAll('#amazonAdsBgtRulesModal [data-amz-bgt-panel]').forEach(function (el) {
-                        var on = min.has(el.getAttribute('data-amz-bgt-panel'));
-                        el.classList.toggle('is-min', on);
-                        var btn = el.querySelector('.amz-bgt-min-btn');
-                        if (!btn) return;
-                        var title = (el.querySelector('.amz-bgt-title') || {}).textContent || 'rule';
-                        btn.textContent = on ? '+' : '−';
-                        btn.title = (on ? 'Maximize ' : 'Minimize ') + title.trim();
-                        btn.setAttribute('aria-label', btn.title);
-                    });
+                function resizeBgtCharts() {
                     Object.keys(amzBgtColCharts).forEach(function (k) {
                         if (amzBgtColCharts[k]) { try { amzBgtColCharts[k].resize(); } catch (e) {} }
                     });
                 }
+                function paintMin() {
+                    var min = minSet();
+                    var cols = document.querySelector('#amazonAdsBgtRulesModal .amz-bgt-cols');
+                    if (cols) cols.classList.toggle('is-expanded', !!maxKey);
+                    document.querySelectorAll('#amazonAdsBgtRulesModal [data-amz-bgt-panel]').forEach(function (el) {
+                        var key = el.getAttribute('data-amz-bgt-panel');
+                        var on = min.has(key);
+                        var expanded = key === maxKey;
+                        el.classList.toggle('is-min', on && !expanded);
+                        el.classList.toggle('is-max', expanded);
+                        var title = ((el.querySelector('.amz-bgt-title') || {}).textContent || 'rule').trim();
+                        var btn = el.querySelector('.amz-bgt-min-btn');
+                        if (btn) {
+                            btn.textContent = (on && !expanded) ? '+' : '−';
+                            btn.title = ((on && !expanded) ? 'Maximize ' : 'Minimize ') + title;
+                            btn.setAttribute('aria-label', btn.title);
+                        }
+                        var exp = el.querySelector('.amz-bgt-exp-btn');
+                        if (exp) {
+                            exp.textContent = expanded ? '⤡' : '⤢';
+                            exp.title = (expanded ? 'Restore ' : 'Expand ') + title;
+                            exp.setAttribute('aria-label', exp.title);
+                        }
+                    });
+                    resizeBgtCharts();
+                }
                 document.addEventListener('click', function (e) {
+                    var expBtn = e.target && e.target.closest ? e.target.closest('#amazonAdsBgtRulesModal .amz-bgt-exp-btn') : null;
+                    if (expBtn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var col = expBtn.closest('[data-amz-bgt-panel]');
+                        if (!col) return;
+                        var key = col.getAttribute('data-amz-bgt-panel');
+                        var min = minSet();
+                        if (maxKey === key) {
+                            maxKey = null;
+                        } else {
+                            maxKey = key;
+                            min.delete(key);
+                            saveMin(min);
+                        }
+                        paintMin();
+                        setTimeout(resizeBgtCharts, 60);
+                        return;
+                    }
                     var btn = e.target && e.target.closest ? e.target.closest('#amazonAdsBgtRulesModal .amz-bgt-min-btn') : null;
                     if (btn) {
                         e.preventDefault();
@@ -5616,6 +5659,7 @@
                         if (!col) return;
                         var min = minSet();
                         var key = col.getAttribute('data-amz-bgt-panel');
+                        if (maxKey === key) maxKey = null;
                         if (min.has(key)) min.delete(key); else min.add(key);
                         saveMin(min);
                         paintMin();
@@ -5632,11 +5676,11 @@
                 if (rulesModal) {
                     rulesModal.addEventListener('shown.bs.modal', function () {
                         paintMin();
-                        setTimeout(function () {
-                            Object.keys(amzBgtColCharts).forEach(function (k) {
-                                if (amzBgtColCharts[k]) { try { amzBgtColCharts[k].resize(); } catch (e) {} }
-                            });
-                        }, 60);
+                        setTimeout(resizeBgtCharts, 60);
+                    });
+                    rulesModal.addEventListener('hidden.bs.modal', function () {
+                        maxKey = null;
+                        paintMin();
                     });
                 }
                 paintMin();
