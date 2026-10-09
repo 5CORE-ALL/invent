@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ShopifySku;
 use App\Support\CpMasterDil;
+use App\Support\DilVsSbidListingRollup;
 use App\Support\DilVsSbidRule;
 use App\Support\EbayBidPercentage;
 use App\Support\EbayCampaignAdLiveBid;
@@ -48,7 +49,7 @@ class DilVsSbidApplyService
         $tables = $stored['tables'];
         $cap = $stored['cap'] ?? DilVsSbidRule::defaultCap();
         $viewsOver = $stored['views_over'] ?? DilVsSbidRule::defaultViewOver();
-        $metrics = $metricClass::whereIn('item_id', $listingIds)->get()->keyBy(fn ($m) => (string) $m->item_id);
+        $metricsByListing = $metricClass::whereIn('item_id', $listingIds)->get()->groupBy(fn ($m) => (string) $m->item_id);
         $ads = DB::table($adsTable)
             ->whereIn('listing_id', $listingIds)
             ->whereNotNull('campaign_id')
@@ -57,15 +58,7 @@ class DilVsSbidApplyService
             ->get()
             ->groupBy(fn ($ad) => (string) $ad->listing_id);
 
-        $skus = [];
-        foreach ($listingIds as $lid) {
-            $metric = $metrics->get($lid);
-            $ad = $ads->get($lid)?->first();
-            $sku = (string) ($metric->sku ?? $ad->sku ?? '');
-            if ($sku !== '') {
-                $skus[] = $sku;
-            }
-        }
+        $skus = $this->skusForListings($listingIds, $metricsByListing, $ads);
         $shopifyMap = $this->shopifyBySku($skus);
         $npftMap = ($useDil && DilVsSbidRule::usesNpft($tables))
             ? EbayStdNpftLookup::forSkus($skus)
@@ -102,19 +95,18 @@ class DilVsSbidApplyService
                     continue;
                 }
 
-                $metric = $metrics->get($lid);
-                $sku = (string) ($metric?->sku ?? $ad->sku ?? '');
+                $rolled = $this->rolledListingInputs($lid, $ad, $metricsByListing, $shopifyMap, $npftMap);
                 $wanted = $this->listingDecision(
                     $useDil,
                     $ad,
-                    $metric,
-                    $shopifyMap[trim($sku)] ?? null,
+                    $rolled['metric'],
+                    $rolled['shopify'],
                     $slabs,
                     $cvr,
                     $tables,
                     $cap,
                     $viewsOver,
-                    $npftMap
+                    $rolled['npftMap']
                 );
 
                 if ($wanted['skip'] !== null) {
@@ -228,7 +220,7 @@ class DilVsSbidApplyService
         $tables = $stored['tables'];
         $cap = $stored['cap'] ?? DilVsSbidRule::defaultCap();
         $viewsOver = $stored['views_over'] ?? DilVsSbidRule::defaultViewOver();
-        $metrics = $metricClass::whereIn('item_id', $listingIds)->get()->keyBy(fn ($m) => (string) $m->item_id);
+        $metricsByListing = $metricClass::whereIn('item_id', $listingIds)->get()->groupBy(fn ($m) => (string) $m->item_id);
         $ads = DB::table($adsTable)
             ->whereIn('listing_id', $listingIds)
             ->whereNotNull('campaign_id')
@@ -237,15 +229,7 @@ class DilVsSbidApplyService
             ->get()
             ->groupBy(fn ($ad) => (string) $ad->listing_id);
 
-        $skus = [];
-        foreach ($listingIds as $lid) {
-            $metric = $metrics->get($lid);
-            $ad = $ads->get($lid)?->first();
-            $sku = (string) ($metric->sku ?? $ad->sku ?? '');
-            if ($sku !== '') {
-                $skus[] = $sku;
-            }
-        }
+        $skus = $this->skusForListings($listingIds, $metricsByListing, $ads);
         $shopifyMap = $this->shopifyBySku($skus);
         $npftMap = DilVsSbidRule::usesNpft($tables) ? EbayStdNpftLookup::forSkus($skus) : [];
 
@@ -259,19 +243,18 @@ class DilVsSbidApplyService
                 if (! $ad->campaign_id) {
                     continue;
                 }
-                $metric = $metrics->get($lid);
-                $sku = (string) ($metric?->sku ?? $ad->sku ?? '');
+                $rolled = $this->rolledListingInputs($lid, $ad, $metricsByListing, $shopifyMap, $npftMap);
                 $wanted = $this->listingDecision(
                     true,
                     $ad,
-                    $metric,
-                    $shopifyMap[trim($sku)] ?? null,
+                    $rolled['metric'],
+                    $rolled['shopify'],
                     $slabs,
                     $cvr,
                     $tables,
                     $cap,
                     $viewsOver,
-                    $npftMap
+                    $rolled['npftMap']
                 );
                 if ($wanted['skip'] !== null || $wanted['off'] || $wanted['formatted'] === null) {
                     continue;
@@ -286,6 +269,92 @@ class DilVsSbidApplyService
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<string, mixed>  $metricsByListing
+     * @param  \Illuminate\Support\Collection<string, mixed>  $ads
+     * @param  array<int, mixed>  $listingIds
+     * @return list<string>
+     */
+    private function skusForListings(array $listingIds, $metricsByListing, $ads): array
+    {
+        $skus = [];
+        foreach ($listingIds as $lid) {
+            $lid = (string) $lid;
+            foreach ($metricsByListing->get($lid) ?? [] as $metric) {
+                $sku = trim((string) ($metric->sku ?? ''));
+                if ($sku !== '') {
+                    $skus[] = $sku;
+                }
+            }
+            $adSku = trim((string) ($ads->get($lid)?->first()->sku ?? ''));
+            if ($adSku !== '') {
+                $skus[] = $adSku;
+            }
+        }
+
+        return array_values(array_unique($skus));
+    }
+
+    /**
+     * Family Dil / views / sold for one listing. Several variation SKUs
+     * on the same item_id become one S Bid.
+     *
+     * @param  \Illuminate\Support\Collection<string, mixed>  $metricsByListing
+     * @param  array<string, mixed>  $shopifyMap
+     * @param  array<string, mixed>  $npftMap
+     * @return array{metric:object,shopify:object,npftMap:array<string,?float>}
+     */
+    private function rolledListingInputs(string $listingId, object $ad, $metricsByListing, array $shopifyMap, array $npftMap): array
+    {
+        $members = [];
+        foreach ($metricsByListing->get($listingId) ?? [] as $metric) {
+            $sku = trim((string) ($metric->sku ?? ''));
+            $shop = $sku !== '' ? ($shopifyMap[$sku] ?? null) : null;
+            $members[] = [
+                'sku' => $sku !== '' ? $sku : trim((string) ($ad->sku ?? '')),
+                'quantity' => $shop?->quantity,
+                'inv' => $shop?->inv,
+                'views' => $metric->views ?? 0,
+                'ebay_l30' => $metric->ebay_l30 ?? 0,
+                'ebay_l60' => $metric->ebay_l60 ?? 0,
+                'l7_views' => $metric->l7_views ?? 0,
+                'npft' => $sku !== '' ? ($npftMap[EbayStdNpftLookup::key($sku)] ?? null) : null,
+            ];
+        }
+        if ($members === []) {
+            $sku = trim((string) ($ad->sku ?? ''));
+            $shop = $sku !== '' ? ($shopifyMap[$sku] ?? null) : null;
+            $members[] = [
+                'sku' => $sku,
+                'quantity' => $shop?->quantity,
+                'inv' => $shop?->inv,
+                'views' => 0,
+                'ebay_l30' => 0,
+                'ebay_l60' => 0,
+                'l7_views' => 0,
+                'npft' => $sku !== '' ? ($npftMap[EbayStdNpftLookup::key($sku)] ?? null) : null,
+            ];
+        }
+
+        $rolled = DilVsSbidListingRollup::combine($members);
+        $sku = $rolled['sku'];
+
+        return [
+            'metric' => (object) [
+                'sku' => $sku,
+                'views' => $rolled['views'],
+                'ebay_l30' => $rolled['ebay_l30'],
+                'ebay_l60' => $rolled['ebay_l60'],
+                'l7_views' => $rolled['l7_views'],
+            ],
+            'shopify' => (object) [
+                'quantity' => $rolled['quantity'],
+                'inv' => $rolled['inv'],
+            ],
+            'npftMap' => $sku !== '' ? [EbayStdNpftLookup::key($sku) => $rolled['npft']] : [],
+        ];
     }
 
     /**

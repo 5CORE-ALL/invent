@@ -1332,6 +1332,7 @@ class EbayTwoController extends Controller
         if (! $request->boolean('open_box_only')) {
             $result = $this->ensureEbay2ParentPrefixRows($result, $percentage);
         }
+        $result = $this->spreadEbay2ListingCampaignBids($result);
 
         // AD% = channel-level Ads% (same as /all-marketplace-master), every row identical
         $channelAdsPct = app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
@@ -1685,6 +1686,60 @@ class EbayTwoController extends Controller
         }
         foreach ($passthrough as $r) {
             $out[] = (object) $r;
+        }
+
+        return $out;
+    }
+
+    /**
+     * One live C Bid per eBay listing. Copy campaign-ads fields onto every
+     * parent / variation row that shares that item_id.
+     *
+     * @param  array<int, object|array<string, mixed>>  $result
+     * @return array<int, object>
+     */
+    private function spreadEbay2ListingCampaignBids(array $result): array
+    {
+        $byItem = [];
+        foreach ($result as $row) {
+            $arr = is_object($row) ? get_object_vars($row) : $row;
+            $item = trim((string) ($arr['eBay_item_id'] ?? $arr['listing_id'] ?? ''));
+            if ($item === '' || empty($arr['ca_has_ad_row'])) {
+                continue;
+            }
+            $hasBid = ($arr['ca_bid_percentage'] ?? null) !== null && $arr['ca_bid_percentage'] !== '';
+            $running = strtoupper(trim((string) ($arr['ca_campaign_status'] ?? ''))) === 'RUNNING';
+            $score = ($running ? 2 : 0) + ($hasBid ? 1 : 0);
+            if (! isset($byItem[$item]) || $score >= ($byItem[$item]['_score'] ?? 0)) {
+                $byItem[$item] = [
+                    '_score' => $score,
+                    'ca_bid_percentage' => $arr['ca_bid_percentage'] ?? null,
+                    'ca_suggested_bid' => $arr['ca_suggested_bid'] ?? null,
+                    'ca_promote_with_ad' => $arr['ca_promote_with_ad'] ?? null,
+                    'ca_campaign_id' => $arr['ca_campaign_id'] ?? null,
+                    'ca_campaign_status' => $arr['ca_campaign_status'] ?? null,
+                    'ca_funding_strategy' => $arr['ca_funding_strategy'] ?? null,
+                    'ca_ads_running' => $arr['ca_ads_running'] ?? 0,
+                    'ca_has_ad_row' => 1,
+                    'listing_id' => $arr['listing_id'] ?? $item,
+                    'eBay_item_id' => $arr['eBay_item_id'] ?? $item,
+                ];
+            }
+        }
+
+        $out = [];
+        foreach ($result as $row) {
+            $arr = is_object($row) ? get_object_vars($row) : $row;
+            $item = trim((string) ($arr['eBay_item_id'] ?? $arr['listing_id'] ?? ''));
+            if ($item !== '' && isset($byItem[$item])) {
+                foreach ($byItem[$item] as $key => $value) {
+                    if ($key === '_score') {
+                        continue;
+                    }
+                    $arr[$key] = $value;
+                }
+            }
+            $out[] = (object) $arr;
         }
 
         return $out;

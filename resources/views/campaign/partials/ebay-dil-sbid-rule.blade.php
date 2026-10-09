@@ -81,10 +81,10 @@
             <div class="modal-body">
                 <p class="small mb-2" id="dil-sbid-mode-note">Off. S Bid is not changed.</p>
                 <ul class="dsb-notes">
-                    <li>Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100). Inventory 0 and missing data are not counted. First matching range wins in every table. A range that starts where the one above ended is exclusive on From. The last range is open at the top.</li>
-                    <li><strong>Dil 0–0</strong> is SKUs with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the SKU falls in. A negative value subtracts. A SKU outside every range adds 0.</li>
+                    <li>@if(! empty($listingWise))Count is unique eBay listings (one variation item_id). Dil is family Dil: round(Σ OV L30 sold ÷ Σ Inventory × 100).@else Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100).@endif Inventory 0 and missing data are not counted. First matching range wins in every table. A range that starts where the one above ended is exclusive on From. The last range is open at the top.</li>
+                    <li><strong>Dil 0–0</strong> is @if(! empty($listingWise))listings@else SKUs@endif with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the @if(! empty($listingWise))listing@else SKU@endif falls in. A negative value subtracts. A @if(! empty($listingWise))listing@else SKU@endif outside every range adds 0.</li>
                     <li>New tables start at 0, so nothing changes until you type an S Bid. L30 View up / down uses the same arrow as the L30 View column (L7 pace vs L30 pace). Its Adj starts at 0. The final bid is rounded to 0.1 and kept between the Min and Max caps (those caps cannot go outside 2 and 100, which eBay accepts).</li>
-                    <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push. Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.</li>
+                    <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push.@if(! empty($listingWise)) Variation SKUs that share an item_id are summed, then one S Bid is pushed and pulled on that parent listing. C Bid is shown on the parent row and every SKU under that listing.@endif Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay 1, eBay 2 and eBay 3 each keep their own tables. They push the new S Bid on their own when the rules change the bid. The switch must be On.</li>
                 </ul>
                 <div class="dsb-cols">
@@ -415,6 +415,7 @@ let dilSbidSaveTimer = null;
 
 // Extended mode (eBay 1 analytics): Views, CVR, eBay Sold and Std NPFT % tables add to the Dil bid.
 const DIL_SBID_EXT = @json((bool) ($extended ?? false));
+const DIL_SBID_LISTING_WISE = @json((bool) ($listingWise ?? false));
 const DIL_SBID_TABLE_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultTables());
 const DIL_SBID_EXT_KEYS = ['views', 'cvr', 'sold', 'npft'];
 const DIL_SBID_EXT_LABELS = { views: 'Views', cvr: 'CVR', sold: 'eBay Sold', npft: 'Std NPFT' };
@@ -436,12 +437,107 @@ let dilSbidRepaintTimer = null;
 const dilSbidCharts = {};
 
 function dilSbidRefreshGrid() {
+    dilSbidClearListingCache();
     if (typeof table !== 'undefined' && table && table.redraw) table.redraw(true);
     if (typeof ebayPaintForcePush === 'function') ebayPaintForcePush();
 }
 
 function campaignSbid(row) {
     return dilSbidOfRow(row);
+}
+let dilSbidRollupMemo = {};
+let dilSbidListingKeyFn = null;
+let dilSbidListingKeySrc = null;
+function dilSbidClearListingCache() {
+    dilSbidRollupMemo = {};
+    dilSbidListingKeyFn = null;
+    dilSbidListingKeySrc = null;
+}
+function dilSbidIsChildRow(row) {
+    if (typeof chPromoIsChildRow === 'function') return chPromoIsChildRow(row);
+    if (typeof isEbay2TabulatorParentRow === 'function' && isEbay2TabulatorParentRow(row)) return false;
+    return !!dilSbidSkuKey(row);
+}
+function dilSbidChildRows() {
+    return dilSbidRows().filter(dilSbidIsChildRow);
+}
+function dilSbidListingKeyer() {
+    const src = dilSbidRows();
+    if (dilSbidListingKeyFn && dilSbidListingKeySrc === src) return dilSbidListingKeyFn;
+    dilSbidListingKeySrc = src;
+    if (typeof chPromoVariationKeyFn === 'function') {
+        dilSbidListingKeyFn = chPromoVariationKeyFn(src);
+    } else {
+        dilSbidListingKeyFn = function(d) {
+            const itemId = String((d && (d.listing_id || d.eBay_item_id || d.item_id || d.ebay_item_id)) || '').trim();
+            return (itemId && itemId !== '0') ? ('item:' + itemId) : '';
+        };
+    }
+    return dilSbidListingKeyFn;
+}
+function dilSbidListingKey(row) {
+    if (!row) return '';
+    return String(dilSbidListingKeyer()(row) || '');
+}
+function dilSbidUnitKey(row) {
+    return DIL_SBID_LISTING_WISE ? dilSbidListingKey(row) : dilSbidSkuKey(row);
+}
+function dilSbidRollupRow(listingKey) {
+    if (!listingKey) return null;
+    if (dilSbidRollupMemo[listingKey]) return dilSbidRollupMemo[listingKey];
+    const kids = dilSbidChildRows().filter(function(d) { return dilSbidListingKey(d) === listingKey; });
+    if (!kids.length) return null;
+    let inv = 0, qty = 0, views = 0, l30 = 0, l60 = 0, l7 = 0;
+    let stdSum = 0, stdN = 0, lpSum = 0, shipSum = 0, costN = 0;
+    kids.forEach(function(d) {
+        inv += (typeof chPromoShopifyInv === 'function') ? chPromoShopifyInv(d) : (Number(d.INV) || Number(d.shopify_inv) || 0);
+        qty += (typeof chPromoOvL30 === 'function') ? chPromoOvL30(d) : (Number(d.L30) || Number(d.shopify_qty) || 0);
+        views += parseFloat(d.views) || 0;
+        const soldRaw = (d.metric_ebay_l30 != null && d.metric_ebay_l30 !== '') ? d.metric_ebay_l30 : d['eBay L30'];
+        const l60Raw = (d.metric_ebay_l60 != null && d.metric_ebay_l60 !== '') ? d.metric_ebay_l60 : d['eBay L60'];
+        l30 += parseFloat(soldRaw) || 0;
+        l60 += parseFloat(l60Raw) || 0;
+        l7 += parseFloat(d.l7_views) || 0;
+        const std = parseFloat(d.STANDARD_PRICE);
+        if (std > 0) {
+            stdSum += std;
+            stdN++;
+            const lp = parseFloat(d.LP_productmaster);
+            const ship = parseFloat(d.Ship_productmaster) || 0;
+            if (isFinite(lp) && lp > 0) {
+                lpSum += lp;
+                shipSum += ship;
+                costN++;
+            }
+        }
+    });
+    const first = kids[0];
+    const rolled = Object.assign({}, first, {
+        _dilSbidRolled: true,
+        INV: inv,
+        L30: qty,
+        ov_l30: qty,
+        shopify_inv: inv,
+        shopify_qty: qty,
+        views: views,
+        metric_ebay_l30: l30,
+        metric_ebay_l60: l60,
+        'eBay L30': l30,
+        'eBay L60': l60,
+        l7_views: l7,
+        STANDARD_PRICE: stdN ? (stdSum / stdN) : first.STANDARD_PRICE,
+        LP_productmaster: costN ? (lpSum / costN) : first.LP_productmaster,
+        Ship_productmaster: costN ? (shipSum / costN) : first.Ship_productmaster,
+        listing_id: first.listing_id || first.eBay_item_id || first.item_id,
+        eBay_item_id: first.eBay_item_id || first.listing_id || first.item_id
+    });
+    dilSbidRollupMemo[listingKey] = rolled;
+    return rolled;
+}
+function dilSbidUnitRow(row) {
+    if (!DIL_SBID_LISTING_WISE || (row && row._dilSbidRolled)) return row;
+    const key = dilSbidListingKey(row);
+    return key ? (dilSbidRollupRow(key) || row) : row;
 }
 function dilSbidPaintMode() {
     const on = !!dilSbidEnabled;
@@ -454,7 +550,9 @@ function dilSbidPaintMode() {
     if (note) {
         note.textContent = on
             ? (DIL_SBID_EXT
-                ? 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.'
+                ? (DIL_SBID_LISTING_WISE
+                    ? 'On. One S Bid per eBay listing: family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Variation SKUs that share an item_id get the same bid. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.'
+                    : 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
                 : 'On. S Bid uses these Dil slabs, then the CVR overlay, then the L30 View overlay, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
             : 'Off. S Bid is not changed.';
         note.className = on ? 'small mb-2 text-success' : 'small mb-2 text-muted';
@@ -962,6 +1060,17 @@ function dilSbidExtBids(row) {
     return out;
 }
 function dilSbidOfRow(row) {
+    if (DIL_SBID_LISTING_WISE && row && !row._dilSbidRolled) {
+        const key = dilSbidListingKey(row);
+        if (!key) {
+            return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'No listing', title: 'No S Bid: this row has no eBay item_id, so it is not a listing bid.' };
+        }
+        const rolled = dilSbidRollupRow(key);
+        if (!rolled) {
+            return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'No listing', title: 'No S Bid: no child SKUs share this eBay listing.' };
+        }
+        return dilSbidOfRow(rolled);
+    }
     const dil = dilSbidMetric(row);
     if (dil === null || !isFinite(dil)) {
         if (!dilSbidSkuKey(row)) {
@@ -1017,16 +1126,23 @@ function dilSbidOfRow(row) {
     }
     return { bid: capped, color: part.color, skip: false, off: false, title: title };
 }
+function dilSbidEachUnit(fn) {
+    const seen = {};
+    const rows = DIL_SBID_LISTING_WISE ? dilSbidChildRows() : dilSbidRows();
+    rows.forEach(function(d) {
+        const key = dilSbidUnitKey(d);
+        if (!key || seen[key]) return;
+        const unit = dilSbidUnitRow(d);
+        if (!unit) return;
+        seen[key] = true;
+        fn(unit);
+    });
+}
 function dilSbidCounts() {
     const counts = currentDilSbidSlabs.map(function() { return 0; });
-    const rows = dilSbidRows();
-    const seen = {};
-    rows.forEach(function(d) {
-        const sku = dilSbidSkuKey(d);
-        if (!sku || seen[sku]) return;
+    dilSbidEachUnit(function(d) {
         const dil = dilSbidMetric(d);
         if (dil === null || !isFinite(dil)) return;
-        seen[sku] = true;
         let prevMax = null;
         for (let i = 0; i < currentDilSbidSlabs.length; i++) {
             if (dilSbidContains(dil, currentDilSbidSlabs[i], prevMax, i === currentDilSbidSlabs.length - 1)) {
@@ -1044,14 +1160,9 @@ function dilSbidCvrCounts() {
     const cfg = currentDilSbidCvr || DIL_SBID_CVR_DEFAULTS;
     (cfg.down_more || []).forEach(function() { counts.downMore.push(0); });
     (cfg.up_more || []).forEach(function() { counts.upMore.push(0); });
-    const rows = dilSbidRows();
-    const seen = {};
-    rows.forEach(function(d) {
-        const sku = dilSbidSkuKey(d);
-        if (!sku || seen[sku]) return;
+    dilSbidEachUnit(function(d) {
         const parts = dilSbidCvrParts(d);
         if (!parts) return;
-        seen[sku] = true;
         const hit = dilSbidCvrHit(parts, cfg);
         if (!hit) return;
         if (hit.dir === 'down') {
@@ -1069,12 +1180,7 @@ function dilSbidViewCounts() {
     const cfg = currentDilSbidView || DIL_SBID_VIEW_DEFAULTS;
     (cfg.down_more || []).forEach(function() { counts.downMore.push(0); });
     (cfg.up_more || []).forEach(function() { counts.upMore.push(0); });
-    const rows = dilSbidRows();
-    const seen = {};
-    rows.forEach(function(d) {
-        const sku = dilSbidSkuKey(d);
-        if (!sku || seen[sku]) return;
-        seen[sku] = true;
+    dilSbidEachUnit(function(d) {
         const hit = dilSbidViewHit(dilSbidViewParts(d), cfg);
         if (!hit) return;
         if (hit.dir === 'down') {
@@ -1142,16 +1248,12 @@ function dilSbidRangeLabel(slab) {
     const b = parseFloat(slab.max);
     return a === b ? String(a) : (a + '–' + b);
 }
-/** Unique child SKUs that have a CP Master Dil (inventory > 0). Same set the Dil counts use. */
+/** Unique child SKUs (or listings when listing-wise) that have a CP Master Dil. Same set the Dil counts use. */
 function dilSbidEligibleRows() {
     const out = [];
-    const seen = {};
-    dilSbidRows().forEach(function(d) {
-        const sku = dilSbidSkuKey(d);
-        if (!sku || seen[sku]) return;
+    dilSbidEachUnit(function(d) {
         const dil = dilSbidMetric(d);
         if (dil === null || !isFinite(dil)) return;
-        seen[sku] = true;
         out.push(d);
     });
     return out;

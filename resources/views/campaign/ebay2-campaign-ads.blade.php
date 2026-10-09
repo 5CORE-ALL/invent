@@ -188,6 +188,7 @@
     'part' => 'modal',
     'account' => 'eBay 2',
     'extended' => true,
+    'listingWise' => true,
 ])
 
 @endsection
@@ -1144,6 +1145,7 @@ document.getElementById('dil-rule-save-btn').addEventListener('click', function(
     'part' => 'script',
     'account' => 'eBay 2',
     'extended' => true,
+    'listingWise' => true,
     'getUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
     'saveUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
     'applyUrl' => url('/ebay2/campaign-ads/push-selected'),

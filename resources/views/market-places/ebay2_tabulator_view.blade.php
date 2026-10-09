@@ -1032,6 +1032,7 @@
         'part' => 'modal',
         'account' => 'eBay 2',
         'extended' => true,
+        'listingWise' => true,
     ])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay2'])
 
@@ -1056,6 +1057,7 @@
             'part' => 'script',
             'account' => 'eBay 2',
             'extended' => true,
+            'listingWise' => true,
             'getUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
             'saveUrl' => url('/ebay2/campaign-ads/dil-sbid-rule'),
             'applyUrl' => url('/ebay2/campaign-ads/push-selected'),
@@ -1349,7 +1351,8 @@
             return isFinite(n) && n > 0 ? n : 0;
         }
         function getCombinedSbid(row) {
-            if (!ebay2HasCampaignAdsRow(row)) {
+            const listingKey = (typeof dilSbidListingKey === 'function') ? dilSbidListingKey(row) : '';
+            if (!ebay2HasCampaignAdsRow(row) && !listingKey) {
                 return { bid: 0, color: '#6c757d', skip: true, title: 'No bid on /ebay2/campaign-ads' };
             }
             if (typeof campaignSbid === 'function') return campaignSbid(row);
@@ -1364,10 +1367,9 @@
             return Math.round(Number(n) * 10) / 10;
         }
 
-        /** Running COST_PER_SALE row with Dil vs SBid on and a real S Bid. Otherwise null. */
+        /** Running COST_PER_SALE listing with Dil vs SBid on and a real S Bid. Parent and variation SKUs share that listing bid. */
         function ebay2TabSbidResult(row) {
             if (!row || typeof dilSbidEnabled === 'undefined' || !dilSbidEnabled) return null;
-            if (typeof isEbay2TabulatorParentRow === 'function' && isEbay2TabulatorParentRow(row)) return null;
             if (String(row.ca_funding_strategy || '') !== 'COST_PER_SALE') return null;
             if (String(row.ca_campaign_status || '').trim().toUpperCase() !== 'RUNNING') return null;
             const res = getCombinedSbid(row);
@@ -2887,6 +2889,9 @@
                     ebay2StampAllOrder(allTableData);
                     if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
                     window.allTableData = allTableData;
+                    if (typeof dilSbidClearListingCache === 'function') {
+                        dilSbidClearListingCache();
+                    }
                     if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     setTimeout(function() {
                         if (typeof ebay2PullEndedListings === 'function') ebay2PullEndedListings();
@@ -3984,7 +3989,7 @@
                         field: "s_bid",
                         hozAlign: "center",
                         width: 108,
-                        headerTooltip: "eBay 2 Dil vs SBid: Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Orange dil means this S BID is from Dil and the listing has no ad running.",
+                        headerTooltip: "eBay 2 Dil vs SBid is one bid per listing (item_id). Family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR / L30 View overlays, then the Min / Max cap. Parent and variation SKUs that share the item show the same S Bid. Orange dil means this S BID is from Dil and the listing has no ad running.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -4941,6 +4946,9 @@
                 }
                 if (typeof chPromoInvalidateListingDilCache === 'function') {
                     chPromoInvalidateListingDilCache({ skipApply: true });
+                }
+                if (typeof dilSbidClearListingCache === 'function') {
+                    dilSbidClearListingCache();
                 }
                 updateCalcValues();
                 updateSummary();
