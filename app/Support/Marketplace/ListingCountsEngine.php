@@ -469,6 +469,40 @@ class ListingCountsEngine
     }
 
     /**
+     * Sheet and manual edits store Listed on the CP Master SKU.
+     * That flag is Listed even when an older state still says pending.
+     *
+     * @param  array<string, mixed>  $value
+     */
+    public static function statusValueIsListed(array $value): bool
+    {
+        $listed = $value['listed'] ?? $value['Listed'] ?? null;
+        $explicitListed = false;
+        $isListed = false;
+        if (is_bool($listed)) {
+            $isListed = $listed;
+            $explicitListed = $listed;
+        } elseif (is_string($listed) || is_numeric($listed)) {
+            $flag = strtolower(trim((string) $listed));
+            if (in_array($flag, ['listed', 'true', 'yes', '1'], true)) {
+                $explicitListed = true;
+                $isListed = true;
+            } elseif ($flag === 'pending' || $flag === 'no' || $flag === 'n' || $flag === 'false' || $flag === '0' || self::isPendingOrReviewListingState($flag)) {
+                $isListed = false;
+            }
+        }
+
+        if (! $explicitListed) {
+            $state = (string) ($value['state'] ?? $value['listing_state'] ?? '');
+            if (self::isPendingOrReviewListingState($state)) {
+                $isListed = false;
+            }
+        }
+
+        return $isListed;
+    }
+
+    /**
      * Uploaded / in-review / unable-to-list is NOT live on the marketplace.
      * Those SKUs may stay in Missing L. "Yes" / live / active must not.
      */
@@ -654,22 +688,7 @@ class ListingCountsEngine
                 if (! is_array($value)) {
                     $value = is_string($value) ? (json_decode($value, true) ?: []) : [];
                 }
-                $listed = $value['listed'] ?? $value['Listed'] ?? null;
-                $isListed = false;
-                if (is_bool($listed)) {
-                    $isListed = $listed;
-                } elseif (is_string($listed)) {
-                    $flag = strtolower(trim($listed));
-                    $isListed = $flag === 'listed' || $flag === 'true' || $flag === 'yes';
-                    if (self::isPendingOrReviewListingState($listed)) {
-                        $isListed = false;
-                    }
-                }
-                $state = (string) ($value['state'] ?? $value['listing_state'] ?? '');
-                if (self::isPendingOrReviewListingState($state)) {
-                    $isListed = false;
-                }
-                if (! $isListed) {
+                if (! self::statusValueIsListed($value)) {
                     return;
                 }
                 $id = trim((string) ($value['listing_id'] ?? $value['item_id'] ?? $sku));

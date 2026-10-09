@@ -7,6 +7,7 @@ use App\Models\DepopListingStatus;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\DepopSheetListingService;
+use App\Support\Marketplace\SheetListingCatalogService;
 use App\Support\Marketplace\ListingChannelCounts;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -54,19 +55,16 @@ class ListingDepopController extends Controller
             'seller_link' => 'nullable|string',
         ]);
 
-        $sku = trim((string) $validated['sku']);
-        $status = DepopListingStatus::where('sku', $sku)->first();
-        $existing = $status && is_array($status->value) ? $status->value : [];
-
+        $fields = [];
         foreach (['nr_req', 'listed', 'buyer_link', 'seller_link'] as $field) {
-            if ($request->has($field)) {
-                $existing[$field] = $validated[$field] ?? '';
+            if ($request->exists($field)) {
+                $fields[$field] = $validated[$field] ?? '';
             }
         }
 
-        DepopListingStatus::updateOrCreate(['sku' => $sku], ['value' => $existing]);
+        $counts = app(SheetListingCatalogService::class)->saveStatusFields('depop', trim((string) $validated['sku']), $fields);
 
-        return response()->json(['status' => 'success']);
+        return response()->json(['status' => 'success', 'counts' => $counts]);
     }
 
     public function import(Request $request): JsonResponse
@@ -77,7 +75,7 @@ class ListingDepopController extends Controller
 
         try {
             $result = app(DepopSheetListingService::class)->importUploadedCatalog($request->file('file'));
-            $counts = ListingChannelCounts::forChannel('depop', false);
+            $counts = $result['counts'] ?? ListingChannelCounts::forChannel('depop', false);
 
             return response()->json([
                 'success' => true,

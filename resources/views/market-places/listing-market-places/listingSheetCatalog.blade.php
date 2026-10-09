@@ -74,6 +74,20 @@ document.addEventListener('DOMContentLoaded', function () {
         return { headerFilter: 'input' };
     }
 
+    function applyCounts(counts) {
+        if (!counts) return;
+        const set = function (id, value) {
+            const el = document.getElementById(id);
+            if (el && value !== undefined && value !== null) {
+                el.textContent = Number(value).toLocaleString('en-US');
+            }
+        };
+        set('sheet-req', counts.REQ);
+        set('sheet-nrl', counts.NRL);
+        set('sheet-listed', counts.Listed);
+        set('sheet-missing', counts.Pending);
+    }
+
     function saveListed(cell) {
         const sku = String((cell.getRow().getData() || {}).sku || '');
         const listed = String(cell.getValue() || '');
@@ -95,6 +109,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 alert((res.data && (res.data.message || res.data.error)) || 'Could not save Listed.');
                 return;
             }
+            applyCounts(res.data && res.data.counts);
             if (table) table.refreshFilter();
         })
         .catch(function () {
@@ -178,6 +193,7 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
         .then(function (res) {
+            applyCounts(res.data && res.data.counts);
             alert((res.data && res.data.message) || (res.ok ? 'Imported' : 'Import failed'));
             if (res.data && res.data.success) location.reload();
         })

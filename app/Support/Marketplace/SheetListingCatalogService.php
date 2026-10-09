@@ -2,11 +2,9 @@
 
 namespace App\Support\Marketplace;
 
-use App\Http\Controllers\MarketPlace\MissingListingController;
 use App\Models\ProductMaster;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -91,8 +89,8 @@ class SheetListingCatalogService
             ];
         }
 
-        $this->replaceListedCatalog($statusClass, $listedCanonical);
-        $this->forgetListingCaches($slug);
+        $this->replaceListedCatalog($statusClass, $listedCanonical, $masterByKey);
+        $counts = $this->refreshMissingListing($slug);
 
         $listed = count($listedCanonical);
         $label = $cfg['label'];
@@ -102,37 +100,105 @@ class SheetListingCatalogService
             'listed' => $listed,
             'skipped' => $skipped,
             'unmatched' => $unmatched,
+            'counts' => $counts,
             'message' => $label.' sheet imported. Matched '.$listed.' CP Master SKUs'
                 .($unmatched > 0 ? ', '.$unmatched.' sheet SKUs not in CP Master' : '')
-                .'. Missing Listing is CP Master minus this sheet.',
+                .'. Listed is now '.number_format((int) ($counts['Listed'] ?? 0))
+                .'. Missing L is now '.number_format((int) ($counts['Pending'] ?? 0))
+                .' (CP Master REQ with stock that is not Listed).',
         ];
+    }
+
+    /**
+     * Manual Listed / Pending on the listing page. The SKU is the CP Master SKU.
+     *
+     * @param  array<string, mixed>  $fields
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
+     */
+    public function saveStatusFields(string $channel, string $sku, array $fields): array
+    {
+        $slug = ListingChannelCounts::normalize($channel);
+        $cfg = SheetListingCatalog::get($slug);
+        if ($cfg === null) {
+            throw new \InvalidArgumentException('Unknown sheet listing channel: '.$channel);
+        }
+
+        $statusClass = $cfg['status'];
+        $table = (new $statusClass)->getTable();
+        if (! Schema::hasTable($table)) {
+            throw new \RuntimeException($table.' is not ready. Run migrations.');
+        }
+
+        $sku = trim($sku);
+        $exact = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('sku', $sku)
+            ->value('sku');
+        $canonical = is_string($exact) && trim($exact) !== ''
+            ? trim($exact)
+            : ($this->canonicalMasterSku($sku, $this->productMasterLookup()) ?? $sku);
+
+        $status = $statusClass::query()->where('sku', $canonical)->first()
+            ?: $statusClass::query()->where('sku', $sku)->first();
+        $value = $status && is_array($status->value) ? $status->value : [];
+
+        foreach (['nr_req', 'listed', 'buyer_link', 'seller_link'] as $field) {
+            if (array_key_exists($field, $fields)) {
+                $value[$field] = $fields[$field] ?? '';
+            }
+        }
+
+        if (array_key_exists('listed', $fields)) {
+            $isListed = ListingCountsEngine::statusValueIsListed(['listed' => $fields['listed']]);
+            $value['listed'] = $isListed ? 'Listed' : 'Pending';
+            unset($value['state'], $value['listing_state']);
+            if ($isListed && trim((string) ($value['listing_id'] ?? '')) === '') {
+                $value['listing_id'] = $canonical;
+            }
+        }
+
+        $statusClass::updateOrCreate(['sku' => $canonical], ['value' => $value]);
+
+        return $this->refreshMissingListing($slug);
     }
 
     /**
      * @param  class-string<Model>  $statusClass
      * @param  array<string, array{sku: string, listing_id: string, buyer_link: string, seller_link: string}>  $listedCanonical
+     * @param  array<string, string>  $masterByKey
      */
-    private function replaceListedCatalog(string $statusClass, array $listedCanonical): void
+    private function replaceListedCatalog(string $statusClass, array $listedCanonical, array $masterByKey): void
     {
         $existing = $statusClass::query()->get();
         $seen = [];
 
         foreach ($existing as $row) {
             $sku = trim((string) $row->sku);
+            $canonical = $this->canonicalMasterSku($sku, $masterByKey) ?? $sku;
             $value = is_array($row->value) ? $row->value : [];
-            if (isset($listedCanonical[$sku])) {
-                $incoming = $listedCanonical[$sku];
+            unset($value['state'], $value['listing_state']);
+            if (isset($listedCanonical[$canonical])) {
+                $incoming = $listedCanonical[$canonical];
                 $value['listed'] = 'Listed';
-                $value['listing_id'] = $incoming['listing_id'];
+                $value['listing_id'] = $incoming['listing_id'] !== '' ? $incoming['listing_id'] : $canonical;
                 if ($incoming['buyer_link'] !== '') {
                     $value['buyer_link'] = $incoming['buyer_link'];
                 }
                 if ($incoming['seller_link'] !== '') {
                     $value['seller_link'] = $incoming['seller_link'];
                 }
+                if ($sku !== $canonical) {
+                    $taken = $statusClass::query()
+                        ->where('sku', $canonical)
+                        ->where('id', '!=', $row->id)
+                        ->exists();
+                    if (! $taken) {
+                        $row->sku = $canonical;
+                    }
+                }
                 $row->value = $value;
                 $row->save();
-                $seen[$sku] = true;
+                $seen[$canonical] = true;
                 continue;
             }
 
@@ -331,14 +397,15 @@ class SheetListingCatalogService
         return null;
     }
 
-    private function forgetListingCaches(string $slug): void
+    /**
+     * @return array{REQ: int, NRL: int, Listed: int, Pending: int}
+     */
+    private function refreshMissingListing(string $slug): array
     {
         try {
-            Cache::forget('listing_channel_counts_v2:inv:'.$slug);
-            Cache::forget('listing_channel_counts_v2:cp:'.$slug);
-            Cache::forget(MissingListingController::PAGE_CACHE_KEY);
+            return ListingChannelCounts::refreshChannelOnMissingListingPage($slug);
         } catch (\Throwable $e) {
-            // ignore
+            return ListingChannelCounts::forChannel($slug, false);
         }
     }
 }
