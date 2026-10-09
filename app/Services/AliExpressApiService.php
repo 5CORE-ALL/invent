@@ -3401,10 +3401,10 @@ class AliExpressApiService
 
         $sku = $resolved !== trim($productId) ? trim($productId) : '';
         $single = $this->editSimpleProductFieldCompletingPackage($resolved, 'subject', $title, $sku);
-        if (! empty($single['success'])) {
-            return $single;
-        }
-        $last = $single;
+                if (! empty($single['success'])) {
+                    return $single;
+                }
+                $last = $single;
 
         $pkg = $this->aliexpressPackageSizeFields($resolved, $sku);
         $weight = (string) ($pkg['weight'] ?? '0.5');
@@ -4669,7 +4669,7 @@ class AliExpressApiService
 
         foreach (['json', 'object'] as $weightKind) {
             $edit = array_merge([
-                'product_id' => (string) $productId,
+            'product_id' => (string) $productId,
                 'multi_language_description_list' => [[
                     'language' => 'en',
                     'mobile_detail' => $html,
@@ -4678,12 +4678,12 @@ class AliExpressApiService
             ], $this->aliexpressPackageEditFields($productId, $weightKind, $sku));
             $encoded = $this->encodeRequestPayload($edit);
             $res = $this->callRestGateway('aliexpress.solution.product.edit', ['edit_product_request' => $encoded]);
-            if (! empty($res['success'])) {
-                return [
-                    'success' => true,
+        if (! empty($res['success'])) {
+            return [
+                'success' => true,
                     'message' => $okMessage,
-                    'data' => $res['data'] ?? $res['result'] ?? null,
-                ];
+                'data' => $res['data'] ?? $res['result'] ?? null,
+            ];
             }
             $last = $this->preferAliExpressError($last, $res);
             $editMessage = (string) ($res['message'] ?? '');
@@ -6667,9 +6667,9 @@ class AliExpressApiService
         $skuCode = $row && $row->sku ? (string) $row->sku : $trim;
 
         $single = $this->editSimpleProductFieldCompletingPackage($productId, 'imageURLs', $joined, $skuCode);
-        if (! empty($single['success'])) {
-            return $this->finishChannelImageUpdate($row, $trim, $images, $single);
-        }
+                if (! empty($single['success'])) {
+                    return $this->finishChannelImageUpdate($row, $trim, $images, $single);
+                }
         $singleMessage = (string) ($single['message'] ?? '');
 
         $lastMessage = $singleMessage !== '' && ! $this->isSignatureError($single)
@@ -6677,7 +6677,7 @@ class AliExpressApiService
             : $this->channelLabel.' image update failed.';
         foreach (['json', 'object'] as $weightKind) {
             $package = $this->aliexpressPackageEditFields($productId, $weightKind, $skuCode);
-            $attempts = [
+        $attempts = [
                 array_merge(['product_id' => $productId, 'main_image_urls_list' => $images], $package),
                 array_merge(['product_id' => $productId, 'image_u_r_ls' => $joined, 'main_image_url' => $primary], $package),
                 array_merge(['product_id' => $productId, 'image_urls' => $images, 'main_image_url' => $primary], $package),
@@ -6687,16 +6687,16 @@ class AliExpressApiService
                 ], $package),
             ];
             $sawWeightRequired = false;
-            foreach ($attempts as $editRequest) {
-                $encoded = $this->encodeRequestPayload($editRequest);
-                $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
-                    'rest' => ['edit_product_request' => $encoded],
-                    'sync' => ['edit_product_request' => $encoded],
-                ]);
-                if (! empty($res['success'])) {
-                    return $this->finishChannelImageUpdate($row, $trim, $images, $res);
-                }
-                $lastMessage = (string) ($res['message'] ?? $lastMessage);
+        foreach ($attempts as $editRequest) {
+            $encoded = $this->encodeRequestPayload($editRequest);
+            $res = $this->callApiFlexible('aliexpress.solution.product.edit', [
+                'rest' => ['edit_product_request' => $encoded],
+                'sync' => ['edit_product_request' => $encoded],
+            ]);
+            if (! empty($res['success'])) {
+                return $this->finishChannelImageUpdate($row, $trim, $images, $res);
+            }
+            $lastMessage = (string) ($res['message'] ?? $lastMessage);
                 if (str_contains($lastMessage, 'CHK_BASIC_REQUIRED')) {
                     $sawWeightRequired = true;
                 }

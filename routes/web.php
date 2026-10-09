@@ -434,6 +434,14 @@ Route::controller(GoogleYoutubeAdsCampaignsController::class)->group(function ()
 Route::get('/barcode-image', [MastersBarcodeController::class, 'publicIndex'])->name('barcode.image');
 Route::get('/barcode-image-data', [MastersBarcodeController::class, 'getData'])->name('barcode.image.data');
 
+// 5Core Drive — public "anyone with the link" pages and direct file URLs (usable in listings).
+Route::controller(\App\Http\Controllers\DriveController::class)->prefix('drive/s/{token}')->where(['token' => '[A-Za-z0-9]{20,64}'])->name('drive.public.')->group(function () {
+    Route::get('/', 'publicShow')->name('show');
+    Route::get('/download', 'publicZip')->name('download');
+    Route::get('/raw/{filename?}', 'publicRaw')->where('filename', '[^/]+')->name('raw');
+    Route::get('/f/{uuid}/{filename?}', 'publicChild')->where('filename', '[^/]+')->name('child');
+});
+
 // Supplier Portal — public (no login). Share /supplier-portal with suppliers.
 Route::get('/supplier-portal', [\App\Http\Controllers\SupplierPortalController::class, 'index'])->name('supplier-portal.index');
 Route::get('/supplier-portal/file/{asset}', [\App\Http\Controllers\SupplierPortalController::class, 'show'])->name('supplier-portal.show');
@@ -1149,8 +1157,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inv-under-30-days/data', [\App\Http\Controllers\ProductMaster\InvUnder30DaysController::class, 'getData'])->name('inv.under.30.days.data');
     Route::get('/inv-days', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'index'])->name('inv.days');
     Route::get('/inv-days/data', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'getData'])->name('inv.days.data');
-    Route::get('/inv-days/age-map', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'ageMap'])->name('inv.days.age-map');
-    Route::get('/inv-days/amazon-std-map', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'amazonStdMap'])->name('inv.days.amazon-std-map');
     Route::post('/inv-days/clearance', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'toggleClearance'])->name('inv.days.clearance');
     Route::post('/inv-days/clearance/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkClearance'])->name('inv.days.clearance.bulk');
     Route::post('/inv-days/nrp/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkNrp'])->name('inv.days.nrp.bulk');
@@ -1158,12 +1164,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inv-days/clearance/yes', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'clearanceYesSkus'])->name('inv.days.clearance.yes');
     Route::get('/inv-change-L30', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'index'])->name('inv.change.l30');
     Route::get('/inv-change-L30/data', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'getData'])->name('inv.change.l30.data');
-    Route::get('/inv-management-5core', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'index'])->name('inv.management.5core');
-    Route::get('/inv-management-5core/data', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'data'])->name('inv.management.5core.data');
-    Route::post('/inv-management-5core/seed', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'seed'])->name('inv.management.5core.seed');
-    Route::post('/inv-management-5core/record-sales', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'recordSales'])->name('inv.management.5core.sales');
-    Route::post('/inv-management-5core/adjust', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'adjust'])->name('inv.management.5core.adjust');
-    Route::get('/inv-management-5core/history', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'history'])->name('inv.management.5core.history');
     Route::redirect('/inv-change-seven-days', '/inv-change-L30');
     Route::get('/sku-adjustment-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory'])->name('sku-adjustment-history');
     Route::get('/shopify-inventory-history-url', [VerificationAdjustmentController::class, 'getShopifyInventoryHistoryUrl']);
@@ -3639,6 +3639,38 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/chat/health-event', 'healthEvent')->name('chat.health-event');
     });
 
+    Route::controller(\App\Http\Controllers\DriveController::class)->middleware('auth')->prefix('drive')->name('drive.')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/api/list', 'list')->name('list');
+        Route::get('/api/stats', 'stats')->name('stats');
+        Route::get('/api/folders', 'folders')->name('folders');
+        Route::get('/api/users', 'users')->name('users');
+        Route::post('/api/folders', 'createFolder')->name('folders.store');
+        Route::post('/api/text-files', 'createTextFile')->name('text.store');
+        Route::post('/api/upload', 'upload')->name('upload');
+        Route::post('/api/items/move', 'move')->name('move');
+        Route::post('/api/items/copy', 'copy')->name('copy');
+        Route::post('/api/items/star', 'star')->name('star');
+        Route::post('/api/items/trash', 'trash')->name('trash');
+        Route::post('/api/items/restore', 'restore')->name('restore');
+        Route::post('/api/items/delete', 'destroy')->name('destroy');
+        Route::post('/api/items/links', 'bulkLinks')->name('links');
+        Route::post('/api/trash/empty', 'emptyTrash')->name('trash.empty');
+        Route::get('/api/items/{uuid}', 'show')->name('show');
+        Route::post('/api/items/{uuid}/rename', 'rename')->name('rename');
+        Route::post('/api/items/{uuid}/meta', 'updateMeta')->name('meta');
+        Route::get('/api/items/{uuid}/content', 'content')->name('content');
+        Route::post('/api/items/{uuid}/content', 'saveContent')->name('content.save');
+        Route::post('/api/items/{uuid}/share', 'share')->name('share');
+        Route::post('/api/items/{uuid}/share/{share}/role', 'updateShare')->whereNumber('share')->name('share.role');
+        Route::post('/api/items/{uuid}/share/{share}/remove', 'removeShare')->whereNumber('share')->name('share.remove');
+        Route::post('/api/items/{uuid}/link', 'linkAccess')->name('link');
+        Route::post('/api/items/{uuid}/versions/{version}/restore', 'restoreVersion')->whereNumber('version')->name('version.restore');
+        Route::get('/file/{uuid}', 'file')->name('file');
+        Route::get('/file/{uuid}/versions/{version}', 'versionFile')->whereNumber('version')->name('version.file');
+        Route::get('/zip', 'zip')->name('zip');
+    });
+
     Route::controller(\App\Http\Controllers\ChatHealthController::class)->middleware('auth')->group(function () {
         Route::get('/chat/health', 'index')->name('chat.health');
         Route::get('/chat/health/data', 'data')->name('chat.health.data');
@@ -4325,8 +4357,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // LMP Overall — parent/SKU inventory with Amz, eBay, Temu, and Google LMP
     Route::get('/lmp-overall', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'index'])->name('lmp.overall');
     Route::get('/lmp-overall/data', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'data'])->name('lmp.overall.data');
-    Route::get('/lmp-overall/sku-metrics', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'skuMetrics'])->name('lmp.overall.sku-metrics');
-    Route::post('/lmp-overall/channel-sales', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'channelSales'])->name('lmp.overall.channel-sales');
     Route::post('/lmp-overall/save', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'save'])->name('lmp.overall.save');
 
     // Std pricing — parent/SKU inventory, ovl30, dil, and Amazon Std Price

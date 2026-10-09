@@ -1256,7 +1256,7 @@ XML;
         $rows = [];
         foreach (array_values($urls) as $i => $mediaUrl) {
             $row = [
-                'supplierPartNumber' => $sku,
+                        'supplierPartNumber' => $sku,
                 'mediaUrl' => $mediaUrl,
                 'mediaType' => $mediaType,
             ];

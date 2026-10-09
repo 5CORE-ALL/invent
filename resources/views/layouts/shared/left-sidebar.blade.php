@@ -105,6 +105,13 @@
                 </div>
             </li>
 
+            <li class="side-nav-item">
+                <a href="{{ route('drive.index') }}" class="side-nav-link {{ request()->routeIs('drive.*') ? 'active' : '' }}">
+                    <i class="ri-hard-drive-2-line"></i>
+                    <span>5Core Drive</span>
+                </a>
+            </li>
+
             @can('social_media.view')
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#socialMediaGroup" aria-expanded="{{ request()->routeIs('social-media.*') ? 'true' : 'false' }}"
@@ -749,9 +756,6 @@
                         </li>
                         <li>
                             <a href="{{ route('inv.change.l30') }}">Inv Change L30</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('inv.management.5core') }}">INV Management 5Core</a>
                         </li>
                         {{-- <li>
                             <a href="{{ route('inventory.manage.index') }}">
