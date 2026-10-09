@@ -1250,6 +1250,19 @@
                 const drive = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
                 if (drive) return { type: 'image', src: 'https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w640' };
 
+                // 5Core Drive share page (/drive/s/TOKEN) or its direct file URL.
+                // The page itself is not a video file; the poster is the first
+                // frame of /drive/s/TOKEN/raw, same as the share screen.
+                const ownDrive = path.match(/\/drive\/s\/([A-Za-z0-9]{20,64})(?:\/(.*))?$/);
+                if (ownDrive && (host === 'inventory.5coremanagement.com' || host.endsWith('.5coremanagement.com') || host === 'localhost' || host === location.hostname.replace(/^www\./i, '').toLowerCase())) {
+                    const rest = ownDrive[2] || '';
+                    if (imageExt) return { type: 'image', src: parsed.pathname + parsed.search };
+                    if (/^(raw|f)(\/|$)/i.test(rest) || videoExt) {
+                        return { type: 'video', proxy: false, src: parsed.pathname + parsed.search };
+                    }
+                    return { type: 'video', proxy: false, src: '/drive/s/' + ownDrive[1] + '/raw' };
+                }
+
                 if (dropbox && /\/scl\/fo\//i.test(path) && !videoExt && !imageExt) {
                     const hooks = parseTags(row && row.hook_name).map(displayHookName).join('|');
                     return {
@@ -1372,6 +1385,7 @@
             document.addEventListener('loadedmetadata', (e) => {
                 const video = e.target;
                 if (!video || video.tagName !== 'VIDEO' || !video.closest('.vam-thumb-box')) return;
+                if (video.videoHeight > video.videoWidth) video.style.objectFit = 'contain';
                 if (video.currentTime < 0.05) {
                     try { video.currentTime = 0.2; } catch (err) {}
                 }
