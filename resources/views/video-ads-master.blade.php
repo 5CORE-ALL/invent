@@ -770,7 +770,6 @@
 
             function addCreatorSelect(row) {
                 const slots = creatorSlots(row.getData()).slice();
-                if (slots.some(c => !Number(c.user_id))) return;
                 slots.push({ user_id: '' });
                 row.update({ creators: slots });
             }
@@ -783,11 +782,14 @@
                 if (!el) return;
                 const seen = new Set();
                 const userIds = [];
+                let blanks = 0;
                 el.querySelectorAll('.vam-creator-select').forEach(sel => {
                     const id = Number(sel.value);
                     if (id > 0 && !seen.has(id)) {
                         seen.add(id);
                         userIds.push(id);
+                    } else if (!(id > 0)) {
+                        blanks += 1;
                     }
                 });
 
@@ -806,7 +808,9 @@
                         showToast((j && j.message) || 'Failed to save creator', 'error');
                         return;
                     }
-                    row.update({ creators: j.creators || [] });
+                    const saved = j.creators || [];
+                    const extras = Array.from({ length: blanks }, () => ({ user_id: '' }));
+                    row.update({ creators: saved.concat(extras) });
                 })
                 .catch(e => { console.error(e); showToast('Network error while saving creator', 'error'); });
             }
