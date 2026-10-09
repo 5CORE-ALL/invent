@@ -502,14 +502,15 @@ function dilSbidRollupRow(listingKey) {
     let inv = 0, qty = 0, views = 0, l30 = 0, l60 = 0, l7 = 0;
     let stdSum = 0, stdN = 0, lpSum = 0, shipSum = 0, costN = 0;
     kids.forEach(function(d) {
+        // INV / OV L30 are per SKU. Views / eBay sold / L7 are listing-level (copied onto each variation).
         inv += (typeof chPromoShopifyInv === 'function') ? chPromoShopifyInv(d) : (Number(d.INV) || Number(d.shopify_inv) || 0);
         qty += (typeof chPromoOvL30 === 'function') ? chPromoOvL30(d) : (Number(d.L30) || Number(d.shopify_qty) || 0);
-        views += parseFloat(d.views) || 0;
+        views = Math.max(views, parseFloat(d.views) || 0);
         const soldRaw = (d.metric_ebay_l30 != null && d.metric_ebay_l30 !== '') ? d.metric_ebay_l30 : d['eBay L30'];
         const l60Raw = (d.metric_ebay_l60 != null && d.metric_ebay_l60 !== '') ? d.metric_ebay_l60 : d['eBay L60'];
-        l30 += parseFloat(soldRaw) || 0;
-        l60 += parseFloat(l60Raw) || 0;
-        l7 += parseFloat(d.l7_views) || 0;
+        l30 = Math.max(l30, parseFloat(soldRaw) || 0);
+        l60 = Math.max(l60, parseFloat(l60Raw) || 0);
+        l7 = Math.max(l7, parseFloat(d.l7_views) || 0);
         const std = parseFloat(d.STANDARD_PRICE);
         if (std > 0) {
             stdSum += std;

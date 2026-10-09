@@ -34,11 +34,27 @@ class DilVsSbidListingRollupTest extends TestCase
 
         $this->assertSame(6.0, $out['quantity']);
         $this->assertSame(20.0, $out['inv']);
-        $this->assertSame(100.0, $out['views']);
-        $this->assertSame(8.0, $out['ebay_l30']);
-        $this->assertSame(8.0, $out['ebay_l60']);
-        $this->assertSame(40.0, $out['l7_views']);
+        $this->assertSame(80.0, $out['views']);
+        $this->assertSame(6.0, $out['ebay_l30']);
+        $this->assertSame(5.0, $out['ebay_l60']);
+        $this->assertSame(30.0, $out['l7_views']);
         $this->assertSame(15.0, $out['npft']);
         $this->assertSame(30.0, CpMasterDil::slabPercent($out['quantity'], $out['inv']));
+    }
+
+    public function test_listing_metrics_are_not_tripled_when_copied_onto_each_variation(): void
+    {
+        $out = DilVsSbidListingRollup::combine([
+            ['sku' => 'RED', 'quantity' => 1, 'inv' => 5, 'views' => 40, 'ebay_l30' => 12, 'ebay_l60' => 8, 'l7_views' => 9, 'npft' => 10.0],
+            ['sku' => 'BLUE', 'quantity' => 2, 'inv' => 5, 'views' => 40, 'ebay_l30' => 12, 'ebay_l60' => 8, 'l7_views' => 9, 'npft' => 10.0],
+            ['sku' => 'GREEN', 'quantity' => 3, 'inv' => 5, 'views' => 40, 'ebay_l30' => 12, 'ebay_l60' => 8, 'l7_views' => 9, 'npft' => 10.0],
+        ]);
+
+        $this->assertSame(6.0, $out['quantity']);
+        $this->assertSame(15.0, $out['inv']);
+        $this->assertSame(40.0, $out['views']);
+        $this->assertSame(12.0, $out['ebay_l30']);
+        $this->assertSame(8.0, $out['ebay_l60']);
+        $this->assertSame(9.0, $out['l7_views']);
     }
 }

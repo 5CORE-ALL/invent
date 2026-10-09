@@ -4,8 +4,10 @@ namespace App\Support;
 
 /**
  * One Dil vs SBid input set per eBay listing (item_id).
- * Variation SKUs share that listing, so Dil / views / sold are summed
- * and Std NPFT % is the average of SKUs that have a Std Prc.
+ * INV / OV L30 are per SKU and are summed (family Dil).
+ * Views, eBay sold and L7 views are listing-level on eBay 2 — the same
+ * number is stored on every variation — so those use one copy, not a sum.
+ * Std NPFT % is the average of SKUs that have a Std Prc.
  */
 final class DilVsSbidListingRollup
 {
@@ -42,10 +44,10 @@ final class DilVsSbidListingRollup
                 $inv += (float) $m['inv'];
                 $hasInv = true;
             }
-            $views += (float) ($m['views'] ?? 0);
-            $l30 += (float) ($m['ebay_l30'] ?? 0);
-            $l60 += (float) ($m['ebay_l60'] ?? 0);
-            $l7 += (float) ($m['l7_views'] ?? 0);
+            $views = max($views, (float) ($m['views'] ?? 0));
+            $l30 = max($l30, (float) ($m['ebay_l30'] ?? 0));
+            $l60 = max($l60, (float) ($m['ebay_l60'] ?? 0));
+            $l7 = max($l7, (float) ($m['l7_views'] ?? 0));
             if (isset($m['npft']) && is_numeric($m['npft'])) {
                 $npftSum += (float) $m['npft'];
                 $npftN++;
