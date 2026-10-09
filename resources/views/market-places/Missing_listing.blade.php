@@ -149,6 +149,7 @@
             text-decoration: none;
         }
         .tabulator .tabulator-cell.tabulator-editing { padding: 2px 4px; }
+        #mlChartContainer .ml-chart-plot { flex: 1; min-width: 0; height: 100%; position: relative; }
 
         /* Metric history modal — same full-width layout as Active Channel */
         #mlMetricChartModal.modal {
@@ -192,7 +193,25 @@
                     <input type="text" id="missing-listing-search" class="form-control form-control-sm" placeholder="Search by Channel...">
                     <input type="file" id="ml-sheet-csv-input" accept=".csv,text/csv,text/plain" hidden>
                 </div>
-                <div id="missing-listing-table" style="height: calc(100vh - 280px);"></div>
+                <div class="px-2 py-2 border-bottom bg-white">
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                        <h6 class="mb-0" style="font-size: 13px;">Missing Listing history</h6>
+                        <select id="mlOverallRange" class="form-select form-select-sm" style="width: 110px; height: 26px; font-size: 11px;">
+                            <option value="7">7 Days</option>
+                            <option value="30">30 Days</option>
+                            <option value="32" selected>32 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                    </div>
+                    <div id="mlOverallLoading" class="text-muted small py-4 text-center">Loading history…</div>
+                    <div id="mlOverallEmpty" class="text-muted small py-4 text-center" style="display: none;">No Missing Listing history yet.</div>
+                    <div id="mlOverallPlot" style="height: 180px; position: relative; display: none;">
+                        <canvas id="mlOverallChart"></canvas>
+                    </div>
+                </div>
+                <div id="missing-listing-table" style="height: calc(100vh - 480px);"></div>
             </div>
         </div>
     </div>
@@ -221,7 +240,7 @@
                 </div>
                 <div class="modal-body p-2">
                     <div id="mlChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
-                        <div style="flex: 1; min-width: 0; position: relative;">
+                        <div class="ml-chart-plot">
                             <canvas id="mlMetricChart"></canvas>
                         </div>
                         <div id="mlChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
@@ -268,6 +287,9 @@
     let mlCurrentMetricKey = 'missing_l';
     let mlCurrentChartDays = 32;
     let mlCurrentBadgeValue = null;
+    let mlOverallChartInstance = null;
+    let mlOverallDays = 32;
+    let mlOverallAjax = null;
 
     function updateStats(rows, totalMissingL) {
         if (totalMissingL !== undefined && totalMissingL !== null && !isNaN(Number(totalMissingL))) {
@@ -330,10 +352,10 @@
 
     function showMlMetricChart(channel, cellValue) {
         mlCurrentChartDisplayChannel = String(channel || 'All');
-        mlCurrentChartChannel = mlCurrentChartDisplayChannel.toLowerCase().replace(/[^a-z0-9]/g, '');
+        mlCurrentChartChannel = mlCurrentChartDisplayChannel;
         mlCurrentMetricKey = 'missing_l';
         mlCurrentChartDays = 32;
-        mlCurrentBadgeValue = (mlCurrentChartDisplayChannel === 'All' && cellValue !== undefined && cellValue !== null && !isNaN(cellValue))
+        mlCurrentBadgeValue = (cellValue !== undefined && cellValue !== null && cellValue !== '' && !isNaN(cellValue))
             ? cellValue
             : null;
 
@@ -373,7 +395,7 @@
             $('#mlChartLoading').hide();
 
             if (response.success !== false && response.data && response.data.length > 0) {
-                $('#mlChartContainer').show();
+                $('#mlChartContainer').css('display', 'flex');
                 renderMlMetricChart(response.data);
             } else {
                 $('#mlChartNoData').show();
@@ -609,6 +631,88 @@
     $(document).ready(function() {
         $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' } });
 
+        function loadOverallHistory() {
+            if (mlOverallAjax) mlOverallAjax.abort();
+            const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
+            const badgeValue = parseFloat(badgeText);
+            $('#mlOverallEmpty').hide();
+            $('#mlOverallPlot').hide();
+            $('#mlOverallLoading').show();
+            const params = { channel: 'All', metric: 'missing_l', days: mlOverallDays };
+            if (!isNaN(badgeValue)) params.badge_value = badgeValue;
+            mlOverallAjax = $.ajax({
+                url: "{{ route('missing.listing.chart.data') }}",
+                method: 'GET',
+                data: params,
+            }).done(function(response) {
+                mlOverallAjax = null;
+                $('#mlOverallLoading').hide();
+                if (response && response.success !== false && response.data && response.data.length > 0) {
+                    $('#mlOverallPlot').show();
+                    renderOverallHistory(response.data);
+                } else {
+                    $('#mlOverallEmpty').show();
+                }
+            }).fail(function(_xhr, status) {
+                mlOverallAjax = null;
+                if (status === 'abort') return;
+                $('#mlOverallLoading').hide();
+                $('#mlOverallEmpty').show();
+            });
+        }
+
+        function renderOverallHistory(data) {
+            const canvas = document.getElementById('mlOverallChart');
+            if (!canvas || typeof Chart === 'undefined') return;
+            if (mlOverallChartInstance) mlOverallChartInstance.destroy();
+            const labels = data.map(function(d) { return d.date; });
+            const values = data.map(function(d) { return Number(d.value || 0); });
+            mlOverallChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Missing Listing',
+                        data: values,
+                        borderColor: '#a71d2a',
+                        backgroundColor: 'rgba(167, 29, 42, 0.08)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.25,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#a71d2a',
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'Missing Listing: ' + mlFmtVal(context.raw);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { font: { size: 10 }, callback: function(value) { return mlFmtVal(value); } }
+                        },
+                        x: { ticks: { maxRotation: 45, minRotation: 0, font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        loadOverallHistory();
+        $('#mlOverallRange').on('change', function() {
+            mlOverallDays = parseInt($(this).val(), 10) || 0;
+            loadOverallHistory();
+        });
+
         $('#stat-missing-listing').on('click', function() {
             const badgeText = $('#total-missing-listing').text().replace(/[,$%]/g, '').trim();
             const badgeValue = parseFloat(badgeText) || null;
@@ -655,6 +759,7 @@
                 }
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_missing_l);
+                loadOverallHistory();
                 if (response && response.partial && (window.__mlCountsRetries || 0) < 3) {
                     window.__mlCountsRetries = (window.__mlCountsRetries || 0) + 1;
                     setTimeout(function() {
@@ -734,6 +839,26 @@
                         html += `<option value=""${current === '' ? ' selected' : ''}>—</option>`;
                         modes.forEach(function(mode) {
                             html += `<option value="${mode}"${current === mode ? ' selected' : ''}>${mode}</option>`;
+                        });
+                        html += '</select>';
+                        return html;
+                    },
+                },
+                {
+                    title: "Type",
+                    field: "type",
+                    width: 110,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "B2B, B2C, or C2C",
+                    formatter: function(cell) {
+                        const current = String(cell.getValue() || '').trim();
+                        const id = cell.getRow().getData().id;
+                        const types = ['B2B', 'B2C', 'C2C'];
+                        let html = `<select class="ml-mode-select ml-type-select" data-id="${escapeHtml(String(id || ''))}">`;
+                        html += `<option value=""${current === '' ? ' selected' : ''}>—</option>`;
+                        types.forEach(function(type) {
+                            html += `<option value="${type}"${current === type ? ' selected' : ''}>${type}</option>`;
                         });
                         html += '</select>';
                         return html;
@@ -874,13 +999,12 @@
                         return `${countHtml}${chartIcon}`;
                     },
                     cellClick: function(e, cell) {
-                        if (e.target.classList.contains('ml-metric-chart-icon')) {
-                            e.stopPropagation();
-                            if (isSheetRow(cell.getRow().getData())) return;
-                            const channel = $(e.target).data('channel');
-                            const value = Number(cell.getValue() || 0);
-                            showMlMetricChart(channel, value);
-                        }
+                        const icon = e.target.closest ? e.target.closest('.ml-metric-chart-icon') : null;
+                        if (!icon) return;
+                        e.stopPropagation();
+                        const channel = icon.getAttribute('data-channel') || cell.getRow().getData().channel;
+                        const value = Number(cell.getValue() || 0);
+                        showMlMetricChart(channel, value);
                     },
                     bottomCalc: function(values, data) {
                         return (data || []).reduce((sum, row) => {
@@ -964,7 +1088,7 @@
             ],
         });
 
-        $(document).on('mousedown click', '#missing-listing-table .ml-mode-select', function(e) {
+        $(document).on('mousedown click', '#missing-listing-table .ml-mode-select, #missing-listing-table .ml-type-select', function(e) {
             e.stopPropagation();
         });
 
@@ -1003,6 +1127,38 @@
                 showToast(msg, 'error');
                 $select.val(oldValue);
                 applyModeSelectColor($select, oldValue);
+            });
+        });
+
+        $(document).on('change', '#missing-listing-table .ml-type-select', function() {
+            const $select = $(this);
+            const id = $select.data('id');
+            const newValue = String($select.val() || '').trim();
+            const row = table.getRows().find(function(r) {
+                return Number(r.getData().id) === Number(id);
+            });
+            const oldValue = row ? String(row.getData().type || '').trim() : '';
+            if (newValue === '' || newValue === oldValue) {
+                $select.val(oldValue);
+                return;
+            }
+            $.ajax({
+                url: "{{ route('missing.listing.listing.mode.save') }}",
+                method: 'POST',
+                data: { id: id, type: newValue },
+                dataType: 'json',
+            }).done(function(res) {
+                if (res && res.success) {
+                    if (row) row.update({ type: newValue });
+                    showToast(res.message || 'Type updated.', 'success');
+                } else {
+                    showToast((res && res.message) || 'Update failed.', 'error');
+                    $select.val(oldValue);
+                }
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Update failed.';
+                showToast(msg, 'error');
+                $select.val(oldValue);
             });
         });
 

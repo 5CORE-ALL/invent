@@ -64,7 +64,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const csrf = '{{ csrf_token() }}';
-    const channel = @json($channel);
     const importUrl = @json(url('listing_'.$channel.'/import'));
     const dataUrl = @json(url('listing_'.$channel.'/view-data'));
     const saveUrl = @json(url('listing_'.$channel.'/save-status'));
@@ -125,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 layout: 'fitColumns',
                 height: 'calc(100vh - 280px)',
                 placeholder: 'No CP Master SKUs',
-                columns: channel === 'vinted' ? [
+                columns: [
                     Object.assign({ title: 'Parent', field: 'parent', minWidth: 140 }, shortFilter()),
                     Object.assign({ title: 'SKU', field: 'sku', minWidth: 160 }, shortFilter()),
                     Object.assign({ title: 'INV', field: 'INV', width: 90, hozAlign: 'center' }, shortFilter()),
@@ -140,12 +139,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         editorParams: { values: ['Listed', 'Pending'] },
                         cellEdited: saveListed,
                     }, shortFilter()),
-                ] : [
-                    { title: 'SKU', field: 'sku', minWidth: 160, headerFilter: 'input' },
-                    { title: 'INV', field: 'INV', width: 80, hozAlign: 'center' },
-                    { title: 'NR / REQ', field: 'nr_req', width: 110, hozAlign: 'center' },
-                    { title: 'Listed', field: 'listed', width: 110, hozAlign: 'center' },
-                    { title: 'Listing ID', field: 'listing_id', minWidth: 140 },
                 ],
             });
             applyMissingFilter();
