@@ -3521,13 +3521,17 @@ class OverallAmazonController extends Controller
 
     public function amazonTabulatorView(Request $request)
     {
-        // Amazon Ads% (Total Ad Spend / L30 Sales) — same value shown on /all-marketplace-master.
-        $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
-            ->value('ads_percentage');
-        if ($amazonAdsPercent === null) {
-            $amazonAdsPercent = \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')
-                ->value('ads_percentage');
+        // Amazon Ads% (Total Ad Spend / L30 Sales), Ad Sales, and ACOS — same values as /all-marketplace-master.
+        $amazonChannelCols = ['ads_percentage', 'ad_sales', 'acos', 'total_ad_spend', 'y_ad_spend', 'yesterday_sales', 'y_day_sales', 'l30_sales'];
+        $amazonChannelCalc = \App\Models\ChannelMasterCalculatedData::where('channel', 'Amazon')
+            ->first($amazonChannelCols);
+        if ($amazonChannelCalc === null) {
+            $amazonChannelCalc = \App\Models\ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')
+                ->first($amazonChannelCols);
         }
+        $amazonAdsPercent = $amazonChannelCalc?->ads_percentage;
+        $amazonAdSales = $amazonChannelCalc?->ad_sales;
+        $amazonAcosPercent = $amazonChannelCalc?->acos;
 
         // Authoritative 30-day units / sales from real Amazon orders — SAME window + query
         // /amazon/daily-sales uses. Per-SKU A_L30 in getViewAmazonData uses this same window.
@@ -3546,6 +3550,7 @@ class OverallAmazonController extends Controller
         // Authoritative 30-day sales from real Amazon orders — identical to the /amazon/daily-sales
         // "Total Sales" badge (AMAZON_SALES_TOTAL_MODE, default = Ordered Product Sales).
         $amazonSalesL30 = (float) \App\Models\AmazonOrder::badgeTotalSalesByOrderDate($unitsStart, $unitsEnd);
+        $amazonAdBadges = $this->amazonTabulatorAdBadges($amazonChannelCalc, $amazonSalesL30);
 
         // GPFT% / GROI% / NROI% — same real-order PFT + COGS /amazon/daily-sales sums.
         // Do not use sheet Total_pft (today's list price × A_L30); that is why this page
@@ -3559,6 +3564,14 @@ class OverallAmazonController extends Controller
 
         return view("market-places.amazon_tabulator_view", [
             'amazonAdsPercent'   => $amazonAdsPercent,
+            'amazonAdSales'      => $amazonAdSales,
+            'amazonAcosPercent'  => $amazonAcosPercent,
+            'amazonL30Spend'     => $amazonAdBadges['l30_spend'],
+            'amazonYSpend'       => $amazonAdBadges['y_spend'],
+            'amazonYAcosPercent' => $amazonAdBadges['y_acos'],
+            'amazonYSalesPercent' => $amazonAdBadges['y_sales_pct'],
+            'amazonYBgtPercent'  => $amazonAdBadges['y_bgt_pct'],
+            'amazonYUtilizedPercent' => $amazonAdBadges['y_utilized_pct'],
             'amazonUnitsSoldL30' => $amazonUnitsSoldL30,
             'amazonSalesL30'     => $amazonSalesL30,
             'ordersL30Gpft'      => $agg['gpft'],
@@ -3568,6 +3581,145 @@ class OverallAmazonController extends Controller
             'ordersL30Nroi'      => $ordersL30Nroi,
             'shipSlabs'          => app(ShippingSlabRateService::class)->slabDefinitions(),
         ]);
+    }
+
+    /**
+     * Channel-level ad badges for /amazon-tabulator-view.
+     *
+     * L30 spend is All Marketplace Master Total Ad Spend.
+     * Y spend / Y ACOS use the Amazon Ads L1 (yesterday) SP+SB pull.
+     * Y Sales% is yesterday order sales versus the L30 daily average.
+     * Y bgt % is the daily campaign budget versus that same daily average.
+     * Y utilized % is L1 spend ÷ daily budget (the U1% ratio, totaled).
+     *
+     * @return array{l30_spend: float|null, y_spend: float|null, y_acos: float|null, y_sales_pct: float|null, y_bgt_pct: float|null, y_utilized_pct: float|null}
+     */
+    private function amazonTabulatorAdBadges(?\App\Models\ChannelMasterCalculatedData $channel, float $l30OrderSales): array
+    {
+        $blank = [
+            'l30_spend' => null,
+            'y_spend' => null,
+            'y_acos' => null,
+            'y_sales_pct' => null,
+            'y_bgt_pct' => null,
+            'y_utilized_pct' => null,
+        ];
+
+        $l30Spend = $channel !== null && $channel->total_ad_spend !== null
+            ? (float) $channel->total_ad_spend
+            : null;
+        $ySales = null;
+        if ($channel !== null) {
+            if ($channel->yesterday_sales !== null) {
+                $ySales = (float) $channel->yesterday_sales;
+            } elseif ($channel->y_day_sales !== null) {
+                $ySales = (float) $channel->y_day_sales;
+            }
+        }
+        $paceBase = $l30OrderSales > 0
+            ? $l30OrderSales
+            : (float) ($channel?->l30_sales ?? 0);
+        $dailyAvg = $paceBase > 0 ? $paceBase / 30 : 0.0;
+        if ($dailyAvg > 0 && $ySales !== null) {
+            $blank['y_sales_pct'] = round((($dailyAvg - $ySales) / $dailyAvg) * 100, 1);
+        }
+
+        $live = ['l30_spend' => 0.0, 'y_spend' => 0.0, 'y_sales' => 0.0, 'budget' => 0.0, 'found' => false];
+        try {
+            foreach ([
+                'amazon_sp_campaign_reports' => true,
+                'amazon_sb_campaign_reports' => false,
+            ] as $table => $preferSpendCol) {
+                if (! Schema::hasTable($table)) {
+                    continue;
+                }
+                $cols = Schema::getColumnListing($table);
+                if (! in_array('campaign_id', $cols, true) || ! in_array('report_date_range', $cols, true)) {
+                    continue;
+                }
+                $spendExpr = in_array('cost', $cols, true)
+                    ? ($preferSpendCol && in_array('spend', $cols, true) ? 'COALESCE(cost, spend, 0)' : 'COALESCE(cost, 0)')
+                    : (in_array('spend', $cols, true) ? 'COALESCE(spend, 0)' : '0');
+                $salesExpr = in_array('sales1d', $cols, true)
+                    ? 'COALESCE(sales1d, 0)'
+                    : (in_array('sales', $cols, true) ? 'COALESCE(sales, 0)' : '0');
+                $hasBudget = in_array('campaignBudgetAmount', $cols, true);
+                $hasStatus = in_array('campaignStatus', $cols, true);
+
+                $slice = function (string $range) use ($table, $spendExpr, $salesExpr, $hasBudget, $hasStatus): array {
+                    $q = DB::table($table)->where('report_date_range', $range);
+                    if ($hasStatus) {
+                        $q->where(function ($w) {
+                            $w->whereNull('campaignStatus')
+                                ->orWhereRaw("UPPER(TRIM(campaignStatus)) != 'ARCHIVED'");
+                        });
+                    }
+                    $inner = $q->selectRaw('campaign_id')
+                        ->selectRaw('MAX('.$spendExpr.') as spend')
+                        ->selectRaw('MAX('.$salesExpr.') as sales')
+                        ->groupBy('campaign_id');
+                    if ($hasBudget) {
+                        $inner->selectRaw('MAX(CASE WHEN campaignBudgetAmount > 0 THEN campaignBudgetAmount END) as bgt');
+                    }
+                    $sum = DB::query()->fromSub($inner, 'amz_badge_c')
+                        ->selectRaw('COALESCE(SUM(spend), 0) as spend')
+                        ->selectRaw('COALESCE(SUM(sales), 0) as sales');
+                    if ($hasBudget) {
+                        $sum->selectRaw('COALESCE(SUM(bgt), 0) as bgt');
+                    }
+                    $row = $sum->first();
+
+                    return [
+                        'spend' => (float) ($row->spend ?? 0),
+                        'sales' => (float) ($row->sales ?? 0),
+                        'bgt' => $hasBudget ? (float) ($row->bgt ?? 0) : 0.0,
+                    ];
+                };
+
+                $l30 = $slice('L30');
+                $l1 = $slice('L1');
+                $live['found'] = true;
+                $live['l30_spend'] += $l30['spend'];
+                $live['y_spend'] += $l1['spend'];
+                $live['y_sales'] += $l1['sales'];
+                $live['budget'] += $l30['bgt'] > 0 ? $l30['bgt'] : $l1['bgt'];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon tabulator ad badges failed: '.$e->getMessage());
+            $live['found'] = false;
+        }
+
+        if ($l30Spend === null && $live['found']) {
+            $l30Spend = round($live['l30_spend'], 2);
+        }
+        $blank['l30_spend'] = $l30Spend !== null ? round($l30Spend, 2) : null;
+
+        $ySpend = $live['found'] ? round($live['y_spend'], 2) : null;
+        if ($ySpend === null && $channel !== null && $channel->y_ad_spend !== null) {
+            $ySpend = round((float) $channel->y_ad_spend, 2);
+        }
+        $blank['y_spend'] = $ySpend;
+
+        if ($live['found']) {
+            $yAdSales = $live['y_sales'];
+            if ($yAdSales > 0 && $ySpend !== null) {
+                $blank['y_acos'] = round(($ySpend / $yAdSales) * 100, 1);
+            } elseif ($ySpend !== null && $ySpend > 0) {
+                $blank['y_acos'] = 100.0;
+            } elseif ($ySpend !== null) {
+                $blank['y_acos'] = 0.0;
+            }
+            if ($live['budget'] > 0) {
+                if ($dailyAvg > 0) {
+                    $blank['y_bgt_pct'] = round(($live['budget'] / $dailyAvg) * 100, 1);
+                }
+                if ($ySpend !== null) {
+                    $blank['y_utilized_pct'] = round(($ySpend / $live['budget']) * 100, 1);
+                }
+            }
+        }
+
+        return $blank;
     }
 
     public function amazonPricingCvrTabular(Request $request)

@@ -568,6 +568,246 @@
             background: rgba(0, 0, 0, 0.04);
             border-radius: 3px;
         }
+        #amazonAdsBgtRulesModal .modal-dialog {
+            width: calc(100vw - 1.25rem);
+            max-width: calc(100vw - 1.25rem);
+            height: calc(100vh - 1.25rem);
+            max-height: calc(100vh - 1.25rem);
+            margin: 0.625rem auto;
+        }
+        #amazonAdsBgtRulesModal .modal-content {
+            height: 100%;
+            max-height: 100%;
+            border: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+        }
+        #amazonAdsBgtRulesModal .modal-header {
+            background: #fff;
+            border-bottom: 1px solid #e8eef5;
+            padding: 14px 18px;
+        }
+        #amazonAdsBgtRulesModal .modal-title { font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+        #amazonAdsBgtRulesModal .amz-bgt-sub { color: #64748b; font-size: 12px; font-weight: 500; margin-top: 2px; }
+        #amazonAdsBgtRulesModal .modal-body {
+            background: #f4f7fb;
+            overflow: auto;
+            padding: 14px 16px 16px;
+        }
+        #amazonAdsBgtRulesModal .modal-footer {
+            background: #fff;
+            border-top: 1px solid #e8eef5;
+            padding: 10px 16px;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-cols {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+            width: 100%;
+            min-width: 0;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col {
+            flex: 1 1 0;
+            min-width: 240px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #e6edf5;
+            border-radius: 14px;
+            padding: 12px;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+        #amazonAdsBgtRulesModal .amz-bgt-title {
+            font-weight: 700;
+            font-size: 13px;
+            color: #0f172a;
+            letter-spacing: -0.01em;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-min-btn { border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-min-btn:hover { background: #e2e8f0; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min { flex: 0 0 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min > :not(.amz-bgt-col-head) { display: none !important; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+        #amazonAdsBgtRulesModal .amz-bgt-chart { display: flex; flex-direction: column; margin-bottom: 10px; }
+        #amazonAdsBgtRulesModal .amz-bgt-chart-canvas { position: relative; width: 100%; height: 120px; flex: 0 0 120px; }
+        #amazonAdsBgtRulesModal .amz-bgt-chart-canvas canvas { display: block; width: 100% !important; height: 120px !important; }
+        #amazonAdsBgtRulesModal .amz-bgt-legend { width: 100%; font-size: 12px; margin-top: 8px; color: #334155; }
+        #amazonAdsBgtRulesModal .amz-bgt-leg-row {
+            display: grid;
+            grid-template-columns: 8px minmax(0, 1fr) auto auto;
+            gap: 6px;
+            align-items: center;
+            padding: 2px 0;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-leg-row strong { font-variant-numeric: tabular-nums; }
+        #amazonAdsBgtRulesModal .amz-bgt-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
+        #amazonAdsBgtRulesModal .amz-bgt-swatch { width: 8px; height: 8px; border-radius: 50%; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table { font-size: 12px; margin-bottom: 0; border-color: #e8eef5; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table thead th {
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            border-color: #e8eef5;
+            white-space: nowrap;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table th,
+        #amazonAdsBgtRulesModal .amz-bgt-col .table td { padding: 4px 4px; border-color: #eef2f7; vertical-align: middle; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) th:first-child,
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) td:first-child { display: none; }
+        #amazonAdsBgtRulesModal .amz-bgt-sum-table tr.fw-semibold { background: #f8fafc; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .form-control-sm { padding: 2px 4px; font-size: 11px; min-width: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger { padding: 0 6px; line-height: 1.4; }
+        #amazonAdsBgtRulesModal .amz-bgt-add,
+        #amazonAdsBgtRulesModal .amz-bgt-save {
+            width: 100%;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-add { margin-top: 8px; border-style: dashed; }
+        #amazonAdsBgtRulesModal .amz-bgt-save { margin-top: auto; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table-responsive { margin-bottom: 0; }
+        #amazonAdsSbidRuleModal .modal-dialog {
+            width: min(1120px, calc(100vw - 1.25rem));
+            max-width: calc(100vw - 1.25rem);
+            margin: 0.625rem auto;
+        }
+        #amazonAdsSbidRuleModal .modal-content {
+            border: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+        }
+        #amazonAdsSbidRuleModal .modal-header {
+            background: #fff;
+            border-bottom: 1px solid #e8eef5;
+            padding: 14px 18px;
+        }
+        #amazonAdsSbidRuleModal .modal-title { font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+        #amazonAdsSbidRuleModal .amz-sbid-sub { color: #64748b; font-size: 12px; font-weight: 500; margin-top: 2px; }
+        #amazonAdsSbidRuleModal .modal-body { background: #f4f7fb; padding: 14px 16px 16px; }
+        #amazonAdsSbidRuleModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; padding: 10px 16px; }
+        #amazonAdsSbidRuleModal .amz-sbid-thresholds {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            border: 1px solid #e6edf5;
+            border-radius: 14px;
+            background: #fff;
+            font-size: 13px;
+            color: #334155;
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-thresholds label { font-weight: 600; margin: 0; }
+        #amazonAdsSbidRuleModal .amz-sbid-thresholds .form-control {
+            width: 88px;
+            min-width: 88px;
+            max-width: 88px;
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-cols {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-col {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #e6edf5;
+            border-radius: 14px;
+            padding: 12px;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-col-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            margin: -12px -12px 10px;
+            padding: 10px 12px;
+            background: #fff;
+            border-bottom: 1px solid #e8eef5;
+            border-radius: 14px 14px 0 0;
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-title { font-weight: 700; font-size: 14px; color: #0f172a; letter-spacing: -0.01em; }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="below"] .amz-sbid-col-head,
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="above"] .amz-sbid-col-head { justify-content: center; }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="below"] .amz-sbid-title,
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="above"] .amz-sbid-title {
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="below"] .amz-sbid-title { background: #dc2626; }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="above"] .amz-sbid-title { background: #ec4899; }
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="below"] .amz-sbid-min-btn,
+        #amazonAdsSbidRuleModal .amz-sbid-col[data-amz-sbid-panel="above"] .amz-sbid-min-btn {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-min-btn { border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; }
+        #amazonAdsSbidRuleModal .amz-sbid-min-btn:hover { background: #e2e8f0; }
+        #amazonAdsSbidRuleModal .amz-sbid-col.is-min { flex: 0 0 40px; padding: 10px 4px; cursor: pointer; }
+        #amazonAdsSbidRuleModal .amz-sbid-col.is-min > :not(.amz-sbid-col-head) { display: none !important; }
+        #amazonAdsSbidRuleModal .amz-sbid-col.is-min .amz-sbid-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; padding: 0; gap: 10px; position: static; border: 0; border-radius: 0; background: transparent; }
+        #amazonAdsSbidRuleModal .amz-sbid-col.is-min .amz-sbid-min-btn { position: static; transform: none; }
+        #amazonAdsSbidRuleModal .amz-sbid-col.is-min .amz-sbid-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+        #amazonAdsSbidRuleModal .amz-sbid-chart-canvas { position: relative; width: 100%; height: 150px; }
+        #amazonAdsSbidRuleModal .amz-sbid-chart-canvas canvas { display: block; width: 100% !important; height: 150px !important; }
+        #amazonAdsSbidRuleModal .amz-sbid-legend { font-size: 12px; margin-top: 8px; color: #334155; }
+        #amazonAdsSbidRuleModal .amz-sbid-leg-row {
+            display: grid;
+            grid-template-columns: 8px minmax(0, 1fr) auto auto;
+            gap: 6px;
+            align-items: center;
+            padding: 2px 0;
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-leg-head {
+            display: grid;
+            grid-template-columns: 8px minmax(0, 1fr) auto auto;
+            gap: 6px;
+            align-items: center;
+            padding: 0 0 4px;
+            color: #94a3b8;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-leg-head span:nth-child(3),
+        #amazonAdsSbidRuleModal .amz-sbid-leg-head span:nth-child(4) { text-align: right; }
+        #amazonAdsSbidRuleModal .amz-sbid-leg-row strong { font-variant-numeric: tabular-nums; }
+        #amazonAdsSbidRuleModal .amz-sbid-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
+        #amazonAdsSbidRuleModal .amz-sbid-swatch { width: 8px; height: 8px; border-radius: 50%; }
+        #amazonAdsSbidRuleModal .amz-sbid-fields { margin-top: 10px; }
+        #amazonAdsSbidRuleModal .amz-sbid-field {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 0;
+            border-top: 1px solid #eef2f7;
+            font-size: 12px;
+            color: #334155;
+        }
+        #amazonAdsSbidRuleModal .amz-sbid-field .form-control { width: 88px; min-width: 88px; max-width: 88px; text-align: right; }
+        #amazonAdsSbidRuleModal .amz-sbid-note { margin-top: auto; padding-top: 10px; color: #64748b; font-size: 12px; }
+        #amazonAdsSbidRuleModal #amazonAdsSbidRuleSaveBtn { border-radius: 8px; font-weight: 600; padding: 6px 14px; }
         @media (max-width: 768px) {
             #amz-ads-column-dropdown-menu .col-vis-groups {
                 grid-template-columns: repeat(2, minmax(120px, 1fr));
@@ -621,12 +861,7 @@
                                 <i class="fas fa-file-csv"></i>
                             </button>
                             <a href="{{ route('amazon-ads.push-logs.index') }}" class="btn btn-sm btn-outline-secondary" title="Failed / skipped bid & budget pushes">Fail Cpg</a>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRuleModal" title="Edit LT ACOS band thresholds and SBGT tier values">BGT Vs ACOS Rule</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtViewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtViewsRuleModal" title="Edit View L7 bands and Bgt Views values">BGT Vs VIEWS</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtCvrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtCvrRuleModal" title="Edit CVR L30 bands and Bgt Cvr values">BGT Vs CVR</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtPrcRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtPrcRuleModal" title="Edit Price bands and BGT PRC values">BGT PRC</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtReviewsRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtReviewsRuleModal" title="Edit Reviews star bands and Bgt Reviews values">BGT Vs REVIEWS</button>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtDilRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtDilRuleModal" title="Edit Dil% bands and Bgt Dil values">BGT Vs Dil</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsBgtRulesBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsBgtRulesModal" title="Edit ACOS, Views, CVR, Price, Reviews, and Dil budget rules together">BGT Rules</button>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="amazonAdsSbidRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsSbidRuleModal" title="Edit U2%/U1% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="amazonAdsPrRuleBtn" data-bs-toggle="modal" data-bs-target="#amazonAdsPrRuleModal" title="Auto-pause campaigns when Dil% is at or above your threshold. Only PARENT campaigns turn back on.">Pause Rule</button>
                             <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
@@ -908,313 +1143,302 @@
         </div>
     </div>
 
-    <div class="modal fade" id="amazonAdsBgtRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal fade" id="amazonAdsBgtRulesModal" tabindex="-1" aria-labelledby="amazonAdsBgtRulesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsBgtRuleModalLabel">BGT rule — LT ACOS → Suggested Budget (SBGT)</h5>
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title fs-6 mb-0" id="amazonAdsBgtRulesModalLabel">BGT Rules</h5>
+                        <div class="amz-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil. Each column saves on its own and refreshes the grid. Rows match top to bottom; the first range that contains the value is used. Count is campaigns on this grid page.</div>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>LT ACOS range</strong> (From → To). Rows are checked
-                        <strong>top to bottom</strong>; the first range that contains the campaign's lifetime ACOS gets its SBGT.
-                        Use <code>9999</code> on <em>To</em> for the catch-all highest band.
-                        A <strong>$0</strong> in this column is added as zero. The campaign is paused only when the six-part SBGT total is $0.
-                        <strong>Count</strong> is campaigns on this grid page in that range.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtRuleTable">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>LT ACOS</th>
-                                <th style="width:110px;">From (%)</th>
-                                <th style="width:110px;">To (%)</th>
-                                <th style="width:80px;" title="Campaigns on this grid page whose LT ACOS falls in this band">Count</th>
-                                <th style="width:120px;">SBGT</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="amazonAdsBgtRuleBandsBody"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtRuleAddBandBtn">
-                        <i class="fas fa-plus me-1"></i>Add band
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtRuleModalError" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                    <div class="amz-bgt-cols">
+                        <div class="amz-bgt-col" data-amz-bgt-panel="acos">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="Inclusive LT ACOS range. Use 9999 on To for the highest band. A $0 here is added as zero. The campaign pauses only when the six-part SBGT total is $0.">BGT Vs ACOS</div>
+                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs ACOS" aria-label="Minimize BGT Vs ACOS">−</button>
+                            </div>
+                            <div class="amz-bgt-chart">
+                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-acos"></canvas></div>
+                                <div class="amz-bgt-legend" id="amz-bgt-leg-acos"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtRuleTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Label</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th title="Campaigns on this grid page whose LT ACOS falls in this band">Count</th>
+                                            <th>SBGT</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsBgtRuleBandsBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtRuleAddBandBtn">Add band</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtRuleModalError" role="alert"></p>
+                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtRuleSaveBtn">Save</button>
+                        </div>
 
-    <div class="modal fade" id="amazonAdsBgtViewsRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtViewsRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsBgtViewsRuleModalLabel">BGT Vs VIEWS — View L7 → Bgt Views</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Amz page View L7</strong> range (parent Sess7) for the campaign.
-                        Rows are checked <strong>top to bottom</strong> (Purple → Red); the first range that contains the views gets its
-                        <strong>Bgt Views</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Views.
-                        <strong>Count</strong> is campaigns on this grid page in that range.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtViewsRuleTable">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Label</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;" title="Campaigns on this grid page whose View L7 falls in this slab">Count</th>
-                                <th style="width:120px;">Bgt Views</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="amazonAdsBgtViewsRuleBandsBody"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtViewsRuleAddBandBtn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtViewsRuleModalError" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtViewsRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                        <div class="amz-bgt-col" data-amz-bgt-panel="views">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="Inclusive Amz page View L7 (parent Sess7). 0 is allowed for From and Bgt Views.">BGT Vs VIEWS</div>
+                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs VIEWS" aria-label="Minimize BGT Vs VIEWS">−</button>
+                            </div>
+                            <div class="amz-bgt-chart">
+                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-views"></canvas></div>
+                                <div class="amz-bgt-legend" id="amz-bgt-leg-views"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtViewsRuleTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Label</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th title="Campaigns on this grid page whose View L7 falls in this slab">Count</th>
+                                            <th>Bgt</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsBgtViewsRuleBandsBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtViewsRuleAddBandBtn">Add slab</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtViewsRuleModalError" role="alert"></p>
+                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtViewsRuleSaveBtn">Save</button>
+                        </div>
 
-    <div class="modal fade" id="amazonAdsBgtCvrRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtCvrRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsBgtCvrRuleModalLabel">BGT Vs CVR — CVR L30 → Bgt Cvr</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Amz page CVR L30</strong> range (parent A L30 ÷ Sess30 × 100) for the campaign.
-                        Rows are checked <strong>top to bottom</strong> (Purple → Red); the first range that contains the CVR gets its
-                        <strong>Bgt Cvr</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Cvr.
-                        <strong>Count</strong> is campaigns on this grid page in that range.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtCvrRuleTable">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Label</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;" title="Campaigns on this grid page whose CVR L30 falls in this slab">Count</th>
-                                <th style="width:120px;">Bgt Cvr</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="amazonAdsBgtCvrRuleBandsBody"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtCvrRuleAddBandBtn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCvrRuleModalError" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtCvrRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                        <div class="amz-bgt-col" data-amz-bgt-panel="cvr">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="Inclusive Amz page CVR L30 (parent A L30 ÷ Sess30 × 100). 0 is allowed for From and Bgt Cvr.">BGT Vs CVR</div>
+                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs CVR" aria-label="Minimize BGT Vs CVR">−</button>
+                            </div>
+                            <div class="amz-bgt-chart">
+                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-cvr"></canvas></div>
+                                <div class="amz-bgt-legend" id="amz-bgt-leg-cvr"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtCvrRuleTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Label</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th title="Campaigns on this grid page whose CVR L30 falls in this slab">Count</th>
+                                            <th>Bgt</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsBgtCvrRuleBandsBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtCvrRuleAddBandBtn">Add slab</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCvrRuleModalError" role="alert"></p>
+                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtCvrRuleSaveBtn">Save</button>
+                        </div>
 
-    <div class="modal fade" id="amazonAdsBgtPrcRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtPrcRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsBgtPrcRuleModalLabel">BGT PRC — Price → Bgt Prc</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Price</strong> range (same Price column: Amz list, else LMP).
-                        Rows are checked <strong>top to bottom</strong>; the first range that contains the price gets its
-                        <strong>Bgt Prc</strong>. Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Prc.
-                        <strong>Count</strong> is campaigns on this grid page in that range.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtPrcRuleTable">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Label</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;" title="Campaigns on this grid page whose Price falls in this slab">Count</th>
-                                <th style="width:120px;">Bgt Prc</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="amazonAdsBgtPrcRuleBandsBody"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtPrcRuleAddBandBtn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtPrcRuleModalError" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtPrcRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                        <div class="amz-bgt-col" data-amz-bgt-panel="prc">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="Inclusive Price range (Amz list, else LMP). 0 is allowed for From and Bgt Prc.">BGT PRC</div>
+                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT PRC" aria-label="Minimize BGT PRC">−</button>
+                            </div>
+                            <div class="amz-bgt-chart">
+                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-prc"></canvas></div>
+                                <div class="amz-bgt-legend" id="amz-bgt-leg-prc"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtPrcRuleTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Label</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th title="Campaigns on this grid page whose Price falls in this slab">Count</th>
+                                            <th>Bgt</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsBgtPrcRuleBandsBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtPrcRuleAddBandBtn">Add slab</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtPrcRuleModalError" role="alert"></p>
+                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtPrcRuleSaveBtn">Save</button>
+                        </div>
 
-    <div class="modal fade" id="amazonAdsBgtReviewsRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtReviewsRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsBgtReviewsRuleModalLabel">BGT Vs REVIEWS — Reviews → Bgt Reviews</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Reviews</strong> range (same star rating as the Reviews column).
-                        Rows are checked <strong>top to bottom</strong>; the first range that contains the rating gets its
-                        <strong>Bgt Reviews</strong>. Add or delete slabs as needed.
-                        <strong>Count</strong> is campaigns on this grid page in that range.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtReviewsRuleTable">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Label</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;" title="Campaigns on this grid page whose Reviews rating falls in this slab">Count</th>
-                                <th style="width:120px;">Bgt Reviews</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="amazonAdsBgtReviewsRuleBandsBody"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtReviewsRuleAddBandBtn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtReviewsRuleModalError" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtReviewsRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                        <div class="amz-bgt-col" data-amz-bgt-panel="reviews">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="Inclusive Reviews star range, same rating as the Reviews column.">BGT Vs REVIEWS</div>
+                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs REVIEWS" aria-label="Minimize BGT Vs REVIEWS">−</button>
+                            </div>
+                            <div class="amz-bgt-chart">
+                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-reviews"></canvas></div>
+                                <div class="amz-bgt-legend" id="amz-bgt-leg-reviews"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtReviewsRuleTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Label</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th title="Campaigns on this grid page whose Reviews rating falls in this slab">Count</th>
+                                            <th>Bgt</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsBgtReviewsRuleBandsBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtReviewsRuleAddBandBtn">Add slab</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtReviewsRuleModalError" role="alert"></p>
+                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtReviewsRuleSaveBtn">Save</button>
+                        </div>
 
-    <div class="modal fade" id="amazonAdsBgtDilRuleModal" tabindex="-1" aria-labelledby="amazonAdsBgtDilRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsBgtDilRuleModalLabel">BGT Vs Dil — Dil% → Bgt Dil</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Dil%</strong> range (same Dil as this table: ovl30 ÷ Inv × 100).
-                        Rows are checked <strong>top to bottom</strong>; the first range that contains Dil% gets its
-                        <strong>Bgt Dil</strong>. Defaults are 3 slabs: <strong>Pink 50%+</strong>, <strong>Green 25–50</strong>, <strong>Red &lt;25</strong>.
-                        Add or delete slabs as needed. <strong>0</strong> is allowed for From and Bgt Dil.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtDilRuleTable">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Label</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;" title="Campaigns on this grid page whose Dil% falls in this slab">Count</th>
-                                <th style="width:120px;">Bgt Dil</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="amazonAdsBgtDilRuleBandsBody"></tbody>
-                    </table>
+                        <div class="amz-bgt-col" data-amz-bgt-panel="dil">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="Inclusive Dil% (ovl30 ÷ Inv × 100). Defaults: Pink 50%+, Green 25–50, Red under 25. 0 is allowed for From and Bgt Dil.">BGT Vs Dil</div>
+                                <button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs Dil" aria-label="Minimize BGT Vs Dil">−</button>
+                            </div>
+                            <div class="amz-bgt-chart">
+                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-dil"></canvas></div>
+                                <div class="amz-bgt-legend" id="amz-bgt-leg-dil"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtDilRuleTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Label</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th title="Campaigns on this grid page whose Dil% falls in this slab">Count</th>
+                                            <th>Bgt</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsBgtDilRuleBandsBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtDilRuleAddBandBtn">Add slab</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtDilRuleModalError" role="alert"></p>
+                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtDilRuleSaveBtn">Save</button>
+                        </div>
+
+                        <div class="amz-bgt-col" data-amz-bgt-panel="sum">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil. The total is floored. A total of 0 pauses the campaign.">Sum</div>
+                                <button type="button" class="amz-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button>
+                            </div>
+                            <div class="amz-bgt-chart">
+                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-sum"></canvas></div>
+                                <div class="amz-bgt-legend" id="amz-bgt-leg-sum"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0 amz-bgt-sum-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Part</th>
+                                            <th class="text-center">Count</th>
+                                            <th class="text-end">Bgt</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amz-bgt-sum-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="amazonAdsBgtDilRuleAddBandBtn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtDilRuleModalError" role="alert"></p>
                 </div>
-                <div class="modal-footer py-2">
+                <div class="modal-footer">
+                    <div class="small text-muted me-auto" id="amz-bgt-status"></div>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtDilRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="modal fade" id="amazonAdsSbidRuleModal" tabindex="-1" aria-labelledby="amazonAdsSbidRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amazonAdsSbidRuleModalLabel">SBID rule — U2% / U1% → suggested bid</h5>
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title fs-6 mb-0" id="amazonAdsSbidRuleModalLabel">SBID rule</h5>
+                        <div class="amz-sbid-sub">Both U7% and U1% below the low threshold use the CPC multipliers. If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + 0.10; otherwise the fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-2">When <strong>both</strong> U2% and U1% are <strong>below</strong> the low threshold, SBID = CPC × under multipliers. If L1, L2, and L7 CPC are all missing and <strong>Avg CPC</strong> is available, SBID = Avg CPC + 0.10. Otherwise the fallback amount is used. When <strong>both</strong> are <strong>above</strong> the high threshold, SBID = L1 CPC × over multiplier. Otherwise SBID shows —.</p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleUtilLow">Low threshold (%)</label>
-                            <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilLow" name="util_low" required>
+                    <div class="amz-sbid-thresholds">
+                        <label for="amazonAdsSbidRuleUtilLow">Low %</label>
+                        <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilLow" name="util_low" required title="Both U7% and U1% must be below this">
+                        <label for="amazonAdsSbidRuleUtilHigh">High %</label>
+                        <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required title="Both U7% and U1% must be above this">
+                        <span class="text-muted">Counts are campaigns on this grid page.</span>
+                    </div>
+                    <div class="amz-sbid-cols">
+                        <div class="amz-sbid-col" data-amz-sbid-panel="below">
+                            <div class="amz-sbid-col-head">
+                                <div class="amz-sbid-title" title="Both U7% and U1% are below 66">&#60; Utilized 66</div>
+                                <button type="button" class="amz-sbid-min-btn" title="Minimize < Utilized 66" aria-label="Minimize < Utilized 66">−</button>
+                            </div>
+                            <div class="amz-sbid-chart-canvas"><canvas id="amz-sbid-chart-below"></canvas></div>
+                            <div class="amz-sbid-legend" id="amz-sbid-leg-below"></div>
+                            <div class="amz-sbid-fields">
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleLowMultL1">× L1 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL1" name="both_low_mult_l1" required>
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleLowMultL2">× L2 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL2" name="both_low_mult_l2" required>
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleLowMultL7">× L7 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL7" name="both_low_mult_l7" required>
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleBothLowFallback">Fallback</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleBothLowFallback" name="both_low_fallback" required title="Used when L1, L2, and L7 CPC are missing and Avg CPC is missing">
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleUtilHigh">High threshold (%)</label>
-                            <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required>
+                        <div class="amz-sbid-col" data-amz-sbid-panel="mid">
+                            <div class="amz-sbid-col-head">
+                                <div class="amz-sbid-title" title="U7% and U1% are not both below the low threshold and not both above the high threshold">Between</div>
+                                <button type="button" class="amz-sbid-min-btn" title="Minimize Between" aria-label="Minimize Between">−</button>
+                            </div>
+                            <div class="amz-sbid-chart-canvas"><canvas id="amz-sbid-chart-mid"></canvas></div>
+                            <div class="amz-sbid-legend" id="amz-sbid-leg-mid"></div>
+                            <div class="amz-sbid-note">SBID shows — for these campaigns.</div>
                         </div>
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleBothLowFallback">Fallback (no Avg CPC)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleBothLowFallback" name="both_low_fallback" required>
+                        <div class="amz-sbid-col" data-amz-sbid-panel="above">
+                            <div class="amz-sbid-col-head">
+                                <div class="amz-sbid-title" title="Both U7% and U1% are above 99%">&#62; 99% Utilized</div>
+                                <button type="button" class="amz-sbid-min-btn" title="Minimize > 99% Utilized" aria-label="Minimize > 99% Utilized">−</button>
+                            </div>
+                            <div class="amz-sbid-chart-canvas"><canvas id="amz-sbid-chart-above"></canvas></div>
+                            <div class="amz-sbid-legend" id="amz-sbid-leg-above"></div>
+                            <div class="amz-sbid-fields">
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleHighMultL1">× L1 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleHighMultL1" name="both_high_mult_l1" required>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <p class="small fw-semibold mb-1">Both below low — CPC multipliers</p>
-                    <div class="row g-2 mb-3">
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL1">× L1 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL1" name="both_low_mult_l1" required>
-                        </div>
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL2">× L2 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL2" name="both_low_mult_l2" required>
-                        </div>
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleLowMultL7">× L7 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL7" name="both_low_mult_l7" required>
-                        </div>
-                    </div>
-                    <p class="small fw-semibold mb-1">Both above high</p>
-                    <div class="row g-2">
-                        <div class="col-6 col-md-4">
-                            <label class="form-label small mb-0" for="amazonAdsSbidRuleHighMultL1">× L1 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleHighMultL1" name="both_high_mult_l1" required>
-                        </div>
-                    </div>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsSbidRuleModalError" role="alert"></p>
                 </div>
-                <div class="modal-footer py-2">
+                <div class="modal-footer">
+                    <div class="small text-danger me-auto d-none" id="amazonAdsSbidRuleModalError" role="alert"></div>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbidRuleSaveBtn">Save &amp; refresh grid</button>
                 </div>
@@ -4191,6 +4415,174 @@
             function amzBgtCountCellHtml(i, n, tip) {
                 return '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '" title="' + String(tip || '').replace(/"/g, '&quot;') + '">' + (n != null ? n : 0) + '</span></td>';
             }
+            var amzBgtColCharts = {};
+            var AMZ_BGT_COL_COLORS = ['#7c3aed', '#2563eb', '#16a34a', '#f59e0b', '#f97316', '#dc2626', '#64748b', '#0ea5e9'];
+            function amzBgtPaintColumn(key, bands, counts) {
+                var legend = document.getElementById('amz-bgt-leg-' + key);
+                var canvas = document.getElementById('amz-bgt-chart-' + key);
+                if (!legend || !canvas || typeof Chart === 'undefined') return;
+                var rows = (bands || []).map(function (b, i) {
+                    var n = counts && counts[i] != null ? Number(counts[i]) : 0;
+                    if (!isFinite(n)) n = 0;
+                    var label = (b && b.label) ? String(b.label) : ('Band ' + (i + 1));
+                    var color = (b && b.color) ? String(b.color) : AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length];
+                    return { label: label, n: n, color: color };
+                });
+                var total = rows.reduce(function (s, r) { return s + r.n; }, 0);
+                legend.innerHTML = rows.map(function (r) {
+                    var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
+                    return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span></div>';
+                }).join('');
+                if (amzBgtColCharts[key]) {
+                    try { amzBgtColCharts[key].destroy(); } catch (e) {}
+                    amzBgtColCharts[key] = null;
+                }
+                amzBgtColCharts[key] = new Chart(canvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: rows.map(function (r) { return r.label; }),
+                        datasets: [{
+                            data: rows.map(function (r) { return r.n; }),
+                            backgroundColor: rows.map(function (r) { return r.color; }),
+                            borderWidth: 0,
+                            borderRadius: 4,
+                            maxBarThickness: 28
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { display: false, grid: { display: false } },
+                            y: { display: false, beginAtZero: true, grid: { display: false } }
+                        }
+                    }
+                });
+                requestAnimationFrame(function () {
+                    if (amzBgtColCharts[key]) {
+                        try { amzBgtColCharts[key].resize(); } catch (e) {}
+                    }
+                });
+                if (key !== 'sum') amzBgtPaintSum();
+            }
+            function amzBgtBandAmount(bands, idx, key) {
+                if (!Array.isArray(bands) || idx < 0 || !bands[idx]) return null;
+                var n = parseFloat(bands[idx][key]);
+                return isFinite(n) ? n : null;
+            }
+            function amzBgtDraftParts(row) {
+                return {
+                    acos: amzBgtBandAmount(amzCurrentBands, amzBgtFirstBandIndex(amzAcosValueOfRow(row), amzCurrentBands, 'acos_from', 'acos_to'), 'sbgt'),
+                    views: amzBgtBandAmount(amzBgtViewsBands, amzBgtFirstBandIndex(amzBgtViewsValueOfRow(row), amzBgtViewsBands, 'views_from', 'views_to'), 'bgt'),
+                    cvr: amzBgtBandAmount(amzBgtCvrBands, amzBgtFirstBandIndex(amzBgtCvrValueOfRow(row), amzBgtCvrBands, 'cvr_from', 'cvr_to'), 'bgt'),
+                    prc: amzBgtBandAmount(amzBgtPrcBands, amzBgtFirstBandIndex(amzBgtPrcValueOfRow(row), amzBgtPrcBands, 'prc_from', 'prc_to'), 'bgt'),
+                    reviews: amzBgtBandAmount(amzBgtReviewsBands, amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), amzBgtReviewsBands), 'bgt'),
+                    dil: amzBgtBandAmount(amzBgtDilBands, amzBgtFirstBandIndex(amzBgtDilValueOfRow(row), amzBgtDilBands, 'dil_from', 'dil_to'), 'bgt')
+                };
+            }
+            function amzBgtFloorSum(parts) {
+                var sum = 0, has = false;
+                parts.forEach(function (n) {
+                    if (n === null || n === undefined || !isFinite(n)) return;
+                    has = true;
+                    sum += n;
+                });
+                if (!has) return null;
+                sum = Math.floor(Math.round(sum * 1e6) / 1e6);
+                return sum < 1 ? 0 : sum;
+            }
+            function amzBgtFmtMoney(n) {
+                if (!isFinite(n)) return '—';
+                var r = Math.round(n * 100) / 100;
+                return r === Math.floor(r) ? String(r) : r.toFixed(2);
+            }
+            function amzBgtPaintSum() {
+                var legend = document.getElementById('amz-bgt-leg-sum');
+                var canvas = document.getElementById('amz-bgt-chart-sum');
+                var tbody = document.getElementById('amz-bgt-sum-tbody');
+                if (!legend && !tbody) return;
+                var order = [
+                    { key: 'views', label: 'Views' },
+                    { key: 'cvr', label: 'CVR' },
+                    { key: 'acos', label: 'ACOS' },
+                    { key: 'prc', label: 'PRC' },
+                    { key: 'reviews', label: 'Reviews' },
+                    { key: 'dil', label: 'Dil' }
+                ];
+                var partCount = {};
+                var partSum = {};
+                order.forEach(function (p) { partCount[p.key] = 0; partSum[p.key] = 0; });
+                var buckets = {};
+                var campaigns = 0;
+                var sbgtTotal = 0;
+                amzBgtGridRows().forEach(function (row) {
+                    var parts;
+                    try { parts = amzBgtDraftParts(row); } catch (e) { return; }
+                    order.forEach(function (p) {
+                        var n = parts[p.key];
+                        if (n === null || !isFinite(n)) return;
+                        partCount[p.key]++;
+                        partSum[p.key] += n;
+                    });
+                    var total = amzBgtFloorSum(order.map(function (p) { return parts[p.key]; }));
+                    if (total === null) return;
+                    campaigns++;
+                    sbgtTotal += total;
+                    buckets[total] = (buckets[total] || 0) + 1;
+                });
+                var keys = Object.keys(buckets).map(function (k) { return +k; }).sort(function (a, b) { return a - b; });
+                var rows = keys.map(function (k, i) {
+                    return {
+                        label: String(k),
+                        n: buckets[k],
+                        color: k === 0 ? '#dc2626' : AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
+                    };
+                });
+                var totalN = rows.reduce(function (s, r) { return s + r.n; }, 0);
+                if (legend) {
+                    legend.innerHTML = rows.map(function (r) {
+                        var pct = totalN > 0 ? Math.round((r.n / totalN) * 100) : 0;
+                        return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span></div>';
+                    }).join('');
+                }
+                if (canvas && typeof Chart !== 'undefined') {
+                    if (amzBgtColCharts.sum) { try { amzBgtColCharts.sum.destroy(); } catch (e) {} amzBgtColCharts.sum = null; }
+                    amzBgtColCharts.sum = new Chart(canvas.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: rows.map(function (r) { return r.label; }),
+                            datasets: [{
+                                data: rows.map(function (r) { return r.n; }),
+                                backgroundColor: rows.map(function (r) { return r.color; }),
+                                borderWidth: 0,
+                                borderRadius: 4,
+                                maxBarThickness: 28
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                x: { display: false, grid: { display: false } },
+                                y: { display: false, beginAtZero: true, grid: { display: false } }
+                            }
+                        }
+                    });
+                }
+                if (tbody) {
+                    var html = order.map(function (p) {
+                        return '<tr><td>' + amzEsc(p.label) + '</td><td class="text-center">' + partCount[p.key] + '</td><td class="text-end">' + amzBgtFmtMoney(partSum[p.key]) + '</td></tr>';
+                    }).join('');
+                    html += '<tr class="fw-semibold"><td>SBGT</td><td class="text-center">' + campaigns + '</td><td class="text-end">' + sbgtTotal + '</td></tr>';
+                    tbody.innerHTML = html;
+                }
+            }
+            function amzBgtNoteSaved(label) {
+                var st = document.getElementById('amz-bgt-status');
+                if (st) st.textContent = label + ' saved. Grid refreshing…';
+            }
 
             // ---- BGT rule modal (ACOS bands -> SBGT) ----
             var amzCurrentBands = [];
@@ -4202,7 +4594,9 @@
                 return amzBgtCountByBands(bands, 'acos_from', 'acos_to', amzAcosValueOfRow);
             }
             function amzAcosRefreshCounts() {
-                amzBgtRefreshCountCells('amazonAdsBgtRuleBandsBody', amzAcosCounts(amzCurrentBands));
+                var counts = amzAcosCounts(amzCurrentBands);
+                amzBgtRefreshCountCells('amazonAdsBgtRuleBandsBody', counts);
+                amzBgtPaintColumn('acos', amzCurrentBands, counts);
             }
             function amzRenderBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtRuleBandsBody');
@@ -4228,12 +4622,13 @@
                         amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseFloat(this.value))
                             : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
-                        if (fld === 'acos_from' || fld === 'acos_to') amzAcosRefreshCounts();
+                        if (fld === 'acos_from' || fld === 'acos_to' || fld === 'label') amzAcosRefreshCounts();
                     });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () { amzCurrentBands.splice(+this.dataset.removeIdx, 1); amzRenderBands(amzCurrentBands); });
                 });
+                amzAcosRefreshCounts();
             }
             function amzLoadBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
@@ -4248,12 +4643,14 @@
                     .then(function (body) { if (body && body.rule) window.amazonAdsBgtRule = body.rule; if (cb) cb(); })
                     .catch(function () { if (cb) cb(); });
             }
-            var bgtModalEl = document.getElementById('amazonAdsBgtRuleModal');
+            var bgtModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtModalEl) {
                 bgtModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
                     amzRefreshBgtRuleFromServer(function () { amzLoadBandsFromRule(window.amazonAdsBgtRule || {}); });
+                    var st = document.getElementById('amz-bgt-status');
+                    if (st) st.textContent = '';
                 });
             }
             var bgtAddBtn = document.getElementById('amazonAdsBgtRuleAddBandBtn');
@@ -4297,7 +4694,7 @@
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtRule = b.rule || window.amazonAdsBgtRule;
                             amzFillAcosFilterOptions();
-                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtModalEl); if (inst) inst.hide(); }
+                            amzBgtNoteSaved('BGT Vs ACOS');
                             amzUpdatePushButtons();
                             return Promise.resolve(table.setData());
                         })
@@ -4364,7 +4761,9 @@
                 return amzBgtCountByBands(bands, 'views_from', 'views_to', amzBgtViewsValueOfRow);
             }
             function amzBgtViewsRefreshCounts() {
-                amzBgtRefreshCountCells('amazonAdsBgtViewsRuleBandsBody', amzBgtViewsCounts(amzBgtViewsBands));
+                var counts = amzBgtViewsCounts(amzBgtViewsBands);
+                amzBgtRefreshCountCells('amazonAdsBgtViewsRuleBandsBody', counts);
+                amzBgtPaintColumn('views', amzBgtViewsBands, counts);
             }
             function amzRenderBgtViewsBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtViewsRuleBandsBody');
@@ -4398,9 +4797,9 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to') amzBgtViewsRefreshCounts();
+                        if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to') amzBgtViewsRefreshCounts(); });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts(); });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -4409,6 +4808,7 @@
                         amzRenderBgtViewsBands(amzBgtViewsBands);
                     });
                 });
+                amzBgtViewsRefreshCounts();
             }
             function amzLoadBgtViewsBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
@@ -4421,7 +4821,7 @@
                     .then(function (body) { if (body && body.rule) window.amazonAdsBgtViewsRule = body.rule; if (cb) cb(); })
                     .catch(function () { if (cb) cb(); });
             }
-            var bgtViewsModalEl = document.getElementById('amazonAdsBgtViewsRuleModal');
+            var bgtViewsModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtViewsModalEl) {
                 bgtViewsModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtViewsRuleModalError');
@@ -4469,7 +4869,7 @@
                             var b = out.body || {};
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtViewsRule = b.rule || window.amazonAdsBgtViewsRule;
-                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtViewsModalEl); if (inst) inst.hide(); }
+                            amzBgtNoteSaved('BGT Vs VIEWS');
                             return Promise.resolve(table.setData());
                         })
                         .then(function () { amzRefreshUiSoon(); })
@@ -4535,7 +4935,9 @@
                 return amzBgtCountByBands(bands, 'cvr_from', 'cvr_to', amzBgtCvrValueOfRow);
             }
             function amzBgtCvrRefreshCounts() {
-                amzBgtRefreshCountCells('amazonAdsBgtCvrRuleBandsBody', amzBgtCvrCounts(amzBgtCvrBands));
+                var counts = amzBgtCvrCounts(amzBgtCvrBands);
+                amzBgtRefreshCountCells('amazonAdsBgtCvrRuleBandsBody', counts);
+                amzBgtPaintColumn('cvr', amzBgtCvrBands, counts);
             }
             function amzRenderBgtCvrBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtCvrRuleBandsBody');
@@ -4569,9 +4971,9 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to') amzBgtCvrRefreshCounts();
+                        if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to') amzBgtCvrRefreshCounts(); });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts(); });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -4580,6 +4982,7 @@
                         amzRenderBgtCvrBands(amzBgtCvrBands);
                     });
                 });
+                amzBgtCvrRefreshCounts();
             }
             function amzLoadBgtCvrBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
@@ -4592,7 +4995,7 @@
                     .then(function (body) { if (body && body.rule) window.amazonAdsBgtCvrRule = body.rule; if (cb) cb(); })
                     .catch(function () { if (cb) cb(); });
             }
-            var bgtCvrModalEl = document.getElementById('amazonAdsBgtCvrRuleModal');
+            var bgtCvrModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtCvrModalEl) {
                 bgtCvrModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtCvrRuleModalError');
@@ -4640,7 +5043,7 @@
                             var b = out.body || {};
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtCvrRule = b.rule || window.amazonAdsBgtCvrRule;
-                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtCvrModalEl); if (inst) inst.hide(); }
+                            amzBgtNoteSaved('BGT Vs CVR');
                             return Promise.resolve(table.setData());
                         })
                         .then(function () { amzRefreshUiSoon(); })
@@ -4705,7 +5108,9 @@
                 return amzBgtCountByBands(bands, 'prc_from', 'prc_to', amzBgtPrcValueOfRow);
             }
             function amzBgtPrcRefreshCounts() {
-                amzBgtRefreshCountCells('amazonAdsBgtPrcRuleBandsBody', amzBgtPrcCounts(amzBgtPrcBands));
+                var counts = amzBgtPrcCounts(amzBgtPrcBands);
+                amzBgtRefreshCountCells('amazonAdsBgtPrcRuleBandsBody', counts);
+                amzBgtPaintColumn('prc', amzBgtPrcBands, counts);
             }
             function amzRenderBgtPrcBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtPrcRuleBandsBody');
@@ -4735,9 +5140,9 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to') amzBgtPrcRefreshCounts();
+                        if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to') amzBgtPrcRefreshCounts(); });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts(); });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -4746,6 +5151,7 @@
                         amzRenderBgtPrcBands(amzBgtPrcBands);
                     });
                 });
+                amzBgtPrcRefreshCounts();
             }
             function amzLoadBgtPrcBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
@@ -4758,7 +5164,7 @@
                     .then(function (body) { if (body && body.rule) window.amazonAdsBgtPrcRule = body.rule; if (cb) cb(); })
                     .catch(function () { if (cb) cb(); });
             }
-            var bgtPrcModalEl = document.getElementById('amazonAdsBgtPrcRuleModal');
+            var bgtPrcModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtPrcModalEl) {
                 bgtPrcModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtPrcRuleModalError');
@@ -4806,7 +5212,7 @@
                             var b = out.body || {};
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtPrcRule = b.rule || window.amazonAdsBgtPrcRule;
-                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtPrcModalEl); if (inst) inst.hide(); }
+                            amzBgtNoteSaved('BGT PRC');
                             return Promise.resolve(table.setData());
                         })
                         .then(function () { amzRefreshUiSoon(); })
@@ -4877,6 +5283,7 @@
                     var i = +el.dataset.countIdx;
                     el.textContent = String(counts[i] != null ? counts[i] : 0);
                 });
+                amzBgtPaintColumn('reviews', amzBgtReviewsBands, counts);
             }
             function amzBgtReviewsNewBand() {
                 var last = amzBgtReviewsBands.length ? amzBgtReviewsBands[amzBgtReviewsBands.length - 1] : null;
@@ -4923,9 +5330,9 @@
                     inp.addEventListener('input', function () {
                         writeBand(this);
                         var fld = this.dataset.field;
-                        if (fld === 'rev_from' || fld === 'rev_to') amzBgtReviewsRefreshCounts();
+                        if (fld === 'rev_from' || fld === 'rev_to' || fld === 'label') amzBgtReviewsRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to') amzBgtReviewsRefreshCounts(); });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts(); });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -4934,6 +5341,7 @@
                         amzRenderBgtReviewsBands(amzBgtReviewsBands);
                     });
                 });
+                amzBgtReviewsRefreshCounts();
             }
             function amzLoadBgtReviewsBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
@@ -4946,7 +5354,7 @@
                     .then(function (body) { if (body && body.rule) window.amazonAdsBgtReviewsRule = body.rule; if (cb) cb(); })
                     .catch(function () { if (cb) cb(); });
             }
-            var bgtReviewsModalEl = document.getElementById('amazonAdsBgtReviewsRuleModal');
+            var bgtReviewsModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtReviewsModalEl) {
                 bgtReviewsModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtReviewsRuleModalError');
@@ -4993,7 +5401,7 @@
                             var b = out.body || {};
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtReviewsRule = b.rule || window.amazonAdsBgtReviewsRule;
-                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtReviewsModalEl); if (inst) inst.hide(); }
+                            amzBgtNoteSaved('BGT Vs REVIEWS');
                             return Promise.resolve(table.setData());
                         })
                         .then(function () { amzRefreshUiSoon(); })
@@ -5055,7 +5463,9 @@
                 return amzBgtCountByBands(bands, 'dil_from', 'dil_to', amzBgtDilValueOfRow);
             }
             function amzBgtDilRefreshCounts() {
-                amzBgtRefreshCountCells('amazonAdsBgtDilRuleBandsBody', amzBgtDilCounts(amzBgtDilBands));
+                var counts = amzBgtDilCounts(amzBgtDilBands);
+                amzBgtRefreshCountCells('amazonAdsBgtDilRuleBandsBody', counts);
+                amzBgtPaintColumn('dil', amzBgtDilBands, counts);
             }
             function amzRenderBgtDilBands(bands) {
                 var tbody = document.getElementById('amazonAdsBgtDilRuleBandsBody');
@@ -5089,9 +5499,9 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to') amzBgtDilRefreshCounts();
+                        if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
                     });
-                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to') amzBgtDilRefreshCounts(); });
+                    inp.addEventListener('change', function () { writeBand(this); if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts(); });
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
@@ -5100,6 +5510,7 @@
                         amzRenderBgtDilBands(amzBgtDilBands);
                     });
                 });
+                amzBgtDilRefreshCounts();
             }
             function amzLoadBgtDilBandsFromRule(rule) {
                 var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
@@ -5112,7 +5523,7 @@
                     .then(function (body) { if (body && body.rule) window.amazonAdsBgtDilRule = body.rule; if (cb) cb(); })
                     .catch(function () { if (cb) cb(); });
             }
-            var bgtDilModalEl = document.getElementById('amazonAdsBgtDilRuleModal');
+            var bgtDilModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtDilModalEl) {
                 bgtDilModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtDilRuleModalError');
@@ -5160,7 +5571,7 @@
                             var b = out.body || {};
                             if (!out.ok || b.status === 422 || b.status === 500) { if (err) { err.textContent = b.message || b.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
                             window.amazonAdsBgtDilRule = b.rule || window.amazonAdsBgtDilRule;
-                            if (typeof bootstrap !== 'undefined') { var inst = bootstrap.Modal.getInstance(bgtDilModalEl); if (inst) inst.hide(); }
+                            amzBgtNoteSaved('BGT Vs Dil');
                             return Promise.resolve(table.setData());
                         })
                         .then(function () { amzRefreshUiSoon(); })
@@ -5168,6 +5579,68 @@
                         .finally(function () { bgtDilSaveBtn.disabled = false; });
                 });
             }
+
+            (function () {
+                var minKey = 'amzBgtPanelMin';
+                function minSet() {
+                    try {
+                        var raw = JSON.parse(localStorage.getItem(minKey) || '[]');
+                        return new Set(Array.isArray(raw) ? raw : []);
+                    } catch (e) { return new Set(); }
+                }
+                function saveMin(set) {
+                    try { localStorage.setItem(minKey, JSON.stringify(Array.from(set))); } catch (e) {}
+                }
+                function paintMin() {
+                    var min = minSet();
+                    document.querySelectorAll('#amazonAdsBgtRulesModal [data-amz-bgt-panel]').forEach(function (el) {
+                        var on = min.has(el.getAttribute('data-amz-bgt-panel'));
+                        el.classList.toggle('is-min', on);
+                        var btn = el.querySelector('.amz-bgt-min-btn');
+                        if (!btn) return;
+                        var title = (el.querySelector('.amz-bgt-title') || {}).textContent || 'rule';
+                        btn.textContent = on ? '+' : '−';
+                        btn.title = (on ? 'Maximize ' : 'Minimize ') + title.trim();
+                        btn.setAttribute('aria-label', btn.title);
+                    });
+                    Object.keys(amzBgtColCharts).forEach(function (k) {
+                        if (amzBgtColCharts[k]) { try { amzBgtColCharts[k].resize(); } catch (e) {} }
+                    });
+                }
+                document.addEventListener('click', function (e) {
+                    var btn = e.target && e.target.closest ? e.target.closest('#amazonAdsBgtRulesModal .amz-bgt-min-btn') : null;
+                    if (btn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var col = btn.closest('[data-amz-bgt-panel]');
+                        if (!col) return;
+                        var min = minSet();
+                        var key = col.getAttribute('data-amz-bgt-panel');
+                        if (min.has(key)) min.delete(key); else min.add(key);
+                        saveMin(min);
+                        paintMin();
+                        return;
+                    }
+                    var collapsed = e.target && e.target.closest ? e.target.closest('#amazonAdsBgtRulesModal .amz-bgt-col.is-min') : null;
+                    if (!collapsed) return;
+                    var min = minSet();
+                    min.delete(collapsed.getAttribute('data-amz-bgt-panel'));
+                    saveMin(min);
+                    paintMin();
+                });
+                var rulesModal = document.getElementById('amazonAdsBgtRulesModal');
+                if (rulesModal) {
+                    rulesModal.addEventListener('shown.bs.modal', function () {
+                        paintMin();
+                        setTimeout(function () {
+                            Object.keys(amzBgtColCharts).forEach(function (k) {
+                                if (amzBgtColCharts[k]) { try { amzBgtColCharts[k].resize(); } catch (e) {} }
+                            });
+                        }, 60);
+                    });
+                }
+                paintMin();
+            })();
 
             // ---- SBID rule modal ----
             var SBID_FIELDS = [
@@ -5185,6 +5658,94 @@
                     var el = document.getElementById(pair[0]);
                     if (el && rule[pair[1]] != null) el.value = String(rule[pair[1]]);
                 });
+                amzSbidPaint();
+            }
+            var amzSbidCharts = {};
+            function amzSbidPos(row, key) {
+                var n = parseFloat(row && row[key]);
+                return isFinite(n) && n > 0 ? n : 0;
+            }
+            function amzSbidGroups() {
+                var low = parseFloat((document.getElementById('amazonAdsSbidRuleUtilLow') || {}).value);
+                var high = parseFloat((document.getElementById('amazonAdsSbidRuleUtilHigh') || {}).value);
+                var below = { l1: 0, l2: 0, l7: 0, avg: 0, fb: 0 };
+                var above = { l1: 0, none: 0 };
+                var mid = 0;
+                amzBgtGridRows().forEach(function (row) {
+                    var u7 = parseFloat(row && row['U7%']);
+                    var u1 = parseFloat(row && row['U1%']);
+                    if (!isFinite(u7) || !isFinite(u1) || !isFinite(low) || !isFinite(high)) { mid++; return; }
+                    var l1 = amzSbidPos(row, 'costPerClick');
+                    var l2 = amzSbidPos(row, 'CPC2');
+                    var l7 = amzSbidPos(row, 'CPC3');
+                    var avg = amzSbidPos(row, 'CPCAvg');
+                    if (u7 < low && u1 < low) {
+                        if (l1 > 0) below.l1++;
+                        else if (l2 > 0) below.l2++;
+                        else if (l7 > 0) below.l7++;
+                        else if (avg > 0) below.avg++;
+                        else below.fb++;
+                    } else if (u7 > high && u1 > high) {
+                        if (l1 > 0) above.l1++;
+                        else above.none++;
+                    } else {
+                        mid++;
+                    }
+                });
+                return { below: below, above: above, mid: mid };
+            }
+            function amzSbidPaintColumn(key, rows) {
+                var legend = document.getElementById('amz-sbid-leg-' + key);
+                var canvas = document.getElementById('amz-sbid-chart-' + key);
+                var total = rows.reduce(function (s, r) { return s + r.n; }, 0);
+                if (legend) {
+                    var head = '<div class="amz-sbid-leg-head"><span></span><span></span><span>Count</span><span>%</span></div>';
+                    legend.innerHTML = head + rows.map(function (r) {
+                        var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
+                        return '<div class="amz-sbid-leg-row"><span class="amz-sbid-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-sbid-leg-pct">' + pct + '%</span></div>';
+                    }).join('');
+                }
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (amzSbidCharts[key]) { try { amzSbidCharts[key].destroy(); } catch (e) {} amzSbidCharts[key] = null; }
+                amzSbidCharts[key] = new Chart(canvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: rows.map(function (r) { return r.label; }),
+                        datasets: [{
+                            data: rows.map(function (r) { return r.n; }),
+                            backgroundColor: rows.map(function (r) { return r.color; }),
+                            borderWidth: 0,
+                            borderRadius: 4,
+                            maxBarThickness: 36
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { display: false, grid: { display: false } },
+                            y: { display: false, beginAtZero: true, grid: { display: false } }
+                        }
+                    }
+                });
+            }
+            function amzSbidPaint() {
+                var g = amzSbidGroups();
+                amzSbidPaintColumn('below', [
+                    { label: '× L1', n: g.below.l1, color: '#7c3aed' },
+                    { label: '× L2', n: g.below.l2, color: '#2563eb' },
+                    { label: '× L7', n: g.below.l7, color: '#16a34a' },
+                    { label: 'Avg + 0.10', n: g.below.avg, color: '#f59e0b' },
+                    { label: 'Fallback', n: g.below.fb, color: '#94a3b8' }
+                ]);
+                amzSbidPaintColumn('mid', [
+                    { label: 'Between', n: g.mid, color: '#64748b' }
+                ]);
+                amzSbidPaintColumn('above', [
+                    { label: '× L1', n: g.above.l1, color: '#16a34a' },
+                    { label: 'No L1', n: g.above.none, color: '#dc2626' }
+                ]);
             }
             function amzRefreshSbidRuleFromServer(cb) {
                 fetch(sbidRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
@@ -5199,7 +5760,69 @@
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
                     amzRefreshSbidRuleFromServer(function () { amzFillSbidForm(window.amazonAdsSbidRule || {}); });
                 });
+                sbidModalEl.addEventListener('shown.bs.modal', function () {
+                    amzSbidPaint();
+                    setTimeout(function () {
+                        Object.keys(amzSbidCharts).forEach(function (k) {
+                            if (amzSbidCharts[k]) { try { amzSbidCharts[k].resize(); } catch (e) {} }
+                        });
+                    }, 60);
+                });
             }
+            ['amazonAdsSbidRuleUtilLow', 'amazonAdsSbidRuleUtilHigh'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener('input', amzSbidPaint);
+            });
+            (function () {
+                var minKey = 'amzSbidPanelMin';
+                function minSet() {
+                    try {
+                        var raw = JSON.parse(localStorage.getItem(minKey) || '[]');
+                        return new Set(Array.isArray(raw) ? raw : []);
+                    } catch (e) { return new Set(); }
+                }
+                function saveMin(set) {
+                    try { localStorage.setItem(minKey, JSON.stringify(Array.from(set))); } catch (e) {}
+                }
+                function paintMin() {
+                    var min = minSet();
+                    document.querySelectorAll('#amazonAdsSbidRuleModal [data-amz-sbid-panel]').forEach(function (el) {
+                        var on = min.has(el.getAttribute('data-amz-sbid-panel'));
+                        el.classList.toggle('is-min', on);
+                        var btn = el.querySelector('.amz-sbid-min-btn');
+                        if (!btn) return;
+                        var title = (el.querySelector('.amz-sbid-title') || {}).textContent || 'rule';
+                        btn.textContent = on ? '+' : '−';
+                        btn.title = (on ? 'Maximize ' : 'Minimize ') + title.trim();
+                        btn.setAttribute('aria-label', btn.title);
+                    });
+                    Object.keys(amzSbidCharts).forEach(function (k) {
+                        if (amzSbidCharts[k]) { try { amzSbidCharts[k].resize(); } catch (e) {} }
+                    });
+                }
+                document.addEventListener('click', function (e) {
+                    var btn = e.target && e.target.closest ? e.target.closest('#amazonAdsSbidRuleModal .amz-sbid-min-btn') : null;
+                    if (btn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var col = btn.closest('[data-amz-sbid-panel]');
+                        if (!col) return;
+                        var min = minSet();
+                        var key = col.getAttribute('data-amz-sbid-panel');
+                        if (min.has(key)) min.delete(key); else min.add(key);
+                        saveMin(min);
+                        paintMin();
+                        return;
+                    }
+                    var collapsed = e.target && e.target.closest ? e.target.closest('#amazonAdsSbidRuleModal .amz-sbid-col.is-min') : null;
+                    if (!collapsed) return;
+                    var min = minSet();
+                    min.delete(collapsed.getAttribute('data-amz-sbid-panel'));
+                    saveMin(min);
+                    paintMin();
+                });
+                paintMin();
+            })();
             var sbidSaveBtn = document.getElementById('amazonAdsSbidRuleSaveBtn');
             if (sbidSaveBtn) {
                 sbidSaveBtn.addEventListener('click', function () {

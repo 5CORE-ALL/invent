@@ -832,6 +832,14 @@
 
                         <!-- Ads% (from /all-marketplace-master — Amz channel) -->
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" data-live-value="{{ $amazonAdsPercent !== null ? round((float) $amazonAdsPercent, 1) : 0 }}" data-format="pct" data-invert="1" id="amazon-ads-badge" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Amz Ads% (Total Ad Spend / L30 Sales). Lower is better. Click dot for rolling history."><span class="summary-trend-dot none" data-metric="tcos_pct" title="Rolling history"></span>Ads: {{ $amazonAdsPercent !== null ? round($amazonAdsPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-ad-sales-badge" style="background-color: #0d6efd; color: white; font-weight: bold;" title="Amazon ad-attributed sales. Same Ad Sales as All Marketplace Master."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Ads sales: {{ $amazonAdSales !== null ? '$' . number_format((float) $amazonAdSales) : 'N/A' }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-acos-badge" style="background-color: #dc3545; color: white; font-weight: bold;" title="ACOS% = Ad Spend ÷ Ad Sales × 100. Same ACOS as All Marketplace Master. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>ACOS: {{ $amazonAcosPercent !== null ? round((float) $amazonAcosPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-l30-spend-badge" style="background-color: #6f42c1; color: white; font-weight: bold;" title="Amazon L30 ad spend. Same Total Ad Spend as All Marketplace Master (the numerator of Ads%)."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>L30 spend: {{ isset($amazonL30Spend) && $amazonL30Spend !== null ? '$' . number_format((float) $amazonL30Spend) : 'N/A' }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-y-spend-badge" style="background-color: #4c1d95; color: white; font-weight: bold;" title="Yesterday Amazon ad spend (L1) from SP+SB campaign reports, same pull as Amazon Ads."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y spend: {{ isset($amazonYSpend) && $amazonYSpend !== null ? '$' . number_format((float) $amazonYSpend) : 'N/A' }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-y-acos-badge" style="background-color: #e11d48; color: white; font-weight: bold;" title="Yesterday ACOS = L1 spend ÷ L1 ad sales × 100. 100% when spend is positive and ad sales are 0. Lower is better."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y ACOS: {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? round((float) $amazonYAcosPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-y-sales-pct-badge" style="background-color: #17a2b8; color: white; font-weight: bold;" title="Y Sales vs the L30 daily average: ((L30 Sales / 30) − Y Sales) / (L30 Sales / 30) × 100. Positive means yesterday is below a typical day."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y Sales%: {{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? round((float) $amazonYSalesPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-y-bgt-pct-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Daily campaign budget ÷ (L30 sales / 30) × 100. How large the SP+SB daily budgets are versus a typical day's sales."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y bgt %: {{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? round((float) $amazonYBgtPercent, 1) . '%' : 'N/A' }}</span>
+                        <span class="badge fs-6 p-2" id="amazon-y-utilized-badge" style="background-color: #0f766e; color: white; font-weight: bold;" title="Yesterday spend (L1) ÷ sum of daily campaign budgets × 100. Same ratio as U1% on Amazon Ads, totaled across SP+SB."><span class="summary-trend-dot none" title="No prior-day snapshot yet"></span>Y utilized %: {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? round((float) $amazonYUtilizedPercent, 1) . '%' : 'N/A' }}</span>
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" data-live-value="{{ (float) (($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}" data-format="pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="NPFT% = GPFT% − Ads%. GPFT from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="npft_pct" title="Rolling history"></span>NPFT: {{ (int) round((float) ($ordersL30Gpft ?? 0) - (float) ($amazonAdsPercent ?? 0)) }}%</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="groi_pct" data-live-value="{{ (float) ($ordersL30Groi ?? 0) }}" data-format="pct" id="groi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 GROI% = Σ PFT ÷ Σ COGS from real Amz orders — same as /amazon/daily-sales ROI %. Click for trend."><span class="summary-trend-dot none" data-metric="groi_pct" title="Rolling history"></span>GROI: {{ (int) round((float) ($ordersL30Groi ?? 0)) }}%</span>
                         <span class="badge fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" data-live-value="{{ (float) ($ordersL30Nroi ?? 0) }}" data-format="pct" id="nroi-percent-badge" style="background-color: #6f42c1; color: white; font-weight: bold; cursor:pointer;" title="L30 NROI% = (Σ PFT − Ads% × Sales) ÷ Σ COGS. PFT/COGS from real Amz orders (same as /amazon/daily-sales). Click for trend."><span class="summary-trend-dot none" data-metric="nroi_pct" title="Rolling history"></span>NROI: {{ (int) round((float) ($ordersL30Nroi ?? 0)) }}%</span>
@@ -1447,6 +1455,14 @@
         // Amazon channel Ads% (TACOS) — same value as the Ads badge /all-marketplace-master.
         // Used for PFT% = GPFT% − Ads%, SPFT = SGPFT − Ads%, and net SROI (NROI-badge formula).
         const AMAZON_CHANNEL_ADS_PCT = {{ $amazonAdsPercent !== null ? (float) $amazonAdsPercent : 0 }};
+        const AMAZON_AD_SALES = {{ $amazonAdSales !== null ? (float) $amazonAdSales : 'null' }};
+        const AMAZON_ACOS_PCT = {{ $amazonAcosPercent !== null ? (float) $amazonAcosPercent : 'null' }};
+        const AMAZON_L30_SPEND = {{ isset($amazonL30Spend) && $amazonL30Spend !== null ? (float) $amazonL30Spend : 'null' }};
+        const AMAZON_Y_SPEND = {{ isset($amazonYSpend) && $amazonYSpend !== null ? (float) $amazonYSpend : 'null' }};
+        const AMAZON_Y_ACOS_PCT = {{ isset($amazonYAcosPercent) && $amazonYAcosPercent !== null ? (float) $amazonYAcosPercent : 'null' }};
+        const AMAZON_Y_SALES_PCT = {{ isset($amazonYSalesPercent) && $amazonYSalesPercent !== null ? (float) $amazonYSalesPercent : 'null' }};
+        const AMAZON_Y_BGT_PCT = {{ isset($amazonYBgtPercent) && $amazonYBgtPercent !== null ? (float) $amazonYBgtPercent : 'null' }};
+        const AMAZON_Y_UTILIZED_PCT = {{ isset($amazonYUtilizedPercent) && $amazonYUtilizedPercent !== null ? (float) $amazonYUtilizedPercent : 'null' }};
         // GPFT / GROI / NROI / PFT$ / COGS from real L30 orders — same source as /amazon/daily-sales.
         const ORDERS_L30_GPFT = {{ (float) ($ordersL30Gpft ?? 0) }};
         const ORDERS_L30_GROI = {{ (float) ($ordersL30Groi ?? 0) }};
@@ -6009,6 +6025,28 @@
                 setAmzSummaryBadge($('#total-sales-amt-badge'), 'Sales: $' + Math.round(SERVER_AMZ_SALES_L30).toLocaleString('en-US'), Math.round(SERVER_AMZ_SALES_L30));
                 setAmzSummaryBadge($('#total-qty-sold-badge'), 'Qty: ' + Math.round(SERVER_AMZ_QTY_L30).toLocaleString('en-US'), SERVER_AMZ_QTY_L30);
                 setAmzSummaryBadge($('#amazon-ads-badge'), 'Ads: ' + (isFinite(amazonAdsPercent) ? (Math.round(amazonAdsPercent * 10) / 10) + '%' : 'N/A'), amazonAdsPercent);
+                const amazonAdSales = (typeof AMAZON_AD_SALES === 'number' && isFinite(AMAZON_AD_SALES)) ? AMAZON_AD_SALES : null;
+                const amazonAcosPct = (typeof AMAZON_ACOS_PCT === 'number' && isFinite(AMAZON_ACOS_PCT)) ? AMAZON_ACOS_PCT : null;
+                setAmzSummaryBadge($('#amazon-ad-sales-badge'), 'Ads sales: ' + (amazonAdSales === null ? 'N/A' : '$' + Math.round(amazonAdSales).toLocaleString('en-US')), amazonAdSales);
+                setAmzSummaryBadge($('#amazon-acos-badge'), 'ACOS: ' + (amazonAcosPct === null ? 'N/A' : (Math.round(amazonAcosPct * 10) / 10) + '%'), amazonAcosPct);
+                const amzMoney = function (v) {
+                    return (typeof v === 'number' && isFinite(v)) ? ('$' + Math.round(v).toLocaleString('en-US')) : 'N/A';
+                };
+                const amzPct = function (v) {
+                    return (typeof v === 'number' && isFinite(v)) ? ((Math.round(v * 10) / 10) + '%') : 'N/A';
+                };
+                const amazonL30Spend = (typeof AMAZON_L30_SPEND === 'number' && isFinite(AMAZON_L30_SPEND)) ? AMAZON_L30_SPEND : null;
+                const amazonYSpend = (typeof AMAZON_Y_SPEND === 'number' && isFinite(AMAZON_Y_SPEND)) ? AMAZON_Y_SPEND : null;
+                const amazonYAcos = (typeof AMAZON_Y_ACOS_PCT === 'number' && isFinite(AMAZON_Y_ACOS_PCT)) ? AMAZON_Y_ACOS_PCT : null;
+                const amazonYSalesPct = (typeof AMAZON_Y_SALES_PCT === 'number' && isFinite(AMAZON_Y_SALES_PCT)) ? AMAZON_Y_SALES_PCT : null;
+                const amazonYBgtPct = (typeof AMAZON_Y_BGT_PCT === 'number' && isFinite(AMAZON_Y_BGT_PCT)) ? AMAZON_Y_BGT_PCT : null;
+                const amazonYUtilized = (typeof AMAZON_Y_UTILIZED_PCT === 'number' && isFinite(AMAZON_Y_UTILIZED_PCT)) ? AMAZON_Y_UTILIZED_PCT : null;
+                setAmzSummaryBadge($('#amazon-l30-spend-badge'), 'L30 spend: ' + amzMoney(amazonL30Spend), amazonL30Spend);
+                setAmzSummaryBadge($('#amazon-y-spend-badge'), 'Y spend: ' + amzMoney(amazonYSpend), amazonYSpend);
+                setAmzSummaryBadge($('#amazon-y-acos-badge'), 'Y ACOS: ' + amzPct(amazonYAcos), amazonYAcos);
+                setAmzSummaryBadge($('#amazon-y-sales-pct-badge'), 'Y Sales%: ' + amzPct(amazonYSalesPct), amazonYSalesPct);
+                setAmzSummaryBadge($('#amazon-y-bgt-pct-badge'), 'Y bgt %: ' + amzPct(amazonYBgtPct), amazonYBgtPct);
+                setAmzSummaryBadge($('#amazon-y-utilized-badge'), 'Y utilized %: ' + amzPct(amazonYUtilized), amazonYUtilized);
                 
                 const avgGpft = ORDERS_L30_GPFT;
                 setAmzSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(avgGpft) + '%', Math.round(avgGpft));
