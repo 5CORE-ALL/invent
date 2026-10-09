@@ -1157,9 +1157,8 @@ class TemuController extends Controller
      */
     public function temuTabulatorView()
     {
-        // Y Sales — same source/definition as the Temu row on /all-marketplace-master:
-        // freight-inclusive (FB price) revenue for wall-clock yesterday (Pacific).
-        $temuYSales = TemuShopifySalesService::computeYSalesFromOrders();
+        // Y Sales on this page only: Σ Line Sales for yesterday (Pacific).
+        $temuYSales = TemuShopifySalesService::sumYesterdayLineSales();
 
         // Margin from marketplace_percentages (Temu), same source getOrdersTableRows /
         // getTemuChannelData use — so /temu-tabulator GPFT%/ROI match /all-marketplace-master.

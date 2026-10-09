@@ -830,6 +830,36 @@ class TemuShopifySalesService
         return (float) self::computeMetricsFromOrders($start, $end)['base_sales'];
     }
 
+    /**
+     * /temu-tabulator Y Sales only: Σ Line Sales (basePrice + shipAmountTotal)
+     * for wall-clock yesterday Pacific. Rows with a line amount are included
+     * even when goods base is empty. No base × qty fallback.
+     */
+    public static function sumYesterdayLineSales(): float
+    {
+        if (! TemuOrder::whereNotNull('parent_order_time')->exists()) {
+            return 0.0;
+        }
+
+        $yesterday = Carbon::now(self::PST)->subDay();
+        $rows = self::getOrdersTableRows(
+            $yesterday->copy()->startOfDay(),
+            $yesterday->copy()->endOfDay()
+        );
+
+        $sum = 0.0;
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($r['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            $sum += (float) ($r['line_sales'] ?? 0);
+        }
+
+        return round($sum, 2);
+    }
+
     /** Y Sales from temu2_orders: base-price revenue on yesterday (wall-clock Pacific). */
     public static function computeYSalesFromTemu2Orders(): ?float
     {
