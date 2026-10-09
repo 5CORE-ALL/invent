@@ -17,6 +17,7 @@ class CustomerCareDepartments
     private const DISPLAY_LABELS = [
         'Carrier' => 'Carrier Claims',
         'Carrier Issue' => 'Carrier Scan Issue',
+        'Orders on Hold' => 'Orders On Hold (CC Actions)',
         // Legacy / import aliases still seen in older rows.
         'Carrier and Claim' => 'Carrier Claims',
         'Carriers Claims' => 'Carrier Claims',
@@ -52,6 +53,9 @@ class CustomerCareDepartments
         'pricing issues' => 'Pricing',
         'pricing error' => 'Pricing',
         'pricing errors' => 'Pricing',
+        'orders on hold' => 'Orders on Hold',
+        'orders on hold (cc actions)' => 'Orders on Hold',
+        'orders on hold (cc action)' => 'Orders on Hold',
     ];
 
     public static function canonicalDepartment(string $value): string

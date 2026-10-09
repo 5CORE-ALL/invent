@@ -1157,8 +1157,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inv-under-30-days/data', [\App\Http\Controllers\ProductMaster\InvUnder30DaysController::class, 'getData'])->name('inv.under.30.days.data');
     Route::get('/inv-days', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'index'])->name('inv.days');
     Route::get('/inv-days/data', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'getData'])->name('inv.days.data');
-    Route::get('/inv-days/age-map', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'ageMap'])->name('inv.days.age-map');
-    Route::get('/inv-days/amazon-std-map', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'amazonStdMap'])->name('inv.days.amazon-std-map');
     Route::post('/inv-days/clearance', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'toggleClearance'])->name('inv.days.clearance');
     Route::post('/inv-days/clearance/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkClearance'])->name('inv.days.clearance.bulk');
     Route::post('/inv-days/nrp/bulk', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'bulkNrp'])->name('inv.days.nrp.bulk');
@@ -1166,12 +1164,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inv-days/clearance/yes', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'clearanceYesSkus'])->name('inv.days.clearance.yes');
     Route::get('/inv-change-L30', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'index'])->name('inv.change.l30');
     Route::get('/inv-change-L30/data', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'getData'])->name('inv.change.l30.data');
-    Route::get('/inv-management-5core', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'index'])->name('inv.management.5core');
-    Route::get('/inv-management-5core/data', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'data'])->name('inv.management.5core.data');
-    Route::post('/inv-management-5core/seed', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'seed'])->name('inv.management.5core.seed');
-    Route::post('/inv-management-5core/record-sales', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'recordSales'])->name('inv.management.5core.sales');
-    Route::post('/inv-management-5core/adjust', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'adjust'])->name('inv.management.5core.adjust');
-    Route::get('/inv-management-5core/history', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'history'])->name('inv.management.5core.history');
     Route::redirect('/inv-change-seven-days', '/inv-change-L30');
     Route::get('/sku-adjustment-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory'])->name('sku-adjustment-history');
     Route::get('/shopify-inventory-history-url', [VerificationAdjustmentController::class, 'getShopifyInventoryHistoryUrl']);
@@ -4365,8 +4357,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // LMP Overall — parent/SKU inventory with Amz, eBay, Temu, and Google LMP
     Route::get('/lmp-overall', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'index'])->name('lmp.overall');
     Route::get('/lmp-overall/data', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'data'])->name('lmp.overall.data');
-    Route::get('/lmp-overall/sku-metrics', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'skuMetrics'])->name('lmp.overall.sku-metrics');
-    Route::post('/lmp-overall/channel-sales', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'channelSales'])->name('lmp.overall.channel-sales');
     Route::post('/lmp-overall/save', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'save'])->name('lmp.overall.save');
 
     // Std pricing — parent/SKU inventory, ovl30, dil, and Amazon Std Price

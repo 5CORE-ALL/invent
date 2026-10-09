@@ -329,13 +329,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     return `<img src="${escapeHtml(src)}" class="inv5c-img" alt="" loading="lazy">`;
                 },
             },
-            { title: 'Parent', field: 'parent', minWidth: 140, widthGrow: 1, headerFilter: 'input' },
+            { title: 'Parent', field: 'parent', minWidth: 140, widthGrow: 1 },
             {
                 title: 'SKU',
                 field: 'sku',
                 minWidth: 200,
                 widthGrow: 2,
-                headerFilter: 'input',
                 formatter: function (cell) {
                     const sku = cell.getValue();
                     return `<span class="fw-semibold">${escapeHtml(sku)}</span>
