@@ -3184,9 +3184,13 @@
                 sale = amzPefRound2(std * (1 - (stack.totalDisc / 100)));
                 if (!(sale >= 0.01)) sale = null;
             }
-            const saleBase = sale != null ? sale : (std > 0 ? amzPefRound2(std) : 0);
+            let effective = sale != null ? sale : std;
+            if (typeof amzStdRaiseToMinNpft === 'function') {
+                const raised = Number(amzStdRaiseToMinNpft(effective, d)) || 0;
+                if (raised > effective) effective = raised;
+            }
+            const saleBase = effective;
             if (!(saleBase > 0)) return null;
-            const effective = sale != null ? sale : std;
             if (!(effective > 0)) return null;
             const max = amzMaxFromSale(effective);
             return {

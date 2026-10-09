@@ -56,14 +56,14 @@
             padding: 10px 16px;
         }
         #amzStdPrcModal .amz-sp-cols {
-            display: grid;
-            grid-template-columns: repeat(8, minmax(0, 1fr));
+            display: flex;
             gap: 12px;
             align-items: stretch;
             width: 100%;
             min-width: 0;
         }
         #amzStdPrcModal .amz-sp-col {
+            flex: 1 1 0;
             min-width: 0;
             display: flex;
             flex-direction: column;
@@ -73,6 +73,14 @@
             background: #fff;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
+        #amzStdPrcModal .amz-sp-col-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+        #amzStdPrcModal .amz-sp-col-head .amz-sp-pie-title { margin-bottom: 0; }
+        #amzStdPrcModal .amz-sp-min-btn { border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; }
+        #amzStdPrcModal .amz-sp-min-btn:hover { background: #e2e8f0; }
+        #amzStdPrcModal .amz-sp-col.is-min { flex: 0 0 40px; padding: 10px 4px; cursor: pointer; }
+        #amzStdPrcModal .amz-sp-col.is-min > :not(.amz-sp-col-head) { display: none !important; }
+        #amzStdPrcModal .amz-sp-col.is-min .amz-sp-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
+        #amzStdPrcModal .amz-sp-col.is-min .amz-sp-pie-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
         #amzStdPrcModal .amz-sp-pie {
             display: flex;
             flex-direction: column;
@@ -166,6 +174,9 @@
             font-weight: 600;
         }
         #amzStdPrcModal .amz-sp-col .table-responsive { margin-bottom: 8px; }
+        #amzStdPrcModal .amz-sp-npft { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border: 1px solid #e6edf5; border-radius: 14px; background: #fff; font-size: 13px; color: #334155; }
+        .ch-npft-mark { color: #dc3545; font-weight: 800; margin-left: 3px; font-size: 14px; line-height: 1; }
+        #amzStdPrcModal .amz-sp-npft .amz-sp-input { width: 64px; min-width: 64px; max-width: 64px; margin: 0; }
         #amzStdPrcModal .amz-sp-margins {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -318,7 +329,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %.</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. S PRC is raised when NPFT% would fall under Min NPFT %. Clearance SKUs stay on the discount price.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -341,6 +352,11 @@
                             <div class="amz-sp-metric-grid" id="amz-sp-margin-inv-metrics"></div>
                         </div>
                     </div>
+                    <div class="amz-sp-npft">
+                        <label class="fw-semibold mb-0" for="amz-sp-min-npft">Min NPFT %</label>
+                        <input type="number" id="amz-sp-min-npft" class="form-control form-control-sm amz-sp-input" min="0" max="99" step="0.1" value="10" title="S PRC is raised so NPFT% stays at or above this. 0 turns the floor off.">
+                        <span class="text-muted">S PRC stays at or above this NPFT%. Clearance SKUs are ignored (<strong id="amz-sp-min-npft-ignored">0</strong>). <span style="color:#dc3545;font-weight:700;">Applied <strong id="amz-sp-min-npft-applied">0</strong></span></span>
+                    </div>
                     <div class="amz-sp-hist-wrap" id="amz-sp-hist-wrap">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="small fw-semibold" id="amz-sp-hist-title">Daily history</span>
@@ -352,9 +368,9 @@
                     </div>
 
                     <div class="amz-sp-cols">
-                        <div class="amz-sp-col">
+                        <div class="amz-sp-col" data-amz-sp-panel="dil">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Dil</div><button type="button" class="amz-sp-min-btn" title="Minimize Dil" aria-label="Minimize Dil">−</button></div>
                             <div class="amz-sp-pie">
-                                <div class="amz-sp-pie-title">Dil</div>
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-dil"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-dil"></div>
                             </div>
@@ -375,9 +391,9 @@
                             <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-dil-add">Add slab</button>
                         </div>
 
-                        <div class="amz-sp-col">
+                        <div class="amz-sp-col" data-amz-sp-panel="rev">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Reviews</div><button type="button" class="amz-sp-min-btn" title="Minimize Reviews" aria-label="Minimize Reviews">−</button></div>
                             <div class="amz-sp-pie">
-                                <div class="amz-sp-pie-title">Reviews</div>
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-rev"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-rev"></div>
                             </div>
@@ -406,9 +422,9 @@
                             <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-rev-add">Add range</button>
                         </div>
 
-                        <div class="amz-sp-col">
+                        <div class="amz-sp-col" data-amz-sp-panel="buss">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Std Prc ranges. Disc % updates the B Disc column.">B Disc</div><button type="button" class="amz-sp-min-btn" title="Minimize B Disc" aria-label="Minimize B Disc">−</button></div>
                             <div class="amz-sp-pie">
-                                <div class="amz-sp-pie-title" title="Std Prc ranges. Disc % updates the B Disc column.">B Disc</div>
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-buss"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-buss"></div>
                             </div>
@@ -429,9 +445,9 @@
                             <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-buss-add">Add range</button>
                         </div>
 
-                        <div class="amz-sp-col">
+                        <div class="amz-sp-col" data-amz-sp-panel="zs">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Disc % when A L30 is 0. Sold SKUs stay 0%.">0 Sold</div><button type="button" class="amz-sp-min-btn" title="Minimize 0 Sold" aria-label="Minimize 0 Sold">−</button></div>
                             <div class="amz-sp-pie">
-                                <div class="amz-sp-pie-title" title="Disc % when A L30 is 0. Sold SKUs stay 0%.">0 Sold</div>
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-zs"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-zs"></div>
                             </div>
@@ -442,9 +458,9 @@
                             <div class="small text-muted">0 sold SKUs: <strong id="amz-sp-zs-count">0</strong></div>
                         </div>
 
-                        <div class="amz-sp-col">
+                        <div class="amz-sp-col" data-amz-sp-panel="cvr">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">CVR up / down</div><button type="button" class="amz-sp-min-btn" title="Minimize CVR" aria-label="Minimize CVR">−</button></div>
                             <div class="amz-sp-pie">
-                                <div class="amz-sp-pie-title">CVR up / down</div>
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-cvr"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-cvr"></div>
                             </div>
@@ -494,9 +510,9 @@
                             </div>
                         </div>
 
-                        <div class="amz-sp-col">
+                        <div class="amz-sp-col" data-amz-sp-panel="age">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">Age Days</div><button type="button" class="amz-sp-min-btn" title="Minimize Age Days" aria-label="Minimize Age Days">−</button></div>
                             <div class="amz-sp-pie">
-                                <div class="amz-sp-pie-title">Age Days</div>
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-age"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-age"></div>
                             </div>
@@ -517,9 +533,9 @@
                             <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-age-add">Add range</button>
                         </div>
 
-                        <div class="amz-sp-col">
+                        <div class="amz-sp-col" data-amz-sp-panel="all">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title">All discounts</div><button type="button" class="amz-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="amz-sp-pie">
-                                <div class="amz-sp-pie-title">All discounts</div>
                                 <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-all"></canvas></div>
                                 <div class="amz-sp-pie-legend" id="amz-sp-leg-all"></div>
                             </div>
@@ -712,9 +728,11 @@
             const std = Number(d && d.STANDARD_PRICE) || 0;
             if (!(std > 0)) return 0;
             const pct = Math.min(99.99, Math.max(-100, Number(computeAmzSumDiscountPct(d)) || 0));
-            return (typeof amzPefRound2 === 'function')
+            let raw = (typeof amzPefRound2 === 'function')
                 ? amzPefRound2(std * (1 - (pct / 100)))
                 : Math.round(std * (1 - (pct / 100)) * 100) / 100;
+            raw = amzStdRaiseToMinNpft(raw, d);
+            return raw > 0 ? raw : 0;
         }
         window.computeAmzAgeDiscountPct = computeAmzAgeDiscountPct;
         window.computeAmzDilDiscountPct = computeAmzDilDiscountPct;
@@ -791,6 +809,7 @@
                 reviews: reviews,
                 buss: amzStdReadRanges('#amz-sp-buss-tbody', '.amz-sp-buss-min', '.amz-sp-buss-max', '.amz-sp-buss-disc'),
                 zeroSoldDisc: (function() { const n = Number($('#amz-sp-zs-disc').val()); return isFinite(n) ? amzStdDisc(n) : 0; })(),
+                minNpft: amzStdMinNpftNow(),
                 reviewMax: reviewMax,
                 noReviewsNoDiscount: $('#amz-sp-no-reviews-no-disc').is(':checked'),
             };
@@ -832,6 +851,7 @@
             amzStdPaintRanges('#amz-sp-rev-tbody', 'amz-sp-rev', reviews);
             amzStdPaintRanges('#amz-sp-buss-tbody', 'amz-sp-buss', amzStdBussRules);
             $('#amz-sp-zs-disc').val(amzStdZeroSoldDisc);
+            $('#amz-sp-min-npft').val(amzStdMinNpft);
             const maxRev = (typeof amzReviewDiscMax !== 'undefined') ? amzReviewDiscMax : 4;
             $('#amz-sp-review-max').val(maxRev);
             const noRev = (typeof amzNoReviewsNoDiscount === 'undefined') ? true : !!amzNoReviewsNoDiscount;
@@ -853,6 +873,132 @@
             const ship = parseFloat(d && d.Ship_productmaster) || 0;
             return (sprice * amzStdRowMargin(d)) - ship - lp;
         }
+        let amzStdMinNpft = 10;
+        let amzStdClearanceSet = null;
+        let amzStdClearanceLoading = null;
+        const AMZ_STD_CLEARANCE_URL = @json(route('inv.days.clearance.yes'));
+        function amzStdRowSku(d) {
+            if (typeof amzPefSku === 'function') return amzPefSku(d);
+            return d && (d.sku || d.SKU || d['(Child) sku'] || '');
+        }
+        function amzStdClearanceKey(sku) {
+            return String(sku || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+        }
+        function amzStdIsClearance(d) {
+            if (!amzStdClearanceSet) return false;
+            return !!amzStdClearanceSet[amzStdClearanceKey(amzStdRowSku(d))];
+        }
+        function amzStdLoadClearance() {
+            if (amzStdClearanceSet) return $.Deferred().resolve(amzStdClearanceSet).promise();
+            if (amzStdClearanceLoading) return amzStdClearanceLoading;
+            amzStdClearanceLoading = $.ajax({
+                url: AMZ_STD_CLEARANCE_URL,
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+            }).then(function(res) {
+                const set = {};
+                ((res && res.skus) || []).forEach(function(sku) { set[amzStdClearanceKey(sku)] = true; });
+                amzStdClearanceSet = set;
+                return set;
+            }, function() {
+                amzStdClearanceSet = {};
+                return amzStdClearanceSet;
+            });
+            return amzStdClearanceLoading;
+        }
+        function amzStdAdsPct() {
+            return (typeof amzAmazonAdsPct === 'function') ? (Number(amzAmazonAdsPct()) || 0) : 0;
+        }
+        function amzStdMinNpftNow() {
+            const $inp = $('#amz-sp-min-npft');
+            if (!$inp.length) return amzStdMinNpft;
+            const n = Number($inp.val());
+            if (!isFinite(n)) return amzStdMinNpft;
+            return Math.min(99, Math.max(0, n));
+        }
+        function amzStdNpftAt(price, d) {
+            const p = Number(price) || 0;
+            if (!(p > 0)) return 0;
+            return (amzStdUnitProfit(d, p) / p) * 100 - amzStdAdsPct();
+        }
+        function amzStdPriceForMinNpft(d, minNpft) {
+            const denom = amzStdRowMargin(d) - (amzStdAdsPct() / 100) - (Number(minNpft) || 0) / 100;
+            if (!(denom > 0.0001)) return 0;
+            const lp = parseFloat(d && d.LP_productmaster) || 0;
+            const ship = parseFloat(d && d.Ship_productmaster) || 0;
+            const raw = (lp + ship) / denom;
+            if (!(raw > 0)) return 0;
+            return Math.ceil(raw * 100 - 1e-6) / 100;
+        }
+        function amzStdRaiseToMinNpft(price, d, minNpft) {
+            if (amzStdIsClearance(d)) return Number(price) || 0;
+            const floorPct = minNpft == null ? amzStdMinNpftNow() : Number(minNpft);
+            const current = Number(price) || 0;
+            if (!(floorPct > 0) || !(current > 0)) return current;
+            if (amzStdNpftAt(current, d) >= floorPct - 0.001) return current;
+            const raised = amzStdPriceForMinNpft(d, floorPct);
+            return raised > current ? raised : current;
+        }
+        window.amzStdRaiseToMinNpft = amzStdRaiseToMinNpft;
+        function amzStdMinNpftWasApplied(d, minNpft) {
+            if (!d || amzStdIsClearance(d)) return false;
+            const floor = minNpft == null ? Number(amzStdMinNpft) : Number(minNpft);
+            if (!(floor > 0)) return false;
+            const std = Number(d.STANDARD_PRICE) || 0;
+            if (!(std > 0)) return false;
+            let pre = std;
+            if (typeof computeAmzRuleStack === 'function') {
+                const stack = computeAmzRuleStack(d);
+                const total = Number(stack && stack.totalDisc) || 0;
+                if (Math.abs(total) >= 0.01 && total < 100) {
+                    pre = Math.round(std * (1 - total / 100) * 100) / 100;
+                }
+            }
+            if (!(pre > 0)) return false;
+            return amzStdRaiseToMinNpft(pre, d, floor) > pre + 0.009;
+        }
+        window.amzStdMinNpftWasApplied = amzStdMinNpftWasApplied;
+        let amzStdNpftMarksBound = false;
+        function amzStdStampNpftMarks() {
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
+            ['SPRICE', 'sprice'].forEach(function(field) {
+                let col = null;
+                try { col = table.getColumn(field); } catch (e) { col = null; }
+                if (!col || typeof col.getCells !== 'function') return;
+                col.getCells().forEach(function(cell) {
+                    const el = cell.getElement ? cell.getElement() : null;
+                    if (!el) return;
+                    const row = cell.getRow ? cell.getRow() : null;
+                    const d = row && row.getData ? row.getData() : null;
+                    const on = !!(d && amzStdMinNpftWasApplied(d));
+                    let mark = el.querySelector('.ch-npft-mark');
+                    if (!on) {
+                        if (mark) mark.remove();
+                        return;
+                    }
+                    if (!mark) {
+                        mark = document.createElement('span');
+                        mark.className = 'ch-npft-mark';
+                        mark.textContent = '!';
+                        el.appendChild(mark);
+                    }
+                    mark.title = 'Raised so NPFT stays at or above ' + Number(amzStdMinNpft) + '%';
+                });
+            });
+        }
+        function amzStdBindNpftMarks(tries) {
+            if (typeof table === 'undefined' || !table || typeof table.on !== 'function') {
+                if ((tries || 0) < 40) setTimeout(function() { amzStdBindNpftMarks((tries || 0) + 1); }, 250);
+                return;
+            }
+            if (!amzStdNpftMarksBound) {
+                amzStdNpftMarksBound = true;
+                try { table.on('renderComplete', amzStdStampNpftMarks); } catch (e) { /* ignore */ }
+            }
+            amzStdStampNpftMarks();
+            if (typeof amzStdApplyPanelColumns === 'function') amzStdApplyPanelColumns();
+        }
+        window.amzStdStampNpftMarks = amzStdStampNpftMarks;
         function amzStdEmptyBucket() {
             return { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
         }
@@ -1149,6 +1295,8 @@
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
             const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, all: 0 };
             const zsCounts = { zero: 0, sold: 0 };
+            let clearanceIgnored = 0;
+            let npftApplied = 0;
             const l30 = amzStdEmptyBucket();
             const inv = amzStdEmptyBucket();
             const adsPct = (typeof amzAmazonAdsPct === 'function') ? amzAmazonAdsPct() : 0;
@@ -1210,6 +1358,7 @@
                     ? amzIsZeroSoldRow(d)
                     : !((typeof amzPefAL30 === 'function' ? amzPefAL30(d) : 0) > 0);
                 if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
+                if (amzStdIsClearance(d)) clearanceIgnored++;
                 const zsDisc = zeroSold ? amzStdScaleDisc(std, amzStdDisc(draft.zeroSoldDisc)) : 0;
                 if (ageDisc !== 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc !== 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
@@ -1220,7 +1369,10 @@
                 const sum = Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc));
                 if (sum !== 0) skuHits.all++;
                 if (std > 0) {
-                    const sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
+                    let sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
+                    const raised = amzStdRaiseToMinNpft(sprice, d, draft.minNpft);
+                    if (raised > sprice + 0.009) npftApplied++;
+                    sprice = raised;
                     const profit = amzStdUnitProfit(d, sprice);
                     const net = profit - (sprice * adsPct / 100);
                     const lp = parseFloat(d.LP_productmaster) || 0;
@@ -1256,6 +1408,11 @@
             $('#amz-sp-cvr-up-count').text(cvrCounts.up || 0);
             $('#amz-sp-cvr-up2-count').text(cvrCounts.up2 || 0);
             $('#amz-sp-zs-count').text(zsCounts.zero || 0);
+            const ignoredEl = document.getElementById('amz-sp-min-npft-ignored');
+            if (ignoredEl) ignoredEl.textContent = amzStdClearanceSet ? String(clearanceIgnored) : '…';
+            const appliedEl = document.getElementById('amz-sp-min-npft-applied');
+            if (appliedEl) appliedEl.textContent = String(npftApplied);
+            amzStdStampNpftMarks();
 
             const dilSlices = draft.dil.map(function(r, i) {
                 return { key: 'd' + i, label: r.min + '–' + r.max, color: AMZ_STD_PIE_COLORS[i % AMZ_STD_PIE_COLORS.length] };
@@ -1369,6 +1526,9 @@
                 amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 amzStdBussRules = (res.buss || AMZ_STD_BUSS_DEFAULTS).map(function(r) { return amzStdNormRange(r); }).filter(Boolean);
                 amzStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? amzStdDisc(res.zero_sold_disc) : 0;
+                if (isFinite(Number(res.min_npft))) amzStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
+                if ($('#amz-sp-min-npft').length) $('#amz-sp-min-npft').val(amzStdMinNpft);
+                amzStdStampNpftMarks();
                 if (!amzStdDilRules.length) amzStdDilRules = AMZ_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdAgeRules.length) amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdBussRules.length) amzStdBussRules = AMZ_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1402,7 +1562,7 @@
                 url: '/amazon-std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc, min_npft: draft.minNpft },
             });
             const revSave = $.ajax({
                 url: '/amazon-review-disc',
@@ -1417,6 +1577,7 @@
                 if (res && res.cvr) amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 if (res && res.buss) amzStdBussRules = res.buss.map(amzStdNormRange).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) amzStdZeroSoldDisc = amzStdDisc(res.zero_sold_disc);
+                if (res && isFinite(Number(res.min_npft))) amzStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
                 if (typeof table !== 'undefined' && table && typeof amzTableRedrawPreserveScroll === 'function') {
                     amzTableRedrawPreserveScroll(true);
                 }
@@ -1436,11 +1597,116 @@
                 if (typeof amzPefToast === 'function') amzPefToast('error', 'Could not save Std prc vs dil');
             });
         }
+        const AMZ_STD_PANELS = [
+            { key: 'dil', field: 'dil_discount' },
+            { key: 'rev', field: 'review_discount' },
+            { key: 'buss', field: 'buss_discount' },
+            { key: 'zs', field: 'zero_sold_discount' },
+            { key: 'cvr', field: 'cvr_discount' },
+            { key: 'age', field: 'age_discount' },
+            { key: 'all', field: 'sum_discount' },
+        ];
+        function amzStdPanelMinSet() {
+            try {
+                const raw = JSON.parse(localStorage.getItem('amzStdPanelMin') || '[]');
+                return new Set(Array.isArray(raw) ? raw : []);
+            } catch (e) { return new Set(); }
+        }
+        function amzStdSavePanelMin(set) {
+            try { localStorage.setItem('amzStdPanelMin', JSON.stringify(Array.from(set))); } catch (e) { /* ignore */ }
+        }
+        function amzStdPaintPanels() {
+            const min = amzStdPanelMinSet();
+            document.querySelectorAll('#amzStdPrcModal [data-amz-sp-panel]').forEach(function(el) {
+                const on = min.has(el.getAttribute('data-amz-sp-panel'));
+                el.classList.toggle('is-min', on);
+                const btn = el.querySelector('.amz-sp-min-btn');
+                if (!btn) return;
+                const title = (el.querySelector('.amz-sp-pie-title') || {}).textContent || 'rule';
+                btn.textContent = on ? '+' : '−';
+                btn.title = (on ? 'Maximize ' : 'Minimize ') + title.trim();
+                btn.setAttribute('aria-label', btn.title);
+            });
+        }
+        function amzStdApplyPanelColumns() {
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
+            const min = amzStdPanelMinSet();
+            AMZ_STD_PANELS.forEach(function(p) {
+                if (!min.has(p.key)) return;
+                let col = null;
+                try { col = table.getColumn(p.field); } catch (e) { col = null; }
+                if (!col || typeof col.hide !== 'function') return;
+                try { col.hide(); } catch (err) { /* ignore */ }
+                const cb = document.querySelector('#column-dropdown-menu .col-vis-field-toggle[data-field="' + p.field + '"]');
+                if (cb) cb.checked = false;
+            });
+        }
+        function amzStdSetPanelMin(key, minimized) {
+            const min = amzStdPanelMinSet();
+            if (minimized) min.add(key); else min.delete(key);
+            amzStdSavePanelMin(min);
+            amzStdPaintPanels();
+            const panel = AMZ_STD_PANELS.filter(function(p) { return p.key === key; })[0];
+            if (panel && typeof table !== 'undefined' && table && typeof table.getColumn === 'function') {
+                let col = null;
+                try { col = table.getColumn(panel.field); } catch (e) { col = null; }
+                if (col) {
+                    try { if (minimized) col.hide(); else if (typeof col.show === 'function') col.show(); } catch (err) { /* ignore */ }
+                }
+                const cb = document.querySelector('#column-dropdown-menu .col-vis-field-toggle[data-field="' + panel.field + '"]');
+                if (cb) cb.checked = !minimized;
+            }
+            if (!minimized) requestAnimationFrame(function() { amzStdRefreshModal(); });
+        }
+        function amzStdSyncPanelsFromMenu() {
+            const min = amzStdPanelMinSet();
+            let changed = false;
+            AMZ_STD_PANELS.forEach(function(p) {
+                const cb = document.querySelector('#column-dropdown-menu .col-vis-field-toggle[data-field="' + p.field + '"]');
+                if (!cb) return;
+                const shouldMin = !cb.checked;
+                if (shouldMin !== min.has(p.key)) {
+                    if (shouldMin) min.add(p.key); else min.delete(p.key);
+                    changed = true;
+                }
+            });
+            if (!changed) return;
+            amzStdSavePanelMin(min);
+            amzStdPaintPanels();
+        }
+        if (!window._amzStdPanelMenuSync) {
+            window._amzStdPanelMenuSync = true;
+            document.addEventListener('change', function(e) {
+                const t = e.target;
+                if (!t || !t.closest || !t.closest('#column-dropdown-menu')) return;
+                if (!t.classList.contains('col-vis-field-toggle') && !t.classList.contains('col-vis-group-toggle')) return;
+                setTimeout(amzStdSyncPanelsFromMenu, 0);
+            }, true);
+            document.addEventListener('click', function(e) {
+                const t = e.target;
+                if (!t || !t.closest) return;
+                if (!t.closest('[data-analytics-col-vis="show-all"]') && !t.closest('[data-analytics-col-vis="show-default"]')) return;
+                setTimeout(amzStdSyncPanelsFromMenu, 0);
+            }, true);
+        }
         function bindAmzStdPrcUi() {
+            amzStdPaintPanels();
+            $(document).off('click.amzspmin').on('click.amzspmin', '#amzStdPrcModal .amz-sp-min-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const key = $(this).closest('[data-amz-sp-panel]').attr('data-amz-sp-panel');
+                if (!key) return;
+                amzStdSetPanelMin(key, !$(this).closest('[data-amz-sp-panel]').hasClass('is-min'));
+            });
+            $(document).off('click.amzspmincol').on('click.amzspmincol', '#amzStdPrcModal .amz-sp-col.is-min', function(e) {
+                if ($(e.target).closest('.amz-sp-min-btn').length) return;
+                const key = $(this).attr('data-amz-sp-panel');
+                if (key) amzStdSetPanelMin(key, false);
+            });
             $('#amz-std-prc-btn').off('click.amzsp').on('click.amzsp', function(e) {
                 e.preventDefault();
                 amzStdApplied = false;
-                amzStdPaintModal();
+                $.when(amzStdLoadClearance()).always(function() { amzStdPaintModal(); });
                 const el = document.getElementById('amzStdPrcModal');
                 if (el && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).show();
             });
@@ -1508,5 +1774,11 @@
                 $('#amz-sp-hist-wrap').removeClass('is-open');
             });
         }
-        $(function() { bindAmzStdPrcUi(); });
+        $(function() {
+            bindAmzStdPrcUi();
+            amzStdLoadClearance();
+            amzStdBindNpftMarks(0);
+            setTimeout(amzStdApplyPanelColumns, 800);
+            setTimeout(amzStdApplyPanelColumns, 2200);
+        });
 @endif

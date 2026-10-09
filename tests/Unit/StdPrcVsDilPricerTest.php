@@ -220,7 +220,7 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(70.0, (new StdPrcVsDilPricer($rules, 'bestbuy'))->priceFromRow($row));
 
         $rules['min_npft'] = 10;
-        $this->assertSame(70.0, (new StdPrcVsDilPricer($rules, 'ebay1'))->priceFromRow($row));
+        $this->assertSame(71.43, (new StdPrcVsDilPricer($rules, 'ebay1'))->priceFromRow($row));
     }
 
     public function test_bestbuy_keeps_the_discount_when_npft_is_already_above_the_floor(): void

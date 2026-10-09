@@ -3631,12 +3631,12 @@
             return chPromoCapToStdWhenNoLmp(d, s);
         }
         /**
-         * Best Buy Min NPFT % can sit above Std. Save and Push must keep that suggested price.
+         * Min NPFT % can sit above Std. Save and Push must keep that suggested price.
          * Clearance SKUs stay on the discount price.
          */
         function chPromoKeepBestbuyMinNpft(d, price) {
             const n = chPromoRound2(price);
-            if (CHANNEL_PROMO_CHANNEL !== 'bestbuy' || !d) return n;
+            if (!d) return n;
             if (typeof chStdUsesMinNpft === 'function' && !chStdUsesMinNpft()) return n;
             if (typeof chStdMinNpftNow === 'function' && !(Number(chStdMinNpftNow()) > 0)) return n;
             if (typeof chStdIsClearance === 'function' && chStdIsClearance(d)) return n;

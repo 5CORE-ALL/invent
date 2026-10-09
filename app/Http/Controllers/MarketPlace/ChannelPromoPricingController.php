@@ -1795,13 +1795,13 @@ class ChannelPromoPricingController extends Controller
                 ['min' => 125, 'max' => 9999, 'disc' => 0],
             ],
             'zero_sold_disc' => 0,
-            'min_npft' => 0,
+            'min_npft' => 10,
         ];
     }
 
     private function minNpftFallback(string $channel): float
     {
-        return $channel === 'bestbuy' ? 10.0 : 0.0;
+        return 10.0;
     }
 
     private function normalizeMinNpft(mixed $incoming, float $fallback): float

@@ -71,7 +71,6 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'bestbuy'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'bestbuy'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
@@ -218,7 +217,6 @@
                     <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV">
                         <i class="fas fa-file-excel"></i>
                     </button>
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'bestbuy'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'bestbuy'])
 
                     <button id="mode-toggle-btn" class="btn btn-sm btn-secondary"
@@ -452,7 +450,6 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'bestbuy'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'bestbuy'])
 @endsection
 
 @section('script-bottom')
@@ -461,7 +458,6 @@
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     let table = null;
     let allTableData = [];
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'bestbuy'])
     const COLUMN_VIS_KEY = "bestbuy_tabulator_column_visibility";
     /** Same as Temu / Macys / eBay: |INV − BB INV| ≤ this counts as MAP, not a mapping issue. */
     const BB_INV_MAP_TOLERANCE = 3;
@@ -1774,7 +1770,6 @@
         }
         function refreshBestbuySpriceAfterLmpIgnore() {
             if (typeof table === 'undefined' || !table || !table.getRows) return;
-            if (typeof ebayDilGroiMetaForRow !== 'function') return;
             const targets = {};
             const add = function(s) {
                 const k = String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
@@ -2496,46 +2491,10 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: "Sprc Dil",
-                    field: "SPRC_DIL",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. BB L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + NROI%/100) + Ship) / margin. If that S PRC < A Price, S PRC = A Price, then cap at LMP. If LMP is below A Price, keep A Price.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (typeof isBestbuyParentRow === 'function' && isBestbuyParentRow(rowData)) return '';
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const dilShown = (meta.rawSprc > 0) ? meta.rawSprc : meta.sprc;
-                        let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                            + ' → ' + meta.label
-                            + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + Number(dilShown).toFixed(2);
-                        if (meta.amzApplied) {
-                            tip += ' → A Price $' + Number(meta.sprc).toFixed(2);
-                        }
-                        if (meta.lmpCapped) {
-                            tip += ' → LMP $' + Number(meta.sprc).toFixed(2);
-                        }
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + Number(dilShown).toFixed(2) + '</span>';
-                    },
-                    width: 78
-                },
-                {
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. BB L30 = 0 still uses the Dil-matching slab. If that price < A Price, S PRC = A Price, then cap at LMP. If LMP is below A Price, keep A Price. Blue triangle = S PRC ≠ BB Price. Red text = S PRC capped at LMP.",
+                    headerTooltip: "Not editable. S PRC from Std prc vs dil. If that price is under Min NPFT %, it is raised. If it is under A Price, S PRC = A Price, then cap at LMP. If LMP is below A Price, keep A Price. Blue triangle = S PRC ≠ BB Price. Red text = S PRC capped at LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
@@ -3250,9 +3209,6 @@
             if (window.ParentExpand && ParentExpand.isExpanded()) return;
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
-            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                ebayScheduleSprcDilAutoApply();
-            }
             setTimeout(function() {
                 applyFilters();
                 updateSummary();

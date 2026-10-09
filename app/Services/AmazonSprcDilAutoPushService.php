@@ -339,6 +339,20 @@ class AmazonSprcDilAutoPushService
         if (! ($effective > 0)) {
             return null;
         }
+        $minNpft = is_numeric($stdPromo['min_npft'] ?? null) ? (float) $stdPromo['min_npft'] : 10.0;
+        $npftRow = $row;
+        $npftRow['ads_pct'] = $ads;
+        $npftRow['margin'] = AmazonDilGroiRule::TAKE_HOME;
+        $npftRow['lp'] = $lp;
+        $npftRow['ship'] = $ship;
+        $effective = (new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'min_npft' => $minNpft,
+        ], 'amazon'))->enforceMinNpft($effective, $npftRow);
 
         $stdCeiling = $std;
         if ($totalDisc < 0 && $std > 0 && $sale !== null) {

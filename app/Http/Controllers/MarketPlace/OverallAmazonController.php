@@ -3072,6 +3072,15 @@ class OverallAmazonController extends Controller
         return round($disc, 2);
     }
 
+    private function amazonNormalizeMinNpft(mixed $incoming): float
+    {
+        if (! is_numeric($incoming)) {
+            return 10.0;
+        }
+
+        return round(min(99, max(0, (float) $incoming)), 2);
+    }
+
     public function amazonStdPrcVsDilRules()
     {
         $defaults = $this->amazonDefaultStdPrcVsDil();
@@ -3089,6 +3098,7 @@ class OverallAmazonController extends Controller
                 'buss' => $defaults['buss'],
                 'roi' => $defaults['roi'],
                 'zero_sold_disc' => $defaults['zero_sold_disc'],
+                'min_npft' => 10,
             ]);
         }
 
@@ -3101,6 +3111,7 @@ class OverallAmazonController extends Controller
             'buss' => $this->amazonNormalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
             'roi' => $this->amazonNormalizeStdPrcRanges($saved['roi'] ?? null, $defaults['roi']),
             'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0),
+            'min_npft' => $this->amazonNormalizeMinNpft($saved['min_npft'] ?? null),
         ]);
     }
 
@@ -3114,11 +3125,12 @@ class OverallAmazonController extends Controller
             'buss' => $this->amazonNormalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
             'roi' => $this->amazonNormalizeStdPrcRanges($request->input('roi'), $defaults['roi']),
             'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($request->input('zero_sold_disc')) ? (float) $request->input('zero_sold_disc') : 0),
+            'min_npft' => $this->amazonNormalizeMinNpft($request->input('min_npft')),
         ];
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'buss', 'roi', 'zero_sold']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'buss', 'roi', 'zero_sold', 'min_npft']]
         );
 
         return response()->json([
@@ -3129,6 +3141,7 @@ class OverallAmazonController extends Controller
             'buss' => $payload['buss'],
             'roi' => $payload['roi'],
             'zero_sold_disc' => $payload['zero_sold_disc'],
+            'min_npft' => $payload['min_npft'],
         ]);
     }
 

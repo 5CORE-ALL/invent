@@ -15,8 +15,16 @@
         #chStdPrcModal .ch-sp-sub { color: #64748b; font-size: 12px; margin-top: 2px; }
         #chStdPrcModal .modal-body { background: #f4f7fb; padding: 14px 16px 16px; }
         #chStdPrcModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; }
-        #chStdPrcModal .ch-sp-cols { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; align-items: stretch; width: 100%; min-width: 0; }
-        #chStdPrcModal .ch-sp-col { min-width: 0; display: flex; flex-direction: column; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px; background: #fff; }
+        #chStdPrcModal .ch-sp-cols { display: flex; gap: 12px; align-items: stretch; width: 100%; min-width: 0; }
+        #chStdPrcModal .ch-sp-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px; background: #fff; }
+        #chStdPrcModal .ch-sp-col-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+        #chStdPrcModal .ch-sp-col-head .ch-sp-pie-title { margin-bottom: 0; }
+        #chStdPrcModal .ch-sp-min-btn { border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px; padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; }
+        #chStdPrcModal .ch-sp-min-btn:hover { background: #e2e8f0; }
+        #chStdPrcModal .ch-sp-col.is-min { flex: 0 0 40px; padding: 10px 4px; cursor: pointer; }
+        #chStdPrcModal .ch-sp-col.is-min > :not(.ch-sp-col-head) { display: none !important; }
+        #chStdPrcModal .ch-sp-col.is-min .ch-sp-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
+        #chStdPrcModal .ch-sp-col.is-min .ch-sp-pie-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
         #chStdPrcModal .ch-sp-pie-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; color: #0f172a; }
         #chStdPrcModal .ch-sp-pie-canvas { position: relative; width: 100%; height: 150px; }
         #chStdPrcModal .ch-sp-pie-canvas canvas { display: block; width: 100% !important; height: 150px !important; }
@@ -67,6 +75,7 @@
         #chStdPrcModal .ch-sp-when-up::before { background: #198754; }
         #chStdPrcModal .ch-sp-when-up2::before { background: #14532d; }
         #chStdPrcModal .ch-sp-npft { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border: 1px solid #e6edf5; border-radius: 14px; background: #fff; font-size: 13px; color: #334155; }
+        .ch-npft-mark { color: #dc3545; font-weight: 800; margin-left: 3px; font-size: 14px; line-height: 1; }
         #chStdPrcModal .ch-sp-npft .ch-sp-input { width: 64px; min-width: 64px; max-width: 64px; margin: 0; }
         #chStdPrcModal .ch-sp-margins { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
         #chStdPrcModal .ch-sp-margin { display: flex; justify-content: space-between; gap: 16px; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px 16px; background: #fff; }
@@ -90,7 +99,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %.@if(($channelPromoChannel ?? '') === 'bestbuy') Best Buy raises S PRC when NPFT% would fall under Min NPFT %. Clearance SKUs stay on the discount price.@endif</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. S PRC is raised when NPFT% would fall under Min NPFT %. Clearance SKUs stay on the discount price.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -113,13 +122,11 @@
                             <div class="ch-sp-metric-grid" id="ch-sp-margin-inv-metrics"></div>
                         </div>
                     </div>
-                    @if(($channelPromoChannel ?? '') === 'bestbuy')
                     <div class="ch-sp-npft">
                         <label class="fw-semibold mb-0" for="ch-sp-min-npft">Min NPFT %</label>
                         <input type="number" id="ch-sp-min-npft" class="form-control form-control-sm ch-sp-input" min="0" max="99" step="0.1" value="10" title="S PRC is raised so NPFT% stays at or above this. 0 turns the floor off.">
-                        <span class="text-muted">S PRC stays at or above this NPFT%. Clearance SKUs are ignored (<strong id="ch-sp-min-npft-ignored">0</strong>).</span>
+                        <span class="text-muted">S PRC stays at or above this NPFT%. Clearance SKUs are ignored (<strong id="ch-sp-min-npft-ignored">0</strong>). <span style="color:#dc3545;font-weight:700;">Applied <strong id="ch-sp-min-npft-applied">0</strong></span></span>
                     </div>
-                    @endif
                     <div class="ch-sp-hist-wrap" id="ch-sp-hist-wrap">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <span class="small fw-semibold" id="ch-sp-hist-title">Daily history</span>
@@ -128,30 +135,30 @@
                         <div class="ch-sp-hist-canvas-wrap"><canvas id="ch-sp-hist"></canvas></div>
                     </div>
                     <div class="ch-sp-cols">
-                        <div class="ch-sp-col">
-                            <div class="ch-sp-pie-title">Dil</div>
+                        <div class="ch-sp-col" data-ch-sp-panel="dil">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title">Dil</div><button type="button" class="ch-sp-min-btn" title="Minimize Dil" aria-label="Minimize Dil">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-dil"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-dil"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-dil-tbody"></tbody></table></div>
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-dil-add">Add slab</button>
                         </div>
-                        <div class="ch-sp-col">
-                            <div class="ch-sp-pie-title">Reviews</div>
+                        <div class="ch-sp-col" data-ch-sp-panel="rev">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title">Reviews</div><button type="button" class="ch-sp-min-btn" title="Minimize Reviews" aria-label="Minimize Reviews">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-rev"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-rev"></div>
                             <div class="d-flex justify-content-between align-items-center mb-2"><label class="small fw-semibold mb-0" for="ch-sp-review-max">Max reviews</label><input type="number" id="ch-sp-review-max" class="form-control form-control-sm ch-sp-input" min="1" step="1" value="4"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-rev-tbody"></tbody></table></div>
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-rev-add">Add range</button>
                         </div>
-                        <div class="ch-sp-col">
-                            <div class="ch-sp-pie-title" title="Std Prc ranges. Disc % updates the B Disc column.">B Disc</div>
+                        <div class="ch-sp-col" data-ch-sp-panel="buss">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Std Prc ranges. Disc % updates the B Disc column.">B Disc</div><button type="button" class="ch-sp-min-btn" title="Minimize B Disc" aria-label="Minimize B Disc">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-buss"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-buss"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-buss-tbody"></tbody></table></div>
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-buss-add">Add range</button>
                         </div>
-                        <div class="ch-sp-col">
-                            <div class="ch-sp-pie-title" title="Disc % when this page's sold qty is 0. Sold &gt; 0 stays 0%.">0 Sold</div>
+                        <div class="ch-sp-col" data-ch-sp-panel="zs">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Disc % when this page's sold qty is 0. Sold &gt; 0 stays 0%.">0 Sold</div><button type="button" class="ch-sp-min-btn" title="Minimize 0 Sold" aria-label="Minimize 0 Sold">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-zs"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-zs"></div>
                             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -160,8 +167,8 @@
                             </div>
                             <div class="small text-muted">0 sold SKUs: <strong id="ch-sp-zs-count">0</strong></div>
                         </div>
-                        <div class="ch-sp-col">
-                            <div class="ch-sp-pie-title">CVR up / down</div>
+                        <div class="ch-sp-col" data-ch-sp-panel="cvr">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title">CVR up / down</div><button type="button" class="ch-sp-min-btn" title="Minimize CVR" aria-label="Minimize CVR">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-cvr"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-cvr"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0" id="ch-sp-cvr-table"><thead class="table-light"><tr><th>When</th><th class="text-center">CVR%</th><th class="text-end">Disc %</th><th class="text-center">Count</th></tr></thead>
@@ -174,15 +181,15 @@
                                 </tbody>
                             </table></div>
                         </div>
-                        <div class="ch-sp-col">
-                            <div class="ch-sp-pie-title">Age Days</div>
+                        <div class="ch-sp-col" data-ch-sp-panel="age">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title">Age Days</div><button type="button" class="ch-sp-min-btn" title="Minimize Age Days" aria-label="Minimize Age Days">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-age"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-age"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-age-tbody"></tbody></table></div>
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-age-add">Add range</button>
                         </div>
-                        <div class="ch-sp-col">
-                            <div class="ch-sp-pie-title">All discounts</div>
+                        <div class="ch-sp-col" data-ch-sp-panel="all">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title">All discounts</div><button type="button" class="ch-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-all"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-all"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Discount</th><th class="text-center">SKUs</th><th class="text-end">Disc %</th><th class="text-end">$ off</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
@@ -211,7 +218,7 @@
         const CH_STD_REV_DEFAULTS = [{ min: 1, max: 2, disc: 4 }, { min: 2, max: 3, disc: 4 }];
         const CH_STD_BUSS_DEFAULTS = [{ min: 0, max: 15, disc: 0 }, { min: 15, max: 50, disc: 0 }, { min: 50, max: 9999, disc: 0 }];
         let chStdZeroSoldDisc = 0;
-        let chStdMinNpft = (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'bestbuy') ? 10 : 0;
+        let chStdMinNpft = 10;
         const CH_STD_CLEARANCE_URL = @json(route('inv.days.clearance.yes'));
         let chStdClearanceSet = null;
         let chStdClearanceLoading = null;
@@ -427,11 +434,11 @@
             return chStdNum(d, ['review_count', 'reviews', 'Reviews', 'rating_count', 'ratings']);
         }
         function chStdUsesMinNpft() {
-            return typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'bestbuy';
+            return typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL !== '';
         }
         function chStdSiteL30(d) {
             if (!d) return 0;
-            if (chStdUsesMinNpft()) {
+            if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'bestbuy') {
                 const n = Number(d['BB L30']);
                 return isFinite(n) && n > 0 ? n : 0;
             }
@@ -471,17 +478,22 @@
             });
             return chStdClearanceLoading;
         }
+        function chStdAdsFrac() {
+            if (typeof chPromoAdsFrac !== 'function') return 0;
+            const n = Number(chPromoAdsFrac());
+            return isFinite(n) && n > 0 ? n : 0;
+        }
         function chStdNpftAt(price, d) {
             const p = Number(price) || 0;
             if (!(p > 0)) return 0;
             const margin = chStdMargin(d);
             const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
             const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
-            return ((p * margin - ship - lp) / p) * 100;
+            return ((p * margin - ship - lp) / p) * 100 - (chStdAdsFrac() * 100);
         }
         function chStdPriceForMinNpft(d, minNpft) {
             const margin = chStdMargin(d);
-            const denom = margin - (Number(minNpft) || 0) / 100;
+            const denom = margin - chStdAdsFrac() - (Number(minNpft) || 0) / 100;
             if (!(denom > 0.0001)) return 0;
             const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
             const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
@@ -498,6 +510,35 @@
             const raised = chStdPriceForMinNpft(d, floorPct);
             return raised > current ? raised : current;
         }
+        function chStdPriceBeforeMinNpft(d, draft) {
+            if (!d) return 0;
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
+            if (!(chStdStockForAge(d) > 0)) return 0;
+            const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
+            if (!(std > 0)) return 0;
+            const sum = chStdSumDisc(d, draft || chStdDraftNow());
+            let raw = std * (1 - Math.min(99.99, sum) / 100);
+            if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
+                const ship = (typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0;
+                raw -= ship;
+            }
+            return Math.round(raw * 100) / 100;
+        }
+        function chStdMinNpftWasApplied(d, draft) {
+            if (!chStdUsesMinNpft() || !d || chStdIsClearance(d)) return false;
+            const floor = (draft && draft.minNpft != null) ? Number(draft.minNpft) : Number(chStdMinNpft);
+            if (!(floor > 0)) return false;
+            const before = chStdPriceBeforeMinNpft(d, draft);
+            if (!(before > 0)) return false;
+            return chStdRaiseToMinNpft(before, d, floor) > before + 0.009;
+        }
+        window.chStdMinNpftWasApplied = chStdMinNpftWasApplied;
+        function chStdNpftMarkHtml(d) {
+            if (!chStdMinNpftWasApplied(d)) return '';
+            const pct = Number(chStdMinNpft);
+            return '<span class="ch-npft-mark" title="Raised so NPFT stays at or above ' + pct + '%">!</span>';
+        }
+        window.chStdNpftMarkHtml = chStdNpftMarkHtml;
         function chStdExcludesShip() {
             if (typeof CHANNEL_PROMO_CHANNEL === 'undefined') return false;
             return CHANNEL_PROMO_CHANNEL === 'shopify_b2b'
@@ -657,6 +698,7 @@
             let clearanceIgnored = 0;
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
             const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, all: 0 };
+            let npftApplied = 0;
             const zsCounts = { zero: 0, sold: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const invB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
@@ -705,6 +747,7 @@
                 const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc);
                 if (sum > 0) skuHits.all++;
                 if (chStdUsesMinNpft() && chStdIsClearance(d)) clearanceIgnored++;
+                if (chStdMinNpftWasApplied(d, draft)) npftApplied++;
                 if (std > 0) {
                     let sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
                     sprice = chStdRaiseToMinNpft(sprice, d, draft.minNpft);
@@ -731,6 +774,9 @@
             $('#ch-sp-zs-count').text(zsCounts.zero);
             const ignoredEl = document.getElementById('ch-sp-min-npft-ignored');
             if (ignoredEl) ignoredEl.textContent = chStdClearanceSet ? String(clearanceIgnored) : '…';
+            const appliedEl = document.getElementById('ch-sp-min-npft-applied');
+            if (appliedEl) appliedEl.textContent = String(npftApplied);
+            chStdStampNpftMarks();
             const dilSlices = draft.dil.map(function(r, i) { return { key: 'd' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const ageSlices = draft.age.map(function(r, i) { return { key: 'a' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No age', color: '#cbd5e1' }]);
             const revSlices = draft.reviews.map(function(r, i) { return { key: 'r' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
@@ -788,7 +834,7 @@
                     return '<div class="ch-sp-metric"><span>' + row[0] + '</span><span style="text-align:right;font-weight:700;color:' + (row[1] < 0 ? '#dc3545' : '#166534') + '">' + chStdMoney(row[1]) + '</span><span style="text-align:right;font-weight:700;">' + Math.round(row[2]) + '%</span></div>';
                 }).join('');
             }
-            $('#ch-sp-margin-l30-label').text(chStdUsesMinNpft() ? 'Projected margin · BB L30' : 'Projected margin · last L30 sales');
+            $('#ch-sp-margin-l30-label').text((typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'bestbuy') ? 'Projected margin · BB L30' : 'Projected margin · last L30 sales');
             $('#ch-sp-margin-l30').text(chStdMoney(l30.gross)).css('color', l30.gross < 0 ? '#dc3545' : '#166534');
             $('#ch-sp-margin-l30-sub').text(Math.round(l30.units) + ' units · ' + (l30.sales > 0 ? Math.round((l30.gross / l30.sales) * 100) : 0) + '% of sales');
             $('#ch-sp-margin-l30-metrics').html(metricHtml(l30));
@@ -825,7 +871,9 @@
                 chStdRev = (res.reviews || CH_STD_REV_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdBuss = (res.buss || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(0, Number(res.zero_sold_disc))) : 0;
-                if (chStdUsesMinNpft() && isFinite(Number(res.min_npft))) chStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
+                if (isFinite(Number(res.min_npft))) chStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
+                if ($('#ch-sp-min-npft').length) $('#ch-sp-min-npft').val(chStdMinNpft);
+                chStdStampNpftMarks();
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdDil.length) chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1034,7 +1082,7 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).' + (chStdUsesMinNpft() ? ' Best Buy then raises S PRC when NPFT% would fall under Min NPFT %. Clearance SKUs are not raised.' : ''), function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100). S PRC is raised when NPFT% would fall under Min NPFT %. Clearance SKUs are not raised.', function(d) { return chStdSumDisc(d); }),
             ];
         }
         function chStdAppendDiscColumns(cols) {
@@ -1096,13 +1144,13 @@
             }
             try {
                 const col = table.getColumn('buss_discount');
-                if (col && typeof col.show === 'function') col.show();
+                if (col && typeof col.show === 'function' && !chStdPanelMinSet().has('buss')) col.show();
             } catch (err) { /* ignore */ }
             chStdBussPlaced = true;
             setTimeout(function() {
                 try {
                     const col = table.getColumn('buss_discount');
-                    if (col && typeof col.show === 'function') col.show();
+                    if (col && typeof col.show === 'function' && !chStdPanelMinSet().has('buss')) col.show();
                 } catch (err) { /* ignore */ }
             }, 1600);
         }
@@ -1126,15 +1174,111 @@
             }
             try {
                 const col = table.getColumn('zero_sold_discount');
-                if (col && typeof col.show === 'function') col.show();
+                if (col && typeof col.show === 'function' && !chStdPanelMinSet().has('zs')) col.show();
             } catch (err) { /* ignore */ }
             chStdZeroSoldPlaced = true;
             setTimeout(function() {
                 try {
                     const col = table.getColumn('zero_sold_discount');
-                    if (col && typeof col.show === 'function') col.show();
+                    if (col && typeof col.show === 'function' && !chStdPanelMinSet().has('zs')) col.show();
                 } catch (err) { /* ignore */ }
             }, 1600);
+        }
+        const CH_STD_PANELS = [
+            { key: 'dil', field: 'dil_discount' },
+            { key: 'rev', field: 'review_discount' },
+            { key: 'buss', field: 'buss_discount' },
+            { key: 'zs', field: 'zero_sold_discount' },
+            { key: 'cvr', field: 'cvr_discount' },
+            { key: 'age', field: 'age_discount' },
+            { key: 'all', field: 'sum_discount' },
+        ];
+        function chStdPanelStoreKey() {
+            const ch = (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL) ? CHANNEL_PROMO_CHANNEL : 'channel';
+            return 'chStdPanelMin:' + ch;
+        }
+        function chStdPanelMinSet() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(chStdPanelStoreKey()) || '[]');
+                return new Set(Array.isArray(raw) ? raw : []);
+            } catch (e) { return new Set(); }
+        }
+        function chStdSavePanelMin(set) {
+            try { localStorage.setItem(chStdPanelStoreKey(), JSON.stringify(Array.from(set))); } catch (e) { /* ignore */ }
+        }
+        function chStdPaintPanels() {
+            const min = chStdPanelMinSet();
+            document.querySelectorAll('#chStdPrcModal [data-ch-sp-panel]').forEach(function(el) {
+                const on = min.has(el.getAttribute('data-ch-sp-panel'));
+                el.classList.toggle('is-min', on);
+                const btn = el.querySelector('.ch-sp-min-btn');
+                if (!btn) return;
+                const title = (el.querySelector('.ch-sp-pie-title') || {}).textContent || 'rule';
+                btn.textContent = on ? '+' : '−';
+                btn.title = (on ? 'Maximize ' : 'Minimize ') + title.trim();
+                btn.setAttribute('aria-label', btn.title);
+            });
+        }
+        function chStdApplyPanelColumns() {
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
+            const min = chStdPanelMinSet();
+            CH_STD_PANELS.forEach(function(p) {
+                if (!min.has(p.key)) return;
+                let col = null;
+                try { col = table.getColumn(p.field); } catch (e) { col = null; }
+                if (!col || typeof col.hide !== 'function') return;
+                try { col.hide(); } catch (err) { /* ignore */ }
+                const cb = document.querySelector('#column-dropdown-menu .col-vis-field-toggle[data-field="' + p.field + '"]');
+                if (cb) cb.checked = false;
+            });
+        }
+        function chStdSetPanelMin(key, minimized) {
+            const min = chStdPanelMinSet();
+            if (minimized) min.add(key); else min.delete(key);
+            chStdSavePanelMin(min);
+            chStdPaintPanels();
+            const panel = CH_STD_PANELS.filter(function(p) { return p.key === key; })[0];
+            if (panel && typeof table !== 'undefined' && table && typeof table.getColumn === 'function') {
+                let col = null;
+                try { col = table.getColumn(panel.field); } catch (e) { col = null; }
+                if (col) {
+                    try { if (minimized) col.hide(); else if (typeof col.show === 'function') col.show(); } catch (err) { /* ignore */ }
+                }
+                const cb = document.querySelector('#column-dropdown-menu .col-vis-field-toggle[data-field="' + panel.field + '"]');
+                if (cb) cb.checked = !minimized;
+            }
+            if (!minimized) requestAnimationFrame(function() { chStdRefresh(); });
+        }
+        function chStdSyncPanelsFromMenu() {
+            const min = chStdPanelMinSet();
+            let changed = false;
+            CH_STD_PANELS.forEach(function(p) {
+                const cb = document.querySelector('#column-dropdown-menu .col-vis-field-toggle[data-field="' + p.field + '"]');
+                if (!cb) return;
+                const shouldMin = !cb.checked;
+                if (shouldMin !== min.has(p.key)) {
+                    if (shouldMin) min.add(p.key); else min.delete(p.key);
+                    changed = true;
+                }
+            });
+            if (!changed) return;
+            chStdSavePanelMin(min);
+            chStdPaintPanels();
+        }
+        if (!window._chStdPanelMenuSync) {
+            window._chStdPanelMenuSync = true;
+            document.addEventListener('change', function(e) {
+                const t = e.target;
+                if (!t || !t.closest || !t.closest('#column-dropdown-menu')) return;
+                if (!t.classList.contains('col-vis-field-toggle') && !t.classList.contains('col-vis-group-toggle')) return;
+                setTimeout(chStdSyncPanelsFromMenu, 0);
+            }, true);
+            document.addEventListener('click', function(e) {
+                const t = e.target;
+                if (!t || !t.closest) return;
+                if (!t.closest('[data-analytics-col-vis="show-all"]') && !t.closest('[data-analytics-col-vis="show-default"]')) return;
+                setTimeout(chStdSyncPanelsFromMenu, 0);
+            }, true);
         }
         function chStdEnsureColumns() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
@@ -1153,7 +1297,47 @@
             chStdPlaceBussColumn();
             chStdPlaceZeroSoldColumn();
             chStdDropRoiColumn();
+            chStdBindNpftMarks();
+            chStdPaintPanels();
+            chStdApplyPanelColumns();
         }
+        let chStdNpftMarksBound = false;
+        function chStdStampNpftMarks() {
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
+            ['SPRICE', 'sprice'].forEach(function(field) {
+                let col = null;
+                try { col = table.getColumn(field); } catch (e) { col = null; }
+                if (!col || typeof col.getCells !== 'function') return;
+                col.getCells().forEach(function(cell) {
+                    const el = cell.getElement ? cell.getElement() : null;
+                    if (!el) return;
+                    const row = cell.getRow ? cell.getRow() : null;
+                    const d = row && row.getData ? row.getData() : null;
+                    const on = !!(d && chStdMinNpftWasApplied(d));
+                    let mark = el.querySelector('.ch-npft-mark');
+                    if (!on) {
+                        if (mark) mark.remove();
+                        return;
+                    }
+                    if (!mark) {
+                        mark = document.createElement('span');
+                        mark.className = 'ch-npft-mark';
+                        mark.textContent = '!';
+                        el.appendChild(mark);
+                    }
+                    mark.title = 'Raised so NPFT stays at or above ' + Number(chStdMinNpft) + '%';
+                });
+            });
+        }
+        function chStdBindNpftMarks() {
+            if (typeof table === 'undefined' || !table || typeof table.on !== 'function') return;
+            if (!chStdNpftMarksBound) {
+                chStdNpftMarksBound = true;
+                table.on('renderComplete', chStdStampNpftMarks);
+            }
+            chStdStampNpftMarks();
+        }
+        window.chStdStampNpftMarks = chStdStampNpftMarks;
         function chStdDropRoiColumn() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
             let roi = null;
@@ -1289,7 +1473,7 @@
                 if (res && res.reviews) chStdRev = res.reviews.map(chStdNormRange).filter(Boolean);
                 if (res && res.buss) chStdBuss = res.buss.map(chStdNormRange).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(0, Number(res.zero_sold_disc)));
-                if (chStdUsesMinNpft() && res && isFinite(Number(res.min_npft))) chStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
+                if (res && isFinite(Number(res.min_npft))) chStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdOwnsSprice()) {
@@ -1320,6 +1504,19 @@
             });
         }
         function bindChStdPrcUi() {
+            chStdPaintPanels();
+            $(document).off('click.chstdmin').on('click.chstdmin', '#chStdPrcModal .ch-sp-min-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const key = $(this).closest('[data-ch-sp-panel]').attr('data-ch-sp-panel');
+                if (!key) return;
+                chStdSetPanelMin(key, !$(this).closest('[data-ch-sp-panel]').hasClass('is-min'));
+            });
+            $(document).off('click.chstdmincol').on('click.chstdmincol', '#chStdPrcModal .ch-sp-col.is-min', function(e) {
+                if ($(e.target).closest('.ch-sp-min-btn').length) return;
+                const key = $(this).attr('data-ch-sp-panel');
+                if (key) chStdSetPanelMin(key, false);
+            });
             $('#ch-std-prc-btn').off('click.chstd').on('click.chstd', function(e) {
                 e.preventDefault();
                 $.when(chStdLoad(), chStdLoadClearance()).always(function() {
@@ -1401,5 +1598,7 @@
         $(function() {
             bindChStdPrcUi();
             chStdScheduleAutoApply();
+            setTimeout(chStdApplyPanelColumns, 800);
+            setTimeout(chStdApplyPanelColumns, 2200);
         });
 @endif

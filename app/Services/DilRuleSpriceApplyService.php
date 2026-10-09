@@ -309,7 +309,7 @@ class DilRuleSpriceApplyService
     public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin): ?array
     {
         if ($this->applyStdPrcVsDil) {
-            if ($this->channel === 'bestbuy' && $margin > 0 && ! is_numeric($row['margin'] ?? null)) {
+            if ($margin > 0 && ! is_numeric($row['margin'] ?? null)) {
                 $row['margin'] = $margin;
             }
             $priced = \App\Support\StdPrcVsDilPricer::forChannel($this->channel)->priceFromRow($row);
