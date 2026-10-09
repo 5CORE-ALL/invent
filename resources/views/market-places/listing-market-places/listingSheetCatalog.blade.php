@@ -17,6 +17,13 @@
             padding: 0 6px;
             min-width: 0;
         }
+        #sheet-listing-wrap .sheet-head-count {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: #084298;
+            line-height: 1.1;
+        }
         .sheet-stat { min-width: 110px; }
     </style>
 @endsection
@@ -110,12 +117,46 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             applyCounts(res.data && res.data.counts);
-            if (table) table.refreshFilter();
+            if (table) {
+                table.refreshFilter();
+                paintSheetHeadCounts();
+            }
         })
         .catch(function () {
             cell.restoreOldValue();
             alert('Could not save Listed.');
         });
+    }
+
+    function setSheetHeadCount(field, count) {
+        const column = table && table.getColumn ? table.getColumn(field) : null;
+        const header = column && column.getElement ? column.getElement() : null;
+        const title = header ? header.querySelector('.tabulator-col-title') : null;
+        if (!title) return;
+        let badge = title.querySelector('.sheet-head-count');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'sheet-head-count';
+            title.appendChild(badge);
+        }
+        badge.textContent = Number(count || 0).toLocaleString('en-US');
+    }
+
+    function paintSheetHeadCounts() {
+        if (!table) return;
+        const rows = table.getData() || [];
+        let sku = 0;
+        let listed = 0;
+        rows.forEach(function (row) {
+            const name = String(row.sku || '').trim();
+            if (!name || name.toUpperCase().indexOf('PARENT') !== -1) return;
+            sku += 1;
+            if (String(row.listed || '') === 'Listed' && Number(row.INV || 0) > 0) {
+                listed += 1;
+            }
+        });
+        setSheetHeadCount('sku', sku);
+        setSheetHeadCount('listed', listed);
     }
 
     function applyMissingFilter() {
@@ -139,6 +180,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 layout: 'fitColumns',
                 height: 'calc(100vh - 280px)',
                 placeholder: 'No CP Master SKUs',
+                dataProcessed: function () {
+                    paintSheetHeadCounts();
+                },
                 columns: [
                     Object.assign({ title: 'Parent', field: 'parent', minWidth: 140 }, shortFilter()),
                     Object.assign({ title: 'SKU', field: 'sku', minWidth: 160 }, shortFilter()),
