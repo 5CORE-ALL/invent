@@ -284,6 +284,32 @@
         </div>
     </div>
 
+    <div class="da-card mb-4" style="height:auto;border-color:#fecaca;background:linear-gradient(135deg,#fef2f2 0%,#fff 60%)">
+        <span class="da-badge" style="color:#b91c1c;background:#fee2e2"><i class="ri-global-line"></i> China edition · v{{ $agent_version }}</span>
+        <h3 class="mb-2">Working from China? Download this version</h3>
+        <p class="da-step-desc mb-1">
+            For computers where the Windows computer name or user name is in Chinese.
+            If the app says <strong>Unauthenticated</strong> or <strong>This device is no longer registered</strong>
+            right after Google sign-in, install this version.
+        </p>
+        <p class="da-step-desc mb-3">在中国工作的同事请下载此版本。安装后重新使用 Google 登录即可。</p>
+        @if(!empty($china_download_url))
+            <a href="{{ $china_download_url }}" class="btn btn-danger da-download-btn" download="5Core-Attendance-Setup-CN.exe">
+                <i class="ri-download-cloud-2-line" style="font-size:1.2rem"></i>
+                Download China edition
+            </a>
+            <div class="da-meta">
+                File: 5Core-Attendance-Setup-CN.exe · Run it over the existing app (no uninstall needed), then sign in with Google again.
+            </div>
+        @else
+            <div class="da-unavailable">
+                <i class="ri-information-line me-1"></i>
+                The China edition is not on the server yet. Ask IT to upload
+                <strong>5core-attendance-setup-cn.exe</strong> to the downloads folder.
+            </div>
+        @endif
+    </div>
+
     @if($needsUpdate)
         @include('partials.attendance-agent-update-modal', [
             'agent_update_available' => true,

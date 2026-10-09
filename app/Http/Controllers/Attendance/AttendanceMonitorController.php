@@ -267,8 +267,12 @@ class AttendanceMonitorController extends Controller
 
         $installer = $this->resolveAgentInstaller();
         $agentStatus = $this->attendanceService->desktopAgentStatusForUser($request->user());
+        $chinaInstaller = public_path('downloads/5core-attendance-setup-cn.exe');
 
         return view('attendance.agent-download', [
+            'china_download_url' => is_file($chinaInstaller)
+                ? asset('downloads/5core-attendance-setup-cn.exe').'?v='.filemtime($chinaInstaller)
+                : null,
             'title' => 'Desktop Agent',
             'agent_version' => $agentStatus['latest_version'],
             'server_url' => rtrim((string) config('app.url'), '/'),
