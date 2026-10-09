@@ -146,17 +146,17 @@ class MissingListingController extends Controller
                 $value = 0.0;
 
                 if ($isAll) {
-                    // One value per channel key (dedupe aliases), prefer listing_miss_count
+                    // Overall Missing Listing: one listing_miss_count per marketplace.
+                    // miss_count is a different Active Channel metric and must not be added in.
                     $byChannel = [];
                     foreach ($rows as $row) {
-                        $ck = ListingChannelCounts::normalize((string) $row->channel);
                         $sd = is_array($row->summary_data) ? $row->summary_data : [];
-                        $miss = array_key_exists('listing_miss_count', $sd)
-                            ? (float) $sd['listing_miss_count']
-                            : (float) ($sd['miss_count'] ?? 0);
-                        // Prefer listing_miss when present; otherwise keep first seen
-                        if (! isset($byChannel[$ck]) || array_key_exists('listing_miss_count', $sd)) {
-                            $byChannel[$ck] = $miss;
+                        if (! array_key_exists('listing_miss_count', $sd)) {
+                            continue;
+                        }
+                        $ck = $this->chartCanonicalKey((string) $row->channel);
+                        if (! isset($byChannel[$ck])) {
+                            $byChannel[$ck] = (float) $sd['listing_miss_count'];
                         }
                     }
                     $value = array_sum($byChannel);
@@ -1065,6 +1065,35 @@ class MissingListingController extends Controller
             'date' => now(self::TZ)->format('M d'),
             'value' => round($live, 2),
         ]];
+    }
+
+    /**
+     * Collapse spellings of the same marketplace (eBay 2 / ebaytwo) so the overall
+     * history does not add that marketplace twice.
+     */
+    private function chartCanonicalKey(string $channel): string
+    {
+        $flat = strtolower((string) preg_replace('/[^a-z0-9]/', '', $channel));
+        $groups = [
+            'ebay' => ['ebay', 'ebay1', 'ebayone'],
+            'ebaytwo' => ['ebay2', 'ebaytwo'],
+            'ebaythree' => ['ebay3', 'ebaythree'],
+            'tiktokshop' => ['tiktok', 'tiktokshop'],
+            'tiktokshop2' => ['tiktok2', 'tiktokshop2'],
+            'temu2' => ['temu2', 'temutwo'],
+            'temu3' => ['temu3', 'temuthree'],
+            'bestbuyusa' => ['bestbuy', 'bestbuyusa'],
+            'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],
+            'shopifyb2c' => ['shopify', 'shopifyb2c'],
+            'business5coreb2b' => ['business5coreb2b', 'b5cb2b'],
+        ];
+        foreach ($groups as $canonical => $aliases) {
+            if (in_array($flat, $aliases, true)) {
+                return $canonical;
+            }
+        }
+
+        return $flat !== '' ? $flat : ListingChannelCounts::normalize($channel);
     }
 
     /**
