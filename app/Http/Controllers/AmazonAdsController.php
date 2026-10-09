@@ -15,6 +15,7 @@ use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
 use App\Support\AmazonAdsBgtPrcRule;
 use App\Support\AmazonAdsBgtReviewsRule;
+use App\Support\AmazonAdsBgtSpendRule;
 use App\Support\AmazonAdsBgtViewsRule;
 use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
@@ -3202,14 +3203,35 @@ class AmazonAdsController extends Controller
         });
     }
 
-    private static function normalizeCampaignStatusFilter(?string $raw): ?string
+    /**
+     * Empty or "all" means no status constraint. "__none__" matches nothing.
+     * A comma-separated list matches any of ENABLED, PAUSED, ARCHIVED.
+     *
+     * @return array<int, string>|null
+     */
+    private static function campaignStatusFilterValues(Request $request): ?array
     {
-        if ($raw === null || trim((string) $raw) === '') {
+        $raw = $request->input('filter_campaign_status');
+        if (is_array($raw)) {
+            $raw = implode(',', $raw);
+        }
+        $raw = trim((string) $raw);
+        if ($raw === '' || strcasecmp($raw, 'all') === 0) {
             return null;
         }
-        $v = strtoupper(trim((string) $raw));
+        if ($raw === '__none__') {
+            return [];
+        }
+        $allowed = ['ENABLED' => true, 'PAUSED' => true, 'ARCHIVED' => true];
+        $out = [];
+        foreach (preg_split('/\s*,\s*/', $raw) ?: [] as $part) {
+            $v = strtoupper(trim((string) $part));
+            if (isset($allowed[$v])) {
+                $out[$v] = $v;
+            }
+        }
 
-        return in_array($v, ['ENABLED', 'PAUSED', 'ARCHIVED'], true) ? $v : null;
+        return array_values($out);
     }
 
     /**
@@ -3221,11 +3243,16 @@ class AmazonAdsController extends Controller
         if (! in_array('campaignStatus', $cols, true)) {
             return;
         }
-        $status = self::normalizeCampaignStatusFilter($request->input('filter_campaign_status'));
-        if ($status === null) {
+        $statuses = self::campaignStatusFilterValues($request);
+        if ($statuses === null) {
             return;
         }
-        $query->where('campaignStatus', $status);
+        if ($statuses === []) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+        $query->whereIn('campaignStatus', $statuses);
     }
 
     /**
@@ -3743,6 +3770,7 @@ class AmazonAdsController extends Controller
             'amazonAdsBgtPrcRule' => AmazonAdsBgtPrcRule::resolvedRule(),
             'amazonAdsBgtReviewsRule' => AmazonAdsBgtReviewsRule::resolvedRule(),
             'amazonAdsBgtDilRule' => AmazonAdsBgtDilRule::resolvedRule(),
+            'amazonAdsBgtSpendRule' => AmazonAdsBgtSpendRule::resolvedRule(),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
             'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
         ]);
@@ -4028,6 +4056,53 @@ class AmazonAdsController extends Controller
         return response()->json([
             'message' => 'BGT Vs Dil saved. Bgt Dil on the grid will use the new Dil% bands after reload.',
             'rule' => AmazonAdsBgtDilRule::resolvedRule(),
+            'status' => 200,
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Current L30 spend → Bgt Spend rule (Spend Rule column).
+     */
+    public function getBgtSpendRule(): JsonResponse
+    {
+        AmazonAdsBgtSpendRule::forgetResolvedCache();
+
+        return response()->json([
+            'rule' => AmazonAdsBgtSpendRule::resolvedRule(),
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Persist L30 spend bands → Bgt Spend.
+     */
+    public function saveBgtSpendRule(Request $request): JsonResponse
+    {
+        try {
+            $normalized = AmazonAdsBgtSpendRule::normalizeRule($request->all());
+            AmazonAdsBgtSpendRule::persistRule($normalized);
+            AmazonAdsBgtSpendRule::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Could not save Spend Rule.',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Spend Rule saved.',
+            'rule' => AmazonAdsBgtSpendRule::resolvedRule(),
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
