@@ -214,27 +214,77 @@
         }
         .vam-tag--audience { background: #e0f2fe; color: #0369a1; }
         .vam-tag--hook     { background: #f3e8ff; color: #7e22ce; }
-        .vam-creator-cell {
-            display: flex;
-            flex-direction: column;
+        .vam-creator-toggle {
+            display: inline-flex;
             align-items: center;
-            gap: 4px;
-        }
-        .vam-creator-names {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 4px;
-        }
-        .vam-tag--creator {
-            background: #ecfdf5;
-            color: #047857;
-        }
-        .vam-creator-select {
-            width: 120px;
+            justify-content: space-between;
+            gap: 8px;
+            min-width: 128px;
+            max-width: 180px;
+            padding: 4px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            background: #fff;
             font-size: 12px;
-            padding: 2px 6px;
+            color: #111827;
+            cursor: pointer;
         }
+        .vam-creator-toggle:hover { border-color: #2c6ed5; }
+        .vam-creator-toggle-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .vam-creator-toggle-label.is-empty { color: #6b7280; }
+        .vam-creator-menu {
+            position: fixed;
+            z-index: 10800;
+            min-width: 180px;
+            max-width: 260px;
+            max-height: 320px;
+            overflow: auto;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+        }
+        .vam-creator-menu-item,
+        .vam-creator-menu-add {
+            display: flex;
+            width: 100%;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border: 0;
+            border-bottom: 1px solid #f3f4f6;
+            background: #fff;
+            text-align: left;
+            font-size: 13px;
+            color: #111827;
+            cursor: pointer;
+        }
+        .vam-creator-menu-item:hover,
+        .vam-creator-menu-add:hover { background: #eff6ff; }
+        .vam-creator-menu-item.is-selected { background: #eff6ff; font-weight: 600; color: #1a56b7; }
+        .vam-creator-menu-add { color: #2c6ed5; font-weight: 600; border-bottom: 0; }
+        .vam-creator-menu-new { border-top: 1px solid #e5e7eb; padding: 8px; }
+        .vam-creator-menu-new input {
+            width: 100%;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        .vam-creator-menu-user {
+            display: block;
+            width: 100%;
+            padding: 6px 8px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            text-align: left;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .vam-creator-menu-user:hover { background: #f3f4f6; }
         .vam-tag-cell {
             display: flex;
             flex-wrap: wrap;
@@ -281,25 +331,6 @@
             font-size: 13px;
             font-weight: 600;
             color: #111827;
-        }
-        #vamAddUserList {
-            overflow: hidden;
-        }
-        #vamAddUserList .vam-pick-option {
-            display: flex;
-            width: 100%;
-            margin: 0;
-            border: 0;
-            border-bottom: 1px solid #eef2f7;
-            border-radius: 0;
-            background: #fff;
-            text-align: left;
-            align-items: center;
-        }
-        #vamAddUserList .vam-pick-option:last-child { border-bottom: 0; }
-        #vamAddUserList .vam-pick-option:hover {
-            background: #eff6ff;
-            color: #1a56b7;
         }
         .vam-pick-option-meta {
             font-size: 11px;
@@ -554,21 +585,14 @@
         </div>
     </div>
 
-    {{-- Modal: + adds another user name from the user table. --}}
-    <div class="modal fade" id="vamAddUserModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Add user name</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="text" id="vamAddUserSearch" class="form-control form-control-sm mb-3" placeholder="Search user name…">
-                    <div id="vamAddUserList" class="border rounded" style="max-height: 360px; overflow: auto;">
-                        <div class="text-muted text-center py-3">Loading…</div>
-                    </div>
-                </div>
-            </div>
+    <div id="vamCreatorMenu" class="vam-creator-menu" hidden>
+        <div id="vamCreatorMenuOptions"></div>
+        <button type="button" id="vamCreatorMenuAdd" class="vam-creator-menu-add">
+            <i class="fas fa-plus"></i> Add option
+        </button>
+        <div id="vamCreatorMenuNew" class="vam-creator-menu-new" hidden>
+            <input type="text" id="vamCreatorMenuSearch" class="form-control form-control-sm" placeholder="Search user name…">
+            <div id="vamCreatorMenuUsers"></div>
         </div>
     </div>
 
@@ -661,16 +685,15 @@
             let channelOptions     = [];
             let hookOptions        = [];     // [{id, name, hook, link}, …]
             let audienceOptions    = [];     // [{id, name}, …] from video_ad_audience_options
-            let creatorOptions     = [];     // [{id, name}] Mariya and Rahul in the dropdown
-            let moreUserOptions    = [];     // all users from the user table, for +
+            let creatorOptions     = [];     // dropdown options: Mariya, Rahul, then any added names
+            let moreUserOptions    = [];     // all users from the user table, for + Add option
             let rowModal           = null;   // bootstrap.Modal — Add / Edit form
             let addHookModal       = null;   // bootstrap.Modal — add / edit one hook
             let hookManageModal    = null;   // bootstrap.Modal — manage hook tags
             let audienceManageModal = null;  // bootstrap.Modal — manage audience tags
             let pickTagsModal      = null;   // bootstrap.Modal — pick tags for a row cell
-            let addUserModal       = null;   // bootstrap.Modal — + more user names
             let checkHistoryModal  = null;   // bootstrap.Modal — per-row check audit trail
-            let addUserRow         = null;
+            let creatorMenuRow     = null;
             let editingId          = null;   // id of the row currently in the form (null = add mode)
             let editingHookId      = null;   // id of hook option being edited in Add Hook modal
             let pickTagsContext    = null;   // { row, field: 'audience'|'hook_name' }
@@ -805,60 +828,87 @@
                     .filter(c => Number(c && c.user_id) > 0);
             }
 
-            function creatorSelectHtml() {
-                const opts = (creatorOptions || []).map(o =>
-                    `<option value="${Number(o.id)}">${escapeHtml(o.name)}</option>`
-                ).join('');
-                return `<select class="form-select form-select-sm vam-creator-select"><option value="">Select</option>${opts}</select>`;
+            function mergeCreatorOption(user) {
+                if (!user || !Number(user.id)) return;
+                if (creatorOptions.some(o => Number(o.id) === Number(user.id))) return;
+                creatorOptions.push({ id: Number(user.id), name: user.name });
+            }
+
+            function mergeCreatorOptionsFromRows(rows) {
+                (rows || []).forEach(row => {
+                    assignedCreators(row).forEach(c => mergeCreatorOption({ id: c.user_id, name: c.name }));
+                });
             }
 
             function creatorFormatter(cell) {
                 const creators = assignedCreators(cell.getRow().getData());
-                const names = creators.map(c => {
-                    const name = c.name || 'Unknown';
-                    const when = c.created_at ? ` · ${c.created_at} PT` : '';
-                    return `<span class="vam-tag vam-tag--creator" title="${escapeHtml(name + when)}">${escapeHtml(name)}</span>`;
+                const label = creators.map(c => c.name).filter(Boolean).join(', ') || 'Select';
+                const empty = creators.length ? '' : ' is-empty';
+                return `<button type="button" class="vam-creator-toggle"><span class="vam-creator-toggle-label${empty}">${escapeHtml(label)}</span><i class="fas fa-chevron-down"></i></button>`;
+            }
+
+            function closeCreatorMenu() {
+                const menu = document.getElementById('vamCreatorMenu');
+                if (menu) menu.hidden = true;
+                document.getElementById('vamCreatorMenuNew').hidden = true;
+                document.getElementById('vamCreatorMenuSearch').value = '';
+                creatorMenuRow = null;
+            }
+
+            function renderCreatorMenuOptions() {
+                const wrap = document.getElementById('vamCreatorMenuOptions');
+                const selected = new Set(assignedCreators(creatorMenuRow && creatorMenuRow.getData()).map(c => Number(c.user_id)));
+                wrap.innerHTML = (creatorOptions || []).map(o => {
+                    const on = selected.has(Number(o.id)) ? ' is-selected' : '';
+                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}">${escapeHtml(o.name)}</button>`;
                 }).join('');
-                return `<div class="vam-creator-cell"><div class="vam-creator-names">${names}</div>${creatorSelectHtml()}<button type="button" class="vam-tag-add-btn vam-creator-add" title="Add creator"><i class="fas fa-plus"></i></button></div>`;
             }
 
-            function openAddUserModal(row) {
-                addUserRow = row;
-                document.getElementById('vamAddUserSearch').value = '';
-                renderAddUserList();
-                addUserModal.show();
+            function renderCreatorMenuUsers() {
+                const wrap = document.getElementById('vamCreatorMenuUsers');
+                const have = new Set((creatorOptions || []).map(o => Number(o.id)));
+                const q = (document.getElementById('vamCreatorMenuSearch').value || '').trim().toLowerCase();
+                let options = (moreUserOptions || []).filter(o => !have.has(Number(o.id)));
+                if (q) options = options.filter(o => String(o.name || '').toLowerCase().includes(q));
+                wrap.innerHTML = options.length
+                    ? options.map(o => `<button type="button" class="vam-creator-menu-user" data-user-id="${Number(o.id)}">${escapeHtml(o.name)}</button>`).join('')
+                    : '<div class="text-muted small px-1 py-2">No more users.</div>';
             }
 
-            function renderAddUserList() {
-                const wrap = document.getElementById('vamAddUserList');
-                if (!wrap) return;
-                const taken = new Set(assignedCreators(addUserRow && addUserRow.getData()).map(c => Number(c.user_id)));
-                const q = (document.getElementById('vamAddUserSearch').value || '').trim().toLowerCase();
-                let options = (moreUserOptions || []).filter(o => !taken.has(Number(o.id)));
-                if (q) {
-                    options = options.filter(o => String(o.name || '').toLowerCase().includes(q));
-                }
-                if (!options.length) {
-                    wrap.innerHTML = '<div class="text-muted text-center py-3">No more users to add.</div>';
-                    return;
-                }
-                wrap.innerHTML = options.map(o => `
-                    <button type="button" class="vam-pick-option" data-user-id="${Number(o.id)}">
-                        <span class="vam-pick-option-label">${escapeHtml(o.name)}</span>
-                    </button>`).join('');
+            function openCreatorMenu(row, toggleEl) {
+                creatorMenuRow = row;
+                const menu = document.getElementById('vamCreatorMenu');
+                document.getElementById('vamCreatorMenuNew').hidden = true;
+                document.getElementById('vamCreatorMenuSearch').value = '';
+                renderCreatorMenuOptions();
+                const rect = toggleEl.getBoundingClientRect();
+                menu.hidden = false;
+                menu.style.left = `${Math.max(8, rect.left)}px`;
+                menu.style.top = `${rect.bottom + 4}px`;
+            }
+
+            function addCreatorOption(userId) {
+                const user = (moreUserOptions || []).find(o => Number(o.id) === Number(userId));
+                if (!user) return;
+                mergeCreatorOption(user);
+                if (creatorMenuRow) addCreatorName(creatorMenuRow, user.id);
+                renderCreatorMenuOptions();
+                document.getElementById('vamCreatorMenuNew').hidden = true;
+                closeCreatorMenu();
             }
 
             function addCreatorName(row, userId) {
                 const id = Number(userId);
-                if (!id) return;
+                if (!id || !row) return;
                 const taken = new Set(assignedCreators(row.getData()).map(c => Number(c.user_id)));
                 if (taken.has(id)) {
-                    showToast('This user is already added', 'info');
+                    closeCreatorMenu();
                     return;
                 }
                 const userIds = assignedCreators(row.getData()).map(c => Number(c.user_id));
                 userIds.push(id);
                 saveCreators(row, userIds);
+                closeCreatorMenu();
             }
 
             function saveCreators(row, userIds) {
@@ -881,6 +931,7 @@
                         return;
                     }
                     row.update({ creators: j.creators || [] });
+                    (j.creators || []).forEach(c => mergeCreatorOption({ id: c.user_id, name: c.name }));
                 })
                 .catch(e => { console.error(e); showToast('Network error while saving creator', 'error'); });
             }
@@ -1847,7 +1898,6 @@
                 hookManageModal     = new bootstrap.Modal(document.getElementById('vamHookManageModal'));
                 audienceManageModal = new bootstrap.Modal(document.getElementById('vamAudienceManageModal'));
                 pickTagsModal       = new bootstrap.Modal(document.getElementById('vamPickTagsModal'));
-                addUserModal        = new bootstrap.Modal(document.getElementById('vamAddUserModal'));
                 checkHistoryModal   = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
 
                 fetch('/video-ads-master/data', { headers: { 'Accept': 'application/json' } })
@@ -1862,6 +1912,7 @@
                         setAudienceOptions(payload.audience_options || []);
                         creatorOptions = payload.users || [];
                         moreUserOptions = payload.more_users || [];
+                        mergeCreatorOptionsFromRows(payload.rows || []);
 
                         refreshChannelDatalist();
                         initTable(payload.rows || []);
@@ -1922,20 +1973,31 @@
                     if (e.key === 'Enter') { e.preventDefault(); saveNewHook(); }
                 });
 
-                document.getElementById('video-ads-master-table').addEventListener('change', (e) => {
-                    if (!e.target.classList.contains('vam-creator-select') || !table) return;
-                    const rowEl = e.target.closest('.tabulator-row');
-                    const row = table.getRows().find(r => r.getElement() === rowEl);
-                    if (row) addCreatorName(row, e.target.value);
+                const creatorMenu = document.getElementById('vamCreatorMenu');
+                document.getElementById('vamCreatorMenuAdd').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const box = document.getElementById('vamCreatorMenuNew');
+                    box.hidden = !box.hidden;
+                    if (!box.hidden) {
+                        renderCreatorMenuUsers();
+                        document.getElementById('vamCreatorMenuSearch').focus();
+                    }
                 });
-                document.getElementById('vamAddUserSearch').addEventListener('input', renderAddUserList);
-                document.getElementById('vamAddUserList').addEventListener('click', (e) => {
+                document.getElementById('vamCreatorMenuSearch').addEventListener('input', renderCreatorMenuUsers);
+                document.getElementById('vamCreatorMenuOptions').addEventListener('click', (e) => {
                     const btn = e.target.closest('[data-user-id]');
-                    if (!btn || !addUserRow) return;
-                    addCreatorName(addUserRow, btn.getAttribute('data-user-id'));
-                    addUserModal.hide();
-                    addUserRow = null;
+                    if (btn) addCreatorName(creatorMenuRow, btn.getAttribute('data-user-id'));
                 });
+                document.getElementById('vamCreatorMenuUsers').addEventListener('click', (e) => {
+                    const btn = e.target.closest('[data-user-id]');
+                    if (btn) addCreatorOption(btn.getAttribute('data-user-id'));
+                });
+                document.addEventListener('click', (e) => {
+                    if (creatorMenu.hidden) return;
+                    if (e.target.closest('#vamCreatorMenu') || e.target.closest('.vam-creator-toggle')) return;
+                    closeCreatorMenu();
+                });
+                window.addEventListener('scroll', () => { if (!creatorMenu.hidden) closeCreatorMenu(); }, true);
 
                 document.getElementById('vamPickTagsApplyBtn').addEventListener('click', applyPickTagsSelection);
                 document.getElementById('vamPickTagsAddNewBtn').addEventListener('click', addNewOptionInPickModal);
@@ -2045,10 +2107,10 @@
                             headerSort: false,
                             editable: false,
                             cellClick: (e, cell) => {
-                                if (e.target.closest('.vam-creator-add')) {
-                                    e.stopPropagation();
-                                    openAddUserModal(cell.getRow());
-                                }
+                                const toggle = e.target.closest('.vam-creator-toggle');
+                                if (!toggle) return;
+                                e.stopPropagation();
+                                openCreatorMenu(cell.getRow(), toggle);
                             },
                         },
                         {
@@ -2261,6 +2323,7 @@
                         setAudienceOptions(payload.audience_options || []);
                         creatorOptions = payload.users || [];
                         moreUserOptions = payload.more_users || [];
+                        mergeCreatorOptionsFromRows(payload.rows || []);
                         refreshChannelDatalist();
                         table.setData((payload.rows || []).map(normalizeRowTags));
                         updateCount();
