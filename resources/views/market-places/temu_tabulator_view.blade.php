@@ -122,6 +122,9 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
                             title="GPFT$ = Σ (R Price × margin − LP − Temu Ship) × Qty">GPFT$: $0</span>
+                        <span class="badge fs-6 p-2" id="api-line-sales-badge"
+                            style="background-color: #0f766e; color: white; font-weight: bold;"
+                            title="Σ Line Sales for the L30 window. API line sales = basePrice + shipAmountTotal (same as the Line Sales column).">API Line Sales: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                             style="color: white; font-weight: bold;"
                             title="L30 Sales = Σ Temu Price × Qty — Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99">L30 Sales: $0</span>
@@ -674,7 +677,7 @@
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0, totalQuantity = 0, totalPft = 0, totalL30Sales = 0;
-            let totalTemuFullPriceSales = 0;
+            let totalTemuFullPriceSales = 0, totalApiLineSales = 0;
             let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0;
 
             data.forEach(row => {
@@ -688,6 +691,7 @@
                 const temuPrice = temuRowTemuPrice(row);
                 const lp = parseFloat(row.lp) || 0;
                 totalQuantity += quantity;
+                totalApiLineSales += parseFloat(row.line_sales) || 0;
                 if (quantity > 0 && basePrice > 0) {
                     totalWeightedPrice += basePrice * quantity;
                     totalQuantityForPrice += quantity;
@@ -711,6 +715,7 @@
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
             $('#pft-total-badge').text('GPFT$: $' + Math.round(totalPft).toLocaleString());
             $('#pft-total-badge').toggleClass('bg-danger', totalPft < 0).toggleClass('bg-dark', totalPft >= 0);
+            $('#api-line-sales-badge').text('API Line Sales: $' + Math.round(totalApiLineSales).toLocaleString());
             $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
             $('#temu-full-price-sales-badge').text('Temu Full Price Sales: $' + Math.round(totalTemuFullPriceSales).toLocaleString());
             $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
