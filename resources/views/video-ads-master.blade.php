@@ -144,7 +144,8 @@
         #video-ads-master-table .tabulator-cell[tabulator-field="_adcheck"],
         #video-ads-master-table .tabulator-cell[tabulator-field="_actions"],
         #video-ads-master-table .tabulator-cell[tabulator-field="audience"],
-        #video-ads-master-table .tabulator-cell[tabulator-field="hook_name"] { cursor: default; }
+        #video-ads-master-table .tabulator-cell[tabulator-field="hook_name"],
+        #video-ads-master-table .tabulator-cell[tabulator-field="creators"] { cursor: default; }
         #video-ads-master-table .tabulator-cell.tabulator-editing { background: #fff8d6 !important; }
 
         /* CHECK column — checkbox + who/when meta + history button. */
@@ -213,6 +214,21 @@
         }
         .vam-tag--audience { background: #e0f2fe; color: #0369a1; }
         .vam-tag--hook     { background: #f3e8ff; color: #7e22ce; }
+        .vam-tag--creator {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: flex-start;
+            background: #ecfdf5;
+            color: #047857;
+            white-space: normal;
+            line-height: 1.2;
+            max-width: 180px;
+        }
+        .vam-creator-date {
+            font-size: 9px;
+            font-weight: 500;
+            color: #059669;
+        }
         .vam-tag-cell {
             display: flex;
             flex-wrap: wrap;
@@ -513,6 +529,31 @@
         </div>
     </div>
 
+    {{-- Modal: pick one or more users from the users table for the Creator column. --}}
+    <div class="modal fade" id="vamPickCreatorsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Select Creators</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="vamPickCreatorsSearch" class="form-control form-control-sm mb-3" placeholder="Search user name…">
+                    <div id="vamPickCreatorsList" class="border rounded" style="max-height: 360px; overflow: auto;">
+                        <div class="text-muted text-center py-3">Loading…</div>
+                    </div>
+                    <div class="form-text mt-2">Names come from the user table. The date a user is added is saved in California time.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="vamPickCreatorsApplyBtn">
+                        <i class="fas fa-check me-1"></i>Apply
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Modal: manage HOOK tag options (add / edit / delete). --}}
     <div class="modal fade" id="vamHookManageModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-scrollable modal-lg">
@@ -602,12 +643,16 @@
             let channelOptions     = [];
             let hookOptions        = [];     // [{id, name, hook, link}, …]
             let audienceOptions    = [];     // [{id, name}, …] from video_ad_audience_options
+            let userOptions        = [];     // [{id, name}, …] from users, for the Creator column
             let rowModal           = null;   // bootstrap.Modal — Add / Edit form
             let addHookModal       = null;   // bootstrap.Modal — add / edit one hook
             let hookManageModal    = null;   // bootstrap.Modal — manage hook tags
             let audienceManageModal = null;  // bootstrap.Modal — manage audience tags
             let pickTagsModal      = null;   // bootstrap.Modal — pick tags for a row cell
+            let pickCreatorsModal  = null;   // bootstrap.Modal — pick users for the Creator column
             let checkHistoryModal  = null;   // bootstrap.Modal — per-row check audit trail
+            let pickCreatorsRow    = null;   // Tabulator row whose Creator cell is open
+            let pickCreatorsSelected = new Set();
             let editingId          = null;   // id of the row currently in the form (null = add mode)
             let editingHookId      = null;   // id of hook option being edited in Add Hook modal
             let pickTagsContext    = null;   // { row, field: 'audience'|'hook_name' }
@@ -736,6 +781,82 @@
             }
             const audienceFormatter = tagFormatter('audience');
             const hookFormatter     = tagFormatter('hook');
+
+            function creatorFormatter(cell) {
+                const creators = Array.isArray(cell.getValue()) ? cell.getValue() : [];
+                const pills = creators.length
+                    ? creators.map(c => {
+                        const name = c && c.name ? c.name : 'Unknown';
+                        const when = c && c.created_at ? c.created_at : '';
+                        const title = when ? `${name} · added ${when} PT` : name;
+                        return `<span class="vam-tag vam-tag--creator" title="${escapeHtml(title)}"><span>${escapeHtml(name)}</span>${when ? `<span class="vam-creator-date">${escapeHtml(when)} PT</span>` : ''}</span>`;
+                    }).join('')
+                    : '<span class="vam-dash">—</span>';
+                return `<div class="vam-tag-cell">${pills}<button type="button" class="vam-tag-add-btn" title="Add creator"><i class="fas fa-plus"></i></button></div>`;
+            }
+
+            function openPickCreatorsModal(row) {
+                pickCreatorsRow = row;
+                pickCreatorsSelected = new Set(
+                    ((row.getData().creators) || []).map(c => Number(c.user_id)).filter(id => id > 0)
+                );
+                document.getElementById('vamPickCreatorsSearch').value = '';
+                renderPickCreatorsList();
+                pickCreatorsModal.show();
+            }
+
+            function renderPickCreatorsList() {
+                const wrap = document.getElementById('vamPickCreatorsList');
+                if (!wrap) return;
+                const q = (document.getElementById('vamPickCreatorsSearch').value || '').trim().toLowerCase();
+                let options = (userOptions || []).slice();
+                if (q) {
+                    options = options.filter(o => String(o.name || '').toLowerCase().includes(q));
+                }
+                if (!options.length) {
+                    wrap.innerHTML = '<div class="text-muted text-center py-3">No users found.</div>';
+                    return;
+                }
+                wrap.innerHTML = options.map(o => {
+                    const checked = pickCreatorsSelected.has(Number(o.id)) ? 'checked' : '';
+                    const cls = pickCreatorsSelected.has(Number(o.id)) ? 'is-checked' : '';
+                    return `
+                        <label class="vam-pick-option ${cls}">
+                            <input type="checkbox" value="${Number(o.id)}" ${checked}>
+                            <span class="vam-pick-option-label">${escapeHtml(o.name)}</span>
+                        </label>`;
+                }).join('');
+            }
+
+            function applyCreatorSelection() {
+                if (!pickCreatorsRow) return;
+                const data = pickCreatorsRow.getData();
+                if (!data.id) return;
+                const userIds = Array.from(pickCreatorsSelected);
+                const row = pickCreatorsRow;
+
+                fetch(`/video-ads-master/${data.id}/creators`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ user_ids: userIds }),
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || 'Failed to save creators', 'error');
+                        return;
+                    }
+                    row.update({ creators: j.creators || [] });
+                    pickCreatorsModal.hide();
+                    pickCreatorsRow = null;
+                    showToast('Creators saved', 'success');
+                })
+                .catch(e => { console.error(e); showToast('Network error while saving creators', 'error'); });
+            }
 
             // Open the pick-tags modal for a row's AUDIENCE or HOOK cell.
             function openPickTagsModal(row, field) {
@@ -1699,6 +1820,7 @@
                 hookManageModal     = new bootstrap.Modal(document.getElementById('vamHookManageModal'));
                 audienceManageModal = new bootstrap.Modal(document.getElementById('vamAudienceManageModal'));
                 pickTagsModal       = new bootstrap.Modal(document.getElementById('vamPickTagsModal'));
+                pickCreatorsModal   = new bootstrap.Modal(document.getElementById('vamPickCreatorsModal'));
                 checkHistoryModal   = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
 
                 fetch('/video-ads-master/data', { headers: { 'Accept': 'application/json' } })
@@ -1711,6 +1833,7 @@
                         channelOptions = payload.channels       || [];
                         setHookOptions(payload.hook_options || []);
                         setAudienceOptions(payload.audience_options || []);
+                        userOptions = payload.users || [];
 
                         refreshChannelDatalist();
                         initTable(payload.rows || []);
@@ -1771,6 +1894,17 @@
                     if (e.key === 'Enter') { e.preventDefault(); saveNewHook(); }
                 });
 
+                document.getElementById('vamPickCreatorsApplyBtn').addEventListener('click', applyCreatorSelection);
+                document.getElementById('vamPickCreatorsSearch').addEventListener('input', renderPickCreatorsList);
+                document.getElementById('vamPickCreatorsList').addEventListener('change', (e) => {
+                    const opt = e.target.closest('.vam-pick-option');
+                    if (!opt || e.target.type !== 'checkbox') return;
+                    const id = Number(e.target.value);
+                    if (e.target.checked) pickCreatorsSelected.add(id);
+                    else pickCreatorsSelected.delete(id);
+                    opt.classList.toggle('is-checked', e.target.checked);
+                });
+
                 document.getElementById('vamPickTagsApplyBtn').addEventListener('click', applyPickTagsSelection);
                 document.getElementById('vamPickTagsAddNewBtn').addEventListener('click', addNewOptionInPickModal);
                 document.getElementById('vamPickTagsSearch').addEventListener('input', renderPickTagsList);
@@ -1792,6 +1926,7 @@
                 row._target   = row.target_type || '';
                 row.audience  = parseTags(row.audience);
                 row.hook_name = parseTags(row.hook_name);
+                row.creators  = Array.isArray(row.creators) ? row.creators : [];
                 return row;
             }
 
@@ -1871,6 +2006,18 @@
                             formatter: linkFormatter,
                             editor: 'input',
                             cellEdited: persistCell,
+                        },
+                        {
+                            title: 'Creator', field: 'creators',
+                            formatter: creatorFormatter,
+                            headerSort: false,
+                            editable: false,
+                            cellClick: (e, cell) => {
+                                if (e.target.closest('.vam-tag-add-btn')) {
+                                    e.stopPropagation();
+                                    openPickCreatorsModal(cell.getRow());
+                                }
+                            },
                         },
                         {
                             title: 'MISSING', field: '_missing', hozAlign: 'center',
@@ -1978,6 +2125,7 @@
                         data._target, data.name, data.channel,
                         formatTags(data.audience), formatTags(data.hook_name),
                         data.hook, data.link,
+                        (data.creators || []).map(c => c.name).join(' '),
                     ].map(v => (v || '').toString().toLowerCase()).join(' | ');
                     return haystack.includes(q);
                 });
@@ -2079,6 +2227,7 @@
                         channelOptions = payload.channels     || [];
                         setHookOptions(payload.hook_options || []);
                         setAudienceOptions(payload.audience_options || []);
+                        userOptions = payload.users || [];
                         refreshChannelDatalist();
                         table.setData((payload.rows || []).map(normalizeRowTags));
                         updateCount();

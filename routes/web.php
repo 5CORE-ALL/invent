@@ -4617,6 +4617,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
     Route::put('/video-ads-master/{id}/check',            [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleCheck'])->whereNumber('id')->name('video.ads.master.check');
     Route::put('/video-ads-master/{id}/ad-check',         [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleAdCheck'])->whereNumber('id')->name('video.ads.master.ad.check');
+    Route::put('/video-ads-master/{id}/creators',        [\App\Http\Controllers\VideoAdsMasterController::class, 'syncCreators'])->whereNumber('id')->name('video.ads.master.creators');
     Route::get('/video-ads-master/{id}/check-history',    [\App\Http\Controllers\VideoAdsMasterController::class, 'checkHistory'])->whereNumber('id')->name('video.ads.master.check.history');
     Route::post('/video-ads-master/hook-options',         [\App\Http\Controllers\VideoAdsMasterController::class, 'storeHookOption'])->name('video.ads.master.hook.options.store');
     Route::put('/video-ads-master/hook-options/{id}',    [\App\Http\Controllers\VideoAdsMasterController::class, 'updateHookOption'])->whereNumber('id')->name('video.ads.master.hook.options.update');

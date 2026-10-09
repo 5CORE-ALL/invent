@@ -3,16 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Models\ChannelMaster;
+use App\Models\User;
 use App\Models\VideoAdAudienceOption;
 use App\Models\VideoAdsHookOption;
 use App\Models\VideoAdsMaster;
 use App\Models\VideoAdsMasterCheckHistory;
+use App\Models\VideoAdsMasterCreator;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class VideoAdsMasterController extends Controller
 {
+    /** Creator assignment timestamps are stored as California wall-clock time. */
+    private const CREATOR_TZ = 'America/Los_Angeles';
+
     public function index()
     {
         return view('video-ads-master');
@@ -26,6 +32,7 @@ class VideoAdsMasterController extends Controller
      *                         seeded from any hooks already used on rows)
      *   - audience_options  : list of AUDIENCE tags (from video_ad_audience_options,
      *                         seeded from any audiences already used on rows)
+     *   - users             : active users (name) for the Creator column picker
      *
      * The SKU/PARENT/GROUP column is just a fixed type selector now (SKU,
      * Parent, Group), so no lookup list is needed for it.
@@ -55,10 +62,11 @@ class VideoAdsMasterController extends Controller
 
         return response()->json([
             'success'          => true,
-            'rows'             => $rows,
+            'rows'             => $this->attachCreators($rows),
             'channels'         => $channels,
             'hook_options'     => $this->hookOptionsPayload(),
             'audience_options' => $this->audienceOptionsPayload(),
+            'users'            => $this->creatorUserOptions(),
         ]);
     }
 
@@ -81,7 +89,7 @@ class VideoAdsMasterController extends Controller
 
         $row = VideoAdsMaster::create($data);
 
-        return response()->json(['success' => true, 'row' => $row]);
+        return response()->json(['success' => true, 'row' => $this->presentRow($row)]);
     }
 
     /**
@@ -105,12 +113,13 @@ class VideoAdsMasterController extends Controller
 
         $row->fill($data)->save();
 
-        return response()->json(['success' => true, 'row' => $row]);
+        return response()->json(['success' => true, 'row' => $this->presentRow($row)]);
     }
 
     public function destroy($id)
     {
         $row = VideoAdsMaster::findOrFail($id);
+        VideoAdsMasterCreator::where('video_ads_master_id', $row->id)->delete();
         $row->delete();
 
         return response()->json(['success' => true]);
@@ -136,7 +145,7 @@ class VideoAdsMasterController extends Controller
         $copy->ad_checked_at = null;
         $copy->save();
 
-        return response()->json(['success' => true, 'row' => $copy]);
+        return response()->json(['success' => true, 'row' => $this->presentRow($copy)]);
     }
 
     /**
@@ -195,6 +204,70 @@ class VideoAdsMasterController extends Controller
         $row->save();
 
         return response()->json(['success' => true, 'row' => $row]);
+    }
+
+    /**
+     * Replace the Creator list on a row with the given user ids.
+     * Newly added users are stamped with the current California datetime.
+     * Users who were already on the row keep their original created time.
+     */
+    public function syncCreators(Request $request, $id)
+    {
+        $row = VideoAdsMaster::findOrFail($id);
+
+        $data = $request->validate([
+            'user_ids'   => 'present|array',
+            'user_ids.*' => 'integer|distinct',
+        ]);
+
+        $userIds = collect($data['user_ids'])
+            ->map(fn ($userId) => (int) $userId)
+            ->unique()
+            ->values();
+
+        $validIds = User::withTrashed()
+            ->whereIn('id', $userIds)
+            ->pluck('id')
+            ->map(fn ($userId) => (int) $userId)
+            ->all();
+
+        if (count($validIds) !== $userIds->count()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'One or more users were not found.',
+            ], 422);
+        }
+
+        $nowPt = Carbon::now(self::CREATOR_TZ)->format('Y-m-d H:i:s');
+
+        DB::transaction(function () use ($row, $validIds, $nowPt) {
+            $existing = VideoAdsMasterCreator::where('video_ads_master_id', $row->id)
+                ->get()
+                ->keyBy(fn ($creator) => (int) $creator->user_id);
+
+            foreach ($validIds as $userId) {
+                if ($existing->has($userId)) {
+                    continue;
+                }
+                VideoAdsMasterCreator::create([
+                    'video_ads_master_id' => $row->id,
+                    'user_id'             => $userId,
+                    'created_at'          => $nowPt,
+                ]);
+            }
+
+            $remove = VideoAdsMasterCreator::where('video_ads_master_id', $row->id);
+            if ($validIds === []) {
+                $remove->delete();
+            } else {
+                $remove->whereNotIn('user_id', $validIds)->delete();
+            }
+        });
+
+        return response()->json([
+            'success'  => true,
+            'creators' => $this->creatorsForRow($row->id),
+        ]);
     }
 
     /**
@@ -871,5 +944,106 @@ class VideoAdsMasterController extends Controller
                     $row->save();
                 }
             });
+    }
+
+    /**
+     * Attach the Creator list (user name + California created time) to each row.
+     */
+    private function attachCreators($rows)
+    {
+        $grouped = $this->creatorsGrouped($rows->pluck('id'));
+
+        return $rows->map(function ($row) use ($grouped) {
+            $data = $row->toArray();
+            $data['creators'] = $grouped[$row->id] ?? [];
+
+            return $data;
+        })->values();
+    }
+
+    private function presentRow(VideoAdsMaster $row): array
+    {
+        $data = $row->toArray();
+        $data['creators'] = $this->creatorsForRow($row->id);
+
+        return $data;
+    }
+
+    private function creatorsForRow(int $rowId): array
+    {
+        $grouped = $this->creatorsGrouped(collect([$rowId]));
+
+        return $grouped[$rowId] ?? [];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection|array  $rowIds
+     * @return array<int, array<int, array{user_id:int,name:string,created_at:?string}>>
+     */
+    private function creatorsGrouped($rowIds): array
+    {
+        $ids = collect($rowIds)->filter()->unique()->values();
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $assignments = VideoAdsMasterCreator::query()
+            ->whereIn('video_ads_master_id', $ids)
+            ->orderBy('id')
+            ->get();
+
+        $names = User::withTrashed()
+            ->whereIn('id', $assignments->pluck('user_id')->unique()->filter())
+            ->pluck('name', 'id');
+
+        $grouped = [];
+        foreach ($assignments as $assignment) {
+            $rowId = (int) $assignment->video_ads_master_id;
+            $grouped[$rowId][] = [
+                'user_id'    => (int) $assignment->user_id,
+                'name'       => $names[$assignment->user_id] ?? 'Unknown',
+                'created_at' => $this->formatCreatorCreatedAt($assignment->created_at),
+            ];
+        }
+
+        return $grouped;
+    }
+
+    private function formatCreatorCreatedAt($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return Carbon::parse($value, self::CREATOR_TZ)->format('M j, Y g:i A');
+    }
+
+    /**
+     * Names shown in the Creator picker: active users, plus anyone already
+     * assigned so a deactivated name does not disappear from the list.
+     */
+    private function creatorUserOptions(): array
+    {
+        $assignedIds = VideoAdsMasterCreator::query()->distinct()->pluck('user_id');
+
+        return User::withTrashed()
+            ->where(function ($query) use ($assignedIds) {
+                $query->where(function ($active) {
+                    $active->where('is_active', true)->whereNull('deleted_at');
+                });
+                if ($assignedIds->isNotEmpty()) {
+                    $query->orWhereIn('id', $assignedIds);
+                }
+            })
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($user) => [
+                'id'   => (int) $user->id,
+                'name' => $user->name,
+            ])
+            ->values()
+            ->all();
     }
 }

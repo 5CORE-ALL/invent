@@ -40,4 +40,10 @@ class VideoAdsMaster extends Model
         return $this->hasMany(VideoAdsMasterCheckHistory::class, 'video_ads_master_id')
             ->orderByDesc('id');
     }
+
+    public function creators()
+    {
+        return $this->hasMany(VideoAdsMasterCreator::class, 'video_ads_master_id')
+            ->orderBy('id');
+    }
 }
