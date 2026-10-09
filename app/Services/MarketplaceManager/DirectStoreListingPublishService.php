@@ -62,7 +62,13 @@ class DirectStoreListingPublishService
         $created = 0;
         $updated = 0;
         $lastId = null;
+        $started = microtime(true);
         foreach ($skus as $sku) {
+            // A parent sent as one request used to outlast the gateway. Finish
+            // the SKUs that fit and let the page send the rest on their own.
+            if ($channel === 'b5cb2b' && $ok !== [] && (microtime(true) - $started) > 12) {
+                break;
+            }
             $item = $this->prepareItem($sku, $overrides);
             try {
                 $result = match ($channel) {
@@ -88,13 +94,17 @@ class DirectStoreListingPublishService
         $label = ['pls' => 'PLS', 'b5cb2b' => 'Business 5 Core (B2B)', 'doba' => 'Doba'][$channel] ?? $channel;
         if ($ok !== []) {
             $refreshChannel = $channel;
-            app()->terminating(static function () use ($refreshChannel): void {
-                try {
-                    ListingChannelCounts::refreshChannelOnMissingListingPage($refreshChannel);
-                } catch (\Throwable $e) {
-                    Log::warning('Missing Listing refresh after publish failed', ['channel' => $refreshChannel, 'error' => $e->getMessage()]);
-                }
-            });
+            if ($refreshChannel === 'b5cb2b') {
+                \App\Jobs\FinishB5cB2bPublish::dispatch(null, [], true);
+            } else {
+                app()->terminating(static function () use ($refreshChannel): void {
+                    try {
+                        ListingChannelCounts::refreshChannelOnMissingListingPage($refreshChannel);
+                    } catch (\Throwable $e) {
+                        Log::warning('Missing Listing refresh after publish failed', ['channel' => $refreshChannel, 'error' => $e->getMessage()]);
+                    }
+                });
+            }
         }
         if ($ok === []) {
             return ['success' => false, 'message' => $label.': '.implode(' ', $errors)];
@@ -573,32 +583,48 @@ class DirectStoreListingPublishService
      */
     private function b2bCatalog(): array
     {
-        return Cache::remember('b5cb2b_catalog_v1', now()->addHours(6), function () {
-            $res = app(Business5CoreB2bApiService::class)->get('/api/listings/catalog');
-            $flat = [];
-            $walk = function (array $nodes) use (&$walk, &$flat): void {
-                foreach ($nodes as $node) {
-                    if (! is_array($node) || ! isset($node['id'])) {
-                        continue;
-                    }
-                    $flat[] = ['id' => (int) $node['id'], 'slug' => (string) ($node['slug'] ?? ''), 'name' => (string) ($node['name'] ?? '')];
-                    foreach (['children', 'items', 'subcategories'] as $key) {
-                        if (is_array($node[$key] ?? null)) {
-                            $walk($node[$key]);
-                        }
-                    }
+        $cached = Cache::get('b5cb2b_catalog_v1');
+        if (is_array($cached) && isset($cached['brands'], $cached['categories'])) {
+            return $cached;
+        }
+
+        try {
+            // One short try. A cold catalog must not hold the publish request open.
+            $res = app(Business5CoreB2bApiService::class)->send('GET', '/api/listings/catalog', [], null, 1, 1, 8);
+        } catch (\Throwable $e) {
+            Log::warning('B2B catalog fetch failed', ['error' => $e->getMessage()]);
+
+            return ['brands' => [], 'categories' => []];
+        }
+
+        $flat = [];
+        $walk = function (array $nodes) use (&$walk, &$flat): void {
+            foreach ($nodes as $node) {
+                if (! is_array($node) || ! isset($node['id'])) {
+                    continue;
                 }
-            };
-            $walk(is_array($res['categories'] ?? null) ? $res['categories'] : []);
-            $brands = [];
-            foreach ((array) ($res['brands'] ?? []) as $b) {
-                if (is_array($b) && isset($b['id'])) {
-                    $brands[] = ['id' => (int) $b['id'], 'slug' => (string) ($b['slug'] ?? ''), 'name' => (string) ($b['name'] ?? '')];
+                $flat[] = ['id' => (int) $node['id'], 'slug' => (string) ($node['slug'] ?? ''), 'name' => (string) ($node['name'] ?? '')];
+                foreach (['children', 'items', 'subcategories'] as $key) {
+                    if (is_array($node[$key] ?? null)) {
+                        $walk($node[$key]);
+                    }
                 }
             }
+        };
+        $walk(is_array($res['categories'] ?? null) ? $res['categories'] : []);
+        $brands = [];
+        foreach ((array) ($res['brands'] ?? []) as $b) {
+            if (is_array($b) && isset($b['id'])) {
+                $brands[] = ['id' => (int) $b['id'], 'slug' => (string) ($b['slug'] ?? ''), 'name' => (string) ($b['name'] ?? '')];
+            }
+        }
 
-            return ['brands' => $brands, 'categories' => $flat];
-        });
+        $built = ['brands' => $brands, 'categories' => $flat];
+        if ($brands !== [] || $flat !== []) {
+            Cache::put('b5cb2b_catalog_v1', $built, now()->addHours(6));
+        }
+
+        return $built;
     }
 
     private static function b2bKey(string $value): string
@@ -677,18 +703,17 @@ class DirectStoreListingPublishService
         if ($item['title'] !== '') {
             $payload['name'] = $item['title'];
         }
+        // Local copy only. A live Shopify description fetch uses a 60s timeout
+        // and the gateway closes the publish request before this method returns.
         $description = $item['description_from_draft'] ? $item['description'] : '';
-        if ($description === '') {
-            $description = trim(ListingManagerAmazonHydrator::descriptionMaster($sku));
-        }
         if ($description === '') {
             $description = trim((string) ($shopify['body_html'] ?? ''));
         }
         if ($description === '') {
-            $description = trim(ListingManagerAmazonHydrator::shopifyDescription($sku));
+            $description = trim((string) $item['description']);
         }
         if ($description === '') {
-            $description = $item['description'];
+            $description = trim(ListingManagerAmazonHydrator::descriptionMaster($sku));
         }
         if ($description !== '') {
             $payload['description'] = $description;
@@ -737,13 +762,7 @@ class DirectStoreListingPublishService
 
         $result = $this->sendB2bListing($sku, $payload, $local);
         if (($result['success'] ?? false) && $images !== []) {
-            app()->terminating(function () use ($sku, $images): void {
-                try {
-                    $this->sendB2bListing($sku, ['sku' => $sku, 'image_urls' => $images], null, 90);
-                } catch (\Throwable $e) {
-                    Log::warning('B2B listing image attach failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-                }
-            });
+            \App\Jobs\FinishB5cB2bPublish::dispatch($sku, $images, false);
         }
 
         return $result;
@@ -755,7 +774,7 @@ class DirectStoreListingPublishService
      * @param  array<string, mixed>  $fields  name|description|price|image_urls|bullet_points
      * @return array{success: bool, message: string, id?: string, created?: bool, data?: array<string, mixed>}
      */
-    public function updateB2bListing(string $sku, array $fields): array
+    public function updateB2bListing(string $sku, array $fields, ?int $timeout = null): array
     {
         $api = app(Business5CoreB2bApiService::class);
         if (! $api->isConfigured()) {
@@ -766,14 +785,14 @@ class DirectStoreListingPublishService
             ? B5cB2bProduct::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first()
             : null;
 
-        return $this->sendB2bListing($sku, ['sku' => $sku] + $fields, $local, $api->timeout());
+        return $this->sendB2bListing($sku, ['sku' => $sku] + $fields, $local, $timeout ?? $api->timeout());
     }
 
     /**
      * @param  array<string, mixed>  $payload
      * @return array{success: bool, message: string, id?: string, created?: bool, data?: array<string, mixed>}
      */
-    private function sendB2bListing(string $sku, array $payload, ?B5cB2bProduct $local, int $timeout = 20): array
+    private function sendB2bListing(string $sku, array $payload, ?B5cB2bProduct $local, int $timeout = 15): array
     {
         $api = app(Business5CoreB2bApiService::class);
         try {
@@ -823,7 +842,15 @@ class DirectStoreListingPublishService
     private function b2bListingBySku(string $sku): ?array
     {
         try {
-            $probe = app(Business5CoreB2bApiService::class)->fetchListings(1, 5, ['sku' => $sku]);
+            $probe = app(Business5CoreB2bApiService::class)->send(
+                'GET',
+                '/api/listings',
+                ['page' => 1, 'perPage' => 5, 'sku' => $sku],
+                null,
+                1,
+                1,
+                5
+            );
         } catch (\Throwable) {
             return null;
         }
