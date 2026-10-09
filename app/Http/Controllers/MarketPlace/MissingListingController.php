@@ -60,6 +60,7 @@ class MissingListingController extends Controller
             if (is_array($cached) && ! empty($cached['data'])) {
                 try {
                     $cached['data'] = $this->overlayListingModes($cached['data']);
+                    $cached['data'] = $this->appendFbMarketplaceRow($cached['data']);
                 } catch (\Throwable $e) {
                     Log::warning('Missing Listing overlayListingModes failed: '.$e->getMessage());
                 }
@@ -109,6 +110,7 @@ class MissingListingController extends Controller
             $isAll = $channelKey === '' || $channelKey === 'all';
             $days = (int) $request->input('days', 32);
             $badgeValue = $request->input('badge_value');
+            $hasBadge = $badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue);
 
             if (! Schema::hasTable('channel_master_daily_data')) {
                 return response()->json(['success' => true, 'data' => $this->chartWithLiveOnly($isAll, $channelKey, $badgeValue)]);
@@ -120,12 +122,18 @@ class MissingListingController extends Controller
                 $query->whereDate('snapshot_date', '>=', $startDate);
             }
 
-            if (! $isAll) {
-                $aliases = $this->channelAliases($channelKey);
-                $query->whereIn('channel', $aliases);
-            }
-
             $history = $query->get(['channel', 'snapshot_date', 'summary_data']);
+            if (! $isAll) {
+                $wanted = array_fill_keys($this->channelAliases($channelKey), true);
+                $history = $history->filter(function ($row) use ($wanted) {
+                    $name = (string) $row->channel;
+                    $flat = strtolower((string) preg_replace('/[^a-z0-9]/', '', $name));
+
+                    return isset($wanted[strtolower(trim($name))])
+                        || isset($wanted[ListingChannelCounts::normalize($name)])
+                        || ($flat !== '' && isset($wanted[$flat]));
+                })->values();
+            }
 
             // Group by California snapshot_date (same-day listing capture — no −1 shift)
             $grouped = $history->groupBy(function ($row) {
@@ -177,10 +185,9 @@ class MissingListingController extends Controller
             // Ensure today's California point matches live listing page Missing L
             $todayKey = now(self::TZ)->toDateString();
             $todayLabel = now(self::TZ)->format('M d');
-            $live = $this->liveMissingL($isAll, $channelKey);
-            if ($badgeValue !== null && $badgeValue !== '' && is_numeric($badgeValue)) {
-                $live = (float) $badgeValue;
-            }
+            // The page already has today's Missing L. Recounting here is what made each
+            // marketplace chart time out before any history could be drawn.
+            $live = $hasBadge ? (float) $badgeValue : $this->liveMissingL($isAll, $channelKey);
 
             $replaced = false;
             foreach ($chartData as &$point) {
@@ -225,6 +232,9 @@ class MissingListingController extends Controller
             && Schema::hasColumn('channel_master', 'listing_mode');
 
         $masterColumns = ['id', 'channel', 'status'];
+        if (Schema::hasColumn('channel_master', 'type')) {
+            $masterColumns[] = 'type';
+        }
         if ($hasLogo) {
             $masterColumns[] = 'logo';
         }
@@ -244,6 +254,11 @@ class MissingListingController extends Controller
             ->orderBy('channel')
             ->get($masterColumns)
             ->filter(function ($master) {
+                $key = ListingChannelCounts::normalize((string) $master->channel);
+                if (in_array($key, ['fbmarketplace', 'facebookmarketplace'], true)) {
+                    return true;
+                }
+
                 return ListingChannelCounts::shouldShowOnMissingListing(
                     (string) $master->channel,
                     $master->status ?? ''
@@ -290,6 +305,7 @@ class MissingListingController extends Controller
                 'inactive_child' => 0,
                 'inactive_listings_url' => null,
                 'listing_mode' => $this->listingModeFor($master),
+                'type' => $this->listingTypeFor($master),
                 'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
             ];
         })->values();
@@ -300,7 +316,7 @@ class MissingListingController extends Controller
 
         return [
             'success' => true,
-            'data' => $data->all(),
+            'data' => $this->appendFbMarketplaceRow($data->all()),
             'count' => $data->count(),
             'total_missing_l' => $totalMissingL,
             'computed_at' => now()->toIso8601String(),
@@ -374,6 +390,7 @@ class MissingListingController extends Controller
                     'inactive_child' => (int) ($inactive['child'] ?? 0),
                     'inactive_listings_url' => $inactive['url'] ?? null,
                     'listing_mode' => $this->listingModeFor($master),
+                    'type' => $this->listingTypeFor($master),
                     'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
                 ];
             }
@@ -403,6 +420,7 @@ class MissingListingController extends Controller
                 'inactive_child' => (int) ($inactive['child'] ?? 0),
                 'inactive_listings_url' => $inactive['url'] ?? null,
                 'listing_mode' => $this->listingModeFor($master),
+                'type' => $this->listingTypeFor($master),
                 'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
             ];
         })->values();
@@ -416,7 +434,7 @@ class MissingListingController extends Controller
 
         return [
             'success' => true,
-            'data' => $data->all(),
+            'data' => $this->appendFbMarketplaceRow($data->all()),
             'count' => $data->count(),
             'total_missing_l' => $totalMissingL,
             'computed_at' => now()->toIso8601String(),
@@ -471,13 +489,14 @@ class MissingListingController extends Controller
                 'inactive_child' => 0,
                 'inactive_listings_url' => null,
                 'listing_mode' => $this->listingModeFor($master),
+                'type' => $this->listingTypeFor($master),
                 'seller_portal' => $this->sellerPortalFor($master, $hasSellerLink),
             ];
         })->values();
 
         return [
             'success' => true,
-            'data' => $data->all(),
+            'data' => $this->appendFbMarketplaceRow($data->all()),
             'count' => $data->count(),
             'total_missing_l' => 0,
             'computed_at' => now()->toIso8601String(),
@@ -543,6 +562,95 @@ class MissingListingController extends Controller
         return $mode;
     }
 
+    private function listingTypeFor(?ChannelMaster $master): string
+    {
+        $raw = strtoupper(trim((string) ($master->type ?? '')));
+
+        return in_array($raw, ['B2B', 'B2C', 'C2C', 'DROPSHIP', 'WHOLESALE'], true)
+            ? ($raw === 'DROPSHIP' ? 'Dropship' : ($raw === 'WHOLESALE' ? 'Wholesale' : $raw))
+            : '';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function appendFbMarketplaceRow(array $rows): array
+    {
+        foreach ($rows as $row) {
+            $key = ListingChannelCounts::normalize((string) ($row['channel'] ?? ''));
+            if (in_array($key, ['fbmarketplace', 'facebookmarketplace'], true)) {
+                return $rows;
+            }
+        }
+
+        $master = $this->fbMarketplaceMaster();
+        if ($master === null) {
+            return $rows;
+        }
+
+        $snap = $this->latestListingSnapshots()['fbmarketplace']
+            ?? $this->latestListingSnapshots()['facebookmarketplace']
+            ?? [];
+        $cp = $this->cachedCpMasterCounts();
+
+        $rows[] = [
+            'id' => $master->id,
+            'image' => $master->logo ?? null,
+            'channel' => (string) ($master->channel ?: 'FB Marketplace'),
+            'listing_url' => ListingChannelCounts::listingUrl('fbmarketplace'),
+            'data_source' => 'CSV',
+            'allows_csv_upload' => true,
+            'csv_import_url' => ListingChannelCounts::csvImportUrl('fbmarketplace'),
+            'sku' => (int) ($cp['SKU'] ?? 0),
+            'zero_inv' => (int) ($cp['ZeroInv'] ?? 0),
+            'req' => (int) ($snap['listing_req'] ?? 0),
+            'nrl' => (int) ($snap['listing_nrl'] ?? 0),
+            'listed' => (int) ($snap['listing_listed'] ?? 0),
+            'missing_listing' => (int) ($snap['listing_miss_count'] ?? 0),
+            'inactive_parent' => 0,
+            'inactive_child' => 0,
+            'inactive_listings_url' => null,
+            'listing_mode' => $this->listingModeFor($master),
+            'type' => $this->listingTypeFor($master) !== '' ? $this->listingTypeFor($master) : 'C2C',
+            'seller_portal' => $this->sellerPortalFor($master, Schema::hasColumn('channel_master', 'seller_link')),
+        ];
+
+        return $rows;
+    }
+
+    private function fbMarketplaceMaster(): ?ChannelMaster
+    {
+        if (! Schema::hasTable('channel_master')) {
+            return null;
+        }
+
+        $found = ChannelMaster::query()
+            ->whereNotNull('channel')
+            ->get()
+            ->first(function ($master) {
+                $key = ListingChannelCounts::normalize((string) $master->channel);
+
+                return in_array($key, ['fbmarketplace', 'facebookmarketplace'], true);
+            });
+        if ($found) {
+            return $found;
+        }
+
+        try {
+            return ChannelMaster::create([
+                'channel' => 'FB Marketplace',
+                'status' => 'active',
+                'type' => 'C2C',
+                'listing_mode' => 'CSV',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Missing Listing could not add FB Marketplace: '.$e->getMessage());
+
+            return null;
+        }
+    }
+
     /**
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
@@ -564,15 +672,18 @@ class MissingListingController extends Controller
             return $rows;
         }
 
-        $modes = ChannelMaster::query()
+        $masters = ChannelMaster::query()
             ->whereIn('id', $ids)
-            ->pluck('listing_mode', 'id');
+            ->get(['id', 'listing_mode', 'type'])
+            ->keyBy('id');
 
         foreach ($rows as $i => $row) {
             $id = (int) ($row['id'] ?? 0);
-            $rows[$i]['listing_mode'] = $id > 0
-                ? self::normalizeListingMode($modes[$id] ?? null)
+            $master = $id > 0 ? $masters->get($id) : null;
+            $rows[$i]['listing_mode'] = $master
+                ? self::normalizeListingMode($master->listing_mode ?? null)
                 : null;
+            $rows[$i]['type'] = $master ? $this->listingTypeFor($master) : '';
         }
 
         return $rows;
@@ -590,6 +701,23 @@ class MissingListingController extends Controller
                 continue;
             }
             $cached['data'][$i]['listing_mode'] = $mode;
+        }
+
+        Cache::put(self::PAGE_CACHE_KEY, $cached, now()->addDays(self::PAGE_CACHE_TTL_DAYS));
+    }
+
+    private function patchCachedChannelField(int $id, string $field, mixed $value): void
+    {
+        $cached = Cache::get(self::PAGE_CACHE_KEY);
+        if (! is_array($cached) || empty($cached['data']) || ! is_array($cached['data'])) {
+            return;
+        }
+
+        foreach ($cached['data'] as $i => $row) {
+            if ((int) ($row['id'] ?? 0) !== $id) {
+                continue;
+            }
+            $cached['data'][$i][$field] = $value;
         }
 
         Cache::put(self::PAGE_CACHE_KEY, $cached, now()->addDays(self::PAGE_CACHE_TTL_DAYS));
@@ -696,6 +824,10 @@ class MissingListingController extends Controller
 
     public function updateListingMode(Request $request)
     {
+        if ($request->exists('type') && ! $request->exists('listing_mode')) {
+            return $this->updateChannelType($request);
+        }
+
         $request->validate([
             'id' => 'required|integer|exists:channel_master,id',
             'listing_mode' => 'nullable|string|in:Auto,CSV,Manual,Semi',
@@ -729,6 +861,45 @@ class MissingListingController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Missing Listing updateListingMode failed: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function updateChannelType(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer|exists:channel_master,id',
+            'type' => 'required|string|in:B2B,B2C,C2C',
+        ]);
+
+        if (! Schema::hasColumn('channel_master', 'type')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'channel_master.type column is not available.',
+            ], 500);
+        }
+
+        try {
+            $channel = ChannelMaster::find($request->integer('id'));
+            if (! $channel) {
+                return response()->json(['success' => false, 'message' => 'Channel not found.'], 404);
+            }
+
+            $channel->type = strtoupper(trim((string) $request->input('type')));
+            $channel->save();
+            $this->patchCachedChannelField((int) $channel->id, 'type', (string) $channel->type);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Type updated.',
+                'data' => [
+                    'id' => $channel->id,
+                    'type' => $channel->type,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Missing Listing updateChannelType failed: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -919,7 +1090,11 @@ class MissingListingController extends Controller
             'temuthree' => ['temu3', 'temuthree'],
             'bestbuyusa' => ['bestbuyusa', 'bestbuy'],
             'bestbuy' => ['bestbuyusa', 'bestbuy'],
-            'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace'],
+            'fbmarketplace' => ['fbmarketplace', 'facebookmarketplace', 'fb marketplace'],
+            'facebookmarketplace' => ['fbmarketplace', 'facebookmarketplace', 'fb marketplace'],
+            'business5coreb2b' => ['business5coreb2b', 'business5core(b2b)', 'b5cb2b', 'shopifyb2b'],
+            'business5core(b2b)' => ['business5coreb2b', 'business5core(b2b)', 'b5cb2b', 'shopifyb2b'],
+            'b5cb2b' => ['business5coreb2b', 'business5core(b2b)', 'b5cb2b', 'shopifyb2b'],
             'shopifyb2c' => ['shopifyb2c', 'shopify'],
             'newegg' => ['newegg', 'neweggb2c', 'neweggb2b'],
             'neweggb2c' => ['newegg', 'neweggb2c'],
@@ -932,6 +1107,16 @@ class MissingListingController extends Controller
             $aliases[] = $a;
         }
 
-        return array_values(array_unique($aliases));
+        $flat = [];
+        foreach ($aliases as $alias) {
+            $flat[] = strtolower(trim($alias));
+            $stripped = strtolower((string) preg_replace('/[^a-z0-9]/', '', $alias));
+            if ($stripped !== '') {
+                $flat[] = $stripped;
+            }
+            $flat[] = ListingChannelCounts::normalize($alias);
+        }
+
+        return array_values(array_unique(array_merge($aliases, $flat)));
     }
 }

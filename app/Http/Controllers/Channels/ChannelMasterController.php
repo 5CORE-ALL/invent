@@ -8663,6 +8663,7 @@ class ChannelMasterController extends Controller
             $normalizedType = [
                 'b2c' => 'B2C',
                 'b2b' => 'B2B',
+                'c2c' => 'C2C',
                 'dropship' => 'Dropship',
                 'ds' => 'Dropship',
                 'wholesale' => 'Wholesale',

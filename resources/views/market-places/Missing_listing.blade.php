@@ -149,6 +149,7 @@
             text-decoration: none;
         }
         .tabulator .tabulator-cell.tabulator-editing { padding: 2px 4px; }
+        #mlChartContainer .ml-chart-plot { flex: 1; min-width: 0; height: 100%; position: relative; }
 
         /* Metric history modal — same full-width layout as Active Channel */
         #mlMetricChartModal.modal {
@@ -221,7 +222,7 @@
                 </div>
                 <div class="modal-body p-2">
                     <div id="mlChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
-                        <div style="flex: 1; min-width: 0; position: relative;">
+                        <div class="ml-chart-plot">
                             <canvas id="mlMetricChart"></canvas>
                         </div>
                         <div id="mlChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
@@ -330,10 +331,10 @@
 
     function showMlMetricChart(channel, cellValue) {
         mlCurrentChartDisplayChannel = String(channel || 'All');
-        mlCurrentChartChannel = mlCurrentChartDisplayChannel.toLowerCase().replace(/[^a-z0-9]/g, '');
+        mlCurrentChartChannel = mlCurrentChartDisplayChannel;
         mlCurrentMetricKey = 'missing_l';
         mlCurrentChartDays = 32;
-        mlCurrentBadgeValue = (mlCurrentChartDisplayChannel === 'All' && cellValue !== undefined && cellValue !== null && !isNaN(cellValue))
+        mlCurrentBadgeValue = (cellValue !== undefined && cellValue !== null && cellValue !== '' && !isNaN(cellValue))
             ? cellValue
             : null;
 
@@ -373,7 +374,7 @@
             $('#mlChartLoading').hide();
 
             if (response.success !== false && response.data && response.data.length > 0) {
-                $('#mlChartContainer').show();
+                $('#mlChartContainer').css('display', 'flex');
                 renderMlMetricChart(response.data);
             } else {
                 $('#mlChartNoData').show();
@@ -740,6 +741,26 @@
                     },
                 },
                 {
+                    title: "Type",
+                    field: "type",
+                    width: 110,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "B2B, B2C, or C2C",
+                    formatter: function(cell) {
+                        const current = String(cell.getValue() || '').trim();
+                        const id = cell.getRow().getData().id;
+                        const types = ['B2B', 'B2C', 'C2C'];
+                        let html = `<select class="ml-mode-select ml-type-select" data-id="${escapeHtml(String(id || ''))}">`;
+                        html += `<option value=""${current === '' ? ' selected' : ''}>—</option>`;
+                        types.forEach(function(type) {
+                            html += `<option value="${type}"${current === type ? ' selected' : ''}>${type}</option>`;
+                        });
+                        html += '</select>';
+                        return html;
+                    },
+                },
+                {
                     title: "Data Source",
                     field: "data_source",
                     width: 140,
@@ -874,13 +895,12 @@
                         return `${countHtml}${chartIcon}`;
                     },
                     cellClick: function(e, cell) {
-                        if (e.target.classList.contains('ml-metric-chart-icon')) {
-                            e.stopPropagation();
-                            if (isSheetRow(cell.getRow().getData())) return;
-                            const channel = $(e.target).data('channel');
-                            const value = Number(cell.getValue() || 0);
-                            showMlMetricChart(channel, value);
-                        }
+                        const icon = e.target.closest ? e.target.closest('.ml-metric-chart-icon') : null;
+                        if (!icon) return;
+                        e.stopPropagation();
+                        const channel = icon.getAttribute('data-channel') || cell.getRow().getData().channel;
+                        const value = Number(cell.getValue() || 0);
+                        showMlMetricChart(channel, value);
                     },
                     bottomCalc: function(values, data) {
                         return (data || []).reduce((sum, row) => {
@@ -964,7 +984,7 @@
             ],
         });
 
-        $(document).on('mousedown click', '#missing-listing-table .ml-mode-select', function(e) {
+        $(document).on('mousedown click', '#missing-listing-table .ml-mode-select, #missing-listing-table .ml-type-select', function(e) {
             e.stopPropagation();
         });
 
@@ -1003,6 +1023,38 @@
                 showToast(msg, 'error');
                 $select.val(oldValue);
                 applyModeSelectColor($select, oldValue);
+            });
+        });
+
+        $(document).on('change', '#missing-listing-table .ml-type-select', function() {
+            const $select = $(this);
+            const id = $select.data('id');
+            const newValue = String($select.val() || '').trim();
+            const row = table.getRows().find(function(r) {
+                return Number(r.getData().id) === Number(id);
+            });
+            const oldValue = row ? String(row.getData().type || '').trim() : '';
+            if (newValue === '' || newValue === oldValue) {
+                $select.val(oldValue);
+                return;
+            }
+            $.ajax({
+                url: "{{ route('missing.listing.listing.mode.save') }}",
+                method: 'POST',
+                data: { id: id, type: newValue },
+                dataType: 'json',
+            }).done(function(res) {
+                if (res && res.success) {
+                    if (row) row.update({ type: newValue });
+                    showToast(res.message || 'Type updated.', 'success');
+                } else {
+                    showToast((res && res.message) || 'Update failed.', 'error');
+                    $select.val(oldValue);
+                }
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Update failed.';
+                showToast(msg, 'error');
+                $select.val(oldValue);
             });
         });
 
