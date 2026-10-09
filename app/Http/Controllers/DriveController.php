@@ -9,10 +9,12 @@ use App\Models\User;
 use App\Services\Drive\DriveService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -22,6 +24,23 @@ class DriveController extends Controller
 {
     public function __construct(private DriveService $drive)
     {
+        $this->ensureTables();
+    }
+
+    /** Creates the Drive tables on first use when the migration has not been run yet. */
+    private function ensureTables(): void
+    {
+        try {
+            if (Schema::hasTable('drive_items')) {
+                return;
+            }
+            Artisan::call('migrate', [
+                '--force' => true,
+                '--path' => 'database/migrations/2026_10_10_020000_create_drive_tables.php',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('5Core Drive could not create its tables', ['error' => $e->getMessage()]);
+        }
     }
 
     /* ------------------------------------------------------------------ */
