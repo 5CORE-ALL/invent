@@ -10,6 +10,13 @@
     <style>
         #sheet-listing-wrap .tabulator { border: 1px solid #dee2e6; border-radius: 8px; font-size: 13px; }
         #sheet-listing-wrap .tabulator .tabulator-header { background: #00d5d5; }
+        #sheet-listing-wrap .tabulator-header-filter input,
+        #sheet-listing-wrap .tabulator-header-filter select {
+            height: 24px;
+            font-size: 12px;
+            padding: 0 6px;
+            min-width: 0;
+        }
         .sheet-stat { min-width: 110px; }
     </style>
 @endsection
@@ -57,10 +64,45 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const csrf = '{{ csrf_token() }}';
+    const channel = @json($channel);
     const importUrl = @json(url('listing_'.$channel.'/import'));
     const dataUrl = @json(url('listing_'.$channel.'/view-data'));
+    const saveUrl = @json(url('listing_'.$channel.'/save-status'));
     let table = null;
     let missingOnly = new URLSearchParams(location.search).get('missing') === '1';
+
+    function shortFilter() {
+        return { headerFilter: 'input' };
+    }
+
+    function saveListed(cell) {
+        const sku = String((cell.getRow().getData() || {}).sku || '');
+        const listed = String(cell.getValue() || '');
+        fetch(saveUrl, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrf,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ sku: sku, listed: listed }),
+        })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+            if (!res.ok) {
+                cell.restoreOldValue();
+                alert((res.data && (res.data.message || res.data.error)) || 'Could not save Listed.');
+                return;
+            }
+            if (table) table.refreshFilter();
+        })
+        .catch(function () {
+            cell.restoreOldValue();
+            alert('Could not save Listed.');
+        });
+    }
 
     function applyMissingFilter() {
         if (!table) return;
@@ -71,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     && String(data.listed || '') !== 'Listed';
             });
         } else {
-            table.clearFilter(true);
+            table.clearFilter();
         }
     }
 
@@ -83,7 +125,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 layout: 'fitColumns',
                 height: 'calc(100vh - 280px)',
                 placeholder: 'No CP Master SKUs',
-                columns: [
+                columns: channel === 'vinted' ? [
+                    Object.assign({ title: 'Parent', field: 'parent', minWidth: 140 }, shortFilter()),
+                    Object.assign({ title: 'SKU', field: 'sku', minWidth: 160 }, shortFilter()),
+                    Object.assign({ title: 'INV', field: 'INV', width: 90, hozAlign: 'center' }, shortFilter()),
+                    Object.assign({ title: 'NR / REQ', field: 'nr_req', width: 120, hozAlign: 'center' }, shortFilter()),
+                    Object.assign({
+                        title: 'Listed',
+                        field: 'listed',
+                        width: 130,
+                        hozAlign: 'center',
+                        headerTooltip: 'Click a cell to set Listed or Pending',
+                        editor: 'list',
+                        editorParams: { values: ['Listed', 'Pending'] },
+                        cellEdited: saveListed,
+                    }, shortFilter()),
+                ] : [
                     { title: 'SKU', field: 'sku', minWidth: 160, headerFilter: 'input' },
                     { title: 'INV', field: 'INV', width: 80, hozAlign: 'center' },
                     { title: 'NR / REQ', field: 'nr_req', width: 110, hozAlign: 'center' },
