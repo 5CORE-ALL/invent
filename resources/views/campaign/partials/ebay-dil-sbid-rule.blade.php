@@ -1,5 +1,8 @@
 @php
     $dilSbidAccount = $account ?? 'eBay';
+    $dilSbidListingWise = ! empty($listingWise);
+    $dilSbidUnit = $dilSbidListingWise ? 'listing' : 'SKU';
+    $dilSbidUnits = $dilSbidListingWise ? 'listings' : 'SKUs';
 @endphp
 @if(($part ?? 'modal') === 'modal' && ! empty($extended))
 @php
@@ -81,10 +84,19 @@
             <div class="modal-body">
                 <p class="small mb-2" id="dil-sbid-mode-note">Off. S Bid is not changed.</p>
                 <ul class="dsb-notes">
-                    <li>@if(! empty($listingWise))Count is unique eBay listings (one variation item_id). Dil is family Dil: round(Σ OV L30 sold ÷ Σ Inventory × 100).@else Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100).@endif Inventory 0 and missing data are not counted. First matching range wins in every table. A range that starts where the one above ended is exclusive on From. The last range is open at the top.</li>
-                    <li><strong>Dil 0–0</strong> is @if(! empty($listingWise))listings@else SKUs@endif with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the @if(! empty($listingWise))listing@else SKU@endif falls in. A negative value subtracts. A @if(! empty($listingWise))listing@else SKU@endif outside every range adds 0.</li>
+                    <li>@if($dilSbidListingWise)
+                        Count is unique eBay listings (one variation item_id). Dil is family Dil: round(Σ OV L30 sold ÷ Σ Inventory × 100).
+                    @else
+                        Count is unique SKUs. Dil is CP Master Dil: round(OV L30 sold ÷ Inventory × 100).
+                    @endif
+                    Inventory 0 and missing data are not counted. First matching range wins in every table. A range that starts where the one above ended is exclusive on From. The last range is open at the top.</li>
+                    <li><strong>Dil 0–0</strong> is {{ $dilSbidUnits }} with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the {{ $dilSbidUnit }} falls in. A negative value subtracts. A {{ $dilSbidUnit }} outside every range adds 0.</li>
                     <li>New tables start at 0, so nothing changes until you type an S Bid. L30 View up / down uses the same arrow as the L30 View column (L7 pace vs L30 pace). Its Adj starts at 0. The final bid is rounded to 0.1 and kept between the Min and Max caps (those caps cannot go outside 2 and 100, which eBay accepts).</li>
-                    <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push.@if(! empty($listingWise)) Variation SKUs that share an item_id are summed, then one S Bid is pushed and pulled on that parent listing. C Bid is shown on the parent row and every SKU under that listing.@endif Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.</li>
+                    <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push.
+                    @if($dilSbidListingWise)
+                        Variation SKUs that share an item_id are summed, then one S Bid is pushed and pulled on that parent listing. C Bid is shown on the parent row and every SKU under that listing.
+                    @endif
+                    Std NPFT % needs a Std Prc, taken from the Sku Link LMP group when the SKU has none.</li>
                     <li>Saved for {{ $dilSbidAccount }} only. eBay 1, eBay 2 and eBay 3 each keep their own tables. They push the new S Bid on their own when the rules change the bid. The switch must be On.</li>
                 </ul>
                 <div class="dsb-cols">
