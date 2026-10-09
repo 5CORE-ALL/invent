@@ -9,6 +9,7 @@ use App\Models\MissingListingDar;
 use App\Jobs\RebuildMissingListingPageJob;
 use App\Support\Marketplace\CpMasterCounts;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingInactiveParentChildCounts;
 use App\Support\Marketplace\SheetListingCatalog;
 use App\Support\Marketplace\SheetListingCatalogService;
@@ -61,6 +62,8 @@ class MissingListingController extends Controller
                 try {
                     $cached['data'] = $this->overlayListingModes($cached['data']);
                     $cached['data'] = $this->appendFbMarketplaceRow($cached['data']);
+                    $cached['data'] = $this->overlayCsvListedCounts($cached['data']);
+                    $cached['total_missing_l'] = $this->sumMissingL($cached['data']);
                 } catch (\Throwable $e) {
                     Log::warning('Missing Listing overlayListingModes failed: '.$e->getMessage());
                 }
@@ -74,6 +77,12 @@ class MissingListingController extends Controller
             } catch (\Throwable $e) {
                 Log::warning('Missing Listing skeleton failed: '.$e->getMessage());
                 $payload = $this->buildMinimalChannelPayload();
+            }
+            try {
+                $payload['data'] = $this->overlayCsvListedCounts($payload['data'] ?? []);
+                $payload['total_missing_l'] = $this->sumMissingL($payload['data']);
+            } catch (\Throwable $e) {
+                Log::warning('Missing Listing csv listed overlay failed: '.$e->getMessage());
             }
             $this->dispatchPageRebuildIfNeeded(null);
 
@@ -440,6 +449,55 @@ class MissingListingController extends Controller
             'computed_at' => now()->toIso8601String(),
             'partial' => false,
         ];
+    }
+
+    /**
+     * SKU column is the CP Master count. Listed on a no-API marketplace is the
+     * number of in-stock CP Master SKUs marked Listed by CSV or by hand.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayCsvListedCounts(array $rows): array
+    {
+        $cp = CpMasterCounts::counts(true);
+        $listedByChannel = ListingCountsEngine::csvListedCounts();
+        $skuCount = (int) ($cp['SKU'] ?? 0);
+        $zeroInv = (int) ($cp['ZeroInv'] ?? 0);
+
+        foreach ($rows as $i => $row) {
+            if ($skuCount > 0) {
+                $rows[$i]['sku'] = $skuCount;
+            }
+            if ($zeroInv > 0 && (int) ($row['zero_inv'] ?? 0) === 0) {
+                $rows[$i]['zero_inv'] = $zeroInv;
+            }
+            if (($row['data_source'] ?? '') !== 'CSV') {
+                continue;
+            }
+            $key = SheetListingCatalog::canonical((string) ($row['channel'] ?? ''));
+            if (! array_key_exists($key, $listedByChannel)) {
+                continue;
+            }
+            $listed = (int) $listedByChannel[$key];
+            $rows[$i]['listed'] = $listed;
+            $req = (int) ($row['req'] ?? 0);
+            if ($req > 0) {
+                $rows[$i]['missing_listing'] = max(0, $req - $listed);
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function sumMissingL(array $rows): int
+    {
+        return (int) collect($rows)
+            ->filter(fn ($row) => in_array($row['data_source'] ?? '', ['API', 'CSV'], true))
+            ->sum(fn ($row) => (int) ($row['missing_listing'] ?? 0));
     }
 
     /**

@@ -149,6 +149,21 @@
             text-decoration: none;
         }
         .tabulator .tabulator-cell.tabulator-editing { padding: 2px 4px; }
+        #missing-listing-table .ml-head-count {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: #0d6efd;
+            line-height: 1.1;
+        }
+        #missing-listing-table .tabulator-header-filter input,
+        #missing-listing-table .tabulator-header-filter select {
+            height: 22px;
+            font-size: 11px;
+            padding: 0 4px;
+            min-width: 0;
+            width: 100%;
+        }
         #mlChartContainer .ml-chart-plot { flex: 1; min-width: 0; height: 100%; position: relative; }
 
         /* Metric history modal — same full-width layout as Active Channel */
@@ -270,6 +285,34 @@
     let mlCurrentMetricKey = 'missing_l';
     let mlCurrentChartDays = 32;
     let mlCurrentBadgeValue = null;
+
+    function paintColumnHeadCounts(rows) {
+        if (!table) return;
+        const list = rows || [];
+        const sku = list.reduce(function(n, row) {
+            return Math.max(n, Number(row.sku || 0));
+        }, 0);
+        const listed = list.reduce(function(n, row) {
+            if (!isCountableRow(row) || row.listed === null || row.listed === undefined || row.listed === '') return n;
+            return n + Number(row.listed || 0);
+        }, 0);
+        setColumnHeadCount('sku', sku);
+        setColumnHeadCount('listed', listed);
+    }
+
+    function setColumnHeadCount(field, count) {
+        const column = table.getColumn(field);
+        const header = column && column.getElement ? column.getElement() : null;
+        const title = header ? header.querySelector('.tabulator-col-title') : null;
+        if (!title) return;
+        let badge = title.querySelector('.ml-head-count');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'ml-head-count';
+            title.appendChild(badge);
+        }
+        badge.textContent = Number(count || 0).toLocaleString('en-US');
+    }
 
     function updateStats(rows, totalMissingL) {
         if (totalMissingL !== undefined && totalMissingL !== null && !isNaN(Number(totalMissingL))) {
@@ -629,6 +672,28 @@
             loadMlMetricChart();
         });
 
+        function shortFilter() {
+            return {
+                headerFilter: 'input',
+                headerFilterFunc: function(headerValue, rowValue) {
+                    const q = String(headerValue || '').trim().toLowerCase();
+                    if (!q) return true;
+                    return String(rowValue ?? '').toLowerCase().includes(q);
+                },
+            };
+        }
+
+        function shortList(values) {
+            return {
+                headerFilter: 'list',
+                headerFilterParams: { values: values, clearable: true },
+                headerFilterFunc: function(headerValue, rowValue) {
+                    if (headerValue === undefined || headerValue === null || headerValue === '') return true;
+                    return String(rowValue || '').trim().toLowerCase() === String(headerValue).trim().toLowerCase();
+                },
+            };
+        }
+
         table = new Tabulator("#missing-listing-table", {
             ajaxURL: "{{ route('missing.listing.data') }}",
             ajaxRequestTimeout: 20000,
@@ -658,6 +723,7 @@
                 }
                 const data = (response && response.data) ? response.data : [];
                 updateStats(data, response && response.total_missing_l);
+                paintColumnHeadCounts(data);
                 if (response && response.partial && (window.__mlCountsRetries || 0) < 3) {
                     window.__mlCountsRetries = (window.__mlCountsRetries || 0) + 1;
                     setTimeout(function() {
@@ -673,6 +739,9 @@
                 if (holder) {
                     holder.textContent = 'Could not load channels. Refresh the page.';
                 }
+            },
+            dataProcessed: function() {
+                paintColumnHeadCounts(table ? table.getData() : []);
             },
             layout: "fitDataStretch",
             pagination: true,
@@ -699,7 +768,7 @@
                         return `<img src="${safeSrc}" alt="${safeAlt}" class="ml-channel-logo" onerror="this.style.display='none'">`;
                     }
                 },
-                {
+                Object.assign({
                     title: "Channel",
                     field: "channel",
                     minWidth: 220,
@@ -716,11 +785,11 @@
                         const importUrl = String(row.csv_import_url || '').trim();
                         return `${nameHtml}<button type="button" class="btn btn-sm btn-outline-warning ml-csv-upload-btn" data-import-url="${escapeHtml(importUrl)}" title="Upload current ${safeName} listings CSV and match to CP Master">Upload CSV</button>`;
                     },
-                },
-                {
+                }, shortFilter()),
+                Object.assign({
                     title: "Mode",
                     field: "listing_mode",
-                    width: 120,
+                    width: 130,
                     hozAlign: "center",
                     headerSort: false,
                     headerTooltip: "How this channel listing is updated: Auto, CSV, Manual, or Semi",
@@ -741,11 +810,11 @@
                         html += '</select>';
                         return html;
                     },
-                },
-                {
+                }, shortList({ Auto: 'Auto', CSV: 'CSV', Manual: 'Manual', Semi: 'Semi' })),
+                Object.assign({
                     title: "Type",
                     field: "type",
-                    width: 110,
+                    width: 120,
                     hozAlign: "center",
                     headerSort: false,
                     headerTooltip: "B2B, B2C, or C2C",
@@ -761,8 +830,8 @@
                         html += '</select>';
                         return html;
                     },
-                },
-                {
+                }, shortList({ B2B: 'B2B', B2C: 'B2C', C2C: 'C2C', Dropship: 'Dropship', Wholesale: 'Wholesale' })),
+                Object.assign({
                     title: "Data Source",
                     field: "data_source",
                     width: 140,
@@ -784,8 +853,8 @@
                         }
                         return escapeHtml(v || '-');
                     },
-                },
-                {
+                }, shortList({ API: 'API', CSV: 'CSV', Sheet: 'Sheet', Offline: 'Not connected' })),
+                Object.assign({
                     title: "SKU",
                     field: "sku",
                     width: 90,
@@ -796,8 +865,8 @@
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#0d6efd;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                     },
-                },
-                {
+                }, shortFilter()),
+                Object.assign({
                     title: "0 Inv",
                     field: "zero_inv",
                     width: 90,
@@ -808,8 +877,8 @@
                         const v = Number(cell.getValue() || 0);
                         return `<span style="color:#dc3545;font-weight:600;">${v.toLocaleString('en-US')}</span>`;
                     },
-                },
-                {
+                }, shortFilter()),
+                Object.assign({
                     title: "REQ",
                     field: "req",
                     width: 100,
@@ -830,8 +899,8 @@
                     bottomCalcFormatter: function(cell) {
                         return Number(cell.getValue() || 0).toLocaleString('en-US');
                     },
-                },
-                {
+                }, shortFilter()),
+                Object.assign({
                     title: "NRL",
                     field: "nrl",
                     width: 100,
@@ -852,8 +921,8 @@
                     bottomCalcFormatter: function(cell) {
                         return Number(cell.getValue() || 0).toLocaleString('en-US');
                     },
-                },
-                {
+                }, shortFilter()),
+                Object.assign({
                     title: "Listed",
                     field: "listed",
                     width: 110,
@@ -874,8 +943,8 @@
                     bottomCalcFormatter: function(cell) {
                         return Number(cell.getValue() || 0).toLocaleString('en-US');
                     },
-                },
-                {
+                }, shortFilter()),
+                Object.assign({
                     title: "Missing Listing",
                     field: "missing_listing",
                     width: 180,
@@ -913,13 +982,13 @@
                     bottomCalcFormatter: function(cell) {
                         return Number(cell.getValue() || 0).toLocaleString('en-US');
                     },
-                },
+                }, shortFilter()),
                 {
                     title: "Inactive Listing",
                     headerHozAlign: "center",
                     headerTooltip: "Seller-platform inactive listings with inventory (0 Inv SKUs excluded): parent products vs child SKUs",
                     columns: [
-                        {
+                        Object.assign({
                             title: "Parent",
                             field: "inactive_parent",
                             width: 100,
@@ -935,8 +1004,8 @@
                             bottomCalcFormatter: function(cell) {
                                 return Number(cell.getValue() || 0).toLocaleString('en-US');
                             },
-                        },
-                        {
+                        }, shortFilter()),
+                        Object.assign({
                             title: "Child",
                             field: "inactive_child",
                             width: 100,
@@ -952,10 +1021,10 @@
                             bottomCalcFormatter: function(cell) {
                                 return Number(cell.getValue() || 0).toLocaleString('en-US');
                             },
-                        },
+                        }, shortFilter()),
                     ],
                 },
-                {
+                Object.assign({
                     title: "Seller Portal",
                     field: "seller_portal",
                     width: 90,
@@ -982,7 +1051,7 @@
                     cellEdited: function(cell) {
                         saveSellerPortal(cell);
                     },
-                },
+                }, shortFilter()),
             ],
         });
 
@@ -1099,7 +1168,7 @@
         $('#missing-listing-search').on('input', function() {
             const q = $(this).val().trim().toLowerCase();
             if (!q) {
-                table.clearFilter(true);
+                table.clearFilter();
                 return;
             }
             table.setFilter(function(row) {
