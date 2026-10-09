@@ -28,6 +28,131 @@ class VideoAdsMasterController extends Controller
     }
 
     /**
+     * Streams a short byte range of a Dropbox video with a real video content type.
+     * Dropbox labels these files as application/json, so a <video> tag cannot
+     * paint a frame unless the bytes are served from here.
+     */
+    public function media(Request $request)
+    {
+        $source = $this->allowedDropboxVideoUrl((string) $request->query('u', ''));
+        abort_unless($source, 404);
+
+        $range = $this->clampMediaRange($request->header('Range'));
+        $ch = curl_init($source);
+        curl_setopt_array($ch, [
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 4,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_HTTPHEADER => [
+                'Range: '.$range,
+                'User-Agent: Mozilla/5.0',
+            ],
+            CURLOPT_TIMEOUT => 25,
+            CURLOPT_CONNECTTIMEOUT => 8,
+        ]);
+        $raw = curl_exec($ch);
+        $effective = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        curl_close($ch);
+
+        $host = strtolower((string) parse_url($effective, PHP_URL_HOST));
+        abort_unless($raw !== false && $this->isDropboxHost($host), 502);
+        abort_unless(in_array($status, [200, 206], true), 502);
+
+        $headerBlob = substr($raw, 0, $headerSize);
+        $body = substr($raw, $headerSize);
+        $contentRange = null;
+        if (preg_match_all('/^content-range:\s*(.+)$/im', $headerBlob, $matches) && ! empty($matches[1])) {
+            $ranges = $matches[1];
+            $contentRange = trim((string) $ranges[array_key_last($ranges)]);
+        }
+
+        $headers = [
+            'Content-Type' => $this->videoMime($source),
+            'Accept-Ranges' => 'bytes',
+            'Content-Length' => (string) strlen($body),
+            'Cache-Control' => 'private, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+        ];
+        if ($contentRange) {
+            $headers['Content-Range'] = $contentRange;
+            $status = 206;
+        }
+
+        return response($body, $status, $headers);
+    }
+
+    /** Shared Dropbox file links only. Folders and every other host are rejected. */
+    private function allowedDropboxVideoUrl(string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '' || preg_match('/[\r\n\s]/', $url) || ! preg_match('#^https://#i', $url)) {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts) || isset($parts['user']) || isset($parts['pass'])) {
+            return null;
+        }
+
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $path = (string) ($parts['path'] ?? '');
+        if (! $this->isDropboxHost($host) || str_contains($path, '/scl/fo/') || str_contains($path, '/sh/')) {
+            return null;
+        }
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $video = in_array($ext, ['mp4', 'webm', 'mov', 'm4v', 'ogg', 'ogv', 'mkv'], true);
+        if (! $video && ! str_contains($path, '/scl/fi/')) {
+            return null;
+        }
+
+        return \App\Support\VideoThumbnailUrl::normalize($url);
+    }
+
+    private function isDropboxHost(string $host): bool
+    {
+        return $host === 'dropbox.com'
+            || $host === 'dropboxusercontent.com'
+            || str_ends_with($host, '.dropbox.com')
+            || str_ends_with($host, '.dropboxusercontent.com');
+    }
+
+    private function clampMediaRange(?string $range): string
+    {
+        $max = 2 * 1024 * 1024;
+        if (! $range || ! preg_match('/bytes=(\d+)-(\d*)/i', $range, $m)) {
+            return 'bytes=0-'.($max - 1);
+        }
+
+        $start = (int) $m[1];
+        $end = $m[2] === '' ? $start + $max - 1 : (int) $m[2];
+        if ($end < $start) {
+            $end = $start;
+        }
+        if (($end - $start + 1) > $max) {
+            $end = $start + $max - 1;
+        }
+
+        return 'bytes='.$start.'-'.$end;
+    }
+
+    private function videoMime(string $url): string
+    {
+        $ext = strtolower(pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+
+        return match ($ext) {
+            'webm' => 'video/webm',
+            'mov' => 'video/quicktime',
+            'ogg', 'ogv' => 'video/ogg',
+            'mkv' => 'video/x-matroska',
+            default => 'video/mp4',
+        };
+    }
+
+    /**
      * Returns the full grid payload in one call:
      *   - rows              : video_ads_master records (with timestamps)
      *   - channels          : list of channels from channel_master (CHANNEL dropdown)

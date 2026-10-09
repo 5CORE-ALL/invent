@@ -4641,6 +4641,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // `video_ads_hook_options` lookup for the dynamic HOOK NAME dropdown.
     Route::get('/video-ads-master',                       [\App\Http\Controllers\VideoAdsMasterController::class, 'index'])->name('video.ads.master');
     Route::get('/video-ads-master/data',                  [\App\Http\Controllers\VideoAdsMasterController::class, 'getData'])->name('video.ads.master.data');
+    Route::get('/video-ads-master/media',                 [\App\Http\Controllers\VideoAdsMasterController::class, 'media'])->name('video.ads.master.media');
     Route::post('/video-ads-master',                      [\App\Http\Controllers\VideoAdsMasterController::class, 'store'])->name('video.ads.master.store');
     Route::put('/video-ads-master/{id}',                  [\App\Http\Controllers\VideoAdsMasterController::class, 'update'])->whereNumber('id')->name('video.ads.master.update');
     Route::delete('/video-ads-master/{id}',               [\App\Http\Controllers\VideoAdsMasterController::class, 'destroy'])->whereNumber('id')->name('video.ads.master.destroy');
