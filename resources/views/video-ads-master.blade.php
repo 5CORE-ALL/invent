@@ -219,8 +219,8 @@
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            min-width: 128px;
-            max-width: 180px;
+            min-width: 148px;
+            max-width: 240px;
             padding: 4px 8px;
             border: 1px solid #ced4da;
             border-radius: 6px;
@@ -231,16 +231,39 @@
         }
         .vam-creator-toggle:hover { border-color: #2c6ed5; }
         .vam-creator-toggle-label {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            min-width: 0;
+            overflow: hidden;
+            text-align: left;
+        }
+        .vam-creator-toggle-label.is-empty { color: #6b7280; white-space: nowrap; }
+        .vam-creator-entry {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            line-height: 1.2;
+            max-width: 100%;
+        }
+        .vam-creator-name {
+            max-width: 180px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .vam-creator-toggle-label.is-empty { color: #6b7280; }
+        .vam-creator-date {
+            font-size: 10px;
+            font-weight: 500;
+            color: #6b7280;
+            white-space: nowrap;
+        }
         .vam-creator-menu {
             position: fixed;
             z-index: 10800;
-            min-width: 180px;
-            max-width: 260px;
+            min-width: 220px;
+            max-width: 320px;
             max-height: 320px;
             overflow: auto;
             background: #fff;
@@ -266,6 +289,18 @@
         .vam-creator-menu-item:hover,
         .vam-creator-menu-add:hover { background: #eff6ff; }
         .vam-creator-menu-item.is-selected { background: #eff6ff; font-weight: 600; color: #1a56b7; }
+        .vam-creator-menu-item-text {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            min-width: 0;
+            line-height: 1.2;
+        }
+        .vam-creator-menu-date {
+            font-size: 10px;
+            font-weight: 500;
+            color: #6b7280;
+        }
         .vam-creator-menu-add { color: #2c6ed5; font-weight: 600; border-bottom: 0; }
         .vam-creator-menu-new { border-top: 1px solid #e5e7eb; padding: 8px; }
         .vam-creator-menu-new input {
@@ -840,11 +875,22 @@
                 });
             }
 
+            function creatorEntryHtml(creator) {
+                const name = escapeHtml(creator.name || '');
+                const date = creator.created_at
+                    ? `<span class="vam-creator-date">${escapeHtml(creator.created_at)}</span>`
+                    : '';
+                return `<span class="vam-creator-entry"><span class="vam-creator-name">${name}</span>${date}</span>`;
+            }
+
             function creatorFormatter(cell) {
                 const creators = assignedCreators(cell.getRow().getData());
-                const label = creators.map(c => c.name).filter(Boolean).join(', ') || 'Select';
-                const empty = creators.length ? '' : ' is-empty';
-                return `<button type="button" class="vam-creator-toggle"><span class="vam-creator-toggle-label${empty}">${escapeHtml(label)}</span><i class="fas fa-chevron-down"></i></button>`;
+                if (!creators.length) {
+                    return `<button type="button" class="vam-creator-toggle"><span class="vam-creator-toggle-label is-empty">Select</span><i class="fas fa-chevron-down"></i></button>`;
+                }
+                const label = creators.map(creatorEntryHtml).join('');
+                const title = creators.map(c => [c.name, c.created_at].filter(Boolean).join(' · ')).join('\n');
+                return `<button type="button" class="vam-creator-toggle" title="${escapeHtml(title)}"><span class="vam-creator-toggle-label">${label}</span><i class="fas fa-chevron-down"></i></button>`;
             }
 
             function closeCreatorMenu() {
@@ -857,10 +903,15 @@
 
             function renderCreatorMenuOptions() {
                 const wrap = document.getElementById('vamCreatorMenuOptions');
-                const selected = new Set(assignedCreators(creatorMenuRow && creatorMenuRow.getData()).map(c => Number(c.user_id)));
+                const assigned = assignedCreators(creatorMenuRow && creatorMenuRow.getData());
+                const byId = new Map(assigned.map(c => [Number(c.user_id), c]));
                 wrap.innerHTML = (creatorOptions || []).map(o => {
-                    const on = selected.has(Number(o.id)) ? ' is-selected' : '';
-                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}">${escapeHtml(o.name)}</button>`;
+                    const current = byId.get(Number(o.id));
+                    const on = current ? ' is-selected' : '';
+                    const date = current && current.created_at
+                        ? `<span class="vam-creator-menu-date">${escapeHtml(current.created_at)}</span>`
+                        : '';
+                    return `<button type="button" class="vam-creator-menu-item${on}" data-user-id="${Number(o.id)}"><span class="vam-creator-menu-item-text"><span>${escapeHtml(o.name)}</span>${date}</span></button>`;
                 }).join('');
             }
 
@@ -2219,7 +2270,7 @@
                         data._target, data.name, data.channel,
                         formatTags(data.audience), formatTags(data.hook_name),
                         data.hook, data.link,
-                        (data.creators || []).map(c => c.name).join(' '),
+                        (data.creators || []).map(c => [c.name, c.created_at].filter(Boolean).join(' ')).join(' '),
                     ].map(v => (v || '').toString().toLowerCase()).join(' | ');
                     return haystack.includes(q);
                 });
