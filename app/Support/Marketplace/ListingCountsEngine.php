@@ -5,6 +5,7 @@ namespace App\Support\Marketplace;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -53,6 +54,91 @@ class ListingCountsEngine
     public static function requestShopifyMap(): Collection
     {
         return self::$shopifyMapMemo ??= self::shopifyMap(self::productSkus());
+    }
+
+    /**
+     * Listed count for no-API marketplaces: CP Master SKUs with stock whose
+     * sheet row is Listed from a CSV upload or a manual Listed mark.
+     *
+     * @return array<string, int>
+     */
+    public static function csvListedCounts(): array
+    {
+        try {
+            return Cache::remember('sheet_csv_listed_counts_v1', now()->addMinutes(10), function () {
+                return self::loadCsvListedCounts();
+            });
+        } catch (\Throwable $e) {
+            return self::loadCsvListedCounts();
+        }
+    }
+
+    public static function forgetCsvListedCounts(): void
+    {
+        try {
+            Cache::forget('sheet_csv_listed_counts_v1');
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private static function loadCsvListedCounts(): array
+    {
+        $wanted = [];
+        $shopify = self::requestShopifyMap();
+        foreach (self::productMasters() as $item) {
+            $sku = trim((string) $item->sku);
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            if (self::shopifyInv(self::shopifyRow($shopify, $sku, (string) $item->sku)) <= 0) {
+                continue;
+            }
+            $id = strtolower($sku);
+            foreach (array_merge(self::skuIndexKeys($sku), self::skuLookupKeys($sku)) as $key) {
+                $wanted[$key] = $id;
+            }
+        }
+
+        $out = [];
+        foreach (SheetListingCatalog::all() as $slug => $cfg) {
+            $statusClass = $cfg['status'] ?? '';
+            if ($statusClass === '' || ! class_exists($statusClass) || ! Schema::hasTable((new $statusClass)->getTable())) {
+                $out[$slug] = 0;
+                continue;
+            }
+            $seen = [];
+            $statusClass::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get(['sku', 'value'])
+                ->each(function ($row) use (&$seen, $wanted) {
+                    $sku = trim((string) $row->sku);
+                    if ($sku === '') {
+                        return;
+                    }
+                    $value = $row->value;
+                    if (! is_array($value)) {
+                        $value = is_string($value) ? (json_decode($value, true) ?: []) : [];
+                    }
+                    if (! self::statusValueIsListed($value) || self::nrReqFromDataView($value) !== 'REQ') {
+                        return;
+                    }
+                    foreach (array_merge(self::skuIndexKeys($sku), self::skuLookupKeys($sku)) as $key) {
+                        if (isset($wanted[$key])) {
+                            $seen[$wanted[$key]] = true;
+
+                            return;
+                        }
+                    }
+                });
+            $out[$slug] = count($seen);
+        }
+
+        return $out;
     }
 
     /**

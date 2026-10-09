@@ -575,6 +575,7 @@ class ListingChannelCounts
         foreach (['inv', 'cp'] as $mode) {
             Cache::forget('listing_channel_counts_v2:'.$mode.':'.$key);
         }
+        ListingCountsEngine::forgetCsvListedCounts();
         $counts = self::forChannel($channel, true);
         self::snapshotMissingListing($key, $counts);
 
