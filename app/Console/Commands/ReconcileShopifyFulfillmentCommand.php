@@ -9,6 +9,7 @@ use App\Services\MarketplaceManager\MarketplaceTrackingOwnership;
 use App\Services\MarketplaceManager\ShopifyDuplicateOrderPlanner;
 use App\Services\MarketplaceManager\ShopifyGraphqlFulfiller;
 use App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService;
+use App\Services\MarketplaceManager\WayfairTrackingSyncService;
 use App\Services\OrderFulfillment\OrderFulfillmentShopifyPushService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -106,6 +107,7 @@ class ReconcileShopifyFulfillmentCommand extends Command
             $found = [];
             $looked = 0;
             if ($needLookup !== [] && ! $dryRun && $maxLookups > 0 && microtime(true) < $deadline) {
+                $needLookup = $this->prefetchWayfairLabels($needLookup, $deadline);
                 $batch = array_slice($needLookup, 0, $maxLookups);
                 $looked = count($batch);
                 $found = $this->lookUpTracking(array_map(fn ($n) => $n['result'], $batch), $deadline);
@@ -136,6 +138,38 @@ class ReconcileShopifyFulfillmentCommand extends Command
         Log::info('order-fulfillment:reconcile-shopify', ['counts' => $counts, 'dry_run' => $dryRun]);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Wayfair ships on Wayfair-generated labels, which only Wayfair's label events know about.
+     * Fetch them for all waiting Wayfair POs at once and move the hits to the front of the queue.
+     *
+     * @param  list<array{item: array, result: array}>  $needLookup
+     * @return list<array{item: array, result: array}>
+     */
+    private function prefetchWayfairLabels(array $needLookup, float $deadline): array
+    {
+        $pos = [];
+        foreach ($needLookup as $n) {
+            if ($n['result']['slug'] === 'wayfair') {
+                $pos[] = $n['result']['ref'];
+            }
+        }
+        if ($pos === []) {
+            return $needLookup;
+        }
+        try {
+            $hits = app(WayfairTrackingSyncService::class)->prefetchLabelTracking($pos, min($deadline, microtime(true) + 180));
+        } catch (\Throwable $e) {
+            Log::warning('order-fulfillment:reconcile-shopify: Wayfair label fetch failed', ['error' => $e->getMessage()]);
+
+            return $needLookup;
+        }
+        $this->line('  Wayfair labels: '.count($hits).' of '.count($pos).' PO(s) have tracking.');
+
+        usort($needLookup, fn ($a, $b) => (int) isset($hits[strtoupper($b['result']['ref'])]) <=> (int) isset($hits[strtoupper($a['result']['ref'])]));
+
+        return $needLookup;
     }
 
     /**

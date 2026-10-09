@@ -155,6 +155,49 @@ class WayfairTrackingSyncService
     }
 
     /**
+     * Wayfair label tracking for many POs in a few calls; hits are saved on the PO rows and
+     * cached like trackingForPo, so later per-order lookups need no Wayfair call.
+     *
+     * @param  list<string>  $poNumbers
+     * @return array<string, array{tracking: string, carrier: string}> upper-case PO => tracking
+     */
+    public function prefetchLabelTracking(array $poNumbers, ?float $deadline = null): array
+    {
+        $want = [];
+        foreach ($poNumbers as $po) {
+            $po = strtoupper(trim((string) $po));
+            if ($po !== '' && preg_match('/^[A-Z]{2}[A-Z0-9-]{6,}$/', $po) === 1) {
+                $want[$po] = true;
+            }
+        }
+
+        $out = [];
+        foreach (array_chunk(array_keys($want), 25) as $chunk) {
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                break;
+            }
+            $found = [];
+            foreach ($this->labelTrackingByPo($chunk, $deadline) as $po => $hit) {
+                $found[strtoupper(trim((string) $po))] = $hit;
+            }
+            foreach ($chunk as $po) {
+                $tn = strtoupper(preg_replace('/\s+/', '', (string) ($found[$po]['tracking'] ?? '')) ?? '');
+                if (strlen($tn) < 8) {
+                    Cache::put('wayfair.label-tracking.'.$po, 'miss', now()->addMinutes(10));
+
+                    continue;
+                }
+                $ready = ['tracking' => $tn, 'carrier' => trim((string) ($found[$po]['carrier'] ?? ''))];
+                Cache::put('wayfair.label-tracking.'.$po, $ready, now()->addMinutes(30));
+                $this->saveTrackingForPo($po, $ready);
+                $out[$po] = $ready;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  array{tracking: string, carrier: string}  $hit
      */
     public function saveTrackingForPo(string $poNumber, array $hit): void
