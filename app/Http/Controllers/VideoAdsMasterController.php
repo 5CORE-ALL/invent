@@ -36,6 +36,7 @@ class VideoAdsMasterController extends Controller
      *   - audience_options  : list of AUDIENCE tags (from video_ad_audience_options,
      *                         seeded from any audiences already used on rows)
      *   - users             : Creator dropdown options (Mariya, Rahul) from the user table
+     *   - more_users        : all active users for the + picker
      *
      * The SKU/PARENT/GROUP column is just a fixed type selector now (SKU,
      * Parent, Group), so no lookup list is needed for it.
@@ -70,6 +71,7 @@ class VideoAdsMasterController extends Controller
             'hook_options'     => $this->hookOptionsPayload(),
             'audience_options' => $this->audienceOptionsPayload(),
             'users'            => $this->creatorUserOptions(),
+            'more_users'       => $this->allCreatorUserOptions(),
         ]);
     }
 
@@ -1053,5 +1055,25 @@ class VideoAdsMasterController extends Controller
         }
 
         return array_values($options);
+    }
+
+    /**
+     * Full user-table list for the + button, so extra names can be added.
+     */
+    private function allCreatorUserOptions(): array
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->whereNotNull('name')
+            ->where('name', '!=', '')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($user) => [
+                'id'   => (int) $user->id,
+                'name' => $user->name,
+            ])
+            ->values()
+            ->all();
     }
 }

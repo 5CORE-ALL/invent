@@ -220,6 +220,16 @@
             align-items: center;
             gap: 4px;
         }
+        .vam-creator-names {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 4px;
+        }
+        .vam-tag--creator {
+            background: #ecfdf5;
+            color: #047857;
+        }
         .vam-creator-select {
             width: 120px;
             font-size: 12px;
@@ -525,6 +535,24 @@
         </div>
     </div>
 
+    {{-- Modal: + adds another user name from the user table. --}}
+    <div class="modal fade" id="vamAddUserModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add user name</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="vamAddUserSearch" class="form-control form-control-sm mb-3" placeholder="Search user name…">
+                    <div id="vamAddUserList" class="border rounded" style="max-height: 360px; overflow: auto;">
+                        <div class="text-muted text-center py-3">Loading…</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Modal: manage HOOK tag options (add / edit / delete). --}}
     <div class="modal fade" id="vamHookManageModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-scrollable modal-lg">
@@ -614,13 +642,16 @@
             let channelOptions     = [];
             let hookOptions        = [];     // [{id, name, hook, link}, …]
             let audienceOptions    = [];     // [{id, name}, …] from video_ad_audience_options
-            let creatorOptions     = [];     // [{id, name}] Mariya and Rahul from the user table
+            let creatorOptions     = [];     // [{id, name}] Mariya and Rahul in the dropdown
+            let moreUserOptions    = [];     // all users from the user table, for +
             let rowModal           = null;   // bootstrap.Modal — Add / Edit form
             let addHookModal       = null;   // bootstrap.Modal — add / edit one hook
             let hookManageModal    = null;   // bootstrap.Modal — manage hook tags
             let audienceManageModal = null;  // bootstrap.Modal — manage audience tags
             let pickTagsModal      = null;   // bootstrap.Modal — pick tags for a row cell
+            let addUserModal       = null;   // bootstrap.Modal — + more user names
             let checkHistoryModal  = null;   // bootstrap.Modal — per-row check audit trail
+            let addUserRow         = null;
             let editingId          = null;   // id of the row currently in the form (null = add mode)
             let editingHookId      = null;   // id of hook option being edited in Add Hook modal
             let pickTagsContext    = null;   // { row, field: 'audience'|'hook_name' }
@@ -750,48 +781,70 @@
             const audienceFormatter = tagFormatter('audience');
             const hookFormatter     = tagFormatter('hook');
 
-            function creatorSlots(data) {
-                const saved = Array.isArray(data && data.creators) ? data.creators : [];
-                return saved.length ? saved : [{ user_id: '' }];
+            function assignedCreators(data) {
+                return (Array.isArray(data && data.creators) ? data.creators : [])
+                    .filter(c => Number(c && c.user_id) > 0);
+            }
+
+            function creatorSelectHtml() {
+                const opts = (creatorOptions || []).map(o =>
+                    `<option value="${Number(o.id)}">${escapeHtml(o.name)}</option>`
+                ).join('');
+                return `<select class="form-select form-select-sm vam-creator-select"><option value="">Select</option>${opts}</select>`;
             }
 
             function creatorFormatter(cell) {
-                const slots = creatorSlots(cell.getRow().getData());
-                const selects = slots.map(c => {
-                    const selectedId = Number(c && c.user_id) || 0;
-                    const opts = (creatorOptions || []).map(o => {
-                        const selected = Number(o.id) === selectedId ? 'selected' : '';
-                        return `<option value="${Number(o.id)}" ${selected}>${escapeHtml(o.name)}</option>`;
-                    }).join('');
-                    return `<select class="form-select form-select-sm vam-creator-select"><option value="">Select</option>${opts}</select>`;
+                const creators = assignedCreators(cell.getRow().getData());
+                const names = creators.map(c => {
+                    const name = c.name || 'Unknown';
+                    const when = c.created_at ? ` · ${c.created_at} PT` : '';
+                    return `<span class="vam-tag vam-tag--creator" title="${escapeHtml(name + when)}">${escapeHtml(name)}</span>`;
                 }).join('');
-                return `<div class="vam-creator-cell">${selects}<button type="button" class="vam-tag-add-btn vam-creator-add" title="Add creator"><i class="fas fa-plus"></i></button></div>`;
+                return `<div class="vam-creator-cell"><div class="vam-creator-names">${names}</div>${creatorSelectHtml()}<button type="button" class="vam-tag-add-btn vam-creator-add" title="Add creator"><i class="fas fa-plus"></i></button></div>`;
             }
 
-            function addCreatorSelect(row) {
-                const slots = creatorSlots(row.getData()).slice();
-                slots.push({ user_id: '' });
-                row.update({ creators: slots });
+            function openAddUserModal(row) {
+                addUserRow = row;
+                document.getElementById('vamAddUserSearch').value = '';
+                renderAddUserList();
+                addUserModal.show();
             }
 
-            function saveCreatorSelects(row) {
+            function renderAddUserList() {
+                const wrap = document.getElementById('vamAddUserList');
+                if (!wrap) return;
+                const taken = new Set(assignedCreators(addUserRow && addUserRow.getData()).map(c => Number(c.user_id)));
+                const q = (document.getElementById('vamAddUserSearch').value || '').trim().toLowerCase();
+                let options = (moreUserOptions || []).filter(o => !taken.has(Number(o.id)));
+                if (q) {
+                    options = options.filter(o => String(o.name || '').toLowerCase().includes(q));
+                }
+                if (!options.length) {
+                    wrap.innerHTML = '<div class="text-muted text-center py-3">No more users to add.</div>';
+                    return;
+                }
+                wrap.innerHTML = options.map(o => `
+                    <button type="button" class="vam-pick-option" data-user-id="${Number(o.id)}">
+                        <span class="vam-pick-option-label">${escapeHtml(o.name)}</span>
+                    </button>`).join('');
+            }
+
+            function addCreatorName(row, userId) {
+                const id = Number(userId);
+                if (!id) return;
+                const taken = new Set(assignedCreators(row.getData()).map(c => Number(c.user_id)));
+                if (taken.has(id)) {
+                    showToast('This user is already added', 'info');
+                    return;
+                }
+                const userIds = assignedCreators(row.getData()).map(c => Number(c.user_id));
+                userIds.push(id);
+                saveCreators(row, userIds);
+            }
+
+            function saveCreators(row, userIds) {
                 const data = row.getData();
                 if (!data.id) return;
-                const cell = row.getCell('creators');
-                const el = cell && cell.getElement();
-                if (!el) return;
-                const seen = new Set();
-                const userIds = [];
-                let blanks = 0;
-                el.querySelectorAll('.vam-creator-select').forEach(sel => {
-                    const id = Number(sel.value);
-                    if (id > 0 && !seen.has(id)) {
-                        seen.add(id);
-                        userIds.push(id);
-                    } else if (!(id > 0)) {
-                        blanks += 1;
-                    }
-                });
 
                 fetch(`/video-ads-master/${data.id}/creators`, {
                     method: 'PUT',
@@ -808,9 +861,7 @@
                         showToast((j && j.message) || 'Failed to save creator', 'error');
                         return;
                     }
-                    const saved = j.creators || [];
-                    const extras = Array.from({ length: blanks }, () => ({ user_id: '' }));
-                    row.update({ creators: saved.concat(extras) });
+                    row.update({ creators: j.creators || [] });
                 })
                 .catch(e => { console.error(e); showToast('Network error while saving creator', 'error'); });
             }
@@ -1777,6 +1828,7 @@
                 hookManageModal     = new bootstrap.Modal(document.getElementById('vamHookManageModal'));
                 audienceManageModal = new bootstrap.Modal(document.getElementById('vamAudienceManageModal'));
                 pickTagsModal       = new bootstrap.Modal(document.getElementById('vamPickTagsModal'));
+                addUserModal        = new bootstrap.Modal(document.getElementById('vamAddUserModal'));
                 checkHistoryModal   = new bootstrap.Modal(document.getElementById('vamCheckHistoryModal'));
 
                 fetch('/video-ads-master/data', { headers: { 'Accept': 'application/json' } })
@@ -1790,6 +1842,7 @@
                         setHookOptions(payload.hook_options || []);
                         setAudienceOptions(payload.audience_options || []);
                         creatorOptions = payload.users || [];
+                        moreUserOptions = payload.more_users || [];
 
                         refreshChannelDatalist();
                         initTable(payload.rows || []);
@@ -1854,7 +1907,15 @@
                     if (!e.target.classList.contains('vam-creator-select') || !table) return;
                     const rowEl = e.target.closest('.tabulator-row');
                     const row = table.getRows().find(r => r.getElement() === rowEl);
-                    if (row) saveCreatorSelects(row);
+                    if (row) addCreatorName(row, e.target.value);
+                });
+                document.getElementById('vamAddUserSearch').addEventListener('input', renderAddUserList);
+                document.getElementById('vamAddUserList').addEventListener('click', (e) => {
+                    const btn = e.target.closest('[data-user-id]');
+                    if (!btn || !addUserRow) return;
+                    addCreatorName(addUserRow, btn.getAttribute('data-user-id'));
+                    addUserModal.hide();
+                    addUserRow = null;
                 });
 
                 document.getElementById('vamPickTagsApplyBtn').addEventListener('click', applyPickTagsSelection);
@@ -1967,7 +2028,7 @@
                             cellClick: (e, cell) => {
                                 if (e.target.closest('.vam-creator-add')) {
                                     e.stopPropagation();
-                                    addCreatorSelect(cell.getRow());
+                                    openAddUserModal(cell.getRow());
                                 }
                             },
                         },
@@ -2180,6 +2241,7 @@
                         setHookOptions(payload.hook_options || []);
                         setAudienceOptions(payload.audience_options || []);
                         creatorOptions = payload.users || [];
+                        moreUserOptions = payload.more_users || [];
                         refreshChannelDatalist();
                         table.setData((payload.rows || []).map(normalizeRowTags));
                         updateCount();
