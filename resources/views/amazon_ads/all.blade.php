@@ -5046,7 +5046,7 @@
                 amzBgtEnsureUniverse();
                 var key = amzBgtFilterKey();
                 if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) return amzBgtUniverse.rows;
-                return amzBgtGridRows();
+                return null;
             }
             function amzBgtFirstBandIndex(value, bands, fromKey, toKey) {
                 if (value == null || !isFinite(value) || !Array.isArray(bands)) return -1;
@@ -5059,24 +5059,32 @@
                 return -1;
             }
             function amzBgtCountByBands(bands, fromKey, toKey, valueOfRow) {
+                var rows = amzBgtCountRows();
+                if (!rows) return null;
                 var counts = (bands || []).map(function () { return 0; });
-                amzBgtCountRows().forEach(function (row) {
+                var unmatched = 0;
+                rows.forEach(function (row) {
                     var idx = amzBgtFirstBandIndex(valueOfRow(row), bands, fromKey, toKey);
                     if (idx >= 0) counts[idx]++;
+                    else unmatched++;
                 });
+                counts.unmatched = unmatched;
+                counts.campaigns = rows.length;
                 return counts;
             }
             function amzBgtRefreshCountCells(tbodyId, counts) {
                 var tbody = document.getElementById(tbodyId);
-                if (!tbody) return;
-                var total = 0;
+                if (!tbody || !counts) return;
+                var matched = 0;
                 tbody.querySelectorAll('[data-count-idx]').forEach(function (el) {
                     var i = +el.dataset.countIdx;
                     var n = counts[i] != null ? Number(counts[i]) : 0;
                     if (!isFinite(n)) n = 0;
                     el.textContent = String(n);
-                    total += n;
+                    matched += n;
                 });
+                var campaigns = typeof counts.campaigns === 'number' ? counts.campaigns : matched;
+                var unmatched = typeof counts.unmatched === 'number' ? counts.unmatched : Math.max(0, campaigns - matched);
                 var tot = tbody.querySelector('[data-count-total]');
                 if (!tot) {
                     var tr = document.createElement('tr');
@@ -5085,7 +5093,22 @@
                     tbody.appendChild(tr);
                     tot = tr.querySelector('[data-count-total]');
                 }
-                if (tot) tot.textContent = String(total);
+                var outsideRow = tbody.querySelector('[data-count-outside]');
+                if (unmatched > 0) {
+                    if (!outsideRow) {
+                        var otr = document.createElement('tr');
+                        otr.className = 'amz-bgt-count-outside';
+                        otr.innerHTML = '<td></td><td colspan="3" class="text-end text-muted">No match</td><td class="text-center text-muted" data-count-outside>0</td><td></td>';
+                        if (tot && tot.parentElement) tbody.insertBefore(otr, tot.parentElement);
+                        else tbody.appendChild(otr);
+                        outsideRow = otr.querySelector('[data-count-outside]');
+                    }
+                    outsideRow.textContent = String(unmatched);
+                    if (outsideRow.parentElement) outsideRow.parentElement.style.display = '';
+                } else if (outsideRow && outsideRow.parentElement) {
+                    outsideRow.parentElement.style.display = 'none';
+                }
+                if (tot) tot.textContent = String(campaigns);
             }
             var amzBgtColCharts = {};
             var AMZ_BGT_COL_COLORS = ['#7c3aed', '#2563eb', '#16a34a', '#f59e0b', '#f97316', '#dc2626', '#64748b', '#0ea5e9'];
@@ -5193,6 +5216,7 @@
                 var legend = document.getElementById('amz-bgt-leg-' + key);
                 var canvas = document.getElementById('amz-bgt-chart-' + key);
                 if (!legend || !canvas || typeof Chart === 'undefined') return;
+                if (!counts) return;
                 var rows = (bands || []).map(function (b, i) {
                     var n = counts && counts[i] != null ? Number(counts[i]) : 0;
                     if (!isFinite(n)) n = 0;
@@ -5200,7 +5224,11 @@
                     var color = (b && b.color) ? String(b.color) : AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length];
                     return { label: label, n: n, color: color };
                 });
-                var total = rows.reduce(function (s, r) { return s + r.n; }, 0);
+                var unmatched = counts && typeof counts.unmatched === 'number' ? counts.unmatched : 0;
+                if (unmatched > 0) rows.push({ label: 'No match', n: unmatched, color: '#94a3b8' });
+                var total = counts && typeof counts.campaigns === 'number'
+                    ? counts.campaigns
+                    : rows.reduce(function (s, r) { return s + r.n; }, 0);
                 legend.innerHTML = rows.map(function (r) {
                     var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
                     return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span></div>';
@@ -5331,7 +5359,9 @@
                 var buckets = {};
                 var campaigns = 0;
                 var sbgtTotal = 0;
-                amzBgtCountRows().forEach(function (row) {
+                var sumRows = amzBgtCountRows();
+                if (!sumRows) return;
+                sumRows.forEach(function (row) {
                     var parts;
                     try { parts = amzBgtDraftParts(row); } catch (e) { return; }
                     order.forEach(function (p) {
@@ -6126,11 +6156,17 @@
                 return -1;
             }
             function amzBgtReviewsCounts(bands) {
+                var rows = amzBgtCountRows();
+                if (!rows) return null;
                 var counts = (bands || []).map(function () { return 0; });
-                amzBgtCountRows().forEach(function (row) {
+                var unmatched = 0;
+                rows.forEach(function (row) {
                     var idx = amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), bands);
                     if (idx >= 0) counts[idx]++;
+                    else unmatched++;
                 });
+                counts.unmatched = unmatched;
+                counts.campaigns = rows.length;
                 return counts;
             }
             function amzBgtReviewsRefreshCounts() {
@@ -6962,7 +6998,9 @@
                 var below = { l1: 0, l2: 0, l7: 0, avg: 0, fb: 0 };
                 var above = { l1: 0, none: 0 };
                 var mid = 0;
-                amzBgtCountRows().forEach(function (row) {
+                var sbidRows = amzBgtCountRows();
+                if (!sbidRows) return { below: below, above: above, mid: mid };
+                sbidRows.forEach(function (row) {
                     var u7 = parseFloat(row && row['U7%']);
                     var u1 = parseFloat(row && row['U1%']);
                     if (!isFinite(u7) || !isFinite(u1) || !isFinite(low) || !isFinite(high)) { mid++; return; }
