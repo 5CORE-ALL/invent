@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Sales\EbaySalesController;
 use App\Jobs\WarmTopDawgLiveListingsCache;
 use App\Models\TopDawgProduct;
 use App\Models\TopDawgOrderMetric;
@@ -1509,6 +1510,7 @@ class TopDawgSyncController extends Controller
         }
 
         $margin = $this->topDawgMarketplacePercentage() / 100.0;
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
         $normalizeSku = function ($sku) {
             $sku = strtoupper(trim((string) $sku));
@@ -1536,14 +1538,14 @@ class TopDawgSyncController extends Controller
             $sku = $row->sku ?? '';
             $pm = $pmBySku[$sku] ?? $pmByNormalized[$normalizeSku($sku)] ?? null;
             $lp = 0;
+            $values = [];
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
-                if (is_array($values)) {
-                    foreach ($values as $k => $v) {
-                        if (strtolower((string) $k) === 'lp') {
-                            $lp = (float) $v;
-                            break;
-                        }
+                $values = is_array($values) ? $values : [];
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
                     }
                 }
                 if ($lp === 0 && isset($pm->lp)) {
@@ -1554,9 +1556,12 @@ class TopDawgSyncController extends Controller
             $amount = (float) ($row->amount ?? 0);
             $quantity = (int) ($row->quantity ?? 1);
             $quantity = $quantity >= 1 ? $quantity : 1;
-            $unitPrice = $quantity > 0 ? $amount / $quantity : 0;
+            $weightAct = EbaySalesController::actWeightLb($values);
+            $tWeight = $weightAct * $quantity;
+            $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
             $cogs = $lp * $quantity;
-            $pft = ($unitPrice * $margin - $lp) * $quantity;
+            // Amount is already this row's sales. COGS Ship is subtracted once.
+            $pft = ($amount * $margin) - $cogs - $shipCost;
 
             $result[] = [
                 'id' => $row->id,
@@ -1569,6 +1574,8 @@ class TopDawgSyncController extends Controller
                 'sku' => $sku,
                 'quantity' => $quantity,
                 'lp' => round($lp, 2),
+                't_weight' => round($tWeight, 2),
+                'ship_cost' => round($shipCost, 2),
                 'cogs' => round($cogs, 2),
                 'pft' => round($pft, 2),
                 'created_at' => $row->created_at ? $row->created_at->format('Y-m-d H:i:s') : null,

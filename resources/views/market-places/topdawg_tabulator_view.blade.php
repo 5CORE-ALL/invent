@@ -60,14 +60,13 @@
                         <span class="badge bg-success text-center" id="total-td-l30-badge" style="color:#000;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="Sum of TD L30 qty from topdawg_order_metrics (L30) on filtered rows">TD L30: 0</span>
                         <span class="badge bg-danger text-center" id="zero-sold-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="SKUs with TD L30 = 0">0 Sold: 0</span>
                         <span class="badge text-center" id="more-sold-badge" style="background:#28a745;color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="SKUs with TD L30 &gt; 0">&gt; 0 Sold: 0</span>
-                        {{-- GPFT / GROI pinned to /topdawg/sales-dashboard PFT% / ROI%
-                             (all order_metrics, margin from marketplace_percentages, no ship). --}}
+                        {{-- GPFT / GROI pinned to /topdawg/sales-dashboard. --}}
                         <span class="badge text-center" id="gpft-pct-badge"
                               style="background:#6f42c1;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                              title="Exact PFT % from /topdawg/sales-dashboard: (Σ pft ÷ Σ amount) × 100. Margin from marketplace_percentages, no ship.">GPFT: {{ (int) round((float) ($topdawgSalesDashboardGpft ?? 0)) }}%</span>
+                              title="Exact GPFT from /topdawg/sales-dashboard: rounded PFT ÷ rounded Amount. PFT = (Amount × margin) − COGS − COGS Ship.">GPFT: {{ (int) round((float) ($topdawgSalesDashboardGpft ?? 0)) }}%</span>
                         <span class="badge text-center" id="groi-pct-badge"
                               style="background:#0d6efd;color:#fff;font-weight:bold;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"
-                              title="Exact GROI % from /topdawg/sales-dashboard: (Σ pft ÷ Σ cogs) × 100. COGS = LP × qty, no ship.">GROI: {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }}%</span>
+                              title="Exact GROI from /topdawg/sales-dashboard: rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: {{ (int) round((float) ($topdawgSalesDashboardRoi ?? 0)) }}%</span>
                         <span class="badge bg-danger text-center" id="missing-badge" style="color:#fff;font-weight:bold;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;" title="REQ + INV&gt;0 + TD Price=0">Missing L: 0</span>
                         <span class="badge text-center" id="topdawg-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;flex:1 1 0;min-width:90px;font-size:14px;padding:8px 10px;"

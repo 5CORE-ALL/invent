@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Sales\EbaySalesController;
 use App\Models\AmazonChannelSummary;
 use App\Models\AmazonDataView;
 use App\Models\MarketplacePercentage;
@@ -451,11 +452,10 @@ class TopDawgPricingController extends Controller
     }
 
     /**
-     * Exact Sales / PFT% / ROI% badges from /topdawg/sales-dashboard.
-     * Same formulas as TopDawgSyncController::getSalesData + dashboard JS summary:
-     *   pft = (unitPrice × margin − lp) × qty  (no ship)
-     *   PFT% = Σ pft / Σ amount × 100
-     *   ROI% = Σ pft / Σ cogs × 100
+     * Exact Sales / GPFT / GROI badges from /topdawg/sales-dashboard.
+     *   PFT = (Amount × margin) − COGS − COGS Ship
+     *   GPFT = round(Σ PFT) / round(Σ Amount)
+     *   GROI = round(Σ PFT) / round(Σ COGS)
      *
      * @return array{sales: float, gpft: float, groi: float}
      */
@@ -469,6 +469,7 @@ class TopDawgPricingController extends Controller
 
         try {
             $margin = $this->marketplacePercentage() / 100.0;
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
             // Match TopDawgSyncController::getSalesData SKU normalize for LP lookup.
             $normalizeSku = static function ($sku) {
@@ -499,16 +500,16 @@ class TopDawgPricingController extends Controller
                 $sku = $row->sku ?? '';
                 $pm = $pmBySku[$sku] ?? $pmByNormalized[$normalizeSku($sku)] ?? null;
                 $lp = 0.0;
+                $values = [];
                 if ($pm) {
                     $values = is_array($pm->Values)
                         ? $pm->Values
                         : (is_string($pm->Values ?? null) ? json_decode($pm->Values, true) : []);
-                    if (is_array($values)) {
-                        foreach ($values as $k => $v) {
-                            if (strtolower((string) $k) === 'lp') {
-                                $lp = (float) $v;
-                                break;
-                            }
+                    $values = is_array($values) ? $values : [];
+                    foreach ($values as $k => $v) {
+                        if (strtolower((string) $k) === 'lp') {
+                            $lp = (float) $v;
+                            break;
                         }
                     }
                     if ($lp === 0.0 && isset($pm->lp)) {
@@ -519,19 +520,24 @@ class TopDawgPricingController extends Controller
                 $amount = (float) ($row->amount ?? 0);
                 $quantity = (int) ($row->quantity ?? 1);
                 $quantity = $quantity >= 1 ? $quantity : 1;
-                $unitPrice = $quantity > 0 ? $amount / $quantity : 0.0;
+                $weightAct = EbaySalesController::actWeightLb($values);
+                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $quantity, $weightAct);
                 $cogs = $lp * $quantity;
-                $pft = ($unitPrice * $margin - $lp) * $quantity;
+                $pft = ($amount * $margin) - $cogs - $shipCost;
 
                 $totalRevenue += $amount;
                 $totalPft += $pft;
                 $totalCogs += $cogs;
             }
 
+            $gpftDollars = round($totalPft);
+            $salesDollars = round($totalRevenue);
+            $cogsDollars = round($totalCogs);
+
             return [
                 'sales' => round($totalRevenue, 2),
-                'gpft' => $totalRevenue > 0 ? (float) round(($totalPft / $totalRevenue) * 100) : 0.0,
-                'groi' => $totalCogs > 0 ? (float) round(($totalPft / $totalCogs) * 100) : 0.0,
+                'gpft' => $salesDollars != 0.0 ? (float) round($gpftDollars / $salesDollars * 100) : 0.0,
+                'groi' => $cogsDollars != 0.0 ? (float) round($gpftDollars / $cogsDollars * 100) : 0.0,
             ];
         } catch (\Throwable $e) {
             Log::warning('TopDawg fetchSalesDashboardBadgeTotals: ' . $e->getMessage());
