@@ -1615,6 +1615,7 @@
             let index = 0;
             const ok = [];
             const fail = [];
+            let submitted = false;
             function next() {
                 if (index >= groups.length) {
                     $btn.prop('disabled', false).html(originalHtml);
@@ -1625,7 +1626,7 @@
                     if (fail.length) {
                         showPublishStatus('error', (ok.length ? ok.join('\n') + '\n\n' : '') + fail.join('\n'));
                     } else {
-                        showPublishStatus('success', ok.join('\n') || 'Published.');
+                        showPublishStatus('success', ok.join('\n') || 'Published.', submitted ? 'Sent to ' + (cfg().channelLabel || 'marketplace') : undefined);
                         hideModal();
                     }
                     return;
@@ -1640,6 +1641,7 @@
                     const goodsId = String((response && response.goods_id) || '').trim();
                     const listedSkus = (response && response.skus) || group.skus;
                     if (goodsId) markListed(table, listedSkus, goodsId);
+                    if (response && response.submitted) submitted = true;
                     ok.push((response && response.message) ? response.message : ('Published ' + group.parent + '.'));
                     next();
                 }).fail(function (xhr) {

@@ -69,6 +69,10 @@ class ListingPublishCommonController extends Controller
         $weightLb = $this->positiveFloatFromRequest($request, 'weight_lb', 'package_weight_lb');
         $weightKg = $this->positiveFloatFromRequest($request, 'weight_kg', 'package_weight_kg');
         $itemSpecifics = $this->itemSpecificsFromRequest($request);
+        $overrides = $itemSpecifics !== [] ? ['item_specifics' => $itemSpecifics] : [];
+        if (str_starts_with(str_replace(['-', '_', ' '], '', $channel), 'newegg')) {
+            $overrides['follow_feed'] = true;
+        }
 
         try {
             $result = $preview->publishSkus(
@@ -82,7 +86,7 @@ class ListingPublishCommonController extends Controller
                 $categoryName !== '' ? $categoryName : null,
                 $weightLb,
                 $weightKg,
-                $itemSpecifics !== [] ? ['item_specifics' => $itemSpecifics] : []
+                $overrides
             );
         } catch (\Throwable $e) {
             return response()->json([
