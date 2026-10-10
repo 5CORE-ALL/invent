@@ -1117,10 +1117,51 @@ class AmazonAdsService
     {
         return $this->put('/sb/v4/ads', [
             'ads' => array_values($ads),
-        ], [
+        ], $this->sbAdHeaders());
+    }
+
+    /**
+     * Create Sponsored Brands ads (v4). Needs a full creative (logo, headline, landing page).
+     *
+     * @param  list<array<string, mixed>>  $ads
+     * @return array<string, mixed>
+     */
+    public function createSbAds(array $ads): array
+    {
+        return $this->post('/sb/v4/ads', [
+            'ads' => array_values($ads),
+        ], $this->sbAdHeaders());
+    }
+
+    /**
+     * Delete Sponsored Brands ads (v4).
+     *
+     * @param  list<string>  $adIds
+     * @return array<string, mixed>
+     */
+    public function deleteSbAds(array $adIds): array
+    {
+        $ids = array_values(array_filter(array_map(
+            static fn ($id) => trim((string) $id),
+            $adIds
+        ), static fn ($id) => $id !== ''));
+
+        return $this->post('/sb/v4/ads/delete', [
+            'adIdFilter' => [
+                'include' => $ids,
+            ],
+        ], $this->sbAdHeaders());
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function sbAdHeaders(): array
+    {
+        return [
             'Content-Type' => 'application/vnd.sbadresource.v4+json',
             'Accept' => 'application/vnd.sbadresource.v4+json',
-        ]);
+        ];
     }
 
     /**
@@ -1822,6 +1863,11 @@ class AmazonAdsService
         return '';
     }
 
+    public function amazonErrorMessage(\Throwable $e): string
+    {
+        return $this->formatAmazonException($e);
+    }
+
     protected function formatAmazonException(\Throwable $e): string
     {
         $msg = $e->getMessage();
@@ -1833,6 +1879,7 @@ class AmazonAdsService
                     data_get($decoded, 'campaigns.error')
                     ?? data_get($decoded, 'adGroups.error')
                     ?? data_get($decoded, 'productAds.error')
+                    ?? data_get($decoded, 'ads.error')
                     ?? data_get($decoded, 'campaignNegativeKeywords.error')
                     ?? data_get($decoded, 'keywords.error')
                     ?? []

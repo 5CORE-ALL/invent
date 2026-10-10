@@ -1742,6 +1742,8 @@ class TemuShopifySalesService
                 'base_price_total' => round($officialUnit > 0 ? $officialUnit : $price, 2),
                 'goods_base_price' => round($goodsBasePrice > 0 ? $goodsBasePrice : ($officialUnit > 0 ? $officialUnit : $price), 2),
                 'listing_base_price' => round((float) ($priceBySku[$sku] ?? 0), 2),
+                // Same line as Temu 1: API base + freight when present, otherwise R Price × Qty
+                // (goods, +$2.99 when the unit is ≤ $26.99).
                 'line_sales' => $hasApiSales ? round($lineSales, 2) : round(self::lineSales($price, $quantity), 2),
                 'fb_price' => round($fbPrice, 2),
                 'lp' => $lp,
@@ -1937,7 +1939,9 @@ class TemuShopifySalesService
     }
 
     /**
-     * temu2_metrics / temu2_pricing base keyed by the raw order SKU (same normalize + no-space).
+     * Selling base keyed by the raw order SKU (same normalize + no-space).
+     * The /temu2-decrease upload (temu2_pricing) wins over the supplier API price
+     * on temu2_metrics. Metrics is only the fallback when the sheet has no base.
      *
      * @param  list<string>  $orderSkus
      * @return Collection<string, float>
@@ -1979,11 +1983,9 @@ class TemuShopifySalesService
                 if ($n === '' || $price <= 0) {
                     continue;
                 }
-                if ((float) ($byNorm[$n] ?? 0) <= 0) {
-                    $byNorm[$n] = $price;
-                }
+                $byNorm[$n] = $price;
                 $ns = str_replace(' ', '', $n);
-                if ($ns !== '' && (float) ($byNoSpace[$ns] ?? 0) <= 0) {
+                if ($ns !== '') {
                     $byNoSpace[$ns] = $price;
                 }
             }

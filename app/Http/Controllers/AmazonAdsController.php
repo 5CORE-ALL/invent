@@ -9,6 +9,7 @@ use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsLiveBidBgtSyncService;
 use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
+use App\Models\AmazonDatasheet;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsBgtCountRunner;
@@ -24,6 +25,7 @@ use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsLbidDaily;
 use App\Support\AmazonAdsPauseRule;
+use App\Support\AmazonAdsSbAdEditor;
 use App\Support\AmazonAdsSbidRule;
 use App\Support\AmazonAdsLiveSyncFollowUp;
 use App\Support\AmazonAdsLiveSyncStatus;
@@ -4264,11 +4266,136 @@ class AmazonAdsController extends Controller
             $cid,
             trim((string) $request->query('campaign_name', ''))
         );
-        $skus = $resolved['skus'];
-        $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus(array_column($skus, 'sku'));
-        $priceLmp = AmazonAdsCampaignSkuMetrics::priceAndLmpBySkus(array_column($skus, 'sku'));
+        $listed = $resolved['skus'];
+        $isSb = AmazonAdsSbAdEditor::campaignIsSb($cid);
+        $onAd = [];
+        foreach ($listed as $row) {
+            if ($isSb && ($row['source'] ?? '') === 'campaign_name') {
+                continue;
+            }
+            $onAd[] = $row;
+        }
+        $name = $resolved['campaign_name'] !== '' ? $resolved['campaign_name'] : '';
+        $parentFamily = AmazonAdsCampaignSkuMetrics::parentFamilyFromCampaignName($name);
+        $parentNames = $parentFamily !== ''
+            ? AmazonAdsCampaignSkuMetrics::childSkusForParentFamily($parentFamily)
+            : [];
+        $onAdKeys = [];
+        foreach ($onAd as $row) {
+            $ck = AmazonDatasheet::normalizeSkuForLookup((string) ($row['sku'] ?? ''));
+            if ($ck !== '') {
+                $onAdKeys[$ck] = true;
+            }
+        }
+        $parentRows = [];
+        foreach ($parentNames as $sku) {
+            $ck = AmazonDatasheet::normalizeSkuForLookup($sku);
+            if ($ck === '' || isset($onAdKeys[$ck])) {
+                continue;
+            }
+            $parentRows[] = [
+                'sku' => $sku,
+                'asin' => null,
+                'state' => null,
+                'source' => 'parent',
+            ];
+        }
+        $asinNeed = [];
+        foreach (array_merge($onAd, $parentRows) as $row) {
+            if (trim((string) ($row['asin'] ?? '')) === '') {
+                $asinNeed[] = (string) ($row['sku'] ?? '');
+            }
+        }
+        $asinBySku = $asinNeed !== [] ? AmazonAdsCampaignSkuSync::asinsBySkus($asinNeed) : [];
+        foreach ($onAd as $i => $row) {
+            if (trim((string) ($row['asin'] ?? '')) !== '') {
+                continue;
+            }
+            $sku = (string) ($row['sku'] ?? '');
+            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+            $onAd[$i]['asin'] = $asinBySku[$key] ?? $asinBySku[$sku] ?? null;
+        }
+        foreach ($parentRows as $i => $row) {
+            $sku = (string) ($row['sku'] ?? '');
+            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+            $parentRows[$i]['asin'] = $asinBySku[$key] ?? $asinBySku[$sku] ?? null;
+        }
+        $onAd = $this->decorateCampaignSkuRows($onAd);
+        $parentRows = $this->decorateCampaignSkuRows($parentRows);
+
+        return response()->json([
+            'campaign_id' => $cid,
+            'campaign_name' => $name !== '' ? $name : null,
+            'source' => $resolved['source'],
+            'channel' => $isSb ? 'sb' : 'sp',
+            'parent_family' => $parentFamily !== '' ? $parentFamily : null,
+            'skus' => $onAd,
+            'parent_skus' => $parentRows,
+            'count' => count($onAd),
+            'parent_count' => count($parentRows),
+        ]);
+    }
+
+    /**
+     * Add products to an existing SB creative. SB only.
+     */
+    public function addSbAdProducts(Request $request, AmazonAdsSbAdEditor $editor): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->input('campaign_id', ''))) ?: '';
+        $result = $editor->add($cid, $this->stringList($request->input('skus')), $this->stringList($request->input('asins')));
+        $status = ! empty($result['success']) ? 200 : ((string) ($result['message'] ?? '') === 'Campaign ID is required.' ? 422 : 422);
+
+        return response()->json($result, $status);
+    }
+
+    /**
+     * Remove products from an SB creative. Deletes the SB ad when the last product is removed.
+     */
+    public function removeSbAdProducts(Request $request, AmazonAdsSbAdEditor $editor): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->input('campaign_id', ''))) ?: '';
+        $result = $editor->remove($cid, $this->stringList($request->input('skus')), $this->stringList($request->input('asins')));
+        $status = ! empty($result['success']) ? 200 : 422;
+
+        return response()->json($result, $status);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringList(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $raw = preg_split('/[\s,]+/', $raw) ?: [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $item) {
+            $s = trim((string) $item);
+            if ($s !== '') {
+                $out[] = $s;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $skus
+     * @return list<array<string, mixed>>
+     */
+    private function decorateCampaignSkuRows(array $skus): array
+    {
+        if ($skus === []) {
+            return [];
+        }
+        $names = array_column($skus, 'sku');
+        $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus($names);
+        $priceLmp = AmazonAdsCampaignSkuMetrics::priceAndLmpBySkus($names);
         $shopify = Schema::hasTable('shopify_skus')
-            ? ShopifySku::mapByProductSkus(array_column($skus, 'sku'))
+            ? ShopifySku::mapByProductSkus($names)
             : collect();
         foreach ($skus as $i => $skuRow) {
             $sku = (string) ($skuRow['sku'] ?? '');
@@ -4306,13 +4433,7 @@ class AmazonAdsController extends Controller
             $skus[$i]['competitors'] = is_array($pl) ? ($pl['competitors'] ?? []) : [];
         }
 
-        return response()->json([
-            'campaign_id' => $cid,
-            'campaign_name' => $resolved['campaign_name'] !== '' ? $resolved['campaign_name'] : null,
-            'source' => $resolved['source'],
-            'skus' => $skus,
-            'count' => count($skus),
-        ]);
+        return $skus;
     }
 
     /**

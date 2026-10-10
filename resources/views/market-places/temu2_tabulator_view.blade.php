@@ -222,7 +222,7 @@
                             <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;"
                                 title="GPFT % = GPFT$ badge ÷ Temu Full Price Sales badge × 100">GPFT: 0%</span>
                             <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;"
-                                title="GROI % = GPFT$ badge ÷ Total COGS × 100">GROI: 0%</span>
+                                title="GROI % = GPFT$ badge ÷ Total COGS badge × 100">GROI: 0%</span>
                             <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
                                 title="GPFT$ = Σ (Line Sales × Temu margin) − COGS − COGS Ship">GPFT$: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
@@ -395,6 +395,7 @@
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return qty * (parseFloat(row && row.lp) || 0);
     }
+    /** Y Sales GPFT$ = Line Sales − COGS − COGS Ship. COGS = LP × Qty. */
     function temuRowYSalesGpftDollar(row) {
         const lineSales = parseFloat(row && row.line_sales) || 0;
         const ship = parseFloat(row && row.cogs_ship) || 0;
@@ -411,10 +412,13 @@
         if (!(denom > 0)) return null;
         return (temuRowYSalesGpftDollar(row) / denom) * 100;
     }
+    /** Line GPFT$ = (Line Sales × Temu margin) − COGS − COGS Ship. COGS = LP × Qty. */
     function temuRowGpftDollar(row) {
         const lineSales = parseFloat(row && row.line_sales) || 0;
+        const qty = parseInt(row && row.quantity_purchased) || 0;
+        const cogs = qty * (parseFloat(row && row.lp) || 0);
         const ship = parseFloat(row && row.cogs_ship) || 0;
-        return lineSales * TEMU_MARGIN - temuRowCogs(row) - ship;
+        return lineSales * TEMU_MARGIN - cogs - ship;
     }
     function temuRowGpftPercent(row) {
         const qty = parseInt(row && row.quantity_purchased) || 0;
@@ -978,7 +982,7 @@
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0, totalQuantity = 0, totalPft = 0, totalL30Sales = 0;
-            let totalApiLineSales = 0;
+            let totalApiLineSales = 0, totalTemuPriceSales = 0;
             let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0, totalCogsShip = 0;
             let totalYSalesGpft = 0, totalYSalesCogs = 0;
             let l7LineSales = 0, l7Gpft = 0, l7Cogs = 0;
@@ -1007,6 +1011,7 @@
                     totalQuantityForPrice += quantity;
                     const gpft = temuRowGpftDollar(row);
                     totalPft += gpft;
+                    totalTemuPriceSales += temuRowTemuPrice(row) * quantity;
                     totalCogs += lp * quantity;
                     if (inL7) {
                         l7Gpft += gpft;
@@ -1019,7 +1024,9 @@
             const totalTemuFullPriceSales = totalApiLineSales * TEMU_PRICE_MULT;
             const gpftBadge = Math.round(totalPft);
             const fullSalesBadge = Math.round(totalTemuFullPriceSales);
-            const pftPercentage = fullSalesBadge !== 0 ? (gpftBadge / fullSalesBadge) * 100 : 0;
+            const pftPercentage = fullSalesBadge !== 0
+                ? (gpftBadge / fullSalesBadge) * 100
+                : 0;
             const cogsBadge = Math.round(totalCogs);
             const roiPercentage = cogsBadge !== 0 ? (gpftBadge / cogsBadge) * 100 : 0;
 
