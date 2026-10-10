@@ -4547,6 +4547,92 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Daily L2–L7 ads spend and ads sales for the L1 Spend / L1 Sales icon.
+     * L1 is the newest daily report day; L2 is the day before that (same as the L2SP column).
+     */
+    public function lRangeHistory(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
+        }
+        $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
+        if ($table === null || ! Schema::hasTable($table)) {
+            return response()->json(['ok' => false, 'message' => 'No daily report table for this row.', 'points' => []], 404);
+        }
+        $dbColumns = Schema::getColumnListing($table);
+        $salesCol = self::l30SummarySalesDbColumn($dbColumns);
+        $latest = self::latestDailyReportYmdInTable($table);
+        if ($latest === null || $latest === '') {
+            $latest = Carbon::now(config('app.timezone'))->subDay()->format('Y-m-d');
+        }
+        $labels = [];
+        try {
+            $anchor = Carbon::parse($latest, config('app.timezone'));
+            for ($n = 2; $n <= 7; $n++) {
+                $labels['L'.$n] = $anchor->copy()->subDays($n - 1)->format('Y-m-d');
+            }
+        } catch (\Throwable) {
+            return response()->json(['ok' => false, 'message' => 'Could not resolve L2–L7 dates.', 'points' => []], 422);
+        }
+        $dates = array_values(array_unique(array_values($labels)));
+        $select = ['id', 'report_date_range'];
+        if (in_array('cost', $dbColumns, true)) {
+            $select[] = 'cost';
+        }
+        if (in_array('spend', $dbColumns, true)) {
+            $select[] = 'spend';
+        }
+        if ($salesCol !== null) {
+            $select[] = $salesCol;
+        }
+        $q = DB::table($table)
+            ->select($select)
+            ->where('campaign_id', $cid)
+            ->whereIn('report_date_range', $dates)
+            ->orderByDesc('id');
+        $adType = trim((string) $request->query('ad_type', ''));
+        if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $q->where('ad_type', $adType);
+        }
+        $byDate = [];
+        foreach ($q->get() as $row) {
+            $r = (array) $row;
+            $day = trim((string) ($r['report_date_range'] ?? ''));
+            if ($day === '' || isset($byDate[$day])) {
+                continue;
+            }
+            $spend = self::l30DisplaySpendFromRowArray($r, $dbColumns);
+            $sales = null;
+            if ($salesCol !== null && isset($r[$salesCol]) && $r[$salesCol] !== '' && is_numeric($r[$salesCol])) {
+                $sn = (float) $r[$salesCol];
+                $sales = is_finite($sn) ? round($sn, 2) : null;
+            }
+            $byDate[$day] = [
+                'spend' => $spend !== null ? round((float) $spend, 2) : null,
+                'sales' => $sales,
+            ];
+        }
+        $points = [];
+        foreach ($labels as $label => $day) {
+            $hit = $byDate[$day] ?? ['spend' => null, 'sales' => null];
+            $points[] = [
+                'label' => $label,
+                'date' => $day,
+                'spend' => $hit['spend'],
+                'sales' => $hit['sales'],
+            ];
+        }
+
+        return response()->json([
+            'ok' => true,
+            'campaign_id' => $cid,
+            'l1_date' => $latest,
+            'points' => $points,
+        ]);
+    }
+
+    /**
      * Daily CVR history for the LT CVR dot. Same daily API rows as the lifetime column.
      */
     public function ltCvrHistory(Request $request): JsonResponse

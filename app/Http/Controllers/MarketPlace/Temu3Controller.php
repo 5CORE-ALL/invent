@@ -80,7 +80,7 @@ class Temu3Controller extends TemuController
     {
         try {
             $userId = auth()->id() ?? 'guest';
-            Cache::put("temu3_tabulator_column_visibility_{$userId}", $request->input('visibility', []), now()->addDays(365));
+            Cache::put("temu3_tabulator_column_visibility_v2_{$userId}", $request->input('visibility', []), now()->addDays(365));
 
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
@@ -95,7 +95,7 @@ class Temu3Controller extends TemuController
         try {
             $userId = auth()->id() ?? 'guest';
 
-            return response()->json(Cache::get("temu3_tabulator_column_visibility_{$userId}", []));
+            return response()->json(Cache::get("temu3_tabulator_column_visibility_v2_{$userId}", []));
         } catch (\Exception $e) {
             Log::error('Error getting Temu 3 column visibility: '.$e->getMessage());
 
