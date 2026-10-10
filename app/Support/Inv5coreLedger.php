@@ -100,6 +100,28 @@ class Inv5coreLedger
     }
 
     /**
+     * Order and opening rows are labeled with the marketplace stored on the
+     * movement. A person's name is kept for manual adjustments.
+     */
+    public static function historyCreatedBy(string $txnType, string $channel, string $userName): string
+    {
+        $channel = trim($channel);
+        $userName = trim($userName);
+        $fromMarketplace = in_array($txnType, ['opening', 'order_created', 'order_fulfilled', 'sale', 'return'], true);
+        if ($fromMarketplace && $channel !== '' && strcasecmp($channel, 'App') !== 0) {
+            return $channel;
+        }
+        if ($userName !== '') {
+            return $userName;
+        }
+        if ($channel !== '' && strcasecmp($channel, 'App') !== 0) {
+            return $channel;
+        }
+
+        return '5Core Inventory';
+    }
+
+    /**
      * A source row reduces on-hand only when it was inserted after the
      * watermark saved with the one-time opening. Older rows are already
      * inside that Shopify on-hand number.
