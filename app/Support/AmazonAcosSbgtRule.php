@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\AmazonAcosSbgtRuleSetting;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -114,10 +115,12 @@ final class AmazonAcosSbgtRule
         }
         $row = AmazonAcosSbgtRuleSetting::query()->orderBy('id')->first();
         if ($row === null) {
-            AmazonAcosSbgtRuleSetting::query()->create(['rule' => $rule]);
-        } else {
-            $row->update(['rule' => $rule]);
+            $row = AmazonAcosSbgtRuleSetting::query()->create(['rule' => $rule]);
         }
+        DB::table($row->getTable())->where('id', $row->id)->update([
+            'rule' => json_encode($rule),
+            'updated_at' => now(),
+        ]);
         self::forgetResolvedCache();
     }
 

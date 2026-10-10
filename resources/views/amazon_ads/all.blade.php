@@ -5497,7 +5497,11 @@
                         if (amzBgtColCharts[k]) { try { amzBgtColCharts[k].resize(); } catch (e) {} }
                     });
                 });
-                bgtModalEl.addEventListener('input', function () { amzBgtServerLoadGen++; });
+                bgtModalEl.addEventListener('input', function (e) {
+                    amzBgtServerLoadGen++;
+                    var el = e.target;
+                    if (el && el.setAttribute && el.matches && el.matches('input[data-field]')) el.setAttribute('value', el.value);
+                });
                 bgtModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
@@ -6740,10 +6744,8 @@
                     body: JSON.stringify({ bands: bands })
                 }).then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body || {} }; }); });
             }
-            function amzBgtSaveAndApply() {
-                var btn = document.getElementById('amazonAdsBgtSaveApplyBtn');
-                var st = document.getElementById('amz-bgt-status');
-                amzBgtServerLoadGen++;
+            var amzBgtPendingSave = null;
+            function amzBgtCollectSaveJobs() {
                 var specs = [
                     { label: 'BGT Vs ACOS', url: bgtRuleSaveUrl, body: 'amazonAdsBgtRuleBandsBody', bands: amzCurrentBands, from: 'acos_from', to: 'acos_to', amt: 'sbgt', store: 'amazonAdsBgtRule', load: amzLoadBandsFromRule },
                     { label: 'BGT Vs VIEWS', url: bgtViewsRuleSaveUrl, body: 'amazonAdsBgtViewsRuleBandsBody', bands: amzBgtViewsBands, from: 'views_from', to: 'views_to', amt: 'bgt', store: 'amazonAdsBgtViewsRule', load: amzLoadBgtViewsBandsFromRule },
@@ -6760,12 +6762,22 @@
                     amzBgtSyncBandsFromDom(spec.body, spec.bands);
                     var cleaned = amzBgtCleanRuleBands(spec.bands, spec.from, spec.to, spec.amt);
                     var problem = amzBgtValidateRuleBands(cleaned, spec.from, spec.to, spec.amt, spec.label);
-                    if (problem) {
-                        if (st) st.textContent = problem;
-                        return;
-                    }
+                    if (problem) return { error: problem };
                     jobs.push({ spec: spec, bands: cleaned });
                 }
+                return { jobs: jobs };
+            }
+            function amzBgtSaveAndApply() {
+                var btn = document.getElementById('amazonAdsBgtSaveApplyBtn');
+                var st = document.getElementById('amz-bgt-status');
+                amzBgtServerLoadGen++;
+                var collected = amzBgtPendingSave || amzBgtCollectSaveJobs();
+                amzBgtPendingSave = null;
+                if (collected.error) {
+                    if (st) st.textContent = collected.error;
+                    return;
+                }
+                var jobs = collected.jobs;
                 if (btn) btn.disabled = true;
                 if (st) st.textContent = 'Saving all rules…';
                 Promise.all(jobs.map(function (job) { return amzBgtPostRule(job.spec.url, job.bands); }))
@@ -6776,10 +6788,9 @@
                             if (!out.ok || body.status === 422 || body.status === 500) {
                                 throw new Error(jobs[n].spec.label + ': ' + (body.message || body.error || 'Save failed.'));
                             }
-                            if (body.rule) {
-                                window[jobs[n].spec.store] = body.rule;
-                                if (typeof jobs[n].spec.load === 'function') jobs[n].spec.load(body.rule);
-                            }
+                            var posted = { bands: jobs[n].bands };
+                            window[jobs[n].spec.store] = posted;
+                            if (typeof jobs[n].spec.load === 'function') jobs[n].spec.load(posted);
                         }
                         if (typeof amzFillAcosFilterOptions === 'function') amzFillAcosFilterOptions();
                         if (typeof amzUpdatePushButtons === 'function') amzUpdatePushButtons();
@@ -6798,7 +6809,16 @@
                     .finally(function () { if (btn) btn.disabled = false; });
             }
             var bgtSaveApplyBtn = document.getElementById('amazonAdsBgtSaveApplyBtn');
-            if (bgtSaveApplyBtn) bgtSaveApplyBtn.addEventListener('click', amzBgtSaveAndApply);
+            if (bgtSaveApplyBtn) {
+                bgtSaveApplyBtn.addEventListener('mousedown', function () {
+                    var active = document.activeElement;
+                    if (active && active.setAttribute && active.matches && active.matches('#amazonAdsBgtRulesModal input[data-field]')) {
+                        active.setAttribute('value', active.value);
+                    }
+                    amzBgtPendingSave = amzBgtCollectSaveJobs();
+                }, true);
+                bgtSaveApplyBtn.addEventListener('click', amzBgtSaveAndApply);
+            }
             var autoPushPullBtn = document.getElementById('amazonAdsAutoPushPullBtn');
             if (autoPushPullBtn) {
                 amzPaintAutoPushPullBtn();

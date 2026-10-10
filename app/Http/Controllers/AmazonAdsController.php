@@ -3837,12 +3837,9 @@ class AmazonAdsController extends Controller
             ], 500);
         }
 
-        // Fetch fresh from database
-        $freshRule = AmazonAcosSbgtRule::resolvedRule();
-        
         return response()->json([
             'message' => 'BGT rule saved. SBGT on the grid will use the new ACOS → tier mapping after reload.',
-            'rule' => $freshRule,
+            'rule' => $normalized,
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
