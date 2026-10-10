@@ -87,11 +87,12 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (product price × Qty × {{ (int) ($marginPercent ?? 100) }}%) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT Total: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once. An empty band uses the SKU weight's slab.">COGS Ship: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-commission-badge" style="color: white; font-weight: bold;">Commission: $0.00</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'shein'])
                     </div>
@@ -278,11 +279,34 @@
                     }
                 },
                 {
+                    title: "T Wt",
+                    field: "t_weight",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 80,
+                    headerTooltip: "T Weight = Dim & Wt ACT lb × Qty"
+                },
+                {
                     title: "Ship",
                     field: "ship",
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
+                    title: "COGS Ship",
+                    field: "ship_cost",
+                    hozAlign: "right",
+                    sorter: "number",
+                    width: 110,
+                    headerTooltip: "Shipping Master Ship slab for T Weight. Subtracted once.",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -303,12 +327,6 @@
                         thousand: ",",
                         symbol: "$",
                         precision: 2
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        const quantity = parseInt(data.quantity) || 0;
-                        const lp = parseFloat(data.lp) || 0;
-                        const cogs = quantity * lp;
-                        return cogs.toFixed(2);
                     }
                 },
                 {
@@ -317,20 +335,11 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 120,
+                    headerTooltip: "PFT = (product price × Qty × margin) − COGS − COGS Ship.",
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const color = value >= 0 ? '#28a745' : '#dc3545';
                         return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
-                    },
-                    mutator: function(value, data, type, params, component) {
-                        const productPrice = parseFloat(data.product_price) || 0;
-                        const quantity = parseInt(data.quantity, 10) || 1;
-                        const lp = parseFloat(data.lp) || 0;
-                        const ship = parseFloat(data.ship) || 0;
-
-                        const m = sheinMarketplaceMarginDecimal;
-                        const pft = (productPrice * m - lp - ship) * quantity;
-                        return pft.toFixed(2);
                     }
                 },
                 {
@@ -610,12 +619,7 @@
             ]);
         });
 
-        // Update summary stats — same formulas as /aliexpress-tabulator
-        //   Revenue = Σ (product_price × qty)
-        //   PFT     = Σ (price × margin − LP − Ship) × qty
-        //   COGS    = Σ (LP × qty)
-        //   PFT%    = Σ PFT / Σ Revenue × 100
-        //   ROI%    = Σ PFT / Σ COGS × 100
+        // Revenue = Σ (product price × Qty). PFT comes from the server.
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0;
@@ -626,6 +630,7 @@
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
+            let totalCogsShip = 0;
 
             data.forEach(row => {
                 // Match ChannelMasterController::aggregateSheinDailyDataLikeTabulator — count rows with order_number OR seller_sku
@@ -648,8 +653,6 @@
                 const productPrice = parseFloat(row.product_price) || 0;
                 const lineRevenue = productPrice * quantity;
                 const commission = parseFloat(row.commission) || 0;
-                const lp = parseFloat(row.lp) || 0;
-                const ship = parseFloat(row.ship) || 0;
 
                 totalQuantity += quantity;
                 totalRevenue += lineRevenue;
@@ -660,23 +663,23 @@
                     totalQuantityForPrice += quantity;
                 }
 
-                // Same as AliExpress / ChannelMaster: PFT = (unit × margin − lp − ship) × qty ; COGS = lp × qty
-                const m = sheinMarketplaceMarginDecimal;
-                const pft = (productPrice * m - lp - ship) * quantity;
-                const cogs = lp * quantity;
-                totalPft += pft;
-                totalCogs += cogs;
+                totalPft += parseFloat(row.pft) || 0;
+                totalCogs += parseFloat(row.cogs) || 0;
+                totalCogsShip += parseFloat(row.ship_cost) || 0;
             });
 
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-            const pftPercentage = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
-            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            const gpftDollars = Math.round(totalPft);
+            const salesDollars = Math.round(totalRevenue);
+            const cogsDollars = Math.round(totalCogs);
+            const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
+            $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
 
@@ -687,7 +690,8 @@
                 pftBadge.removeClass('bg-dark').addClass('bg-danger');
             }
 
-            $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+            $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+            $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
             $('#total-commission-badge').text('Commission: $' + totalCommission.toFixed(2));
         
             if (window.AnalyticsDilBadge) {

@@ -356,8 +356,8 @@
                             <span class="badge fs-6 p-2" id="ae-more-sold-badge" style="font-weight:700;cursor:pointer;background:#b6e0fe;color:#0f172a;" title="Click to filter sold items">&gt; 0 Sold: 0</span>
                             <span class="badge bg-primary fs-6 p-2" id="ae-total-sales-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator: Σ (product_price × qty) from API orders">Sales: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="ae-total-al30-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator Total Quantity">Qty: 0</span>
-                            <span class="badge bg-info fs-6 p-2" id="ae-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator PFT%: Σ PFT / Σ Sales (sold product_price)">GPFT: 0%</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="ae-avg-roi-badge" style="font-weight:700;color:#fff;" title="Same as /shein-tabulator ROI%: Σ PFT / Σ (LP × qty)">GROI: 0%</span>
+                            <span class="badge bg-info fs-6 p-2" id="ae-avg-gpft-badge" style="font-weight:700;color:#111;" title="Same as /shein-tabulator: rounded PFT ÷ rounded sales. PFT = (sales × margin) − COGS − COGS Ship.">GPFT: 0%</span>
+                            <span class="badge bg-secondary fs-6 p-2" id="ae-avg-roi-badge" style="font-weight:700;color:#fff;" title="Same as /shein-tabulator: rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                             <span class="badge bg-info fs-6 p-2" id="ae-total-views-badge" style="font-weight:700;color:#111;" title="Σ Shein API page views (shein_metrics.views). Same total as /all-marketplace-master Shein views.">Views: 0</span>
                             <span class="badge bg-danger fs-6 p-2" id="ae-avg-cvr-badge" style="font-weight:700;" title="CVR = Σ Sh L30 ÷ Σ Views × 100. Same formula as /all-marketplace-master Shein CVR.">CVR: 0%</span>
                             @include('partials.analytics-dil-badge', ['dilChannel' => 'shein'])
