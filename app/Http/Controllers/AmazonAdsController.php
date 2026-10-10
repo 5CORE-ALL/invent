@@ -94,6 +94,7 @@ class AmazonAdsController extends Controller
         'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt',
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2', 'ltCvr',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
+        'projectedSpend', 'projectedSales', 'ySpend', 'ySales',
         'pageCvr', 'viewsL30', 'viewsL7',
         'ACOS', 'ltAcos',
     ];
@@ -434,13 +435,30 @@ class AmazonAdsController extends Controller
             }
         }
 
+        if ($supportLSpend && ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')) {
+            $ordered = array_values(array_filter(
+                $ordered,
+                static fn (string $c): bool => ! in_array($c, ['projectedSpend', 'projectedSales', 'ySpend', 'ySales'], true)
+            ));
+            $idxAfterSl = array_search('sales30d', $ordered, true);
+            if ($idxAfterSl === false) {
+                $idxAfterSl = array_search('cost', $ordered, true);
+            }
+            if ($idxAfterSl !== false) {
+                array_splice($ordered, $idxAfterSl + 1, 0, ['projectedSpend', 'projectedSales', 'ySpend', 'ySales']);
+            }
+        }
+
         // ACOS (%) = cost / sales * 100 — spend + Ads Sold 0 is saved as 100% for BGT / SBGT.
         // LT ACOS is lifetime cost ÷ lifetime sales on daily API rows, immediately after ACOS%.
         $canAcos = in_array('cost', $baseCols, true)
             && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
         if ($canAcos) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'ACOS' && $c !== 'ltAcos'));
-            $idxSales30 = array_search('sales30d', $ordered, true);
+            $idxSales30 = array_search('ySales', $ordered, true);
+            if ($idxSales30 === false) {
+                $idxSales30 = array_search('sales30d', $ordered, true);
+            }
             if ($idxSales30 !== false) {
                 array_splice($ordered, $idxSales30 + 1, 0, ['ACOS', 'ltAcos']);
             } else {
@@ -1684,7 +1702,11 @@ class AmazonAdsController extends Controller
         }
 
         $hasAdType = in_array('ad_type', $dbColumns, true);
+        $salesCol = self::l30SummarySalesDbColumn($dbColumns);
         $select = ['id', 'campaign_id', 'report_date_range', $spendCol];
+        if ($salesCol !== null) {
+            $select[] = $salesCol;
+        }
         if ($hasAdType) {
             $select[] = 'ad_type';
         }
@@ -1711,7 +1733,7 @@ class AmazonAdsController extends Controller
             $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
             $key = $cid."\0".$ad;
             if (! isset($map[$key])) {
-                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null];
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
             }
             if ($map[$key][$tag] !== null) {
                 continue;
@@ -1722,6 +1744,14 @@ class AmazonAdsController extends Controller
             } else {
                 $n = (float) $raw;
                 $map[$key][$tag] = is_finite($n) ? round($n, 2) : null;
+            }
+            $salesKey = $tag === 'L7' ? 'L7sales' : ($tag === 'L1' ? 'L1sales' : '');
+            if ($salesKey !== '' && $salesCol !== null && $map[$key][$salesKey] === null) {
+                $rawS = $frArr[$salesCol] ?? null;
+                if ($rawS !== null && $rawS !== '') {
+                    $sn = (float) $rawS;
+                    $map[$key][$salesKey] = is_finite($sn) ? round($sn, 2) : null;
+                }
             }
         }
 
@@ -1742,7 +1772,7 @@ class AmazonAdsController extends Controller
             $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
             $key = $cid."\0".$ad;
             if (! isset($map[$key])) {
-                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null];
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
             }
             if ($map[$key]['L2'] !== null) {
                 continue;
@@ -5610,7 +5640,11 @@ class AmazonAdsController extends Controller
 
         $hasLSpendCols = in_array('L7spend', $columns, true);
         $hasUtilCols = in_array('U7%', $columns, true);
-        $needLSpendMap = $hasLSpendCols || $hasUtilCols;
+        $needProjYCols = in_array('projectedSpend', $columns, true)
+            || in_array('projectedSales', $columns, true)
+            || in_array('ySpend', $columns, true)
+            || in_array('ySales', $columns, true);
+        $needLSpendMap = $hasLSpendCols || $hasUtilCols || $needProjYCols;
         $lSpendMap = $needLSpendMap ? self::fetchL7L2L1SpendMap($table, $dbColumns, $rows) : [];
         $needL30ForAcosSbgt = in_array('cost', $columns, true)
             || in_array('ACOS', $columns, true)
@@ -6021,13 +6055,33 @@ class AmazonAdsController extends Controller
                     $arr['sales30d'] = $l30SliceMap[$lkSalesRow]['sales30d'];
                 }
             }
-            if ($hasLSpendCols && $cid !== '') {
+            if (($hasLSpendCols || $needProjYCols) && $cid !== '') {
                 $adKey = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
                 $lk = $cid."\0".trim((string) $adKey);
-                $slice = $lSpendMap[$lk] ?? ['L7' => null, 'L2' => null, 'L1' => null];
-                $arr['L7spend'] = $slice['L7'];
-                $arr['L2spend'] = $slice['L2'];
-                $arr['L1spend'] = $slice['L1'];
+                $slice = $lSpendMap[$lk] ?? ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                if ($hasLSpendCols) {
+                    $arr['L7spend'] = $slice['L7'];
+                    $arr['L2spend'] = $slice['L2'];
+                    $arr['L1spend'] = $slice['L1'];
+                }
+                if ($needProjYCols) {
+                    $l7 = $slice['L7'] ?? null;
+                    $l1 = $slice['L1'] ?? null;
+                    $l7Sales = $slice['L7sales'] ?? null;
+                    $l1Sales = $slice['L1sales'] ?? null;
+                    if (in_array('ySpend', $columns, true)) {
+                        $arr['ySpend'] = $l1;
+                    }
+                    if (in_array('ySales', $columns, true)) {
+                        $arr['ySales'] = $l1Sales;
+                    }
+                    if (in_array('projectedSpend', $columns, true)) {
+                        $arr['projectedSpend'] = is_numeric($l7) ? self::projectMonthFromLast7((float) $l7) : null;
+                    }
+                    if (in_array('projectedSales', $columns, true)) {
+                        $arr['projectedSales'] = is_numeric($l7Sales) ? self::projectMonthFromLast7((float) $l7Sales) : null;
+                    }
+                }
             }
             if ($needL30ForAcosSbgt && $cid !== '') {
                 $adKeyL30 = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
@@ -6494,6 +6548,7 @@ class AmazonAdsController extends Controller
         return in_array($column, [
             'ACOS', 'cost', 'clicks', 'sales30d', 'Prchase', 'Cvr',
             'L7spend', 'L2spend', 'L1spend', 'U7%', 'U2%', 'U1%',
+            'projectedSpend', 'projectedSales', 'ySpend', 'ySales',
         ], true);
     }
 
@@ -6517,9 +6572,10 @@ class AmazonAdsController extends Controller
 
         $spendCols = ['L7spend' => 'L7', 'L2spend' => 'L2', 'L1spend' => 'L1'];
         $utilCols = ['U7%' => 'U7', 'U2%' => 'U2', 'U1%' => 'U1'];
+        $projYCols = ['projectedSpend' => 'L7', 'ySpend' => 'L1', 'projectedSales' => 'L7sales', 'ySales' => 'L1sales'];
         $hasAd = in_array('ad_type', $dbColumns, true);
 
-        if (isset($spendCols[$column]) || isset($utilCols[$column])) {
+        if (isset($spendCols[$column]) || isset($utilCols[$column]) || isset($projYCols[$column])) {
             $map = self::fetchL7L2L1SpendMap($table, $dbColumns, $list);
             $keys = [];
             foreach ($list as $row) {
@@ -6528,9 +6584,16 @@ class AmazonAdsController extends Controller
                 $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
                 $slice = ($cid !== '' && isset($map[$cid."\0".$ad]))
                     ? $map[$cid."\0".$ad]
-                    : ['L7' => null, 'L2' => null, 'L1' => null];
+                    : ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
                 if (isset($spendCols[$column])) {
                     $keys[] = $slice[$spendCols[$column]] ?? null;
+                } elseif (isset($projYCols[$column])) {
+                    $raw = $slice[$projYCols[$column]] ?? null;
+                    if ($column === 'projectedSpend' || $column === 'projectedSales') {
+                        $keys[] = is_numeric($raw) ? self::projectMonthFromLast7((float) $raw) : null;
+                    } else {
+                        $keys[] = $raw;
+                    }
                 } else {
                     $u = self::utilizationPercentValuesFromLSlice($r, $slice);
                     $keys[] = self::formatUtilPercent($u[$utilCols[$column]] ?? null);
