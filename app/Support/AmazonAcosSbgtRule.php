@@ -5,7 +5,6 @@ namespace App\Support;
 use App\Models\AmazonAcosSbgtRuleSetting;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -16,6 +15,8 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAcosSbgtRule
 {
+    use StoresAmazonAdsRuleJson;
+
     public const CACHE_KEY = 'amazon_acos_sbgt_rule_resolved_v2';
 
     /**
@@ -57,15 +58,12 @@ final class AmazonAcosSbgtRule
      */
     private static function loadResolvedRule(): array
     {
-        if (! Schema::hasTable('amazon_acos_sbgt_rule_settings')) {
-            return self::defaults();
-        }
-        $row = AmazonAcosSbgtRuleSetting::query()->orderBy('id')->first();
-        if ($row === null || ! is_array($row->rule) || $row->rule === []) {
+        $decoded = self::readStoredRule('amazon_acos_sbgt_rule_settings');
+        if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
 
-        return self::normalizeRule($row->rule);
+        return self::normalizeRule($decoded);
     }
 
     public static function forgetResolvedCache(): void
@@ -105,17 +103,7 @@ final class AmazonAcosSbgtRule
      */
     public static function persistRule(array $rule): void
     {
-        if (! Schema::hasTable('amazon_acos_sbgt_rule_settings')) {
-            throw new \RuntimeException('Table amazon_acos_sbgt_rule_settings does not exist. Run migrations.');
-        }
-        $row = AmazonAcosSbgtRuleSetting::query()->orderBy('id')->first();
-        if ($row === null) {
-            $row = AmazonAcosSbgtRuleSetting::query()->create(['rule' => $rule]);
-        }
-        DB::table($row->getTable())->where('id', $row->id)->update([
-            'rule' => json_encode($rule),
-            'updated_at' => now(),
-        ]);
+        self::storeRuleJson('amazon_acos_sbgt_rule_settings', $rule);
         self::forgetResolvedCache();
     }
 

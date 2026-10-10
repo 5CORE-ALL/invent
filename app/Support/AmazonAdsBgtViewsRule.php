@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAdsBgtViewsRule
 {
+    use StoresAmazonAdsRuleJson;
+
     public const CACHE_KEY = 'amazon_ads_bgt_views_rule_resolved_v2';
 
     /**
@@ -55,12 +57,12 @@ final class AmazonAdsBgtViewsRule
         if (! Schema::hasTable('amazon_ads_bgt_views_rule_settings')) {
             return self::defaults();
         }
-        $row = AmazonAdsBgtViewsRuleSetting::query()->orderBy('id')->first();
-        if ($row === null || ! is_array($row->rule) || $row->rule === []) {
+        $decoded = self::readStoredRule('amazon_ads_bgt_views_rule_settings');
+        if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
 
-        return self::normalizeRule($row->rule);
+        return self::normalizeRule($decoded);
     }
 
     public static function forgetResolvedCache(): void
@@ -156,12 +158,7 @@ final class AmazonAdsBgtViewsRule
     {
         self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
-        $row = AmazonAdsBgtViewsRuleSetting::query()->orderBy('id')->first();
-        if ($row === null) {
-            AmazonAdsBgtViewsRuleSetting::query()->create(['rule' => $normalized]);
-        } else {
-            $row->update(['rule' => $normalized]);
-        }
+        self::storeRuleJson('amazon_ads_bgt_views_rule_settings', $normalized);
         self::forgetResolvedCache();
     }
 

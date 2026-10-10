@@ -5677,7 +5677,6 @@
                 bgtViewsModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtViewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {});
                 });
             }
             var bgtViewsAddBtn = document.getElementById('amazonAdsBgtViewsRuleAddBandBtn');
@@ -5848,7 +5847,6 @@
                 bgtCvrModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtCvrRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {});
                 });
             }
             var bgtCvrAddBtn = document.getElementById('amazonAdsBgtCvrRuleAddBandBtn');
@@ -6014,7 +6012,6 @@
                 bgtPrcModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtPrcRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {});
                 });
             }
             var bgtPrcAddBtn = document.getElementById('amazonAdsBgtPrcRuleAddBandBtn');
@@ -6197,7 +6194,6 @@
                 bgtReviewsModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtReviewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {});
                 });
             }
             var bgtReviewsAddBtn = document.getElementById('amazonAdsBgtReviewsRuleAddBandBtn');
@@ -6364,7 +6360,6 @@
                 bgtDilModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtDilRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {});
                 });
             }
             var bgtDilAddBtn = document.getElementById('amazonAdsBgtDilRuleAddBandBtn');
@@ -6520,7 +6515,6 @@
                 bgtInvModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtInvRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {});
                 });
             }
             var bgtInvAddBtn = document.getElementById('amazonAdsBgtInvRuleAddBandBtn');
@@ -6641,7 +6635,6 @@
                 bgtSpendModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtSpendRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {});
                 });
             }
             var bgtSpendAddBtn = document.getElementById('amazonAdsBgtSpendRuleAddBandBtn');
@@ -6796,9 +6789,11 @@
                             if (!out.ok || body.status === 422 || body.status === 500) {
                                 throw new Error(jobs[n].spec.label + ': ' + (body.message || body.error || 'Save failed.'));
                             }
-                            var posted = { bands: jobs[n].bands };
-                            window[jobs[n].spec.store] = posted;
-                            if (typeof jobs[n].spec.load === 'function') jobs[n].spec.load(posted);
+                            var saved = (body.rule && Array.isArray(body.rule.bands) && body.rule.bands.length)
+                                ? body.rule
+                                : { bands: jobs[n].bands };
+                            window[jobs[n].spec.store] = saved;
+                            if (typeof jobs[n].spec.load === 'function') jobs[n].spec.load(saved);
                         }
                         if (typeof amzFillAcosFilterOptions === 'function') amzFillAcosFilterOptions();
                         if (typeof amzUpdatePushButtons === 'function') amzUpdatePushButtons();

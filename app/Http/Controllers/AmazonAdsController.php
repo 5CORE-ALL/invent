@@ -3886,7 +3886,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'message' => 'BGT Vs VIEWS saved. Bgt Views on the grid will use the new View L7 bands after reload.',
-            'rule' => AmazonAdsBgtViewsRule::resolvedRule(),
+            'rule' => $normalized,
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -3933,7 +3933,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'message' => 'BGT Vs CVR saved. Bgt Cvr on the grid will use the new CVR L30 bands after reload.',
-            'rule' => AmazonAdsBgtCvrRule::resolvedRule(),
+            'rule' => $normalized,
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -3980,7 +3980,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'message' => 'BGT PRC saved. BGT PRC on the grid will use the new Price bands after reload.',
-            'rule' => AmazonAdsBgtPrcRule::resolvedRule(),
+            'rule' => $normalized,
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -4027,7 +4027,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'message' => 'BGT Vs REVIEWS saved. Bgt Reviews on the grid will use the new Reviews bands after reload.',
-            'rule' => AmazonAdsBgtReviewsRule::resolvedRule(),
+            'rule' => $normalized,
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -4074,7 +4074,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'message' => 'BGT Vs Dil saved. Bgt Dil on the grid will use the new Dil% bands after reload.',
-            'rule' => AmazonAdsBgtDilRule::resolvedRule(),
+            'rule' => $normalized,
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -4121,7 +4121,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'message' => 'Spend Rule saved.',
-            'rule' => AmazonAdsBgtSpendRule::resolvedRule(),
+            'rule' => $normalized,
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -4168,7 +4168,7 @@ class AmazonAdsController extends Controller
 
         return response()->json([
             'message' => 'Inv Rule saved.',
-            'rule' => AmazonAdsBgtInvRule::resolvedRule(),
+            'rule' => $normalized,
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')

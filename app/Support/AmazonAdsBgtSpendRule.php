@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAdsBgtSpendRule
 {
+    use StoresAmazonAdsRuleJson;
+
     public const CACHE_KEY = 'amazon_ads_bgt_spend_rule_resolved_v1';
 
     /**
@@ -49,15 +51,12 @@ final class AmazonAdsBgtSpendRule
      */
     private static function loadResolvedRule(): array
     {
-        if (! Schema::hasTable('amazon_ads_bgt_spend_rule_settings')) {
-            return self::defaults();
-        }
-        $row = AmazonAdsBgtSpendRuleSetting::query()->orderBy('id')->first();
-        if ($row === null || ! is_array($row->rule) || $row->rule === []) {
+        $decoded = self::readStoredRule('amazon_ads_bgt_spend_rule_settings');
+        if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
 
-        return self::normalizeRule($row->rule);
+        return self::normalizeRule($decoded);
     }
 
     public static function forgetResolvedCache(): void
@@ -129,12 +128,7 @@ final class AmazonAdsBgtSpendRule
     {
         self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
-        $row = AmazonAdsBgtSpendRuleSetting::query()->orderBy('id')->first();
-        if ($row === null) {
-            AmazonAdsBgtSpendRuleSetting::query()->create(['rule' => $normalized]);
-        } else {
-            $row->update(['rule' => $normalized]);
-        }
+        self::storeRuleJson('amazon_ads_bgt_spend_rule_settings', $normalized);
         self::forgetResolvedCache();
     }
 
