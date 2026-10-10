@@ -458,13 +458,6 @@ class Inv5coreHubService
             return [
                 'id' => (int) $row->id,
                 'occurred_at' => $at ? $at->timezone(config('app.timezone'))->format('M j \a\t g:i a') : '',
-                'txn_type' => $txnType,
-                'qty_delta' => $onHandDelta,
-                'qty_before' => (float) $row->qty_before,
-                'qty_after' => $onHandAfter,
-                'reference' => (string) ($row->reference ?? ''),
-                'channel' => (string) ($row->channel ?? ''),
-                'user_name' => $userName,
                 'activity' => Inv5coreLedger::historyActivity($txnType, (string) ($row->reference ?? '')),
                 'created_by' => $system || $userName === '' ? '5Core Inventory' : $userName,
                 'committed_delta' => $committedDelta,

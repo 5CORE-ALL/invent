@@ -90,7 +90,7 @@
 </div>
 
 <div class="modal fade" id="inv5cHistoryModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-scrollable" style="max-width: 96vw;">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Adjustment history <span id="inv5cHistorySku" class="text-primary"></span></h5>
@@ -103,14 +103,6 @@
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Type</th>
-                                <th class="text-end">Change</th>
-                                <th class="text-end">Before</th>
-                                <th class="text-end">After</th>
-                                <th>Reference</th>
-                                <th>Channel</th>
-                                <th>Detail</th>
-                                <th>User</th>
                                 <th>Activity</th>
                                 <th>Created by</th>
                                 <th class="text-end">Committed</th>
@@ -268,21 +260,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('inv5cHistoryBody').innerHTML = rows.length
                     ? rows.map((row) => `<tr>
                         <td class="text-nowrap">${escapeHtml(row.occurred_at)}</td>
-                        <td>${escapeHtml(row.txn_type)}</td>
-                        <td class="text-end">${fmtNum(row.qty_delta)}</td>
-                        <td class="text-end">${fmtNum(row.qty_before)}</td>
-                        <td class="text-end">${fmtNum(row.qty_after)}</td>
-                        <td>${escapeHtml(row.reference) || '—'}</td>
-                        <td>${escapeHtml(row.channel) || '—'}</td>
-                        <td>${escapeHtml(row.detail)}</td>
-                        <td>${escapeHtml(row.user_name) || '—'}</td>
                         <td>${escapeHtml(row.activity)}</td>
                         <td>${escapeHtml(row.created_by) || '—'}</td>
                         <td class="text-end text-nowrap">${stateCell(row.committed_delta, row.committed_after)}</td>
                         <td class="text-end text-nowrap">${stateCell(row.available_delta, row.available_after)}</td>
                         <td class="text-end text-nowrap">${stateCell(row.on_hand_delta, row.on_hand_after)}</td>
                     </tr>`).join('')
-                    : '<tr><td colspan="14" class="text-muted">No movements yet.</td></tr>';
+                    : '<tr><td colspan="6" class="text-muted">No movements yet.</td></tr>';
             })
             .catch((err) => {
                 document.getElementById('inv5cHistorySummary').textContent = err.message;
