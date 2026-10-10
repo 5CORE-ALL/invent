@@ -448,8 +448,6 @@ class Inv5coreHubService
             $hasStates = $row->available_after !== null || $row->committed_after !== null;
             $committedDelta = $hasStates ? (float) ($row->committed_delta ?? 0) : 0.0;
             $committedAfter = $hasStates ? (float) ($row->committed_after ?? 0) : 0.0;
-            $unavailableDelta = $hasStates ? (float) ($row->unavailable_delta ?? 0) : 0.0;
-            $unavailableAfter = $hasStates ? (float) ($row->unavailable_after ?? 0) : 0.0;
             $availableDelta = $hasStates ? (float) ($row->available_delta ?? 0) : $onHandDelta;
             $availableAfter = $hasStates ? (float) ($row->available_after ?? 0) : $onHandAfter;
             $txnType = (string) $row->txn_type;
@@ -460,10 +458,15 @@ class Inv5coreHubService
             return [
                 'id' => (int) $row->id,
                 'occurred_at' => $at ? $at->timezone(config('app.timezone'))->format('M j \a\t g:i a') : '',
+                'txn_type' => $txnType,
+                'qty_delta' => $onHandDelta,
+                'qty_before' => (float) $row->qty_before,
+                'qty_after' => $onHandAfter,
+                'reference' => (string) ($row->reference ?? ''),
+                'channel' => (string) ($row->channel ?? ''),
+                'user_name' => $userName,
                 'activity' => Inv5coreLedger::historyActivity($txnType, (string) ($row->reference ?? '')),
                 'created_by' => $system || $userName === '' ? '5Core Inventory' : $userName,
-                'unavailable_delta' => $unavailableDelta,
-                'unavailable_after' => $unavailableAfter,
                 'committed_delta' => $committedDelta,
                 'committed_after' => $committedAfter,
                 'available_delta' => $availableDelta,
