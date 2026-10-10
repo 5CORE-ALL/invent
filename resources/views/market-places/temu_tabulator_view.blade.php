@@ -27,6 +27,27 @@
             height: 80px !important;
         }
 
+        /* Pack columns to their content; leftover space stays on the right */
+        #temu-table .tabulator-header .tabulator-col {
+            padding: 2px 0 !important;
+        }
+
+        #temu-table .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 2px 4px !important;
+        }
+
+        #temu-table .tabulator-row .tabulator-cell {
+            padding: 4px 6px !important;
+            white-space: nowrap !important;
+        }
+
+        #temu-table .tabulator-header-filter input {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            box-sizing: border-box;
+        }
+
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
@@ -58,6 +79,42 @@
 
         .link-tooltip a:hover {
             text-decoration: underline;
+        }
+
+        /* Order ID — green dot; full id on hover */
+        .temu-order-id-hit {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 22px;
+            cursor: default;
+        }
+
+        .temu-order-id-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #22c55e;
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.28);
+        }
+
+        .temu-order-id-tip {
+            display: none;
+            position: fixed;
+            z-index: 10050;
+            background: #fff;
+            color: #111827;
+            border: 1px solid #22c55e;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.3;
+            white-space: nowrap;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+            pointer-events: none;
         }
     </style>
 @endsection
@@ -120,7 +177,7 @@
                             style="background-color: purple; color: white; font-weight: bold;"
                             title="GROI % = GPFT$ badge ÷ Total COGS badge × 100">GROI: 0%</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
-                            title="GPFT$ = Σ (Line Sales × Temu margin) − COGS − Temu Ship">GPFT$: $0</span>
+                            title="GPFT$ = Σ (Line Sales × Temu margin) − COGS − COGS Ship">GPFT$: $0</span>
                         <span class="badge fs-6 p-2" id="api-line-sales-badge"
                             style="background-color: #0f766e; color: white; font-weight: bold;"
                             title="Σ Line Sales for the L30 window. API line sales = basePrice + shipAmountTotal (same as the Line Sales column).">API Line Sales: $0</span>
@@ -128,6 +185,9 @@
                             style="color: white; font-weight: bold;"
                             title="Temu Full Price Sales = Σ Line Sales × 1.1364">Temu Full Price Sales: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge"
+                            style="background-color: #b45309; color: white; font-weight: bold;"
+                            title="Σ COGS Ship. Each line is the Shipping Master Ship slab rate for Weight Order (Dim &amp; Wt ACT lb × Qty).">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
@@ -208,12 +268,12 @@
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return temuFbPrice(temuRowBase(row), qty);
     }
-    /** Line GPFT$ = (Line Sales × Temu margin) − COGS − Temu Ship. COGS = LP × Qty. */
+    /** Line GPFT$ = (Line Sales × Temu margin) − COGS − COGS Ship. COGS = LP × Qty. */
     function temuRowGpftDollar(row) {
         const lineSales = parseFloat(row && row.line_sales) || 0;
         const qty = parseInt(row && row.quantity_purchased) || 0;
         const cogs = qty * (parseFloat(row && row.lp) || 0);
-        const ship = parseFloat(row && row.temu_ship) || 0;
+        const ship = parseFloat(row && row.cogs_ship) || 0;
         return lineSales * TEMU_MARGIN - cogs - ship;
     }
     function temuRowGpftPercent(row) {
@@ -265,7 +325,12 @@
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu/daily-data",
             ajaxSorting: false,
-            layout: "fitDataStretch",
+            layout: "fitData",
+            columnDefaults: {
+                hozAlign: "center",
+                vertAlign: "middle",
+                widthGrow: 0
+            },
             tooltip: true,
             pagination: true,
             paginationSize: 100,
@@ -332,21 +397,55 @@
                     cssClass: "text-primary",
                     tooltip: true,
                     frozen: true,
-                    width: 150,
                     visible: false
                 },
                 {
                     title: "Order ID",
                     field: "order_id",
-                    width: 180,
-                    frozen: true
+                    width: 56,
+                    hozAlign: "center",
+                    headerTooltip: "Hover the green dot to see the full Order ID",
+                    tooltip: false,
+                    frozen: true,
+                    accessorDownload: function(value) {
+                        return value == null ? '' : String(value);
+                    },
+                    formatter: function(cell) {
+                        const id = String(cell.getValue() || '').trim();
+                        if (!id) return '';
+                        const safe = id
+                            .replace(/&/g, '&amp;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#39;')
+                            .replace(/</g, '&lt;');
+                        return '<span class="temu-order-id-hit" data-full="' + safe + '" aria-label="' + safe + '"><span class="temu-order-id-dot"></span></span>';
+                    }
+                },
+                {
+                    title: "Image",
+                    field: "image_path",
+                    width: 56,
+                    hozAlign: "center",
+                    headerSort: false,
+                    headerTooltip: "Product photo from CP Master",
+                    tooltip: false,
+                    frozen: true,
+                    formatter: function(cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        if (!value) return '';
+                        const safe = value
+                            .replace(/&/g, '&amp;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#39;')
+                            .replace(/</g, '&lt;');
+                        return '<img src="' + safe + '" alt="Product" class="hover-thumb" style="width:32px;height:32px;object-fit:cover;border-radius:4px;">';
+                    }
                 },
                 {
                     title: "SKU",
                     field: "contribution_sku",
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
-                    width: 150,
                     frozen: true,
                     cssClass: "text-primary fw-bold",
                     formatter: function(cell) {
@@ -358,29 +457,54 @@
                     }
                 },
                 {
-                    title: "Product Name",
-                    field: "product_name_by_customer_order",
-                    width: 300,
-                    tooltip: true
-                },
-                {
-                    title: "Variation",
-                    field: "variation",
-                    width: 120
-                },
-                {
                     title: "Qty Purchased",
                     field: "quantity_purchased",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 120
+                },
+                {
+                    title: "Weight",
+                    field: "weight",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Item WT ACT (lb) from Dim & Wt Master",
+                    formatter: function(cell) {
+                        const n = parseFloat(cell.getValue());
+                        if (!(n > 0)) return '';
+                        return n.toFixed(2);
+                    }
+                },
+                {
+                    title: "Weight Order",
+                    field: "weight_order",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Weight Order = Weight × Qty Purchased",
+                    formatter: function(cell) {
+                        const n = parseFloat(cell.getValue());
+                        if (!(n > 0)) return '';
+                        return n.toFixed(2);
+                    }
+                },
+                {
+                    title: "COGS Ship",
+                    field: "cogs_ship",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Shipping Master Ship slab rate for Weight Order",
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        if (raw === null || raw === undefined || raw === '') return '';
+                        const n = parseFloat(raw);
+                        if (!isFinite(n)) return '';
+                        return '$' + n.toFixed(2);
+                    }
                 },
                 {
                     title: "Listing Base",
                     field: "listing_base_price",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
                     headerTooltip: "Catalog base from bg.local.goods.sku.list.price.query (temu_metrics)",
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
@@ -388,9 +512,8 @@
                 {
                     title: "Line Sales",
                     field: "line_sales",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 110,
                     headerTooltip: "API line sales = basePrice + shipAmountTotal",
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
@@ -398,11 +521,10 @@
                 {
                     title: "Base Price",
                     field: "goods_base_price",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: function(a, b) {
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
-                    width: 120,
                     headerTooltip: "Base = goods price without the $2.99 freight (R Price and Temu Price add it once, same as /temu2-tabulator).",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
@@ -418,9 +540,8 @@
                 {
                     title: "R Price",
                     field: "fb_price",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
                     headerTooltip: "R Price = Base; +$2.99 if Base ≤ $26.99",
                     mutator: function(value, data) {
                         const quantity = parseInt(data.quantity_purchased) || 0;
@@ -450,9 +571,8 @@
                 {
                     title: "Temu Price",
                     field: "temu_price",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 130,
                     visible: true,
                     headerTooltip: "Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     mutator: function(value, data) {
@@ -471,9 +591,8 @@
                 {
                     title: "LP",
                     field: "lp",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 100,
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -485,9 +604,8 @@
                 {
                     title: "COGS",
                     field: "cogs",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -506,23 +624,22 @@
                     title: "Hdl Charge",
                     field: "handling_charge",
                     headerTooltip: "Handling Charge saved on Shipping Master (included in Temu Ship)",
-                    hozAlign: "right",
-                    width: 90
+                    hozAlign: "center",
+                    visible: false
                 },
                 {
                     title: "O-Size Charge",
                     field: "o_size_charge",
                     headerTooltip: "O-Size Charge saved on Shipping Master (included in Temu Ship)",
-                    hozAlign: "right",
-                    width: 100
+                    hozAlign: "center",
+                    visible: false
                 },
                 {
                     title: "Temu Ship",
                     field: "temu_ship",
                     headerTooltip: "Saved Temu ship = slab + Handling Charge + O-Size Charge",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -534,15 +651,14 @@
                 {
                     title: "GPFT$",
                     field: "pft",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const color = value >= 0 ? '#28a745' : '#dc3545';
                         return `<span style="color: ${color}; font-weight: bold;">$${parseFloat(value).toFixed(2)}</span>`;
                     },
-                    headerTooltip: "GPFT$ = (Line Sales × Temu margin) − COGS − Temu Ship",
+                    headerTooltip: "GPFT$ = (Line Sales × Temu margin) − COGS − COGS Ship",
                     mutator: function(value, data) {
                         return temuRowGpftDollar(data).toFixed(2);
                     }
@@ -550,9 +666,8 @@
                 {
                     title: "GPFT %",
                     field: "gpft_percent",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 100,
                     headerTooltip: "GPFT % = GPFT$ ÷ (Temu Price × Qty) × 100",
                     mutator: function(value, data) {
                         return temuRowGpftPercent(data);
@@ -567,9 +682,8 @@
                 {
                     title: "GROI %",
                     field: "groi_percent",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 100,
                     headerTooltip: "GROI % = GPFT$ ÷ COGS × 100",
                     mutator: function(value, data) {
                         return temuRowGroiPercent(data);
@@ -584,9 +698,8 @@
                 {
                     title: "L30 Sales",
                     field: "l30_sales",
-                    hozAlign: "right",
+                    hozAlign: "center",
                     sorter: "number",
-                    width: 120,
                     headerTooltip: "L30 Sales = Temu Price × Qty. Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99",
                     formatter: "money",
                     formatterParams: {
@@ -603,7 +716,6 @@
                 {
                     title: "Order Status",
                     field: "order_status",
-                    width: 120,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value) return '';
@@ -616,34 +728,99 @@
                     }
                 },
                 {
-                    title: "Fulfillment",
-                    field: "fulfillment_mode",
-                    width: 150
-                },
-                {
                     title: "Tracking",
                     field: "tracking_number",
-                    width: 150
+                    width: 56,
+                    hozAlign: "center",
+                    headerTooltip: "Hover the green dot to see the full tracking number",
+                    tooltip: false,
+                    accessorDownload: function(value) {
+                        return value == null ? '' : String(value);
+                    },
+                    formatter: function(cell) {
+                        const id = String(cell.getValue() || '').trim();
+                        if (!id) return '';
+                        const safe = id
+                            .replace(/&/g, '&amp;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#39;')
+                            .replace(/</g, '&lt;');
+                        return '<span class="temu-order-id-hit" data-full="' + safe + '" aria-label="' + safe + '"><span class="temu-order-id-dot"></span></span>';
+                    }
                 },
                 {
                     title: "Carrier",
                     field: "carrier",
-                    width: 120
+                    visible: false
                 },
                 {
                     title: "Created At",
                     field: "created_at",
                     sorter: "datetime",
-                    width: 160,
+                    headerTooltip: "Shown as day and month. Hover a date for the full timestamp.",
+                    accessorDownload: function(value) {
+                        return value == null ? '' : String(value);
+                    },
                     formatter: function(cell) {
-                        const value = cell.getValue();
+                        const value = String(cell.getValue() || '').trim();
                         if (!value) return '';
-                        const date = new Date(value);
-                        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                        let day = 0;
+                        let month = 0;
+                        if (match) {
+                            day = parseInt(match[3], 10);
+                            month = parseInt(match[2], 10) - 1;
+                        } else {
+                            const parsed = new Date(value);
+                            if (isNaN(parsed.getTime())) return value;
+                            day = parsed.getDate();
+                            month = parsed.getMonth();
+                        }
+                        if (month < 0 || month > 11 || !(day > 0)) return value;
+                        const short = day + ' ' + months[month];
+                        const safeShort = short.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                        const safeFull = value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                        return '<span title="' + safeFull + '">' + safeShort + '</span>';
                     }
                 }
             ]
         });
+
+        const orderIdTip = document.createElement('div');
+        orderIdTip.className = 'temu-order-id-tip';
+        document.body.appendChild(orderIdTip);
+
+        function hideOrderIdTip() {
+            orderIdTip.style.display = 'none';
+        }
+
+        function showOrderIdTip(dot) {
+            const id = dot.getAttribute('data-full') || '';
+            if (!id) {
+                hideOrderIdTip();
+                return;
+            }
+            orderIdTip.textContent = id;
+            orderIdTip.style.display = 'block';
+            const rect = dot.getBoundingClientRect();
+            let left = rect.right + 8;
+            let top = rect.top + (rect.height / 2) - (orderIdTip.offsetHeight / 2);
+            if (left + orderIdTip.offsetWidth > window.innerWidth - 8) {
+                left = Math.max(8, rect.left - orderIdTip.offsetWidth - 8);
+            }
+            if (top + orderIdTip.offsetHeight > window.innerHeight - 8) {
+                top = window.innerHeight - orderIdTip.offsetHeight - 8;
+            }
+            orderIdTip.style.left = left + 'px';
+            orderIdTip.style.top = Math.max(8, top) + 'px';
+        }
+
+        $('#temu-table').on('mouseenter', '.temu-order-id-hit', function() {
+            showOrderIdTip(this);
+        }).on('mouseleave', '.temu-order-id-hit', hideOrderIdTip);
+
+        document.getElementById('temu-table').addEventListener('scroll', hideOrderIdTip, true);
 
         // SKU Search functionality
         $('#sku-search, #parent-search').on('keyup', function() {
@@ -656,7 +833,7 @@
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0, totalQuantity = 0, totalPft = 0;
-            let totalApiLineSales = 0, totalCogs = 0;
+            let totalApiLineSales = 0, totalCogs = 0, totalCogsShip = 0;
 
             data.forEach(row => {
                 const sku = String(row.contribution_sku || '');
@@ -669,6 +846,7 @@
                 const lp = parseFloat(row.lp) || 0;
                 totalQuantity += quantity;
                 totalApiLineSales += parseFloat(row.line_sales) || 0;
+                totalCogsShip += parseFloat(row.cogs_ship) || 0;
                 if (quantity > 0 && basePrice > 0) {
                     totalPft += temuRowGpftDollar(row);
                     totalCogs += lp * quantity;
@@ -693,6 +871,7 @@
             $('#api-line-sales-badge').text('API Line Sales: $' + Math.round(totalApiLineSales).toLocaleString());
             $('#temu-full-price-sales-badge').text('Temu Full Price Sales: $' + Math.round(totalTemuFullPriceSales).toLocaleString());
             $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
+            $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
         }
 
         // Build Column Visibility Dropdown
@@ -722,7 +901,9 @@
                         const checkbox = document.createElement("input");
                         checkbox.type = "checkbox";
                         checkbox.value = def.field;
-                        checkbox.checked = savedVisibility[def.field] !== false;
+                        checkbox.checked = (def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier')
+                            ? false
+                            : savedVisibility[def.field] !== false;
                         checkbox.style.marginRight = "8px";
 
                         label.appendChild(checkbox);
@@ -768,6 +949,10 @@
                         const def = col.getDefinition();
                         if (def.field === 'temu_price') {
                             col.show();
+                            return;
+                        }
+                        if (def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier') {
+                            col.hide();
                             return;
                         }
                         if (def.field && savedVisibility[def.field] === false) {

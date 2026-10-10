@@ -1557,6 +1557,15 @@ class TemuShopifySalesService
             }
         }
 
+        $slabService = null;
+        $shipSlabRates = [];
+        try {
+            $slabService = app(ShippingSlabRateService::class);
+            $shipSlabRates = $slabService->getAllSlabCarrierRates('ship');
+        } catch (\Throwable $e) {
+            \Log::warning('Temu tabulator COGS ship slabs: '.$e->getMessage());
+        }
+
         $result = [];
 
         foreach ($orders as $o) {
@@ -1575,6 +1584,9 @@ class TemuShopifySalesService
             }
 
             $quantity = (int) ($o->quantity ?? 0);
+            $weight = self::dimWtActLb($pmValues);
+            $weightOrder = ($weight !== null && $quantity > 0) ? round($weight * $quantity, 2) : null;
+            $cogsShip = self::cogsShipForWeightOrder($slabService, $shipSlabRates, $weightOrder);
 
             // Official line sales from bg.order.amount.query: basePrice + shipAmountTotal
             // (same total as parent estimatedRevenue). Fall back to stored base, then catalog.
@@ -1602,6 +1614,7 @@ class TemuShopifySalesService
 
             $mapped = [
                 'Parent' => $parent,
+                'image_path' => self::cpMasterImageUrl($pm, $pmValues),
                 'contribution_sku' => $sku,
                 'pm_matched' => $isTemu2
                     ? self::temuSkuMatchesProductMaster($sku, $pmSet, $noSpaceToNormalized)
@@ -1610,6 +1623,9 @@ class TemuShopifySalesService
                 'product_name_by_customer_order' => $o->goods_name ?? '',
                 'variation' => $o->spec ?? '',
                 'quantity_purchased' => $quantity,
+                'weight' => $weight,
+                'weight_order' => $weightOrder,
+                'cogs_ship' => $cogsShip,
                 'quantity_shipped' => 0,
                 'quantity_to_ship' => 0,
                 'base_price_total' => round($officialUnit > 0 ? $officialUnit : $price, 2),
@@ -1668,6 +1684,87 @@ class TemuShopifySalesService
         }
 
         return $out;
+    }
+
+    /**
+     * Item WT ACT (lb) from Dim & Wt Master (`product_master.Values.wt_act`).
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private static function dimWtActLb(array $values): ?float
+    {
+        $lb = $values['wt_act'] ?? null;
+        if (is_numeric($lb) && (float) $lb > 0) {
+            return round((float) $lb, 2);
+        }
+
+        $kg = $values['wt_act_kg'] ?? null;
+        if (is_numeric($kg) && (float) $kg > 0) {
+            return round((float) $kg * 2.2046226218, 2);
+        }
+
+        return null;
+    }
+
+    /**
+     * Ship slab rate for the order weight (Weight × Qty), from Shipping Master slabs.
+     *
+     * @param  array<string, array{rate: ?float}>  $shipSlabRates
+     */
+    private static function cogsShipForWeightOrder(?ShippingSlabRateService $slabs, array $shipSlabRates, ?float $weightOrder): ?float
+    {
+        if ($slabs === null || $weightOrder === null || $weightOrder <= 0 || $shipSlabRates === []) {
+            return null;
+        }
+
+        $declared = $slabs->roundWeightLbUpToSlab($weightOrder);
+        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightOrder);
+        if ($key === null || ! isset($shipSlabRates[$key])) {
+            return null;
+        }
+
+        $rate = $shipSlabRates[$key]['rate'] ?? null;
+        if ($rate === null || ! is_numeric($rate)) {
+            return null;
+        }
+
+        return round((float) $rate, 2);
+    }
+
+    /**
+     * Product photo from CP Master (`product_master`). Prefers Values.image_path,
+     * then the image columns on the same row.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private static function cpMasterImageUrl(?ProductMaster $pm, array $values): string
+    {
+        if (! $pm) {
+            return '';
+        }
+
+        $raw = '';
+        foreach (['image_path', 'image', 'Image', 'main_image', 'Image Path', 'photo'] as $key) {
+            $candidate = trim((string) ($values[$key] ?? ''));
+            if ($candidate !== '') {
+                $raw = $candidate;
+                break;
+            }
+        }
+        if ($raw === '') {
+            $raw = trim((string) ($pm->main_image ?? ''));
+        }
+        if ($raw === '') {
+            $raw = trim((string) ($pm->image1 ?? ''));
+        }
+        if ($raw === '') {
+            return '';
+        }
+        if (preg_match('/^https?:\/\//i', $raw) || str_starts_with($raw, 'data:')) {
+            return $raw;
+        }
+
+        return '/'.ltrim($raw, '/');
     }
 
     private static function productMastersForSkus(Collection $skus): Collection
