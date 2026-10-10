@@ -18,6 +18,8 @@ class Inv5coreBalance extends Model
         'sales_after_order_id',
         'sales_after_manual_id',
         'qty_on_hand',
+        'qty_committed',
+        'qty_unavailable',
         'l30_sold',
         'shopify_locked',
     ];
@@ -25,6 +27,8 @@ class Inv5coreBalance extends Model
     protected $casts = [
         'opening_qty' => 'float',
         'qty_on_hand' => 'float',
+        'qty_committed' => 'float',
+        'qty_unavailable' => 'float',
         'l30_sold' => 'float',
         'shopify_locked' => 'boolean',
         'opening_seeded_at' => 'datetime',

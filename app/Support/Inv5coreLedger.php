@@ -31,6 +31,75 @@ class Inv5coreLedger
     }
 
     /**
+     * Shipped / delivered marketplace statuses. Pending orders are committed
+     * only; on hand drops when the order is fulfilled.
+     */
+    public static function statusIsFulfilled(?string $status): bool
+    {
+        $compact = str_replace([' ', '_', '-'], '', strtolower(trim((string) $status)));
+
+        return in_array($compact, [
+            'shipped',
+            'partiallyshipped',
+            'fulfilled',
+            'delivered',
+            'partiallydelivered',
+            'completed',
+            'complete',
+            'intransit',
+            'pickedup',
+            'closed',
+            'received',
+            'awaitingcollection',
+            'partiallyshipping',
+            'buyeracceptgoods',
+            'finish',
+            'tradefinished',
+            'waitbuyeracceptgoods',
+        ], true);
+    }
+
+    /**
+     * @return array{on_hand: float, committed: float, unavailable: float, available: float}
+     */
+    public static function nextStates(
+        float $onHand,
+        float $committed,
+        float $unavailable,
+        float $onHandDelta,
+        float $committedDelta = 0.0,
+        float $unavailableDelta = 0.0
+    ): array {
+        $onHand = self::roundQty($onHand + $onHandDelta);
+        $committed = self::roundQty($committed + $committedDelta);
+        $unavailable = self::roundQty($unavailable + $unavailableDelta);
+
+        return [
+            'on_hand' => $onHand,
+            'committed' => $committed,
+            'unavailable' => $unavailable,
+            'available' => self::roundQty($onHand - $committed - $unavailable),
+        ];
+    }
+
+    public static function historyActivity(string $txnType, string $reference): string
+    {
+        $ref = ltrim(trim($reference), '#');
+        $suffix = $ref !== '' ? ' (#'.$ref.')' : '';
+
+        return match ($txnType) {
+            'order_created' => 'Order created'.$suffix,
+            'order_fulfilled', 'sale' => 'Order fulfilled'.$suffix,
+            'return' => 'Order canceled'.$suffix,
+            'opening' => 'Opening inventory',
+            'incoming' => 'Inventory received',
+            'write_off' => 'Write-off',
+            'adjustment' => 'Inventory adjusted',
+            default => ucfirst(str_replace('_', ' ', $txnType)).$suffix,
+        };
+    }
+
+    /**
      * A source row reduces on-hand only when it was inserted after the
      * watermark saved with the one-time opening. Older rows are already
      * inside that Shopify on-hand number.

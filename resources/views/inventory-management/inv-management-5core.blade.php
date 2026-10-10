@@ -55,7 +55,7 @@
                         <p class="text-muted mb-0 small">
                             INV, L30, and DIL% come from Shopify. INV APP is this page’s own inventory.
                             Seed opening once from Shopify, matched by SKU. After that, Shopify is not imported again.
-                            Marketplace orders deduct INV APP, and each order is stored in that SKU’s history.
+                            A marketplace order commits quantity first. On hand drops when that order is fulfilled. Each step is stored in the SKU history.
                             L30 APP is marketplace units sold over the last 30 days.
                         </p>
                     </div>
@@ -103,14 +103,12 @@
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Type</th>
-                                <th class="text-end">Change</th>
-                                <th class="text-end">Before</th>
-                                <th class="text-end">After</th>
-                                <th>Reference</th>
-                                <th>Channel</th>
-                                <th>Detail</th>
-                                <th>User</th>
+                                <th>Activity</th>
+                                <th>Created by</th>
+                                <th class="text-end">Unavailable</th>
+                                <th class="text-end">Committed</th>
+                                <th class="text-end">Available</th>
+                                <th class="text-end">On hand</th>
                             </tr>
                         </thead>
                         <tbody id="inv5cHistoryBody"></tbody>
@@ -188,6 +186,17 @@ document.addEventListener('DOMContentLoaded', function () {
         return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
     }
 
+    function stateCell(delta, after) {
+        const qty = fmtNum(after);
+        const change = Number(delta);
+        if (!Number.isFinite(change) || change === 0) {
+            return qty;
+        }
+        const sign = change > 0 ? '+' : '';
+        const color = change > 0 ? '#1a7f37' : '#d72c0d';
+        return `<span style="color:${color};font-weight:600;">(${sign}${fmtNum(change)})</span> ${qty}`;
+    }
+
     function dilHtml(inv, l30) {
         const inventory = Number(inv);
         const sold = Number(l30);
@@ -251,17 +260,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 const rows = Array.isArray(data.rows) ? data.rows : [];
                 document.getElementById('inv5cHistoryBody').innerHTML = rows.length
                     ? rows.map((row) => `<tr>
-                        <td>${escapeHtml(row.occurred_at)}</td>
-                        <td>${escapeHtml(row.txn_type)}</td>
-                        <td class="text-end">${fmtNum(row.qty_delta)}</td>
-                        <td class="text-end">${fmtNum(row.qty_before)}</td>
-                        <td class="text-end">${fmtNum(row.qty_after)}</td>
-                        <td>${escapeHtml(row.reference) || '—'}</td>
-                        <td>${escapeHtml(row.channel) || '—'}</td>
-                        <td>${escapeHtml(row.detail)}</td>
-                        <td>${escapeHtml(row.user_name) || '—'}</td>
+                        <td class="text-nowrap">${escapeHtml(row.occurred_at)}</td>
+                        <td>${escapeHtml(row.activity)}</td>
+                        <td>${escapeHtml(row.created_by) || '—'}</td>
+                        <td class="text-end text-nowrap">${stateCell(row.unavailable_delta, row.unavailable_after)}</td>
+                        <td class="text-end text-nowrap">${stateCell(row.committed_delta, row.committed_after)}</td>
+                        <td class="text-end text-nowrap">${stateCell(row.available_delta, row.available_after)}</td>
+                        <td class="text-end text-nowrap">${stateCell(row.on_hand_delta, row.on_hand_after)}</td>
                     </tr>`).join('')
-                    : '<tr><td colspan="9" class="text-muted">No movements yet.</td></tr>';
+                    : '<tr><td colspan="7" class="text-muted">No movements yet.</td></tr>';
             })
             .catch((err) => {
                 document.getElementById('inv5cHistorySummary').textContent = err.message;

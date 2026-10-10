@@ -189,6 +189,16 @@ class Inv5coreMarketplaceOrders
         return 'mp:'.$source.':reversal';
     }
 
+    public static function openKey(string $source): string
+    {
+        return 'mp:'.$source.':open';
+    }
+
+    public static function fulfilledKey(string $source): string
+    {
+        return 'mp:'.$source.':fulfilled';
+    }
+
     /**
      * Remember the latest order line already in the app. Later lines are the
      * ones that deduct INV APP. Existing lines stay inside the Shopify opening.
@@ -262,22 +272,34 @@ class Inv5coreMarketplaceOrders
                 continue;
             }
             $status = 'LOWER('.$def['status_sql'].')';
-            $query = DB::table('inv_5core_transactions as t')
-                ->where('t.source', self::sourceKey($def['source']))
-                ->leftJoin('inv_5core_transactions as rev', function ($join) use ($def) {
-                    $join->on('rev.source_id', '=', 't.source_id')
-                        ->where('rev.source', '=', self::reversalKey($def['source']));
-                })
-                ->whereNull('rev.id');
-            self::applyLineJoin($query, $def, 't.source_id');
-            $query->whereRaw($status.' IN ('.$placeholders.')', $skipped)
-                ->selectRaw('t.id as id, t.balance_id, t.qty_delta, t.source_id as line_id, '.$def['order_sql'].' as order_number, '.$def['status_sql'].' as status')
-                ->orderBy('t.id')
-                ->chunkById(400, function ($lines) use ($callback, $def) {
-                    foreach ($lines as $line) {
-                        $callback($line, $def);
-                    }
-                }, 't.id', 'id');
+            $stateCols = Schema::hasColumn('inv_5core_transactions', 'committed_delta')
+                ? ', t.txn_type, t.committed_delta'
+                : '';
+            $stages = [
+                [self::sourceKey($def['source']), self::reversalKey($def['source'])],
+                [self::openKey($def['source']), self::openKey($def['source']).':reversal'],
+                [self::fulfilledKey($def['source']), self::fulfilledKey($def['source']).':reversal'],
+            ];
+            foreach ($stages as [$source, $reversal]) {
+                $query = DB::table('inv_5core_transactions as t')
+                    ->where('t.source', $source)
+                    ->leftJoin('inv_5core_transactions as rev', function ($join) use ($reversal) {
+                        $join->on('rev.source_id', '=', 't.source_id')
+                            ->where('rev.source', '=', $reversal);
+                    })
+                    ->whereNull('rev.id');
+                self::applyLineJoin($query, $def, 't.source_id');
+                $query->whereRaw($status.' IN ('.$placeholders.')', $skipped)
+                    ->selectRaw('t.id as id, t.balance_id, t.qty_delta, t.source_id as line_id, '.$def['order_sql'].' as order_number, '.$def['status_sql'].' as status'.$stateCols)
+                    ->orderBy('t.id')
+                    ->chunkById(400, function ($lines) use ($callback, $def, $source, $reversal) {
+                        foreach ($lines as $line) {
+                            $line->txn_source = $source;
+                            $line->reversal_source = $reversal;
+                            $callback($line, $def);
+                        }
+                    }, 't.id', 'id');
+            }
         }
     }
 

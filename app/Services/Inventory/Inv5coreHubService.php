@@ -158,13 +158,17 @@ class Inv5coreHubService
                         $balance->sku_compact = ShopifySku::compactSkuForLookup($sku);
                         $balance->opening_qty = $opening;
                         $balance->qty_on_hand = $opening;
+                        if (Schema::hasColumn('inv_5core_balances', 'qty_committed')) {
+                            $balance->qty_committed = 0;
+                            $balance->qty_unavailable = 0;
+                        }
                         $balance->opening_seeded_at = $now;
                         $balance->sales_after_order_id = $orderWatermark;
                         $balance->sales_after_manual_id = $manualWatermark;
                         $balance->shopify_locked = true;
                         $balance->save();
 
-                        Inv5coreTransaction::query()->create([
+                        $openingRow = [
                             'balance_id' => $balance->id,
                             'product_master_id' => (int) $product->id,
                             'sku' => $sku,
@@ -172,6 +176,17 @@ class Inv5coreHubService
                             'qty_delta' => $opening,
                             'qty_before' => 0,
                             'qty_after' => $opening,
+                            'source' => 'shopify_opening',
+                        ];
+                        if (Schema::hasColumn('inv_5core_transactions', 'available_delta')) {
+                            $openingRow['unavailable_delta'] = 0;
+                            $openingRow['unavailable_after'] = 0;
+                            $openingRow['committed_delta'] = 0;
+                            $openingRow['committed_after'] = 0;
+                            $openingRow['available_delta'] = $opening;
+                            $openingRow['available_after'] = $opening;
+                        }
+                        Inv5coreTransaction::query()->create($openingRow + [
                             'source' => 'shopify_opening',
                             'source_id' => (int) $product->id,
                             'reference' => null,
@@ -253,20 +268,21 @@ class Inv5coreHubService
             }
             $orderNo = trim((string) ($line->order_number ?? ''));
             $detail = $def['label'].' order '.($orderNo !== '' ? $orderNo : $line->id).' · Qty '.$qty;
-            if ($this->postMovement(
+            $when = ! empty($line->order_date) ? Carbon::parse($line->order_date) : Carbon::now();
+            $posted += $this->recordOrderStages(
                 $balance,
-                'sale',
+                Inv5coreMarketplaceOrders::openKey($def['source']),
+                Inv5coreMarketplaceOrders::fulfilledKey($def['source']),
                 Inv5coreMarketplaceOrders::sourceKey($def['source']),
                 (int) $line->id,
-                Inv5coreLedger::deltaForSubtract($qty),
+                $qty,
+                Inv5coreLedger::statusIsFulfilled($line->status ?? null),
                 $orderNo,
                 $def['label'],
                 $detail,
-                ! empty($line->order_date) ? Carbon::parse($line->order_date) : Carbon::now(),
+                $when,
                 $userId
-            )) {
-                $posted++;
-            }
+            );
         });
 
         return $posted;
@@ -282,18 +298,47 @@ class Inv5coreHubService
             }
             $orderNo = trim((string) ($line->order_number ?? ''));
             $detail = 'Reversal · '.$def['label'].' order '.($orderNo !== '' ? $orderNo : $line->line_id).' is now '.$line->status;
-            if ($this->postMovement(
-                $balance,
-                'return',
-                Inv5coreMarketplaceOrders::reversalKey($def['source']),
-                (int) $line->line_id,
-                Inv5coreLedger::deltaForAdd(abs((float) $line->qty_delta)),
-                $orderNo,
-                $def['label'],
-                $detail,
-                Carbon::now(),
-                $userId
-            )) {
+            $source = (string) ($line->txn_source ?? Inv5coreMarketplaceOrders::sourceKey($def['source']));
+            $reversal = (string) ($line->reversal_source ?? Inv5coreMarketplaceOrders::reversalKey($def['source']));
+            if (str_ends_with($source, ':open')) {
+                $fulfilledSource = substr($source, 0, -strlen(':open')).':fulfilled';
+                if (Inv5coreTransaction::query()->where('source', $fulfilledSource)->where('source_id', (int) $line->line_id)->exists()) {
+                    return;
+                }
+                $qty = abs((float) ($line->committed_delta ?? 0));
+                if ($qty <= 0) {
+                    return;
+                }
+                $moved = $this->postMovement(
+                    $balance,
+                    'return',
+                    $reversal,
+                    (int) $line->line_id,
+                    0.0,
+                    $orderNo,
+                    $def['label'],
+                    $detail,
+                    Carbon::now(),
+                    $userId,
+                    Inv5coreLedger::deltaForSubtract($qty),
+                    0.0,
+                    Inv5coreLedger::deltaForAdd($qty)
+                );
+            } else {
+                $moved = $this->postMovement(
+                    $balance,
+                    'return',
+                    $reversal,
+                    (int) $line->line_id,
+                    Inv5coreLedger::deltaForAdd(abs((float) $line->qty_delta)),
+                    $orderNo,
+                    $def['label'],
+                    $detail,
+                    Carbon::now(),
+                    $userId
+                );
+            }
+            if ($moved) {
                 $reversed++;
             }
         });
@@ -333,18 +378,35 @@ class Inv5coreHubService
                 'add' => Inv5coreLedger::deltaForAdd($qty),
                 'subtract' => Inv5coreLedger::deltaForSubtract($qty),
             };
-            $after = Inv5coreLedger::applyDelta($before, $delta);
-            $balance->qty_on_hand = $after;
+            $committed = Schema::hasColumn('inv_5core_balances', 'qty_committed') ? (float) ($balance->qty_committed ?? 0) : 0.0;
+            $unavailable = Schema::hasColumn('inv_5core_balances', 'qty_unavailable') ? (float) ($balance->qty_unavailable ?? 0) : 0.0;
+            $states = Inv5coreLedger::nextStates($before, $committed, $unavailable, $delta);
+            $balance->qty_on_hand = $states['on_hand'];
+            if (Schema::hasColumn('inv_5core_balances', 'qty_committed')) {
+                $balance->qty_committed = $states['committed'];
+                $balance->qty_unavailable = $states['unavailable'];
+            }
             $balance->save();
 
-            Inv5coreTransaction::query()->create([
+            $adjustRow = [
                 'balance_id' => $balance->id,
                 'product_master_id' => $balance->product_master_id,
                 'sku' => $balance->sku,
                 'txn_type' => $txnType,
                 'qty_delta' => $delta,
                 'qty_before' => $before,
-                'qty_after' => $after,
+                'qty_after' => $states['on_hand'],
+                'source' => 'adjustment',
+            ];
+            if (Schema::hasColumn('inv_5core_transactions', 'available_delta')) {
+                $adjustRow['unavailable_delta'] = 0;
+                $adjustRow['unavailable_after'] = $states['unavailable'];
+                $adjustRow['committed_delta'] = 0;
+                $adjustRow['committed_after'] = $states['committed'];
+                $adjustRow['available_delta'] = $delta;
+                $adjustRow['available_after'] = $states['available'];
+            }
+            Inv5coreTransaction::query()->create($adjustRow + [
                 'source' => 'adjustment',
                 'source_id' => null,
                 'reference' => null,
@@ -354,7 +416,7 @@ class Inv5coreHubService
                 'created_by' => $userId,
             ]);
 
-            return ['inv_app' => $after, 'qty_delta' => $delta];
+            return ['inv_app' => $states['on_hand'], 'qty_delta' => $delta];
         });
     }
 
@@ -381,17 +443,34 @@ class Inv5coreHubService
         }
 
         $rows = $query->get()->map(function ($row) {
+            $onHandDelta = (float) $row->qty_delta;
+            $onHandAfter = (float) $row->qty_after;
+            $hasStates = $row->available_after !== null || $row->committed_after !== null;
+            $committedDelta = $hasStates ? (float) ($row->committed_delta ?? 0) : 0.0;
+            $committedAfter = $hasStates ? (float) ($row->committed_after ?? 0) : 0.0;
+            $unavailableDelta = $hasStates ? (float) ($row->unavailable_delta ?? 0) : 0.0;
+            $unavailableAfter = $hasStates ? (float) ($row->unavailable_after ?? 0) : 0.0;
+            $availableDelta = $hasStates ? (float) ($row->available_delta ?? 0) : $onHandDelta;
+            $availableAfter = $hasStates ? (float) ($row->available_after ?? 0) : $onHandAfter;
+            $txnType = (string) $row->txn_type;
+            $userName = trim((string) ($row->user_name ?? ''));
+            $system = in_array($txnType, ['order_created', 'order_fulfilled', 'sale', 'return'], true);
+            $at = $row->occurred_at ?: $row->created_at;
+
             return [
                 'id' => (int) $row->id,
-                'occurred_at' => optional($row->occurred_at)->format('Y-m-d H:i') ?: optional($row->created_at)->format('Y-m-d H:i'),
-                'txn_type' => (string) $row->txn_type,
-                'qty_delta' => (float) $row->qty_delta,
-                'qty_before' => (float) $row->qty_before,
-                'qty_after' => (float) $row->qty_after,
-                'reference' => (string) ($row->reference ?? ''),
-                'channel' => (string) ($row->channel ?? ''),
+                'occurred_at' => $at ? $at->timezone(config('app.timezone'))->format('M j \a\t g:i a') : '',
+                'activity' => Inv5coreLedger::historyActivity($txnType, (string) ($row->reference ?? '')),
+                'created_by' => $system || $userName === '' ? '5Core Inventory' : $userName,
+                'unavailable_delta' => $unavailableDelta,
+                'unavailable_after' => $unavailableAfter,
+                'committed_delta' => $committedDelta,
+                'committed_after' => $committedAfter,
+                'available_delta' => $availableDelta,
+                'available_after' => $availableAfter,
+                'on_hand_delta' => $onHandDelta,
+                'on_hand_after' => $onHandAfter,
                 'detail' => (string) ($row->detail ?? ''),
-                'user_name' => (string) ($row->user_name ?? ''),
             ];
         })->all();
 
@@ -638,20 +717,21 @@ class Inv5coreHubService
                         'Qty '.(int) $line->qty,
                         'Manual app order',
                     ])));
-                    if ($this->postMovement(
+                    $when = $line->order_date ? Carbon::parse($line->order_date) : Carbon::now();
+                    $posted += $this->recordOrderStages(
                         $balance,
-                        'sale',
+                        'manual_order:open',
+                        'manual_order:fulfilled',
                         'manual_order',
                         (int) $line->id,
-                        Inv5coreLedger::deltaForSubtract((float) $line->qty),
+                        (float) $line->qty,
+                        Inv5coreLedger::statusIsFulfilled($line->status ?? null),
                         (string) ($line->order_id ?? ''),
                         (string) ($line->marketplace ?? 'App'),
                         $detail,
-                        $line->order_date ? Carbon::parse($line->order_date) : Carbon::now(),
+                        $when,
                         $userId
-                    )) {
-                        $posted++;
-                    }
+                    );
                 }
             });
 
@@ -710,43 +790,168 @@ class Inv5coreHubService
             return 0;
         }
         $reversed = 0;
+        foreach ([
+            ['manual_order', 'manual_order_reversal'],
+            ['manual_order:open', 'manual_order:open:reversal'],
+            ['manual_order:fulfilled', 'manual_order:fulfilled:reversal'],
+        ] as [$source, $reversal]) {
+            $reversed += $this->reverseManualStage($source, $reversal, $userId);
+        }
+
+        return $reversed;
+    }
+
+    private function reverseManualStage(string $source, string $reversal, ?int $userId): int
+    {
+        $reversed = 0;
         $skipped = Inv5coreLedger::SKIPPED_STATUSES;
+        $select = ['t.id as id', 't.balance_id', 't.qty_delta', 'o.id as order_row_id', 'o.order_id', 'o.status', 'o.marketplace'];
+        if (Schema::hasColumn('inv_5core_transactions', 'committed_delta')) {
+            $select[] = 't.committed_delta';
+        }
         DB::table('inv_5core_transactions as t')
-            ->join('order_fulfillment_manual_orders as o', function ($join) {
-                $join->on('o.id', '=', 't.source_id')->where('t.source', '=', 'manual_order');
+            ->join('order_fulfillment_manual_orders as o', function ($join) use ($source) {
+                $join->on('o.id', '=', 't.source_id')->where('t.source', '=', $source);
             })
-            ->leftJoin('inv_5core_transactions as rev', function ($join) {
-                $join->on('rev.source_id', '=', 'o.id')->where('rev.source', '=', 'manual_order_reversal');
+            ->leftJoin('inv_5core_transactions as rev', function ($join) use ($reversal) {
+                $join->on('rev.source_id', '=', 'o.id')->where('rev.source', '=', $reversal);
             })
             ->whereNull('rev.id')
             ->whereRaw('LOWER(o.status) IN ('.implode(',', array_fill(0, count($skipped), '?')).')', $skipped)
             ->orderBy('t.id')
-            ->select(['t.id as id', 't.balance_id', 't.qty_delta', 'o.id as order_row_id', 'o.order_id', 'o.status', 'o.marketplace'])
-            ->chunkById(400, function ($lines) use ($userId, &$reversed) {
+            ->select($select)
+            ->chunkById(400, function ($lines) use ($userId, &$reversed, $source, $reversal) {
                 foreach ($lines as $line) {
                     $balance = Inv5coreBalance::query()->find($line->balance_id);
                     if (! $balance) {
                         continue;
                     }
                     $detail = 'Reversal · manual order '.($line->order_id ?: $line->order_row_id).' is now '.$line->status;
-                    if ($this->postMovement(
-                        $balance,
-                        'return',
-                        'manual_order_reversal',
-                        (int) $line->order_row_id,
-                        Inv5coreLedger::deltaForAdd(abs((float) $line->qty_delta)),
-                        (string) ($line->order_id ?? ''),
-                        (string) ($line->marketplace ?? 'App'),
-                        $detail,
-                        Carbon::now(),
-                        $userId
-                    )) {
+                    if (str_ends_with($source, ':open')) {
+                        if (Inv5coreTransaction::query()->where('source', 'manual_order:fulfilled')->where('source_id', (int) $line->order_row_id)->exists()) {
+                            continue;
+                        }
+                        $qty = abs((float) ($line->committed_delta ?? 0));
+                        if ($qty <= 0) {
+                            continue;
+                        }
+                        $moved = $this->postMovement(
+                            $balance,
+                            'return',
+                            $reversal,
+                            (int) $line->order_row_id,
+                            0.0,
+                            (string) ($line->order_id ?? ''),
+                            (string) ($line->marketplace ?? 'App'),
+                            $detail,
+                            Carbon::now(),
+                            $userId,
+                            Inv5coreLedger::deltaForSubtract($qty),
+                            0.0,
+                            Inv5coreLedger::deltaForAdd($qty)
+                        );
+                    } else {
+                        $moved = $this->postMovement(
+                            $balance,
+                            'return',
+                            $reversal,
+                            (int) $line->order_row_id,
+                            Inv5coreLedger::deltaForAdd(abs((float) $line->qty_delta)),
+                            (string) ($line->order_id ?? ''),
+                            (string) ($line->marketplace ?? 'App'),
+                            $detail,
+                            Carbon::now(),
+                            $userId
+                        );
+                    }
+                    if ($moved) {
                         $reversed++;
                     }
                 }
             }, 't.id', 'id');
 
         return $reversed;
+    }
+
+    /**
+     * Order created commits quantity. Order fulfilled then reduces on hand
+     * and releases that commitment, the same two steps Shopify shows.
+     */
+    private function recordOrderStages(
+        Inv5coreBalance $balance,
+        string $openSource,
+        string $fulfilledSource,
+        string $legacySource,
+        int $sourceId,
+        float $qty,
+        bool $fulfilled,
+        string $reference,
+        string $channel,
+        string $detail,
+        Carbon $when,
+        ?int $userId
+    ): int {
+        if (! Schema::hasColumn('inv_5core_transactions', 'committed_delta')) {
+            return $this->postMovement(
+                $balance,
+                'sale',
+                $legacySource,
+                $sourceId,
+                Inv5coreLedger::deltaForSubtract($qty),
+                $reference,
+                $channel,
+                $detail,
+                $when,
+                $userId
+            ) ? 1 : 0;
+        }
+        if ($this->movementExists($legacySource, $sourceId)) {
+            return 0;
+        }
+
+        $posted = 0;
+        $hadOpen = $this->movementExists($openSource, $sourceId);
+        if (! $hadOpen && $this->postMovement(
+            $balance,
+            'order_created',
+            $openSource,
+            $sourceId,
+            0.0,
+            $reference,
+            $channel,
+            $detail,
+            $when,
+            $userId,
+            Inv5coreLedger::deltaForAdd($qty),
+            0.0,
+            Inv5coreLedger::deltaForSubtract($qty)
+        )) {
+            $posted++;
+        }
+        if ($fulfilled && ! $this->movementExists($fulfilledSource, $sourceId) && $this->postMovement(
+            $balance,
+            'order_fulfilled',
+            $fulfilledSource,
+            $sourceId,
+            Inv5coreLedger::deltaForSubtract($qty),
+            $reference,
+            $channel,
+            $detail,
+            $hadOpen ? Carbon::now() : $when,
+            $userId,
+            Inv5coreLedger::deltaForSubtract($qty),
+            0.0,
+            Inv5coreLedger::deltaForAdd($qty)
+        )) {
+            $posted++;
+        }
+
+        return $posted;
+    }
+
+    private function movementExists(string $source, int $sourceId): bool
+    {
+        return Inv5coreTransaction::query()->where('source', $source)->where('source_id', $sourceId)->exists();
     }
 
     private function postMovement(
@@ -759,23 +964,38 @@ class Inv5coreHubService
         string $channel,
         string $detail,
         Carbon $occurredAt,
-        ?int $userId
+        ?int $userId,
+        float $committedDelta = 0.0,
+        float $unavailableDelta = 0.0,
+        ?float $availableDisplayDelta = null
     ): bool {
-        return (bool) DB::transaction(function () use ($balance, $txnType, $source, $sourceId, $delta, $reference, $channel, $detail, $occurredAt, $userId) {
+        return (bool) DB::transaction(function () use ($balance, $txnType, $source, $sourceId, $delta, $reference, $channel, $detail, $occurredAt, $userId, $committedDelta, $unavailableDelta, $availableDisplayDelta) {
             $locked = Inv5coreBalance::query()->where('id', $balance->id)->lockForUpdate()->first();
             if (! $locked || $locked->qty_on_hand === null) {
                 return false;
             }
+            $statesReady = Schema::hasColumn('inv_5core_balances', 'qty_committed')
+                && Schema::hasColumn('inv_5core_transactions', 'available_delta');
             $before = (float) $locked->qty_on_hand;
-            $after = Inv5coreLedger::applyDelta($before, $delta);
-            $inserted = DB::table('inv_5core_transactions')->insertOrIgnore([
+            $committed = $statesReady ? (float) ($locked->qty_committed ?? 0) : 0.0;
+            $unavailable = $statesReady ? (float) ($locked->qty_unavailable ?? 0) : 0.0;
+            $states = Inv5coreLedger::nextStates(
+                $before,
+                $committed,
+                $unavailable,
+                $delta,
+                $statesReady ? $committedDelta : 0.0,
+                $statesReady ? $unavailableDelta : 0.0
+            );
+            $availableBefore = Inv5coreLedger::roundQty($before - $committed - $unavailable);
+            $row = [
                 'balance_id' => $locked->id,
                 'product_master_id' => $locked->product_master_id,
                 'sku' => $locked->sku,
                 'txn_type' => $txnType,
                 'qty_delta' => $delta,
                 'qty_before' => $before,
-                'qty_after' => $after,
+                'qty_after' => $states['on_hand'],
                 'source' => $source,
                 'source_id' => $sourceId,
                 'reference' => $reference !== '' ? $reference : null,
@@ -785,13 +1005,30 @@ class Inv5coreHubService
                 'created_by' => $userId,
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
-            ]);
+            ];
+            if ($statesReady) {
+                $row['unavailable_delta'] = $statesReady ? $unavailableDelta : 0.0;
+                $row['unavailable_after'] = $states['unavailable'];
+                $row['committed_delta'] = $committedDelta;
+                $row['committed_after'] = $states['committed'];
+                $row['available_delta'] = $availableDisplayDelta ?? Inv5coreLedger::roundQty($states['available'] - $availableBefore);
+                $row['available_after'] = $states['available'];
+            }
+            $inserted = DB::table('inv_5core_transactions')->insertOrIgnore($row);
             if ($inserted < 1) {
                 return false;
             }
-            $locked->qty_on_hand = $after;
+            $locked->qty_on_hand = $states['on_hand'];
+            if ($statesReady) {
+                $locked->qty_committed = $states['committed'];
+                $locked->qty_unavailable = $states['unavailable'];
+            }
             $locked->save();
-            $balance->qty_on_hand = $after;
+            $balance->qty_on_hand = $states['on_hand'];
+            if ($statesReady) {
+                $balance->qty_committed = $states['committed'];
+                $balance->qty_unavailable = $states['unavailable'];
+            }
 
             return true;
         });
