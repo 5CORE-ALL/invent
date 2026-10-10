@@ -58,6 +58,8 @@ class Ebay3SalesController extends Controller
             $carTaxByOrder[$oid] = ($carTaxByOrder[$oid] ?? 0) + (float) ($order->ebay_collect_and_remit_tax ?? 0);
         }
 
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
+
         $data = [];
         foreach ($orders as $order) {
             $sku = $order->sku ?? '';
@@ -78,12 +80,13 @@ class Ebay3SalesController extends Controller
             $pm = $productMasters[$sku] ?? null;
             $parent = $parents[$sku] ?? '';
 
-            // Extract LP, Ship, and Weight Act
+            // Extract LP and Ship. Weight comes from Dim & Wt.
             $lp = 0;
             $ship = 0;
-            $weightAct = 0;
+            $values = [];
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === "lp") {
                         $lp = floatval($v);
@@ -93,42 +96,24 @@ class Ebay3SalesController extends Controller
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
                 }
-                // Use regular ship (same as tabulator view)
                 $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
-                $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 
             $quantity = floatval($order->quantity ?? 1);
-            // IMPORTANT: unit_price in DB is the TOTAL line item cost (not per unit)
+            // unit_price is already this row's Sales AMT.
             $lineItemTotal = floatval($order->unit_price ?? 0);
             $perUnitPrice = $quantity > 0 ? $lineItemTotal / $quantity : 0;
-            $saleAmount = $lineItemTotal; // Already the total
+            $saleAmount = $lineItemTotal;
 
-            // T Weight = Weight Act * Quantity
+            $weightAct = EbaySalesController::actWeightLb($values);
             $tWeight = $weightAct * $quantity;
+            $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
 
-            // Ship Cost calculation (same as eBay 1 & 2)
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity
+            // COGS = LP × Qty. COGS Ship is subtracted once. eBay 3 margin stays 85%.
             $cogs = $lp * $quantity;
-
-            // PFT Each = (per_unit_price * 0.85) - lp - ship_cost (eBay 3 uses 85% margin)
-            $pftEach = ($perUnitPrice * 0.85) - $lp - $shipCost;
-
-            // PFT Each % = (pft_each / per_unit_price) * 100
+            $pft = ($lineItemTotal * 0.85) - $cogs - $shipCost;
+            $pftEach = $quantity > 0 ? $pft / $quantity : 0;
             $pftEachPct = $perUnitPrice > 0 ? ($pftEach / $perUnitPrice) * 100 : 0;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-
-            // ROI = (PFT / COGS) * 100
             $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             $data[] = [
