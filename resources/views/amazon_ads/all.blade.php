@@ -4934,18 +4934,55 @@
                 }
                 return false;
             }
+            function amzBgtStatusCount() {
+                try {
+                    if (amzBgtUniverse.key === amzBgtFilterKey() && Array.isArray(amzBgtUniverse.rows)) {
+                        return { n: amzBgtUniverse.rows.length, full: true };
+                    }
+                    return { n: amzBgtGridRows().length, full: false };
+                } catch (e) {
+                    return { n: 0, full: false };
+                }
+            }
+            function amzBgtWriteStatus(text, loading) {
+                var st = document.getElementById('amz-bgt-status');
+                if (!st) return;
+                st.className = 'small text-muted me-auto d-inline-flex align-items-center';
+                st.innerHTML = '';
+                if (loading) {
+                    var spin = document.createElement('span');
+                    spin.className = 'spinner-border spinner-border-sm text-primary me-2';
+                    spin.setAttribute('role', 'status');
+                    spin.setAttribute('aria-label', 'Loading');
+                    st.appendChild(spin);
+                }
+                var label = document.createElement('span');
+                label.textContent = text;
+                st.appendChild(label);
+                var count = amzBgtStatusCount();
+                if (count.n) {
+                    var num = document.createElement('strong');
+                    num.className = 'ms-2';
+                    num.textContent = count.n.toLocaleString() + (count.full ? ' campaigns' : ' on this page');
+                    st.appendChild(num);
+                }
+            }
             function amzBgtSetCountStatus(msg) {
                 var st = document.getElementById('amz-bgt-status');
                 if (!st) return;
                 if (msg) {
-                    if (!st.textContent || st.dataset.countStatus === '1') {
-                        st.textContent = msg;
-                        st.dataset.countStatus = '1';
+                    if (st.dataset.phase === 'save' || st.dataset.phase === 'apply') {
+                        amzBgtWriteStatus(st.dataset.phase === 'save' ? 'Saving rules…' : 'Applying to the page…', true);
+                        return;
                     }
+                    st.dataset.countStatus = '1';
+                    amzBgtWriteStatus(msg, true);
                     return;
                 }
+                if (st.dataset.phase === 'apply' || st.dataset.phase === 'save') return;
                 if (st.dataset.countStatus === '1') {
                     st.textContent = '';
+                    st.className = 'small text-muted me-auto';
                     delete st.dataset.countStatus;
                 }
             }
@@ -6795,7 +6832,8 @@
                     return;
                 }
                 if (btn) btn.disabled = true;
-                if (st) st.textContent = 'Saving all rules…';
+                if (st) st.dataset.phase = 'save';
+                amzBgtWriteStatus('Saving rules…', true);
                 Promise.all(jobs.map(function (job) { return amzBgtPostRule(job.spec.url, job.bands); }))
                     .then(function (outs) {
                         for (var n = 0; n < outs.length; n++) {
@@ -6813,17 +6851,25 @@
                         if (typeof amzFillAcosFilterOptions === 'function') amzFillAcosFilterOptions();
                         if (typeof amzUpdatePushButtons === 'function') amzUpdatePushButtons();
                         amzSbgtAutoPushedKey = {};
-                        if (st) st.textContent = 'Saved. Applying to the page…';
-                        return table ? Promise.resolve(table.setData()) : null;
+                        if (st) st.dataset.phase = 'apply';
+                        amzBgtWriteStatus('Applying to the page…', true);
+                        if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
+                        var counted = (typeof amzBgtEnsureUniverse === 'function' ? amzBgtEnsureUniverse() : Promise.resolve()).then(function () {
+                            if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
+                        });
+                        var reloaded = table ? Promise.resolve(table.setData()).catch(function () { return null; }) : Promise.resolve();
+                        return Promise.all([counted, reloaded]);
                     })
                     .then(function () {
                         amzRefreshUiSoon();
-                        if (!st) return;
-                        st.textContent = amzAutoPushPullOn()
-                            ? 'Saved and applied. Auto Push & Pull is running on this page.'
-                            : 'Saved and applied to the page.';
+                        if (st) delete st.dataset.phase;
+                        amzBgtWriteStatus(amzAutoPushPullOn()
+                            ? 'Saved and applied. Auto Push & Pull is on.'
+                            : 'Saved and applied.', false);
                     })
-                    .catch(function (err) { if (st) st.textContent = (err && err.message) ? err.message : 'Network or server error.'; })
+                    .catch(function (err) {
+                        if (st) { delete st.dataset.phase; st.className = 'small text-danger fw-semibold me-auto'; st.textContent = (err && err.message) ? err.message : 'Network or server error.'; }
+                    })
                     .finally(function () { if (btn) btn.disabled = false; });
             }
             window.amzBgtSaveAndApply = amzBgtSaveAndApply;
