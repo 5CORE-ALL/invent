@@ -1521,6 +1521,14 @@ class Kernel extends ConsoleKernel
       
         $retryFiveTimesUntil('app:amazon-sp-keyword-reports', 'amazon-sp-keyword-reports', '18:15');
         $retryFiveTimesUntil('app:amazon-sp-negative-keywords --prune', 'amazon-sp-negative-keywords', '18:20');
+        $schedule->command('amazon-ads:bgt-counts')
+            ->everyThirtyMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('amazon-ads-bgt-counts')
+            ->withoutOverlapping(20)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('app:amazon-ads-target-counts')
             ->dailyAt('18:22')
             ->timezone('Asia/Kolkata')

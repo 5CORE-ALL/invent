@@ -11,6 +11,8 @@ use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsPauseRuleApplicator;
+use App\Support\AmazonAdsBgtCountRunner;
+use App\Support\AmazonAdsBgtCountStore;
 use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
 use App\Support\AmazonAdsBgtInvRule;
@@ -3782,6 +3784,11 @@ class AmazonAdsController extends Controller
         // (otherwise the grid would filter to only negatives whose created_at matches that day).
         $defaultReportRangeDates['sp_negatives'] = null;
 
+        try {
+            AmazonAdsBgtCountRunner::startInBackground();
+        } catch (\Throwable) {
+        }
+
         return view('amazon_ads.all', [
             'rawSources' => $rawSources,
             'defaultReportRangeDates' => $defaultReportRangeDates,
@@ -3793,6 +3800,7 @@ class AmazonAdsController extends Controller
             'amazonAdsBgtDilRule' => AmazonAdsBgtDilRule::resolvedRule(),
             'amazonAdsBgtInvRule' => AmazonAdsBgtInvRule::resolvedRule(),
             'amazonAdsBgtSpendRule' => AmazonAdsBgtSpendRule::resolvedRule(),
+            'amazonAdsBgtCounts' => AmazonAdsBgtCountStore::read(),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
             'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
         ]);
@@ -3845,6 +3853,68 @@ class AmazonAdsController extends Controller
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
           ->header('Expires', '0');
+    }
+
+    /**
+     * Persist the last BGT chart counts so the modal can paint them without a live recount.
+     */
+    public function saveBgtCounts(Request $request): JsonResponse
+    {
+        $counts = $request->input('counts');
+        if (! is_array($counts)) {
+            return response()->json([
+                'message' => 'Counts are required.',
+                'status' => 422,
+            ], 422);
+        }
+
+        try {
+            AmazonAdsBgtCountStore::write($counts);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Could not save BGT counts.',
+                'status' => 500,
+            ], 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'counts' => AmazonAdsBgtCountStore::read(),
+            'status' => 200,
+        ]);
+    }
+
+    /**
+     * Saved BGT chart counts. The page paints these while a background recount runs.
+     */
+    public function getBgtCounts(): JsonResponse
+    {
+        return response()->json([
+            'ok' => true,
+            'counts' => AmazonAdsBgtCountStore::read(),
+            'updated_at' => AmazonAdsBgtCountStore::updatedAt(),
+            'running' => AmazonAdsBgtCountRunner::isRunning(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    /**
+     * Recalculate BGT chart counts in the background.
+     */
+    public function refreshBgtCounts(): JsonResponse
+    {
+        try {
+            AmazonAdsBgtCountRunner::startInBackground();
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'Could not start the count.',
+                'status' => 500,
+            ], 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'running' => true,
+        ]);
     }
 
     /**
@@ -5167,7 +5237,7 @@ class AmazonAdsController extends Controller
     public function rawData(Request $request, string $source)
     {
         if ($request->boolean('bgt_universe')) {
-            @set_time_limit(180);
+            @set_time_limit(app()->runningInConsole() ? 0 : 180);
         }
 
         if ($source === 'all_reports') {
@@ -5270,8 +5340,12 @@ class AmazonAdsController extends Controller
             self::applyLiveSyncStatusFilters($query, $table, $request);
         }
 
-        $recordsFiltered = (int) $query->clone()->count();
-        $recordsTotal = $recordsFiltered;
+        $recordsFiltered = 0;
+        $recordsTotal = 0;
+        if (! $forBgtUniverse) {
+            $recordsFiltered = (int) $query->clone()->count();
+            $recordsTotal = $recordsFiltered;
+        }
 
         $queryForAggregates = $query->clone();
         // Calendar grid includes that day's rows plus L30 rows Amazon omitted (no impressions).
@@ -5281,7 +5355,7 @@ class AmazonAdsController extends Controller
         }
 
         $distinctCampaignCount = null;
-        if (in_array('campaign_id', $dbColumns, true)) {
+        if (! $forBgtUniverse && in_array('campaign_id', $dbColumns, true)) {
             $distinctCampaignCount = (int) $query->clone()
                 ->reorder()
                 ->selectRaw('COUNT(DISTINCT `'.$table.'`.campaign_id) AS c')
@@ -5358,9 +5432,16 @@ class AmazonAdsController extends Controller
         // Correlated ORDER BY runs a lookup per campaign before the page can return.
         // On a normal day the filtered set fits in one window, so rank it in PHP instead.
         // Chart counts do not need that order.
-        if ($forBgtUniverse && in_array('id', $dbColumns, true)) {
-            $query->orderBy('id', 'desc');
-            $rows = $query->limit(20000)->get();
+        if ($forBgtUniverse && in_array('id', $dbColumns, true) && in_array('campaign_id', $dbColumns, true)) {
+            $latestIds = $query->clone()
+                ->reorder()
+                ->select(DB::raw('MAX(`'.$table.'`.`id`) as pick_id'))
+                ->groupBy($table.'.campaign_id')
+                ->limit(20000)
+                ->pluck('pick_id');
+            $rows = $latestIds->isEmpty()
+                ? collect()
+                : DB::table($table)->whereIn('id', $latestIds->all())->get();
         } elseif ($usePhpSort && $recordsFiltered <= $sortCap && in_array('id', $dbColumns, true)) {
             $query->orderBy('id', 'desc');
         } else {
@@ -5368,7 +5449,20 @@ class AmazonAdsController extends Controller
         }
 
         if ($forBgtUniverse && isset($rows)) {
-            // Chart counts already have the filtered campaigns. Skip the display sort fetch.
+            $seenCampaign = [];
+            $deduped = [];
+            foreach ($rows as $row) {
+                $raw = (array) $row;
+                $cid = trim((string) ($raw['campaign_id'] ?? ''));
+                if ($cid !== '' && isset($seenCampaign[$cid])) {
+                    continue;
+                }
+                if ($cid !== '') {
+                    $seenCampaign[$cid] = true;
+                }
+                $deduped[] = $row;
+            }
+            $rows = $deduped;
         } elseif ($usePhpSort) {
             $fetchLen = (int) min($sortCap, max($recordsFiltered, $start + $length));
             $window = $query->limit(max(1, $fetchLen))->get();
