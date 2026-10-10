@@ -612,6 +612,7 @@
 
                     totalOrders++;
                     const quantity = parseInt(row.quantity) || 0;
+                    const lineSales = parseFloat(row.sale_amount) || 0;
                     const basePrice = parseFloat(row.price) || 0;
 
                     // Skip if quantity is 0
@@ -619,13 +620,12 @@
                         return;
                     }
 
-                    // Total revenue = basePrice * quantity
+                    // Sales AMT is already the line total (eBay lineItemCost). Do not multiply by Qty again.
                     totalQuantity += quantity;
-                    totalRevenue += basePrice * quantity;
+                    totalRevenue += lineSales;
 
-                    // Calculate weighted price
                     if (quantity > 0 && basePrice > 0) {
-                        totalWeightedPrice += basePrice * quantity;
+                        totalWeightedPrice += lineSales;
                         totalQuantityForPrice += quantity;
                     }
 
@@ -637,9 +637,7 @@
                     totalCogs += cogs;
                     totalCogsShip += cogsShip;
 
-                    // L30 Sales = Quantity * price
-                    const l30Sales = quantity * basePrice;
-                    totalL30Sales += l30Sales;
+                    totalL30Sales += lineSales;
                 });
 
                 // Calculate average price (weighted by quantity)
