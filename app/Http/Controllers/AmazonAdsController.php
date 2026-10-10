@@ -24,6 +24,7 @@ use App\Support\AmazonAdsBgtViewsRule;
 use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsLbidDaily;
+use App\Support\AmazonAdsLRangeMetrics;
 use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbAdEditor;
 use App\Support\AmazonAdsSbidRule;
@@ -1677,10 +1678,12 @@ class AmazonAdsController extends Controller
     /**
      * For each campaign (+ ad_type): L7/L1 from summary rows (report_date_range L7 / L1); L2 from the daily row
      * whose ISO date is the calendar day before the table's latest daily report_date_range (aligned with L1 window in bid jobs).
+     * Spend prefers `cost` then `spend`. L1 sales prefers `sales1d`; L7 sales prefers `sales7d`.
+     * A later positive L1/L7 row replaces a newer zero (stale backfill). Latest daily fills missing L1.
      *
      * @param  array<int, string>  $dbColumns
      * @param  iterable<int, object>  $pageRows
-     * @return array<string, array{L7: float|null, L2: float|null, L1: float|null}>
+     * @return array<string, array{L7: float|null, L2: float|null, L1: float|null, L7sales: float|null, L1sales: float|null}>
      */
     private static function fetchL7L2L1SpendMap(string $table, array $dbColumns, iterable $pageRows): array
     {
@@ -1702,15 +1705,8 @@ class AmazonAdsController extends Controller
         }
 
         $hasAdType = in_array('ad_type', $dbColumns, true);
-        $salesCol = self::l30SummarySalesDbColumn($dbColumns);
-        $select = ['id', 'campaign_id', 'report_date_range', $spendCol];
-        if ($salesCol !== null) {
-            $select[] = $salesCol;
-        }
-        if ($hasAdType) {
-            $select[] = 'ad_type';
-        }
-
+        $select = self::lRangeMetricSelectColumns($dbColumns, $hasAdType);
+        $emptySlice = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
         $map = [];
 
         $summaryRows = DB::table($table)
@@ -1733,26 +1729,13 @@ class AmazonAdsController extends Controller
             $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
             $key = $cid."\0".$ad;
             if (! isset($map[$key])) {
-                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                $map[$key] = $emptySlice;
             }
-            if ($map[$key][$tag] !== null) {
-                continue;
-            }
-            $raw = $frArr[$spendCol] ?? null;
-            if ($raw === null || $raw === '') {
-                $map[$key][$tag] = null;
-            } else {
-                $n = (float) $raw;
-                $map[$key][$tag] = is_finite($n) ? round($n, 2) : null;
-            }
-            $salesKey = $tag === 'L7' ? 'L7sales' : ($tag === 'L1' ? 'L1sales' : '');
-            if ($salesKey !== '' && $salesCol !== null && $map[$key][$salesKey] === null) {
-                $rawS = $frArr[$salesCol] ?? null;
-                if ($rawS !== null && $rawS !== '') {
-                    $sn = (float) $rawS;
-                    $map[$key][$salesKey] = is_finite($sn) ? round($sn, 2) : null;
-                }
-            }
+            $spend = AmazonAdsLRangeMetrics::spendFromRow($frArr, $dbColumns);
+            $map[$key][$tag] = AmazonAdsLRangeMetrics::preferAmount($map[$key][$tag], $spend);
+            $salesKey = $tag === 'L7' ? 'L7sales' : 'L1sales';
+            $sales = AmazonAdsLRangeMetrics::salesFromRow($frArr, $dbColumns, $tag);
+            $map[$key][$salesKey] = AmazonAdsLRangeMetrics::preferAmount($map[$key][$salesKey], $sales);
         }
 
         $l2Day = self::l2SpendDailyReportYmd($table);
@@ -1772,21 +1755,140 @@ class AmazonAdsController extends Controller
             $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
             $key = $cid."\0".$ad;
             if (! isset($map[$key])) {
-                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                $map[$key] = $emptySlice;
             }
-            if ($map[$key]['L2'] !== null) {
-                continue;
-            }
-            $raw = $frArr[$spendCol] ?? null;
-            if ($raw === null || $raw === '') {
-                $map[$key]['L2'] = null;
-            } else {
-                $n = (float) $raw;
-                $map[$key]['L2'] = is_finite($n) ? round($n, 2) : null;
-            }
+            $spend = AmazonAdsLRangeMetrics::spendFromRow($frArr, $dbColumns);
+            $map[$key]['L2'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L2'], $spend);
         }
 
+        self::overlayLatestDailyOntoL1Map($table, $dbColumns, $cidList, $hasAdType, $select, $map);
+        self::fillL7SalesFromDailySum($table, $dbColumns, $cidList, $hasAdType, $map);
+
         return $map;
+    }
+
+    /**
+     * @param  array<int, string>  $dbColumns
+     * @return list<string>
+     */
+    private static function lRangeMetricSelectColumns(array $dbColumns, bool $hasAdType): array
+    {
+        $select = ['id', 'campaign_id', 'report_date_range'];
+        foreach (['cost', 'spend', 'sales1d', 'sales7d', 'sales14d', 'sales30d', 'sales'] as $col) {
+            if (in_array($col, $dbColumns, true)) {
+                $select[] = $col;
+            }
+        }
+        if ($hasAdType) {
+            $select[] = 'ad_type';
+        }
+
+        return array_values(array_unique($select));
+    }
+
+    /**
+     * @param  array<int, string>  $dbColumns
+     * @param  list<string>  $cidList
+     * @param  list<string>  $select
+     * @param  array<string, array{L7: float|null, L2: float|null, L1: float|null, L7sales: float|null, L1sales: float|null}>  $map
+     */
+    private static function overlayLatestDailyOntoL1Map(
+        string $table,
+        array $dbColumns,
+        array $cidList,
+        bool $hasAdType,
+        array $select,
+        array &$map
+    ): void {
+        $latest = self::latestDailyReportYmdInTable($table);
+        if ($latest === null || $latest === '' || $cidList === []) {
+            return;
+        }
+        $daily = DB::table($table)
+            ->select($select)
+            ->whereIn('campaign_id', $cidList)
+            ->where('report_date_range', $latest)
+            ->orderBy('id', 'desc')
+            ->get();
+        foreach ($daily as $fr) {
+            $frArr = (array) $fr;
+            $cid = isset($frArr['campaign_id']) ? trim((string) $frArr['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
+            $key = $cid."\0".$ad;
+            if (! isset($map[$key])) {
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+            }
+            $spend = AmazonAdsLRangeMetrics::spendFromRow($frArr, $dbColumns);
+            $map[$key]['L1'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L1'], $spend);
+            $sales = AmazonAdsLRangeMetrics::salesFromRow($frArr, $dbColumns, 'daily');
+            $map[$key]['L1sales'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L1sales'], $sales);
+        }
+    }
+
+    /**
+     * When the L7 summary left ads sales at 0/null, sum daily day-sales over the last 7 calendar days.
+     *
+     * @param  array<int, string>  $dbColumns
+     * @param  list<string>  $cidList
+     * @param  array<string, array{L7: float|null, L2: float|null, L1: float|null, L7sales: float|null, L1sales: float|null}>  $map
+     */
+    private static function fillL7SalesFromDailySum(
+        string $table,
+        array $dbColumns,
+        array $cidList,
+        bool $hasAdType,
+        array &$map
+    ): void {
+        $salesCol = null;
+        foreach (['sales1d', 'sales', 'sales30d', 'sales7d'] as $c) {
+            if (in_array($c, $dbColumns, true)) {
+                $salesCol = $c;
+                break;
+            }
+        }
+        if ($salesCol === null || $cidList === []) {
+            return;
+        }
+        $anchor = self::latestDailyReportYmdInTable($table);
+        if ($anchor === null || $anchor === '') {
+            return;
+        }
+        try {
+            $from = Carbon::parse($anchor, config('app.timezone'))->subDays(6)->format('Y-m-d');
+        } catch (\Throwable) {
+            return;
+        }
+        $q = DB::table($table)
+            ->whereIn('campaign_id', $cidList)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereBetween('report_date_range', [$from, $anchor]);
+        if ($hasAdType) {
+            $q->selectRaw('campaign_id, ad_type, COALESCE(SUM(`'.$salesCol.'`), 0) AS s')
+                ->groupBy('campaign_id', 'ad_type');
+        } else {
+            $q->selectRaw('campaign_id, COALESCE(SUM(`'.$salesCol.'`), 0) AS s')
+                ->groupBy('campaign_id');
+        }
+        foreach ($q->get() as $row) {
+            $r = (array) $row;
+            $cid = isset($r['campaign_id']) ? trim((string) $r['campaign_id']) : '';
+            if ($cid === '') {
+                continue;
+            }
+            $ad = $hasAdType ? trim((string) ($r['ad_type'] ?? '')) : '';
+            $key = $cid."\0".$ad;
+            $sum = is_numeric($r['s'] ?? null) ? round((float) $r['s'], 2) : null;
+            if ($sum === null || ! is_finite($sum) || $sum <= 0) {
+                continue;
+            }
+            if (! isset($map[$key])) {
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+            }
+            $map[$key]['L7sales'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L7sales'], $sum);
+        }
     }
 
     /**
@@ -4547,7 +4649,7 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Daily L2–L7 ads spend and ads sales for the L1 Spend / L1 Sales icon.
+     * Daily L1–L7 ads spend and ads sales for the L1 Spend / L1 Sales icon.
      * L1 is the newest daily report day; L2 is the day before that (same as the L2SP column).
      */
     public function lRangeHistory(Request $request): JsonResponse
@@ -4561,7 +4663,6 @@ class AmazonAdsController extends Controller
             return response()->json(['ok' => false, 'message' => 'No daily report table for this row.', 'points' => []], 404);
         }
         $dbColumns = Schema::getColumnListing($table);
-        $salesCol = self::l30SummarySalesDbColumn($dbColumns);
         $latest = self::latestDailyReportYmdInTable($table);
         if ($latest === null || $latest === '') {
             $latest = Carbon::now(config('app.timezone'))->subDay()->format('Y-m-d');
@@ -4569,47 +4670,43 @@ class AmazonAdsController extends Controller
         $labels = [];
         try {
             $anchor = Carbon::parse($latest, config('app.timezone'));
+            $labels['L1'] = $anchor->format('Y-m-d');
             for ($n = 2; $n <= 7; $n++) {
                 $labels['L'.$n] = $anchor->copy()->subDays($n - 1)->format('Y-m-d');
             }
         } catch (\Throwable) {
-            return response()->json(['ok' => false, 'message' => 'Could not resolve L2–L7 dates.', 'points' => []], 422);
+            return response()->json(['ok' => false, 'message' => 'Could not resolve L1–L7 dates.', 'points' => []], 422);
         }
         $dates = array_values(array_unique(array_values($labels)));
-        $select = ['id', 'report_date_range'];
-        if (in_array('cost', $dbColumns, true)) {
-            $select[] = 'cost';
-        }
-        if (in_array('spend', $dbColumns, true)) {
-            $select[] = 'spend';
-        }
-        if ($salesCol !== null) {
-            $select[] = $salesCol;
-        }
-        $q = DB::table($table)
-            ->select($select)
-            ->where('campaign_id', $cid)
-            ->whereIn('report_date_range', $dates)
-            ->orderByDesc('id');
+        $select = self::lRangeMetricSelectColumns($dbColumns, false);
         $adType = trim((string) $request->query('ad_type', ''));
-        if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
-            $q->where('ad_type', $adType);
+        $loadDaily = function (?string $adFilter) use ($table, $select, $cid, $dates, $dbColumns) {
+            $q = DB::table($table)
+                ->select($select)
+                ->where('campaign_id', $cid)
+                ->whereIn('report_date_range', $dates)
+                ->orderByDesc('id');
+            if ($adFilter !== null && $adFilter !== '' && in_array('ad_type', $dbColumns, true)) {
+                $q->where('ad_type', $adFilter);
+            }
+
+            return $q->get();
+        };
+        $rows = $loadDaily($adType);
+        if ($rows->isEmpty() && $adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $rows = $loadDaily(null);
         }
         $byDate = [];
-        foreach ($q->get() as $row) {
+        foreach ($rows as $row) {
             $r = (array) $row;
             $day = trim((string) ($r['report_date_range'] ?? ''));
             if ($day === '' || isset($byDate[$day])) {
                 continue;
             }
-            $spend = self::l30DisplaySpendFromRowArray($r, $dbColumns);
-            $sales = null;
-            if ($salesCol !== null && isset($r[$salesCol]) && $r[$salesCol] !== '' && is_numeric($r[$salesCol])) {
-                $sn = (float) $r[$salesCol];
-                $sales = is_finite($sn) ? round($sn, 2) : null;
-            }
+            $spend = AmazonAdsLRangeMetrics::spendFromRow($r, $dbColumns);
+            $sales = AmazonAdsLRangeMetrics::salesFromRow($r, $dbColumns, 'daily');
             $byDate[$day] = [
-                'spend' => $spend !== null ? round((float) $spend, 2) : null,
+                'spend' => $spend,
                 'sales' => $sales,
             ];
         }

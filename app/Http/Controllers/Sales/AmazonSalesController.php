@@ -7,6 +7,7 @@ use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
+use App\Services\ShippingSlabRateService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -18,11 +19,72 @@ class AmazonSalesController extends Controller
     public const DAILY_SALES_WINDOW_DAYS = 30;
 
     /**
+     * Item WT ACT (lb) from Dim & Wt Master. Uses wt_act, else wt_act_kg × 2.2046226218.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private static function actWeightLb(array $values): float
+    {
+        $lb = $values['wt_act'] ?? null;
+        if (is_numeric($lb) && (float) $lb > 0) {
+            return round((float) $lb, 2);
+        }
+
+        $kg = $values['wt_act_kg'] ?? null;
+        if (is_numeric($kg) && (float) $kg > 0) {
+            return round((float) $kg * 2.2046226218, 2);
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @return array{0: ?ShippingSlabRateService, 1: array<string, array{rate: ?float}>}
+     */
+    private static function shipSlabLookup(): array
+    {
+        try {
+            $slabs = app(ShippingSlabRateService::class);
+
+            return [$slabs, $slabs->getAllSlabCarrierRates('ship')];
+        } catch (\Throwable $e) {
+            return [null, []];
+        }
+    }
+
+    /**
+     * Shipping Master ship slab for the order weight. Missing weight or slab is 0.
+     *
+     * @param  array<string, array{rate: ?float}>  $shipSlabRates
+     */
+    private static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder): float
+    {
+        if ($slabs === null || $weightOrder <= 0 || $shipSlabRates === []) {
+            return 0.0;
+        }
+
+        $declared = $slabs->roundWeightLbUpToSlab($weightOrder);
+        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightOrder);
+        if ($key === null || ! isset($shipSlabRates[$key])) {
+            return 0.0;
+        }
+
+        $rate = $shipSlabRates[$key]['rate'] ?? null;
+        if ($rate === null || ! is_numeric($rate)) {
+            return 0.0;
+        }
+
+        return round((float) $rate, 2);
+    }
+
+    /**
      * Per-line PFT / COGS — same math /amazon/daily-sales getData uses on each order row.
+     * COGS = LP × Qty. COGS Ship is the Shipping Master ship slab for the order weight,
+     * subtracted once (not the stored ship, and not split by quantity).
      *
      * @return array{unit_price: float, t_weight: float, ship_cost: float, cogs: float, pft_each: float, pft_each_pct: float, pft: float, roi: float, sale_amount: float}
      */
-    public static function lineFinancials(float $qty, float $lineRevenue, float $lp, float $ship, float $weightAct): array
+    public static function lineFinancials(float $qty, float $lineRevenue, float $lp, float $cogsShip, float $weightAct): array
     {
         if ($qty <= 0) {
             return [
@@ -40,14 +102,12 @@ class AmazonSalesController extends Controller
 
         $unitPrice = $lineRevenue / $qty;
         $tWeight = $weightAct * $qty;
-        $shipCost = ($qty == 1.0 || $tWeight >= 20)
-            ? $ship
-            : ($ship / max($qty, 1.0));
+        $shipCost = $cogsShip > 0 ? $cogsShip : 0.0;
         $cogs = $lp * $qty;
-        $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
+        $pft = ($lineRevenue * 0.80) - $cogs - $shipCost;
+        $pftEach = $pft / $qty;
         $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0.0;
-        $pft = $pftEach * $qty;
-        $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0.0;
+        $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0.0;
 
         return [
             'unit_price' => $unitPrice,
@@ -112,6 +172,7 @@ class AmazonSalesController extends Controller
             $productMasters = $skus !== []
                 ? ProductMaster::whereIn('sku', $skus)->select(['sku', 'Values'])->get()->keyBy('sku')
                 : collect();
+            [$slabService, $shipSlabRates] = self::shipSlabLookup();
 
             $qty = 0;
             $lineSales = 0.0;
@@ -130,22 +191,21 @@ class AmazonSalesController extends Controller
 
                 $pm = $productMasters[$row->sku] ?? $productMasters[$sku] ?? null;
                 $lp = 0.0;
-                $ship = 0.0;
                 $weightAct = 0.0;
                 if ($pm) {
                     $values = is_array($pm->Values)
                         ? $pm->Values
                         : json_decode((string) $pm->Values, true);
+                    $values = is_array($values) ? $values : [];
                     $lp = floatval($values['lp'] ?? 0);
-                    $ship = floatval($values['ship'] ?? 0);
-                    $weightAct = floatval($values['wt_act'] ?? 0);
+                    $weightAct = self::actWeightLb($values);
                 }
 
                 $fin = self::lineFinancials(
                     $lineQty,
                     (float) ($row->line_revenue ?? 0),
                     $lp,
-                    $ship,
+                    self::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $lineQty),
                     $weightAct
                 );
 
@@ -284,6 +344,7 @@ class AmazonSalesController extends Controller
             ->select(['sku', 'Values'])
             ->get()
             ->keyBy('sku');
+        [$slabService, $shipSlabRates] = self::shipSlabLookup();
 
         // ============================================================
         // PROCESS DATA
@@ -303,16 +364,23 @@ class AmazonSalesController extends Controller
                 $values = is_array($pm->Values)
                     ? $pm->Values
                     : json_decode($pm->Values, true);
+                $values = is_array($values) ? $values : [];
     
                 $lp = floatval($values['lp'] ?? 0);
                 $ship = floatval($values['ship'] ?? 0);
-                $weightAct = floatval($values['wt_act'] ?? 0);
+                $weightAct = self::actWeightLb($values);
             }
     
             $qty = floatval($item->quantity);
     
             $totalPrice = floatval($item->line_revenue ?? ($qty * floatval($item->price)));
-            $fin = self::lineFinancials($qty, $totalPrice, $lp, $ship, $weightAct);
+            $fin = self::lineFinancials(
+                $qty,
+                $totalPrice,
+                $lp,
+                self::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $qty),
+                $weightAct
+            );
     
             $data[] = [
                 'order_id' => $item->order_id,
