@@ -1706,7 +1706,7 @@ class AmazonAdsController extends Controller
 
         $hasAdType = in_array('ad_type', $dbColumns, true);
         $select = self::lRangeMetricSelectColumns($dbColumns, $hasAdType);
-        $emptySlice = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+        $emptySlice = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
         $map = [];
 
         $summaryRows = DB::table($table)
@@ -1759,6 +1759,8 @@ class AmazonAdsController extends Controller
             }
             $spend = AmazonAdsLRangeMetrics::spendFromRow($frArr, $dbColumns);
             $map[$key]['L2'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L2'], $spend);
+            $l2Sales = AmazonAdsLRangeMetrics::salesFromRow($frArr, $dbColumns, 'daily');
+            $map[$key]['L2sales'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L2sales'] ?? null, $l2Sales);
         }
 
         self::overlayLatestDailyOntoL1Map($table, $dbColumns, $cidList, $hasAdType, $select, $map);
@@ -1819,7 +1821,7 @@ class AmazonAdsController extends Controller
             $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
             $key = $cid."\0".$ad;
             if (! isset($map[$key])) {
-                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
             }
             $spend = AmazonAdsLRangeMetrics::spendFromRow($frArr, $dbColumns);
             $map[$key]['L1'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L1'], $spend);
@@ -1885,7 +1887,7 @@ class AmazonAdsController extends Controller
                 continue;
             }
             if (! isset($map[$key])) {
-                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
             }
             $map[$key]['L7sales'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L7sales'], $sum);
         }
@@ -6241,7 +6243,7 @@ class AmazonAdsController extends Controller
             if (($hasLSpendCols || $needProjYCols) && $cid !== '') {
                 $adKey = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
                 $lk = $cid."\0".trim((string) $adKey);
-                $slice = $lSpendMap[$lk] ?? ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                $slice = $lSpendMap[$lk] ?? ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
                 if ($hasLSpendCols) {
                     $arr['L7spend'] = $slice['L7'];
                     $arr['L2spend'] = $slice['L2'];
@@ -6254,9 +6256,13 @@ class AmazonAdsController extends Controller
                     $l1Sales = $slice['L1sales'] ?? null;
                     if (in_array('ySpend', $columns, true)) {
                         $arr['ySpend'] = $l1;
+                        $arr['ySpend_prev'] = $slice['L2'] ?? null;
+                        $arr['ySpend_trend'] = self::moneyHistoryTrend($l1, is_numeric($slice['L2'] ?? null) ? (float) $slice['L2'] : null);
                     }
                     if (in_array('ySales', $columns, true)) {
                         $arr['ySales'] = $l1Sales;
+                        $arr['ySales_prev'] = $slice['L2sales'] ?? null;
+                        $arr['ySales_trend'] = self::moneyHistoryTrend($l1Sales, is_numeric($slice['L2sales'] ?? null) ? (float) $slice['L2sales'] : null);
                     }
                     if (in_array('projectedSpend', $columns, true)) {
                         $arr['projectedSpend'] = is_numeric($l7) ? self::projectMonthFromLast7((float) $l7) : null;
@@ -6767,7 +6773,7 @@ class AmazonAdsController extends Controller
                 $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
                 $slice = ($cid !== '' && isset($map[$cid."\0".$ad]))
                     ? $map[$cid."\0".$ad]
-                    : ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                    : ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
                 if (isset($spendCols[$column])) {
                     $keys[] = $slice[$spendCols[$column]] ?? null;
                 } elseif (isset($projYCols[$column])) {

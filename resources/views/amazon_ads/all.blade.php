@@ -2376,10 +2376,21 @@
                 var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
                 var name = row && row.campaignName != null ? String(row.campaignName) : '';
                 var ad = row && row.ad_type != null ? String(row.ad_type) : '';
-                var label = metric === 'sales' ? 'L1–L7 ads sales' : 'L1–L7 ads spend';
-                var btn = '<button type="button" class="amz-lrange-btn" title="' + amzEsc(label) + '" aria-label="' + amzEsc(label) + '"'
+                var isSales = metric === 'sales';
+                var trend = isSales ? (row.ySales_trend || 'na') : (row.ySpend_trend || 'na');
+                var prev = isSales ? row.ySales_prev : row.ySpend_prev;
+                var current = parseFloat(cell.getValue());
+                var cls = (trend === 'up' || trend === 'same') ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
+                var prevTxt = (prev === null || prev === undefined || prev === '') ? '—' : Number(prev).toFixed(2);
+                var nowTxt = isFinite(current) ? current.toFixed(2) : '—';
+                var tip = isSales ? 'Yesterday ads sales history' : 'Yesterday ads spend history';
+                if (trend === 'up') tip += ' · Up vs prior day $' + prevTxt + ' → $' + nowTxt;
+                else if (trend === 'down') tip += ' · Down vs prior day $' + prevTxt + ' → $' + nowTxt;
+                else if (trend === 'flat') tip += ' · Same as prior day $' + prevTxt;
+                else tip += ' · Click for L1–L7';
+                var btn = '<button type="button" class="amz-cpc-avg-history-dot amz-hist-as-icon amz-lrange-btn ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
                     + ' data-lrange="' + amzEsc(metric) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
-                    + '<i class="fas fa-chart-bar"></i></button>';
+                    + '<i class="fas fa-history"></i></button>';
                 return '<span class="amz-l1-cell">' + btn + fmtSbid(cell) + '</span>';
             }
             function fmtCvr(cell) {
@@ -3029,7 +3040,7 @@
                 if (c === 'cost') { col.title = 'SPL30'; col.headerTooltip = 'L30 spend. Above 29.99 is red.'; col.formatter = fmtSpl30; return; }
                 if (c === 'L7spend') { col.title = 'L7SP'; col.formatter = fmtDashNumberRaw; return; }
                 if (c === 'L2spend') { col.title = 'L2SP'; col.formatter = fmtDashNumberRaw; return; }
-                if (c === 'L1spend') { col.title = 'L1SP'; col.formatter = function (cell) { return fmtL1RangeCell(cell, 'spend'); }; return; }
+                if (c === 'L1spend') { col.title = 'L1SP'; col.formatter = fmtSbid; return; }
                 if (c === 'L1cost') { col.title = 'L1Cost'; col.formatter = fmtDashRounded; return; }
                 if (c === 'L1clicks') { col.title = 'L1Clk'; col.formatter = fmtDashInt; return; }
                 if (c === 'U7%' || c === 'U2%' || c === 'U1%') { col.formatter = fmtUtilPercent; return; }
@@ -3062,16 +3073,16 @@
                     return;
                 }
                 if (c === 'ySpend') {
-                    col.title = 'L1 Spend';
-                    col.headerTooltip = 'Yesterday ads spend (Amazon L1). Chart icon shows daily L1–L7 spend.';
+                    col.title = 'Y Spend';
+                    col.headerTooltip = 'Yesterday ads spend (Amazon L1). History dot is vs the prior day; click for L1–L7.';
                     col.formatter = function (cell) { return fmtL1RangeCell(cell, 'spend'); };
                     col.minWidth = 92;
                     col.width = 102;
                     return;
                 }
                 if (c === 'ySales') {
-                    col.title = 'L1 Sales';
-                    col.headerTooltip = 'Yesterday ads sales (Amazon L1). Chart icon shows daily L1–L7 sales.';
+                    col.title = 'Y Sales';
+                    col.headerTooltip = 'Yesterday ads sales (Amazon L1). History dot is vs the prior day; click for L1–L7.';
                     col.formatter = function (cell) { return fmtL1RangeCell(cell, 'sales'); };
                     col.minWidth = 92;
                     col.width = 102;
