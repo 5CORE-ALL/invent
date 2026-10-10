@@ -16,6 +16,29 @@ class AmazonAdsCampaignSkuSyncTest extends TestCase
         );
     }
 
+    public function test_sku_key_strips_compact_parent_head(): void
+    {
+        $this->assertSame(
+            'PARENTMUSFLDHDACC',
+            AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName('PARENTMUSFLDHDACCHEAD')
+        );
+    }
+
+    public function test_parent_family_from_spaced_and_compact_names(): void
+    {
+        $this->assertSame(
+            'MUS FLD HD ACC',
+            AmazonAdsCampaignSkuMetrics::parentFamilyFromCampaignName('PARENT MUS FLD HD ACC HEAD')
+        );
+        $this->assertSame(
+            'MUSFLDHDACC',
+            AmazonAdsCampaignSkuMetrics::parentFamilyFromCampaignName('PARENTMUSFLDHDACCHEAD')
+        );
+        $this->assertTrue(AmazonAdsCampaignSkuMetrics::campaignKeyIsParent('PARENT MUS FLD HD ACC'));
+        $this->assertTrue(AmazonAdsCampaignSkuMetrics::campaignKeyIsParent('PARENTMUSFLDHDACC'));
+        $this->assertFalse(AmazonAdsCampaignSkuMetrics::campaignKeyIsParent('ABC 123'));
+    }
+
     public function test_sku_key_strips_kw_and_hl(): void
     {
         $this->assertSame('ABC 123', AmazonAdsCampaignSkuMetrics::skuKeyFromCampaignName('ABC 123 KW'));

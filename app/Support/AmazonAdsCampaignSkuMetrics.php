@@ -26,6 +26,9 @@ final class AmazonAdsCampaignSkuMetrics
     /** @var list<string> */
     private const SUFFIXES = [' HEAD', ' KW', ' PT.', ' PT', ' HL', ' AUTO', ' MANUAL'];
 
+    /** @var list<string> */
+    private const COMPACT_SUFFIXES = ['HEAD', 'MANUAL', 'AUTO', 'PT', 'KW', 'HL'];
+
     public static function skuKeyFromCampaignName(?string $campaignName): string
     {
         if ($campaignName === null) {
@@ -40,8 +43,32 @@ final class AmazonAdsCampaignSkuMetrics
                 return trim(substr($n, 0, -strlen($suf)));
             }
         }
+        if (! str_contains($n, ' ') && self::campaignKeyIsParent($n)) {
+            foreach (self::COMPACT_SUFFIXES as $suf) {
+                if (str_ends_with($n, $suf) && strlen($n) > 6 + strlen($suf)) {
+                    return substr($n, 0, -strlen($suf));
+                }
+            }
+        }
 
         return $n;
+    }
+
+    /**
+     * product_master family for a campaign name (PARENT prefix stripped).
+     */
+    public static function parentFamilyFromCampaignName(?string $campaignName): string
+    {
+        $key = self::skuKeyFromCampaignName($campaignName);
+        if ($key === '') {
+            return '';
+        }
+        if (self::campaignKeyIsParent($key)) {
+            return self::normalizeParentFamily(self::familyRestFromParentKey($key));
+        }
+        $famBy = self::parentFamilyBySkuKeys([$key]);
+
+        return $famBy[$key] ?? '';
     }
 
     /**
@@ -56,8 +83,8 @@ final class AmazonAdsCampaignSkuMetrics
         if ($key === '') {
             return [];
         }
-        if (str_starts_with($key, 'PARENT ')) {
-            $fam = trim(substr($key, 7));
+        if (self::campaignKeyIsParent($key)) {
+            $fam = self::familyRestFromParentKey($key);
 
             return $fam !== '' ? self::childSkusForParentFamily($fam) : [];
         }
@@ -78,7 +105,7 @@ final class AmazonAdsCampaignSkuMetrics
         }
 
         $candidates = [$fam];
-        if (! str_starts_with($fam, 'PARENT ')) {
+        if (! str_starts_with($fam, 'PARENT ') && ! (str_starts_with($fam, 'PARENT') && ! str_contains($fam, ' '))) {
             $candidates[] = 'PARENT '.$fam;
         }
         foreach (self::SUFFIXES as $suf) {
@@ -91,12 +118,29 @@ final class AmazonAdsCampaignSkuMetrics
             }
         }
         $candidates = array_values(array_unique($candidates));
+        $compact = [];
+        foreach ($candidates as $c) {
+            $ck = self::compactFamilyToken($c);
+            if ($ck !== '') {
+                $compact[$ck] = true;
+                $compact['PARENT'.$ck] = true;
+            }
+        }
+        $compact = array_keys($compact);
         $pmRows = ProductMaster::query()
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
-            ->where(function ($q) use ($candidates) {
+            ->whereNotNull('parent')
+            ->where('parent', '!=', '')
+            ->where(function ($q) use ($candidates, $compact) {
                 foreach ($candidates as $c) {
                     $q->orWhereRaw('UPPER(TRIM(parent)) = ?', [$c]);
+                }
+                foreach ($compact as $ck) {
+                    $q->orWhereRaw(
+                        'UPPER(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(parent), " ", ""), "-", ""), "_", ""), ".", "")) = ?',
+                        [$ck]
+                    );
                 }
             })
             ->get(['sku']);
@@ -276,8 +320,8 @@ final class AmazonAdsCampaignSkuMetrics
         $familyByKey = [];
         $childKeys = [];
         foreach ($skuKeys as $key) {
-            if (str_starts_with($key, 'PARENT ')) {
-                $fam = self::normalizeParentFamily(substr($key, 7));
+            if (self::campaignKeyIsParent($key)) {
+                $fam = self::normalizeParentFamily(self::familyRestFromParentKey($key));
                 $familyByKey[$key] = $fam;
             } else {
                 $childKeys[] = $key;
@@ -393,11 +437,49 @@ final class AmazonAdsCampaignSkuMetrics
         return $out;
     }
 
+    public static function campaignKeyIsParent(string $key): bool
+    {
+        $k = strtoupper(trim(str_replace("\xC2\xA0", ' ', $key)));
+        $k = preg_replace('/\s+/u', ' ', $k) ?? $k;
+        if (str_starts_with($k, 'PARENT ')) {
+            return trim(substr($k, 7)) !== '';
+        }
+
+        return str_starts_with($k, 'PARENT') && ! str_contains($k, ' ') && strlen($k) > 6;
+    }
+
+    public static function familyRestFromParentKey(string $key): string
+    {
+        $k = strtoupper(trim(str_replace("\xC2\xA0", ' ', $key)));
+        $k = preg_replace('/\s+/u', ' ', $k) ?? $k;
+        if (str_starts_with($k, 'PARENT ')) {
+            return trim(substr($k, 7));
+        }
+        if (str_starts_with($k, 'PARENT') && ! str_contains($k, ' ')) {
+            return substr($k, 6);
+        }
+
+        return '';
+    }
+
+    private static function compactFamilyToken(string $value): string
+    {
+        $n = self::normalizeParentFamily($value);
+        $c = strtoupper((string) preg_replace('/[^A-Z0-9]+/', '', $n));
+        if (str_starts_with($c, 'PARENT') && strlen($c) > 6) {
+            $c = substr($c, 6);
+        }
+
+        return $c;
+    }
+
     private static function normalizeParentFamily(?string $parent): string
     {
         $p = AmazonDatasheet::normalizeSkuSpaces($parent);
         if (str_starts_with($p, 'PARENT ')) {
             $p = trim(substr($p, 7));
+        } elseif (str_starts_with($p, 'PARENT') && ! str_contains($p, ' ') && strlen($p) > 6) {
+            $p = substr($p, 6);
         }
 
         return $p;
@@ -972,7 +1054,7 @@ final class AmazonAdsCampaignSkuMetrics
     {
         $n = preg_replace('/\s+/u', ' ', strtoupper(trim(str_replace("\xC2\xA0", ' ', $name)))) ?? '';
 
-        return str_starts_with($n, 'PARENT ') ? $n : '';
+        return self::campaignKeyIsParent($n) ? $n : '';
     }
 
     /**
@@ -1024,10 +1106,10 @@ final class AmazonAdsCampaignSkuMetrics
         $out = [];
         foreach ($metricsByName as $name => $m) {
             $key = self::skuKeyFromCampaignName((string) $name);
-            if (! str_starts_with($key, 'PARENT ')) {
+            if (! self::campaignKeyIsParent($key)) {
                 continue;
             }
-            $fam = self::normalizeParentFamily(substr($key, 7));
+            $fam = self::normalizeParentFamily(self::familyRestFromParentKey($key));
             if ($fam === '') {
                 continue;
             }
@@ -1142,8 +1224,8 @@ final class AmazonAdsCampaignSkuMetrics
 
         $parentFamilyKeys = [];
         foreach ($skuKeys as $key) {
-            if (str_starts_with($key, 'PARENT ')) {
-                $rest = trim(substr($key, 7));
+            if (self::campaignKeyIsParent($key)) {
+                $rest = self::familyRestFromParentKey($key);
                 if ($rest !== '') {
                     $parentFamilyKeys[$key] = $rest;
                 }

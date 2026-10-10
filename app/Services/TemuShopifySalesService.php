@@ -1939,7 +1939,9 @@ class TemuShopifySalesService
     }
 
     /**
-     * temu2_metrics / temu2_pricing base keyed by the raw order SKU (same normalize + no-space).
+     * Selling base keyed by the raw order SKU (same normalize + no-space).
+     * The /temu2-decrease upload (temu2_pricing) wins over the supplier API price
+     * on temu2_metrics. Metrics is only the fallback when the sheet has no base.
      *
      * @param  list<string>  $orderSkus
      * @return Collection<string, float>
@@ -1981,11 +1983,9 @@ class TemuShopifySalesService
                 if ($n === '' || $price <= 0) {
                     continue;
                 }
-                if ((float) ($byNorm[$n] ?? 0) <= 0) {
-                    $byNorm[$n] = $price;
-                }
+                $byNorm[$n] = $price;
                 $ns = str_replace(' ', '', $n);
-                if ($ns !== '' && (float) ($byNoSpace[$ns] ?? 0) <= 0) {
+                if ($ns !== '') {
                     $byNoSpace[$ns] = $price;
                 }
             }

@@ -1381,8 +1381,12 @@
                         <div class="d-flex gap-2 align-items-center flex-wrap">
                             <input type="text" class="form-control form-control-sm" id="amazonAdsSbAdAddInput" placeholder="SKU or ASIN" style="max-width: 220px;" autocomplete="off">
                             <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbAdAddBtn">Add to SB ad</button>
+                            <label class="small mb-0 d-flex align-items-center gap-1" style="color:#334155;">
+                                <input type="checkbox" id="amazonAdsSbShowParent" checked>
+                                Show parent SKUs
+                            </label>
                         </div>
-                        <div class="small text-muted mt-1">SB only. Adds or removes products on the Amazon creative.</div>
+                        <div class="small text-muted mt-1">SB only. Adds or removes products on the Amazon creative. Parent SKUs are the children of this campaign name.</div>
                     </div>
                     <div id="amazonAdsCampaignSkusLoading" class="small text-muted">Loading…</div>
                     <p class="small text-danger mb-0 d-none" id="amazonAdsCampaignSkusError" role="alert"></p>
@@ -4017,7 +4021,7 @@
                     + ' <span style="color:' + countColor + ';">(' + count.toLocaleString() + ')</span>'
                     + '</span>';
             }
-            var amzCampSkusCtx = { cid: '', cname: '', channel: '', source: '' };
+            var amzCampSkusCtx = { cid: '', cname: '', channel: '', source: '', parentFamily: '', parentSkus: [] };
             function amzIsSbCampaign(channel, adType, source) {
                 var ch = String(channel || '').toLowerCase();
                 if (ch === 'sb') return true;
@@ -4025,11 +4029,118 @@
                 if (t.indexOf('BRAND') !== -1 || t === 'SB') return true;
                 return String(source || '') === 'sb_ads';
             }
+            function amzShowParentSkusOn() {
+                try {
+                    var raw = localStorage.getItem('amzSbShowParentSkus');
+                    if (raw === null) return true;
+                    return raw !== '0';
+                } catch (e) { return true; }
+            }
+            function amzSetShowParentSkus(on) {
+                try { localStorage.setItem('amzSbShowParentSkus', on ? '1' : '0'); } catch (e) {}
+            }
             function amzSetSbAdTools(on) {
                 var tools = document.getElementById('amazonAdsSbAdTools');
                 var col = document.querySelector('#amazonAdsCampaignSkusTable .amz-sb-ad-col');
                 if (tools) tools.classList.toggle('d-none', !on);
                 if (col) col.classList.toggle('d-none', !on);
+                var box = document.getElementById('amazonAdsSbShowParent');
+                if (box) box.checked = amzShowParentSkusOn();
+            }
+            function amzPaintCampSkus(skus) {
+                var title = document.getElementById('amazonAdsCampaignSkusModalLabel');
+                var load = document.getElementById('amazonAdsCampaignSkusLoading');
+                var tbl = document.getElementById('amazonAdsCampaignSkusTable');
+                var body = document.getElementById('amazonAdsCampaignSkusTableBody');
+                var sbOn = amzIsSbCampaign(amzCampSkusCtx.channel, amzCampSkusCtx.adType, amzCampSkusCtx.source);
+                var parentSkus = sbOn && amzShowParentSkusOn()
+                    ? (amzCampSkusCtx.parentSkus || [])
+                    : [];
+                var q = '';
+                var addInp = document.getElementById('amazonAdsSbAdAddInput');
+                if (addInp) q = String(addInp.value || '').trim().toUpperCase();
+                var rows = [];
+                (skus || []).forEach(function (s) { rows.push(Object.assign({ on_ad: true }, s)); });
+                parentSkus.forEach(function (s) { rows.push(Object.assign({ on_ad: false, from_parent: true }, s)); });
+                if (q) {
+                    rows = rows.filter(function (s) {
+                        var sku = String(s.sku || '').toUpperCase();
+                        var asin = String(s.asin || '').toUpperCase();
+                        return sku.indexOf(q) !== -1 || asin.indexOf(q) !== -1;
+                    });
+                }
+                if (load) load.classList.add('d-none');
+                if (title) title.textContent = 'Campaign SKUs (' + rows.length + ')';
+                amzSetSbAdTools(sbOn);
+                if (!rows.length) {
+                    if (tbl) tbl.classList.add('d-none');
+                    if (body) body.innerHTML = '';
+                    if (load) {
+                        load.classList.remove('d-none');
+                        load.textContent = q
+                            ? 'No SKUs match “' + q + '”.'
+                            : 'No SKUs found for this campaign (no product ads and the campaign name did not match a parent/SKU).';
+                    }
+                    return;
+                }
+                if (!body || !tbl) return;
+                amzCampSkusLast = rows;
+                body.innerHTML = rows.map(function (s, i) {
+                    var onAd = !!s.on_ad;
+                    var state = onAd ? String(s.state || '—') : 'Parent';
+                    var color = onAd
+                        ? (state.toUpperCase() === 'ENABLED' ? '#16a34a' : (state.toUpperCase() === 'PAUSED' ? '#dc2626' : '#6b7280'))
+                        : '#2563eb';
+                    var inv = s && s.inv != null && s.inv !== '' ? parseFloat(s.inv) : NaN;
+                    var invHtml = isFinite(inv)
+                        ? '<span class="amz-sku-inv-num' + (inv < 5 ? ' is-low' : '') + '">' + Math.round(inv) + '</span>'
+                        : '<span class="text-muted">—</span>';
+                    var img = s && s.image ? String(s.image) : '';
+                    var imgHtml = img
+                        ? '<img class="amz-sku-inv-img" src="' + amzEsc(img) + '" alt="' + amzEsc(s.sku || '') + '">'
+                        : '<span class="amz-sku-inv-img d-inline-flex align-items-center justify-content-center text-muted">—</span>';
+                    var price = parseFloat(s.price);
+                    var lmp = parseFloat(s.lmp);
+                    var lmpCount = parseInt(s.lmp_count, 10) || (Array.isArray(s.competitors) ? s.competitors.length : 0);
+                    var lmpColor = (isFinite(lmp) && isFinite(price) && price > 0 && lmp < price) ? '#dc2626' : '#16a34a';
+                    var lmpHtml = (isFinite(lmp) && lmp > 0) || lmpCount > 0
+                        ? '<button type="button" class="btn btn-link btn-sm amz-sku-lmp-btn" data-sku-lmp-idx="' + i + '" style="color:' + lmpColor + ';">'
+                            + ((isFinite(lmp) && lmp > 0) ? ('$' + lmp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : 'LMP')
+                            + (lmpCount ? (' (' + lmpCount + ')') : '')
+                            + '</button>'
+                        : '<span class="text-muted">—</span>';
+                    var action = '';
+                    if (sbOn) {
+                        action = onAd
+                            ? '<td><button type="button" class="btn btn-sm btn-outline-danger amz-sb-ad-remove" data-sku="' + amzEsc(s.sku || '') + '" data-asin="' + amzEsc(s.asin || '') + '" title="Remove from SB creative">Remove</button></td>'
+                            : '<td><button type="button" class="btn btn-sm btn-outline-primary amz-sb-ad-add-row" data-sku="' + amzEsc(s.sku || '') + '" data-asin="' + amzEsc(s.asin || '') + '" title="Add this parent SKU to the SB creative">Add</button></td>';
+                    }
+                    var skuLabel = amzEsc(s.sku || '—');
+                    if (!onAd) skuLabel += ' <span class="badge bg-light text-primary border" style="font-weight:500;">Parent</span>';
+                    return '<tr>'
+                        + '<td class="amz-sku-img-cell">' + imgHtml + '</td>'
+                        + '<td class="text-center">' + invHtml + '</td>'
+                        + '<td class="fw-semibold">' + skuLabel + '</td>'
+                        + '<td>' + amzEsc(s.asin || '—') + '</td>'
+                        + '<td>' + amzMoneyHtml(s.price) + '</td>'
+                        + '<td>' + lmpHtml + '</td>'
+                        + '<td>' + amzFormatSkuReviews(s) + '</td>'
+                        + '<td><span style="color:' + color + ';font-weight:600;">' + amzEsc(state) + '</span></td>'
+                        + action
+                        + '</tr>';
+                }).join('');
+                tbl.classList.remove('d-none');
+                amzSetSbAdTools(sbOn);
+            }
+            function amzRerenderCampSkus() {
+                var cid = amzCampSkusCtx.cid;
+                var pack = cid && amzCampSkusCache[cid];
+                if (!pack) return;
+                amzCampSkusCtx.channel = pack.channel || amzCampSkusCtx.channel;
+                amzCampSkusCtx.source = pack.source || amzCampSkusCtx.source;
+                amzCampSkusCtx.parentFamily = pack.parentFamily || '';
+                amzCampSkusCtx.parentSkus = Array.isArray(pack.parentSkus) ? pack.parentSkus : [];
+                amzPaintCampSkus(Array.isArray(pack.skus) ? pack.skus : []);
             }
             function amzOpenCampaignSkus(cid, cname, adType) {
                 var title = document.getElementById('amazonAdsCampaignSkusModalLabel');
@@ -4038,72 +4149,39 @@
                 var err = document.getElementById('amazonAdsCampaignSkusError');
                 var tbl = document.getElementById('amazonAdsCampaignSkusTable');
                 var body = document.getElementById('amazonAdsCampaignSkusTableBody');
-                amzCampSkusCtx = { cid: cid, cname: cname || '', channel: '', source: '', adType: adType || '' };
+                amzCampSkusCtx = { cid: cid, cname: cname || '', channel: '', source: '', adType: adType || '', parentFamily: '', parentSkus: [] };
                 if (title) title.textContent = 'Campaign SKUs';
                 if (sub) sub.textContent = cname || cid;
                 if (err) { err.classList.add('d-none'); err.textContent = ''; }
                 if (tbl) tbl.classList.add('d-none');
                 if (body) body.innerHTML = '';
+                var addInpOpen = document.getElementById('amazonAdsSbAdAddInput');
+                if (addInpOpen) addInpOpen.value = '';
                 amzSetSbAdTools(false);
                 if (load) { load.classList.remove('d-none'); load.textContent = 'Loading…'; }
                 var modalEl = document.getElementById('amazonAdsCampaignSkusModal');
                 if (modalEl && typeof bootstrap !== 'undefined') {
                     bootstrap.Modal.getOrCreateInstance(modalEl).show();
                 }
-                function render(skus) {
-                    if (load) load.classList.add('d-none');
-                    if (title) title.textContent = 'Campaign SKUs (' + skus.length + ')';
-                    amzSetSbAdTools(amzIsSbCampaign(amzCampSkusCtx.channel, amzCampSkusCtx.adType, amzCampSkusCtx.source));
-                    if (!skus.length) {
-                        if (load) { load.classList.remove('d-none'); load.textContent = 'No SKUs found for this campaign (no product ads and the campaign name did not match a parent/SKU).'; }
-                        return;
+                function applyCache(pack) {
+                    amzCampSkusCtx.channel = pack.channel || '';
+                    amzCampSkusCtx.source = pack.source || '';
+                    amzCampSkusCtx.parentFamily = pack.parentFamily || '';
+                    amzCampSkusCtx.parentSkus = Array.isArray(pack.parentSkus) ? pack.parentSkus : [];
+                    if (sub) {
+                        var src = pack.source || '';
+                        var note = src === 'campaign_name'
+                            ? 'SKUs from campaign name (no Amazon product ads on this campaign).'
+                            : (src === 'sb_ads' ? 'SKUs from SB ads.' : (src ? 'SKUs from Amazon product ads.' : ''));
+                        if (pack.parentFamily) {
+                            note = (note ? note + ' ' : '') + 'Parent family ' + pack.parentFamily + ' (' + (pack.parentSkus || []).length + ' SKUs).';
+                        }
+                        sub.textContent = (cname || cid) + (note ? ' — ' + note : '');
                     }
-                    if (!body || !tbl) return;
-                    amzCampSkusLast = skus;
-                    body.innerHTML = skus.map(function (s, i) {
-                        var state = String(s.state || '—');
-                        var color = state.toUpperCase() === 'ENABLED' ? '#16a34a' : (state.toUpperCase() === 'PAUSED' ? '#dc2626' : '#6b7280');
-                        var inv = s && s.inv != null && s.inv !== '' ? parseFloat(s.inv) : NaN;
-                        var invHtml = isFinite(inv)
-                            ? '<span class="amz-sku-inv-num' + (inv < 5 ? ' is-low' : '') + '">' + Math.round(inv) + '</span>'
-                            : '<span class="text-muted">—</span>';
-                        var img = s && s.image ? String(s.image) : '';
-                        var imgHtml = img
-                            ? '<img class="amz-sku-inv-img" src="' + amzEsc(img) + '" alt="' + amzEsc(s.sku || '') + '">'
-                            : '<span class="amz-sku-inv-img d-inline-flex align-items-center justify-content-center text-muted">—</span>';
-                        var price = parseFloat(s.price);
-                        var lmp = parseFloat(s.lmp);
-                        var lmpCount = parseInt(s.lmp_count, 10) || (Array.isArray(s.competitors) ? s.competitors.length : 0);
-                        var lmpColor = (isFinite(lmp) && isFinite(price) && price > 0 && lmp < price) ? '#dc2626' : '#16a34a';
-                        var lmpHtml = (isFinite(lmp) && lmp > 0) || lmpCount > 0
-                            ? '<button type="button" class="btn btn-link btn-sm amz-sku-lmp-btn" data-sku-lmp-idx="' + i + '" style="color:' + lmpColor + ';">'
-                                + ((isFinite(lmp) && lmp > 0) ? ('$' + lmp.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : 'LMP')
-                                + (lmpCount ? (' (' + lmpCount + ')') : '')
-                                + '</button>'
-                            : '<span class="text-muted">—</span>';
-                        var sbOn = amzIsSbCampaign(amzCampSkusCtx.channel, amzCampSkusCtx.adType, amzCampSkusCtx.source);
-                        var remove = sbOn
-                            ? '<td><button type="button" class="btn btn-sm btn-outline-danger amz-sb-ad-remove" data-sku="' + amzEsc(s.sku || '') + '" data-asin="' + amzEsc(s.asin || '') + '" title="Remove from SB creative">Remove</button></td>'
-                            : '';
-                        return '<tr>'
-                            + '<td class="amz-sku-img-cell">' + imgHtml + '</td>'
-                            + '<td class="text-center">' + invHtml + '</td>'
-                            + '<td class="fw-semibold">' + amzEsc(s.sku || '—') + '</td>'
-                            + '<td>' + amzEsc(s.asin || '—') + '</td>'
-                            + '<td>' + amzMoneyHtml(s.price) + '</td>'
-                            + '<td>' + lmpHtml + '</td>'
-                            + '<td>' + amzFormatSkuReviews(s) + '</td>'
-                            + '<td><span style="color:' + color + ';font-weight:600;">' + amzEsc(state) + '</span></td>'
-                            + remove
-                            + '</tr>';
-                    }).join('');
-                    tbl.classList.remove('d-none');
-                    amzSetSbAdTools(amzIsSbCampaign(amzCampSkusCtx.channel, amzCampSkusCtx.adType, amzCampSkusCtx.source));
+                    amzPaintCampSkus(Array.isArray(pack.skus) ? pack.skus : []);
                 }
                 if (amzCampSkusCache[cid] && Array.isArray(amzCampSkusCache[cid].skus)) {
-                    amzCampSkusCtx.channel = amzCampSkusCache[cid].channel || '';
-                    amzCampSkusCtx.source = amzCampSkusCache[cid].source || '';
-                    render(amzCampSkusCache[cid].skus);
+                    applyCache(amzCampSkusCache[cid]);
                     return;
                 }
                 var skuQs = '?campaign_id=' + encodeURIComponent(cid);
@@ -4116,6 +4194,8 @@
                     .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
                     .then(function (out) {
                         var skus = (out.body && Array.isArray(out.body.skus)) ? out.body.skus : [];
+                        var parentSkus = (out.body && Array.isArray(out.body.parent_skus)) ? out.body.parent_skus : [];
+                        var parentFamily = out.body && out.body.parent_family ? String(out.body.parent_family) : '';
                         if (!out.ok) {
                             if (load) load.classList.add('d-none');
                             if (err) { err.textContent = (out.body && out.body.message) ? out.body.message : 'Could not load SKUs.'; err.classList.remove('d-none'); }
@@ -4124,14 +4204,25 @@
                         var src = out.body && out.body.source ? String(out.body.source) : '';
                         amzCampSkusCtx.source = src;
                         amzCampSkusCtx.channel = out.body && out.body.channel ? String(out.body.channel) : '';
-                        if (sub && src) {
+                        amzCampSkusCtx.parentFamily = parentFamily;
+                        amzCampSkusCtx.parentSkus = parentSkus;
+                        if (sub) {
                             var note = src === 'campaign_name'
                                 ? 'SKUs from campaign name (no Amazon product ads on this campaign).'
-                                : (src === 'sb_ads' ? 'SKUs from SB ads.' : 'SKUs from Amazon product ads.');
-                            sub.textContent = (cname || cid) + ' — ' + note;
+                                : (src === 'sb_ads' ? 'SKUs from SB ads.' : (src ? 'SKUs from Amazon product ads.' : ''));
+                            if (parentFamily) {
+                                note = (note ? note + ' ' : '') + 'Parent family ' + parentFamily + ' (' + parentSkus.length + ' SKUs).';
+                            }
+                            sub.textContent = (cname || cid) + (note ? ' — ' + note : '');
                         }
-                        amzCampSkusCache[cid] = { skus: skus, channel: amzCampSkusCtx.channel, source: src };
-                        render(skus);
+                        amzCampSkusCache[cid] = {
+                            skus: skus,
+                            parentSkus: parentSkus,
+                            parentFamily: parentFamily,
+                            channel: amzCampSkusCtx.channel,
+                            source: src
+                        };
+                        amzPaintCampSkus(skus);
                     })
                     .catch(function () {
                         if (load) load.classList.add('d-none');
@@ -4175,18 +4266,29 @@
             (function () {
                 var addBtn = document.getElementById('amazonAdsSbAdAddBtn');
                 var addInp = document.getElementById('amazonAdsSbAdAddInput');
+                var parentBox = document.getElementById('amazonAdsSbShowParent');
                 if (addBtn) addBtn.addEventListener('click', function () {
                     var v = addInp ? String(addInp.value || '').trim() : '';
                     if (!v) return;
                     amzSbAdChange('add', v, '');
                     if (addInp) addInp.value = '';
                 });
-                if (addInp) addInp.addEventListener('keydown', function (e) {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (addBtn) addBtn.click();
-                    }
-                });
+                if (addInp) {
+                    addInp.addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (addBtn) addBtn.click();
+                        }
+                    });
+                    addInp.addEventListener('input', function () { amzRerenderCampSkus(); });
+                }
+                if (parentBox) {
+                    parentBox.checked = amzShowParentSkusOn();
+                    parentBox.addEventListener('change', function () {
+                        amzSetShowParentSkus(!!parentBox.checked);
+                        amzRerenderCampSkus();
+                    });
+                }
             })();
             document.addEventListener('click', function (e) {
                 var lowInv = e.target.closest ? e.target.closest('.amz-low-inv-btn') : null;
@@ -4207,6 +4309,13 @@
                     e.stopPropagation();
                     e.preventDefault();
                     amzSbAdChange('remove', sbRemove.getAttribute('data-sku') || '', sbRemove.getAttribute('data-asin') || '');
+                    return;
+                }
+                var sbAddRow = e.target.closest ? e.target.closest('.amz-sb-ad-add-row') : null;
+                if (sbAddRow) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    amzSbAdChange('add', sbAddRow.getAttribute('data-sku') || '', sbAddRow.getAttribute('data-asin') || '');
                     return;
                 }
                 var lmpBtn = e.target.closest ? e.target.closest('.amz-sku-lmp-btn') : null;

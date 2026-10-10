@@ -9,6 +9,7 @@ use App\Services\Amazon\AmazonBidUtilizationService;
 use App\Services\AmazonAdsLiveBidBgtSyncService;
 use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
+use App\Models\AmazonDatasheet;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsBgtCountRunner;
@@ -4265,55 +4266,73 @@ class AmazonAdsController extends Controller
             $cid,
             trim((string) $request->query('campaign_name', ''))
         );
-        $skus = $resolved['skus'];
-        $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus(array_column($skus, 'sku'));
-        $priceLmp = AmazonAdsCampaignSkuMetrics::priceAndLmpBySkus(array_column($skus, 'sku'));
-        $shopify = Schema::hasTable('shopify_skus')
-            ? ShopifySku::mapByProductSkus(array_column($skus, 'sku'))
-            : collect();
-        foreach ($skus as $i => $skuRow) {
-            $sku = (string) ($skuRow['sku'] ?? '');
-            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
-            $hit = $reviews[$key] ?? null;
-            $pl = $priceLmp[$key] ?? null;
-            if ($pl === null && $key !== '') {
-                foreach ($priceLmp as $pk => $row) {
-                    if (strcasecmp((string) $pk, $key) === 0) {
-                        $pl = $row;
-                        break;
-                    }
-                }
+        $listed = $resolved['skus'];
+        $isSb = AmazonAdsSbAdEditor::campaignIsSb($cid);
+        $onAd = [];
+        foreach ($listed as $row) {
+            if ($isSb && ($row['source'] ?? '') === 'campaign_name') {
+                continue;
             }
-            $sh = $shopify->get($sku);
-            if ($sh === null && $sku !== '') {
-                foreach ($shopify as $pmSku => $row) {
-                    if (strcasecmp(trim((string) $pmSku), trim($sku)) === 0) {
-                        $sh = $row;
-                        break;
-                    }
-                }
-            }
-            $inv = $sh !== null && is_numeric($sh->inv ?? null) ? (int) round((float) $sh->inv) : null;
-            $image = $sh !== null ? trim((string) ($sh->image_src ?? '')) : '';
-            $skus[$i]['amz_avg_rating'] = is_array($hit) && $hit['rating'] !== null
-                ? (float) $hit['rating']
-                : null;
-            $skus[$i]['amz_review_count'] = is_array($hit) ? (int) ($hit['review_count'] ?? 0) : null;
-            $skus[$i]['inv'] = $inv;
-            $skus[$i]['image'] = $image !== '' ? $image : null;
-            $skus[$i]['price'] = is_array($pl) ? ($pl['price'] ?? null) : null;
-            $skus[$i]['lmp'] = is_array($pl) ? ($pl['lmp'] ?? null) : null;
-            $skus[$i]['lmp_count'] = is_array($pl) ? (int) ($pl['lmp_count'] ?? 0) : 0;
-            $skus[$i]['competitors'] = is_array($pl) ? ($pl['competitors'] ?? []) : [];
+            $onAd[] = $row;
         }
+        $name = $resolved['campaign_name'] !== '' ? $resolved['campaign_name'] : '';
+        $parentFamily = AmazonAdsCampaignSkuMetrics::parentFamilyFromCampaignName($name);
+        $parentNames = $parentFamily !== ''
+            ? AmazonAdsCampaignSkuMetrics::childSkusForParentFamily($parentFamily)
+            : [];
+        $onAdKeys = [];
+        foreach ($onAd as $row) {
+            $ck = AmazonDatasheet::normalizeSkuForLookup((string) ($row['sku'] ?? ''));
+            if ($ck !== '') {
+                $onAdKeys[$ck] = true;
+            }
+        }
+        $parentRows = [];
+        foreach ($parentNames as $sku) {
+            $ck = AmazonDatasheet::normalizeSkuForLookup($sku);
+            if ($ck === '' || isset($onAdKeys[$ck])) {
+                continue;
+            }
+            $parentRows[] = [
+                'sku' => $sku,
+                'asin' => null,
+                'state' => null,
+                'source' => 'parent',
+            ];
+        }
+        $asinNeed = [];
+        foreach (array_merge($onAd, $parentRows) as $row) {
+            if (trim((string) ($row['asin'] ?? '')) === '') {
+                $asinNeed[] = (string) ($row['sku'] ?? '');
+            }
+        }
+        $asinBySku = $asinNeed !== [] ? AmazonAdsCampaignSkuSync::asinsBySkus($asinNeed) : [];
+        foreach ($onAd as $i => $row) {
+            if (trim((string) ($row['asin'] ?? '')) !== '') {
+                continue;
+            }
+            $sku = (string) ($row['sku'] ?? '');
+            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+            $onAd[$i]['asin'] = $asinBySku[$key] ?? $asinBySku[$sku] ?? null;
+        }
+        foreach ($parentRows as $i => $row) {
+            $sku = (string) ($row['sku'] ?? '');
+            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+            $parentRows[$i]['asin'] = $asinBySku[$key] ?? $asinBySku[$sku] ?? null;
+        }
+        $onAd = $this->decorateCampaignSkuRows($onAd);
+        $parentRows = $this->decorateCampaignSkuRows($parentRows);
 
         return response()->json([
             'campaign_id' => $cid,
-            'campaign_name' => $resolved['campaign_name'] !== '' ? $resolved['campaign_name'] : null,
+            'campaign_name' => $name !== '' ? $name : null,
             'source' => $resolved['source'],
-            'channel' => AmazonAdsSbAdEditor::campaignIsSb($cid) ? 'sb' : 'sp',
-            'skus' => $skus,
-            'count' => count($skus),
+            'channel' => $isSb ? 'sb' : 'sp',
+            'parent_family' => $parentFamily !== '' ? $parentFamily : null,
+            'skus' => $onAd,
+            'parent_skus' => $parentRows,
+            'count' => count($onAd),
+            'parent_count' => count($parentRows),
         ]);
     }
 
@@ -4361,6 +4380,60 @@ class AmazonAdsController extends Controller
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $skus
+     * @return list<array<string, mixed>>
+     */
+    private function decorateCampaignSkuRows(array $skus): array
+    {
+        if ($skus === []) {
+            return [];
+        }
+        $names = array_column($skus, 'sku');
+        $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus($names);
+        $priceLmp = AmazonAdsCampaignSkuMetrics::priceAndLmpBySkus($names);
+        $shopify = Schema::hasTable('shopify_skus')
+            ? ShopifySku::mapByProductSkus($names)
+            : collect();
+        foreach ($skus as $i => $skuRow) {
+            $sku = (string) ($skuRow['sku'] ?? '');
+            $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+            $hit = $reviews[$key] ?? null;
+            $pl = $priceLmp[$key] ?? null;
+            if ($pl === null && $key !== '') {
+                foreach ($priceLmp as $pk => $row) {
+                    if (strcasecmp((string) $pk, $key) === 0) {
+                        $pl = $row;
+                        break;
+                    }
+                }
+            }
+            $sh = $shopify->get($sku);
+            if ($sh === null && $sku !== '') {
+                foreach ($shopify as $pmSku => $row) {
+                    if (strcasecmp(trim((string) $pmSku), trim($sku)) === 0) {
+                        $sh = $row;
+                        break;
+                    }
+                }
+            }
+            $inv = $sh !== null && is_numeric($sh->inv ?? null) ? (int) round((float) $sh->inv) : null;
+            $image = $sh !== null ? trim((string) ($sh->image_src ?? '')) : '';
+            $skus[$i]['amz_avg_rating'] = is_array($hit) && $hit['rating'] !== null
+                ? (float) $hit['rating']
+                : null;
+            $skus[$i]['amz_review_count'] = is_array($hit) ? (int) ($hit['review_count'] ?? 0) : null;
+            $skus[$i]['inv'] = $inv;
+            $skus[$i]['image'] = $image !== '' ? $image : null;
+            $skus[$i]['price'] = is_array($pl) ? ($pl['price'] ?? null) : null;
+            $skus[$i]['lmp'] = is_array($pl) ? ($pl['lmp'] ?? null) : null;
+            $skus[$i]['lmp_count'] = is_array($pl) ? (int) ($pl['lmp_count'] ?? 0) : 0;
+            $skus[$i]['competitors'] = is_array($pl) ? ($pl['competitors'] ?? []) : [];
+        }
+
+        return $skus;
     }
 
     /**
