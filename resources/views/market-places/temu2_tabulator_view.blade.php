@@ -527,23 +527,17 @@
                     cssClass: "text-primary",
                     tooltip: true,
                     frozen: true,
-                    width: 150
+                    visible: false
                 },
                 {
-                    title: "Parent Order SN",
-                    field: "parent_order_sn",
+                    title: "Order ID",
+                    field: "order_id",
                     width: 56,
+                    hozAlign: "center",
+                    headerTooltip: "Hover the green dot to see the full Order ID",
+                    tooltip: false,
                     frozen: true,
-                    tooltip: false,
-                    headerTooltip: "Hover the green dot to see the full parent order SN",
-                    formatter: function(cell) { return temuIdDot(cell.getValue()); }
-                },
-                {
-                    title: "Order SN",
-                    field: "order_sn",
-                    width: 56,
-                    tooltip: false,
-                    headerTooltip: "Hover the green dot to see the full order SN",
+                    accessorDownload: function(value) { return value == null ? '' : String(value); },
                     formatter: function(cell) { return temuIdDot(cell.getValue()); }
                 },
                 {
@@ -577,12 +571,12 @@
                         return sku || '';
                     }
                 },
-                { title: "Ext Code", field: "ext_code", width: 140 },
-                { title: "Display SKU", field: "display_sku", width: 140 },
-                { title: "SKU ID", field: "sku_id", width: 140 },
-                { title: "Goods ID", field: "goods_id", width: 150 },
-                { title: "Product SKU ID", field: "product_sku_id", width: 140 },
-                { title: "Qty", field: "quantity", hozAlign: "center", sorter: "number" },
+                {
+                    title: "Qty Purchased",
+                    field: "quantity_purchased",
+                    hozAlign: "center",
+                    sorter: "number",
+                },
                 {
                     title: "Weight",
                     field: "weight",
@@ -602,28 +596,6 @@
                         const n = parseFloat(cell.getValue());
                         return n > 0 ? n.toFixed(2) : '';
                     }
-                },
-                { title: "Original Qty", field: "original_order_quantity", hozAlign: "center", sorter: "number", width: 110 },
-                { title: "Canceled Qty", field: "canceled_quantity_before_shipment", hozAlign: "center", sorter: "number", width: 110 },
-                {
-                    title: "Order Base Amt",
-                    field: "order_base_amount",
-                    hozAlign: "right",
-                    sorter: "number",
-                    width: 130,
-                    headerTooltip: "Raw bg.order.amount.query basePrice stored on temu2_orders",
-                    formatter: "money",
-                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
-                },
-                {
-                    title: "Order Total Amt",
-                    field: "order_total_amount",
-                    hozAlign: "right",
-                    sorter: "number",
-                    width: 130,
-                    headerTooltip: "Raw bg.order.amount.query total stored on temu2_orders",
-                    formatter: "money",
-                    formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
                 },
                 {
                     title: "Listing Base",
@@ -645,77 +617,15 @@
                     formatter: "money",
                     formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
                 },
-                { title: "Status Code", field: "order_status_code", hozAlign: "center", width: 100 },
-                {
-                    title: "Status Text",
-                    field: "order_status_text",
-                    width: 130,
-                    formatter: function(cell) {
-                        const value = cell.getValue() || cell.getRow().getData().order_status;
-                        if (!value) return '';
-                        let color = 'secondary';
-                        const lower = String(value).toLowerCase();
-                        if (lower.includes('delivered')) color = 'success';
-                        else if (lower.includes('shipped')) color = 'info';
-                        else if (lower.includes('cancel')) color = 'danger';
-                        else if (lower.includes('pending')) color = 'warning';
-                        return `<span class="badge bg-${color}">${value}</span>`;
-                    }
-                },
-                { title: "Parent Status", field: "parent_order_status", hozAlign: "center", width: 110 },
-                { title: "Parent Status Text", field: "parent_order_status_text", width: 150 },
-                { title: "Payment Type", field: "order_payment_type", width: 130 },
-                { title: "Region ID", field: "region_id", hozAlign: "center", width: 90 },
-                { title: "Site ID", field: "site_id", hozAlign: "center", width: 80 },
-                {
-                    title: "Parent Order Time",
-                    field: "parent_order_time",
-                    sorter: "datetime",
-                    headerTooltip: "Shown as day and month. Hover a date for the full timestamp.",
-                    formatter: function(cell) { return temuShortDate(cell.getValue()); }
-                },
-                { title: "Expect Ship Latest", field: "expect_ship_latest_time", width: 160 },
-                { title: "Parent Shipping Time", field: "parent_shipping_time", width: 160 },
-                { title: "Latest Delivery", field: "latest_delivery_time", width: 160 },
-                { title: "Order Update Time", field: "order_update_time", width: 160 },
-                { title: "Order Shipping Time", field: "order_shipping_time", width: 160 },
-                {
-                    title: "Tracking",
-                    field: "tracking_number",
-                    width: 56,
-                    tooltip: false,
-                    headerTooltip: "Hover the green dot to see the full tracking number",
-                    formatter: function(cell) { return temuIdDot(cell.getValue()); }
-                },
-                { title: "Carrier", field: "carrier", visible: false },
-                { title: "Package SN", field: "package_sn", width: 140 },
-                { title: "Tracking Fetched", field: "tracking_fetched_at", width: 160 },
-                { title: "Amount Fetched", field: "amount_fetched_at", width: 160 },
-                { title: "Fetch Window", field: "fetch_window", width: 110 },
-                { title: "Fetched At", field: "fetched_at", width: 160 },
-                { title: "Import Status", field: "import_status", width: 120 },
-                { title: "Shopify Order ID", field: "shopify_order_id", width: 150 },
-                { title: "Pushed Shopify", field: "pushed_to_shopify_at", width: 160 },
-                {
-                    title: "Thumb",
-                    field: "thumb_url",
-                    width: 70,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        const url = cell.getValue();
-                        if (!url) return '';
-                        return `<img src="${url}" alt="" style="height:36px;width:36px;object-fit:cover;border-radius:4px;">`;
-                    }
-                },
                 {
                     title: "Base Price",
-                    field: "base_price_total",
+                    field: "goods_base_price",
                     hozAlign: "right",
                     sorter: function(a, b) {
                         return temuGoodsBase(a) - temuGoodsBase(b);
                     },
                     width: 120,
-                    headerTooltip: "Base = stored/API unit. No −$2.99 (Temu 2 keeps the unit as-is).",
+                    headerTooltip: "Base = goods price without the $2.99 freight (R Price and Temu Price add it once).",
                     accessorDownload: function(value) {
                         const n = temuGoodsBase(value);
                         return n > 0 ? n.toFixed(2) : '';
@@ -947,6 +857,40 @@
                         const quantity = parseInt(data.quantity_purchased) || 0;
                         return (quantity * temuRowTemuPrice(data)).toFixed(2);
                     }
+                },
+                {
+                    title: "Order Status",
+                    field: "order_status",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        let color = 'secondary';
+                        const lower = String(value).toLowerCase();
+                        if (lower.includes('delivered')) color = 'success';
+                        else if (lower.includes('shipped')) color = 'info';
+                        else if (lower.includes('cancel')) color = 'danger';
+                        else if (lower.includes('pending')) color = 'warning';
+                        return `<span class="badge bg-${color}">${value}</span>`;
+                    }
+                },
+                {
+                    title: "Tracking",
+                    field: "tracking_number",
+                    width: 56,
+                    hozAlign: "center",
+                    headerTooltip: "Hover the green dot to see the full tracking number",
+                    tooltip: false,
+                    accessorDownload: function(value) { return value == null ? '' : String(value); },
+                    formatter: function(cell) { return temuIdDot(cell.getValue()); }
+                },
+                { title: "Carrier", field: "carrier", visible: false },
+                {
+                    title: "Created At",
+                    field: "created_at",
+                    sorter: "datetime",
+                    headerTooltip: "Shown as day and month. Hover a date for the full timestamp.",
+                    accessorDownload: function(value) { return value == null ? '' : String(value); },
+                    formatter: function(cell) { return temuShortDate(cell.getValue()); }
                 }
             ]
         });
@@ -1092,7 +1036,9 @@
                         const checkbox = document.createElement("input");
                         checkbox.type = "checkbox"; checkbox.value = def.field;
                         const forceHide = def.field === 'handling_charge' || def.field === 'o_size_charge' || def.field === 'carrier';
-                        checkbox.checked = forceHide ? false : savedVisibility[def.field] !== false;
+                        const startsHidden = forceHide || def.visible === false;
+                        if (startsHidden) checkbox.checked = savedVisibility[def.field] === true && !forceHide;
+                        else checkbox.checked = savedVisibility[def.field] !== false;
                         checkbox.style.marginRight = "8px";
                         label.appendChild(checkbox);
                         label.appendChild(document.createTextNode(def.title));
@@ -1129,7 +1075,11 @@
                             col.hide();
                             return;
                         }
-                        if (def.field && savedVisibility[def.field] === false) col.hide();
+                        if (def.field && savedVisibility[def.field] === true) {
+                            col.show();
+                            return;
+                        }
+                        if (def.field && (savedVisibility[def.field] === false || def.visible === false)) col.hide();
                     });
                 });
         }

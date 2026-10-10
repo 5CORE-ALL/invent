@@ -327,6 +327,24 @@
         .amz-cpc-avg-history-dot.amz-hist-as-icon.is-down { background: transparent; color: #ff2727; }
         .amz-cpc-avg-history-dot.amz-hist-as-icon.is-flat { background: transparent; color: #9ca3af; }
         .amz-cpc-avg-history-dot.amz-hist-as-icon:hover { transform: scale(1.25); }
+        .amz-l1-cell {
+            display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap;
+        }
+        .amz-lrange-btn {
+            border: 0; padding: 0; background: transparent; line-height: 1; font-size: 12px;
+            color: #2563eb; cursor: pointer;
+        }
+        .amz-lrange-btn:hover { color: #1d4ed8; transform: scale(1.2); }
+        .amz-lrange-pop {
+            position: fixed; z-index: 1080; min-width: 220px; max-width: 280px;
+            background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18); padding: 8px 10px;
+        }
+        .amz-lrange-pop-title { font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+        .amz-lrange-pop table { width: 100%; font-size: 12px; margin: 0; }
+        .amz-lrange-pop th, .amz-lrange-pop td { padding: 2px 4px; }
+        .amz-lrange-pop th { color: #64748b; font-weight: 600; }
+        .amz-lrange-pop td:last-child { text-align: right; font-weight: 600; }
         /* CPC history modal — same full-width layout as Active Channel */
         #amazonAdsCpcAvgHistoryModal.modal {
             --tz-modal-width: 100%;
@@ -1368,6 +1386,8 @@
         </div>
     </div>
 
+    <div id="amazonAdsLRangePop" class="amz-lrange-pop d-none" role="dialog" aria-label="L2 to L7 history"></div>
+
     <div class="modal fade" id="amazonAdsCampaignSkusModal" tabindex="-1" aria-labelledby="amazonAdsCampaignSkusModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-scrollable modal-xl modal-fullscreen-sm-down">
             <div class="modal-content">
@@ -1390,6 +1410,7 @@
                     </div>
                     <div id="amazonAdsCampaignSkusLoading" class="small text-muted">Loading…</div>
                     <p class="small text-danger mb-0 d-none" id="amazonAdsCampaignSkusError" role="alert"></p>
+                    <p class="small text-success mb-2 d-none" id="amazonAdsCampaignSkusOk" role="status"></p>
                     <div class="table-responsive" style="max-height: 60vh;">
                         <table class="table table-sm table-striped mb-0 d-none" id="amazonAdsCampaignSkusTable">
                             <thead>
@@ -1925,6 +1946,7 @@
             var sbAdAddUrl = @json(route('amazon.ads.sb-ads.products.add'));
             var sbAdRemoveUrl = @json(route('amazon.ads.sb-ads.products.remove'));
             var cpcAvgHistoryUrl = @json(route('amazon.ads.cpc-avg-history'));
+            var lRangeHistoryUrl = @json(route('amazon.ads.l-range-history'));
             var ltCvrHistoryUrl = @json(route('amazon.ads.lt-cvr-history'));
             var ltAcosHistoryUrl = @json(route('amazon.ads.lt-acos-history'));
             var sbidHistoryUrl = @json(route('amazon.ads.sbid-history'));
@@ -1953,7 +1975,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -2318,6 +2340,17 @@
                 var n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
                 if (isNaN(n)) return amzDash();
                 return '<span class="fw-semibold">' + n.toFixed(2) + '</span>';
+            }
+            function fmtL1RangeCell(cell, metric) {
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
+                var name = row && row.campaignName != null ? String(row.campaignName) : '';
+                var ad = row && row.ad_type != null ? String(row.ad_type) : '';
+                var label = metric === 'sales' ? 'L2–L7 ads sales' : 'L2–L7 ads spend';
+                var btn = '<button type="button" class="amz-lrange-btn" title="' + amzEsc(label) + '" aria-label="' + amzEsc(label) + '"'
+                    + ' data-lrange="' + amzEsc(metric) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
+                    + '<i class="fas fa-chart-bar"></i></button>';
+                return '<span class="amz-l1-cell">' + btn + fmtSbid(cell) + '</span>';
             }
             function fmtCvr(cell) {
                 var n = amzFiniteNumber(cell.getValue());
@@ -2966,7 +2999,7 @@
                 if (c === 'cost') { col.title = 'SPL30'; col.headerTooltip = 'L30 spend. Above 29.99 is red.'; col.formatter = fmtSpl30; return; }
                 if (c === 'L7spend') { col.title = 'L7SP'; col.formatter = fmtDashNumberRaw; return; }
                 if (c === 'L2spend') { col.title = 'L2SP'; col.formatter = fmtDashNumberRaw; return; }
-                if (c === 'L1spend') { col.title = 'L1SP'; col.formatter = fmtDashNumberRaw; return; }
+                if (c === 'L1spend') { col.title = 'L1SP'; col.formatter = function (cell) { return fmtL1RangeCell(cell, 'spend'); }; return; }
                 if (c === 'L1cost') { col.title = 'L1Cost'; col.formatter = fmtDashRounded; return; }
                 if (c === 'L1clicks') { col.title = 'L1Clk'; col.formatter = fmtDashInt; return; }
                 if (c === 'U7%' || c === 'U2%' || c === 'U1%') { col.formatter = fmtUtilPercent; return; }
@@ -2982,6 +3015,38 @@
                 if (c === 'CPC2') { col.title = 'CPC2'; col.formatter = fmt2dec; return; }
                 if (c === 'costPerClick') { col.title = 'CPC1'; col.formatter = fmt2dec; return; }
                 if (c === 'sales30d') { col.title = 'SL 30'; col.formatter = fmtDashRounded; return; }
+                if (c === 'projectedSpend') {
+                    col.title = 'Projected Spend';
+                    col.headerTooltip = 'Projected monthly ads spend = (last 7 days ending yesterday ÷ 7) × 30.';
+                    col.formatter = fmtSbid;
+                    col.minWidth = 110;
+                    col.width = 122;
+                    return;
+                }
+                if (c === 'projectedSales') {
+                    col.title = 'Projected Sales';
+                    col.headerTooltip = 'Projected monthly ads sales = (last 7 days ending yesterday ÷ 7) × 30.';
+                    col.formatter = fmtSbid;
+                    col.minWidth = 110;
+                    col.width = 122;
+                    return;
+                }
+                if (c === 'ySpend') {
+                    col.title = 'L1 Spend';
+                    col.headerTooltip = 'Yesterday ads spend (Amazon L1). Chart icon shows daily L2–L7 spend.';
+                    col.formatter = function (cell) { return fmtL1RangeCell(cell, 'spend'); };
+                    col.minWidth = 92;
+                    col.width = 102;
+                    return;
+                }
+                if (c === 'ySales') {
+                    col.title = 'L1 Sales';
+                    col.headerTooltip = 'Yesterday ads sales (Amazon L1). Chart icon shows daily L2–L7 sales.';
+                    col.formatter = function (cell) { return fmtL1RangeCell(cell, 'sales'); };
+                    col.minWidth = 92;
+                    col.width = 102;
+                    return;
+                }
                 if (c === 'clicks') { col.title = 'Clicks'; col.headerTooltip = 'Amazon Ads clicks (L30).'; col.formatter = fmtDashInt; return; }
             }
 
@@ -3518,7 +3583,7 @@
             function amzClassifyColumn(field, title) {
                 var f = String(field || '');
                 var t = String(title || field || '').toLowerCase();
-                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
+                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|projectedSpend|projectedSales|ySpend|ySales|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
                     || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
                     return 'ads';
                 }
@@ -4153,6 +4218,8 @@
                 if (title) title.textContent = 'Campaign SKUs';
                 if (sub) sub.textContent = cname || cid;
                 if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                var okMsg = document.getElementById('amazonAdsCampaignSkusOk');
+                if (okMsg && !amzSbAdBusy) { okMsg.classList.add('d-none'); okMsg.textContent = ''; }
                 if (tbl) tbl.classList.add('d-none');
                 if (body) body.innerHTML = '';
                 var addInpOpen = document.getElementById('amazonAdsSbAdAddInput');
@@ -4229,16 +4296,30 @@
                         if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); }
                     });
             }
+            var amzSbAdBusy = false;
+            function amzSbAdSetBusy(on) {
+                amzSbAdBusy = !!on;
+                ['amazonAdsSbAdAddBtn', 'amazonAdsSbAdAddInput'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.disabled = amzSbAdBusy;
+                });
+                document.querySelectorAll('.amz-sb-ad-remove, .amz-sb-ad-add-row').forEach(function (el) {
+                    el.disabled = amzSbAdBusy;
+                });
+            }
             function amzSbAdChange(kind, sku, asin) {
                 var cid = amzCampSkusCtx.cid;
                 var err = document.getElementById('amazonAdsCampaignSkusError');
-                if (!cid) return;
+                var ok = document.getElementById('amazonAdsCampaignSkusOk');
+                if (!cid || amzSbAdBusy) return;
                 if (kind === 'remove' && !window.confirm('Remove this product from the SB creative?')) return;
                 var url = kind === 'remove' ? sbAdRemoveUrl : sbAdAddUrl;
                 var payload = { campaign_id: cid, _token: csrfToken };
                 if (sku) payload.skus = [sku];
                 if (asin) payload.asins = [asin];
                 if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                amzSbAdSetBusy(true);
                 fetch(url, {
                     method: 'POST',
                     headers: {
@@ -4252,16 +4333,24 @@
                 }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
                     .then(function (out) {
                         var msg = (out.body && out.body.message) ? out.body.message : (kind === 'remove' ? 'Remove failed.' : 'Add failed.');
+                        var failed = (out.body && Array.isArray(out.body.failed)) ? out.body.failed : [];
+                        if (failed.length) {
+                            msg += ' ' + failed.map(function (f) { return (f.sku || '') + ': ' + (f.message || ''); }).join(' ');
+                        }
                         if (!out.ok || (out.body && out.body.success === false)) {
                             if (err) { err.textContent = msg; err.classList.remove('d-none'); }
+                            amzSbAdSetBusy(false);
                             return;
                         }
                         delete amzCampSkusCache[cid];
                         amzOpenCampaignSkus(cid, amzCampSkusCtx.cname, amzCampSkusCtx.adType);
+                        var okEl = document.getElementById('amazonAdsCampaignSkusOk');
+                        if (okEl) { okEl.textContent = msg; okEl.classList.remove('d-none'); }
                     })
                     .catch(function () {
                         if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); }
-                    });
+                    })
+                    .finally(function () { amzSbAdSetBusy(false); });
             }
             (function () {
                 var addBtn = document.getElementById('amazonAdsSbAdAddBtn');
@@ -4325,6 +4414,13 @@
                     amzOpenSkuLmp(+lmpBtn.getAttribute('data-sku-lmp-idx'));
                     return;
                 }
+                var lrangeBtn = e.target.closest ? e.target.closest('.amz-lrange-btn') : null;
+                if (lrangeBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    amzOpenLRangePop(lrangeBtn);
+                    return;
+                }
                 var cpcDot = e.target.closest ? e.target.closest('.amz-cpc-avg-history-dot') : null;
                 if (cpcDot) {
                     e.stopPropagation();
@@ -4337,6 +4433,78 @@
                     });
                 }
             });
+            function amzCloseLRangePop() {
+                var pop = document.getElementById('amazonAdsLRangePop');
+                if (pop) { pop.classList.add('d-none'); pop.innerHTML = ''; }
+            }
+            function amzPlaceLRangePop(anchor) {
+                var pop = document.getElementById('amazonAdsLRangePop');
+                if (!pop || !anchor) return;
+                var r = anchor.getBoundingClientRect();
+                var w = pop.offsetWidth || 240;
+                var h = pop.offsetHeight || 180;
+                var left = r.right + 8;
+                if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - w - 8);
+                var top = r.top;
+                if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+                pop.style.left = left + 'px';
+                pop.style.top = top + 'px';
+            }
+            function amzOpenLRangePop(btn) {
+                var pop = document.getElementById('amazonAdsLRangePop');
+                if (!pop) return;
+                var cid = btn.getAttribute('data-campaign-id') || '';
+                var name = btn.getAttribute('data-campaign-name') || cid;
+                var metric = btn.getAttribute('data-lrange') === 'sales' ? 'sales' : 'spend';
+                var title = metric === 'sales' ? 'L2–L7 Ads Sales' : 'L2–L7 Ads Spend';
+                pop.classList.remove('d-none');
+                pop.innerHTML = '<div class="amz-lrange-pop-title">' + amzEsc(name) + ' — ' + title + '</div>'
+                    + '<div class="small text-muted">Loading…</div>';
+                amzPlaceLRangePop(btn);
+                if (!cid) {
+                    pop.innerHTML = '<div class="amz-lrange-pop-title">' + title + '</div><div class="small text-danger">No campaign id.</div>';
+                    return;
+                }
+                var qs = '?campaign_id=' + encodeURIComponent(cid)
+                    + '&source=' + encodeURIComponent(activeRawSourceKey || '')
+                    + '&ad_type=' + encodeURIComponent(btn.getAttribute('data-ad-type') || '');
+                fetch(lRangeHistoryUrl + qs, {
+                    method: 'GET',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+                    .then(function (out) {
+                        var points = (out.body && Array.isArray(out.body.points)) ? out.body.points : [];
+                        if (!out.ok || !out.body || out.body.ok === false) {
+                            pop.innerHTML = '<div class="amz-lrange-pop-title">' + title + '</div>'
+                                + '<div class="small text-danger">' + amzEsc((out.body && out.body.message) ? out.body.message : 'Could not load L2–L7.') + '</div>';
+                            amzPlaceLRangePop(btn);
+                            return;
+                        }
+                        var rows = points.map(function (p) {
+                            var raw = metric === 'sales' ? p.sales : p.spend;
+                            var n = raw == null || raw === '' ? NaN : parseFloat(raw);
+                            var val = isFinite(n) ? ('$' + n.toFixed(2)) : '—';
+                            return '<tr><td>' + amzEsc(p.label || '') + '</td><td class="text-muted">' + amzEsc(p.date || '') + '</td><td>' + val + '</td></tr>';
+                        }).join('');
+                        pop.innerHTML = '<div class="amz-lrange-pop-title">' + amzEsc(name) + ' — ' + title + '</div>'
+                            + '<table><thead><tr><th></th><th>Date</th><th>' + (metric === 'sales' ? 'Sales' : 'Spend') + '</th></tr></thead><tbody>'
+                            + (rows || '<tr><td colspan="3" class="text-muted">No daily rows.</td></tr>')
+                            + '</tbody></table>';
+                        amzPlaceLRangePop(btn);
+                    })
+                    .catch(function () {
+                        pop.innerHTML = '<div class="amz-lrange-pop-title">' + title + '</div><div class="small text-danger">Network or server error.</div>';
+                        amzPlaceLRangePop(btn);
+                    });
+            }
+            document.addEventListener('click', function (e) {
+                var pop = document.getElementById('amazonAdsLRangePop');
+                if (!pop || pop.classList.contains('d-none')) return;
+                if (e.target.closest && (e.target.closest('#amazonAdsLRangePop') || e.target.closest('.amz-lrange-btn'))) return;
+                amzCloseLRangePop();
+            });
+            window.addEventListener('scroll', amzCloseLRangePop, true);
             var amzCpcAvgChart = null;
             var amzCpcAvgRow = null;
             var amzCpcAvgDays = 30;

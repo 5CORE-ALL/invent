@@ -1565,7 +1565,8 @@ class TemuShopifySalesService
             $weight = self::dimWtActLb($pmValues);
             $weightOrder = ($weight !== null && $quantity > 0) ? round($weight * $quantity, 2) : null;
             $cogsShip = self::cogsShipForWeightOrder($slabService, $shipSlabRates, $weightOrder);
-            $lineSales = ($price > 0 && $quantity > 0) ? round($price * $quantity, 2) : 0.0;
+            // Same line as Temu 1 and Temu 2: goods, +$2.99 when the unit is ≤ $26.99.
+            $lineSales = round(self::lineSales($price, $quantity), 2);
 
             $fbPrice = self::computeFbPrice($price, $quantity);
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;

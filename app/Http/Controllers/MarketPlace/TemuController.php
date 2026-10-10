@@ -1229,7 +1229,7 @@ class TemuController extends Controller
     {
         try {
             $userId = auth()->id() ?? 'guest';
-            $key = "temu2_tabulator_column_visibility_{$userId}";
+            $key = "temu2_tabulator_column_visibility_v2_{$userId}";
 
             $visibility = $request->input('visibility', []);
             Cache::put($key, $visibility, now()->addDays(365));
@@ -1248,7 +1248,7 @@ class TemuController extends Controller
     {
         try {
             $userId = auth()->id() ?? 'guest';
-            $key = "temu2_tabulator_column_visibility_{$userId}";
+            $key = "temu2_tabulator_column_visibility_v2_{$userId}";
 
             $visibility = Cache::get($key, []);
             return response()->json($visibility);

@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\AmazonAdsCampaignSku;
 use App\Services\AmazonAdsService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -92,7 +93,7 @@ final class AmazonAdsSbAdEditor
     {
         $a = strtoupper(trim((string) $value));
 
-        return preg_match('/^B0[A-Z0-9]{8}$/', $a) === 1 ? $a : '';
+        return preg_match('/^[A-Z0-9]{10}$/', $a) === 1 ? $a : '';
     }
 
     /**
@@ -164,7 +165,8 @@ final class AmazonAdsSbAdEditor
             return $empty;
         }
 
-        $current = AmazonAdsCampaignSkuSync::extractAsinsFromSbAd($target);
+        $creativeRow = $this->loadCreative($adId);
+        $current = $this->currentAsins($cid, $target, $creativeRow);
         $next = $adding
             ? self::mergeAsins($current, $wanted['asins'])
             : self::withoutAsins($current, $wanted['asins']);
@@ -204,16 +206,17 @@ final class AmazonAdsSbAdEditor
             return $empty;
         }
 
+        $creative = self::copyCreativeForAsins($creativeRow, $target, $next);
         try {
-            $updated = $this->ads->updateSbAds([$this->updatePayload($target, $adId, $next)]);
+            $updated = $this->submitCreative($adId, $creativeRow, $creative);
         } catch (\Throwable $e) {
             $empty['message'] = $this->adsError($e);
 
             return $empty;
         }
         $err = $this->firstAdsError($updated);
-        if ($err !== '') {
-            $empty['message'] = $err;
+        if ($err !== '' || ! $this->creativeSubmitSucceeded($updated)) {
+            $empty['message'] = $err !== '' ? $err : 'Amazon did not accept the SB creative product update.';
 
             return $empty;
         }
@@ -264,13 +267,28 @@ final class AmazonAdsSbAdEditor
         }
         if ($needSku !== []) {
             $map = AmazonAdsCampaignSkuSync::asinsBySkus($needSku);
+            $missing = [];
             foreach ($needSku as $sku) {
                 $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
-                $asin = $map[$key] ?? '';
-                if (self::normalizeAsin($asin) !== '') {
-                    $out[self::normalizeAsin($asin)] = true;
+                $asin = $map[$key] ?? $map[$sku] ?? '';
+                $norm = self::normalizeAsin($asin);
+                if ($norm !== '') {
+                    $out[$norm] = true;
                 } else {
-                    $failed[] = ['sku' => $sku, 'message' => 'No ASIN for this SKU.'];
+                    $missing[] = $sku;
+                }
+            }
+            if ($missing !== []) {
+                $fromAmazon = $this->asinsFromProductMetadata($missing);
+                foreach ($missing as $sku) {
+                    $key = strtoupper(trim(str_replace("\xC2\xA0", ' ', $sku)));
+                    $asin = $fromAmazon[$key] ?? $fromAmazon[$sku] ?? '';
+                    $norm = self::normalizeAsin($asin);
+                    if ($norm !== '') {
+                        $out[$norm] = true;
+                    } else {
+                        $failed[] = ['sku' => $sku, 'message' => 'No ASIN for this SKU.'];
+                    }
                 }
             }
         }
@@ -301,26 +319,224 @@ final class AmazonAdsSbAdEditor
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    private function loadCreative(string $adId): array
+    {
+        try {
+            $resp = $this->ads->listSbAdCreatives($adId);
+        } catch (\Throwable $e) {
+            Log::warning('SB creative list failed', ['adId' => $adId, 'error' => $e->getMessage()]);
+
+            return [];
+        }
+        $rows = $resp['creatives'] ?? [];
+        if (! is_array($rows) || $rows === []) {
+            return [];
+        }
+        $best = null;
+        $bestScore = -1;
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $status = strtoupper(trim((string) ($row['creativeStatus'] ?? '')));
+            $score = match ($status) {
+                'PUBLISHED' => 5,
+                'APPROVED_BY_MODERATION' => 4,
+                'SUBMITTED_FOR_MODERATION' => 3,
+                'PENDING_MODERATION_REVIEW' => 2,
+                default => 1,
+            };
+            $updated = (int) ($row['lastUpdateTime'] ?? $row['creationTime'] ?? 0);
+            if ($score > $bestScore || ($score === $bestScore && $updated > (int) ($best['lastUpdateTime'] ?? 0))) {
+                $best = $row;
+                $bestScore = $score;
+            }
+        }
+
+        return is_array($best) ? $best : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ad
+     * @param  array<string, mixed>  $creativeRow
+     * @return list<string>
+     */
+    private function currentAsins(string $campaignId, array $ad, array $creativeRow): array
+    {
+        $fromCreative = AmazonAdsCampaignSkuSync::extractAsinsFromSbAd($creativeRow);
+        if ($fromCreative !== []) {
+            return $fromCreative;
+        }
+        $fromAd = AmazonAdsCampaignSkuSync::extractAsinsFromSbAd($ad);
+        if ($fromAd !== []) {
+            return $fromAd;
+        }
+
+        return $this->localAsins($campaignId);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function localAsins(string $campaignId): array
+    {
+        if (! Schema::hasTable('amazon_ads_campaign_skus')) {
+            return [];
+        }
+        $rows = AmazonAdsCampaignSku::query()
+            ->where('campaign_id', $campaignId)
+            ->where('ad_id', 'like', AmazonAdsCampaignSkuSync::SB_AD_PREFIX.'%')
+            ->whereNotNull('asin')
+            ->where('asin', '!=', '')
+            ->pluck('asin');
+        $out = [];
+        foreach ($rows as $asin) {
+            $a = self::normalizeAsin($asin);
+            if ($a !== '') {
+                $out[$a] = true;
+            }
+        }
+
+        return array_keys($out);
+    }
+
+    /**
+     * @param  array<string, mixed>  $creativeRow
      * @param  array<string, mixed>  $ad
      * @param  list<string>  $asins
      * @return array<string, mixed>
      */
-    private function updatePayload(array $ad, string $adId, array $asins): array
+    public static function copyCreativeForAsins(array $creativeRow, array $ad, array $asins): array
     {
-        $payload = [
-            'adId' => $adId,
-            'creative' => ['asins' => $asins],
+        $props = self::creativeProperties($creativeRow);
+        if ($props === []) {
+            $props = is_array($ad['creative'] ?? null) ? $ad['creative'] : [];
+        }
+        $keep = [
+            'brandName', 'headline', 'brandLogoAssetId', 'brandLogoAssetID', 'brandLogoCrop',
+            'customImageAssetId', 'customImageCrop', 'customImages', 'consentToTranslate',
+            'shouldOptimizeAsins', 'creativePropertiesToOptimize',
         ];
-        $landing = $ad['landingPage'] ?? null;
-        if (is_array($landing) && (isset($landing['asins']) || isset($landing['pageType']))) {
-            $page = ['asins' => $asins];
-            if (isset($landing['pageType']) && is_string($landing['pageType']) && $landing['pageType'] !== '') {
-                $page['pageType'] = $landing['pageType'];
+        $out = ['asins' => $asins];
+        foreach ($keep as $key) {
+            if (! array_key_exists($key, $props) || $props[$key] === null || $props[$key] === '') {
+                continue;
             }
-            $payload['landingPage'] = $page;
+            $out[$key] = $props[$key];
+        }
+        if (isset($out['brandLogoAssetID']) && ! isset($out['brandLogoAssetId'])) {
+            $out['brandLogoAssetId'] = $out['brandLogoAssetID'];
         }
 
-        return $payload;
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    public static function creativeProperties(array $row): array
+    {
+        $direct = $row['creativeProperties'] ?? $row['creative'] ?? $row;
+        if (! is_array($direct)) {
+            return [];
+        }
+        if (isset($direct['asins']) || isset($direct['brandName']) || isset($direct['headline']) || isset($direct['brandLogoAssetId']) || isset($direct['brandLogoAssetID'])) {
+            return $direct;
+        }
+        foreach ($direct as $value) {
+            if (is_array($value) && (isset($value['asins']) || isset($value['brandName']) || isset($value['headline']))) {
+                return $value;
+            }
+        }
+
+        return $direct;
+    }
+
+    /**
+     * @param  array<string, mixed>  $creativeRow
+     * @param  array<string, mixed>  $creative
+     * @return array<string, mixed>
+     */
+    private function submitCreative(string $adId, array $creativeRow, array $creative): array
+    {
+        $type = strtoupper(trim((string) ($creativeRow['creativeType'] ?? $creativeRow['type'] ?? '')));
+        $order = match (true) {
+            str_contains($type, 'EXTENDED') => ['extended', 'collection', 'manual'],
+            str_contains($type, 'MANUAL') => ['manual', 'collection', 'extended'],
+            default => ['collection', 'manual', 'extended'],
+        };
+        $last = ['creatives' => ['error' => [['message' => 'No SB creative endpoint accepted the update.']]]];
+        foreach ($order as $kind) {
+            try {
+                $resp = match ($kind) {
+                    'manual' => $this->ads->updateSbManualCollectionCreative($adId, $creative),
+                    'extended' => $this->ads->updateSbProductCollectionExtendedCreative($adId, $creative),
+                    default => $this->ads->updateSbProductCollectionCreative($adId, $creative),
+                };
+            } catch (\Throwable $e) {
+                Log::warning('SB creative update failed', [
+                    'adId' => $adId,
+                    'kind' => $kind,
+                    'error' => $e->getMessage(),
+                ]);
+                $last = ['creatives' => ['error' => [['message' => $this->adsError($e)]]]];
+
+                continue;
+            }
+            if ($this->firstAdsError($resp) === '' && $this->creativeSubmitSucceeded($resp)) {
+                return $resp;
+            }
+            $last = $resp;
+        }
+
+        return $last;
+    }
+
+    /**
+     * @param  array<string, mixed>  $resp
+     */
+    private function creativeSubmitSucceeded(array $resp): bool
+    {
+        foreach (['creatives.success', 'ads.success'] as $path) {
+            $ok = data_get($resp, $path, []);
+            if (is_array($ok) && $ok !== []) {
+                return true;
+            }
+        }
+
+        return (string) (data_get($resp, 'creativeVersion') ?? '') !== ''
+            || ((string) (data_get($resp, 'adId') ?? '') !== '' && $this->firstAdsError($resp) === '' && ! isset($resp['creatives']) && ! isset($resp['ads']));
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    private function asinsFromProductMetadata(array $skus): array
+    {
+        try {
+            $resp = $this->ads->getProductMetadata($skus);
+        } catch (\Throwable $e) {
+            Log::warning('SB product metadata lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+        $out = [];
+        foreach (($resp['ProductMetadataList'] ?? $resp['productMetadataList'] ?? []) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) ($row['sku'] ?? $row['sellerSku'] ?? ''))));
+            $asin = self::normalizeAsin($row['asin'] ?? '');
+            if ($sku !== '' && $asin !== '') {
+                $out[$sku] = $asin;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -352,6 +568,21 @@ final class AmazonAdsSbAdEditor
                 ->where('ad_id', 'like', AmazonAdsCampaignSkuSync::SB_AD_PREFIX.$adId.':%')
                 ->delete();
         }
+        if (! $deleted && $nextAsins !== null && Schema::hasTable('amazon_ads_campaign_skus')) {
+            $keep = [];
+            foreach ($nextAsins as $asin) {
+                $a = self::normalizeAsin($asin);
+                if ($a !== '') {
+                    $keep[$a] = true;
+                }
+            }
+            $q = AmazonAdsCampaignSku::query()
+                ->where('ad_id', 'like', AmazonAdsCampaignSkuSync::SB_AD_PREFIX.$adId.':%');
+            if ($keep !== []) {
+                $q->whereNotIn('asin', array_keys($keep));
+            }
+            $q->delete();
+        }
     }
 
     /**
@@ -359,7 +590,10 @@ final class AmazonAdsSbAdEditor
      */
     private function firstAdsError(array $resp): string
     {
-        foreach (data_get($resp, 'ads.error', []) ?: [] as $row) {
+        foreach (array_merge(
+            is_array(data_get($resp, 'creatives.error')) ? data_get($resp, 'creatives.error') : [],
+            is_array(data_get($resp, 'ads.error')) ? data_get($resp, 'ads.error') : [],
+        ) as $row) {
             if (! is_array($row)) {
                 continue;
             }

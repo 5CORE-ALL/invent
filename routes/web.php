@@ -3812,6 +3812,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/sb-ads/products', [AmazonAdsController::class, 'addSbAdProducts'])->name('amazon.ads.sb-ads.products.add');
     Route::post('/amazon-ads/sb-ads/products/remove', [AmazonAdsController::class, 'removeSbAdProducts'])->name('amazon.ads.sb-ads.products.remove');
     Route::get('/amazon-ads/cpc-avg-history', [AmazonAdsController::class, 'cpcAvgHistory'])->name('amazon.ads.cpc-avg-history');
+    Route::get('/amazon-ads/l-range-history', [AmazonAdsController::class, 'lRangeHistory'])->name('amazon.ads.l-range-history');
     Route::get('/amazon-ads/lt-cvr-history', [AmazonAdsController::class, 'ltCvrHistory'])->name('amazon.ads.lt-cvr-history');
     Route::get('/amazon-ads/lt-acos-history', [AmazonAdsController::class, 'ltAcosHistory'])->name('amazon.ads.lt-acos-history');
     Route::get('/amazon-ads/sbid-history', [AmazonAdsController::class, 'sbidHistory'])->name('amazon.ads.sbid-history');
