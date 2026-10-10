@@ -83,5 +83,10 @@ class Inv5coreLedgerTest extends TestCase
         $this->assertSame(127.0, $fulfilled['available']);
         $this->assertSame('Order created (#3546919)', Inv5coreLedger::historyActivity('order_created', '3546919'));
         $this->assertSame('Order fulfilled (#3546919)', Inv5coreLedger::historyActivity('order_fulfilled', '#3546919'));
+        $this->assertSame('Shopify', Inv5coreLedger::historyCreatedBy('opening', 'Shopify', ''));
+        $this->assertSame('Amazon', Inv5coreLedger::historyCreatedBy('order_created', 'Amazon', '5Core Inventory'));
+        $this->assertSame('Doba', Inv5coreLedger::historyCreatedBy('order_fulfilled', 'Doba', ''));
+        $this->assertSame('eBay', Inv5coreLedger::historyCreatedBy('return', 'eBay', ''));
+        $this->assertSame('Alex', Inv5coreLedger::historyCreatedBy('adjustment', 'App', 'Alex'));
     }
 }

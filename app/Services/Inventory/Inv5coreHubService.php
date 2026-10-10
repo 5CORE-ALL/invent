@@ -452,14 +452,13 @@ class Inv5coreHubService
             $availableAfter = $hasStates ? (float) ($row->available_after ?? 0) : $onHandAfter;
             $txnType = (string) $row->txn_type;
             $userName = trim((string) ($row->user_name ?? ''));
-            $system = in_array($txnType, ['order_created', 'order_fulfilled', 'sale', 'return'], true);
             $at = $row->occurred_at ?: $row->created_at;
 
             return [
                 'id' => (int) $row->id,
                 'occurred_at' => $at ? $at->timezone(config('app.timezone'))->format('M j \a\t g:i a') : '',
                 'activity' => Inv5coreLedger::historyActivity($txnType, (string) ($row->reference ?? '')),
-                'created_by' => $system || $userName === '' ? '5Core Inventory' : $userName,
+                'created_by' => Inv5coreLedger::historyCreatedBy($txnType, (string) ($row->channel ?? ''), $userName),
                 'committed_delta' => $committedDelta,
                 'committed_after' => $committedAfter,
                 'available_delta' => $availableDelta,
