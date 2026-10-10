@@ -444,7 +444,7 @@
         .amz-stat-badge--budget   { background: #0f766e; }
         .amz-stat-badge--month    { background: #0e7490; }
         .amz-metric-blocks {
-            display: flex; flex-wrap: wrap; gap: 8px; width: 100%;
+            display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 720px; min-width: 0;
         }
         .amz-metric-block {
             display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
@@ -1054,39 +1054,42 @@
             <div class="card">
                 <div class="card-body">
                     <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <div class="amz-stat-badges py-1">
-                            <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
-                            <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30. Turns red when ACOS is above 40%.">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
-                            <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
-                            <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
-                            <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) — same Amazon L30 universe as Spend">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
-                            <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="Ads CVR = Ads Sold / Ads Clicks (L30)">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
-                            <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
-                            <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Sales (L30) — same Amazon L30 universe as Spend">SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
-                            <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--budget" title="Sum of floored SBGT across campaigns in the current filters. Open BGT Rules for the count at each budget.">DAILY BGT:<span id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
-                            <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--month" title="Monthly budget = daily budget × 30.">MONTHLY BUDGET:<span id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
-                            <div class="amz-sync-toolbar-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
-                                <span class="amz-sync-toolbar-label">Lbgt</span>
-                                <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
-                            </div>
-                            <div class="amz-sync-toolbar-group" title="Click a BID color to show only those rows. Click again to clear.">
-                                <span class="amz-sync-toolbar-label">BID</span>
-                                <div class="amz-sync-head-badges" data-sync-field="bid"></div>
-                            </div>
-                        </div>
-
                         <div class="amz-metric-blocks">
-                            <div class="amz-metric-block" title="Amazon L1 totals for the current filters. Same campaigns as the Spend badge.">
+                            <div class="amz-metric-block">
+                                <span class="amz-metric-block-label">Last 30</span>
+                                <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
+                                <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
+                                <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Ads sales (L30) — same Amazon L30 universe as Spend">ADS SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
+                                <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30. Turns red when ACOS is above 40%.">ACOS%:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
+                                <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
+                                <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) — same Amazon L30 universe as Spend">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
+                                <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="Ads CVR = Ads Sold / Ads Clicks (L30)">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
+                                <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
+                            </div>
+                            <div class="amz-metric-block">
                                 <span class="amz-metric-block-label">Yesterday</span>
                                 <span id="amazonAdsYesterdaySpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Yesterday spend (Amazon L1) for the current filters.">SPEND:<span id="amazonAdsYesterdaySpendBadgeValue">$0</span></span>
                                 <span id="amazonAdsYesterdaySalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Yesterday ads sales (Amazon L1) for the current filters.">ADS SALES:<span id="amazonAdsYesterdaySalesBadgeValue">$0</span></span>
                                 <span id="amazonAdsYesterdayAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Yesterday ACOS% = yesterday spend ÷ yesterday ads sales.">ACOS%:<span id="amazonAdsYesterdayAcosBadgeValue">—</span></span>
                             </div>
-                            <div class="amz-metric-block" title="Last 7 days ending yesterday, divided by 7, then times 30.">
+                            <div class="amz-metric-block">
                                 <span class="amz-metric-block-label">Projected</span>
                                 <span id="amazonAdsProjectedSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Projected spend = last 7 days of spend ÷ 7 × 30.">SPEND:<span id="amazonAdsProjectedSpendBadgeValue">$0</span></span>
                                 <span id="amazonAdsProjectedSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Projected ads sales = last 7 days of ads sales ÷ 7 × 30.">ADS SALES:<span id="amazonAdsProjectedSalesBadgeValue">$0</span></span>
                                 <span id="amazonAdsProjectedAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Projected ACOS% = projected spend ÷ projected ads sales.">ACOS%:<span id="amazonAdsProjectedAcosBadgeValue">—</span></span>
+                            </div>
+                            <div class="amz-metric-block">
+                                <span class="amz-metric-block-label">Budget</span>
+                                <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--budget" title="Sum of floored SBGT across campaigns in the current filters. Open BGT Rules for the count at each budget.">DAILY BGT:<span id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
+                                <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--month" title="Monthly budget = daily budget × 30.">MONTHLY BUDGET:<span id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
+                                <div class="amz-sync-toolbar-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
+                                    <span class="amz-sync-toolbar-label">Lbgt</span>
+                                    <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
+                                </div>
+                                <div class="amz-sync-toolbar-group" title="Click a BID color to show only those rows. Click again to clear.">
+                                    <span class="amz-sync-toolbar-label">BID</span>
+                                    <div class="amz-sync-head-badges" data-sync-field="bid"></div>
+                                </div>
                             </div>
                         </div>
 
