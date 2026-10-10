@@ -89,4 +89,32 @@ class Inv5coreLedgerTest extends TestCase
         $this->assertSame('eBay', Inv5coreLedger::historyCreatedBy('return', 'eBay', ''));
         $this->assertSame('Alex', Inv5coreLedger::historyCreatedBy('adjustment', 'App', 'Alex'));
     }
+
+    public function test_order_history_uses_the_marketplace_and_order_number(): void
+    {
+        $this->assertNull(Inv5coreLedger::shopifyOrderChannel('doba', ''));
+        $this->assertNull(Inv5coreLedger::shopifyOrderChannel('145019994113', 'Doba'));
+        $this->assertNull(Inv5coreLedger::shopifyOrderChannel('web', 'amazon'));
+        $this->assertSame('Shopify', Inv5coreLedger::shopifyOrderChannel('web', ''));
+        $this->assertSame('Shopify', Inv5coreLedger::shopifyOrderChannel('shopify_draft_order', ''));
+
+        $events = Inv5coreLedger::orderMovementEvents(1, 'SHIPPED', '3546919', 'Doba', 1000, 2000);
+        $rows = Inv5coreLedger::replayHistory(35, 0, 0, $events);
+
+        $this->assertSame('order_fulfilled', $rows[0]['txn_type']);
+        $this->assertSame('Doba', $rows[0]['channel']);
+        $this->assertSame(-1.0, $rows[0]['on_hand_delta']);
+        $this->assertSame(35.0, $rows[0]['on_hand_after']);
+        $this->assertSame(1.0, $rows[0]['available_delta']);
+        $this->assertSame(35.0, $rows[0]['available_after']);
+        $this->assertSame(0.0, $rows[0]['committed_after']);
+        $this->assertSame('Order fulfilled (#3546919)', Inv5coreLedger::historyActivity($rows[0]['txn_type'], $rows[0]['reference']));
+        $this->assertSame('Doba', Inv5coreLedger::historyCreatedBy($rows[0]['txn_type'], $rows[0]['channel'], ''));
+
+        $this->assertSame('order_created', $rows[1]['txn_type']);
+        $this->assertSame(36.0, $rows[1]['on_hand_after']);
+        $this->assertSame(1.0, $rows[1]['committed_after']);
+        $this->assertSame(-1.0, $rows[1]['available_delta']);
+        $this->assertSame('Order created (#3546919)', Inv5coreLedger::historyActivity($rows[1]['txn_type'], $rows[1]['reference']));
+    }
 }

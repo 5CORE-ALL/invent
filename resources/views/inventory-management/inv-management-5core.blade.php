@@ -55,7 +55,7 @@
                         <p class="text-muted mb-0 small">
                             INV, L30, and DIL% come from Shopify. INV APP is this page’s own inventory.
                             Seed opening once from Shopify, matched by SKU. After that, Shopify is not imported again.
-                            A marketplace order commits quantity first. On hand drops when that order is fulfilled. Each step is stored in the SKU history.
+                            History lists Order created and Order fulfilled with the order number. Created by is the marketplace the order came from. Shopify is shown there only when the order was placed on Shopify.
                             L30 APP is marketplace units sold over the last 30 days.
                         </p>
                     </div>
