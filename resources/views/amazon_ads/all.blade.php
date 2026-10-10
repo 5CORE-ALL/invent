@@ -1390,6 +1390,7 @@
                     </div>
                     <div id="amazonAdsCampaignSkusLoading" class="small text-muted">Loading…</div>
                     <p class="small text-danger mb-0 d-none" id="amazonAdsCampaignSkusError" role="alert"></p>
+                    <p class="small text-success mb-2 d-none" id="amazonAdsCampaignSkusOk" role="status"></p>
                     <div class="table-responsive" style="max-height: 60vh;">
                         <table class="table table-sm table-striped mb-0 d-none" id="amazonAdsCampaignSkusTable">
                             <thead>
@@ -4153,6 +4154,8 @@
                 if (title) title.textContent = 'Campaign SKUs';
                 if (sub) sub.textContent = cname || cid;
                 if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                var okMsg = document.getElementById('amazonAdsCampaignSkusOk');
+                if (okMsg && !amzSbAdBusy) { okMsg.classList.add('d-none'); okMsg.textContent = ''; }
                 if (tbl) tbl.classList.add('d-none');
                 if (body) body.innerHTML = '';
                 var addInpOpen = document.getElementById('amazonAdsSbAdAddInput');
@@ -4229,16 +4232,30 @@
                         if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); }
                     });
             }
+            var amzSbAdBusy = false;
+            function amzSbAdSetBusy(on) {
+                amzSbAdBusy = !!on;
+                ['amazonAdsSbAdAddBtn', 'amazonAdsSbAdAddInput'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.disabled = amzSbAdBusy;
+                });
+                document.querySelectorAll('.amz-sb-ad-remove, .amz-sb-ad-add-row').forEach(function (el) {
+                    el.disabled = amzSbAdBusy;
+                });
+            }
             function amzSbAdChange(kind, sku, asin) {
                 var cid = amzCampSkusCtx.cid;
                 var err = document.getElementById('amazonAdsCampaignSkusError');
-                if (!cid) return;
+                var ok = document.getElementById('amazonAdsCampaignSkusOk');
+                if (!cid || amzSbAdBusy) return;
                 if (kind === 'remove' && !window.confirm('Remove this product from the SB creative?')) return;
                 var url = kind === 'remove' ? sbAdRemoveUrl : sbAdAddUrl;
                 var payload = { campaign_id: cid, _token: csrfToken };
                 if (sku) payload.skus = [sku];
                 if (asin) payload.asins = [asin];
                 if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                if (ok) { ok.classList.add('d-none'); ok.textContent = ''; }
+                amzSbAdSetBusy(true);
                 fetch(url, {
                     method: 'POST',
                     headers: {
@@ -4252,16 +4269,24 @@
                 }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
                     .then(function (out) {
                         var msg = (out.body && out.body.message) ? out.body.message : (kind === 'remove' ? 'Remove failed.' : 'Add failed.');
+                        var failed = (out.body && Array.isArray(out.body.failed)) ? out.body.failed : [];
+                        if (failed.length) {
+                            msg += ' ' + failed.map(function (f) { return (f.sku || '') + ': ' + (f.message || ''); }).join(' ');
+                        }
                         if (!out.ok || (out.body && out.body.success === false)) {
                             if (err) { err.textContent = msg; err.classList.remove('d-none'); }
+                            amzSbAdSetBusy(false);
                             return;
                         }
                         delete amzCampSkusCache[cid];
                         amzOpenCampaignSkus(cid, amzCampSkusCtx.cname, amzCampSkusCtx.adType);
+                        var okEl = document.getElementById('amazonAdsCampaignSkusOk');
+                        if (okEl) { okEl.textContent = msg; okEl.classList.remove('d-none'); }
                     })
                     .catch(function () {
                         if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); }
-                    });
+                    })
+                    .finally(function () { amzSbAdSetBusy(false); });
             }
             (function () {
                 var addBtn = document.getElementById('amazonAdsSbAdAddBtn');

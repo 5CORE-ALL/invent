@@ -440,7 +440,10 @@ final class AmazonAdsCampaignSkuSync
             foreach ($node as $k => $v) {
                 $lk = strtolower((string) $k);
                 if (in_array($lk, ['asin', 'asin1'], true) && is_string($v) && trim($v) !== '') {
-                    $found[strtoupper(trim($v))] = true;
+                    $u = strtoupper(trim($v));
+                    if (preg_match('/^[A-Z0-9]{10}$/', $u) === 1) {
+                        $found[$u] = true;
+                    }
                 }
                 if (in_array($lk, ['asins', 'asinlist'], true) && is_array($v)) {
                     foreach ($v as $a) {

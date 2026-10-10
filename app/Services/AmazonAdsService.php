@@ -1154,6 +1154,68 @@ class AmazonAdsService
     }
 
     /**
+     * Current SB creatives for one ad (asins, logo, headline).
+     *
+     * @return array<string, mixed>
+     */
+    public function listSbAdCreatives(string $adId): array
+    {
+        $adId = trim($adId);
+        if ($adId === '') {
+            return ['creatives' => []];
+        }
+
+        return $this->post('/sb/ads/creatives/list', [
+            'adId' => $adId,
+            'maxResults' => 100,
+        ], $this->sbCreativeHeaders());
+    }
+
+    /**
+     * New product-collection creative version (legacy type).
+     *
+     * @param  array<string, mixed>  $creative
+     * @return array<string, mixed>
+     */
+    public function updateSbProductCollectionCreative(string $adId, array $creative): array
+    {
+        return $this->post('/sb/ads/creatives/productCollection', [
+            'adId' => $adId,
+            'creative' => $creative,
+        ], $this->sbCreativeHeaders());
+    }
+
+    /**
+     * New extended product-collection creative version.
+     *
+     * @param  array<string, mixed>  $creative
+     * @return array<string, mixed>
+     */
+    public function updateSbProductCollectionExtendedCreative(string $adId, array $creative): array
+    {
+        return $this->post('/sb/ads/creatives/productCollectionExtended', [
+            'adId' => $adId,
+            'creative' => $creative,
+        ], $this->sbCreativeHeaders());
+    }
+
+    /**
+     * New manual-collection creative version (current product-collection replacement).
+     *
+     * @param  array<string, mixed>  $creative
+     * @return array<string, mixed>
+     */
+    public function updateSbManualCollectionCreative(string $adId, array $creative): array
+    {
+        return $this->post('/sb/ads/creatives/manualCollection', [
+            'ads' => [[
+                'adId' => $adId,
+                'creative' => $creative,
+            ]],
+        ], $this->sbAdHeaders());
+    }
+
+    /**
      * @return array<string, string>
      */
     private function sbAdHeaders(): array
@@ -1161,6 +1223,17 @@ class AmazonAdsService
         return [
             'Content-Type' => 'application/vnd.sbadresource.v4+json',
             'Accept' => 'application/vnd.sbadresource.v4+json',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function sbCreativeHeaders(): array
+    {
+        return [
+            'Content-Type' => 'application/vnd.sbAdCreativeResource.v4+json',
+            'Accept' => 'application/vnd.sbAdCreativeResource.v4+json',
         ];
     }
 
