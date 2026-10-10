@@ -180,7 +180,7 @@ class DobaSalesController extends Controller
                 'cogs' => round($cogs, 2),
                 'pft_each' => round($pftEach, 2),
                 'pft_each_pct' => round($pftEachPct, 0),
-                'pft' => round($pft, 0),
+                'pft' => round($pft, 2),
                 'roi' => round($roi, 0),
                 'kw_spent' => 0,
                 'pt_spent' => 0,

@@ -119,7 +119,7 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded GPFT$ ÷ rounded (Sales AMT × 1.1364). GPFT$ = (Sales AMT × 95%) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded GPFT$ ÷ rounded Sales AMT. GPFT$ = (Sales AMT × 95%) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded GPFT$ ÷ rounded Total COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
@@ -533,11 +533,10 @@
             // Calculate average price (weighted by quantity)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
-            // GPFT % uses Sales AMT × 1.1364. Sales AMT is not multiplied by Qty again.
             const gpftDollars = Math.round(totalPft);
-            const fullSalesBadge = Math.round(totalL30Sales * 1.1364);
+            const salesDollars = Math.round(totalL30Sales);
             const cogsDollars = Math.round(totalCogs);
-            const pftPercentage = fullSalesBadge !== 0 ? (gpftDollars / fullSalesBadge) * 100 : 0;
+            const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
             const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             // For Doba, no ad spend calculations
@@ -562,7 +561,7 @@
             $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
             $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-            $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
+            $('#pft-total-badge').text('GPFT Total: $' + gpftDollars.toLocaleString());
             
             // Color code PFT Total badge
             const pftBadge = $('#pft-total-badge');
@@ -590,7 +589,7 @@
             $('#l60-sales-badge').text('L60 Sales: $' + l60Formatted);
             $('#l60-sales-badge').attr('title', l60RangeDisplay ? ('L60 window: ' + l60RangeDisplay) : '');
 
-            $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+            $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
             $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
         }
 

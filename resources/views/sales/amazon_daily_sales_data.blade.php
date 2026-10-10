@@ -644,7 +644,7 @@
             // Sum of unique order-level totals (accurate even for orders without items in table)
             const totalSalesByOrders = Object.values(uniqueOrderTotals).reduce((sum, v) => sum + v, 0);
 
-            // Same badge math as Temu: round the dollars, then divide.
+            // Round the dollar totals, then divide. Amazon sales are not marked up.
             const gpftDollars = Math.round(totalPft);
             const salesDollars = Math.round(totalSkuLineSales);
             const cogsDollars = Math.round(totalCogs);
