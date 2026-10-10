@@ -1696,7 +1696,7 @@
                 <div class="modal-footer">
                     <div class="small text-muted me-auto" id="amz-bgt-status"></div>
                     <button type="button" class="btn btn-sm amz-auto-sync-btn" id="amazonAdsAutoPushPullBtn" aria-pressed="false" title="When on, each page load pulls live Amazon BGT and BID and pushes only values that differ. SBGT 0 pauses.">Auto Push &amp; Pull: OFF</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtSaveApplyBtn">Save and apply</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtSaveApplyBtn" onclick="if (window.amzBgtSaveAndApply) window.amzBgtSaveAndApply(event)">Save and apply</button>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -5443,9 +5443,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.1" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.1" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.1" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.1" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5492,22 +5492,15 @@
             }
             var bgtModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtModalEl) {
-                bgtModalEl.addEventListener('show.bs.modal', function () { amzBgtServerLoadGen++; }, true);
                 bgtModalEl.addEventListener('shown.bs.modal', function () {
                     amzBgtRefreshAllRuleCounts();
                     Object.keys(amzBgtColCharts).forEach(function (k) {
                         if (amzBgtColCharts[k]) { try { amzBgtColCharts[k].resize(); } catch (e) {} }
                     });
                 });
-                bgtModalEl.addEventListener('input', function (e) {
-                    amzBgtServerLoadGen++;
-                    var el = e.target;
-                    if (el && el.setAttribute && el.matches && el.matches('input[data-field]')) el.setAttribute('value', el.value);
-                });
                 bgtModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtRuleFromServer(function () { amzLoadBandsFromRule(window.amazonAdsBgtRule || {}); });
                     var st = document.getElementById('amz-bgt-status');
                     if (st) st.textContent = '';
                 });
@@ -5632,9 +5625,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5684,7 +5677,7 @@
                 bgtViewsModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtViewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtViewsRuleFromServer(function () { amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {}); });
+                    amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {});
                 });
             }
             var bgtViewsAddBtn = document.getElementById('amazonAdsBgtViewsRuleAddBandBtn');
@@ -5803,9 +5796,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5855,7 +5848,7 @@
                 bgtCvrModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtCvrRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtCvrRuleFromServer(function () { amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {}); });
+                    amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {});
                 });
             }
             var bgtCvrAddBtn = document.getElementById('amazonAdsBgtCvrRuleAddBandBtn');
@@ -5973,9 +5966,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6021,7 +6014,7 @@
                 bgtPrcModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtPrcRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtPrcRuleFromServer(function () { amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {}); });
+                    amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {});
                 });
             }
             var bgtPrcAddBtn = document.getElementById('amazonAdsBgtPrcRuleAddBandBtn');
@@ -6156,9 +6149,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. Decimals allowed (e.g. 1.5 or -0.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. Decimals allowed (e.g. 1.5 or -0.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6204,7 +6197,7 @@
                 bgtReviewsModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtReviewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtReviewsRuleFromServer(function () { amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {}); });
+                    amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {});
                 });
             }
             var bgtReviewsAddBtn = document.getElementById('amazonAdsBgtReviewsRuleAddBandBtn');
@@ -6319,9 +6312,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6371,7 +6364,7 @@
                 bgtDilModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtDilRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtDilRuleFromServer(function () { amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {}); });
+                    amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {});
                 });
             }
             var bgtDilAddBtn = document.getElementById('amazonAdsBgtDilRuleAddBandBtn');
@@ -6481,9 +6474,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.inv_from != null ? band.inv_from : '') + '" data-idx="' + i + '" data-field="inv_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.inv_to != null ? band.inv_to : '') + '" data-idx="' + i + '" data-field="inv_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.inv_from != null ? band.inv_from : '') + '" data-idx="' + i + '" data-field="inv_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.inv_to != null ? band.inv_to : '') + '" data-idx="' + i + '" data-field="inv_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6527,7 +6520,7 @@
                 bgtInvModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtInvRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtInvRuleFromServer(function () { amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {}); });
+                    amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {});
                 });
             }
             var bgtInvAddBtn = document.getElementById('amazonAdsBgtInvRuleAddBandBtn');
@@ -6598,9 +6591,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.spend_from != null ? band.spend_from : '') + '" data-idx="' + i + '" data-field="spend_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.spend_to != null ? band.spend_to : '') + '" data-idx="' + i + '" data-field="spend_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. The chart counts campaigns by L30 spend."></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.spend_from != null ? band.spend_from : '') + '" data-idx="' + i + '" data-field="spend_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.spend_to != null ? band.spend_to : '') + '" data-idx="' + i + '" data-field="spend_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. The chart counts campaigns by L30 spend."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6648,7 +6641,7 @@
                 bgtSpendModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtSpendRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtSpendRuleFromServer(function () { amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {}); });
+                    amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {});
                 });
             }
             var bgtSpendAddBtn = document.getElementById('amazonAdsBgtSpendRuleAddBandBtn');
@@ -6747,6 +6740,19 @@
                 }).then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body || {} }; }); });
             }
             var amzBgtPendingSave = null;
+            function amzBgtBandsFromInputs(spec) {
+                var copy = (spec.bands || []).map(function (b) { return Object.assign({}, b); });
+                var tbody = document.getElementById(spec.body);
+                if (!tbody) return copy;
+                tbody.querySelectorAll('input[data-idx][data-field]').forEach(function (el) {
+                    var idx = +el.dataset.idx;
+                    var fld = el.dataset.field;
+                    if (!copy[idx]) return;
+                    var raw = String(el.value == null ? '' : el.value).replace(/,/g, '').trim();
+                    copy[idx][fld] = raw === '' ? '' : parseFloat(raw);
+                });
+                return copy;
+            }
             function amzBgtCollectSaveJobs() {
                 var specs = [
                     { label: 'BGT Vs ACOS', url: bgtRuleSaveUrl, body: 'amazonAdsBgtRuleBandsBody', bands: amzCurrentBands, from: 'acos_from', to: 'acos_to', amt: 'sbgt', store: 'amazonAdsBgtRule', load: amzLoadBandsFromRule },
@@ -6761,18 +6767,19 @@
                 var jobs = [];
                 for (var i = 0; i < specs.length; i++) {
                     var spec = specs[i];
-                    var cleaned = amzBgtCleanRuleBands(spec.bands, spec.from, spec.to, spec.amt);
+                    var cleaned = amzBgtCleanRuleBands(amzBgtBandsFromInputs(spec), spec.from, spec.to, spec.amt);
                     var problem = amzBgtValidateRuleBands(cleaned, spec.from, spec.to, spec.amt, spec.label);
                     if (problem) return { error: problem };
                     jobs.push({ spec: spec, bands: cleaned });
                 }
                 return { jobs: jobs };
             }
-            function amzBgtSaveAndApply() {
+            function amzBgtSaveAndApply(ev) {
+                if (ev && ev.preventDefault) ev.preventDefault();
                 var btn = document.getElementById('amazonAdsBgtSaveApplyBtn');
                 var st = document.getElementById('amz-bgt-status');
                 amzBgtServerLoadGen++;
-                var collected = amzBgtPendingSave || amzBgtCollectSaveJobs();
+                var collected = amzBgtCollectSaveJobs();
                 amzBgtPendingSave = null;
                 if (collected.error) {
                     if (st) st.textContent = collected.error;
@@ -6809,17 +6816,15 @@
                     .catch(function (err) { if (st) st.textContent = (err && err.message) ? err.message : 'Network or server error.'; })
                     .finally(function () { if (btn) btn.disabled = false; });
             }
-            var bgtSaveApplyBtn = document.getElementById('amazonAdsBgtSaveApplyBtn');
-            if (bgtSaveApplyBtn) {
-                bgtSaveApplyBtn.addEventListener('mousedown', function () {
-                    var active = document.activeElement;
-                    if (active && active.setAttribute && active.matches && active.matches('#amazonAdsBgtRulesModal input[data-field]')) {
-                        active.setAttribute('value', active.value);
-                    }
-                    amzBgtPendingSave = amzBgtCollectSaveJobs();
-                }, true);
-                bgtSaveApplyBtn.addEventListener('click', amzBgtSaveAndApply);
-            }
+            window.amzBgtSaveAndApply = amzBgtSaveAndApply;
+            amzLoadBandsFromRule(window.amazonAdsBgtRule || {});
+            amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {});
+            amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {});
+            amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {});
+            amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {});
+            amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {});
+            amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {});
+            amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {});
             var autoPushPullBtn = document.getElementById('amazonAdsAutoPushPullBtn');
             if (autoPushPullBtn) {
                 amzPaintAutoPushPullBtn();
