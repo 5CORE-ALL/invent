@@ -12,25 +12,13 @@ use Illuminate\Support\Facades\Schema;
  */
 trait StoresAmazonAdsRuleJson
 {
-    private static function readStoredRule(string $key, ?string $legacyTable = null): ?array
+    private static function readStoredRule(string $key): ?array
     {
         self::ensureRulesTable();
-        $decoded = self::decodeStoredRule(
+
+        return self::decodeStoredRule(
             DB::table('amazon_ads_rules')->where('key', $key)->value('rule')
         );
-        if (is_array($decoded) && $decoded !== []) {
-            return $decoded;
-        }
-        if ($legacyTable === null || ! Schema::hasTable($legacyTable)) {
-            return null;
-        }
-        $legacy = self::decodeStoredRule(DB::table($legacyTable)->orderBy('id')->value('rule'));
-        if (! is_array($legacy) || $legacy === []) {
-            return null;
-        }
-        self::storeRuleJson($key, $legacy);
-
-        return $legacy;
     }
 
     private static function decodeStoredRule(mixed $raw): ?array

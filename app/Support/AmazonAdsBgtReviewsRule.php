@@ -2,11 +2,7 @@
 
 namespace App\Support;
 
-use App\Models\AmazonAdsBgtReviewsRuleSetting;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Campaign Reviews (star rating) → suggested daily budget (Bgt Reviews).
@@ -52,7 +48,7 @@ final class AmazonAdsBgtReviewsRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('reviews', 'amazon_ads_bgt_reviews_rule_settings');
+        $decoded = self::readStoredRule('reviews');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -114,9 +110,6 @@ final class AmazonAdsBgtReviewsRule
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
             }
-            if ($from > $to) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
-            }
             if ($bgt < -9_999_999 || $bgt > 9_999_999) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Reviews must be between -9999999 and 9999999.');
             }
@@ -128,7 +121,6 @@ final class AmazonAdsBgtReviewsRule
      */
     public static function persistRule(array $rule): void
     {
-        self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
         self::storeRuleJson('reviews', $normalized);
         self::forgetResolvedCache();
@@ -167,22 +159,5 @@ final class AmazonAdsBgtReviewsRule
         }
 
         return $empty;
-    }
-
-    private static function ensureSettingsTable(): void
-    {
-        if (Schema::hasTable('amazon_ads_bgt_reviews_rule_settings')) {
-            return;
-        }
-        try {
-            Schema::create('amazon_ads_bgt_reviews_rule_settings', function (Blueprint $table) {
-                $table->id();
-                $table->longText('rule');
-                $table->timestamps();
-            });
-        } catch (\Throwable $e) {
-            Log::error('amazon_ads_bgt_reviews_rule_settings create failed', ['error' => $e->getMessage()]);
-            throw new \RuntimeException('Could not create amazon_ads_bgt_reviews_rule_settings: '.$e->getMessage(), 0, $e);
-        }
     }
 }

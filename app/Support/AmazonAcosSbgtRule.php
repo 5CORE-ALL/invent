@@ -2,16 +2,13 @@
 
 namespace App\Support;
 
-use App\Models\AmazonAcosSbgtRuleSetting;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * L30 ACOS (%) → suggested daily budget tier (SBGT). Rule is a list of inclusive
- * ACOS % bands ({@see defaultSbgtBands}) persisted in {@see AmazonAcosSbgtRuleSetting}
- * (Amazon Ads “BGT rule”). Bands are evaluated top-to-bottom; the first band whose
- * From ≤ ACOS ≤ To wins. Use 9999 on To for the catch-all highest band.
+ * ACOS % bands ({@see defaultSbgtBands}) stored in amazon_ads_rules under key acos.
+ * Bands are evaluated top-to-bottom; the first band whose From ≤ ACOS ≤ To wins.
+ * Use 9999 on To for the catch-all highest band.
  */
 final class AmazonAcosSbgtRule
 {
@@ -58,7 +55,7 @@ final class AmazonAcosSbgtRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('acos', 'amazon_acos_sbgt_rule_settings');
+        $decoded = self::readStoredRule('acos');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -144,9 +141,6 @@ final class AmazonAcosSbgtRule
             $sbgt = (float) ($band['sbgt'] ?? 0);
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('SBGT band '.($i + 1).': From and To must be finite numbers.');
-            }
-            if ($from > $to) {
-                throw new \InvalidArgumentException('SBGT band '.($i + 1).': From must be ≤ To.');
             }
             if ($sbgt < -9_999_999 || $sbgt > 9_999_999) {
                 throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between -9999999 and 9999999 (0 pauses the campaign).');

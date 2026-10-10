@@ -2,11 +2,7 @@
 
 namespace App\Support;
 
-use App\Models\AmazonAdsBgtCvrRuleSetting;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Amz page CVR L30 (parent A L30 ÷ Sess30 × 100) → suggested daily budget (Bgt Cvr).
@@ -54,7 +50,7 @@ final class AmazonAdsBgtCvrRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('cvr', 'amazon_ads_bgt_cvr_rule_settings');
+        $decoded = self::readStoredRule('cvr');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -139,9 +135,6 @@ final class AmazonAdsBgtCvrRule
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
             }
-            if ($from > $to) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
-            }
             if ($bgt < -9_999_999 || $bgt > 9_999_999) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Cvr must be between -9999999 and 9999999.');
             }
@@ -153,7 +146,6 @@ final class AmazonAdsBgtCvrRule
      */
     public static function persistRule(array $rule): void
     {
-        self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
         self::storeRuleJson('cvr', $normalized);
         self::forgetResolvedCache();
@@ -185,22 +177,5 @@ final class AmazonAdsBgtCvrRule
         }
 
         return $empty;
-    }
-
-    private static function ensureSettingsTable(): void
-    {
-        if (Schema::hasTable('amazon_ads_bgt_cvr_rule_settings')) {
-            return;
-        }
-        try {
-            Schema::create('amazon_ads_bgt_cvr_rule_settings', function (Blueprint $table) {
-                $table->id();
-                $table->longText('rule');
-                $table->timestamps();
-            });
-        } catch (\Throwable $e) {
-            Log::error('amazon_ads_bgt_cvr_rule_settings create failed', ['error' => $e->getMessage()]);
-            throw new \RuntimeException('Could not create amazon_ads_bgt_cvr_rule_settings: '.$e->getMessage(), 0, $e);
-        }
     }
 }

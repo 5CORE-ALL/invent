@@ -6720,7 +6720,6 @@
                     if (!isFinite(row[fromKey]) || !isFinite(row[toKey]) || !isFinite(row[amtKey])) {
                         return label + ': every slab needs numeric From, To, and budget.';
                     }
-                    if (row[fromKey] > row[toKey]) return label + ': each slab needs From ≤ To.';
                 }
                 return '';
             }
@@ -6775,7 +6774,11 @@
                 var collected = amzBgtCollectSaveJobs();
                 amzBgtPendingSave = null;
                 if (collected.error) {
-                    if (st) st.textContent = collected.error;
+                    if (st) {
+                        st.textContent = collected.error;
+                        st.className = 'small text-danger fw-semibold me-auto';
+                    }
+                    window.alert(collected.error);
                     return;
                 }
                 var jobs = collected.jobs;

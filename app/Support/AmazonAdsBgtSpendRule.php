@@ -2,11 +2,7 @@
 
 namespace App\Support;
 
-use App\Models\AmazonAdsBgtSpendRuleSetting;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * L30 ad spend (grid cost) → suggested daily budget (Bgt Spend).
@@ -51,7 +47,7 @@ final class AmazonAdsBgtSpendRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('spend', 'amazon_ads_bgt_spend_rule_settings');
+        $decoded = self::readStoredRule('spend');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -112,9 +108,6 @@ final class AmazonAdsBgtSpendRule
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
             }
-            if ($from > $to) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
-            }
             if ($bgt < -9_999_999 || $bgt > 9_999_999) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Spend must be between -9999999 and 9999999.');
             }
@@ -126,7 +119,6 @@ final class AmazonAdsBgtSpendRule
      */
     public static function persistRule(array $rule): void
     {
-        self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
         self::storeRuleJson('spend', $normalized);
         self::forgetResolvedCache();
@@ -160,22 +152,5 @@ final class AmazonAdsBgtSpendRule
         }
 
         return $empty;
-    }
-
-    private static function ensureSettingsTable(): void
-    {
-        if (Schema::hasTable('amazon_ads_bgt_spend_rule_settings')) {
-            return;
-        }
-        try {
-            Schema::create('amazon_ads_bgt_spend_rule_settings', function (Blueprint $table) {
-                $table->id();
-                $table->longText('rule');
-                $table->timestamps();
-            });
-        } catch (\Throwable $e) {
-            Log::error('amazon_ads_bgt_spend_rule_settings create failed', ['error' => $e->getMessage()]);
-            throw new \RuntimeException('Could not create amazon_ads_bgt_spend_rule_settings: '.$e->getMessage(), 0, $e);
-        }
     }
 }
