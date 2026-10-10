@@ -218,7 +218,7 @@
                             <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;"
                                 title="L30 Sales = Σ official line sales (base + freight).">L30 Sales: $0</span>
                             <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge" style="color: white; font-weight: bold;"
-                                title="Σ Temu Price × Qty">Temu Full Price Sales: $0</span>
+                                title="Temu Full Price Sales = Σ Line Sales × 1.1364">Temu Full Price Sales: $0</span>
                             <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;"
                                 title="GPFT % = GPFT$ badge ÷ Temu Full Price Sales badge × 100">GPFT: 0%</span>
                             <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;"
@@ -902,7 +902,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GPFT % = GPFT$ ÷ Temu Price × 100",
+                    headerTooltip: "GPFT % = GPFT$ ÷ (Temu Price × Qty) × 100",
                     mutator: function(value, data) {
                         return temuRowGpftPercent(data);
                     },
@@ -919,7 +919,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GROI % = GPFT$ ÷ LP × 100",
+                    headerTooltip: "GROI % = GPFT$ ÷ COGS × 100",
                     mutator: function(value, data) {
                         return temuRowGroiPercent(data);
                     },
@@ -978,7 +978,7 @@
         function updateSummary() {
             const data = table.getData("active");
             let totalOrders = 0, totalQuantity = 0, totalPft = 0, totalL30Sales = 0;
-            let totalTemuFullPriceSales = 0;
+            let totalApiLineSales = 0;
             let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0, totalCogsShip = 0;
             let totalYSalesGpft = 0, totalYSalesCogs = 0;
             let l7LineSales = 0, l7Gpft = 0, l7Cogs = 0;
@@ -992,11 +992,11 @@
                 totalOrders++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = temuRowBase(row);
-                const temuPrice = temuRowTemuPrice(row);
                 const lp = parseFloat(row.lp) || 0;
-                const lineSales = temu2LineSales(row);
+                const lineSales = parseFloat(row.line_sales) || 0;
                 totalQuantity += quantity;
-                totalL30Sales += lineSales;
+                totalL30Sales += temu2LineSales(row);
+                totalApiLineSales += lineSales;
                 totalCogsShip += parseFloat(row.cogs_ship) || 0;
                 totalYSalesGpft += temuRowYSalesGpftDollar(row);
                 totalYSalesCogs += temuRowCogs(row);
@@ -1007,7 +1007,6 @@
                     totalQuantityForPrice += quantity;
                     const gpft = temuRowGpftDollar(row);
                     totalPft += gpft;
-                    totalTemuFullPriceSales += quantity * temuPrice;
                     totalCogs += lp * quantity;
                     if (inL7) {
                         l7Gpft += gpft;
@@ -1017,10 +1016,12 @@
             });
 
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-            const pftPercentage = totalTemuFullPriceSales > 0
-                ? (totalPft / totalTemuFullPriceSales) * 100
-                : 0;
-            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            const totalTemuFullPriceSales = totalApiLineSales * TEMU_PRICE_MULT;
+            const gpftBadge = Math.round(totalPft);
+            const fullSalesBadge = Math.round(totalTemuFullPriceSales);
+            const pftPercentage = fullSalesBadge !== 0 ? (gpftBadge / fullSalesBadge) * 100 : 0;
+            const cogsBadge = Math.round(totalCogs);
+            const roiPercentage = cogsBadge !== 0 ? (gpftBadge / cogsBadge) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
@@ -1033,7 +1034,7 @@
             $('#temu-full-price-sales-badge').text('Temu Full Price Sales: $' + Math.round(totalTemuFullPriceSales).toLocaleString());
             $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
             $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
-            const ySalesFull = totalL30Sales * TEMU_PRICE_MULT;
+            const ySalesFull = totalApiLineSales * TEMU_PRICE_MULT;
             const ySalesRoi = totalYSalesCogs !== 0 ? (totalYSalesGpft / totalYSalesCogs) * 100 : 0;
             const ySalesGpftPct = ySalesFull !== 0 ? (totalYSalesGpft / ySalesFull) * 100 : 0;
             $('#y-sales-gpft-badge').text('Y Sales GPFT$: $' + Math.round(totalYSalesGpft).toLocaleString())
@@ -1044,7 +1045,7 @@
             const pFull = pSales * TEMU_PRICE_MULT;
             const pGpft = (l7Gpft / 7) * 30;
             const pCogs = (l7Cogs / 7) * 30;
-            const pVs = totalL30Sales > 0 ? ((pSales - totalL30Sales) / totalL30Sales) * 100 : null;
+            const pVs = totalApiLineSales > 0 ? ((pSales - totalApiLineSales) / totalApiLineSales) * 100 : null;
             $('#p-sales-badge').contents().filter(function() { return this.nodeType === 3; }).first()
                 .replaceWith('P-Sales: $' + Math.round(pSales).toLocaleString());
             if (pVs == null || !isFinite(pVs)) {
