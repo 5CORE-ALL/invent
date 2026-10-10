@@ -6,11 +6,71 @@ use App\Http\Controllers\Controller;
 use App\Models\EbayOrder;
 use App\Models\ProductMaster;
 use App\Services\EbayChannelMetricsService;
+use App\Services\ShippingSlabRateService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class EbaySalesController extends Controller
 {
+    /**
+     * Item WT ACT (lb) from Dim & Wt Master. Uses wt_act, else wt_act_kg × 2.2046226218.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public static function actWeightLb(array $values): float
+    {
+        $lb = $values['wt_act'] ?? null;
+        if (is_numeric($lb) && (float) $lb > 0) {
+            return round((float) $lb, 2);
+        }
+
+        $kg = $values['wt_act_kg'] ?? null;
+        if (is_numeric($kg) && (float) $kg > 0) {
+            return round((float) $kg * 2.2046226218, 2);
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @return array{0: ?ShippingSlabRateService, 1: array<string, array{rate: ?float}>}
+     */
+    public static function shipSlabLookup(): array
+    {
+        try {
+            $slabs = app(ShippingSlabRateService::class);
+
+            return [$slabs, $slabs->getAllSlabCarrierRates('ship')];
+        } catch (\Throwable $e) {
+            return [null, []];
+        }
+    }
+
+    /**
+     * Shipping Master ship slab for the order weight. Missing weight or slab is 0.
+     *
+     * @param  array<string, array{rate: ?float}>  $shipSlabRates
+     */
+    public static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder): float
+    {
+        if ($slabs === null || $weightOrder <= 0 || $shipSlabRates === []) {
+            return 0.0;
+        }
+
+        $declared = $slabs->roundWeightLbUpToSlab($weightOrder);
+        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightOrder);
+        if ($key === null || ! isset($shipSlabRates[$key])) {
+            return 0.0;
+        }
+
+        $rate = $shipSlabRates[$key]['rate'] ?? null;
+        if ($rate === null || ! is_numeric($rate)) {
+            return 0.0;
+        }
+
+        return round((float) $rate, 2);
+    }
+
     public function index()
     {
         // Yesterday's sales (Pacific) from real orders — same per-order total and
@@ -47,6 +107,7 @@ class EbaySalesController extends Controller
 
         // Fetch ProductMaster data for LP and Ship
         $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+        [$slabService, $shipSlabRates] = self::shipSlabLookup();
 
         $data = [];
         foreach ($orders as $order) {
@@ -95,9 +156,10 @@ class EbaySalesController extends Controller
                 // Extract LP, Ship, and Weight Act
                 $lp = 0;
                 $ship = 0;
-                $weightAct = 0;
+                $values = [];
                 if ($pm) {
                     $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    $values = is_array($values) ? $values : [];
                     $lp = 0;
                     foreach ($values as $k => $v) {
                         if (strtolower($k) === "lp") {
@@ -109,42 +171,23 @@ class EbaySalesController extends Controller
                         $lp = floatval($pm->lp);
                     }
                     $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
-                    $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
                 }
 
                 $quantity = floatval($item->quantity);
                 $price = floatval($item->price);
 
-                // T Weight = Weight Act * Quantity
+                // Item price is already the line amount. T Weight = ACT lb × Qty.
+                $weightAct = self::actWeightLb($values);
                 $tWeight = $weightAct * $quantity;
+                $shipCost = self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
 
-                // Ship Cost calculation:
-                // If quantity is 1: ship_cost = ship / 1
-                // If quantity > 1 and t_weight < 20: ship_cost = ship / quantity
-                // Otherwise: ship_cost = ship
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship ;
-                }
-
-                // COGS = LP * quantity (same as Amazon)
+                // COGS = LP × Qty. COGS Ship is subtracted once.
                 $cogs = $lp * $quantity;
-
-                // PFT Each = (price * 0.85) - lp - ship_cost
+                $pft = ($price * 0.85) - $cogs - $shipCost;
+                $pftEach = $quantity > 0 ? $pft / $quantity : 0;
                 $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-                $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
-
-                // PFT Each % = (pft_each / price) * 100
                 $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-
-                // T PFT = pft_each * quantity
-                $pft = $pftEach * $quantity;
-
-                // ROI = (PFT / LP) * 100
-                $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
+                $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
                 $data[] = [
                     'order_id' => $order->ebay_order_id,
