@@ -121,6 +121,155 @@ class Inv5coreLedger
         return '5Core Inventory';
     }
 
+    /** @var list<string> */
+    private const SHOPIFY_NATIVE_SOURCES = [
+        'web',
+        'pos',
+        'shop',
+        'shopify',
+        'shopify_draft_order',
+        'online_store',
+        'iphone',
+        'android',
+        'hydrogen',
+        'checkout-via-buy-button',
+        'checkout-via-buy-now-button',
+        'google',
+    ];
+
+    /** @var list<string> */
+    private const MARKETPLACE_SOURCE_TOKENS = [
+        'amazon', 'ebay', 'shein', 'tiktok', 'temu', 'macy', 'wayfair',
+        'doba', '145019994113', 'reverb', 'faire', 'best buy', 'bestbuy',
+        'newegg', 'aliexpress', 'ali express', 'alibaba', 'topdawg',
+        'purchasing power', 'purchasingpower', 'walmart', 'mercari',
+        '179763773441', '189863297025',
+    ];
+
+    /**
+     * Shopify order copies keep a marketplace name when the sale came from
+     * that channel. Only a storefront order is labeled Shopify.
+     */
+    public static function shopifyOrderChannel(string $sourceName, string $tags = ''): ?string
+    {
+        $source = strtolower(trim($sourceName));
+        $blob = trim($source.' '.strtolower($tags));
+        foreach (self::MARKETPLACE_SOURCE_TOKENS as $token) {
+            if ($blob !== '' && str_contains($blob, $token)) {
+                return null;
+            }
+        }
+        if ($source === '' || is_numeric($source)) {
+            return null;
+        }
+        if (str_contains($source, 'shopify') || in_array($source, self::SHOPIFY_NATIVE_SOURCES, true)) {
+            return 'Shopify';
+        }
+
+        return ucwords(str_replace(['_', '-'], ' ', $source));
+    }
+
+    /**
+     * @return list<array{at: int, stage: int, txn_type: string, reference: string, channel: string, user_name: string, on_hand_delta: float, committed_delta: float, unavailable_delta: float, available_delta: float, in_balance: bool}>
+     */
+    public static function orderMovementEvents(float $qty, ?string $status, string $reference, string $channel, int $createdAt, ?int $fulfilledAt): array
+    {
+        $qty = self::roundQty($qty);
+        $channel = trim($channel);
+        if ($qty <= 0 || $channel === '') {
+            return [];
+        }
+        $fulfilledAt = ($fulfilledAt !== null && $fulfilledAt > $createdAt) ? $fulfilledAt : $createdAt;
+        $create = self::historyEvent($createdAt, 1, 'order_created', $reference, $channel, 0.0, $qty, self::deltaForSubtract($qty));
+        if (self::statusSkipsSale($status)) {
+            return [
+                $create,
+                self::historyEvent($fulfilledAt, 3, 'return', $reference, $channel, 0.0, self::deltaForSubtract($qty), $qty),
+            ];
+        }
+        if (! self::statusIsFulfilled($status)) {
+            return [$create];
+        }
+
+        return [
+            $create,
+            self::historyEvent($fulfilledAt, 2, 'order_fulfilled', $reference, $channel, self::deltaForSubtract($qty), self::deltaForSubtract($qty), $qty),
+        ];
+    }
+
+    /**
+     * @param  list<array{at: int, stage: int, txn_type: string, reference: string, channel: string, user_name: string, on_hand_delta: float, committed_delta: float, unavailable_delta: float, available_delta: float, in_balance: bool}>  $events
+     * @return list<array{at: int, txn_type: string, reference: string, channel: string, user_name: string, committed_delta: float, committed_after: float, available_delta: float, available_after: float, on_hand_delta: float, on_hand_after: float}>
+     */
+    public static function replayHistory(float $endOnHand, float $endCommitted, float $endUnavailable, array $events): array
+    {
+        usort($events, function (array $a, array $b): int {
+            $byTime = $a['at'] <=> $b['at'];
+
+            return $byTime !== 0 ? $byTime : ($a['stage'] <=> $b['stage']);
+        });
+        $onHandDelta = 0.0;
+        $committedDelta = 0.0;
+        $unavailableDelta = 0.0;
+        foreach ($events as $event) {
+            $onHandDelta += (float) $event['on_hand_delta'];
+            $committedDelta += (float) $event['committed_delta'];
+            $unavailableDelta += (float) $event['unavailable_delta'];
+        }
+        $onHand = self::roundQty($endOnHand - $onHandDelta);
+        $committed = self::roundQty($endCommitted - $committedDelta);
+        $unavailable = self::roundQty($endUnavailable - $unavailableDelta);
+        $rows = [];
+        foreach ($events as $event) {
+            $states = self::nextStates(
+                $onHand,
+                $committed,
+                $unavailable,
+                (float) $event['on_hand_delta'],
+                (float) $event['committed_delta'],
+                (float) $event['unavailable_delta']
+            );
+            $rows[] = [
+                'at' => (int) $event['at'],
+                'txn_type' => (string) $event['txn_type'],
+                'reference' => (string) $event['reference'],
+                'channel' => (string) $event['channel'],
+                'user_name' => (string) ($event['user_name'] ?? ''),
+                'committed_delta' => (float) $event['committed_delta'],
+                'committed_after' => $states['committed'],
+                'available_delta' => (float) $event['available_delta'],
+                'available_after' => $states['available'],
+                'on_hand_delta' => (float) $event['on_hand_delta'],
+                'on_hand_after' => $states['on_hand'],
+            ];
+            $onHand = $states['on_hand'];
+            $committed = $states['committed'];
+            $unavailable = $states['unavailable'];
+        }
+
+        return array_reverse($rows);
+    }
+
+    /**
+     * @return array{at: int, stage: int, txn_type: string, reference: string, channel: string, user_name: string, on_hand_delta: float, committed_delta: float, unavailable_delta: float, available_delta: float, in_balance: bool}
+     */
+    private static function historyEvent(int $at, int $stage, string $txnType, string $reference, string $channel, float $onHandDelta, float $committedDelta, float $availableDelta): array
+    {
+        return [
+            'at' => $at,
+            'stage' => $stage,
+            'txn_type' => $txnType,
+            'reference' => $reference,
+            'channel' => $channel,
+            'user_name' => '',
+            'on_hand_delta' => $onHandDelta,
+            'committed_delta' => $committedDelta,
+            'unavailable_delta' => 0.0,
+            'available_delta' => $availableDelta,
+            'in_balance' => false,
+        ];
+    }
+
     /**
      * A source row reduces on-hand only when it was inserted after the
      * watermark saved with the one-time opening. Older rows are already

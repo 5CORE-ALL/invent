@@ -339,12 +339,57 @@ class Inv5coreMarketplaceOrders
     }
 
     /**
+     * Order lines already in the app for one SKU. Callers pass the per-source
+     * id captured at opening so later lines stay out of this read.
+     *
+     * @param  array<string, int>  $maxIdBySource
+     * @return list<object>
+     */
+    public static function linesForCompactSku(string $compact, array $maxIdBySource): array
+    {
+        $compact = ShopifySku::compactSkuForLookup($compact);
+        if ($compact === '') {
+            return [];
+        }
+
+        $lines = [];
+        foreach (self::definitions() as $def) {
+            if (! isset($maxIdBySource[$def['source']]) || ! Schema::hasTable($def['table'])) {
+                continue;
+            }
+            $rows = self::lineQuery($def)
+                ->whereRaw(self::compactSkuSql($def['sku_sql']).' = ?', [$compact])
+                ->whereRaw($def['id_sql'].' <= ?', [(int) $maxIdBySource[$def['source']]])
+                ->orderByRaw($def['date_sql'].' desc')
+                ->limit(300)
+                ->get();
+            foreach ($rows as $row) {
+                $row->channel = $def['label'];
+                $row->source = $def['source'];
+                $lines[] = $row;
+            }
+        }
+
+        return $lines;
+    }
+
+    public static function compactSkuSql(string $expr): string
+    {
+        return "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(($expr), CHAR(160), ''), ' ', ''), '-', ''), '_', ''), '.', ''), '/', ''))";
+    }
+
+    /**
      * @param  array<string, string>  $def
      */
     private static function lineQuery(array $def)
     {
+        $fulfilled = 'NULL';
+        if (empty($def['join_sql']) && Schema::hasColumn($def['table'], 'ship_time')) {
+            $fulfilled = 'ship_time';
+        }
+
         return self::baseQuery($def)->selectRaw(
-            $def['id_sql'].' as id, '.$def['sku_sql'].' as sku, '.$def['qty_sql'].' as qty, '.$def['order_sql'].' as order_number, '.$def['status_sql'].' as status, '.$def['date_sql'].' as order_date'
+            $def['id_sql'].' as id, '.$def['sku_sql'].' as sku, '.$def['qty_sql'].' as qty, '.$def['order_sql'].' as order_number, '.$def['status_sql'].' as status, '.$def['date_sql'].' as order_date, '.$fulfilled.' as fulfilled_at'
         );
     }
 
