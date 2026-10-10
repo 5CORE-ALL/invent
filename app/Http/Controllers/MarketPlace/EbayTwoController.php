@@ -11,6 +11,7 @@ use App\Services\EbayRuleSpriceApplyService;
 use App\Services\Ebay1PromotionService;
 use App\Services\EbayPushService;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Sales\EbaySalesController;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
@@ -164,6 +165,7 @@ class EbayTwoController extends Controller
             }
 
             $margin = $this->ebay1StyleTakeHomePercent();
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
             $qty = 0;
             $pft = 0.0;
             $cogs = 0.0;
@@ -228,21 +230,22 @@ class EbayTwoController extends Controller
 
                     $quantity = (float) ($item->quantity ?? 0);
                     $price = (float) ($item->price ?? 0);
-                    $tWeight = $weightAct * $quantity;
-                    if ($quantity == 1) {
-                        $shipCost = $ship;
-                    } elseif ($quantity > 1 && $tWeight < 20) {
-                        $shipCost = $ship / $quantity;
-                    } else {
-                        $shipCost = $ship;
+                    $values = [];
+                    if ($pm) {
+                        $values = is_array($pm->Values)
+                            ? $pm->Values
+                            : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                        $values = is_array($values) ? $values : [];
                     }
-                    $unitPrice = $quantity > 0 ? ($price / $quantity) : 0.0;
-                    $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+                    $weightOrder = EbaySalesController::actWeightLb($values) * $quantity;
+                    $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightOrder);
+                    $rowCogs = $lp * $quantity;
+                    $rowPft = ($price * $margin) - $rowCogs - $shipCost;
 
                     $qty += (int) $quantity;
-                    $pft += $pftEach * $quantity;
-                    $cogs += $lp * $quantity;
-                    $l30Sales += $quantity * $unitPrice;
+                    $pft += $rowPft;
+                    $cogs += $rowCogs;
+                    $l30Sales += $price;
                 }
             }
 
@@ -251,8 +254,8 @@ class EbayTwoController extends Controller
                 'qty'   => $qty,
                 'pft'   => round($pft, 2),
                 'cogs'  => round($cogs, 2),
-                'gpft'  => $l30Sales > 0 ? round(($pft / $l30Sales) * 100, 1) : 0.0,
-                'groi'  => $cogs > 0 ? round(($pft / $cogs) * 100, 1) : 0.0,
+                'gpft'  => round($l30Sales) != 0.0 ? (float) round(round($pft) / round($l30Sales) * 100) : 0.0,
+                'groi'  => round($cogs) != 0.0 ? (float) round(round($pft) / round($cogs) * 100) : 0.0,
             ];
         } catch (\Throwable $e) {
             Log::warning('fetchEbay2L30OrdersAggregate failed: ' . $e->getMessage());

@@ -119,13 +119,14 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded GPFT$ ÷ rounded Sales AMT. GPFT$ = (Sales AMT × 95%) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded GPFT$ ÷ rounded Total COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
                         <span class="badge fs-6 p-2" id="l60-sales-badge" style="background-color: #6f42c1; color: white; font-weight: bold;">L60 Sales: $0.00</span>
-                        <span class="badge fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once.">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
@@ -393,14 +394,16 @@
                     field: "t_weight",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 100
+                    width: 100,
+                    headerTooltip: "T Weight = Dim & Wt ACT lb × Qty"
                 },
                 {
-                    title: "Ship Cost",
+                    title: "COGS Ship",
                     field: "ship_cost",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 100,
+                    width: 110,
+                    headerTooltip: "Shipping Master Ship slab for T Weight. Subtracted once.",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -448,8 +451,9 @@
                     }
                 },
                 {
-                    title: "ROI %",
+                    title: "GROI %",
                     field: "roi",
+                    headerTooltip: "GROI % = T PFT ÷ COGS × 100. T PFT = (Sales × 95%) − COGS − COGS Ship.",
                     hozAlign: "center",
                     sorter: "number",
                     width: 100,
@@ -483,6 +487,7 @@
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
+            let totalCogsShip = 0;
             const activeSkus = new Set();
 
             data.forEach(row => {
@@ -493,7 +498,7 @@
                 
                 totalOrders++;
                 const quantity = parseInt(row.quantity) || 0;
-                const basePrice = parseFloat(row.price) || 0;
+                const lineSales = parseFloat(row.sale_amount) || 0;
 
                 if (row.sku) {
                     activeSkus.add(String(row.sku).toLowerCase());
@@ -504,36 +509,35 @@
                     return;
                 }
                 
-                // Total revenue = basePrice * quantity
+                // Sales AMT is already item price × Qty. Do not multiply by Qty again.
                 totalQuantity += quantity;
-                totalRevenue += basePrice * quantity;
+                totalRevenue += lineSales;
                 
-                // Calculate weighted price
-                if (quantity > 0 && basePrice > 0) {
-                    totalWeightedPrice += basePrice * quantity;
+                if (quantity > 0 && lineSales > 0) {
+                    totalWeightedPrice += lineSales;
                     totalQuantityForPrice += quantity;
                 }
                 
-                // Get PFT and COGS from row data
+                // Get PFT, COGS, and COGS Ship from row data
                 const pft = parseFloat(row.pft) || 0;
                 const cogs = parseFloat(row.cogs) || 0;
+                const cogsShip = parseFloat(row.ship_cost) || 0;
                 
                 totalPft += pft;
                 totalCogs += cogs;
+                totalCogsShip += cogsShip;
                 
-                // L30 Sales = Quantity * price
-                const l30Sales = quantity * basePrice;
-                totalL30Sales += l30Sales;
+                totalL30Sales += lineSales;
             });
 
             // Calculate average price (weighted by quantity)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
-            // Calculate PFT Percentage: (Sum of PFT / Sum of Total Sales) * 100
-            const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
-            
-            // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
-            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            const gpftDollars = Math.round(totalPft);
+            const salesDollars = Math.round(totalL30Sales);
+            const cogsDollars = Math.round(totalCogs);
+            const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             // For Doba, no ad spend calculations
             const tacosPercentage = 0;
@@ -554,10 +558,10 @@
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+            $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-            $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
+            $('#pft-total-badge').text('GPFT Total: $' + gpftDollars.toLocaleString());
             
             // Color code PFT Total badge
             const pftBadge = $('#pft-total-badge');
@@ -585,7 +589,8 @@
             $('#l60-sales-badge').text('L60 Sales: $' + l60Formatted);
             $('#l60-sales-badge').attr('title', l60RangeDisplay ? ('L60 window: ' + l60RangeDisplay) : '');
 
-            $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+            $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+            $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
         }
 
         // Build Column Visibility Dropdown

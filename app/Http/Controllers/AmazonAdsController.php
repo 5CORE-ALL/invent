@@ -1706,7 +1706,7 @@ class AmazonAdsController extends Controller
 
         $hasAdType = in_array('ad_type', $dbColumns, true);
         $select = self::lRangeMetricSelectColumns($dbColumns, $hasAdType);
-        $emptySlice = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+        $emptySlice = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
         $map = [];
 
         $summaryRows = DB::table($table)
@@ -1759,6 +1759,8 @@ class AmazonAdsController extends Controller
             }
             $spend = AmazonAdsLRangeMetrics::spendFromRow($frArr, $dbColumns);
             $map[$key]['L2'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L2'], $spend);
+            $l2Sales = AmazonAdsLRangeMetrics::salesFromRow($frArr, $dbColumns, 'daily');
+            $map[$key]['L2sales'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L2sales'] ?? null, $l2Sales);
         }
 
         self::overlayLatestDailyOntoL1Map($table, $dbColumns, $cidList, $hasAdType, $select, $map);
@@ -1819,7 +1821,7 @@ class AmazonAdsController extends Controller
             $ad = $hasAdType ? trim((string) ($frArr['ad_type'] ?? '')) : '';
             $key = $cid."\0".$ad;
             if (! isset($map[$key])) {
-                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
             }
             $spend = AmazonAdsLRangeMetrics::spendFromRow($frArr, $dbColumns);
             $map[$key]['L1'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L1'], $spend);
@@ -1885,7 +1887,7 @@ class AmazonAdsController extends Controller
                 continue;
             }
             if (! isset($map[$key])) {
-                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                $map[$key] = ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
             }
             $map[$key]['L7sales'] = AmazonAdsLRangeMetrics::preferAmount($map[$key]['L7sales'], $sum);
         }
@@ -4730,6 +4732,105 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Daily ads spend history for the Y Spend history dot (same chart modal as CPC / SBID).
+     */
+    public function ySpendHistory(Request $request): JsonResponse
+    {
+        return $this->dailyAdsMetricHistory($request, 'spend', 'yspend');
+    }
+
+    /**
+     * Daily ads sales history for the Y Sales history dot (same chart modal as CPC / SBID).
+     */
+    public function ySalesHistory(Request $request): JsonResponse
+    {
+        return $this->dailyAdsMetricHistory($request, 'sales', 'ysales');
+    }
+
+    /**
+     * Calendar-day ads spend or sales points for the rolling history chart.
+     */
+    private function dailyAdsMetricHistory(Request $request, string $metric, string $pointKey): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
+        }
+        $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
+        if ($table === null || ! Schema::hasTable($table)) {
+            return response()->json(['ok' => false, 'message' => 'No daily report table for this row.', 'points' => []], 404);
+        }
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+        $dbColumns = Schema::getColumnListing($table);
+        $select = self::lRangeMetricSelectColumns($dbColumns, false);
+        $adType = trim((string) $request->query('ad_type', ''));
+        $q = DB::table($table)
+            ->select($select)
+            ->where('campaign_id', $cid)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->orderByDesc('report_date_range')
+            ->orderByDesc('id');
+        if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $q->where('ad_type', $adType);
+        }
+        $rows = $q->limit(2000)->get();
+        if ($rows->isEmpty() && $adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $rows = DB::table($table)
+                ->select($select)
+                ->where('campaign_id', $cid)
+                ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+                ->orderByDesc('report_date_range')
+                ->orderByDesc('id')
+                ->limit(2000)
+                ->get();
+        }
+        $byDate = [];
+        foreach ($rows as $row) {
+            $r = (array) $row;
+            $day = trim((string) ($r['report_date_range'] ?? ''));
+            if ($day === '' || array_key_exists($day, $byDate)) {
+                continue;
+            }
+            $val = $metric === 'sales'
+                ? AmazonAdsLRangeMetrics::salesFromRow($r, $dbColumns, 'daily')
+                : AmazonAdsLRangeMetrics::spendFromRow($r, $dbColumns);
+            $byDate[$day] = $val;
+        }
+        if ($byDate === []) {
+            return response()->json(['ok' => true, 'points' => []]);
+        }
+        $known = array_keys($byDate);
+        sort($known);
+        $end = $known[count($known) - 1];
+        $start = $known[0];
+        if ($days !== 0) {
+            $from = Carbon::parse($end)->subDays($days - 1)->toDateString();
+            if ($from > $start) {
+                $start = $from;
+            }
+        }
+        $points = [];
+        $cursor = Carbon::parse($start);
+        $last = Carbon::parse($end);
+        while ($cursor->lte($last)) {
+            $day = $cursor->toDateString();
+            $raw = $byDate[$day] ?? null;
+            $points[] = [
+                'date' => $day,
+                $pointKey => $raw !== null && is_finite($raw) ? round((float) $raw, 2) : 0.0,
+            ];
+            $cursor->addDay();
+        }
+
+        return response()->json(['ok' => true, 'points' => $points]);
+    }
+
+    /**
      * Daily CVR history for the LT CVR dot. Same daily API rows as the lifetime column.
      */
     public function ltCvrHistory(Request $request): JsonResponse
@@ -6241,7 +6342,7 @@ class AmazonAdsController extends Controller
             if (($hasLSpendCols || $needProjYCols) && $cid !== '') {
                 $adKey = in_array('ad_type', $dbColumns, true) ? ($adTypeStr ?? '') : '';
                 $lk = $cid."\0".trim((string) $adKey);
-                $slice = $lSpendMap[$lk] ?? ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                $slice = $lSpendMap[$lk] ?? ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
                 if ($hasLSpendCols) {
                     $arr['L7spend'] = $slice['L7'];
                     $arr['L2spend'] = $slice['L2'];
@@ -6254,15 +6355,25 @@ class AmazonAdsController extends Controller
                     $l1Sales = $slice['L1sales'] ?? null;
                     if (in_array('ySpend', $columns, true)) {
                         $arr['ySpend'] = $l1;
+                        $arr['ySpend_prev'] = $slice['L2'] ?? null;
+                        $arr['ySpend_trend'] = self::moneyHistoryTrend($l1, is_numeric($slice['L2'] ?? null) ? (float) $slice['L2'] : null);
                     }
                     if (in_array('ySales', $columns, true)) {
                         $arr['ySales'] = $l1Sales;
+                        $arr['ySales_prev'] = $slice['L2sales'] ?? null;
+                        $arr['ySales_trend'] = self::moneyHistoryTrend($l1Sales, is_numeric($slice['L2sales'] ?? null) ? (float) $slice['L2sales'] : null);
                     }
                     if (in_array('projectedSpend', $columns, true)) {
                         $arr['projectedSpend'] = is_numeric($l7) ? self::projectMonthFromLast7((float) $l7) : null;
+                        $y30Spend = is_numeric($l1) ? round(((float) $l1) * 30, 2) : null;
+                        $arr['projectedSpend_prev'] = $y30Spend;
+                        $arr['projectedSpend_trend'] = self::moneyHistoryTrend($arr['projectedSpend'], $y30Spend);
                     }
                     if (in_array('projectedSales', $columns, true)) {
                         $arr['projectedSales'] = is_numeric($l7Sales) ? self::projectMonthFromLast7((float) $l7Sales) : null;
+                        $y30Sales = is_numeric($l1Sales) ? round(((float) $l1Sales) * 30, 2) : null;
+                        $arr['projectedSales_prev'] = $y30Sales;
+                        $arr['projectedSales_trend'] = self::moneyHistoryTrend($arr['projectedSales'], $y30Sales);
                     }
                 }
             }
@@ -6767,7 +6878,7 @@ class AmazonAdsController extends Controller
                 $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
                 $slice = ($cid !== '' && isset($map[$cid."\0".$ad]))
                     ? $map[$cid."\0".$ad]
-                    : ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L1sales' => null];
+                    : ['L7' => null, 'L2' => null, 'L1' => null, 'L7sales' => null, 'L2sales' => null, 'L1sales' => null];
                 if (isset($spendCols[$column])) {
                     $keys[] = $slice[$spendCols[$column]] ?? null;
                 } elseif (isset($projYCols[$column])) {

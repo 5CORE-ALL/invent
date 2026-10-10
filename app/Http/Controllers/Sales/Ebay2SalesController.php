@@ -18,10 +18,12 @@ class Ebay2SalesController extends Controller
         // tax; skip CANCELED and FULLY_REFUNDED). Mirrors Amazon's "Y Sales" badge.
         $tz = 'America/Los_Angeles';
         $ySales = (float) (EbayChannelMetricsService::computeYSales(2) ?? 0);
+        $margin = EbayChannelMetricsService::percentageDecimal(2);
 
         return view('sales.ebay2_daily_sales_data', [
             'salesYesterday' => round($ySales, 2),
             'yesterdayLabel' => \Carbon\Carbon::yesterday($tz)->format('M j, Y'),
+            'marginPercent' => (int) round($margin * 100),
         ]);
     }
 
@@ -66,6 +68,7 @@ class Ebay2SalesController extends Controller
         }
 
         $margin = EbayChannelMetricsService::percentageDecimal(2);
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
         $data = [];
 
         foreach ($orders as $order) {
@@ -85,9 +88,10 @@ class Ebay2SalesController extends Controller
 
                 $lp = 0.0;
                 $ship = 0.0;
-                $weightAct = 0.0;
+                $values = [];
                 if ($pm) {
                     $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    $values = is_array($values) ? $values : [];
                     foreach ($values as $k => $v) {
                         if (strtolower((string) $k) === 'lp') {
                             $lp = (float) $v;
@@ -98,27 +102,21 @@ class Ebay2SalesController extends Controller
                         $lp = (float) $pm->lp;
                     }
                     $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
-                    $weightAct = isset($values['wt_act']) ? (float) $values['wt_act'] : 0.0;
                 }
 
                 $quantity = (float) $item['quantity'];
                 $price = (float) $item['price'];
+                $weightAct = EbaySalesController::actWeightLb($values);
                 $tWeight = $weightAct * $quantity;
+                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
 
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
-
+                // Sales AMT ($price) is already this row's amount. COGS Ship is subtracted once.
                 $cogs = $lp * $quantity;
+                $pft = ($price * $margin) - $cogs - $shipCost;
+                $pftEach = $quantity > 0 ? $pft / $quantity : 0;
                 $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-                $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
                 $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-                $pft = $pftEach * $quantity;
-                $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
+                $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
                 $data[] = [
                     'order_id' => $order['order_id'],

@@ -10,6 +10,7 @@ use App\Models\EbayDataView;
 use Illuminate\Http\Request;
 use App\Models\EbayGeneralReport;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Sales\EbaySalesController;
 use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
@@ -161,6 +162,7 @@ class EbayController extends Controller
             $productMasters = $skus !== []
                 ? ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku')
                 : collect();
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
             $qty = 0;
             $pft = 0.0;
@@ -199,15 +201,12 @@ class EbayController extends Controller
                 foreach ($order->items as $item) {
                     $pm = $productMasters[$item->sku] ?? null;
                     $lp = 0.0;
-                    $ship = 0.0;
-                    $weightAct = 0.0;
+                    $values = [];
                     if ($pm) {
                         $values = is_array($pm->Values)
                             ? $pm->Values
                             : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                        if (! is_array($values)) {
-                            $values = [];
-                        }
+                        $values = is_array($values) ? $values : [];
                         foreach ($values as $k => $v) {
                             if (strtolower((string) $k) === 'lp') {
                                 $lp = (float) $v;
@@ -217,27 +216,19 @@ class EbayController extends Controller
                         if ($lp === 0.0 && isset($pm->lp)) {
                             $lp = (float) $pm->lp;
                         }
-                        $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
-                        $weightAct = isset($values['wt_act']) ? (float) $values['wt_act'] : 0.0;
                     }
 
                     $quantity = (float) ($item->quantity ?? 0);
                     $price = (float) ($item->price ?? 0);
-                    $tWeight = $weightAct * $quantity;
-                    if ($quantity == 1) {
-                        $shipCost = $ship;
-                    } elseif ($quantity > 1 && $tWeight < 20) {
-                        $shipCost = $ship / $quantity;
-                    } else {
-                        $shipCost = $ship;
-                    }
-                    $unitPrice = $quantity > 0 ? ($price / $quantity) : 0.0;
-                    $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
+                    $weightAct = EbaySalesController::actWeightLb($values);
+                    $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $quantity);
+                    $lineCogs = $lp * $quantity;
+                    $linePft = ($price * 0.85) - $lineCogs - $shipCost;
 
                     $qty += (int) $quantity;
-                    $pft += $pftEach * $quantity;
-                    $cogs += $lp * $quantity;
-                    $l30Sales += $quantity * $unitPrice;
+                    $pft += $linePft;
+                    $cogs += $lineCogs;
+                    $l30Sales += $price;
                 }
             }
 
@@ -246,8 +237,8 @@ class EbayController extends Controller
                 'qty'   => $qty,
                 'pft'   => round($pft, 2),
                 'cogs'  => round($cogs, 2),
-                'gpft'  => $l30Sales > 0 ? round(($pft / $l30Sales) * 100, 1) : 0.0,
-                'groi'  => $cogs > 0 ? round(($pft / $cogs) * 100, 1) : 0.0,
+                'gpft'  => round($l30Sales) != 0.0 ? (float) round(round($pft) / round($l30Sales) * 100) : 0.0,
+                'groi'  => round($cogs) != 0.0 ? (float) round(round($pft) / round($cogs) * 100) : 0.0,
             ];
         } catch (\Throwable $e) {
             Log::warning('fetchEbayL30OrdersAggregate failed: ' . $e->getMessage());

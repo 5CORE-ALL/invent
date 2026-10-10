@@ -5,11 +5,71 @@ namespace App\Http\Controllers\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\DobaDailyData;
 use App\Models\ProductMaster;
+use App\Services\ShippingSlabRateService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class DobaSalesController extends Controller
 {
+    /**
+     * Item WT ACT (lb) from Dim & Wt Master. Uses wt_act, else wt_act_kg × 2.2046226218.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private static function actWeightLb(array $values): float
+    {
+        $lb = $values['wt_act'] ?? null;
+        if (is_numeric($lb) && (float) $lb > 0) {
+            return round((float) $lb, 2);
+        }
+
+        $kg = $values['wt_act_kg'] ?? null;
+        if (is_numeric($kg) && (float) $kg > 0) {
+            return round((float) $kg * 2.2046226218, 2);
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @return array{0: ?ShippingSlabRateService, 1: array<string, array{rate: ?float}>}
+     */
+    private static function shipSlabLookup(): array
+    {
+        try {
+            $slabs = app(ShippingSlabRateService::class);
+
+            return [$slabs, $slabs->getAllSlabCarrierRates('ship')];
+        } catch (\Throwable $e) {
+            return [null, []];
+        }
+    }
+
+    /**
+     * Shipping Master ship slab for the order weight. Missing weight or slab is 0.
+     *
+     * @param  array<string, array{rate: ?float}>  $shipSlabRates
+     */
+    private static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder): float
+    {
+        if ($slabs === null || $weightOrder <= 0 || $shipSlabRates === []) {
+            return 0.0;
+        }
+
+        $declared = $slabs->roundWeightLbUpToSlab($weightOrder);
+        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightOrder);
+        if ($key === null || ! isset($shipSlabRates[$key])) {
+            return 0.0;
+        }
+
+        $rate = $shipSlabRates[$key]['rate'] ?? null;
+        if ($rate === null || ! is_numeric($rate)) {
+            return 0.0;
+        }
+
+        return round((float) $rate, 2);
+    }
+
     public function index()
     {
         // No KW/PT spent for Doba
@@ -58,54 +118,42 @@ class DobaSalesController extends Controller
             'display' => $l60Start->format('M d, Y') . ' – ' . $l60End->format('M d, Y'),
         ];
 
+        [$slabService, $shipSlabRates] = self::shipSlabLookup();
+
         // Process data to match Amazon structure
         $processedData = [];
         foreach ($data as $item) {
             $quantity = (int) $item->quantity;
             $itemPrice = (float) $item->item_price;
             $totalPrice = (float) $item->total_price;
-            $shippingFee = (float) $item->shipping_fee;
-            $platformFee = (float) $item->platform_fee;
-            $anticipatedIncome = (float) $item->anticipated_income;
 
             // Get ship and lp from ProductMaster
             $ship = 0;
             $lp = 0;
+            $values = [];
             $pm = $productMasters[$item->sku] ?? null;
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
                 $ship = isset($values["ship"]) ? floatval($values["ship"]) : 0;
                 $lp = isset($values["lp"]) ? floatval($values["lp"]) : 0;
             }
 
-            // Calculate COGS
+            // Sales AMT is unit price × qty once. total_price is the order total and
+            // is repeated on every line, so it is not this row's sales.
+            $lineRevenue = round($itemPrice * $quantity, 2);
+            $weightAct = self::actWeightLb($values);
+            $tWeight = $weightAct * $quantity;
             $cogs = $lp * $quantity;
 
-            // Calculate ship cost similar to Amazon logic
-            $tWeight = 0; // No weight info for Doba
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
+            // Every order uses the weight slab, including pickup with a prepaid label.
+            $shipCost = self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
 
-            // Calculate profit per unit: (price * 0.95) - ship - lp
-            // If order type is "Pickup with a prepaid label", don't reduce shipping cost
-            if (strtolower($item->order_type) === 'pickup with a prepaid label') {
-                $pftEach = ($itemPrice * 0.95) - $lp;
-            } else {
-                $pftEach = ($itemPrice * 0.95) - $ship - $lp;
-            }
-            
-            // Calculate total profit
-            $pft = $pftEach * $quantity;
-            
-            // Calculate profit percentage
-            $pftEachPct = $itemPrice > 0 ? ($pftEach / $itemPrice) * 100 : 0;
-            
-            // Calculate ROI
+            // GPFT$ = (Sales AMT × 95%) − COGS − COGS Ship. COGS Ship is subtracted once.
+            $pft = ($lineRevenue * 0.95) - $cogs - $shipCost;
+            $pftEach = $quantity > 0 ? $pft / $quantity : 0;
+            $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0;
+            $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
             $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             $processedData[] = [
@@ -114,9 +162,9 @@ class DobaSalesController extends Controller
                 'sku' => $item->sku,
                 'title' => $item->product_name,
                 'quantity' => $quantity,
-                'sale_amount' => $totalPrice,
-                'price' => $quantity > 0 ? $totalPrice / $quantity : 0,
-                'total_amount' => $totalPrice,
+                'sale_amount' => $lineRevenue,
+                'price' => round($itemPrice, 2),
+                'total_amount' => $lineRevenue,
                 'currency' => $item->currency,
                 'order_date' => $item->order_time ? $item->order_time->format('Y-m-d H:i:s') : null,
                 'status' => $item->order_status,
@@ -129,7 +177,7 @@ class DobaSalesController extends Controller
                 'cogs' => round($cogs, 2),
                 'pft_each' => round($pftEach, 2),
                 'pft_each_pct' => round($pftEachPct, 0),
-                'pft' => round($pft, 0),
+                'pft' => round($pft, 2),
                 'roi' => round($roi, 0),
                 'kw_spent' => 0,
                 'pt_spent' => 0,
