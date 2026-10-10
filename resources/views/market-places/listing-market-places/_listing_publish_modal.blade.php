@@ -97,9 +97,9 @@
                                         </div>
                                         <small>Type to search Reverb categories. Click one from the list to use it.</small>
                                     </div>
-                                    <div id="listing-publish-newegg-category" class="listing-publish-category" hidden>
+                                    <div id="listing-publish-newegg-category" class="listing-publish-category" @if(!in_array($publishChannel ?? '', ['newegg', 'neweggb2c', 'neweggb2b'], true)) hidden @endif>
                                         <label>Newegg subcategory</label>
-                                        <div id="listing-publish-newegg-category-path" class="listing-publish-category-path">Type a subcategory, such as speaker or stand, then pick one from the list.</div>
+                                        <div id="listing-publish-newegg-category-path" class="listing-publish-category-path">Loading Newegg subcategories…</div>
                                         <input type="hidden" id="listing-publish-newegg-category-id" value="">
                                         <label for="listing-publish-newegg-category-name">Category</label>
                                         <div class="listing-publish-cat-wrap">

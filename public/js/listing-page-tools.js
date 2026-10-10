@@ -1919,6 +1919,7 @@
             .on('shown.bs.modal.listingPageToolsNewegg', function () {
                 const nameEl = document.getElementById('listing-publish-newegg-category-name');
                 if (nameEl) nameEl.dataset.userTyped = '';
+                if (isNeweggChannel()) loadNeweggCategories();
             });
 
         $(document).off('click.listingPageToolsNewegg', '.listing-publish-newegg-cat-item')
