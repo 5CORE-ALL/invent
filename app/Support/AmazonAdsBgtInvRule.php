@@ -121,8 +121,8 @@ final class AmazonAdsBgtInvRule
             if ($from > $to) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
             }
-            if ($bgt < -100_000 || $bgt > 100_000) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Inv must be between -100000 and 100000.');
+            if ($bgt < -9_999_999 || $bgt > 9_999_999) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Inv must be between -9999999 and 9999999.');
             }
         }
     }

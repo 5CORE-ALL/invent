@@ -162,8 +162,8 @@ final class AmazonAcosSbgtRule
             if ($from > $to) {
                 throw new \InvalidArgumentException('SBGT band '.($i + 1).': From must be ≤ To.');
             }
-            if ($sbgt < -100_000 || $sbgt > 100_000) {
-                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between -100000 and 100000 (0 pauses the campaign).');
+            if ($sbgt < -9_999_999 || $sbgt > 9_999_999) {
+                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between -9999999 and 9999999 (0 pauses the campaign).');
             }
         }
     }
