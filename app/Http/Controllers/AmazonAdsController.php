@@ -5262,11 +5262,14 @@ class AmazonAdsController extends Controller
         self::applyInventoryFilter($query, $table, $request, $dbColumns);
         self::applyTargetsFilter($query, $table, $request);
 
+        $forBgtUniverse = $request->boolean('bgt_universe');
         $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
-            $bgtSyncCounts = self::liveSyncStatusCounts($query, $table, 'bgt', $request);
-            $bidSyncCounts = self::liveSyncStatusCounts($query, $table, 'bid', $request);
+            if (! $forBgtUniverse) {
+                $bgtSyncCounts = self::liveSyncStatusCounts($query, $table, 'bgt', $request);
+                $bidSyncCounts = self::liveSyncStatusCounts($query, $table, 'bid', $request);
+            }
             self::applyLiveSyncStatusFilters($query, $table, $request);
         }
 
@@ -5289,7 +5292,8 @@ class AmazonAdsController extends Controller
         }
 
         $l30AggDistinct = null;
-        if (($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')
+        if (! $forBgtUniverse
+            && ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')
             && in_array('campaign_id', $dbColumns, true)
             && in_array('cost', $dbColumns, true)) {
             $l30AggDistinct = self::aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows($queryForAggregates, $table, $dbColumns, $columns);
@@ -5352,18 +5356,23 @@ class AmazonAdsController extends Controller
         $lightSort = self::columnUsesLightDisplaySort($requestedOrderCol);
         $usePhpSort = $lightSort || in_array($requestedOrderCol, self::PHP_SORT_DISPLAY_COLUMNS, true);
         $phpSortPaged = false;
-        $forBgtUniverse = $request->boolean('bgt_universe');
         $sortCap = $forBgtUniverse ? 20000 : 3000;
 
         // Correlated ORDER BY runs a lookup per campaign before the page can return.
         // On a normal day the filtered set fits in one window, so rank it in PHP instead.
-        if ($usePhpSort && $recordsFiltered <= $sortCap && in_array('id', $dbColumns, true)) {
+        // Chart counts do not need that order.
+        if ($forBgtUniverse && in_array('id', $dbColumns, true)) {
+            $query->orderBy('id', 'desc');
+            $rows = $query->limit(20000)->get();
+        } elseif ($usePhpSort && $recordsFiltered <= $sortCap && in_array('id', $dbColumns, true)) {
             $query->orderBy('id', 'desc');
         } else {
             self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
         }
 
-        if ($usePhpSort) {
+        if ($forBgtUniverse && isset($rows)) {
+            // Chart counts already have the filtered campaigns. Skip the display sort fetch.
+        } elseif ($usePhpSort) {
             $fetchLen = (int) min($sortCap, max($recordsFiltered, $start + $length));
             $window = $query->limit(max(1, $fetchLen))->get();
             $paged = self::pageRowsMatchingDisplaySort(
@@ -5426,10 +5435,10 @@ class AmazonAdsController extends Controller
             }
         }
 
-        $hasCpc2 = in_array('CPC2', $columns, true);
-        $hasCpc3 = in_array('CPC3', $columns, true);
-        $hasCpcAvg = in_array('CPCAvg', $columns, true);
-        $hasLtCvr = in_array('ltCvr', $columns, true);
+        $hasCpc2 = ! $forBgtUniverse && in_array('CPC2', $columns, true);
+        $hasCpc3 = ! $forBgtUniverse && in_array('CPC3', $columns, true);
+        $hasCpcAvg = ! $forBgtUniverse && in_array('CPCAvg', $columns, true);
+        $hasLtCvr = ! $forBgtUniverse && in_array('ltCvr', $columns, true);
         $hasLtAcos = in_array('ltAcos', $columns, true);
         $needRuleStatus = in_array('ruleStatus', $columns, true);
         $needActiveAgain = in_array('activeAgain', $columns, true);

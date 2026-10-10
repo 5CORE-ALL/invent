@@ -5041,7 +5041,7 @@
                 amzBgtEnsureUniverse();
                 var key = amzBgtFilterKey();
                 if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) return amzBgtUniverse.rows;
-                return null;
+                return amzBgtGridRows();
             }
             function amzBgtFirstBandIndex(value, bands, fromKey, toKey) {
                 if (value == null || !isFinite(value) || !Array.isArray(bands)) return -1;
@@ -5210,6 +5210,7 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        animation: false,
                         plugins: { legend: { display: false } },
                         scales: {
                             x: { display: false, grid: { display: false } },
@@ -5367,6 +5368,7 @@
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
+                            animation: false,
                             plugins: {
                                 legend: { display: false },
                                 tooltip: {
@@ -5489,6 +5491,12 @@
             var bgtModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtModalEl) {
                 bgtModalEl.addEventListener('show.bs.modal', function () { amzBgtServerLoadGen++; }, true);
+                bgtModalEl.addEventListener('shown.bs.modal', function () {
+                    amzBgtRefreshAllRuleCounts();
+                    Object.keys(amzBgtColCharts).forEach(function (k) {
+                        if (amzBgtColCharts[k]) { try { amzBgtColCharts[k].resize(); } catch (e) {} }
+                    });
+                });
                 bgtModalEl.addEventListener('input', function () { amzBgtServerLoadGen++; });
                 bgtModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtRuleModalError');
