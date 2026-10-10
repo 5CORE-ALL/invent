@@ -218,8 +218,8 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="amazon-sales-total-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"> Total Sales: ${{ number_format($amazonSalesTotal ?? 0, 2) }}</span>
                         <span class="badge fs-6 p-2" id="y-sales-badge" title="Yesterday's product sales, tax excluded ({{ $amazonYesterdayLabel ?? '' }} Pacific) — matches Amz Seller Central 'Sales'" style="background-color: #0dcaf0; color: black; font-weight: bold;">Y Sales: ${{ number_format($salesYesterday ?? 0, 2) }}</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded T PFT ÷ rounded Sales AMT × 100. T PFT = (Sales × 80%) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded T PFT ÷ rounded Total COGS × 100. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2 d-none" id="pft-total-badge" style="color: white; font-weight: bold;" aria-hidden="true">GPFT Total: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
@@ -548,8 +548,9 @@
                     }
                 },
                 {
-                    title: "ROI %",
+                    title: "GROI %",
                     field: "roi",
+                    headerTooltip: "GROI % = T PFT ÷ COGS × 100. T PFT = (Sales × 80%) − COGS − COGS Ship.",
                     hozAlign: "center",
                     sorter: "number",
                     width: 100,
@@ -643,11 +644,12 @@
             // Sum of unique order-level totals (accurate even for orders without items in table)
             const totalSalesByOrders = Object.values(uniqueOrderTotals).reduce((sum, v) => sum + v, 0);
 
-            // Calculate PFT Percentage: (Sum of T PFT / Sum of Total Sales) * 100
-            const pftPercentage = totalSkuLineSales > 0 ? (totalPft / totalSkuLineSales) * 100 : 0;
-            
-            // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
-            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            // Same badge math as Temu: round the dollars, then divide.
+            const gpftDollars = Math.round(totalPft);
+            const salesDollars = Math.round(totalSkuLineSales);
+            const cogsDollars = Math.round(totalCogs);
+            const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             // Check if data is filtered (compare active data with total data or check for filters)
             const totalDataCount = table.getDataCount();
@@ -665,8 +667,8 @@
             const displaySales = isFiltered ? totalSalesByOrders : SERVER_AMAZON_SALES_TOTAL;
             $('#amazon-sales-total-badge').text('Total Sales: $' + formatUsdTwoDecimals(displaySales));
             $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-            $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+            $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
             
