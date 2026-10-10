@@ -53,25 +53,46 @@ class AmazonSalesController extends Controller
     }
 
     /**
-     * Shipping Master ship slab for the order weight. Missing weight or slab is 0.
+     * Shipping Master ship slab for the order weight, once.
+     * An empty band uses the SKU's own weight slab. Missing weight is 0.
      *
      * @param  array<string, array{rate: ?float}>  $shipSlabRates
      */
-    private static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder): float
+    private static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder, float $itemWeightLb = 0.0): float
     {
-        if ($slabs === null || $weightOrder <= 0 || $shipSlabRates === []) {
-            return 0.0;
+        $orderRate = self::slabShipRate($slabs, $shipSlabRates, $weightOrder);
+        if ($orderRate !== null) {
+            return $orderRate;
         }
 
-        $declared = $slabs->roundWeightLbUpToSlab($weightOrder);
-        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightOrder);
+        if ($itemWeightLb > 0 && abs($itemWeightLb - $weightOrder) > 0.001) {
+            $itemRate = self::slabShipRate($slabs, $shipSlabRates, $itemWeightLb);
+            if ($itemRate !== null) {
+                return $itemRate;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @param  array<string, array{rate: ?float}>  $shipSlabRates
+     */
+    private static function slabShipRate(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightLb): ?float
+    {
+        if ($slabs === null || $weightLb <= 0 || $shipSlabRates === []) {
+            return null;
+        }
+
+        $declared = $slabs->roundWeightLbUpToSlab($weightLb);
+        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightLb);
         if ($key === null || ! isset($shipSlabRates[$key])) {
-            return 0.0;
+            return null;
         }
 
         $rate = $shipSlabRates[$key]['rate'] ?? null;
-        if ($rate === null || ! is_numeric($rate)) {
-            return 0.0;
+        if ($rate === null || ! is_numeric($rate) || (float) $rate <= 0) {
+            return null;
         }
 
         return round((float) $rate, 2);
@@ -80,7 +101,7 @@ class AmazonSalesController extends Controller
     /**
      * Per-line PFT / COGS — same math /amazon/daily-sales getData uses on each order row.
      * COGS = LP × Qty. COGS Ship is the Shipping Master ship slab for the order weight,
-     * subtracted once (not the stored ship, and not split by quantity).
+     * subtracted once. An empty band uses the SKU weight's slab.
      *
      * @return array{unit_price: float, t_weight: float, ship_cost: float, cogs: float, pft_each: float, pft_each_pct: float, pft: float, roi: float, sale_amount: float}
      */
@@ -205,7 +226,7 @@ class AmazonSalesController extends Controller
                     $lineQty,
                     (float) ($row->line_revenue ?? 0),
                     $lp,
-                    self::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $lineQty),
+                    self::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $lineQty, $weightAct),
                     $weightAct
                 );
 
@@ -378,7 +399,7 @@ class AmazonSalesController extends Controller
                 $qty,
                 $totalPrice,
                 $lp,
-                self::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $qty),
+                self::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $qty, $weightAct),
                 $weightAct
             );
     

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Sales\EbaySalesController;
 use Illuminate\Http\Request;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
@@ -19,7 +20,20 @@ class ReverbSalesController extends Controller
      */
     public function reverbSalesTabulatorView()
     {
-        return view('market-places.reverb_sales_tabulator_view');
+        return view('market-places.reverb_sales_tabulator_view', [
+            'marginPercent' => (int) round($this->reverbMargin() * 100),
+        ]);
+    }
+
+    private function reverbMargin(): float
+    {
+        $mpRow = MarketplacePercentage::where('marketplace', 'Reverb')->first();
+        $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 85) : 85.0;
+        if ($percentage <= 0) {
+            $percentage = 85.0;
+        }
+
+        return $percentage / 100.0;
     }
 
     /**
@@ -71,19 +85,15 @@ class ReverbSalesController extends Controller
                     ->keyBy('sku');
             }
 
-            // Get Reverb marketplace percentage (net revenue after fees)
-            $mpRow = MarketplacePercentage::where('marketplace', 'Reverb')->first();
-            $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 85) : 85.0;
-            if ($percentage <= 0) {
-                $percentage = 85.0;
-            }
-            $margin = $percentage / 100.0;
+            $margin = $this->reverbMargin();
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
             $data = [];
             foreach ($reverbData as $item) {
                 $sku = $item->sku ?: ($item->display_sku ?? '');
                 $lp = 0;
                 $ship = 0;
+                $values = [];
 
                 // Get LP and Ship from ProductMaster
                 if (!empty($sku) && isset($productMasters[$sku])) {
@@ -91,6 +101,7 @@ class ReverbSalesController extends Controller
                     $values = is_array($productMaster->Values) 
                         ? $productMaster->Values 
                         : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                    $values = is_array($values) ? $values : [];
                     
                     // Get LP
                     foreach ($values as $k => $v) {
@@ -114,7 +125,7 @@ class ReverbSalesController extends Controller
                 $productSubtotal = (float) ($item->product_subtotal ?? 0);
                 $amount = (float) ($item->amount ?? 0);
                 
-                // Unit price: prefer product_subtotal, fallback to amount
+                // Product amount is already this row's sales. Prefer product_subtotal.
                 $lineTotal = $productSubtotal > 0 ? $productSubtotal : $amount;
                 $unitPrice = $lineTotal > 0 ? $lineTotal / $quantity : 0;
 
@@ -124,17 +135,15 @@ class ReverbSalesController extends Controller
                 $directCheckoutFee = (float) ($item->direct_checkout_fee ?? 0);
                 $totalFees = $sellingFee + $bumpFee + $directCheckoutFee;
 
-                // Calculate PFT Each (per unit) = (unit_price * margin) - lp - ship
-                $pftEach = ($unitPrice * $margin) - $lp - $ship;
+                $weightAct = EbaySalesController::actWeightLb($values);
+                $tWeight = $weightAct * $quantity;
+                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
 
-                // Calculate PFT Each % = (pft_each / unit_price) * 100
-                $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-
-                // Calculate Total PFT = pft_each * quantity
-                $tPft = $pftEach * $quantity;
-
-                // COGS = LP * quantity
+                // COGS = LP × Qty. COGS Ship is subtracted once.
                 $cogs = $lp * $quantity;
+                $tPft = ($lineTotal * $margin) - $cogs - $shipCost;
+                $pftEach = $quantity > 0 ? $tPft / $quantity : 0;
+                $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
 
                 // ROI = (Total PFT / COGS) * 100
                 $roi = $cogs > 0 ? ($tPft / $cogs) * 100 : 0;
@@ -172,6 +181,8 @@ class ReverbSalesController extends Controller
                     // Calculated fields
                     'lp' => round($lp, 2),
                     'ship' => round($ship, 2),
+                    't_weight' => round($tWeight, 2),
+                    'ship_cost' => round($shipCost, 2),
                     'cogs' => round($cogs, 2),
                     'pft_each' => round($pftEach, 2),
                     'pft_each_pct' => round($pftEachPct, 2),
@@ -240,13 +251,8 @@ class ReverbSalesController extends Controller
                     ->keyBy('sku');
             }
 
-            // Get Reverb marketplace percentage
-            $mpRow = MarketplacePercentage::where('marketplace', 'Reverb')->first();
-            $percentage = $mpRow !== null ? (float) ($mpRow->percentage ?? 85) : 85.0;
-            if ($percentage <= 0) {
-                $percentage = 85.0;
-            }
-            $margin = $percentage / 100.0;
+            $margin = $this->reverbMargin();
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
             $totalOrders = 0;
             $totalQuantity = 0;
@@ -272,9 +278,8 @@ class ReverbSalesController extends Controller
                 // Profit-side revenue = product_subtotal (margin applies to the item price)
                 $revenue = (float) ($item->product_subtotal ?? $item->amount ?? 0);
 
-                // Get LP and Ship for profit calculation
                 $lp = 0;
-                $ship = 0;
+                $values = [];
                 $sku = $item->sku ?: ($item->display_sku ?? '');
 
                 if (!empty($sku) && isset($productMasters[$sku])) {
@@ -282,8 +287,8 @@ class ReverbSalesController extends Controller
                     $values = is_array($productMaster->Values) 
                         ? $productMaster->Values 
                         : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+                    $values = is_array($values) ? $values : [];
                     
-                    // Get LP
                     if (isset($values['lp'])) {
                         $lp = (float) $values['lp'];
                     } else {
@@ -297,18 +302,12 @@ class ReverbSalesController extends Controller
                     if ($lp === 0 && isset($productMaster->lp)) {
                         $lp = (float) $productMaster->lp;
                     }
-
-                    // Get Ship
-                    if (isset($values['ship'])) {
-                        $ship = (float) $values['ship'];
-                    } elseif (isset($productMaster->ship)) {
-                        $ship = (float) $productMaster->ship;
-                    }
                 }
 
-                // Calculate profit: (Revenue × margin - LP - Ship) × Quantity
-                $unitRevenue = $quantity > 0 ? $revenue / $quantity : $revenue;
-                $pft = ($unitRevenue * $margin - $lp - $ship) * $quantity;
+                $qty = $quantity > 0 ? $quantity : 1;
+                $weightAct = EbaySalesController::actWeightLb($values);
+                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $qty, $weightAct);
+                $pft = ($revenue * $margin) - ($lp * $qty) - $shipCost;
                 $totalPft += $pft;
             }
 

@@ -198,7 +198,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
                             style="color: white; font-weight: bold;">COGS: $0</span>
                         <span class="badge fs-6 p-2" id="cogs-ship-badge"
-                            style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once.">COGS Ship: $0</span>
+                            style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once. An empty band uses the SKU weight's slab.">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
