@@ -59,5 +59,29 @@ class Inv5coreLedgerTest extends TestCase
         $this->assertNotContains('shopify', $sources);
         $this->assertSame('mp:amazon', Inv5coreMarketplaceOrders::sourceKey('amazon'));
         $this->assertSame('mp:amazon:reversal', Inv5coreMarketplaceOrders::reversalKey('amazon'));
+        $this->assertSame('mp:amazon:open', Inv5coreMarketplaceOrders::openKey('amazon'));
+        $this->assertSame('mp:amazon:fulfilled', Inv5coreMarketplaceOrders::fulfilledKey('amazon'));
+    }
+
+    public function test_order_created_commits_stock_and_fulfill_drops_on_hand(): void
+    {
+        $this->assertFalse(Inv5coreLedger::statusIsFulfilled('UNSHIPPED'));
+        $this->assertFalse(Inv5coreLedger::statusIsFulfilled('to be shipped'));
+        $this->assertFalse(Inv5coreLedger::statusIsFulfilled('SHIPPING'));
+        $this->assertTrue(Inv5coreLedger::statusIsFulfilled('SHIPPED'));
+        $this->assertTrue(Inv5coreLedger::statusIsFulfilled('IN_TRANSIT'));
+        $this->assertTrue(Inv5coreLedger::statusIsFulfilled('FULFILLED'));
+
+        $created = Inv5coreLedger::nextStates(128, 0, 0, 0, 1);
+        $this->assertSame(128.0, $created['on_hand']);
+        $this->assertSame(1.0, $created['committed']);
+        $this->assertSame(127.0, $created['available']);
+
+        $fulfilled = Inv5coreLedger::nextStates($created['on_hand'], $created['committed'], 0, -1, -1);
+        $this->assertSame(127.0, $fulfilled['on_hand']);
+        $this->assertSame(0.0, $fulfilled['committed']);
+        $this->assertSame(127.0, $fulfilled['available']);
+        $this->assertSame('Order created (#3546919)', Inv5coreLedger::historyActivity('order_created', '3546919'));
+        $this->assertSame('Order fulfilled (#3546919)', Inv5coreLedger::historyActivity('order_fulfilled', '#3546919'));
     }
 }
