@@ -144,6 +144,7 @@ final class AmazonAdsBgtCvrRule
     /**
      * @param  array{bands?: array<int, array<string, mixed>>}  $rule
      */
+    
     public static function persistRule(array $rule): void
     {
         $normalized = self::normalizeRule($rule);

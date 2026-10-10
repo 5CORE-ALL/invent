@@ -1692,7 +1692,6 @@
 
                         </div>
                     </div>
-                </div>
                 <div class="modal-footer">
                     <div class="small text-muted me-auto" id="amz-bgt-status"></div>
                     <button type="button" class="btn btn-sm amz-auto-sync-btn" id="amazonAdsAutoPushPullBtn" aria-pressed="false" title="When on, each page load pulls live Amazon BGT and BID and pushes only values that differ. SBGT 0 pauses.">Auto Push &amp; Pull: OFF</button>
@@ -6757,31 +6756,44 @@
                     { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, body: 'amazonAdsBgtSpendRuleBandsBody', bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule', load: amzLoadBgtSpendBandsFromRule }
                 ];
                 var jobs = [];
+                var errors = [];
                 for (var i = 0; i < specs.length; i++) {
                     var spec = specs[i];
-                    var cleaned = amzBgtCleanRuleBands(amzBgtBandsFromInputs(spec), spec.from, spec.to, spec.amt);
-                    var problem = amzBgtValidateRuleBands(cleaned, spec.from, spec.to, spec.amt, spec.label);
-                    if (problem) return { error: problem };
-                    jobs.push({ spec: spec, bands: cleaned });
+                    try {
+                        var cleaned = amzBgtCleanRuleBands(amzBgtBandsFromInputs(spec), spec.from, spec.to, spec.amt);
+                        var problem = amzBgtValidateRuleBands(cleaned, spec.from, spec.to, spec.amt, spec.label);
+                        if (problem) { errors.push(problem); continue; }
+                        jobs.push({ spec: spec, bands: cleaned });
+                    } catch (err) {
+                        errors.push(spec.label + ': ' + ((err && err.message) ? err.message : 'could not read slabs'));
+                    }
                 }
-                return { jobs: jobs };
+                return { jobs: jobs, error: errors.join('\n') };
             }
             function amzBgtSaveAndApply(ev) {
                 if (ev && ev.preventDefault) ev.preventDefault();
                 var btn = document.getElementById('amazonAdsBgtSaveApplyBtn');
                 var st = document.getElementById('amz-bgt-status');
-                amzBgtServerLoadGen++;
-                var collected = amzBgtCollectSaveJobs();
-                amzBgtPendingSave = null;
-                if (collected.error) {
-                    if (st) {
+                var jobs = [];
+                try {
+                    amzBgtServerLoadGen++;
+                    var collected = amzBgtCollectSaveJobs();
+                    amzBgtPendingSave = null;
+                    jobs = collected.jobs || [];
+                    if (!jobs.length) {
+                        var msg = collected.error || 'Nothing to save.';
+                        if (st) { st.textContent = msg; st.className = 'small text-danger fw-semibold me-auto'; }
+                        window.alert(msg);
+                        return;
+                    }
+                    if (collected.error && st) {
                         st.textContent = collected.error;
                         st.className = 'small text-danger fw-semibold me-auto';
                     }
-                    window.alert(collected.error);
+                } catch (err) {
+                    window.alert((err && err.message) ? err.message : 'Save failed.');
                     return;
                 }
-                var jobs = collected.jobs;
                 if (btn) btn.disabled = true;
                 if (st) st.textContent = 'Saving all rules…';
                 Promise.all(jobs.map(function (job) { return amzBgtPostRule(job.spec.url, job.bands); }))
