@@ -639,7 +639,8 @@
         }
         #amazonAdsBgtRulesModal .modal-body {
             background: #f4f7fb;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
             padding: 8px;
             flex: 1 1 auto;
             min-height: 0;
@@ -774,9 +775,9 @@
             gap: 8px;
             width: 100%;
             min-width: 0;
-            min-height: 280px;
-            flex: 1 1 auto;
-            overflow: auto;
+            min-height: 0;
+            flex: 0 0 auto;
+            overflow: visible;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col {
             flex: 1 1 calc((100% - 24px) / 4);
