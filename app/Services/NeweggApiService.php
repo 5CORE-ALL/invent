@@ -2733,11 +2733,40 @@ class NeweggApiService
                 ];
             }
 
+            $errorCount = (int) ($report['error_count'] ?? 0);
+            if ($errorCount > 0) {
+                return [
+                    'success' => false,
+                    'terminal' => true,
+                    'message' => 'Newegg rejected '.$sku.' with '.$errorCount.' error(s).'.$hint
+                        .' Open Seller Portal > Data Feeds, download the processing report for this RequestId, fix the rejected fields, then publish again.',
+                    'request_id' => $requestId,
+                ];
+            }
+
+            if ($requestId !== '') {
+                $finishedKey = 'newegg-feed-finished-at:'.$platform.':'.$requestId;
+                $finishedAt = (int) Cache::get($finishedKey, 0);
+                if ($finishedAt === 0) {
+                    $finishedAt = time();
+                    Cache::put($finishedKey, $finishedAt, now()->addDay());
+                }
+                if (time() - $finishedAt < 15 * 60) {
+                    return [
+                        'success' => false,
+                        'still_processing' => true,
+                        'message' => 'Newegg finished the feed for '.$sku.' and is adding it to Pricing & Inventory.'.$hint
+                            .' The listing is connected as soon as it appears.',
+                        'request_id' => $requestId,
+                    ];
+                }
+            }
+
             return [
                 'success' => false,
                 'terminal' => true,
-                'message' => 'Newegg finished the item feed but '.$sku.' is not in Pricing & Inventory.'.$hint
-                    .' Open Seller Portal > Data Feeds and fix any rejected fields, then publish again.',
+                'message' => 'Newegg finished the item feed 15 minutes ago but '.$sku.' is still not in Pricing & Inventory.'.$hint
+                    .' Open Seller Portal > Data Feeds and check the processing report for this RequestId, then publish again.',
                 'request_id' => $requestId,
             ];
         }
@@ -2852,7 +2881,8 @@ class NeweggApiService
                 return $empty;
             }
             $parsed = self::parseFeedResultPayload(is_array($res['json'] ?? null) ? $res['json'] : [], (string) ($res['raw'] ?? ''));
-            if (($parsed['item_number'] ?? '') !== '' || ($parsed['errors'] ?? []) !== [] || (int) ($parsed['success_count'] ?? 0) > 0) {
+            if (($parsed['item_number'] ?? '') !== '' || ($parsed['errors'] ?? []) !== []
+                || (int) ($parsed['success_count'] ?? 0) > 0 || (int) ($parsed['error_count'] ?? 0) > 0) {
                 return $parsed;
             }
         }
