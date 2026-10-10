@@ -1164,6 +1164,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/inv-days/clearance/yes', [\App\Http\Controllers\ProductMaster\InvDaysController::class, 'clearanceYesSkus'])->name('inv.days.clearance.yes');
     Route::get('/inv-change-L30', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'index'])->name('inv.change.l30');
     Route::get('/inv-change-L30/data', [\App\Http\Controllers\ProductMaster\InvChangeL30Controller::class, 'getData'])->name('inv.change.l30.data');
+    Route::get('/inv-management-5core', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'index'])->name('inv.management.5core');
+    Route::get('/inv-management-5core/data', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'data'])->name('inv.management.5core.data');
+    Route::post('/inv-management-5core/seed', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'seed'])->name('inv.management.5core.seed');
+    Route::post('/inv-management-5core/record-sales', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'recordSales'])->name('inv.management.5core.sales');
+    Route::post('/inv-management-5core/adjust', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'adjust'])->name('inv.management.5core.adjust');
+    Route::get('/inv-management-5core/history', [\App\Http\Controllers\InventoryManagement\InvManagement5CoreController::class, 'history'])->name('inv.management.5core.history');
     Route::redirect('/inv-change-seven-days', '/inv-change-L30');
     Route::get('/sku-adjustment-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory'])->name('sku-adjustment-history');
     Route::get('/shopify-inventory-history-url', [VerificationAdjustmentController::class, 'getShopifyInventoryHistoryUrl']);

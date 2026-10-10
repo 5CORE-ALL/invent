@@ -757,6 +757,9 @@
                         <li>
                             <a href="{{ route('inv.change.l30') }}">Inv Change L30</a>
                         </li>
+                        <li>
+                            <a href="{{ route('inv.management.5core') }}">INV Management 5Core</a>
+                        </li>
                         {{-- <li>
                             <a href="{{ route('inventory.manage.index') }}">
                                 <i class="ri-stack-line me-1"></i>Inv Manage Inventory & Sync
