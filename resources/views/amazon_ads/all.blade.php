@@ -5483,14 +5483,27 @@
                 });
                 amzRenderBands(amzCurrentBands);
             }
-            function amzRefreshBgtRuleFromServer(cb) {
-                fetch(bgtRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            var amzBgtServerLoadGen = 0;
+            function amzBgtFetchRule(url, apply) {
+                var gen = amzBgtServerLoadGen;
+                fetch(url, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin', cache: 'no-store' })
                     .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                    .then(function (body) {
+                        if (gen !== amzBgtServerLoadGen) return;
+                        if (apply) apply(body || {});
+                    })
+                    .catch(function () {});
+            }
+            function amzRefreshBgtRuleFromServer(cb) {
+                amzBgtFetchRule(bgtRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtModalEl) {
+                bgtModalEl.addEventListener('show.bs.modal', function () { amzBgtServerLoadGen++; }, true);
+                bgtModalEl.addEventListener('input', function () { amzBgtServerLoadGen++; });
                 bgtModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
@@ -5664,10 +5677,10 @@
                 amzRenderBgtViewsBands(amzBgtViewsBands);
             }
             function amzRefreshBgtViewsRuleFromServer(cb) {
-                fetch(bgtViewsRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtViewsRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtViewsRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtViewsRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtViewsModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtViewsModalEl) {
@@ -5838,10 +5851,10 @@
                 amzRenderBgtCvrBands(amzBgtCvrBands);
             }
             function amzRefreshBgtCvrRuleFromServer(cb) {
-                fetch(bgtCvrRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtCvrRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtCvrRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtCvrRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtCvrModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtCvrModalEl) {
@@ -6007,10 +6020,10 @@
                 amzRenderBgtPrcBands(amzBgtPrcBands);
             }
             function amzRefreshBgtPrcRuleFromServer(cb) {
-                fetch(bgtPrcRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtPrcRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtPrcRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtPrcRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtPrcModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtPrcModalEl) {
@@ -6187,10 +6200,10 @@
                 amzRenderBgtReviewsBands(amzBgtReviewsBands);
             }
             function amzRefreshBgtReviewsRuleFromServer(cb) {
-                fetch(bgtReviewsRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtReviewsRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtReviewsRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtReviewsRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtReviewsModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtReviewsModalEl) {
@@ -6357,10 +6370,10 @@
                 amzRenderBgtDilBands(amzBgtDilBands);
             }
             function amzRefreshBgtDilRuleFromServer(cb) {
-                fetch(bgtDilRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtDilRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtDilRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtDilRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtDilModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtDilModalEl) {
@@ -6516,10 +6529,10 @@
                 amzRenderBgtInvBands(amzBgtInvBands);
             }
             function amzRefreshBgtInvRuleFromServer(cb) {
-                fetch(bgtInvRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtInvRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtInvRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtInvRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtInvModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtInvModalEl) {
@@ -6640,10 +6653,10 @@
                 amzRenderBgtSpendBands(amzBgtSpendBands);
             }
             function amzRefreshBgtSpendRuleFromServer(cb) {
-                fetch(bgtSpendRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtSpendRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtSpendRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtSpendRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtSpendModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtSpendModalEl) {
@@ -6710,6 +6723,16 @@
                 btn.setAttribute('aria-pressed', on ? 'true' : 'false');
                 btn.textContent = 'Auto Push & Pull: ' + (on ? 'ON' : 'OFF');
             }
+            function amzBgtSyncBandsFromDom(tbodyId, bands) {
+                var tbody = document.getElementById(tbodyId);
+                if (!tbody || !Array.isArray(bands)) return;
+                tbody.querySelectorAll('input[data-idx][data-field]').forEach(function (el) {
+                    var idx = +el.dataset.idx;
+                    var fld = el.dataset.field;
+                    if (!bands[idx]) return;
+                    bands[idx][fld] = el.value === '' ? '' : parseFloat(el.value);
+                });
+            }
             function amzBgtCleanRuleBands(bands, fromKey, toKey, amtKey) {
                 return (bands || []).map(function (b) {
                     var row = { label: (b.label || '').toString(), color: (b.color || '#6c757d').toString() };
@@ -6741,19 +6764,21 @@
             function amzBgtSaveAndApply() {
                 var btn = document.getElementById('amazonAdsBgtSaveApplyBtn');
                 var st = document.getElementById('amz-bgt-status');
+                amzBgtServerLoadGen++;
                 var specs = [
-                    { label: 'BGT Vs ACOS', url: bgtRuleSaveUrl, bands: amzCurrentBands, from: 'acos_from', to: 'acos_to', amt: 'sbgt', store: 'amazonAdsBgtRule' },
-                    { label: 'BGT Vs VIEWS', url: bgtViewsRuleSaveUrl, bands: amzBgtViewsBands, from: 'views_from', to: 'views_to', amt: 'bgt', store: 'amazonAdsBgtViewsRule' },
-                    { label: 'BGT Vs CVR', url: bgtCvrRuleSaveUrl, bands: amzBgtCvrBands, from: 'cvr_from', to: 'cvr_to', amt: 'bgt', store: 'amazonAdsBgtCvrRule' },
-                    { label: 'BGT PRC', url: bgtPrcRuleSaveUrl, bands: amzBgtPrcBands, from: 'prc_from', to: 'prc_to', amt: 'bgt', store: 'amazonAdsBgtPrcRule' },
-                    { label: 'BGT Vs REVIEWS', url: bgtReviewsRuleSaveUrl, bands: amzBgtReviewsBands, from: 'rev_from', to: 'rev_to', amt: 'bgt', store: 'amazonAdsBgtReviewsRule' },
-                    { label: 'BGT Vs Dil', url: bgtDilRuleSaveUrl, bands: amzBgtDilBands, from: 'dil_from', to: 'dil_to', amt: 'bgt', store: 'amazonAdsBgtDilRule' },
-                    { label: 'Inv Rule', url: bgtInvRuleSaveUrl, bands: amzBgtInvBands, from: 'inv_from', to: 'inv_to', amt: 'bgt', store: 'amazonAdsBgtInvRule' },
-                    { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule' }
+                    { label: 'BGT Vs ACOS', url: bgtRuleSaveUrl, body: 'amazonAdsBgtRuleBandsBody', bands: amzCurrentBands, from: 'acos_from', to: 'acos_to', amt: 'sbgt', store: 'amazonAdsBgtRule' },
+                    { label: 'BGT Vs VIEWS', url: bgtViewsRuleSaveUrl, body: 'amazonAdsBgtViewsRuleBandsBody', bands: amzBgtViewsBands, from: 'views_from', to: 'views_to', amt: 'bgt', store: 'amazonAdsBgtViewsRule' },
+                    { label: 'BGT Vs CVR', url: bgtCvrRuleSaveUrl, body: 'amazonAdsBgtCvrRuleBandsBody', bands: amzBgtCvrBands, from: 'cvr_from', to: 'cvr_to', amt: 'bgt', store: 'amazonAdsBgtCvrRule' },
+                    { label: 'BGT PRC', url: bgtPrcRuleSaveUrl, body: 'amazonAdsBgtPrcRuleBandsBody', bands: amzBgtPrcBands, from: 'prc_from', to: 'prc_to', amt: 'bgt', store: 'amazonAdsBgtPrcRule' },
+                    { label: 'BGT Vs REVIEWS', url: bgtReviewsRuleSaveUrl, body: 'amazonAdsBgtReviewsRuleBandsBody', bands: amzBgtReviewsBands, from: 'rev_from', to: 'rev_to', amt: 'bgt', store: 'amazonAdsBgtReviewsRule' },
+                    { label: 'BGT Vs Dil', url: bgtDilRuleSaveUrl, body: 'amazonAdsBgtDilRuleBandsBody', bands: amzBgtDilBands, from: 'dil_from', to: 'dil_to', amt: 'bgt', store: 'amazonAdsBgtDilRule' },
+                    { label: 'Inv Rule', url: bgtInvRuleSaveUrl, body: 'amazonAdsBgtInvRuleBandsBody', bands: amzBgtInvBands, from: 'inv_from', to: 'inv_to', amt: 'bgt', store: 'amazonAdsBgtInvRule' },
+                    { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, body: 'amazonAdsBgtSpendRuleBandsBody', bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule' }
                 ];
                 var jobs = [];
                 for (var i = 0; i < specs.length; i++) {
                     var spec = specs[i];
+                    amzBgtSyncBandsFromDom(spec.body, spec.bands);
                     var cleaned = amzBgtCleanRuleBands(spec.bands, spec.from, spec.to, spec.amt);
                     var problem = amzBgtValidateRuleBands(cleaned, spec.from, spec.to, spec.amt, spec.label);
                     if (problem) {
