@@ -335,16 +335,28 @@
             color: #2563eb; cursor: pointer;
         }
         .amz-lrange-btn:hover { color: #1d4ed8; transform: scale(1.2); }
-        .amz-lrange-pop {
-            position: fixed; z-index: 2000; min-width: 220px; max-width: 280px;
-            background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18); padding: 8px 10px;
+        #amazonAdsLRangeModal.modal { z-index: 1085; }
+        #amazonAdsLRangeModal .modal-dialog { max-width: 820px; }
+        .amz-lrange-boxes {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 8px;
         }
-        .amz-lrange-pop-title { font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
-        .amz-lrange-pop table { width: 100%; font-size: 12px; margin: 0; }
-        .amz-lrange-pop th, .amz-lrange-pop td { padding: 2px 4px; }
-        .amz-lrange-pop th { color: #64748b; font-weight: 600; }
-        .amz-lrange-pop td:last-child { text-align: right; font-weight: 600; }
+        .amz-lrange-box {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+            padding: 10px 8px;
+            text-align: center;
+            min-height: 88px;
+        }
+        .amz-lrange-box-ln { font-size: 12px; font-weight: 700; color: #0f172a; }
+        .amz-lrange-box-date { font-size: 11px; color: #64748b; margin: 4px 0 8px; }
+        .amz-lrange-box-val { font-size: 15px; font-weight: 700; color: #1d4ed8; }
+        .amz-lrange-box.is-empty .amz-lrange-box-val { color: #94a3b8; font-weight: 600; }
+        @media (max-width: 767px) {
+            .amz-lrange-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
         /* CPC history modal — same full-width layout as Active Channel */
         #amazonAdsCpcAvgHistoryModal.modal {
             --tz-modal-width: 100%;
@@ -1386,7 +1398,25 @@
         </div>
     </div>
 
-    <div id="amazonAdsLRangePop" class="amz-lrange-pop d-none" role="dialog" aria-label="L2 to L7 history"></div>
+    <div class="modal fade" id="amazonAdsLRangeModal" tabindex="-1" aria-labelledby="amazonAdsLRangeModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amazonAdsLRangeModalLabel">L1–L7</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <p class="small text-muted mb-2" id="amazonAdsLRangeModalSub"></p>
+                    <div id="amazonAdsLRangeModalLoading" class="small text-muted">Loading…</div>
+                    <p class="small text-danger mb-0 d-none" id="amazonAdsLRangeModalError" role="alert"></p>
+                    <div id="amazonAdsLRangeBoxes" class="amz-lrange-boxes d-none"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade" id="amazonAdsCampaignSkusModal" tabindex="-1" aria-labelledby="amazonAdsCampaignSkusModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-scrollable modal-xl modal-fullscreen-sm-down">
@@ -4441,36 +4471,37 @@
                     });
                 }
             });
-            function amzCloseLRangePop() {
-                var pop = document.getElementById('amazonAdsLRangePop');
-                if (pop) { pop.classList.add('d-none'); pop.innerHTML = ''; }
+            function amzLRangeModalEls() {
+                return {
+                    modal: document.getElementById('amazonAdsLRangeModal'),
+                    title: document.getElementById('amazonAdsLRangeModalLabel'),
+                    sub: document.getElementById('amazonAdsLRangeModalSub'),
+                    loading: document.getElementById('amazonAdsLRangeModalLoading'),
+                    error: document.getElementById('amazonAdsLRangeModalError'),
+                    boxes: document.getElementById('amazonAdsLRangeBoxes')
+                };
             }
-            function amzPlaceLRangePop(anchor) {
-                var pop = document.getElementById('amazonAdsLRangePop');
-                if (!pop || !anchor) return;
-                var r = anchor.getBoundingClientRect();
-                var w = pop.offsetWidth || 240;
-                var h = pop.offsetHeight || 180;
-                var left = r.right + 8;
-                if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - w - 8);
-                var top = r.top;
-                if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
-                pop.style.left = left + 'px';
-                pop.style.top = top + 'px';
+            function amzShowLRangeModal() {
+                var els = amzLRangeModalEls();
+                if (!els.modal || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+                bootstrap.Modal.getOrCreateInstance(els.modal).show();
             }
             function amzOpenLRangePop(btn) {
-                var pop = document.getElementById('amazonAdsLRangePop');
-                if (!pop) return;
+                var els = amzLRangeModalEls();
+                if (!els.modal) return;
                 var cid = btn.getAttribute('data-campaign-id') || '';
                 var name = btn.getAttribute('data-campaign-name') || cid;
                 var metric = btn.getAttribute('data-lrange') === 'sales' ? 'sales' : 'spend';
                 var title = metric === 'sales' ? 'L1–L7 Ads Sales' : 'L1–L7 Ads Spend';
-                pop.classList.remove('d-none');
-                pop.innerHTML = '<div class="amz-lrange-pop-title">' + amzEsc(name) + ' — ' + title + '</div>'
-                    + '<div class="small text-muted">Loading…</div>';
-                amzPlaceLRangePop(btn);
+                if (els.title) els.title.textContent = title;
+                if (els.sub) els.sub.textContent = name;
+                if (els.loading) { els.loading.classList.remove('d-none'); els.loading.textContent = 'Loading…'; }
+                if (els.error) { els.error.classList.add('d-none'); els.error.textContent = ''; }
+                if (els.boxes) { els.boxes.classList.add('d-none'); els.boxes.innerHTML = ''; }
+                amzShowLRangeModal();
                 if (!cid) {
-                    pop.innerHTML = '<div class="amz-lrange-pop-title">' + title + '</div><div class="small text-danger">No campaign id.</div>';
+                    if (els.loading) els.loading.classList.add('d-none');
+                    if (els.error) { els.error.classList.remove('d-none'); els.error.textContent = 'No campaign id.'; }
                     return;
                 }
                 var qs = '?campaign_id=' + encodeURIComponent(cid)
@@ -4482,37 +4513,36 @@
                     credentials: 'same-origin'
                 }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
                     .then(function (out) {
+                        if (els.loading) els.loading.classList.add('d-none');
                         var points = (out.body && Array.isArray(out.body.points)) ? out.body.points : [];
                         if (!out.ok || !out.body || out.body.ok === false) {
-                            pop.innerHTML = '<div class="amz-lrange-pop-title">' + title + '</div>'
-                                + '<div class="small text-danger">' + amzEsc((out.body && out.body.message) ? out.body.message : 'Could not load L2–L7.') + '</div>';
-                            amzPlaceLRangePop(btn);
+                            if (els.error) {
+                                els.error.classList.remove('d-none');
+                                els.error.textContent = (out.body && out.body.message) ? out.body.message : 'Could not load L1–L7.';
+                            }
                             return;
                         }
-                        var rows = points.map(function (p) {
+                        var html = points.map(function (p) {
                             var raw = metric === 'sales' ? p.sales : p.spend;
                             var n = raw == null || raw === '' ? NaN : parseFloat(raw);
-                            var val = isFinite(n) ? ('$' + n.toFixed(2)) : '—';
-                            return '<tr><td>' + amzEsc(p.label || '') + '</td><td class="text-muted">' + amzEsc(p.date || '') + '</td><td>' + val + '</td></tr>';
+                            var empty = !isFinite(n);
+                            var val = empty ? '—' : ('$' + n.toFixed(2));
+                            return '<div class="amz-lrange-box' + (empty ? ' is-empty' : '') + '">'
+                                + '<div class="amz-lrange-box-ln">' + amzEsc(p.label || '') + '</div>'
+                                + '<div class="amz-lrange-box-date">' + amzEsc(p.date || '') + '</div>'
+                                + '<div class="amz-lrange-box-val">' + val + '</div>'
+                                + '</div>';
                         }).join('');
-                        pop.innerHTML = '<div class="amz-lrange-pop-title">' + amzEsc(name) + ' — ' + title + '</div>'
-                            + '<table><thead><tr><th></th><th>Date</th><th>' + (metric === 'sales' ? 'Sales' : 'Spend') + '</th></tr></thead><tbody>'
-                            + (rows || '<tr><td colspan="3" class="text-muted">No daily rows.</td></tr>')
-                            + '</tbody></table>';
-                        amzPlaceLRangePop(btn);
+                        if (els.boxes) {
+                            els.boxes.innerHTML = html || '<div class="small text-muted">No daily rows.</div>';
+                            els.boxes.classList.remove('d-none');
+                        }
                     })
                     .catch(function () {
-                        pop.innerHTML = '<div class="amz-lrange-pop-title">' + title + '</div><div class="small text-danger">Network or server error.</div>';
-                        amzPlaceLRangePop(btn);
+                        if (els.loading) els.loading.classList.add('d-none');
+                        if (els.error) { els.error.classList.remove('d-none'); els.error.textContent = 'Network or server error.'; }
                     });
             }
-            document.addEventListener('click', function (e) {
-                var pop = document.getElementById('amazonAdsLRangePop');
-                if (!pop || pop.classList.contains('d-none')) return;
-                if (e.target.closest && (e.target.closest('#amazonAdsLRangePop') || e.target.closest('.amz-lrange-btn'))) return;
-                amzCloseLRangePop();
-            });
-            window.addEventListener('scroll', amzCloseLRangePop, true);
             var amzCpcAvgChart = null;
             var amzCpcAvgRow = null;
             var amzCpcAvgDays = 30;

@@ -221,8 +221,8 @@ class AmazonSalesController extends Controller
                 'line_sales' => $lineSales,
                 'pft' => $pft,
                 'cogs' => $cogs,
-                'gpft' => $lineSales > 0 ? round(($pft / $lineSales) * 100, 2) : 0.0,
-                'groi' => $cogs > 0 ? round(($pft / $cogs) * 100, 2) : 0.0,
+                'gpft' => round($lineSales) != 0.0 ? (float) round(round($pft) / round($lineSales) * 100) : 0.0,
+                'groi' => round($cogs) != 0.0 ? (float) round(round($pft) / round($cogs) * 100) : 0.0,
             ];
         } catch (\Throwable $e) {
             return $empty;
