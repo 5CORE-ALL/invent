@@ -108,7 +108,7 @@ class Ebay2SalesController extends Controller
                 $price = (float) $item['price'];
                 $weightAct = EbaySalesController::actWeightLb($values);
                 $tWeight = $weightAct * $quantity;
-                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
+                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
 
                 // Sales AMT ($price) is already this row's amount. COGS Ship is subtracted once.
                 $cogs = $lp * $quantity;

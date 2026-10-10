@@ -47,25 +47,46 @@ class EbaySalesController extends Controller
     }
 
     /**
-     * Shipping Master ship slab for the order weight. Missing weight or slab is 0.
+     * Shipping Master ship slab for the order weight, once.
+     * An empty band uses the SKU's own weight slab. Missing weight is 0.
      *
      * @param  array<string, array{rate: ?float}>  $shipSlabRates
      */
-    public static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder): float
+    public static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder, float $itemWeightLb = 0.0): float
     {
-        if ($slabs === null || $weightOrder <= 0 || $shipSlabRates === []) {
-            return 0.0;
+        $orderRate = self::slabShipRate($slabs, $shipSlabRates, $weightOrder);
+        if ($orderRate !== null) {
+            return $orderRate;
         }
 
-        $declared = $slabs->roundWeightLbUpToSlab($weightOrder);
-        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightOrder);
+        if ($itemWeightLb > 0 && abs($itemWeightLb - $weightOrder) > 0.001) {
+            $itemRate = self::slabShipRate($slabs, $shipSlabRates, $itemWeightLb);
+            if ($itemRate !== null) {
+                return $itemRate;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @param  array<string, array{rate: ?float}>  $shipSlabRates
+     */
+    private static function slabShipRate(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightLb): ?float
+    {
+        if ($slabs === null || $weightLb <= 0 || $shipSlabRates === []) {
+            return null;
+        }
+
+        $declared = $slabs->roundWeightLbUpToSlab($weightLb);
+        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightLb);
         if ($key === null || ! isset($shipSlabRates[$key])) {
-            return 0.0;
+            return null;
         }
 
         $rate = $shipSlabRates[$key]['rate'] ?? null;
-        if ($rate === null || ! is_numeric($rate)) {
-            return 0.0;
+        if ($rate === null || ! is_numeric($rate) || (float) $rate <= 0) {
+            return null;
         }
 
         return round((float) $rate, 2);
@@ -179,7 +200,7 @@ class EbaySalesController extends Controller
                 // Item price is already this row's Sales AMT. T Weight = ACT lb × Qty.
                 $weightAct = self::actWeightLb($values);
                 $tWeight = $weightAct * $quantity;
-                $shipCost = self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
+                $shipCost = self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
 
                 // COGS = LP × Qty. COGS Ship is subtracted once.
                 $cogs = $lp * $quantity;

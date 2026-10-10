@@ -237,8 +237,9 @@ class EbayTwoController extends Controller
                             : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
                         $values = is_array($values) ? $values : [];
                     }
-                    $weightOrder = EbaySalesController::actWeightLb($values) * $quantity;
-                    $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightOrder);
+                    $itemWeight = EbaySalesController::actWeightLb($values);
+                    $weightOrder = $itemWeight * $quantity;
+                    $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightOrder, $itemWeight);
                     $rowCogs = $lp * $quantity;
                     $rowPft = ($price * $margin) - $rowCogs - $shipCost;
 

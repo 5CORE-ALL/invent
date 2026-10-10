@@ -223,7 +223,7 @@
                         <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge" style="color: black; font-weight: bold;" aria-hidden="true">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2 d-none" id="pft-total-badge" style="color: white; font-weight: bold;" aria-hidden="true">GPFT Total: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
-                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once.">COGS Ship: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once. An empty band uses the SKU weight's slab.">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
