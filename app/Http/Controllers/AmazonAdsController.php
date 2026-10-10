@@ -4732,6 +4732,105 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Daily ads spend history for the Y Spend history dot (same chart modal as CPC / SBID).
+     */
+    public function ySpendHistory(Request $request): JsonResponse
+    {
+        return $this->dailyAdsMetricHistory($request, 'spend', 'yspend');
+    }
+
+    /**
+     * Daily ads sales history for the Y Sales history dot (same chart modal as CPC / SBID).
+     */
+    public function ySalesHistory(Request $request): JsonResponse
+    {
+        return $this->dailyAdsMetricHistory($request, 'sales', 'ysales');
+    }
+
+    /**
+     * Calendar-day ads spend or sales points for the rolling history chart.
+     */
+    private function dailyAdsMetricHistory(Request $request, string $metric, string $pointKey): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->query('campaign_id', ''))) ?: '';
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
+        }
+        $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
+        if ($table === null || ! Schema::hasTable($table)) {
+            return response()->json(['ok' => false, 'message' => 'No daily report table for this row.', 'points' => []], 404);
+        }
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+        $dbColumns = Schema::getColumnListing($table);
+        $select = self::lRangeMetricSelectColumns($dbColumns, false);
+        $adType = trim((string) $request->query('ad_type', ''));
+        $q = DB::table($table)
+            ->select($select)
+            ->where('campaign_id', $cid)
+            ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+            ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+            ->orderByDesc('report_date_range')
+            ->orderByDesc('id');
+        if ($adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $q->where('ad_type', $adType);
+        }
+        $rows = $q->limit(2000)->get();
+        if ($rows->isEmpty() && $adType !== '' && in_array('ad_type', $dbColumns, true)) {
+            $rows = DB::table($table)
+                ->select($select)
+                ->where('campaign_id', $cid)
+                ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
+                ->whereRaw("report_date_range REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'")
+                ->orderByDesc('report_date_range')
+                ->orderByDesc('id')
+                ->limit(2000)
+                ->get();
+        }
+        $byDate = [];
+        foreach ($rows as $row) {
+            $r = (array) $row;
+            $day = trim((string) ($r['report_date_range'] ?? ''));
+            if ($day === '' || array_key_exists($day, $byDate)) {
+                continue;
+            }
+            $val = $metric === 'sales'
+                ? AmazonAdsLRangeMetrics::salesFromRow($r, $dbColumns, 'daily')
+                : AmazonAdsLRangeMetrics::spendFromRow($r, $dbColumns);
+            $byDate[$day] = $val;
+        }
+        if ($byDate === []) {
+            return response()->json(['ok' => true, 'points' => []]);
+        }
+        $known = array_keys($byDate);
+        sort($known);
+        $end = $known[count($known) - 1];
+        $start = $known[0];
+        if ($days !== 0) {
+            $from = Carbon::parse($end)->subDays($days - 1)->toDateString();
+            if ($from > $start) {
+                $start = $from;
+            }
+        }
+        $points = [];
+        $cursor = Carbon::parse($start);
+        $last = Carbon::parse($end);
+        while ($cursor->lte($last)) {
+            $day = $cursor->toDateString();
+            $raw = $byDate[$day] ?? null;
+            $points[] = [
+                'date' => $day,
+                $pointKey => $raw !== null && is_finite($raw) ? round((float) $raw, 2) : 0.0,
+            ];
+            $cursor->addDay();
+        }
+
+        return response()->json(['ok' => true, 'points' => $points]);
+    }
+
+    /**
      * Daily CVR history for the LT CVR dot. Same daily API rows as the lifetime column.
      */
     public function ltCvrHistory(Request $request): JsonResponse

@@ -1977,6 +1977,8 @@
             var sbAdRemoveUrl = @json(route('amazon.ads.sb-ads.products.remove'));
             var cpcAvgHistoryUrl = @json(route('amazon.ads.cpc-avg-history'));
             var lRangeHistoryUrl = @json(route('amazon.ads.l-range-history'));
+            var ySpendHistoryUrl = @json(route('amazon.ads.y-spend-history'));
+            var ySalesHistoryUrl = @json(route('amazon.ads.y-sales-history'));
             var ltCvrHistoryUrl = @json(route('amazon.ads.lt-cvr-history'));
             var ltAcosHistoryUrl = @json(route('amazon.ads.lt-acos-history'));
             var sbidHistoryUrl = @json(route('amazon.ads.sbid-history'));
@@ -2377,21 +2379,26 @@
                 var name = row && row.campaignName != null ? String(row.campaignName) : '';
                 var ad = row && row.ad_type != null ? String(row.ad_type) : '';
                 var isSales = metric === 'sales';
+                var kind = isSales ? 'ysales' : 'yspend';
                 var trend = isSales ? (row.ySales_trend || 'na') : (row.ySpend_trend || 'na');
                 var prev = isSales ? row.ySales_prev : row.ySpend_prev;
                 var current = parseFloat(cell.getValue());
                 var cls = (trend === 'up' || trend === 'same') ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
                 var prevTxt = (prev === null || prev === undefined || prev === '') ? '—' : Number(prev).toFixed(2);
                 var nowTxt = isFinite(current) ? current.toFixed(2) : '—';
-                var tip = isSales ? 'Yesterday ads sales history' : 'Yesterday ads spend history';
-                if (trend === 'up') tip += ' · Up vs prior day $' + prevTxt + ' → $' + nowTxt;
-                else if (trend === 'down') tip += ' · Down vs prior day $' + prevTxt + ' → $' + nowTxt;
-                else if (trend === 'flat') tip += ' · Same as prior day $' + prevTxt;
-                else tip += ' · Click for L1–L7';
-                var btn = '<button type="button" class="amz-cpc-avg-history-dot amz-hist-as-icon amz-lrange-btn ' + cls + '" title="' + amzEsc(tip) + '" aria-label="' + amzEsc(tip) + '"'
-                    + ' data-lrange="' + amzEsc(metric) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
+                var histTip = isSales ? 'Yesterday ads sales history' : 'Yesterday ads spend history';
+                if (trend === 'up') histTip += ' · Up vs prior day $' + prevTxt + ' → $' + nowTxt;
+                else if (trend === 'down') histTip += ' · Down vs prior day $' + prevTxt + ' → $' + nowTxt;
+                else if (trend === 'flat') histTip += ' · Same as prior day $' + prevTxt;
+                else histTip += ' · Click for daily history';
+                var l7Tip = isSales ? 'L1–L7 ads sales' : 'L1–L7 ads spend';
+                var histBtn = '<button type="button" class="amz-cpc-avg-history-dot amz-hist-as-icon ' + cls + '" title="' + amzEsc(histTip) + '" aria-label="' + amzEsc(histTip) + '"'
+                    + ' data-history="' + kind + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
                     + '<i class="fas fa-history"></i></button>';
-                return '<span class="amz-l1-cell">' + btn + fmtSbid(cell) + '</span>';
+                var l7Btn = '<button type="button" class="amz-lrange-btn" title="' + amzEsc(l7Tip) + '" aria-label="' + amzEsc(l7Tip) + '"'
+                    + ' data-lrange="' + amzEsc(metric) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
+                    + '<i class="fas fa-chart-bar"></i></button>';
+                return '<span class="amz-l1-cell">' + histBtn + l7Btn + fmtSbid(cell) + '</span>';
             }
             function fmtCvr(cell) {
                 var n = amzFiniteNumber(cell.getValue());
@@ -3074,18 +3081,18 @@
                 }
                 if (c === 'ySpend') {
                     col.title = 'Y Spend';
-                    col.headerTooltip = 'Yesterday ads spend (Amazon L1). History dot is vs the prior day; click for L1–L7.';
+                    col.headerTooltip = 'Yesterday ads spend. History dot opens the daily chart. Chart-bar opens L1–L7 boxes.';
                     col.formatter = function (cell) { return fmtL1RangeCell(cell, 'spend'); };
-                    col.minWidth = 92;
-                    col.width = 102;
+                    col.minWidth = 118;
+                    col.width = 128;
                     return;
                 }
                 if (c === 'ySales') {
                     col.title = 'Y Sales';
-                    col.headerTooltip = 'Yesterday ads sales (Amazon L1). History dot is vs the prior day; click for L1–L7.';
+                    col.headerTooltip = 'Yesterday ads sales. History dot opens the daily chart. Chart-bar opens L1–L7 boxes.';
                     col.formatter = function (cell) { return fmtL1RangeCell(cell, 'sales'); };
-                    col.minWidth = 92;
-                    col.width = 102;
+                    col.minWidth = 118;
+                    col.width = 128;
                     return;
                 }
                 if (c === 'clicks') { col.title = 'Clicks'; col.headerTooltip = 'Amazon Ads clicks (L30).'; col.formatter = fmtDashInt; return; }
@@ -4570,6 +4577,8 @@
                 if (amzHistoryKind === 'lbid') return 'Lbid';
                 if (amzHistoryKind === 'sbid') return 'SBID';
                 if (amzHistoryKind === 'sbgt') return 'SBGT';
+                if (amzHistoryKind === 'yspend') return 'Y Spend';
+                if (amzHistoryKind === 'ysales') return 'Y Sales';
                 return 'CPC';
             }
             function amzHistoryFmt(v) {
@@ -4600,6 +4609,8 @@
                     if (amzHistoryKind === 'lbid') return Number(p.lbid);
                     if (amzHistoryKind === 'sbid') return Number(p.sbid);
                     if (amzHistoryKind === 'sbgt') return Number(p.sbgt);
+                    if (amzHistoryKind === 'yspend') return Number(p.yspend);
+                    if (amzHistoryKind === 'ysales') return Number(p.ysales);
                     return Number(p.cpc);
                 });
                 var dataMin = Math.min.apply(null, values);
@@ -4772,6 +4783,8 @@
                 else if (amzHistoryKind === 'lbid') historyUrl = lbidHistoryUrl;
                 else if (amzHistoryKind === 'sbid') historyUrl = sbidHistoryUrl;
                 else if (amzHistoryKind === 'sbgt') historyUrl = sbgtHistoryUrl;
+                else if (amzHistoryKind === 'yspend') historyUrl = ySpendHistoryUrl;
+                else if (amzHistoryKind === 'ysales') historyUrl = ySalesHistoryUrl;
                 var qs = '?campaign_id=' + encodeURIComponent(cid)
                     + '&source=' + encodeURIComponent(activeRawSourceKey || '')
                     + '&ad_type=' + encodeURIComponent(row.ad_type != null ? String(row.ad_type) : '')
@@ -4801,7 +4814,7 @@
             }
             function amzOpenCpcAvgHistory(row) {
                 amzCpcAvgRow = row || {};
-                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
+                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt', 'yspend', 'ysales'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
                 amzCpcAvgDays = 30;
                 var range = document.getElementById('amazonAdsCpcAvgRange');
                 if (range) range.value = '30';
