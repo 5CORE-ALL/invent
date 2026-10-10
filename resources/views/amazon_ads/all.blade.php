@@ -5450,14 +5450,16 @@
                     tbody.appendChild(tr);
                 });
                 tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
-                    inp.addEventListener('input', function () {
+                    var writeAcosBand = function () {
                         var idx = +this.dataset.idx, fld = this.dataset.field;
                         if (!amzCurrentBands[idx]) return;
-                        amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseFloat(this.value))
-                            : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
+                        amzCurrentBands[idx][fld] = (fld === 'sbgt' || fld === 'acos_from' || fld === 'acos_to')
+                            ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
                         if (fld === 'acos_from' || fld === 'acos_to' || fld === 'label') amzAcosRefreshCounts();
-                    });
+                    };
+                    inp.addEventListener('input', writeAcosBand);
+                    inp.addEventListener('change', writeAcosBand);
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () { amzCurrentBands.splice(+this.dataset.removeIdx, 1); amzRenderBands(amzCurrentBands); });
@@ -6759,7 +6761,6 @@
                 var jobs = [];
                 for (var i = 0; i < specs.length; i++) {
                     var spec = specs[i];
-                    amzBgtSyncBandsFromDom(spec.body, spec.bands);
                     var cleaned = amzBgtCleanRuleBands(spec.bands, spec.from, spec.to, spec.amt);
                     var problem = amzBgtValidateRuleBands(cleaned, spec.from, spec.to, spec.amt, spec.label);
                     if (problem) return { error: problem };
