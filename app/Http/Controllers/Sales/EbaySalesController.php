@@ -176,7 +176,7 @@ class EbaySalesController extends Controller
                 $quantity = floatval($item->quantity);
                 $price = floatval($item->price);
 
-                // Item price is already the line amount. T Weight = ACT lb × Qty.
+                // Item price is already this row's Sales AMT. T Weight = ACT lb × Qty.
                 $weightAct = self::actWeightLb($values);
                 $tWeight = $weightAct * $quantity;
                 $shipCost = self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
