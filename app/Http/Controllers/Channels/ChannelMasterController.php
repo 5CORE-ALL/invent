@@ -8952,19 +8952,20 @@ class ChannelMasterController extends Controller
     /**
      * Temu / Temu 2 Y Sales: wall-clock Pacific yesterday from temu_orders / temu2_orders
      * (same clock as Amazon). Not sheet uploads and not Shopify.
+     * Each channel matches its sales-page L30 Full Sales badge (Y Line Sales × 1.1364).
      */
     private function computeTemuYSalesLikeAmazon(bool $isTemu2): ?float
     {
         if (! $isTemu2) {
-            return TemuShopifySalesService::computeYSalesFromOrders();
+            return TemuShopifySalesService::l30FullSalesBadgeAmount();
         }
 
-        return TemuShopifySalesService::computeYSalesFromTemu2Orders();
+        return TemuShopifySalesService::l30FullSalesBadgeAmountTemu2();
     }
 
     private function computeTemu3YSalesLikeAmazon(): ?float
     {
-        return TemuShopifySalesService::computeYSalesFromTemu3Orders();
+        return TemuShopifySalesService::l30FullSalesBadgeAmountTemu3();
     }
 
     /**

@@ -54,10 +54,11 @@ class Temu3Controller extends TemuController
     public function temu3TabulatorView()
     {
         $temuMargin = TemuShopifySalesService::temu3MarginDecimal();
-        $temu3YSales = TemuShopifySalesService::computeYSalesFromTemu3Orders();
+        $temu3YSales = TemuShopifySalesService::sumYesterdayLineSalesTemu3();
+        $temu3L30FullSales = TemuShopifySalesService::l30FullSalesBadgeAmountFromLineSales($temu3YSales);
         $temu3YDate = Carbon::now(TemuShopifySalesService::PST)->subDay()->toDateString();
 
-        return view('market-places.temu3_tabulator_view', compact('temuMargin', 'temu3YSales', 'temu3YDate'));
+        return view('market-places.temu3_tabulator_view', compact('temuMargin', 'temu3YSales', 'temu3L30FullSales', 'temu3YDate'));
     }
 
     public function getTemu3DailyData(Request $request)

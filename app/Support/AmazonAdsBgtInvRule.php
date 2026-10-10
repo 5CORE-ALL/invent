@@ -5,29 +5,30 @@ namespace App\Support;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * L30 ad spend (grid cost) → suggested daily budget (Bgt Spend).
- * Dynamic slabs evaluated top to bottom.
+ * On-hand inventory (grid Inv) → suggested daily budget (Bgt Inv).
+ * Dynamic slabs evaluated top to bottom. Default budgets are 0 so SBGT
+ * does not change until the slabs are set.
  */
-final class AmazonAdsBgtSpendRule
+final class AmazonAdsBgtInvRule
 {
     use StoresAmazonAdsRuleJson;
 
-    public const CACHE_KEY = 'amazon_ads_bgt_spend_rule_resolved_v1';
+    public const CACHE_KEY = 'amazon_ads_bgt_inv_rule_resolved_v1';
 
     /**
-     * @return array<int, array{spend_from: float, spend_to: float, bgt: int, label: string, color: string}>
+     * @return array<int, array{inv_from: float, inv_to: float, bgt: int, label: string, color: string}>
      */
     public static function defaultBands(): array
     {
         return [
-            ['spend_from' => 50, 'spend_to' => 9999, 'bgt' => 3, 'label' => 'Pink', 'color' => '#e83e8c'],
-            ['spend_from' => 10, 'spend_to' => 50, 'bgt' => 2, 'label' => 'Green', 'color' => '#28a745'],
-            ['spend_from' => 0, 'spend_to' => 10, 'bgt' => 1, 'label' => 'Blue', 'color' => '#2563eb'],
+            ['inv_from' => 50, 'inv_to' => 9999, 'bgt' => 0, 'label' => 'Pink', 'color' => '#e83e8c'],
+            ['inv_from' => 10, 'inv_to' => 50, 'bgt' => 0, 'label' => 'Green', 'color' => '#28a745'],
+            ['inv_from' => 0, 'inv_to' => 10, 'bgt' => 0, 'label' => 'Red', 'color' => '#a00211'],
         ];
     }
 
     /**
-     * @return array{bands: array<int, array{spend_from: float, spend_to: float, bgt: int, label: string, color: string}>}
+     * @return array{bands: array<int, array{inv_from: float, inv_to: float, bgt: int, label: string, color: string}>}
      */
     public static function defaults(): array
     {
@@ -35,7 +36,7 @@ final class AmazonAdsBgtSpendRule
     }
 
     /**
-     * @return array{bands: array<int, array{spend_from: float, spend_to: float, bgt: int, label: string, color: string}>}
+     * @return array{bands: array<int, array{inv_from: float, inv_to: float, bgt: int, label: string, color: string}>}
      */
     public static function resolvedRule(): array
     {
@@ -43,11 +44,11 @@ final class AmazonAdsBgtSpendRule
     }
 
     /**
-     * @return array{bands: array<int, array{spend_from: float, spend_to: float, bgt: int, label: string, color: string}>}
+     * @return array{bands: array<int, array{inv_from: float, inv_to: float, bgt: int, label: string, color: string}>}
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('spend');
+        $decoded = self::readStoredRule('inv');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -62,7 +63,7 @@ final class AmazonAdsBgtSpendRule
 
     /**
      * @param  array<string, mixed>  $input
-     * @return array{bands: array<int, array{spend_from: float, spend_to: float, bgt: int, label: string, color: string}>}
+     * @return array{bands: array<int, array{inv_from: float, inv_to: float, bgt: int, label: string, color: string}>}
      */
     public static function normalizeRule(array $input): array
     {
@@ -77,8 +78,8 @@ final class AmazonAdsBgtSpendRule
                 continue;
             }
             $bands[] = [
-                'spend_from' => (float) ($band['spend_from'] ?? 0),
-                'spend_to' => (float) ($band['spend_to'] ?? 9999),
+                'inv_from' => (float) ($band['inv_from'] ?? 0),
+                'inv_to' => (float) ($band['inv_to'] ?? 9999),
                 'bgt' => AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0),
                 'label' => (string) ($band['label'] ?? ''),
                 'color' => (string) ($band['color'] ?? '#6c757d'),
@@ -99,17 +100,17 @@ final class AmazonAdsBgtSpendRule
     public static function validateBands(array $bands): void
     {
         if ($bands === []) {
-            throw new \InvalidArgumentException('Add at least one Spend slab.');
+            throw new \InvalidArgumentException('Add at least one Inv slab.');
         }
         foreach ($bands as $i => $band) {
-            $from = (float) ($band['spend_from'] ?? NAN);
-            $to = (float) ($band['spend_to'] ?? NAN);
+            $from = (float) ($band['inv_from'] ?? NAN);
+            $to = (float) ($band['inv_to'] ?? NAN);
             $bgt = (float) ($band['bgt'] ?? 0);
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
             }
             if ($bgt < -9_999_999 || $bgt > 9_999_999) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Spend must be between -9999999 and 9999999.');
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Inv must be between -9999999 and 9999999.');
             }
         }
     }
@@ -120,17 +121,17 @@ final class AmazonAdsBgtSpendRule
     public static function persistRule(array $rule): void
     {
         $normalized = self::normalizeRule($rule);
-        self::storeRuleJson('spend', $normalized);
+        self::storeRuleJson('inv', $normalized);
         self::forgetResolvedCache();
     }
 
     /**
-     * @return array{bgt: int|null, color: string, label: string}
+     * @return array{bgt: int|float|null, color: string, label: string}
      */
-    public static function apply(?float $spend, ?array $rule = null): array
+    public static function apply(?float $inv, ?array $rule = null): array
     {
         $empty = ['bgt' => null, 'color' => '#6c757d', 'label' => ''];
-        if ($spend === null || ! is_finite($spend)) {
+        if ($inv === null || ! is_finite($inv)) {
             return $empty;
         }
         $r = $rule ?? self::resolvedRule();
@@ -138,9 +139,9 @@ final class AmazonAdsBgtSpendRule
             if (! is_array($band)) {
                 continue;
             }
-            $from = (float) ($band['spend_from'] ?? 0);
-            $to = (float) ($band['spend_to'] ?? 9999);
-            if ($spend >= $from && $spend <= $to) {
+            $from = (float) ($band['inv_from'] ?? 0);
+            $to = (float) ($band['inv_to'] ?? 9999);
+            if ($inv >= $from && $inv <= $to) {
                 $bgt = AmazonAdsSbgt::normalizeBgtValue($band['bgt'] ?? 0);
 
                 return [

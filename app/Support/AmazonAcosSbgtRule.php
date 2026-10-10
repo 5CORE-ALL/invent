@@ -2,19 +2,18 @@
 
 namespace App\Support;
 
-use App\Models\AmazonAcosSbgtRuleSetting;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * L30 ACOS (%) → suggested daily budget tier (SBGT). Rule is a list of inclusive
- * ACOS % bands ({@see defaultSbgtBands}) persisted in {@see AmazonAcosSbgtRuleSetting}
- * (Amazon Ads “BGT rule”). Bands are evaluated top-to-bottom; the first band whose
- * From ≤ ACOS ≤ To wins. Use 9999 on To for the catch-all highest band.
+ * ACOS % bands ({@see defaultSbgtBands}) stored in amazon_ads_rules under key acos.
+ * Bands are evaluated top-to-bottom; the first band whose From ≤ ACOS ≤ To wins.
+ * Use 9999 on To for the catch-all highest band.
  */
 final class AmazonAcosSbgtRule
 {
+    use StoresAmazonAdsRuleJson;
+
     public const CACHE_KEY = 'amazon_acos_sbgt_rule_resolved_v2';
 
     /**
@@ -42,18 +41,13 @@ final class AmazonAcosSbgtRule
     }
 
     /**
-     * Active rule (cached). Falls back to {@see defaults} when the table is missing or empty.
-     * If file cache dirs are missing/unwritable, loads from DB without caching.
+     * Active rule from the database. Falls back to {@see defaults} when the table is missing or empty.
      *
      * @return array{bands: array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>}
      */
     public static function resolvedRule(): array
     {
-        try {
-            return Cache::remember(self::CACHE_KEY, 86400, static fn (): array => self::loadResolvedRule());
-        } catch (\Throwable) {
-            return self::loadResolvedRule();
-        }
+        return self::loadResolvedRule();
     }
 
     /**
@@ -61,15 +55,12 @@ final class AmazonAcosSbgtRule
      */
     private static function loadResolvedRule(): array
     {
-        if (! Schema::hasTable('amazon_acos_sbgt_rule_settings')) {
-            return self::defaults();
-        }
-        $row = AmazonAcosSbgtRuleSetting::query()->orderBy('id')->first();
-        if ($row === null || ! is_array($row->rule) || $row->rule === []) {
+        $decoded = self::readStoredRule('acos');
+        if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
 
-        return self::normalizeRule($row->rule);
+        return self::normalizeRule($decoded);
     }
 
     public static function forgetResolvedCache(): void
@@ -109,15 +100,7 @@ final class AmazonAcosSbgtRule
      */
     public static function persistRule(array $rule): void
     {
-        if (! Schema::hasTable('amazon_acos_sbgt_rule_settings')) {
-            throw new \RuntimeException('Table amazon_acos_sbgt_rule_settings does not exist. Run migrations.');
-        }
-        $row = AmazonAcosSbgtRuleSetting::query()->orderBy('id')->first();
-        if ($row === null) {
-            AmazonAcosSbgtRuleSetting::query()->create(['rule' => $rule]);
-        } else {
-            $row->update(['rule' => $rule]);
-        }
+        self::storeRuleJson('acos', $rule);
         self::forgetResolvedCache();
     }
 
@@ -159,11 +142,8 @@ final class AmazonAcosSbgtRule
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('SBGT band '.($i + 1).': From and To must be finite numbers.');
             }
-            if ($from > $to) {
-                throw new \InvalidArgumentException('SBGT band '.($i + 1).': From must be ≤ To.');
-            }
-            if ($sbgt < -100_000 || $sbgt > 100_000) {
-                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between -100000 and 100000 (0 pauses the campaign).');
+            if ($sbgt < -9_999_999 || $sbgt > 9_999_999) {
+                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between -9999999 and 9999999 (0 pauses the campaign).');
             }
         }
     }

@@ -441,6 +441,18 @@
         .amz-stat-badge--cvr      { background: #16a34a; }
         .amz-stat-badge--cpc      { background: #0891b2; }
         .amz-stat-badge--sales    { background: #16a34a; }
+        .amz-stat-badge--budget   { background: #0f766e; }
+        .amz-stat-badge--month    { background: #0e7490; }
+        .amz-metric-blocks {
+            display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 720px; min-width: 0;
+        }
+        .amz-metric-block {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+            padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc;
+        }
+        .amz-metric-block-label {
+            font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #334155;
+        }
         #amz-ads-raw-wrap #amazonAdsU7Pie { width: 100%; min-height: 400px; }
 
         @media (max-width: 991.98px) {
@@ -643,46 +655,104 @@
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar {
             flex: 0 0 auto;
             width: 100%;
-            flex-direction: row;
-            align-items: center;
+            flex-direction: column;
+            align-items: stretch;
             gap: 10px;
             margin-bottom: 8px;
-            overflow: auto;
+            padding: 12px 14px 14px;
+            overflow: visible;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-col-head { margin: 0; flex: 0 0 auto; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-title { font-size: 16px; }
+        #amazonAdsBgtRulesModal .amz-bgt-sum-sub { color: #64748b; font-size: 12px; font-weight: 500; margin-top: 1px; }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-badges { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-badge {
+            display: flex; flex-direction: column; justify-content: center; min-width: 92px;
+            padding: 8px 12px; border-radius: 10px; background: #fff;
+            border: 1px solid #e8eef5; border-left: 4px solid var(--bgt-c, #64748b); line-height: 1.15;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-amt { font-size: 16px; font-weight: 800; color: #0f172a; font-variant-numeric: tabular-nums; }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-n { margin-top: 3px; font-size: 13px; font-weight: 700; color: #334155; font-variant-numeric: tabular-nums; }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-day { margin-top: 2px; font-size: 11px; font-weight: 600; color: #64748b; font-variant-numeric: tabular-nums; }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-badge--total {
+            min-width: 148px; background: #0f766e; border: 0; margin-left: auto;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-badge--total .amz-bgt-budget-amt { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #ccfbf1; }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-badge--total .amz-bgt-budget-n { font-size: 22px; color: #fff; }
+        #amazonAdsBgtRulesModal .amz-bgt-budget-badge--total .amz-bgt-budget-day { color: #ccfbf1; }
+        #amazonAdsBgtRulesModal .amz-bgt-sum-body {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            align-items: stretch;
+            min-width: 0;
+        }
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-chart {
             flex: 1 1 auto;
-            flex-direction: row;
-            align-items: center;
+            flex-direction: column;
+            align-items: stretch;
             gap: 8px;
             margin: 0;
             min-width: 0;
         }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-chart-canvas { flex: 0 0 160px; width: 160px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-chart-canvas { flex: 0 0 180px; width: 100%; height: 180px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-chart-canvas,
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-chart-canvas canvas { height: 48px !important; flex-basis: 48px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-chart-canvas canvas { height: 180px !important; flex-basis: 180px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-legend {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 4px 10px;
+            gap: 6px;
             margin: 0;
-            flex: 1 1 auto;
+            flex: 0 0 auto;
+            font-size: 13px;
         }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-leg-row { display: flex; width: auto; gap: 4px; }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .table-responsive { flex: 1 1 auto; overflow: visible; }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table { display: block; border: 0; }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table thead { display: none; }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tbody { display: flex; flex-wrap: wrap; gap: 6px; }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tr {
-            display: flex;
-            flex-direction: column;
-            border: 1px solid #e8eef5;
-            border-radius: 8px;
-            padding: 2px 8px;
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-leg-row {
+            display: inline-flex;
+            width: auto;
+            gap: 6px;
+            align-items: center;
             background: #f8fafc;
+            border: 1px solid #e8eef5;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 13px;
         }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table td { border: 0; padding: 0; background: transparent; line-height: 1.25; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-leg-row strong { font-size: 14px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-leg-total {
+            border-top: 0;
+            margin: 0;
+            padding: 4px 10px;
+            background: #0f172a;
+            color: #fff;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-leg-total .amz-bgt-leg-pct { color: #cbd5e1; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-swatch { width: 10px; height: 10px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .table-responsive { flex: 1 1 300px; width: auto; min-width: 280px; max-width: 420px; overflow: visible; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table {
+            display: table;
+            width: 100%;
+            height: 100%;
+            border: 1px solid #e8eef5;
+            border-radius: 10px;
+            overflow: hidden;
+            font-size: 14px;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table thead { display: table-header-group; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tbody { display: table-row-group; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tr { display: table-row; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table th,
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table td {
+            display: table-cell;
+            padding: 7px 12px;
+            font-size: 14px;
+            line-height: 1.3;
+            border-color: #eef2f7;
+            background: #fff;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table thead th { font-size: 11px; padding: 8px 12px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table td:first-child { font-weight: 600; color: #0f172a; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tr.fw-semibold td { background: #eff6ff; font-size: 15px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar.is-min {
             flex: 0 0 auto;
             flex-direction: row;
@@ -692,19 +762,23 @@
             padding: 6px 8px;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar.is-min .amz-bgt-col-head { flex-direction: row; height: auto; }
-        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar.is-min .amz-bgt-title { writing-mode: horizontal-tb; transform: none; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar.is-min .amz-bgt-title { writing-mode: horizontal-tb; transform: none; font-size: 12px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar.is-min .amz-bgt-sum-sub { display: none; }
         #amazonAdsBgtRulesModal .amz-bgt-cols {
             display: flex;
-            gap: 8px;
+            flex-wrap: wrap;
             align-items: stretch;
+            align-content: flex-start;
+            gap: 8px;
             width: 100%;
-            height: 100%;
             min-width: 0;
             min-height: 0;
             flex: 1 1 auto;
+            overflow: auto;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col {
-            flex: 1 1 0;
+            flex: 1 1 calc((100% - 24px) / 4);
+            max-width: calc((100% - 24px) / 4);
             min-width: 0;
             min-height: 0;
             display: flex;
@@ -714,7 +788,7 @@
             padding: 8px;
             background: #fff;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-            overflow: hidden;
+            overflow: auto;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 4px; }
         #amazonAdsBgtRulesModal .amz-bgt-title {
@@ -736,7 +810,7 @@
         #amazonAdsBgtRulesModal .amz-bgt-col.is-max { flex: 1 1 100%; min-width: 0; max-width: none; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-max .amz-bgt-chart-canvas { height: 220px; flex: 0 0 220px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-max .amz-bgt-chart-canvas canvas { height: 220px !important; }
-        #amazonAdsBgtRulesModal .amz-bgt-col.is-min { flex: 0 0 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min { flex: 0 0 40px; width: 40px; max-width: 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min > :not(.amz-bgt-col-head) { display: none !important; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
@@ -811,8 +885,25 @@
             padding: 3px 8px;
             font-size: 12px;
         }
-        #amazonAdsBgtRulesModal .amz-bgt-add { margin-top: 4px; border-style: dashed; }
-        #amazonAdsBgtRulesModal .amz-bgt-save { margin-top: auto; }
+        #amazonAdsBgtRulesModal .amz-bgt-add { margin-top: auto; border-style: dashed; }
+        #amazonAdsBgtRulesModal .amz-auto-sync-btn {
+            border-radius: 999px;
+            font-weight: 700;
+            border: 1px solid #cbd5e1;
+            background: #f1f5f9;
+            color: #64748b;
+            min-width: 168px;
+        }
+        #amazonAdsBgtRulesModal .amz-auto-sync-btn.is-on {
+            background: #0f766e;
+            border-color: #0f766e;
+            color: #fff;
+        }
+        #amazonAdsBgtRulesModal #amazonAdsBgtSaveApplyBtn {
+            font-weight: 700;
+            border-radius: 8px;
+            padding: 6px 16px;
+        }
         #amazonAdsBgtRulesModal .amz-bgt-col .table-responsive { margin-bottom: 0; flex: 1 1 auto; min-height: 0; overflow: auto; }
         #amazonAdsSbidRuleModal .modal-dialog {
             width: min(1120px, calc(100vw - 1.25rem));
@@ -966,22 +1057,42 @@
             <div class="card">
                 <div class="card-body">
                     <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <div class="amz-stat-badges py-1">
-                            <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
-                            <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30. Turns red when ACOS is above 40%.">ACOS:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
-                            <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
-                            <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
-                            <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) — same Amazon L30 universe as Spend">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
-                            <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="Ads CVR = Ads Sold / Ads Clicks (L30)">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
-                            <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
-                            <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Sales (L30) — same Amazon L30 universe as Spend">SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
-                            <div class="amz-sync-toolbar-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
-                                <span class="amz-sync-toolbar-label">Lbgt</span>
-                                <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
+                        <div class="amz-metric-blocks">
+                            <div class="amz-metric-block">
+                                <span class="amz-metric-block-label">Last 30</span>
+                                <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
+                                <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
+                                <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Ads sales (L30) — same Amazon L30 universe as Spend">ADS SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
+                                <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30. Turns red when ACOS is above 40%.">ACOS%:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
+                                <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
+                                <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) — same Amazon L30 universe as Spend">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
+                                <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="Ads CVR = Ads Sold / Ads Clicks (L30)">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
+                                <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
                             </div>
-                            <div class="amz-sync-toolbar-group" title="Click a BID color to show only those rows. Click again to clear.">
-                                <span class="amz-sync-toolbar-label">BID</span>
-                                <div class="amz-sync-head-badges" data-sync-field="bid"></div>
+                            <div class="amz-metric-block">
+                                <span class="amz-metric-block-label">Yesterday</span>
+                                <span id="amazonAdsYesterdaySpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Yesterday spend (Amazon L1) for the current filters.">SPEND:<span id="amazonAdsYesterdaySpendBadgeValue">$0</span></span>
+                                <span id="amazonAdsYesterdaySalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Yesterday ads sales (Amazon L1) for the current filters.">ADS SALES:<span id="amazonAdsYesterdaySalesBadgeValue">$0</span></span>
+                                <span id="amazonAdsYesterdayAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Yesterday ACOS% = yesterday spend ÷ yesterday ads sales.">ACOS%:<span id="amazonAdsYesterdayAcosBadgeValue">—</span></span>
+                            </div>
+                            <div class="amz-metric-block">
+                                <span class="amz-metric-block-label">Projected</span>
+                                <span id="amazonAdsProjectedSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Projected spend = last 7 days of spend ÷ 7 × 30.">SPEND:<span id="amazonAdsProjectedSpendBadgeValue">$0</span></span>
+                                <span id="amazonAdsProjectedSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Projected ads sales = last 7 days of ads sales ÷ 7 × 30.">ADS SALES:<span id="amazonAdsProjectedSalesBadgeValue">$0</span></span>
+                                <span id="amazonAdsProjectedAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Projected ACOS% = projected spend ÷ projected ads sales.">ACOS%:<span id="amazonAdsProjectedAcosBadgeValue">—</span></span>
+                            </div>
+                            <div class="amz-metric-block">
+                                <span class="amz-metric-block-label">Budget</span>
+                                <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--budget" title="Sum of floored SBGT across campaigns in the current filters. Open BGT Rules for the count at each budget.">DAILY BGT:<span id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
+                                <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--month" title="Monthly budget = daily budget × 30.">MONTHLY BUDGET:<span id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
+                                <div class="amz-sync-toolbar-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
+                                    <span class="amz-sync-toolbar-label">Lbgt</span>
+                                    <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
+                                </div>
+                                <div class="amz-sync-toolbar-group" title="Click a BID color to show only those rows. Click again to clear.">
+                                    <span class="amz-sync-toolbar-label">BID</span>
+                                    <div class="amz-sync-head-badges" data-sync-field="bid"></div>
+                                </div>
                             </div>
                         </div>
 
@@ -1329,31 +1440,37 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amazonAdsBgtRulesModalLabel">BGT Rules</h5>
-                        <div class="amz-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil. Each column saves on its own and refreshes the grid. Rows match top to bottom; the first range that contains the value is used. Count is campaigns on this grid page.</div>
+                        <div class="amz-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv. Save and apply writes every rule, then refreshes the page. Auto Push &amp; Pull, when on, pulls live Amazon BGT and BID and pushes only mismatches.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="amz-bgt-col amz-bgt-sumbar" data-amz-bgt-panel="sum">
                             <div class="amz-bgt-col-head">
-                                <div class="amz-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil. The total is floored. A total of 0 pauses the campaign.">Sum</div>
-                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
+                                <div>
+                                    <div class="amz-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv. The total is floored. A total of 0 pauses the campaign.">Sum</div>
+                                    <div class="amz-bgt-sum-sub">Each badge is one daily budget: campaign count, and what that group costs per day. Daily budget is the sum.</div>
+                                </div>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-sum"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-sum"></div>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-0 amz-bgt-sum-table">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Part</th>
-                                            <th class="text-center">Count</th>
-                                            <th class="text-end">Bgt</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="amz-bgt-sum-tbody"></tbody>
-                                </table>
+                            <div class="amz-bgt-budget-badges" id="amz-bgt-budget-badges"></div>
+                            <div class="amz-bgt-sum-body">
+                                <div class="amz-bgt-chart">
+                                    <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-sum"></canvas></div>
+                                    <div class="amz-bgt-legend" id="amz-bgt-leg-sum"></div>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered align-middle mb-0 amz-bgt-sum-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Part</th>
+                                                <th class="text-center">Campaigns</th>
+                                                <th class="text-end">Budget</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="amz-bgt-sum-tbody"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     <div class="amz-bgt-cols">
@@ -1374,7 +1491,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>SBGT</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1383,7 +1499,6 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtRuleAddBandBtn">Add band</button>
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtRuleModalError" role="alert"></p>
-                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtRuleSaveBtn">Save</button>
                         </div>
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="views">
@@ -1403,7 +1518,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1412,7 +1526,6 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtViewsRuleAddBandBtn">Add slab</button>
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtViewsRuleModalError" role="alert"></p>
-                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtViewsRuleSaveBtn">Save</button>
                         </div>
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="cvr">
@@ -1432,7 +1545,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1441,7 +1553,6 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtCvrRuleAddBandBtn">Add slab</button>
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtCvrRuleModalError" role="alert"></p>
-                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtCvrRuleSaveBtn">Save</button>
                         </div>
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="prc">
@@ -1461,7 +1572,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1470,7 +1580,6 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtPrcRuleAddBandBtn">Add slab</button>
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtPrcRuleModalError" role="alert"></p>
-                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtPrcRuleSaveBtn">Save</button>
                         </div>
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="reviews">
@@ -1490,7 +1599,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1499,7 +1607,6 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtReviewsRuleAddBandBtn">Add slab</button>
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtReviewsRuleModalError" role="alert"></p>
-                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtReviewsRuleSaveBtn">Save</button>
                         </div>
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="dil">
@@ -1519,7 +1626,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1528,7 +1634,33 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtDilRuleAddBandBtn">Add slab</button>
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtDilRuleModalError" role="alert"></p>
-                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtDilRuleSaveBtn">Save</button>
+                        </div>
+
+                        <div class="amz-bgt-col" data-amz-bgt-panel="inv">
+                            <div class="amz-bgt-col-head">
+                                <div class="amz-bgt-title" title="Inclusive on-hand inventory (the Inv column). First matching slab wins, top to bottom. Default budgets are 0 until you set them.">Inv Rule</div>
+                                <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize Inv Rule" aria-label="Minimize Inv Rule">−</button></span>
+                            </div>
+                            <div class="amz-bgt-chart">
+                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-inv"></canvas></div>
+                                <div class="amz-bgt-legend" id="amz-bgt-leg-inv"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtInvRuleTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>Bgt</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amazonAdsBgtInvRuleBandsBody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtInvRuleAddBandBtn">Add slab</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtInvRuleModalError" role="alert"></p>
                         </div>
 
                         <div class="amz-bgt-col" data-amz-bgt-panel="spend">
@@ -1548,7 +1680,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1557,14 +1688,14 @@
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary amz-bgt-add" id="amazonAdsBgtSpendRuleAddBandBtn">Add slab</button>
                             <p class="small text-danger mb-0 mt-2 d-none" id="amazonAdsBgtSpendRuleModalError" role="alert"></p>
-                            <button type="button" class="btn btn-sm btn-primary amz-bgt-save" id="amazonAdsBgtSpendRuleSaveBtn">Save</button>
                         </div>
 
                         </div>
                     </div>
-                </div>
                 <div class="modal-footer">
                     <div class="small text-muted me-auto" id="amz-bgt-status"></div>
+                    <button type="button" class="btn btn-sm amz-auto-sync-btn" id="amazonAdsAutoPushPullBtn" aria-pressed="false" title="When on, each page load pulls live Amazon BGT and BID and pushes only values that differ. SBGT 0 pauses.">Auto Push &amp; Pull: OFF</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtSaveApplyBtn">Save and apply</button>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -1587,7 +1718,7 @@
                         <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilLow" name="util_low" required title="Both U7% and U1% must be below this">
                         <label for="amazonAdsSbidRuleUtilHigh">High %</label>
                         <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required title="Both U7% and U1% must be above this">
-                        <span class="text-muted">Counts are campaigns on this grid page.</span>
+                        <span class="text-muted">Counts are every campaign in the current filters, the same set as the CAMPAIGN badge.</span>
                     </div>
                     <div class="amz-sbid-cols">
                         <div class="amz-sbid-col" data-amz-sbid-panel="below">
@@ -1764,6 +1895,8 @@
             var bgtReviewsRuleSaveUrl = @json(route('amazon.ads.bgt-reviews-rule.save'));
             var bgtDilRuleGetUrl = @json(route('amazon.ads.bgt-dil-rule'));
             var bgtDilRuleSaveUrl = @json(route('amazon.ads.bgt-dil-rule.save'));
+            var bgtInvRuleGetUrl = @json(route('amazon.ads.bgt-inv-rule'));
+            var bgtInvRuleSaveUrl = @json(route('amazon.ads.bgt-inv-rule.save'));
             var bgtSpendRuleGetUrl = @json(route('amazon.ads.bgt-spend-rule'));
             var bgtSpendRuleSaveUrl = @json(route('amazon.ads.bgt-spend-rule.save'));
             var sbidRuleGetUrl = @json(route('amazon.ads.sbid-rule'));
@@ -1785,6 +1918,7 @@
             window.amazonAdsBgtPrcRule = @json($amazonAdsBgtPrcRule ?? null);
             window.amazonAdsBgtReviewsRule = @json($amazonAdsBgtReviewsRule ?? null);
             window.amazonAdsBgtDilRule = @json($amazonAdsBgtDilRule ?? null);
+            window.amazonAdsBgtInvRule = @json($amazonAdsBgtInvRule ?? null);
             window.amazonAdsBgtSpendRule = @json($amazonAdsBgtSpendRule ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
             window.amazonAdsPauseRule = @json($amazonAdsPauseRule ?? null);
@@ -1796,9 +1930,9 @@
             var amzU7PieChart = null;
             var amzU7PieRefreshTimer = null;
 
-            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value'];
+            var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -1846,7 +1980,7 @@
                 return isNaN(t) ? null : t;
             }
             function amzSumSbgtFromRow(row) {
-                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews, row && row.bgtDil];
+                var parts = [row && row.bgtViews, row && row.bgtCvr, row && row.bgtAcos, row && row.bgtPrc, row && row.bgtReviews, row && row.bgtDil, row && row.bgtInv];
                 var sum = 0, has = false;
                 for (var i = 0; i < parts.length; i++) {
                     if (parts[i] === null || parts[i] === undefined || parts[i] === '') continue;
@@ -2275,12 +2409,13 @@
                 var prc = amzBgtPartNum(row && row.bgtPrc);
                 var rev = amzBgtPartNum(row && row.bgtReviews);
                 var dilBgt = amzBgtPartNum(row && row.bgtDil);
+                var invBgt = amzBgtPartNum(row && row.bgtInv);
                 var bgt = parseFloat(row && row.bgt);
                 var inSync = isFinite(bgt) && Math.round(bgt) === t;
                 var color = t === 0 ? '#dc2626' : (inSync ? '#64748b' : '#0f766e');
-                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil';
-                var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0);
-                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0);
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv';
+                var partsSum = (isFinite(views) ? views : 0) + (isFinite(cvr) ? cvr : 0) + (isFinite(acos) ? acos : 0) + (isFinite(prc) ? prc : 0) + (isFinite(rev) ? rev : 0) + (isFinite(dilBgt) ? dilBgt : 0) + (isFinite(invBgt) ? invBgt : 0);
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(rev) ? rev : 0) + ' + ' + (isFinite(dilBgt) ? dilBgt : 0) + ' + ' + (isFinite(invBgt) ? invBgt : 0);
                 if (Math.abs(partsSum - Math.round(partsSum)) > 0.0001) {
                     tip += ' = ' + (Math.round(partsSum * 100) / 100) + ' → floored to ' + t;
                 }
@@ -2367,6 +2502,20 @@
                 var label = String((row && row.bgt_dil_label) || '').trim();
                 var tip = 'Bgt Dil from campaign Dil%';
                 if (isFinite(dil)) tip += ' · Dil ' + Math.round(dil) + '%';
+                if (label) tip += ' · ' + label;
+                return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
+            }
+            function fmtBgtInv(cell) {
+                var v = cell.getValue();
+                if (v === null || v === undefined || v === '') return amzDash();
+                var t = amzBgtPartNum(v);
+                if (isNaN(t)) return amzDash();
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var color = (row && row.bgt_inv_color) ? String(row.bgt_inv_color) : '#6c757d';
+                var inv = parseFloat(row && (row.bgt_inv_value != null ? row.bgt_inv_value : row.Inv));
+                var label = String((row && row.bgt_inv_label) || '').trim();
+                var tip = 'Bgt Inv from on-hand inventory';
+                if (isFinite(inv)) tip += ' · Inv ' + inv;
                 if (label) tip += ' · ' + label;
                 return '<span class="fw-semibold" style="color:' + color + ';" title="' + String(tip).replace(/"/g, '&quot;') + '">' + t + '</span>';
             }
@@ -2692,7 +2841,7 @@
                 }
                 if (c === 'sbgt') {
                     col.title = 'SBGT';
-                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
+                    col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv. Auto-pushes daily budget when this sum differs from BGT. SBGT 0 pauses the campaign ($0 cannot be pushed).';
                     col.formatter = fmtSbgtSum;
                     col.width = 56;
                     col.minWidth = 50;
@@ -2734,6 +2883,14 @@
                     col.title = 'Bgt Dil';
                     col.headerTooltip = 'Suggested budget from BGT Vs Dil — same Dil% as the dil column (ovl30 ÷ Inv × 100)';
                     col.formatter = fmtBgtDil;
+                    col.width = 64;
+                    col.minWidth = 56;
+                    return;
+                }
+                if (c === 'bgtInv') {
+                    col.title = 'Bgt Inv';
+                    col.headerTooltip = 'Suggested budget from Inv Rule — on-hand inventory (Inv)';
+                    col.formatter = fmtBgtInv;
                     col.width = 64;
                     col.minWidth = 56;
                     return;
@@ -3169,6 +3326,28 @@
                 amzSetText('amazonAdsSalesBadgeValue', sales === null ? '$0' : ('$' + Number(sales).toLocaleString('en-US', { maximumFractionDigits: 0 })));
                 amzSetText('amazonAdsCvrBadgeValue', (sold !== null && clicks && clicks > 0) ? ((sold / clicks * 100).toFixed(2) + '%') : '—');
                 amzSetText('amazonAdsCpcBadgeValue', (spend !== null && clicks && clicks > 0) ? ('$' + (spend / clicks).toFixed(2)) : '$0');
+
+                function amzMoneyBadge(n) {
+                    return (typeof n === 'number' && isFinite(n)) ? ('$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 })) : '$0';
+                }
+                function amzAcosBadge(id, wrapId, n) {
+                    var known = typeof n === 'number' && isFinite(n);
+                    amzSetText(id, known ? (Math.round(n) + '%') : '—');
+                    var wrap = document.getElementById(wrapId);
+                    if (wrap) wrap.classList.toggle('is-high', known && n > 40);
+                }
+                var ySpend = json && json.yesterdaySpend;
+                var ySales = json && json.yesterdaySales;
+                var yAcos = json && json.yesterdayAcosPercent;
+                var pSpend = json && json.projectedSpend;
+                var pSales = json && json.projectedSales;
+                var pAcos = json && json.projectedAcosPercent;
+                amzSetText('amazonAdsYesterdaySpendBadgeValue', amzMoneyBadge(ySpend));
+                amzSetText('amazonAdsYesterdaySalesBadgeValue', amzMoneyBadge(ySales));
+                amzAcosBadge('amazonAdsYesterdayAcosBadgeValue', 'amazonAdsYesterdayAcosBadgeWrap', yAcos);
+                amzSetText('amazonAdsProjectedSpendBadgeValue', amzMoneyBadge(pSpend));
+                amzSetText('amazonAdsProjectedSalesBadgeValue', amzMoneyBadge(pSales));
+                amzAcosBadge('amazonAdsProjectedAcosBadgeValue', 'amazonAdsProjectedAcosBadgeWrap', pAcos);
             }
             function amzClearBadges() { amzUpdateBadges({}); }
 
@@ -3282,6 +3461,8 @@
             table.on('pageLoaded', amzRefreshUiSoon);
             table.on('dataLoaded', function () {
                 amzRefreshUiSoon();
+                amzBgtEnsureUniverse();
+                if (typeof amzAutoPushPullOn === 'function' && amzAutoPushPullOn()) amzAutoPushChangedSbgt();
             });
             table.on('dataLoadError', function (error) {
                 if (error && (error.name === 'AbortError' || String(error.message || error).indexOf('abort') !== -1)) {
@@ -4736,10 +4917,130 @@
                 });
             }
 
-            // ---- BGT slab counts (campaigns on the current grid page) ----
+            // ---- BGT slab counts (every campaign in the current filters, not just this page) ----
+            var amzBgtUniverse = { key: '', rows: null, promise: null, seq: 0 };
+            function amzBgtFilterKey() {
+                var payload = {};
+                try { payload = amzFilterPayload(); } catch (e) { payload = {}; }
+                var search = '';
+                try { search = amzSearchQueryVal(); } catch (e2) { search = ''; }
+                return String(activeRawSourceKey || '') + '\n' + search + '\n' + JSON.stringify(payload);
+            }
+            function amzBgtRulesModalOpen() {
+                var ids = ['amazonAdsBgtRulesModal', 'amazonAdsSbidRuleModal'];
+                for (var i = 0; i < ids.length; i++) {
+                    var el = document.getElementById(ids[i]);
+                    if (el && el.classList.contains('show')) return true;
+                }
+                return false;
+            }
+            function amzBgtSetCountStatus(msg) {
+                var st = document.getElementById('amz-bgt-status');
+                if (!st) return;
+                if (msg) {
+                    if (!st.textContent || st.dataset.countStatus === '1') {
+                        st.textContent = msg;
+                        st.dataset.countStatus = '1';
+                    }
+                    return;
+                }
+                if (st.dataset.countStatus === '1') {
+                    st.textContent = '';
+                    delete st.dataset.countStatus;
+                }
+            }
+            function amzBgtRefreshAllRuleCounts() {
+                if (typeof amzAcosRefreshCounts === 'function') amzAcosRefreshCounts();
+                if (typeof amzBgtViewsRefreshCounts === 'function') amzBgtViewsRefreshCounts();
+                if (typeof amzBgtCvrRefreshCounts === 'function') amzBgtCvrRefreshCounts();
+                if (typeof amzBgtPrcRefreshCounts === 'function') amzBgtPrcRefreshCounts();
+                if (typeof amzBgtReviewsRefreshCounts === 'function') amzBgtReviewsRefreshCounts();
+                if (typeof amzBgtDilRefreshCounts === 'function') amzBgtDilRefreshCounts();
+                if (typeof amzBgtInvRefreshCounts === 'function') amzBgtInvRefreshCounts();
+                if (typeof amzBgtSpendRefreshCounts === 'function') amzBgtSpendRefreshCounts();
+                if (typeof amzSbidPaint === 'function') amzSbidPaint();
+            }
+            function amzBgtEnsureUniverse() {
+                var key = amzBgtFilterKey();
+                if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) {
+                    return Promise.resolve(amzBgtUniverse.rows);
+                }
+                if (amzBgtUniverse.key === key && amzBgtUniverse.promise) return amzBgtUniverse.promise;
+                var seq = ++amzBgtUniverse.seq;
+                amzBgtUniverse.key = key;
+                amzBgtUniverse.rows = null;
+                amzBgtSetCountStatus('Counting all campaigns…');
+                var source = activeRawSourceKey || 'all_reports';
+                var body = new URLSearchParams();
+                body.set('draw', '1');
+                body.set('start', '0');
+                body.set('length', '20000');
+                body.set('bgt_universe', '1');
+                body.set('search[value]', (function () { try { return amzSearchQueryVal(); } catch (e) { return ''; } })());
+                body.set('search[regex]', 'false');
+                var f = {};
+                try { f = amzFilterPayload(); } catch (e2) { f = {}; }
+                Object.keys(f).forEach(function (k) { body.set(k, f[k]); });
+                body.set('_token', csrfToken);
+                amzBgtUniverse.promise = fetch(dataUrlTemplate + encodeURIComponent(source), {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                    },
+                    credentials: 'same-origin',
+                    body: body.toString()
+                }).then(function (res) { return res.json(); }).then(function (json) {
+                    if (seq !== amzBgtUniverse.seq) return [];
+                    if (!json || json.ok !== true || !Array.isArray(json.campaigns)) {
+                        amzBgtUniverse.promise = null;
+                        amzBgtUniverse.key = '';
+                        amzBgtSetCountStatus('');
+                        return [];
+                    }
+                    amzBgtUniverse.rows = json.campaigns;
+                    amzBgtUniverse.promise = null;
+                    amzBgtSetCountStatus('');
+                    amzBgtRefreshAllRuleCounts();
+                    return json.campaigns;
+                }).catch(function () {
+                    if (seq === amzBgtUniverse.seq) {
+                        amzBgtUniverse.promise = null;
+                        amzBgtSetCountStatus('');
+                    }
+                    return [];
+                });
+                return amzBgtUniverse.promise;
+            }
             function amzBgtGridRows() {
                 if (!table || typeof table.getData !== 'function') return [];
                 try { return table.getData() || []; } catch (e) { return []; }
+            }
+            var amzBgtInvBands = [];
+            function amzBgtSeedRuleBands() {
+                if (amzBgtSeedRuleBands.done) return;
+                amzBgtSeedRuleBands.done = true;
+                if (!amzCurrentBands.length && window.amazonAdsBgtRule) {
+                    var acosBands = Array.isArray(window.amazonAdsBgtRule.bands) ? window.amazonAdsBgtRule.bands : [];
+                    amzCurrentBands = acosBands.map(function (b) {
+                        return { acos_from: Number(b.acos_from != null ? b.acos_from : 0), acos_to: Number(b.acos_to != null ? b.acos_to : 9999), sbgt: b.sbgt, label: b.label != null ? b.label : '', color: b.color || '#6c757d' };
+                    });
+                }
+                if (!amzBgtViewsBands.length) amzBgtViewsBands = amzBgtViewsNormalizeBands((window.amazonAdsBgtViewsRule && window.amazonAdsBgtViewsRule.bands) || []);
+                if (!amzBgtCvrBands.length) amzBgtCvrBands = amzBgtCvrNormalizeBands((window.amazonAdsBgtCvrRule && window.amazonAdsBgtCvrRule.bands) || []);
+                if (!amzBgtPrcBands.length) amzBgtPrcBands = amzBgtPrcNormalizeBands((window.amazonAdsBgtPrcRule && window.amazonAdsBgtPrcRule.bands) || []);
+                if (!amzBgtReviewsBands.length) amzBgtReviewsBands = amzBgtReviewsNormalizeBands((window.amazonAdsBgtReviewsRule && window.amazonAdsBgtReviewsRule.bands) || []);
+                if (!amzBgtDilBands.length) amzBgtDilBands = amzBgtDilNormalizeBands((window.amazonAdsBgtDilRule && window.amazonAdsBgtDilRule.bands) || []);
+                if (!amzBgtInvBands.length) amzBgtInvBands = amzBgtInvNormalizeBands((window.amazonAdsBgtInvRule && window.amazonAdsBgtInvRule.bands) || []);
+            }
+            function amzBgtCountRows() {
+                amzBgtSeedRuleBands();
+                amzBgtEnsureUniverse();
+                var key = amzBgtFilterKey();
+                if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) return amzBgtUniverse.rows;
+                return amzBgtGridRows();
             }
             function amzBgtFirstBandIndex(value, bands, fromKey, toKey) {
                 if (value == null || !isFinite(value) || !Array.isArray(bands)) return -1;
@@ -4752,34 +5053,20 @@
                 return -1;
             }
             function amzBgtCountByBands(bands, fromKey, toKey, valueOfRow) {
+                var rows = amzBgtCountRows();
+                if (!rows) return null;
                 var counts = (bands || []).map(function () { return 0; });
-                amzBgtGridRows().forEach(function (row) {
+                var unmatched = 0;
+                rows.forEach(function (row) {
                     var idx = amzBgtFirstBandIndex(valueOfRow(row), bands, fromKey, toKey);
                     if (idx >= 0) counts[idx]++;
+                    else unmatched++;
                 });
+                counts.unmatched = unmatched;
+                counts.campaigns = rows.length;
                 return counts;
             }
-            function amzBgtRefreshCountCells(tbodyId, counts) {
-                var tbody = document.getElementById(tbodyId);
-                if (!tbody) return;
-                var total = 0;
-                tbody.querySelectorAll('[data-count-idx]').forEach(function (el) {
-                    var i = +el.dataset.countIdx;
-                    var n = counts[i] != null ? Number(counts[i]) : 0;
-                    if (!isFinite(n)) n = 0;
-                    el.textContent = String(n);
-                    total += n;
-                });
-                var tot = tbody.querySelector('[data-count-total]');
-                if (!tot) {
-                    var tr = document.createElement('tr');
-                    tr.className = 'amz-bgt-count-total';
-                    tr.innerHTML = '<td></td><td colspan="3" class="text-end">Total</td><td class="text-center" data-count-total>0</td><td></td>';
-                    tbody.appendChild(tr);
-                    tot = tr.querySelector('[data-count-total]');
-                }
-                if (tot) tot.textContent = String(total);
-            }
+            function amzBgtRefreshCountCells() {}
             var amzBgtColCharts = {};
             var AMZ_BGT_COL_COLORS = ['#7c3aed', '#2563eb', '#16a34a', '#f59e0b', '#f97316', '#dc2626', '#64748b', '#0ea5e9'];
             function amzBgtFmtRange(v) {
@@ -4873,6 +5160,7 @@
                     ['prc_from', 'prc_to'],
                     ['rev_from', 'rev_to'],
                     ['dil_from', 'dil_to'],
+                    ['inv_from', 'inv_to'],
                     ['spend_from', 'spend_to']
                 ];
                 for (var i = 0; i < pairs.length; i++) {
@@ -4885,6 +5173,7 @@
                 var legend = document.getElementById('amz-bgt-leg-' + key);
                 var canvas = document.getElementById('amz-bgt-chart-' + key);
                 if (!legend || !canvas || typeof Chart === 'undefined') return;
+                if (!counts) return;
                 var rows = (bands || []).map(function (b, i) {
                     var n = counts && counts[i] != null ? Number(counts[i]) : 0;
                     if (!isFinite(n)) n = 0;
@@ -4892,7 +5181,11 @@
                     var color = (b && b.color) ? String(b.color) : AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length];
                     return { label: label, n: n, color: color };
                 });
-                var total = rows.reduce(function (s, r) { return s + r.n; }, 0);
+                var unmatched = counts && typeof counts.unmatched === 'number' ? counts.unmatched : 0;
+                if (unmatched > 0) rows.push({ label: 'No match', n: unmatched, color: '#94a3b8' });
+                var total = counts && typeof counts.campaigns === 'number'
+                    ? counts.campaigns
+                    : rows.reduce(function (s, r) { return s + r.n; }, 0);
                 legend.innerHTML = rows.map(function (r) {
                     var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
                     return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span></div>';
@@ -4916,6 +5209,7 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        animation: false,
                         plugins: { legend: { display: false } },
                         scales: {
                             x: { display: false, grid: { display: false } },
@@ -4942,7 +5236,8 @@
                     cvr: amzBgtBandAmount(amzBgtCvrBands, amzBgtFirstBandIndex(amzBgtCvrValueOfRow(row), amzBgtCvrBands, 'cvr_from', 'cvr_to'), 'bgt'),
                     prc: amzBgtBandAmount(amzBgtPrcBands, amzBgtFirstBandIndex(amzBgtPrcValueOfRow(row), amzBgtPrcBands, 'prc_from', 'prc_to'), 'bgt'),
                     reviews: amzBgtBandAmount(amzBgtReviewsBands, amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), amzBgtReviewsBands), 'bgt'),
-                    dil: amzBgtBandAmount(amzBgtDilBands, amzBgtFirstBandIndex(amzBgtDilValueOfRow(row), amzBgtDilBands, 'dil_from', 'dil_to'), 'bgt')
+                    dil: amzBgtBandAmount(amzBgtDilBands, amzBgtFirstBandIndex(amzBgtDilValueOfRow(row), amzBgtDilBands, 'dil_from', 'dil_to'), 'bgt'),
+                    inv: amzBgtBandAmount(amzBgtInvBands, amzBgtFirstBandIndex(amzBgtInvValueOfRow(row), amzBgtInvBands, 'inv_from', 'inv_to'), 'bgt')
                 };
             }
             function amzBgtFloorSum(parts) {
@@ -4961,6 +5256,47 @@
                 var r = Math.round(n * 100) / 100;
                 return r === Math.floor(r) ? String(r) : r.toFixed(2);
             }
+            function amzBgtPaintBudgetBadges(rows, totalN, sbgtTotal) {
+                var box = document.getElementById('amz-bgt-budget-badges');
+                var dailyEl = document.getElementById('amazonAdsDailyBudgetBadgeValue');
+                var dailyWrap = document.getElementById('amazonAdsDailyBudgetBadgeWrap');
+                var monthlyEl = document.getElementById('amazonAdsMonthlyBudgetBadgeValue');
+                var monthlyWrap = document.getElementById('amazonAdsMonthlyBudgetBadgeWrap');
+                var dailyRounded = Math.round(sbgtTotal);
+                var money = '$' + dailyRounded.toLocaleString('en-US');
+                var monthMoney = '$' + (dailyRounded * 30).toLocaleString('en-US');
+                var lines = (rows || []).map(function (r) {
+                    var day = Number(r.label) * r.n;
+                    return r.n.toLocaleString('en-US') + ' campaigns at $' + r.label + ' = $' + Math.round(day).toLocaleString('en-US') + '/day';
+                });
+                var tip = (lines.length ? lines.join('\n') + '\n' : '') + 'Total daily budget ' + money + ' across ' + totalN.toLocaleString('en-US') + ' campaigns';
+                var monthTip = 'Monthly budget ' + monthMoney + ' = daily budget ' + money + ' × 30';
+                if (dailyEl) dailyEl.textContent = money;
+                if (dailyWrap) dailyWrap.title = tip;
+                if (monthlyEl) monthlyEl.textContent = monthMoney;
+                if (monthlyWrap) monthlyWrap.title = monthTip;
+                if (!box) return;
+                var chips = (rows || []).map(function (r) {
+                    var day = Number(r.label) * r.n;
+                    var title = r.n.toLocaleString('en-US') + ' campaigns at $' + r.label + ' = $' + Math.round(day).toLocaleString('en-US') + ' per day';
+                    return '<span class="amz-bgt-budget-badge" style="--bgt-c:' + r.color + '" title="' + amzEsc(title) + '">'
+                        + '<span class="amz-bgt-budget-amt">$' + amzEsc(r.label) + '</span>'
+                        + '<span class="amz-bgt-budget-n">' + r.n.toLocaleString('en-US') + ' campaigns</span>'
+                        + '<span class="amz-bgt-budget-day">$' + Math.round(day).toLocaleString('en-US') + '/day</span>'
+                        + '</span>';
+                }).join('');
+                chips += '<span class="amz-bgt-budget-badge amz-bgt-budget-badge--total" title="' + amzEsc(tip) + '">'
+                    + '<span class="amz-bgt-budget-amt">Daily budget</span>'
+                    + '<span class="amz-bgt-budget-n">' + money + '</span>'
+                    + '<span class="amz-bgt-budget-day">' + totalN.toLocaleString('en-US') + ' campaigns</span>'
+                    + '</span>';
+                chips += '<span class="amz-bgt-budget-badge amz-bgt-budget-badge--total" title="' + amzEsc(monthTip) + '">'
+                    + '<span class="amz-bgt-budget-amt">Monthly budget</span>'
+                    + '<span class="amz-bgt-budget-n">' + monthMoney + '</span>'
+                    + '<span class="amz-bgt-budget-day">daily × 30</span>'
+                    + '</span>';
+                box.innerHTML = chips;
+            }
             function amzBgtPaintSum() {
                 var legend = document.getElementById('amz-bgt-leg-sum');
                 var canvas = document.getElementById('amz-bgt-chart-sum');
@@ -4972,7 +5308,8 @@
                     { key: 'acos', label: 'ACOS' },
                     { key: 'prc', label: 'PRC' },
                     { key: 'reviews', label: 'Reviews' },
-                    { key: 'dil', label: 'Dil' }
+                    { key: 'dil', label: 'Dil' },
+                    { key: 'inv', label: 'Inv' }
                 ];
                 var partCount = {};
                 var partSum = {};
@@ -4980,7 +5317,9 @@
                 var buckets = {};
                 var campaigns = 0;
                 var sbgtTotal = 0;
-                amzBgtGridRows().forEach(function (row) {
+                var sumRows = amzBgtCountRows();
+                if (!sumRows) return;
+                sumRows.forEach(function (row) {
                     var parts;
                     try { parts = amzBgtDraftParts(row); } catch (e) { return; }
                     order.forEach(function (p) {
@@ -5004,6 +5343,7 @@
                     };
                 });
                 var totalN = rows.reduce(function (s, r) { return s + r.n; }, 0);
+                amzBgtPaintBudgetBadges(rows, totalN, sbgtTotal);
                 if (legend) {
                     legend.innerHTML = rows.map(function (r) {
                         var pct = totalN > 0 ? Math.round((r.n / totalN) * 100) : 0;
@@ -5020,17 +5360,41 @@
                                 data: rows.map(function (r) { return r.n; }),
                                 backgroundColor: rows.map(function (r) { return r.color; }),
                                 borderWidth: 0,
-                                borderRadius: 4,
-                                maxBarThickness: 28
+                                borderRadius: 6,
+                                maxBarThickness: 48
                             }]
                         },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            plugins: { legend: { display: false } },
+                            animation: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: {
+                                        title: function (items) { return 'SBGT ' + ((items[0] && items[0].label) || ''); },
+                                        label: function (item) {
+                                            var n = item.parsed && item.parsed.y != null ? item.parsed.y : item.raw;
+                                            var pct = totalN > 0 ? Math.round((Number(n) / totalN) * 100) : 0;
+                                            return n + ' campaigns (' + pct + '%)';
+                                        }
+                                    }
+                                }
+                            },
                             scales: {
-                                x: { display: false, grid: { display: false } },
-                                y: { display: false, beginAtZero: true, grid: { display: false } }
+                                x: {
+                                    display: true,
+                                    grid: { display: false },
+                                    title: { display: true, text: 'SBGT', color: '#94a3b8', font: { size: 11, weight: '600' } },
+                                    ticks: { color: '#334155', font: { size: 12, weight: '600' } }
+                                },
+                                y: {
+                                    display: true,
+                                    beginAtZero: true,
+                                    grid: { color: '#f1f5f9' },
+                                    ticks: { color: '#94a3b8', precision: 0, font: { size: 11 } },
+                                    title: { display: true, text: 'Campaigns', color: '#94a3b8', font: { size: 11, weight: '600' } }
+                                }
                             }
                         }
                     });
@@ -5043,10 +5407,10 @@
                         bgtTotal += partSum[p.key];
                     });
                     var html = order.map(function (p) {
-                        return '<tr><td>' + amzEsc(p.label) + '</td><td class="text-center">' + partCount[p.key] + '</td><td class="text-end">' + amzBgtFmtMoney(partSum[p.key]) + '</td></tr>';
+                        return '<tr><td>' + amzEsc(p.label) + '</td><td class="text-center">' + partCount[p.key].toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(partSum[p.key]) + '</td></tr>';
                     }).join('');
-                    html += '<tr class="amz-bgt-count-total"><td>Total</td><td class="text-center">' + countTotal + '</td><td class="text-end">' + amzBgtFmtMoney(bgtTotal) + '</td></tr>';
-                    html += '<tr class="fw-semibold"><td>SBGT</td><td class="text-center">' + campaigns + '</td><td class="text-end">' + sbgtTotal + '</td></tr>';
+                    html += '<tr class="amz-bgt-count-total"><td>Total</td><td class="text-center">' + countTotal.toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(bgtTotal) + '</td></tr>';
+                    html += '<tr class="fw-semibold"><td>SBGT</td><td class="text-center">' + campaigns.toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(sbgtTotal) + '</td></tr>';
                     tbody.innerHTML = html;
                 }
             }
@@ -5078,23 +5442,23 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.1" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.1" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.1" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.1" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
                 tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
-                    inp.addEventListener('input', function () {
+                    var writeAcosBand = function () {
                         var idx = +this.dataset.idx, fld = this.dataset.field;
                         if (!amzCurrentBands[idx]) return;
-                        amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseFloat(this.value))
-                            : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
+                        amzCurrentBands[idx][fld] = (fld === 'sbgt' || fld === 'acos_from' || fld === 'acos_to')
+                            ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
-                        if (fld === 'acos_to') amzBgtCascadeNextSlabs(amzCurrentBands, idx, 'acos_from', 'acos_to', tbody);
                         if (fld === 'acos_from' || fld === 'acos_to' || fld === 'label') amzAcosRefreshCounts();
-                    });
+                    };
+                    inp.addEventListener('input', writeAcosBand);
+                    inp.addEventListener('change', writeAcosBand);
                 });
                 tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
                     btn.addEventListener('click', function () { amzCurrentBands.splice(+this.dataset.removeIdx, 1); amzRenderBands(amzCurrentBands); });
@@ -5108,18 +5472,34 @@
                 });
                 amzRenderBands(amzCurrentBands);
             }
-            function amzRefreshBgtRuleFromServer(cb) {
-                fetch(bgtRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            var amzBgtServerLoadGen = 0;
+            function amzBgtFetchRule(url, apply) {
+                var gen = amzBgtServerLoadGen;
+                fetch(url, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin', cache: 'no-store' })
                     .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                    .then(function (body) {
+                        if (gen !== amzBgtServerLoadGen) return;
+                        if (apply) apply(body || {});
+                    })
+                    .catch(function () {});
+            }
+            function amzRefreshBgtRuleFromServer(cb) {
+                amzBgtFetchRule(bgtRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtModalEl) {
+                bgtModalEl.addEventListener('shown.bs.modal', function () {
+                    amzBgtRefreshAllRuleCounts();
+                    Object.keys(amzBgtColCharts).forEach(function (k) {
+                        if (amzBgtColCharts[k]) { try { amzBgtColCharts[k].resize(); } catch (e) {} }
+                    });
+                });
                 bgtModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtRuleFromServer(function () { amzLoadBandsFromRule(window.amazonAdsBgtRule || {}); });
                     var st = document.getElementById('amz-bgt-status');
                     if (st) st.textContent = '';
                 });
@@ -5244,10 +5624,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
+                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5265,12 +5644,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'views_to') amzBgtCascadeNextSlabs(amzBgtViewsBands, +this.dataset.idx, 'views_from', 'views_to', tbody);
                         if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'views_to') amzBgtCascadeNextSlabs(amzBgtViewsBands, +this.dataset.idx, 'views_from', 'views_to', tbody);
                         if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
                     });
                 });
@@ -5289,17 +5666,16 @@
                 amzRenderBgtViewsBands(amzBgtViewsBands);
             }
             function amzRefreshBgtViewsRuleFromServer(cb) {
-                fetch(bgtViewsRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtViewsRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtViewsRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtViewsRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtViewsModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtViewsModalEl) {
                 bgtViewsModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtViewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtViewsRuleFromServer(function () { amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {}); });
                 });
             }
             var bgtViewsAddBtn = document.getElementById('amazonAdsBgtViewsRuleAddBandBtn');
@@ -5418,10 +5794,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5439,12 +5814,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'cvr_to') amzBgtCascadeNextSlabs(amzBgtCvrBands, +this.dataset.idx, 'cvr_from', 'cvr_to', tbody);
                         if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'cvr_to') amzBgtCascadeNextSlabs(amzBgtCvrBands, +this.dataset.idx, 'cvr_from', 'cvr_to', tbody);
                         if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
                     });
                 });
@@ -5463,17 +5836,16 @@
                 amzRenderBgtCvrBands(amzBgtCvrBands);
             }
             function amzRefreshBgtCvrRuleFromServer(cb) {
-                fetch(bgtCvrRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtCvrRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtCvrRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtCvrRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtCvrModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtCvrModalEl) {
                 bgtCvrModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtCvrRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtCvrRuleFromServer(function () { amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {}); });
                 });
             }
             var bgtCvrAddBtn = document.getElementById('amazonAdsBgtCvrRuleAddBandBtn');
@@ -5591,10 +5963,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5608,12 +5979,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'prc_to') amzBgtCascadeNextSlabs(amzBgtPrcBands, +this.dataset.idx, 'prc_from', 'prc_to', tbody);
                         if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'prc_to') amzBgtCascadeNextSlabs(amzBgtPrcBands, +this.dataset.idx, 'prc_from', 'prc_to', tbody);
                         if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
                     });
                 });
@@ -5632,17 +6001,16 @@
                 amzRenderBgtPrcBands(amzBgtPrcBands);
             }
             function amzRefreshBgtPrcRuleFromServer(cb) {
-                fetch(bgtPrcRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtPrcRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtPrcRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtPrcRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtPrcModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtPrcModalEl) {
                 bgtPrcModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtPrcRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtPrcRuleFromServer(function () { amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {}); });
                 });
             }
             var bgtPrcAddBtn = document.getElementById('amazonAdsBgtPrcRuleAddBandBtn');
@@ -5738,14 +6106,17 @@
                 return -1;
             }
             function amzBgtReviewsCounts(bands) {
+                var rows = amzBgtCountRows();
+                if (!rows) return null;
                 var counts = (bands || []).map(function () { return 0; });
-                if (!table || typeof table.getData !== 'function') return counts;
-                var rows = [];
-                try { rows = table.getData() || []; } catch (e) { return counts; }
+                var unmatched = 0;
                 rows.forEach(function (row) {
                     var idx = amzBgtReviewsBandIndexForRating(amzBgtReviewsRatingOfRow(row), bands);
                     if (idx >= 0) counts[idx]++;
+                    else unmatched++;
                 });
+                counts.unmatched = unmatched;
+                counts.campaigns = rows.length;
                 return counts;
             }
             function amzBgtReviewsRefreshCounts() {
@@ -5774,10 +6145,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. Decimals allowed (e.g. 1.5 or -0.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. Decimals allowed (e.g. 1.5 or -0.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5791,12 +6161,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'rev_to') amzBgtCascadeNextSlabs(amzBgtReviewsBands, +this.dataset.idx, 'rev_from', 'rev_to', tbody);
                         if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'rev_to') amzBgtCascadeNextSlabs(amzBgtReviewsBands, +this.dataset.idx, 'rev_from', 'rev_to', tbody);
                         if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts();
                     });
                 });
@@ -5815,17 +6183,16 @@
                 amzRenderBgtReviewsBands(amzBgtReviewsBands);
             }
             function amzRefreshBgtReviewsRuleFromServer(cb) {
-                fetch(bgtReviewsRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtReviewsRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtReviewsRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtReviewsRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtReviewsModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtReviewsModalEl) {
                 bgtReviewsModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtReviewsRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtReviewsRuleFromServer(function () { amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {}); });
                 });
             }
             var bgtReviewsAddBtn = document.getElementById('amazonAdsBgtReviewsRuleAddBandBtn');
@@ -5940,10 +6307,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5961,12 +6327,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'dil_to') amzBgtCascadeNextSlabs(amzBgtDilBands, +this.dataset.idx, 'dil_from', 'dil_to', tbody);
                         if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'dil_to') amzBgtCascadeNextSlabs(amzBgtDilBands, +this.dataset.idx, 'dil_from', 'dil_to', tbody);
                         if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
                     });
                 });
@@ -5985,17 +6349,16 @@
                 amzRenderBgtDilBands(amzBgtDilBands);
             }
             function amzRefreshBgtDilRuleFromServer(cb) {
-                fetch(bgtDilRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtDilRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtDilRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtDilRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtDilModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtDilModalEl) {
                 bgtDilModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtDilRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtDilRuleFromServer(function () { amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {}); });
                 });
             }
             var bgtDilAddBtn = document.getElementById('amazonAdsBgtDilRuleAddBandBtn');
@@ -6042,6 +6405,122 @@
                         .then(function () { amzRefreshUiSoon(); })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
                         .finally(function () { bgtDilSaveBtn.disabled = false; });
+                });
+            }
+
+            // ---- Inv Rule (on-hand Inv → Bgt); dynamic slabs ----
+            var AMZ_BGT_INV_DEFAULTS = [
+                { inv_from: 50, inv_to: 9999, bgt: 0, label: 'Pink', color: '#e83e8c' },
+                { inv_from: 10, inv_to: 50, bgt: 0, label: 'Green', color: '#28a745' },
+                { inv_from: 0, inv_to: 10, bgt: 0, label: 'Red', color: '#a00211' }
+            ];
+            var AMZ_BGT_INV_LABELS = ['Pink', 'Green', 'Red', 'Yellow', 'Purple', 'Blue'];
+            var AMZ_BGT_INV_COLORS = ['#e83e8c', '#28a745', '#a00211', '#ffc107', '#7c3aed', '#2563eb'];
+            function amzBgtInvNormalizeBands(existing) {
+                var prev = Array.isArray(existing) ? existing : [];
+                var out = [];
+                prev.forEach(function (keep) {
+                    if (!keep || typeof keep !== 'object') return;
+                    var from = parseFloat(keep.inv_from);
+                    var to = parseFloat(keep.inv_to);
+                    var bgt = parseFloat(keep.bgt);
+                    out.push({
+                        inv_from: isFinite(from) ? from : '',
+                        inv_to: isFinite(to) ? to : '',
+                        bgt: isFinite(bgt) ? bgt : '',
+                        label: keep.label != null ? String(keep.label) : '',
+                        color: keep.color || '#6c757d'
+                    });
+                });
+                return out.length ? out : AMZ_BGT_INV_DEFAULTS.map(function (d) { return Object.assign({}, d); });
+            }
+            function amzBgtInvNewBand() {
+                var next = amzBgtNextAddedSlab(amzBgtInvBands, 'inv_from', 'inv_to', 'bgt');
+                var i = amzBgtInvBands.length;
+                return {
+                    inv_from: next.from,
+                    inv_to: next.to,
+                    bgt: next.amt,
+                    label: AMZ_BGT_INV_LABELS[i] || ('Slab ' + (i + 1)),
+                    color: AMZ_BGT_INV_COLORS[i] || AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length]
+                };
+            }
+            function amzBgtInvValueOfRow(row) {
+                var raw = row && (row.bgt_inv_value != null && row.bgt_inv_value !== '' ? row.bgt_inv_value : row.Inv);
+                var n = parseFloat(raw);
+                return isFinite(n) ? n : null;
+            }
+            function amzBgtInvCounts(bands) {
+                return amzBgtCountByBands(bands, 'inv_from', 'inv_to', amzBgtInvValueOfRow);
+            }
+            function amzBgtInvRefreshCounts() {
+                var counts = amzBgtInvCounts(amzBgtInvBands);
+                amzBgtRefreshCountCells('amazonAdsBgtInvRuleBandsBody', counts);
+                amzBgtPaintColumn('inv', amzBgtInvBands, counts);
+            }
+            function amzRenderBgtInvBands(bands) {
+                var tbody = document.getElementById('amazonAdsBgtInvRuleBandsBody');
+                if (!tbody) return;
+                var canDelete = bands.length > 1;
+                var counts = amzBgtInvCounts(bands);
+                tbody.innerHTML = '';
+                bands.forEach(function (band, i) {
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = ''
+                        + '<td class="text-muted small">' + (i + 1) + '</td>'
+                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.inv_from != null ? band.inv_from : '') + '" data-idx="' + i + '" data-field="inv_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="1" class="form-control form-control-sm" value="' + (band.inv_to != null ? band.inv_to : '') + '" data-idx="' + i + '" data-field="inv_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
+                        + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
+                    tbody.appendChild(tr);
+                });
+                tbody.querySelectorAll('input[data-idx]').forEach(function (inp) {
+                    var writeBand = function (el) {
+                        var idx = +el.dataset.idx, fld = el.dataset.field;
+                        if (!amzBgtInvBands[idx]) return;
+                        amzBgtInvBands[idx][fld] = (el.value === '' ? '' : parseFloat(el.value));
+                    };
+                    inp.addEventListener('input', function () {
+                        writeBand(this);
+                        amzBgtInvRefreshCounts();
+                    });
+                    inp.addEventListener('change', function () {
+                        writeBand(this);
+                        amzBgtInvRefreshCounts();
+                    });
+                });
+                tbody.querySelectorAll('[data-remove-idx]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        if (amzBgtInvBands.length <= 1) return;
+                        amzBgtInvBands.splice(+this.dataset.removeIdx, 1);
+                        amzRenderBgtInvBands(amzBgtInvBands);
+                    });
+                });
+                amzBgtInvRefreshCounts();
+            }
+            function amzLoadBgtInvBandsFromRule(rule) {
+                var bands = (rule && Array.isArray(rule.bands)) ? rule.bands : [];
+                amzBgtInvBands = amzBgtInvNormalizeBands(bands);
+                amzRenderBgtInvBands(amzBgtInvBands);
+            }
+            function amzRefreshBgtInvRuleFromServer(cb) {
+                amzBgtFetchRule(bgtInvRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtInvRule = body.rule;
+                    if (cb) cb();
+                });
+            }
+            var bgtInvModalEl = document.getElementById('amazonAdsBgtRulesModal');
+            if (bgtInvModalEl) {
+                bgtInvModalEl.addEventListener('show.bs.modal', function () {
+                    var err = document.getElementById('amazonAdsBgtInvRuleModalError');
+                    if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                });
+            }
+            var bgtInvAddBtn = document.getElementById('amazonAdsBgtInvRuleAddBandBtn');
+            if (bgtInvAddBtn) {
+                bgtInvAddBtn.addEventListener('click', function () {
+                    amzBgtInvBands.push(amzBgtInvNewBand());
+                    amzRenderBgtInvBands(amzBgtInvBands);
                 });
             }
 
@@ -6105,10 +6584,9 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.spend_from != null ? band.spend_from : '') + '" data-idx="' + i + '" data-field="spend_from" placeholder="0"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.spend_to != null ? band.spend_to : '') + '" data-idx="' + i + '" data-field="spend_to" placeholder="9999"></td>'
-                        + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. The chart counts campaigns by L30 spend."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.spend_from != null ? band.spend_from : '') + '" data-idx="' + i + '" data-field="spend_from" placeholder="0"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.spend_to != null ? band.spend_to : '') + '" data-idx="' + i + '" data-field="spend_to" placeholder="9999"></td>'
+                        + '<td><input type="text" inputmode="decimal" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. The chart counts campaigns by L30 spend."></td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6124,12 +6602,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'spend_to') amzBgtCascadeNextSlabs(amzBgtSpendBands, +this.dataset.idx, 'spend_from', 'spend_to', tbody);
                         if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'spend_to') amzBgtCascadeNextSlabs(amzBgtSpendBands, +this.dataset.idx, 'spend_from', 'spend_to', tbody);
                         if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts();
                     });
                 });
@@ -6148,17 +6624,16 @@
                 amzRenderBgtSpendBands(amzBgtSpendBands);
             }
             function amzRefreshBgtSpendRuleFromServer(cb) {
-                fetch(bgtSpendRuleGetUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (body) { if (body && body.rule) window.amazonAdsBgtSpendRule = body.rule; if (cb) cb(); })
-                    .catch(function () { if (cb) cb(); });
+                amzBgtFetchRule(bgtSpendRuleGetUrl, function (body) {
+                    if (body && body.rule) window.amazonAdsBgtSpendRule = body.rule;
+                    if (cb) cb();
+                });
             }
             var bgtSpendModalEl = document.getElementById('amazonAdsBgtRulesModal');
             if (bgtSpendModalEl) {
                 bgtSpendModalEl.addEventListener('show.bs.modal', function () {
                     var err = document.getElementById('amazonAdsBgtSpendRuleModalError');
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                    amzRefreshBgtSpendRuleFromServer(function () { amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {}); });
                 });
             }
             var bgtSpendAddBtn = document.getElementById('amazonAdsBgtSpendRuleAddBandBtn');
@@ -6203,6 +6678,180 @@
                         })
                         .catch(function () { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
                         .finally(function () { bgtSpendSaveBtn.disabled = false; });
+                });
+            }
+
+            var AMZ_AUTO_PUSH_PULL_KEY = 'amzAutoPushPull';
+            function amzAutoPushPullOn() {
+                try { return localStorage.getItem(AMZ_AUTO_PUSH_PULL_KEY) === '1'; } catch (e) { return false; }
+            }
+            function amzPaintAutoPushPullBtn() {
+                var btn = document.getElementById('amazonAdsAutoPushPullBtn');
+                if (!btn) return;
+                var on = amzAutoPushPullOn();
+                btn.classList.toggle('is-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                btn.textContent = 'Auto Push & Pull: ' + (on ? 'ON' : 'OFF');
+            }
+            function amzBgtSyncBandsFromDom(tbodyId, bands) {
+                var tbody = document.getElementById(tbodyId);
+                if (!tbody || !Array.isArray(bands)) return;
+                tbody.querySelectorAll('input[data-idx][data-field]').forEach(function (el) {
+                    var idx = +el.dataset.idx;
+                    var fld = el.dataset.field;
+                    if (!bands[idx]) return;
+                    bands[idx][fld] = el.value === '' ? '' : parseFloat(el.value);
+                });
+            }
+            function amzBgtCleanRuleBands(bands, fromKey, toKey, amtKey) {
+                return (bands || []).map(function (b) {
+                    var row = { label: (b.label || '').toString(), color: (b.color || '#6c757d').toString() };
+                    [fromKey, toKey, amtKey].forEach(function (k) {
+                        row[k] = (b[k] === '' || b[k] == null) ? NaN : parseFloat(b[k]);
+                    });
+                    return row;
+                });
+            }
+            function amzBgtValidateRuleBands(cleaned, fromKey, toKey, amtKey, label) {
+                if (!cleaned.length) return label + ': add at least one slab before saving.';
+                for (var i = 0; i < cleaned.length; i++) {
+                    var row = cleaned[i];
+                    if (!isFinite(row[fromKey]) || !isFinite(row[toKey]) || !isFinite(row[amtKey])) {
+                        return label + ': every slab needs numeric From, To, and budget.';
+                    }
+                }
+                return '';
+            }
+            function amzBgtPostRule(url, bands) {
+                return fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ bands: bands })
+                }).then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body || {} }; }); });
+            }
+            var amzBgtPendingSave = null;
+            function amzBgtBandsFromInputs(spec) {
+                var copy = (spec.bands || []).map(function (b) { return Object.assign({}, b); });
+                var tbody = document.getElementById(spec.body);
+                if (!tbody) return copy;
+                tbody.querySelectorAll('input[data-idx][data-field]').forEach(function (el) {
+                    var idx = +el.dataset.idx;
+                    var fld = el.dataset.field;
+                    if (!copy[idx]) return;
+                    var raw = String(el.value == null ? '' : el.value).replace(/,/g, '').trim();
+                    copy[idx][fld] = raw === '' ? '' : parseFloat(raw);
+                });
+                return copy;
+            }
+            function amzBgtCollectSaveJobs() {
+                var specs = [
+                    { label: 'BGT Vs ACOS', url: bgtRuleSaveUrl, body: 'amazonAdsBgtRuleBandsBody', bands: amzCurrentBands, from: 'acos_from', to: 'acos_to', amt: 'sbgt', store: 'amazonAdsBgtRule', load: amzLoadBandsFromRule },
+                    { label: 'BGT Vs VIEWS', url: bgtViewsRuleSaveUrl, body: 'amazonAdsBgtViewsRuleBandsBody', bands: amzBgtViewsBands, from: 'views_from', to: 'views_to', amt: 'bgt', store: 'amazonAdsBgtViewsRule', load: amzLoadBgtViewsBandsFromRule },
+                    { label: 'BGT Vs CVR', url: bgtCvrRuleSaveUrl, body: 'amazonAdsBgtCvrRuleBandsBody', bands: amzBgtCvrBands, from: 'cvr_from', to: 'cvr_to', amt: 'bgt', store: 'amazonAdsBgtCvrRule', load: amzLoadBgtCvrBandsFromRule },
+                    { label: 'BGT PRC', url: bgtPrcRuleSaveUrl, body: 'amazonAdsBgtPrcRuleBandsBody', bands: amzBgtPrcBands, from: 'prc_from', to: 'prc_to', amt: 'bgt', store: 'amazonAdsBgtPrcRule', load: amzLoadBgtPrcBandsFromRule },
+                    { label: 'BGT Vs REVIEWS', url: bgtReviewsRuleSaveUrl, body: 'amazonAdsBgtReviewsRuleBandsBody', bands: amzBgtReviewsBands, from: 'rev_from', to: 'rev_to', amt: 'bgt', store: 'amazonAdsBgtReviewsRule', load: amzLoadBgtReviewsBandsFromRule },
+                    { label: 'BGT Vs Dil', url: bgtDilRuleSaveUrl, body: 'amazonAdsBgtDilRuleBandsBody', bands: amzBgtDilBands, from: 'dil_from', to: 'dil_to', amt: 'bgt', store: 'amazonAdsBgtDilRule', load: amzLoadBgtDilBandsFromRule },
+                    { label: 'Inv Rule', url: bgtInvRuleSaveUrl, body: 'amazonAdsBgtInvRuleBandsBody', bands: amzBgtInvBands, from: 'inv_from', to: 'inv_to', amt: 'bgt', store: 'amazonAdsBgtInvRule', load: amzLoadBgtInvBandsFromRule },
+                    { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, body: 'amazonAdsBgtSpendRuleBandsBody', bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule', load: amzLoadBgtSpendBandsFromRule }
+                ];
+                var jobs = [];
+                var errors = [];
+                for (var i = 0; i < specs.length; i++) {
+                    var spec = specs[i];
+                    try {
+                        var cleaned = amzBgtCleanRuleBands(amzBgtBandsFromInputs(spec), spec.from, spec.to, spec.amt);
+                        var problem = amzBgtValidateRuleBands(cleaned, spec.from, spec.to, spec.amt, spec.label);
+                        if (problem) { errors.push(problem); continue; }
+                        jobs.push({ spec: spec, bands: cleaned });
+                    } catch (err) {
+                        errors.push(spec.label + ': ' + ((err && err.message) ? err.message : 'could not read slabs'));
+                    }
+                }
+                return { jobs: jobs, error: errors.join('\n') };
+            }
+            function amzBgtSaveAndApply(ev) {
+                if (ev && ev.preventDefault) ev.preventDefault();
+                var btn = document.getElementById('amazonAdsBgtSaveApplyBtn');
+                var st = document.getElementById('amz-bgt-status');
+                var jobs = [];
+                try {
+                    amzBgtServerLoadGen++;
+                    var collected = amzBgtCollectSaveJobs();
+                    amzBgtPendingSave = null;
+                    jobs = collected.jobs || [];
+                    if (!jobs.length) {
+                        var msg = collected.error || 'Nothing to save.';
+                        if (st) { st.textContent = msg; st.className = 'small text-danger fw-semibold me-auto'; }
+                        window.alert(msg);
+                        return;
+                    }
+                    if (collected.error && st) {
+                        st.textContent = collected.error;
+                        st.className = 'small text-danger fw-semibold me-auto';
+                    }
+                } catch (err) {
+                    window.alert((err && err.message) ? err.message : 'Save failed.');
+                    return;
+                }
+                if (btn) btn.disabled = true;
+                if (st) st.textContent = 'Saving all rules…';
+                Promise.all(jobs.map(function (job) { return amzBgtPostRule(job.spec.url, job.bands); }))
+                    .then(function (outs) {
+                        for (var n = 0; n < outs.length; n++) {
+                            var out = outs[n] || {};
+                            var body = out.body || {};
+                            if (!out.ok || body.status === 422 || body.status === 500) {
+                                throw new Error(jobs[n].spec.label + ': ' + (body.message || body.error || 'Save failed.'));
+                            }
+                            var saved = (body.rule && Array.isArray(body.rule.bands) && body.rule.bands.length)
+                                ? body.rule
+                                : { bands: jobs[n].bands };
+                            window[jobs[n].spec.store] = saved;
+                            if (typeof jobs[n].spec.load === 'function') jobs[n].spec.load(saved);
+                        }
+                        if (typeof amzFillAcosFilterOptions === 'function') amzFillAcosFilterOptions();
+                        if (typeof amzUpdatePushButtons === 'function') amzUpdatePushButtons();
+                        amzSbgtAutoPushedKey = {};
+                        if (st) st.textContent = 'Saved. Applying to the page…';
+                        return table ? Promise.resolve(table.setData()) : null;
+                    })
+                    .then(function () {
+                        amzRefreshUiSoon();
+                        if (!st) return;
+                        st.textContent = amzAutoPushPullOn()
+                            ? 'Saved and applied. Auto Push & Pull is running on this page.'
+                            : 'Saved and applied to the page.';
+                    })
+                    .catch(function (err) { if (st) st.textContent = (err && err.message) ? err.message : 'Network or server error.'; })
+                    .finally(function () { if (btn) btn.disabled = false; });
+            }
+            window.amzBgtSaveAndApply = amzBgtSaveAndApply;
+            var bgtSaveApplyBtn = document.getElementById('amazonAdsBgtSaveApplyBtn');
+            if (bgtSaveApplyBtn) bgtSaveApplyBtn.addEventListener('click', amzBgtSaveAndApply);
+            amzLoadBandsFromRule(window.amazonAdsBgtRule || {});
+            amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {});
+            amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {});
+            amzLoadBgtPrcBandsFromRule(window.amazonAdsBgtPrcRule || {});
+            amzLoadBgtReviewsBandsFromRule(window.amazonAdsBgtReviewsRule || {});
+            amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {});
+            amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {});
+            amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {});
+            var autoPushPullBtn = document.getElementById('amazonAdsAutoPushPullBtn');
+            if (autoPushPullBtn) {
+                amzPaintAutoPushPullBtn();
+                autoPushPullBtn.addEventListener('click', function () {
+                    var next = !amzAutoPushPullOn();
+                    try { localStorage.setItem(AMZ_AUTO_PUSH_PULL_KEY, next ? '1' : '0'); } catch (e) {}
+                    amzPaintAutoPushPullBtn();
+                    var st = document.getElementById('amz-bgt-status');
+                    if (!next) {
+                        if (st) st.textContent = 'Auto Push & Pull is off.';
+                        return;
+                    }
+                    if (st) st.textContent = 'Auto Push & Pull is on. Pulling live Amazon values and pushing mismatches…';
+                    amzSbgtAutoPushedKey = {};
+                    amzAutoPushChangedSbgt();
                 });
             }
 
@@ -6333,7 +6982,9 @@
                 var below = { l1: 0, l2: 0, l7: 0, avg: 0, fb: 0 };
                 var above = { l1: 0, none: 0 };
                 var mid = 0;
-                amzBgtGridRows().forEach(function (row) {
+                var sbidRows = amzBgtCountRows();
+                if (!sbidRows) return { below: below, above: above, mid: mid };
+                sbidRows.forEach(function (row) {
                     var u7 = parseFloat(row && row['U7%']);
                     var u1 = parseFloat(row && row['U1%']);
                     if (!isFinite(u7) || !isFinite(u1) || !isFinite(low) || !isFinite(high)) { mid++; return; }

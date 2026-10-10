@@ -860,6 +860,88 @@ class TemuShopifySalesService
         return round($sum, 2);
     }
 
+    /**
+     * /temu-tabulator Y Line Sales badge: yesterday's line sales, rounded to a dollar.
+     */
+    public static function yLineSalesBadgeAmount(): float
+    {
+        return (float) round(self::sumYesterdayLineSales());
+    }
+
+    /**
+     * /temu-tabulator L30 Full Sales badge = Y Line Sales badge × 1.1364, rounded to a dollar.
+     */
+    public static function l30FullSalesBadgeAmount(): float
+    {
+        return self::l30FullSalesBadgeAmountFromLineSales(self::sumYesterdayLineSales());
+    }
+
+    /**
+     * L30 Full Sales badge = rounded yesterday line sales × 1.1364, rounded to a dollar.
+     */
+    public static function l30FullSalesBadgeAmountFromLineSales(float $lineSales): float
+    {
+        return (float) round(round($lineSales) * 1.1364);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    public static function sumLineSalesFromRows(array $rows): float
+    {
+        $sum = 0.0;
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($r['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            $sum += (float) ($r['line_sales'] ?? 0);
+        }
+
+        return round($sum, 2);
+    }
+
+    /** /temu2-tabulator Y Line Sales: Σ Line Sales for yesterday (Pacific). */
+    public static function sumYesterdayLineSalesTemu2(): float
+    {
+        if (! Schema::hasTable('temu2_orders') || ! Temu2Order::whereNotNull('parent_order_time')->exists()) {
+            return 0.0;
+        }
+
+        $yesterday = Carbon::now(self::PST)->subDay();
+
+        return self::sumLineSalesFromRows(self::getTemu2OrdersTableRows(
+            $yesterday->copy()->startOfDay(),
+            $yesterday->copy()->endOfDay()
+        ));
+    }
+
+    public static function l30FullSalesBadgeAmountTemu2(): float
+    {
+        return self::l30FullSalesBadgeAmountFromLineSales(self::sumYesterdayLineSalesTemu2());
+    }
+
+    /** /temu3-tabulator Y Line Sales: Σ goods-base line sales for yesterday (Pacific). */
+    public static function sumYesterdayLineSalesTemu3(): float
+    {
+        if (! Schema::hasTable('temu3_orders')) {
+            return 0.0;
+        }
+
+        $yesterday = Carbon::now(self::PST)->subDay();
+
+        return self::sumLineSalesFromRows(self::getTemu3OrdersTableRows(
+            $yesterday->copy()->startOfDay(),
+            $yesterday->copy()->endOfDay()
+        ));
+    }
+
+    public static function l30FullSalesBadgeAmountTemu3(): float
+    {
+        return self::l30FullSalesBadgeAmountFromLineSales(self::sumYesterdayLineSalesTemu3());
+    }
+
     /** Y Sales from temu2_orders: base-price revenue on yesterday (wall-clock Pacific). */
     public static function computeYSalesFromTemu2Orders(): ?float
     {
@@ -1446,6 +1528,15 @@ class TemuShopifySalesService
             }
         }
 
+        $slabService = null;
+        $shipSlabRates = [];
+        try {
+            $slabService = app(ShippingSlabRateService::class);
+            $shipSlabRates = $slabService->getAllSlabCarrierRates('ship');
+        } catch (\Throwable $e) {
+            \Log::warning('Temu 3 tabulator COGS ship slabs: '.$e->getMessage());
+        }
+
         $result = [];
 
         foreach ($orders as $o) {
@@ -1465,17 +1556,37 @@ class TemuShopifySalesService
                 $price = (float) ($priceBySku[$sku] ?? 0);
             }
 
+            $pmValues = [];
+            if ($pm) {
+                $pmValues = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+            }
+            $weight = self::dimWtActLb($pmValues);
+            $weightOrder = ($weight !== null && $quantity > 0) ? round($weight * $quantity, 2) : null;
+            $cogsShip = self::cogsShipForWeightOrder($slabService, $shipSlabRates, $weightOrder);
+            $lineSales = ($price > 0 && $quantity > 0) ? round($price * $quantity, 2) : 0.0;
+
             $fbPrice = self::computeFbPrice($price, $quantity);
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
             $pft = $pftDecimal * $fbPrice * $quantity;
 
             $result[] = [
                 'Parent' => $parent,
+                'image_path' => self::cpMasterImageUrl($pm, $pmValues),
                 'contribution_sku' => $sku,
                 'order_id' => $o->order_id ?? '',
                 'product_name_by_customer_order' => $o->product_name_by_customer_order ?? ($o->product_name ?? ''),
                 'variation' => $o->variation ?? '',
                 'quantity_purchased' => $quantity,
+                'weight' => $weight,
+                'weight_order' => $weightOrder,
+                'cogs_ship' => $cogsShip,
+                'line_sales' => $lineSales,
+                'goods_base_price' => round($price > 0 ? $price : 0, 2),
+                'listing_base_price' => round((float) ($priceBySku[$sku] ?? 0), 2),
+                'handling_charge' => $pmValues['handling_charge'] ?? null,
+                'o_size_charge' => $pmValues['o_size_charge'] ?? null,
                 'quantity_shipped' => (int) ($o->quantity_shipped ?? 0),
                 'quantity_to_ship' => (int) ($o->quantity_to_ship ?? 0),
                 'base_price_total' => round($price, 2),
@@ -1557,6 +1668,15 @@ class TemuShopifySalesService
             }
         }
 
+        $slabService = null;
+        $shipSlabRates = [];
+        try {
+            $slabService = app(ShippingSlabRateService::class);
+            $shipSlabRates = $slabService->getAllSlabCarrierRates('ship');
+        } catch (\Throwable $e) {
+            \Log::warning('Temu tabulator COGS ship slabs: '.$e->getMessage());
+        }
+
         $result = [];
 
         foreach ($orders as $o) {
@@ -1575,6 +1695,9 @@ class TemuShopifySalesService
             }
 
             $quantity = (int) ($o->quantity ?? 0);
+            $weight = self::dimWtActLb($pmValues);
+            $weightOrder = ($weight !== null && $quantity > 0) ? round($weight * $quantity, 2) : null;
+            $cogsShip = self::cogsShipForWeightOrder($slabService, $shipSlabRates, $weightOrder);
 
             // Official line sales from bg.order.amount.query: basePrice + shipAmountTotal
             // (same total as parent estimatedRevenue). Fall back to stored base, then catalog.
@@ -1602,6 +1725,7 @@ class TemuShopifySalesService
 
             $mapped = [
                 'Parent' => $parent,
+                'image_path' => self::cpMasterImageUrl($pm, $pmValues),
                 'contribution_sku' => $sku,
                 'pm_matched' => $isTemu2
                     ? self::temuSkuMatchesProductMaster($sku, $pmSet, $noSpaceToNormalized)
@@ -1610,6 +1734,9 @@ class TemuShopifySalesService
                 'product_name_by_customer_order' => $o->goods_name ?? '',
                 'variation' => $o->spec ?? '',
                 'quantity_purchased' => $quantity,
+                'weight' => $weight,
+                'weight_order' => $weightOrder,
+                'cogs_ship' => $cogsShip,
                 'quantity_shipped' => 0,
                 'quantity_to_ship' => 0,
                 'base_price_total' => round($officialUnit > 0 ? $officialUnit : $price, 2),
@@ -1668,6 +1795,87 @@ class TemuShopifySalesService
         }
 
         return $out;
+    }
+
+    /**
+     * Item WT ACT (lb) from Dim & Wt Master (`product_master.Values.wt_act`).
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private static function dimWtActLb(array $values): ?float
+    {
+        $lb = $values['wt_act'] ?? null;
+        if (is_numeric($lb) && (float) $lb > 0) {
+            return round((float) $lb, 2);
+        }
+
+        $kg = $values['wt_act_kg'] ?? null;
+        if (is_numeric($kg) && (float) $kg > 0) {
+            return round((float) $kg * 2.2046226218, 2);
+        }
+
+        return null;
+    }
+
+    /**
+     * Ship slab rate for the order weight (Weight × Qty), from Shipping Master slabs.
+     *
+     * @param  array<string, array{rate: ?float}>  $shipSlabRates
+     */
+    private static function cogsShipForWeightOrder(?ShippingSlabRateService $slabs, array $shipSlabRates, ?float $weightOrder): ?float
+    {
+        if ($slabs === null || $weightOrder === null || $weightOrder <= 0 || $shipSlabRates === []) {
+            return null;
+        }
+
+        $declared = $slabs->roundWeightLbUpToSlab($weightOrder);
+        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightOrder);
+        if ($key === null || ! isset($shipSlabRates[$key])) {
+            return null;
+        }
+
+        $rate = $shipSlabRates[$key]['rate'] ?? null;
+        if ($rate === null || ! is_numeric($rate)) {
+            return null;
+        }
+
+        return round((float) $rate, 2);
+    }
+
+    /**
+     * Product photo from CP Master (`product_master`). Prefers Values.image_path,
+     * then the image columns on the same row.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private static function cpMasterImageUrl(?ProductMaster $pm, array $values): string
+    {
+        if (! $pm) {
+            return '';
+        }
+
+        $raw = '';
+        foreach (['image_path', 'image', 'Image', 'main_image', 'Image Path', 'photo'] as $key) {
+            $candidate = trim((string) ($values[$key] ?? ''));
+            if ($candidate !== '') {
+                $raw = $candidate;
+                break;
+            }
+        }
+        if ($raw === '') {
+            $raw = trim((string) ($pm->main_image ?? ''));
+        }
+        if ($raw === '') {
+            $raw = trim((string) ($pm->image1 ?? ''));
+        }
+        if ($raw === '') {
+            return '';
+        }
+        if (preg_match('/^https?:\/\//i', $raw) || str_starts_with($raw, 'data:')) {
+            return $raw;
+        }
+
+        return '/'.ltrim($raw, '/');
     }
 
     private static function productMastersForSkus(Collection $skus): Collection

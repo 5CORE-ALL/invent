@@ -52,17 +52,15 @@ final class AmazonAdsSbidRule
      */
     public static function resolvedRule(): array
     {
-        return Cache::remember(self::CACHE_KEY, 86400, static function (): array {
-            if (! Schema::hasTable('amazon_ads_sbid_rule_settings')) {
-                return self::defaults();
-            }
-            $row = AmazonAdsSbidRuleSetting::query()->orderBy('id')->first();
-            if ($row === null || ! is_array($row->rule) || $row->rule === []) {
-                return self::defaults();
-            }
+        if (! Schema::hasTable('amazon_ads_sbid_rule_settings')) {
+            return self::defaults();
+        }
+        $row = AmazonAdsSbidRuleSetting::query()->orderBy('id')->first();
+        if ($row === null || ! is_array($row->rule) || $row->rule === []) {
+            return self::defaults();
+        }
 
-            return self::normalizeRule(array_merge(self::defaults(), $row->rule));
-        });
+        return self::normalizeRule(array_merge(self::defaults(), $row->rule));
     }
 
     public static function forgetResolvedCache(): void

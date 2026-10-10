@@ -2,11 +2,7 @@
 
 namespace App\Support;
 
-use App\Models\AmazonAdsBgtViewsRuleSetting;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Amz page View L7 (parent Sess7) → suggested daily budget (Bgt Views).
@@ -14,6 +10,8 @@ use Illuminate\Support\Facades\Schema;
  */
 final class AmazonAdsBgtViewsRule
 {
+    use StoresAmazonAdsRuleJson;
+
     public const CACHE_KEY = 'amazon_ads_bgt_views_rule_resolved_v2';
 
     /**
@@ -44,11 +42,7 @@ final class AmazonAdsBgtViewsRule
      */
     public static function resolvedRule(): array
     {
-        try {
-            return Cache::remember(self::CACHE_KEY, 86400, static fn (): array => self::loadResolvedRule());
-        } catch (\Throwable) {
-            return self::loadResolvedRule();
-        }
+        return self::loadResolvedRule();
     }
 
     /**
@@ -56,15 +50,12 @@ final class AmazonAdsBgtViewsRule
      */
     private static function loadResolvedRule(): array
     {
-        if (! Schema::hasTable('amazon_ads_bgt_views_rule_settings')) {
-            return self::defaults();
-        }
-        $row = AmazonAdsBgtViewsRuleSetting::query()->orderBy('id')->first();
-        if ($row === null || ! is_array($row->rule) || $row->rule === []) {
+        $decoded = self::readStoredRule('views');
+        if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
 
-        return self::normalizeRule($row->rule);
+        return self::normalizeRule($decoded);
     }
 
     public static function forgetResolvedCache(): void
@@ -144,11 +135,8 @@ final class AmazonAdsBgtViewsRule
             if (! is_finite($from) || ! is_finite($to)) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From and To must be numbers.');
             }
-            if ($from > $to) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
-            }
-            if ($bgt < -100_000 || $bgt > 100_000) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Views must be between -100000 and 100000.');
+            if ($bgt < -9_999_999 || $bgt > 9_999_999) {
+                throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt Views must be between -9999999 and 9999999.');
             }
         }
     }
@@ -158,14 +146,8 @@ final class AmazonAdsBgtViewsRule
      */
     public static function persistRule(array $rule): void
     {
-        self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
-        $row = AmazonAdsBgtViewsRuleSetting::query()->orderBy('id')->first();
-        if ($row === null) {
-            AmazonAdsBgtViewsRuleSetting::query()->create(['rule' => $normalized]);
-        } else {
-            $row->update(['rule' => $normalized]);
-        }
+        self::storeRuleJson('views', $normalized);
         self::forgetResolvedCache();
     }
 
@@ -195,22 +177,5 @@ final class AmazonAdsBgtViewsRule
         }
 
         return $empty;
-    }
-
-    private static function ensureSettingsTable(): void
-    {
-        if (Schema::hasTable('amazon_ads_bgt_views_rule_settings')) {
-            return;
-        }
-        try {
-            Schema::create('amazon_ads_bgt_views_rule_settings', function (Blueprint $table) {
-                $table->id();
-                $table->longText('rule');
-                $table->timestamps();
-            });
-        } catch (\Throwable $e) {
-            Log::error('amazon_ads_bgt_views_rule_settings create failed', ['error' => $e->getMessage()]);
-            throw new \RuntimeException('Could not create amazon_ads_bgt_views_rule_settings: '.$e->getMessage(), 0, $e);
-        }
     }
 }
