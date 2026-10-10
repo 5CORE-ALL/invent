@@ -116,6 +116,62 @@
             box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
             pointer-events: none;
         }
+
+        /* Same four-block summary as Active Channel */
+        #summary-stats {
+            max-width: 100%;
+            min-width: 0;
+            display: grid;
+            grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 0.85fr);
+            gap: 0.5rem;
+            background: transparent !important;
+            padding: 0 !important;
+        }
+        #summary-stats .amm-badge-block {
+            min-width: 0;
+            border-radius: 10px;
+            padding: 0.4rem 0.5rem 0.5rem;
+            border: 1px solid transparent;
+        }
+        #summary-stats .amm-badge-block-title {
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            line-height: 1;
+            margin: 0 0 0.35rem;
+        }
+        #summary-stats .amm-badge-block--l30 { background: #dbeafe; border-color: #93c5fd; }
+        #summary-stats .amm-badge-block--l30 .amm-badge-block-title { color: #1e40af; }
+        #summary-stats .amm-badge-block--yesterday { background: #ccfbf1; border-color: #5eead4; }
+        #summary-stats .amm-badge-block--yesterday .amm-badge-block-title { color: #115e59; }
+        #summary-stats .amm-badge-block--projected { background: #ede9fe; border-color: #c4b5fd; }
+        #summary-stats .amm-badge-block--projected .amm-badge-block-title { color: #5b21b6; }
+        #summary-stats .amm-badge-block--others { background: #ffedd5; border-color: #fdba74; }
+        #summary-stats .amm-badge-block--others .amm-badge-block-title { color: #9a3412; }
+        #summary-stats .ebay2-summary-badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.4rem;
+            width: 100%;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 0 0 auto;
+            font-size: 0.8125rem;
+            padding: 0.4rem 0.55rem;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
+        @media (max-width: 1199.98px) {
+            #summary-stats { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 767.98px) {
+            #summary-stats { grid-template-columns: 1fr; }
+        }
     </style>
 @endsection
 
@@ -161,45 +217,62 @@
                     </a>
                 </div>
 
-                <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge fs-6 p-2" id="y-sales-badge"
-                            style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="Y Line Sales = Σ Line Sales for yesterday (Pacific). Line Sales = basePrice + shipAmountTotal.">Y Line Sales: ${{ number_format((float) ($temuYSales ?? 0), 0) }}</span>
-                        <span class="badge fs-6 p-2" id="l30-full-sales-badge"
-                            style="background-color: #0e7490; color: white; font-weight: bold;"
-                            title="L30 Full Sales = Y Line Sales badge × 1.1364">L30 Full Sales: ${{ number_format((float) ($temuL30FullSales ?? 0), 0) }}</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
-                            style="color: white; font-weight: bold;"
-                            title="GPFT % = GPFT$ badge ÷ Temu Full Price Sales badge × 100">GPFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge"
-                            style="background-color: purple; color: white; font-weight: bold;"
-                            title="GROI % = GPFT$ badge ÷ Total COGS badge × 100">GROI: 0%</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
-                            title="GPFT$ = Σ (Line Sales × Temu margin) − COGS − COGS Ship">GPFT$: $0</span>
-                        <span class="badge fs-6 p-2" id="api-line-sales-badge"
-                            style="background-color: #0f766e; color: white; font-weight: bold;"
-                            title="Σ Line Sales for the L30 window. API line sales = basePrice + shipAmountTotal (same as the Line Sales column).">API Line Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge"
-                            style="color: white; font-weight: bold;"
-                            title="Temu Full Price Sales = Σ Line Sales × 1.1364">Temu Full Price Sales: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
-                        <span class="badge fs-6 p-2" id="cogs-ship-badge"
-                            style="background-color: #b45309; color: white; font-weight: bold;"
-                            title="Σ COGS Ship. Each line is the Shipping Master Ship slab rate for Weight Order (Dim &amp; Wt ACT lb × Qty).">COGS Ship: $0</span>
-                        <span class="badge fs-6 p-2" id="y-sales-gpft-badge"
-                            style="background-color: #1d4ed8; color: white; font-weight: bold;"
-                            title="Y Sales GPFT$ = Σ (Line Sales − COGS − COGS Ship)">Y Sales GPFT$: $0</span>
-                        <span class="badge fs-6 p-2" id="y-sales-roi-badge"
-                            style="background-color: #6d28d9; color: white; font-weight: bold;"
-                            title="Y Sales ROI% = Y Sales GPFT$ badge ÷ Σ COGS × 100">Y Sales ROI%: 0%</span>
-                        <span class="badge fs-6 p-2" id="y-sales-gpft-pct-badge"
-                            style="background-color: #0369a1; color: white; font-weight: bold;"
-                            title="Y Sales GPFT% = Y Sales GPFT$ badge ÷ (Σ Line Sales × 1.1364) × 100">Y Sales GPFT%: 0%</span>
+                <!-- Summary Stats — four blocks, same layout as Active Channel -->
+                <div id="summary-stats" class="mt-2">
+                    <div class="amm-badge-block amm-badge-block--l30">
+                        <div class="amm-badge-block-title">L30</div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="L30 metrics">
+                            <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
+                            <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
+                            <span class="badge fs-6 p-2" id="api-line-sales-badge"
+                                style="background-color: #0f766e; color: white; font-weight: bold;"
+                                title="Σ Line Sales for the L30 window. API line sales = basePrice + shipAmountTotal (same as the Line Sales column).">API Line Sales: $0</span>
+                            <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge"
+                                style="color: white; font-weight: bold;"
+                                title="Temu Full Price Sales = Σ Line Sales × 1.1364">Temu Full Price Sales: $0</span>
+                            <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
+                                style="color: white; font-weight: bold;"
+                                title="GPFT % = GPFT$ badge ÷ Temu Full Price Sales badge × 100">GPFT: 0%</span>
+                            <span class="badge fs-6 p-2" id="roi-percentage-badge"
+                                style="background-color: purple; color: white; font-weight: bold;"
+                                title="GROI % = GPFT$ badge ÷ Total COGS badge × 100">GROI: 0%</span>
+                            <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
+                                title="GPFT$ = Σ (Line Sales × Temu margin) − COGS − COGS Ship">GPFT$: $0</span>
+                        </div>
+                    </div>
+                    <div class="amm-badge-block amm-badge-block--yesterday">
+                        <div class="amm-badge-block-title">Yesterday</div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Yesterday metrics">
+                            <span class="badge fs-6 p-2" id="y-sales-badge"
+                                style="background-color: #6f42c1; color: white; font-weight: bold;"
+                                title="Y Line Sales = Σ Line Sales for yesterday (Pacific). Line Sales = basePrice + shipAmountTotal.">Y Line Sales: ${{ number_format((float) ($temuYSales ?? 0), 0) }}</span>
+                            <span class="badge fs-6 p-2" id="l30-full-sales-badge"
+                                style="background-color: #0e7490; color: white; font-weight: bold;"
+                                title="L30 Full Sales = Y Line Sales badge × 1.1364">L30 Full Sales: ${{ number_format((float) ($temuL30FullSales ?? 0), 0) }}</span>
+                        </div>
+                    </div>
+                    <div class="amm-badge-block amm-badge-block--projected">
+                        <div class="amm-badge-block-title">Y Sales</div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Y Sales profit">
+                            <span class="badge fs-6 p-2" id="y-sales-gpft-badge"
+                                style="background-color: #1d4ed8; color: white; font-weight: bold;"
+                                title="Y Sales GPFT$ = Σ (Line Sales − COGS − COGS Ship)">Y Sales GPFT$: $0</span>
+                            <span class="badge fs-6 p-2" id="y-sales-roi-badge"
+                                style="background-color: #6d28d9; color: white; font-weight: bold;"
+                                title="Y Sales ROI% = Y Sales GPFT$ badge ÷ Σ COGS × 100">Y Sales ROI%: 0%</span>
+                            <span class="badge fs-6 p-2" id="y-sales-gpft-pct-badge"
+                                style="background-color: #0369a1; color: white; font-weight: bold;"
+                                title="Y Sales GPFT% = Y Sales GPFT$ badge ÷ (Σ Line Sales × 1.1364) × 100">Y Sales GPFT%: 0%</span>
+                        </div>
+                    </div>
+                    <div class="amm-badge-block amm-badge-block--others">
+                        <div class="amm-badge-block-title">Others</div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Cost metrics">
+                            <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                            <span class="badge fs-6 p-2" id="cogs-ship-badge"
+                                style="background-color: #b45309; color: white; font-weight: bold;"
+                                title="Σ COGS Ship. Each line is the Shipping Master Ship slab rate for Weight Order (Dim &amp; Wt ACT lb × Qty).">COGS Ship: $0</span>
+                        </div>
                     </div>
                 </div>
             </div>
