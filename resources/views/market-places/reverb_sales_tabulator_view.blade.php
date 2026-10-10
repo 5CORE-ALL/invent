@@ -82,21 +82,22 @@
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Sales: $0</span>
                         <span class="badge fs-6 p-2" id="y-sales-badge" style="background-color: #fd7e14; color: white; font-weight: bold;" title="Yesterday's sales (UTC) = Σ order total for yesterday">Y Sales: $0</span>
                         <span class="badge fs-6 p-2" id="l7-sales-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Last 7 days sales (UTC) = Σ order total for the last 7 days">L7 Sales: $0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded T PFT ÷ rounded product sales. T PFT = (product sales × {{ (int) ($marginPercent ?? 85) }}%) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded T PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge fs-6 p-2" id="tacos-percentage-badge"
                             title="Ads%/TACOS on master = Bump fees ÷ Sales × 100. Bump is shown here but not cut from N PFT/N ROI (same as /all-marketplace-master)."
                             style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0.0%</span>
                         <span class="badge fs-6 p-2" id="m-pft-badge"
-                            title="NPFT% = GPFT%/PFT% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N PFT)"
+                            title="N PFT matches GPFT. Bump is not cut from it."
                             style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
                         <span class="badge fs-6 p-2" id="n-roi-badge"
-                            title="NROI% = ROI% (Reverb Ads% is Bump — not cut from net; same as /all-marketplace-master N ROI)"
+                            title="N ROI matches GROI. Bump is not cut from it."
                             style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'reverb'])
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once. An empty band uses the SKU weight's slab.">COGS Ship: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-fees-badge" style="color: white; font-weight: bold;">T Fees: $0</span>
                         <span class="badge fs-6 p-2" id="fee-percentage-badge" style="background-color: #6c757d; color: white; font-weight: bold;">Fee: 0%</span>
                         <span class="badge fs-6 p-2" id="bump-fees-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">Bump Fees: $0</span>
@@ -452,11 +453,34 @@
                     }
                 },
                 {
+                    title: "T Wt",
+                    field: "t_weight",
+                    width: 70,
+                    hozAlign: "right",
+                    sorter: "number",
+                    headerTooltip: "T Weight = Dim & Wt ACT lb × Qty"
+                },
+                {
                     title: "Ship",
                     field: "ship",
                     width: 80,
                     hozAlign: "right",
                     sorter: "number",
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
+                    title: "COGS Ship",
+                    field: "ship_cost",
+                    width: 90,
+                    hozAlign: "right",
+                    sorter: "number",
+                    headerTooltip: "Shipping Master Ship slab for T Weight. Subtracted once.",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -516,8 +540,9 @@
                     }
                 },
                 {
-                    title: "ROI %",
+                    title: "GROI %",
                     field: "roi",
+                    headerTooltip: "GROI % = T PFT ÷ COGS × 100.",
                     width: 80,
                     hozAlign: "right",
                     sorter: "number",
@@ -602,6 +627,7 @@
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
+            let totalCogsShip = 0;
             let l30Sales = 0; // Sales for last 30 days only
             let ySales = 0;   // Yesterday's sales (UTC)
             let l7Sales = 0;  // Last 7 days sales (UTC)
@@ -680,16 +706,17 @@
                 
                 totalPft += pft;
                 totalCogs += cogs;
+                totalCogsShip += parseFloat(row.ship_cost) || 0;
             });
 
             // Calculate average price (weighted by quantity)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
-            // Calculate PFT Percentage: (PFT Total / Total Revenue) * 100
-            const pftPercentage = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
-            
-            // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
-            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            const gpftDollars = Math.round(totalPft);
+            const salesDollars = Math.round(totalRevenue);
+            const cogsDollars = Math.round(totalCogs);
+            const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
             
             // Calculate Fee Percentage: (Total Fees / Total Revenue) * 100
             const feePercentage = totalRevenue > 0 ? (totalFees / totalRevenue) * 100 : 0;
@@ -709,12 +736,11 @@
             $('#total-revenue-badge').text('Sales: $' + Math.round(l30Sales).toLocaleString());
             $('#y-sales-badge').text('Y Sales: $' + Math.round(ySales).toLocaleString());
             $('#l7-sales-badge').text('L7 Sales: $' + Math.round(l7Sales).toLocaleString());
-            $('#pft-percentage-badge').text('PFT: ' + Math.round(pftPercentage) + '%');
-            $('#roi-percentage-badge').text('ROI: ' + Math.round(roiPercentage) + '%');
-            // TACOS% = master Ads% (Bump%). N PFT / N ROI do not cut Bump (same as /all-marketplace-master).
+            $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#tacos-percentage-badge').text('TACOS %: ' + bumpPercentage.toFixed(1) + '%');
-            $('#m-pft-badge').text('N PFT: ' + pftPercentage.toFixed(1) + '%');
-            $('#n-roi-badge').text('N ROI: ' + roiPercentage.toFixed(1) + '%');
+            $('#m-pft-badge').text('N PFT: ' + Math.round(pftPercentage) + '%');
+            $('#n-roi-badge').text('N ROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
             $('#pft-total-badge').text('PFT: $' + Math.round(totalPft).toLocaleString());
             
@@ -726,7 +752,8 @@
                 pftBadge.removeClass('bg-dark').addClass('bg-danger');
             }
             
-            $('#total-cogs-badge').text('COGS: $' + Math.round(totalCogs).toLocaleString());
+            $('#total-cogs-badge').text('COGS: $' + cogsDollars.toLocaleString());
+            $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
             $('#total-fees-badge').text('T Fees: $' + Math.round(totalFees).toLocaleString());
             $('#fee-percentage-badge').text('Fee: ' + Math.round(feePercentage) + '%');
             $('#bump-fees-badge').text('Bump Fees: $' + Math.round(totalBumpFees).toLocaleString());
