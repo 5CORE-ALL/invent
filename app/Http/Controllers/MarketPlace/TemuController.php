@@ -1159,6 +1159,7 @@ class TemuController extends Controller
     {
         // Y Sales on this page only: Σ Line Sales for yesterday (Pacific).
         $temuYSales = TemuShopifySalesService::sumYesterdayLineSales();
+        $temuL30FullSales = TemuShopifySalesService::l30FullSalesBadgeAmount();
 
         // Margin from marketplace_percentages (Temu), same source getOrdersTableRows /
         // getTemuChannelData use — so /temu-tabulator GPFT%/ROI match /all-marketplace-master.
@@ -1166,6 +1167,7 @@ class TemuController extends Controller
 
         return view('market-places.temu_tabulator_view', [
             'temuYSales' => $temuYSales,
+            'temuL30FullSales' => $temuL30FullSales,
             'temuMargin' => $temuMargin,
         ]);
     }

@@ -167,7 +167,10 @@
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge fs-6 p-2" id="y-sales-badge"
                             style="background-color: #6f42c1; color: white; font-weight: bold;"
-                            title="Y Sales = Σ Line Sales for yesterday (Pacific). Line Sales = basePrice + shipAmountTotal.">Y Sales: ${{ number_format((float) ($temuYSales ?? 0), 0) }}</span>
+                            title="Y Line Sales = Σ Line Sales for yesterday (Pacific). Line Sales = basePrice + shipAmountTotal.">Y Line Sales: ${{ number_format((float) ($temuYSales ?? 0), 0) }}</span>
+                        <span class="badge fs-6 p-2" id="l30-full-sales-badge"
+                            style="background-color: #0e7490; color: white; font-weight: bold;"
+                            title="L30 Full Sales = Y Line Sales badge × 1.1364">L30 Full Sales: ${{ number_format((float) ($temuL30FullSales ?? 0), 0) }}</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
@@ -188,6 +191,15 @@
                         <span class="badge fs-6 p-2" id="cogs-ship-badge"
                             style="background-color: #b45309; color: white; font-weight: bold;"
                             title="Σ COGS Ship. Each line is the Shipping Master Ship slab rate for Weight Order (Dim &amp; Wt ACT lb × Qty).">COGS Ship: $0</span>
+                        <span class="badge fs-6 p-2" id="y-sales-gpft-badge"
+                            style="background-color: #1d4ed8; color: white; font-weight: bold;"
+                            title="Y Sales GPFT$ = Σ (Line Sales − COGS − COGS Ship)">Y Sales GPFT$: $0</span>
+                        <span class="badge fs-6 p-2" id="y-sales-roi-badge"
+                            style="background-color: #6d28d9; color: white; font-weight: bold;"
+                            title="Y Sales ROI% = Y Sales GPFT$ badge ÷ Σ COGS × 100">Y Sales ROI%: 0%</span>
+                        <span class="badge fs-6 p-2" id="y-sales-gpft-pct-badge"
+                            style="background-color: #0369a1; color: white; font-weight: bold;"
+                            title="Y Sales GPFT% = Y Sales GPFT$ badge ÷ (Σ Line Sales × 1.1364) × 100">Y Sales GPFT%: 0%</span>
                     </div>
                 </div>
             </div>
@@ -267,6 +279,29 @@
     function temuRowRPrice(row) {
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return temuFbPrice(temuRowBase(row), qty);
+    }
+    function temuRowCogs(row) {
+        const qty = parseInt(row && row.quantity_purchased) || 0;
+        return qty * (parseFloat(row && row.lp) || 0);
+    }
+    /** Y Sales GPFT$ = Line Sales − COGS − COGS Ship. COGS = LP × Qty. */
+    function temuRowYSalesGpftDollar(row) {
+        const lineSales = parseFloat(row && row.line_sales) || 0;
+        const ship = parseFloat(row && row.cogs_ship) || 0;
+        return lineSales - temuRowCogs(row) - ship;
+    }
+    /** Y Sales ROI% = Y Sales GPFT$ ÷ COGS × 100. */
+    function temuRowYSalesRoiPercent(row) {
+        const cogs = temuRowCogs(row);
+        if (!(cogs > 0)) return null;
+        return (temuRowYSalesGpftDollar(row) / cogs) * 100;
+    }
+    /** Y Sales GPFT% = Y Sales GPFT$ ÷ (Line Sales × 1.1364) × 100. */
+    function temuRowYSalesGpftPercent(row) {
+        const lineSales = parseFloat(row && row.line_sales) || 0;
+        const denom = lineSales * TEMU_PRICE_MULT;
+        if (!(denom > 0)) return null;
+        return (temuRowYSalesGpftDollar(row) / denom) * 100;
     }
     /** Line GPFT$ = (Line Sales × Temu margin) − COGS − COGS Ship. COGS = LP × Qty. */
     function temuRowGpftDollar(row) {
@@ -487,20 +522,6 @@
                     }
                 },
                 {
-                    title: "COGS Ship",
-                    field: "cogs_ship",
-                    hozAlign: "center",
-                    sorter: "number",
-                    headerTooltip: "Shipping Master Ship slab rate for Weight Order",
-                    formatter: function(cell) {
-                        const raw = cell.getValue();
-                        if (raw === null || raw === undefined || raw === '') return '';
-                        const n = parseFloat(raw);
-                        if (!isFinite(n)) return '';
-                        return '$' + n.toFixed(2);
-                    }
-                },
-                {
                     title: "Listing Base",
                     field: "listing_base_price",
                     hozAlign: "center",
@@ -646,6 +667,74 @@
                         thousand: ",",
                         symbol: "$",
                         precision: 2
+                    }
+                },
+                {
+                    title: "COGS Ship",
+                    field: "cogs_ship",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Shipping Master Ship slab rate for Weight Order",
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        if (raw === null || raw === undefined || raw === '') return '';
+                        const n = parseFloat(raw);
+                        if (!isFinite(n)) return '';
+                        return '$' + n.toFixed(2);
+                    }
+                },
+                {
+                    title: "Y Sales GPFT$",
+                    field: "y_sales_gpft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Y Sales GPFT$ = Line Sales − COGS − COGS Ship",
+                    mutator: function(value, data) {
+                        return temuRowYSalesGpftDollar(data);
+                    },
+                    formatter: function(cell) {
+                        const n = parseFloat(cell.getValue());
+                        if (!isFinite(n)) return '';
+                        const color = n >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">$${n.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "Y Sales ROI%",
+                    field: "y_sales_roi",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Y Sales ROI% = Y Sales GPFT$ ÷ COGS × 100",
+                    mutator: function(value, data) {
+                        const n = temuRowYSalesRoiPercent(data);
+                        return n === null ? '' : n;
+                    },
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        if (raw === '' || raw === null || raw === undefined) return '';
+                        const n = parseFloat(raw);
+                        if (!isFinite(n)) return '';
+                        const color = n >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">${Math.round(n)}%</span>`;
+                    }
+                },
+                {
+                    title: "Y Sales GPFT%",
+                    field: "y_sales_gpft_pct",
+                    hozAlign: "center",
+                    sorter: "number",
+                    headerTooltip: "Y Sales GPFT% = Y Sales GPFT$ ÷ (Line Sales × 1.1364) × 100",
+                    mutator: function(value, data) {
+                        const n = temuRowYSalesGpftPercent(data);
+                        return n === null ? '' : n;
+                    },
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        if (raw === '' || raw === null || raw === undefined) return '';
+                        const n = parseFloat(raw);
+                        if (!isFinite(n)) return '';
+                        const color = n >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color: ${color}; font-weight: bold;">${Math.round(n)}%</span>`;
                     }
                 },
                 {
@@ -834,6 +923,7 @@
             const data = table.getData("active");
             let totalOrders = 0, totalQuantity = 0, totalPft = 0;
             let totalApiLineSales = 0, totalCogs = 0, totalCogsShip = 0;
+            let totalYSalesGpft = 0, totalYSalesCogs = 0;
 
             data.forEach(row => {
                 const sku = String(row.contribution_sku || '');
@@ -847,6 +937,8 @@
                 totalQuantity += quantity;
                 totalApiLineSales += parseFloat(row.line_sales) || 0;
                 totalCogsShip += parseFloat(row.cogs_ship) || 0;
+                totalYSalesGpft += temuRowYSalesGpftDollar(row);
+                totalYSalesCogs += temuRowCogs(row);
                 if (quantity > 0 && basePrice > 0) {
                     totalPft += temuRowGpftDollar(row);
                     totalCogs += lp * quantity;
@@ -872,6 +964,15 @@
             $('#temu-full-price-sales-badge').text('Temu Full Price Sales: $' + Math.round(totalTemuFullPriceSales).toLocaleString());
             $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
             $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
+
+            const ySalesFull = totalApiLineSales * TEMU_PRICE_MULT;
+            const ySalesRoi = totalYSalesCogs !== 0 ? (totalYSalesGpft / totalYSalesCogs) * 100 : 0;
+            const ySalesGpftPct = ySalesFull !== 0 ? (totalYSalesGpft / ySalesFull) * 100 : 0;
+            $('#y-sales-gpft-badge')
+                .text('Y Sales GPFT$: $' + Math.round(totalYSalesGpft).toLocaleString())
+                .css('background-color', totalYSalesGpft < 0 ? '#dc3545' : '#1d4ed8');
+            $('#y-sales-roi-badge').text('Y Sales ROI%: ' + Math.round(ySalesRoi) + '%');
+            $('#y-sales-gpft-pct-badge').text('Y Sales GPFT%: ' + Math.round(ySalesGpftPct) + '%');
         }
 
         // Build Column Visibility Dropdown
@@ -1047,6 +1148,9 @@
                             base_price_total: temuRowBase(row),
                             temu_price: temuPrice,
                             pft: temuRowGpftDollar(row).toFixed(2),
+                            y_sales_gpft: temuRowYSalesGpftDollar(row).toFixed(2),
+                            y_sales_roi: temuRowYSalesRoiPercent(row),
+                            y_sales_gpft_pct: temuRowYSalesGpftPercent(row),
                             gpft_percent: temuRowGpftPercent(row),
                             groi_percent: temuRowGroiPercent(row),
                             l30_sales: l7Sales

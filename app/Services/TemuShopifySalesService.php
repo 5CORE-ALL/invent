@@ -860,6 +860,22 @@ class TemuShopifySalesService
         return round($sum, 2);
     }
 
+    /**
+     * /temu-tabulator Y Line Sales badge: yesterday's line sales, rounded to a dollar.
+     */
+    public static function yLineSalesBadgeAmount(): float
+    {
+        return (float) round(self::sumYesterdayLineSales());
+    }
+
+    /**
+     * /temu-tabulator L30 Full Sales badge = Y Line Sales badge × 1.1364, rounded to a dollar.
+     */
+    public static function l30FullSalesBadgeAmount(): float
+    {
+        return (float) round(self::yLineSalesBadgeAmount() * 1.1364);
+    }
+
     /** Y Sales from temu2_orders: base-price revenue on yesterday (wall-clock Pacific). */
     public static function computeYSalesFromTemu2Orders(): ?float
     {
