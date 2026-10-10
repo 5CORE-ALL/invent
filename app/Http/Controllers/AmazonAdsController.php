@@ -11,6 +11,7 @@ use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsPauseRuleApplicator;
+use App\Support\AmazonAdsBgtCountRunner;
 use App\Support\AmazonAdsBgtCountStore;
 use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
@@ -3783,6 +3784,11 @@ class AmazonAdsController extends Controller
         // (otherwise the grid would filter to only negatives whose created_at matches that day).
         $defaultReportRangeDates['sp_negatives'] = null;
 
+        try {
+            AmazonAdsBgtCountRunner::startInBackground();
+        } catch (\Throwable) {
+        }
+
         return view('amazon_ads.all', [
             'rawSources' => $rawSources,
             'defaultReportRangeDates' => $defaultReportRangeDates,
@@ -3875,6 +3881,39 @@ class AmazonAdsController extends Controller
             'ok' => true,
             'counts' => AmazonAdsBgtCountStore::read(),
             'status' => 200,
+        ]);
+    }
+
+    /**
+     * Saved BGT chart counts. The page paints these while a background recount runs.
+     */
+    public function getBgtCounts(): JsonResponse
+    {
+        return response()->json([
+            'ok' => true,
+            'counts' => AmazonAdsBgtCountStore::read(),
+            'updated_at' => AmazonAdsBgtCountStore::updatedAt(),
+            'running' => AmazonAdsBgtCountRunner::isRunning(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    /**
+     * Recalculate BGT chart counts in the background.
+     */
+    public function refreshBgtCounts(): JsonResponse
+    {
+        try {
+            AmazonAdsBgtCountRunner::startInBackground();
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'Could not start the count.',
+                'status' => 500,
+            ], 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'running' => true,
         ]);
     }
 
@@ -5198,7 +5237,7 @@ class AmazonAdsController extends Controller
     public function rawData(Request $request, string $source)
     {
         if ($request->boolean('bgt_universe')) {
-            @set_time_limit(180);
+            @set_time_limit(app()->runningInConsole() ? 0 : 180);
         }
 
         if ($source === 'all_reports') {

@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\DB;
+
 /**
  * Last BGT rule chart counts, stored in amazon_ads_rules under key counts.
  * The modal paints these immediately. A later recount replaces them.
@@ -33,6 +35,14 @@ final class AmazonAdsBgtCountStore
     public static function write(array $counts): void
     {
         self::storeRuleJson(self::KEY, self::normalize($counts));
+    }
+
+    public static function updatedAt(): ?string
+    {
+        self::ensureRulesTable();
+        $value = DB::table('amazon_ads_rules')->where('key', self::KEY)->value('updated_at');
+
+        return $value !== null && $value !== '' ? (string) $value : null;
     }
 
     /**

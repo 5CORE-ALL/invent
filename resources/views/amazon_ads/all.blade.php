@@ -1887,6 +1887,8 @@
             var syncLiveBidBgtUrl = @json(route('amazon.ads.sync-live-bid-bgt'));
             var bgtRuleGetUrl = @json(route('amazon.ads.bgt-rule'));
             var bgtCountsSaveUrl = @json(route('amazon.ads.bgt-counts.save'));
+            var bgtCountsGetUrl = @json(route('amazon.ads.bgt-counts'));
+            var bgtCountsRefreshUrl = @json(route('amazon.ads.bgt-counts.refresh'));
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
             var bgtViewsRuleGetUrl = @json(route('amazon.ads.bgt-views-rule'));
             var bgtViewsRuleSaveUrl = @json(route('amazon.ads.bgt-views-rule.save'));
@@ -3467,7 +3469,6 @@
             table.on('pageLoaded', amzRefreshUiSoon);
             table.on('dataLoaded', function () {
                 amzRefreshUiSoon();
-                amzBgtEnsureUniverse();
                 if (typeof amzAutoPushPullOn === 'function' && amzAutoPushPullOn()) amzAutoPushChangedSbgt();
             });
             table.on('dataLoadError', function (error) {
@@ -5071,18 +5072,54 @@
                 });
                 return amzBgtUniverse.promise;
             }
-            (function () {
-                var modal = document.getElementById('amazonAdsBgtRulesModal');
-                if (!modal) return;
-                modal.addEventListener('shown.bs.modal', function () {
-                    if (amzBgtUniverse.failed) {
-                        amzBgtUniverse.failed = false;
-                        amzBgtUniverse.key = '';
-                        amzBgtUniverse.rows = null;
-                    }
-                    amzBgtEnsureUniverse().then(function () { amzBgtRefreshAllRuleCounts(); });
-                });
-            })();
+            var amzBgtCountsStamp = '';
+            function amzBgtPollStoredCounts() {
+                if (amzBgtPollStoredCounts.timer) return;
+                var tick = function () {
+                    fetch(bgtCountsGetUrl, {
+                        method: 'GET',
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        cache: 'no-store'
+                    }).then(function (r) { return r.json(); }).then(function (body) {
+                        var next = body && body.counts;
+                        var stamp = body && body.updated_at ? String(body.updated_at) : '';
+                        if (next && next.columns && stamp !== amzBgtCountsStamp) {
+                            amzBgtCountsStamp = stamp;
+                            amzBgtSaved = next;
+                            window.amazonAdsBgtCounts = next;
+                            if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
+                        }
+                        var wait = (body && body.running) || !amzBgtHasSavedCounts() ? 3000 : 30000;
+                        amzBgtPollStoredCounts.timer = setTimeout(function () {
+                            amzBgtPollStoredCounts.timer = null;
+                            tick();
+                        }, wait);
+                    }).catch(function () {
+                        amzBgtPollStoredCounts.timer = setTimeout(function () {
+                            amzBgtPollStoredCounts.timer = null;
+                            tick();
+                        }, 8000);
+                    });
+                };
+                tick();
+            }
+            function amzBgtRequestRecount() {
+                fetch(bgtCountsRefreshUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'same-origin'
+                }).catch(function () {});
+                if (amzBgtPollStoredCounts.timer) {
+                    clearTimeout(amzBgtPollStoredCounts.timer);
+                    amzBgtPollStoredCounts.timer = null;
+                }
+                amzBgtPollStoredCounts();
+            }
             function amzBgtGridRows() {
                 if (!table || typeof table.getData !== 'function') return [];
                 try { return table.getData() || []; } catch (e) { return []; }
@@ -5115,7 +5152,6 @@
             }
             function amzBgtCountRows() {
                 amzBgtSeedRuleBands();
-                amzBgtEnsureUniverse();
                 var key = amzBgtFilterKey();
                 if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) return amzBgtUniverse.rows;
                 return null;
@@ -5203,11 +5239,7 @@
                 }, 700);
             }
             function amzBgtOnBudgetChange() {
-                if (amzBgtCountRows()) {
-                    amzBgtPaintSum();
-                    return;
-                }
-                amzBgtEnsureUniverse().then(function () { amzBgtRefreshAllRuleCounts(); });
+                if (amzBgtCountRows()) amzBgtPaintSum();
             }
             function amzBgtRefreshCountCells() {}
             var amzBgtColCharts = {};
@@ -7037,11 +7069,9 @@
                         if (st) st.dataset.phase = 'apply';
                         amzBgtWriteStatus('Applying to the page…', true);
                         if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
-                        var counted = (typeof amzBgtEnsureUniverse === 'function' ? amzBgtEnsureUniverse() : Promise.resolve()).then(function () {
-                            if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
-                        });
+                        if (typeof amzBgtRequestRecount === 'function') amzBgtRequestRecount();
                         var reloaded = table ? Promise.resolve(table.setData()).catch(function () { return null; }) : Promise.resolve();
-                        return Promise.all([counted, reloaded]);
+                        return reloaded;
                     })
                     .then(function () {
                         amzRefreshUiSoon();
@@ -7066,6 +7096,7 @@
             amzLoadBgtDilBandsFromRule(window.amazonAdsBgtDilRule || {});
             amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {});
             amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {});
+            amzBgtPollStoredCounts();
             var autoPushPullBtn = document.getElementById('amazonAdsAutoPushPullBtn');
             if (autoPushPullBtn) {
                 amzPaintAutoPushPullBtn();
@@ -7303,6 +7334,7 @@
                     amzRefreshSbidRuleFromServer(function () { amzFillSbidForm(window.amazonAdsSbidRule || {}); });
                 });
                 sbidModalEl.addEventListener('shown.bs.modal', function () {
+                    amzBgtEnsureUniverse().then(function () { amzSbidPaint(); });
                     amzSbidPaint();
                     setTimeout(function () {
                         Object.keys(amzSbidCharts).forEach(function (k) {
