@@ -53,15 +53,15 @@
                     <div class="inv5c-note">
                         <h4 class="mb-1">INV Management 5Core</h4>
                         <p class="text-muted mb-0 small">
-                            INV, L30, and DIL% use the same CP Master data (product master and Shopify).
-                            INV APP starts from a one-time Shopify opening. After that, this page does not import Shopify.
-                            Sales already stored in the app, plus adjustments entered here, are the inventory movements.
-                            L30 APP is units sold in the app over the last 30 days.
+                            INV, L30, and DIL% come from Shopify. INV APP is this page’s own inventory.
+                            Seed opening once from Shopify, matched by SKU. After that, Shopify is not imported again.
+                            Marketplace orders deduct INV APP, and each order is stored in that SKU’s history.
+                            L30 APP is marketplace units sold over the last 30 days.
                         </p>
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <button type="button" class="btn btn-sm btn-outline-primary" id="inv5cSeed">Seed opening</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="inv5cSales">Record app sales</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="inv5cSales">Record marketplace orders</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="inv5cRefresh">
                             <i class="fas fa-rotate me-1"></i>Refresh
                         </button>

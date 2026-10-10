@@ -1,0 +1,377 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\ShopifySku;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Marketplace order lines used to deduct INV APP.
+ * Shopify inventory is not read here. Each line is one order-management row.
+ */
+class Inv5coreMarketplaceOrders
+{
+    /**
+     * @return list<array<string, string>>
+     */
+    public static function definitions(): array
+    {
+        $metric = static function (string $source, string $label, string $table): array {
+            return [
+                'source' => $source,
+                'label' => $label,
+                'table' => $table,
+                'id_sql' => 'id',
+                'sku_sql' => 'sku',
+                'qty_sql' => 'quantity',
+                'order_sql' => "COALESCE(NULLIF(order_number, ''), NULLIF(order_id, ''))",
+                'date_sql' => 'order_date',
+                'status_sql' => 'status',
+                'where_sql' => '',
+            ];
+        };
+
+        return [
+            [
+                'source' => 'amazon',
+                'label' => 'Amazon',
+                'table' => 'amazon_order_items',
+                'id_sql' => 'i.id',
+                'sku_sql' => 'i.sku',
+                'qty_sql' => 'i.quantity',
+                'order_sql' => 'o.amazon_order_id',
+                'date_sql' => 'o.order_date',
+                'status_sql' => 'o.status',
+                'where_sql' => "UPPER(TRIM(COALESCE(o.fulfillment_channel, ''))) != 'AFN'",
+                'join_sql' => 'inner join amazon_orders as o on o.id = i.amazon_order_id',
+            ],
+            $metric('ebay1', 'eBay', 'ebay1_order_metrics'),
+            $metric('ebay2', 'eBay 2', 'ebay2_order_metrics'),
+            $metric('ebay3', 'eBay 3', 'ebay3_order_metrics'),
+            $metric('shein', 'Shein', 'shein_order_metrics'),
+            $metric('reverb', 'Reverb', 'reverb_order_metrics'),
+            $metric('aliexpress', 'AliExpress', 'aliexpress_order_metrics'),
+            $metric('alibaba', 'Alibaba', 'alibaba_order_metrics'),
+            $metric('newegg', 'Newegg', 'newegg_order_metrics'),
+            $metric('faire', 'Faire', 'faire_order_metrics'),
+            $metric('topdawg', 'TopDawg', 'topdawg_order_metrics'),
+            [
+                'source' => 'temu',
+                'label' => 'Temu',
+                'table' => 'temu_orders',
+                'id_sql' => 'id',
+                'sku_sql' => "COALESCE(NULLIF(display_sku, ''), NULLIF(ext_code, ''), product_sku_id)",
+                'qty_sql' => 'quantity',
+                'order_sql' => "COALESCE(NULLIF(parent_order_sn, ''), order_sn)",
+                'date_sql' => 'parent_order_time',
+                'status_sql' => "COALESCE(parent_order_status_text, order_status_text, '')",
+                'where_sql' => '',
+            ],
+            [
+                'source' => 'temu2',
+                'label' => 'Temu 2',
+                'table' => 'temu2_orders',
+                'id_sql' => 'id',
+                'sku_sql' => "COALESCE(NULLIF(display_sku, ''), NULLIF(ext_code, ''), product_sku_id)",
+                'qty_sql' => 'quantity',
+                'order_sql' => "COALESCE(NULLIF(parent_order_sn, ''), order_sn)",
+                'date_sql' => 'parent_order_time',
+                'status_sql' => "COALESCE(parent_order_status_text, order_status_text, '')",
+                'where_sql' => '',
+            ],
+            [
+                'source' => 'temu3',
+                'label' => 'Temu 3',
+                'table' => 'temu3_orders',
+                'id_sql' => 'id',
+                'sku_sql' => 'contribution_sku',
+                'qty_sql' => 'quantity_purchased',
+                'order_sql' => 'order_id',
+                'date_sql' => 'purchase_date',
+                'status_sql' => 'order_status',
+                'where_sql' => '',
+            ],
+            [
+                'source' => 'tiktok',
+                'label' => 'TikTok',
+                'table' => 'tiktok_orders',
+                'id_sql' => 'id',
+                'sku_sql' => 'seller_sku',
+                'qty_sql' => 'quantity',
+                'order_sql' => 'order_id',
+                'date_sql' => 'order_created_at',
+                'status_sql' => 'order_status',
+                'where_sql' => "(line_item_id is null or line_item_id != '__order__')",
+            ],
+            [
+                'source' => 'tiktok2',
+                'label' => 'TikTok 2',
+                'table' => 'tiktok2_orders',
+                'id_sql' => 'id',
+                'sku_sql' => 'seller_sku',
+                'qty_sql' => 'quantity',
+                'order_sql' => 'order_id',
+                'date_sql' => 'order_created_at',
+                'status_sql' => 'order_status',
+                'where_sql' => "(line_item_id is null or line_item_id != '__order__')",
+            ],
+            [
+                'source' => 'bestbuy',
+                'label' => 'Best Buy',
+                'table' => 'mirakl_daily_data',
+                'id_sql' => 'id',
+                'sku_sql' => 'sku',
+                'qty_sql' => 'quantity',
+                'order_sql' => "COALESCE(NULLIF(channel_order_id, ''), order_id)",
+                'date_sql' => 'order_created_at',
+                'status_sql' => 'status',
+                'where_sql' => "channel_name = 'Best Buy USA'",
+            ],
+            [
+                'source' => 'macy',
+                'label' => "Macy's",
+                'table' => 'mirakl_daily_data',
+                'id_sql' => 'id',
+                'sku_sql' => 'sku',
+                'qty_sql' => 'quantity',
+                'order_sql' => "COALESCE(NULLIF(channel_order_id, ''), order_id)",
+                'date_sql' => 'order_created_at',
+                'status_sql' => 'status',
+                'where_sql' => "channel_name = 'Macy''s, Inc.'",
+            ],
+            [
+                'source' => 'wayfair',
+                'label' => 'Wayfair',
+                'table' => 'wayfair_daily_data',
+                'id_sql' => 'id',
+                'sku_sql' => 'sku',
+                'qty_sql' => 'quantity',
+                'order_sql' => 'po_number',
+                'date_sql' => 'po_date',
+                'status_sql' => 'status',
+                'where_sql' => '',
+            ],
+            [
+                'source' => 'doba',
+                'label' => 'Doba',
+                'table' => 'doba_daily_data',
+                'id_sql' => 'id',
+                'sku_sql' => 'sku',
+                'qty_sql' => 'quantity',
+                'order_sql' => "COALESCE(NULLIF(platform_order_no, ''), order_no)",
+                'date_sql' => 'order_time',
+                'status_sql' => 'order_status',
+                'where_sql' => '',
+            ],
+            [
+                'source' => 'purchasingpower',
+                'label' => 'Purchasing Power',
+                'table' => 'purchasing_power_sales',
+                'id_sql' => 'id',
+                'sku_sql' => 'offer_sku',
+                'qty_sql' => 'quantity',
+                'order_sql' => "COALESCE(NULLIF(order_number, ''), order_id)",
+                'date_sql' => 'date_created',
+                'status_sql' => 'status',
+                'where_sql' => '',
+            ],
+        ];
+    }
+
+    public static function sourceKey(string $source): string
+    {
+        return 'mp:'.$source;
+    }
+
+    public static function reversalKey(string $source): string
+    {
+        return 'mp:'.$source.':reversal';
+    }
+
+    /**
+     * Remember the latest order line already in the app. Later lines are the
+     * ones that deduct INV APP. Existing lines stay inside the Shopify opening.
+     */
+    public static function snapshotWatermarks(): void
+    {
+        if (! Schema::hasTable('inv_5core_source_watermarks')) {
+            return;
+        }
+
+        $now = now();
+        foreach (self::definitions() as $def) {
+            if (! Schema::hasTable($def['table'])) {
+                continue;
+            }
+            $exists = DB::table('inv_5core_source_watermarks')->where('source', $def['source'])->exists();
+            if ($exists) {
+                continue;
+            }
+            DB::table('inv_5core_source_watermarks')->insert([
+                'source' => $def['source'],
+                'watermark_id' => self::maxLineId($def),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+    }
+
+    /**
+     * @param  callable(object, array<string, string>): void  $callback
+     */
+    public static function eachNewLine(callable $callback): void
+    {
+        if (! Schema::hasTable('inv_5core_source_watermarks')) {
+            return;
+        }
+
+        foreach (self::definitions() as $def) {
+            if (! Schema::hasTable($def['table'])) {
+                continue;
+            }
+            $watermark = DB::table('inv_5core_source_watermarks')->where('source', $def['source'])->value('watermark_id');
+            if ($watermark === null) {
+                continue;
+            }
+            self::lineQuery($def)
+                ->whereRaw($def['id_sql'].' > ?', [(int) $watermark])
+                ->orderByRaw($def['id_sql'])
+                ->chunkById(400, function ($lines) use ($callback, $def) {
+                    foreach ($lines as $line) {
+                        $callback($line, $def);
+                    }
+                }, $def['id_sql'], 'id');
+        }
+    }
+
+    /**
+     * @param  callable(object, array<string, string>): void  $callback
+     */
+    public static function eachReversal(callable $callback): void
+    {
+        if (! Schema::hasTable('inv_5core_transactions')) {
+            return;
+        }
+
+        $skipped = Inv5coreLedger::SKIPPED_STATUSES;
+        $placeholders = implode(',', array_fill(0, count($skipped), '?'));
+
+        foreach (self::definitions() as $def) {
+            if (! Schema::hasTable($def['table'])) {
+                continue;
+            }
+            $status = 'LOWER('.$def['status_sql'].')';
+            $query = DB::table('inv_5core_transactions as t')
+                ->where('t.source', self::sourceKey($def['source']))
+                ->leftJoin('inv_5core_transactions as rev', function ($join) use ($def) {
+                    $join->on('rev.source_id', '=', 't.source_id')
+                        ->where('rev.source', '=', self::reversalKey($def['source']));
+                })
+                ->whereNull('rev.id');
+            self::applyLineJoin($query, $def, 't.source_id');
+            $query->whereRaw($status.' IN ('.$placeholders.')', $skipped)
+                ->selectRaw('t.id as id, t.balance_id, t.qty_delta, t.source_id as line_id, '.$def['order_sql'].' as order_number, '.$def['status_sql'].' as status')
+                ->orderBy('t.id')
+                ->chunkById(400, function ($lines) use ($callback, $def) {
+                    foreach ($lines as $line) {
+                        $callback($line, $def);
+                    }
+                }, 't.id', 'id');
+        }
+    }
+
+    /**
+     * @param  array<string, float>  $map
+     */
+    public static function addL30(array &$map, string $since): void
+    {
+        foreach (self::definitions() as $def) {
+            if (! Schema::hasTable($def['table'])) {
+                continue;
+            }
+            $query = self::baseQuery($def)
+                ->whereRaw($def['date_sql'].' >= ?', [$since])
+                ->whereRaw($def['qty_sql'].' > 0');
+            self::excludeSkipped($query, $def['status_sql']);
+            foreach ($query->selectRaw($def['sku_sql'].' as sku, SUM('.$def['qty_sql'].') as qty')->groupBy(DB::raw($def['sku_sql']))->get() as $row) {
+                $sku = trim((string) ($row->sku ?? ''));
+                if ($sku === '') {
+                    continue;
+                }
+                $key = ShopifySku::compactSkuForLookup($sku);
+                if ($key === '') {
+                    continue;
+                }
+                $map[$key] = Inv5coreLedger::roundQty(($map[$key] ?? 0) + (float) $row->qty);
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $def
+     */
+    private static function maxLineId(array $def): int
+    {
+        return (int) (self::baseQuery($def)->max(DB::raw($def['id_sql'])) ?? 0);
+    }
+
+    /**
+     * @param  array<string, string>  $def
+     */
+    private static function lineQuery(array $def)
+    {
+        return self::baseQuery($def)->selectRaw(
+            $def['id_sql'].' as id, '.$def['sku_sql'].' as sku, '.$def['qty_sql'].' as qty, '.$def['order_sql'].' as order_number, '.$def['status_sql'].' as status, '.$def['date_sql'].' as order_date'
+        );
+    }
+
+    /**
+     * @param  array<string, string>  $def
+     */
+    private static function baseQuery(array $def)
+    {
+        if (! empty($def['join_sql'])) {
+            $query = DB::table('amazon_order_items as i')
+                ->join('amazon_orders as o', 'o.id', '=', 'i.amazon_order_id');
+        } else {
+            $query = DB::table($def['table']);
+        }
+        if (! empty($def['where_sql'])) {
+            $query->whereRaw($def['where_sql']);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  array<string, string>  $def
+     */
+    private static function applyLineJoin($query, array $def, string $sourceIdColumn): void
+    {
+        if (! empty($def['join_sql'])) {
+            $query->join('amazon_order_items as i', 'i.id', '=', $sourceIdColumn)
+                ->join('amazon_orders as o', 'o.id', '=', 'i.amazon_order_id');
+
+            return;
+        }
+
+        $query->join($def['table'].' as lines', 'lines.id', '=', $sourceIdColumn);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $query
+     */
+    private static function excludeSkipped($query, string $statusSql): void
+    {
+        $skipped = Inv5coreLedger::SKIPPED_STATUSES;
+        $query->where(function ($inner) use ($statusSql, $skipped) {
+            $inner->whereRaw($statusSql.' IS NULL')
+                ->orWhereRaw(
+                    'LOWER('.$statusSql.') NOT IN ('.implode(',', array_fill(0, count($skipped), '?')).')',
+                    $skipped
+                );
+        });
+    }
+};
