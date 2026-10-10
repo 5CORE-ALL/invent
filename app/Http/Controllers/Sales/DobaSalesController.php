@@ -146,11 +146,8 @@ class DobaSalesController extends Controller
             $tWeight = $weightAct * $quantity;
             $cogs = $lp * $quantity;
 
-            // Pickup prepaid already includes the label, so COGS Ship stays 0.
-            $isPrepaid = strtolower(trim((string) $item->order_type)) === 'pickup with a prepaid label';
-            $shipCost = $isPrepaid
-                ? 0.0
-                : self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
+            // Every order uses the weight slab, including pickup with a prepaid label.
+            $shipCost = self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
 
             // GPFT$ = (Sales AMT × 95%) − COGS − COGS Ship. COGS Ship is subtracted once.
             $pft = ($lineRevenue * 0.95) - $cogs - $shipCost;
