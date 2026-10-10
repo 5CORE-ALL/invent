@@ -1742,7 +1742,9 @@ class TemuShopifySalesService
                 'base_price_total' => round($officialUnit > 0 ? $officialUnit : $price, 2),
                 'goods_base_price' => round($goodsBasePrice > 0 ? $goodsBasePrice : ($officialUnit > 0 ? $officialUnit : $price), 2),
                 'listing_base_price' => round((float) ($priceBySku[$sku] ?? 0), 2),
-                'line_sales' => $hasApiSales ? round($lineSales, 2) : round(self::lineSales($price, $quantity), 2),
+                // API line is base + the freight Temu actually paid. Without that payload,
+                // do not invent +$2.99 of revenue — that stipend was being kept as profit.
+                'line_sales' => $hasApiSales ? round($lineSales, 2) : round(max($price, 0) * max($quantity, 0), 2),
                 'fb_price' => round($fbPrice, 2),
                 'lp' => $lp,
                 'temu_ship' => $temuShip,

@@ -24,6 +24,7 @@ use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsLbidDaily;
 use App\Support\AmazonAdsPauseRule;
+use App\Support\AmazonAdsSbAdEditor;
 use App\Support\AmazonAdsSbidRule;
 use App\Support\AmazonAdsLiveSyncFollowUp;
 use App\Support\AmazonAdsLiveSyncStatus;
@@ -4310,9 +4311,56 @@ class AmazonAdsController extends Controller
             'campaign_id' => $cid,
             'campaign_name' => $resolved['campaign_name'] !== '' ? $resolved['campaign_name'] : null,
             'source' => $resolved['source'],
+            'channel' => AmazonAdsSbAdEditor::campaignIsSb($cid) ? 'sb' : 'sp',
             'skus' => $skus,
             'count' => count($skus),
         ]);
+    }
+
+    /**
+     * Add products to an existing SB creative. SB only.
+     */
+    public function addSbAdProducts(Request $request, AmazonAdsSbAdEditor $editor): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->input('campaign_id', ''))) ?: '';
+        $result = $editor->add($cid, $this->stringList($request->input('skus')), $this->stringList($request->input('asins')));
+        $status = ! empty($result['success']) ? 200 : ((string) ($result['message'] ?? '') === 'Campaign ID is required.' ? 422 : 422);
+
+        return response()->json($result, $status);
+    }
+
+    /**
+     * Remove products from an SB creative. Deletes the SB ad when the last product is removed.
+     */
+    public function removeSbAdProducts(Request $request, AmazonAdsSbAdEditor $editor): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', trim((string) $request->input('campaign_id', ''))) ?: '';
+        $result = $editor->remove($cid, $this->stringList($request->input('skus')), $this->stringList($request->input('asins')));
+        $status = ! empty($result['success']) ? 200 : 422;
+
+        return response()->json($result, $status);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringList(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $raw = preg_split('/[\s,]+/', $raw) ?: [];
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $item) {
+            $s = trim((string) $item);
+            if ($s !== '') {
+                $out[] = $s;
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**

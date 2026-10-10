@@ -395,10 +395,17 @@
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return qty * (parseFloat(row && row.lp) || 0);
     }
+    /** Slab cost for the order weight. If that slab is missing, use Temu Ship × Qty so ship is not $0. */
+    function temuRowShipCost(row) {
+        const raw = row ? row.cogs_ship : null;
+        const slab = parseFloat(raw);
+        if (raw !== null && raw !== undefined && raw !== '' && isFinite(slab) && slab > 0) return slab;
+        const qty = parseInt(row && row.quantity_purchased) || 0;
+        return qty * (parseFloat(row && row.temu_ship) || 0);
+    }
     function temuRowYSalesGpftDollar(row) {
         const lineSales = parseFloat(row && row.line_sales) || 0;
-        const ship = parseFloat(row && row.cogs_ship) || 0;
-        return lineSales - temuRowCogs(row) - ship;
+        return lineSales - temuRowCogs(row) - temuRowShipCost(row);
     }
     function temuRowYSalesRoiPercent(row) {
         const cogs = temuRowCogs(row);
@@ -413,8 +420,7 @@
     }
     function temuRowGpftDollar(row) {
         const lineSales = parseFloat(row && row.line_sales) || 0;
-        const ship = parseFloat(row && row.cogs_ship) || 0;
-        return lineSales * TEMU_MARGIN - temuRowCogs(row) - ship;
+        return lineSales * TEMU_MARGIN - temuRowCogs(row) - temuRowShipCost(row);
     }
     function temuRowGpftPercent(row) {
         const qty = parseInt(row && row.quantity_purchased) || 0;

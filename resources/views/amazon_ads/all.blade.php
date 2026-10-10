@@ -1377,6 +1377,13 @@
                 </div>
                 <div class="modal-body py-2">
                     <p class="small text-muted mb-2" id="amazonAdsCampaignSkusModalSub"></p>
+                    <div id="amazonAdsSbAdTools" class="d-none mb-2">
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input type="text" class="form-control form-control-sm" id="amazonAdsSbAdAddInput" placeholder="SKU or ASIN" style="max-width: 220px;" autocomplete="off">
+                            <button type="button" class="btn btn-sm btn-primary" id="amazonAdsSbAdAddBtn">Add to SB ad</button>
+                        </div>
+                        <div class="small text-muted mt-1">SB only. Adds or removes products on the Amazon creative.</div>
+                    </div>
                     <div id="amazonAdsCampaignSkusLoading" class="small text-muted">Loading…</div>
                     <p class="small text-danger mb-0 d-none" id="amazonAdsCampaignSkusError" role="alert"></p>
                     <div class="table-responsive" style="max-height: 60vh;">
@@ -1391,6 +1398,7 @@
                                     <th>LMP</th>
                                     <th>Reviews</th>
                                     <th>State</th>
+                                    <th class="amz-sb-ad-col d-none"></th>
                                 </tr>
                             </thead>
                             <tbody id="amazonAdsCampaignSkusTableBody"></tbody>
@@ -1910,6 +1918,8 @@
             var pauseRuleGetUrl = @json(route('amazon.ads.pause-rule'));
             var prRuleSaveUrl = @json(route('amazon.ads.pr-rule.save'));
             var campaignSkusUrl = @json(route('amazon.ads.campaign-skus'));
+            var sbAdAddUrl = @json(route('amazon.ads.sb-ads.products.add'));
+            var sbAdRemoveUrl = @json(route('amazon.ads.sb-ads.products.remove'));
             var cpcAvgHistoryUrl = @json(route('amazon.ads.cpc-avg-history'));
             var ltCvrHistoryUrl = @json(route('amazon.ads.lt-cvr-history'));
             var ltAcosHistoryUrl = @json(route('amazon.ads.lt-acos-history'));
@@ -2613,7 +2623,8 @@
                 var cid = row && row.campaign_id != null ? String(row.campaign_id).trim() : '';
                 var plus = cid !== ''
                     ? '<button type="button" class="amz-camp-skus-btn" title="Show SKUs on this campaign"'
-                        + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">'
+                        + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '"'
+                        + ' data-ad-type="' + amzEsc(row && row.ad_type != null ? String(row.ad_type) : '') + '">'
                         + '<i class="fas fa-plus"></i></button>'
                     : '';
                 var lowN = cid !== '' ? amzCampaignLowInvN(row) : null;
@@ -2622,7 +2633,8 @@
                     ? '<button type="button" class="amz-low-inv-btn" title="'
                         + (knownSkuInv ? 'Lowest SKU inventory ' : 'Inventory ')
                         + lowN + ' is under 5. Click to see this campaign."'
-                        + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '">!</button>'
+                        + ' data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + attr + '"'
+                        + ' data-ad-type="' + amzEsc(row && row.ad_type != null ? String(row.ad_type) : '') + '">!</button>'
                     : '';
                 var copy = '<i class="fas fa-copy amz-copy-name" role="button" tabindex="0" title="Copy campaign name"'
                          + ' data-copy="' + attr + '" style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>';
@@ -4005,18 +4017,34 @@
                     + ' <span style="color:' + countColor + ';">(' + count.toLocaleString() + ')</span>'
                     + '</span>';
             }
-            function amzOpenCampaignSkus(cid, cname) {
+            var amzCampSkusCtx = { cid: '', cname: '', channel: '', source: '' };
+            function amzIsSbCampaign(channel, adType, source) {
+                var ch = String(channel || '').toLowerCase();
+                if (ch === 'sb') return true;
+                var t = String(adType || '').toUpperCase();
+                if (t.indexOf('BRAND') !== -1 || t === 'SB') return true;
+                return String(source || '') === 'sb_ads';
+            }
+            function amzSetSbAdTools(on) {
+                var tools = document.getElementById('amazonAdsSbAdTools');
+                var col = document.querySelector('#amazonAdsCampaignSkusTable .amz-sb-ad-col');
+                if (tools) tools.classList.toggle('d-none', !on);
+                if (col) col.classList.toggle('d-none', !on);
+            }
+            function amzOpenCampaignSkus(cid, cname, adType) {
                 var title = document.getElementById('amazonAdsCampaignSkusModalLabel');
                 var sub = document.getElementById('amazonAdsCampaignSkusModalSub');
                 var load = document.getElementById('amazonAdsCampaignSkusLoading');
                 var err = document.getElementById('amazonAdsCampaignSkusError');
                 var tbl = document.getElementById('amazonAdsCampaignSkusTable');
                 var body = document.getElementById('amazonAdsCampaignSkusTableBody');
+                amzCampSkusCtx = { cid: cid, cname: cname || '', channel: '', source: '', adType: adType || '' };
                 if (title) title.textContent = 'Campaign SKUs';
                 if (sub) sub.textContent = cname || cid;
                 if (err) { err.classList.add('d-none'); err.textContent = ''; }
                 if (tbl) tbl.classList.add('d-none');
                 if (body) body.innerHTML = '';
+                amzSetSbAdTools(false);
                 if (load) { load.classList.remove('d-none'); load.textContent = 'Loading…'; }
                 var modalEl = document.getElementById('amazonAdsCampaignSkusModal');
                 if (modalEl && typeof bootstrap !== 'undefined') {
@@ -4025,6 +4053,7 @@
                 function render(skus) {
                     if (load) load.classList.add('d-none');
                     if (title) title.textContent = 'Campaign SKUs (' + skus.length + ')';
+                    amzSetSbAdTools(amzIsSbCampaign(amzCampSkusCtx.channel, amzCampSkusCtx.adType, amzCampSkusCtx.source));
                     if (!skus.length) {
                         if (load) { load.classList.remove('d-none'); load.textContent = 'No SKUs found for this campaign (no product ads and the campaign name did not match a parent/SKU).'; }
                         return;
@@ -4052,6 +4081,10 @@
                                 + (lmpCount ? (' (' + lmpCount + ')') : '')
                                 + '</button>'
                             : '<span class="text-muted">—</span>';
+                        var sbOn = amzIsSbCampaign(amzCampSkusCtx.channel, amzCampSkusCtx.adType, amzCampSkusCtx.source);
+                        var remove = sbOn
+                            ? '<td><button type="button" class="btn btn-sm btn-outline-danger amz-sb-ad-remove" data-sku="' + amzEsc(s.sku || '') + '" data-asin="' + amzEsc(s.asin || '') + '" title="Remove from SB creative">Remove</button></td>'
+                            : '';
                         return '<tr>'
                             + '<td class="amz-sku-img-cell">' + imgHtml + '</td>'
                             + '<td class="text-center">' + invHtml + '</td>'
@@ -4061,11 +4094,18 @@
                             + '<td>' + lmpHtml + '</td>'
                             + '<td>' + amzFormatSkuReviews(s) + '</td>'
                             + '<td><span style="color:' + color + ';font-weight:600;">' + amzEsc(state) + '</span></td>'
+                            + remove
                             + '</tr>';
                     }).join('');
                     tbl.classList.remove('d-none');
+                    amzSetSbAdTools(amzIsSbCampaign(amzCampSkusCtx.channel, amzCampSkusCtx.adType, amzCampSkusCtx.source));
                 }
-                if (amzCampSkusCache[cid]) { render(amzCampSkusCache[cid]); return; }
+                if (amzCampSkusCache[cid] && Array.isArray(amzCampSkusCache[cid].skus)) {
+                    amzCampSkusCtx.channel = amzCampSkusCache[cid].channel || '';
+                    amzCampSkusCtx.source = amzCampSkusCache[cid].source || '';
+                    render(amzCampSkusCache[cid].skus);
+                    return;
+                }
                 var skuQs = '?campaign_id=' + encodeURIComponent(cid);
                 if (cname) skuQs += '&campaign_name=' + encodeURIComponent(cname);
                 fetch(campaignSkusUrl + skuQs, {
@@ -4082,13 +4122,15 @@
                             return;
                         }
                         var src = out.body && out.body.source ? String(out.body.source) : '';
+                        amzCampSkusCtx.source = src;
+                        amzCampSkusCtx.channel = out.body && out.body.channel ? String(out.body.channel) : '';
                         if (sub && src) {
                             var note = src === 'campaign_name'
                                 ? 'SKUs from campaign name (no Amazon product ads on this campaign).'
                                 : (src === 'sb_ads' ? 'SKUs from SB ads.' : 'SKUs from Amazon product ads.');
                             sub.textContent = (cname || cid) + ' — ' + note;
                         }
-                        amzCampSkusCache[cid] = skus;
+                        amzCampSkusCache[cid] = { skus: skus, channel: amzCampSkusCtx.channel, source: src };
                         render(skus);
                     })
                     .catch(function () {
@@ -4096,6 +4138,56 @@
                         if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); }
                     });
             }
+            function amzSbAdChange(kind, sku, asin) {
+                var cid = amzCampSkusCtx.cid;
+                var err = document.getElementById('amazonAdsCampaignSkusError');
+                if (!cid) return;
+                if (kind === 'remove' && !window.confirm('Remove this product from the SB creative?')) return;
+                var url = kind === 'remove' ? sbAdRemoveUrl : sbAdAddUrl;
+                var payload = { campaign_id: cid, _token: csrfToken };
+                if (sku) payload.skus = [sku];
+                if (asin) payload.asins = [asin];
+                if (err) { err.classList.add('d-none'); err.textContent = ''; }
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+                    .then(function (out) {
+                        var msg = (out.body && out.body.message) ? out.body.message : (kind === 'remove' ? 'Remove failed.' : 'Add failed.');
+                        if (!out.ok || (out.body && out.body.success === false)) {
+                            if (err) { err.textContent = msg; err.classList.remove('d-none'); }
+                            return;
+                        }
+                        delete amzCampSkusCache[cid];
+                        amzOpenCampaignSkus(cid, amzCampSkusCtx.cname, amzCampSkusCtx.adType);
+                    })
+                    .catch(function () {
+                        if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); }
+                    });
+            }
+            (function () {
+                var addBtn = document.getElementById('amazonAdsSbAdAddBtn');
+                var addInp = document.getElementById('amazonAdsSbAdAddInput');
+                if (addBtn) addBtn.addEventListener('click', function () {
+                    var v = addInp ? String(addInp.value || '').trim() : '';
+                    if (!v) return;
+                    amzSbAdChange('add', v, '');
+                    if (addInp) addInp.value = '';
+                });
+                if (addInp) addInp.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (addBtn) addBtn.click();
+                    }
+                });
+            })();
             document.addEventListener('click', function (e) {
                 var lowInv = e.target.closest ? e.target.closest('.amz-low-inv-btn') : null;
                 var plus = e.target.closest ? e.target.closest('.amz-camp-skus-btn') : null;
@@ -4103,7 +4195,18 @@
                 if (opener) {
                     e.stopPropagation();
                     e.preventDefault();
-                    amzOpenCampaignSkus(opener.getAttribute('data-campaign-id') || '', opener.getAttribute('data-campaign-name') || '');
+                    amzOpenCampaignSkus(
+                        opener.getAttribute('data-campaign-id') || '',
+                        opener.getAttribute('data-campaign-name') || '',
+                        opener.getAttribute('data-ad-type') || ''
+                    );
+                    return;
+                }
+                var sbRemove = e.target.closest ? e.target.closest('.amz-sb-ad-remove') : null;
+                if (sbRemove) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    amzSbAdChange('remove', sbRemove.getAttribute('data-sku') || '', sbRemove.getAttribute('data-asin') || '');
                     return;
                 }
                 var lmpBtn = e.target.closest ? e.target.closest('.amz-sku-lmp-btn') : null;
