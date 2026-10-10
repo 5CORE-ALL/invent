@@ -5270,8 +5270,12 @@ class AmazonAdsController extends Controller
             self::applyLiveSyncStatusFilters($query, $table, $request);
         }
 
-        $recordsFiltered = (int) $query->clone()->count();
-        $recordsTotal = $recordsFiltered;
+        $recordsFiltered = 0;
+        $recordsTotal = 0;
+        if (! $forBgtUniverse) {
+            $recordsFiltered = (int) $query->clone()->count();
+            $recordsTotal = $recordsFiltered;
+        }
 
         $queryForAggregates = $query->clone();
         // Calendar grid includes that day's rows plus L30 rows Amazon omitted (no impressions).
@@ -5281,7 +5285,7 @@ class AmazonAdsController extends Controller
         }
 
         $distinctCampaignCount = null;
-        if (in_array('campaign_id', $dbColumns, true)) {
+        if (! $forBgtUniverse && in_array('campaign_id', $dbColumns, true)) {
             $distinctCampaignCount = (int) $query->clone()
                 ->reorder()
                 ->selectRaw('COUNT(DISTINCT `'.$table.'`.campaign_id) AS c')
@@ -5358,9 +5362,16 @@ class AmazonAdsController extends Controller
         // Correlated ORDER BY runs a lookup per campaign before the page can return.
         // On a normal day the filtered set fits in one window, so rank it in PHP instead.
         // Chart counts do not need that order.
-        if ($forBgtUniverse && in_array('id', $dbColumns, true)) {
-            $query->orderBy('id', 'desc');
-            $rows = $query->limit(20000)->get();
+        if ($forBgtUniverse && in_array('id', $dbColumns, true) && in_array('campaign_id', $dbColumns, true)) {
+            $latestIds = $query->clone()
+                ->reorder()
+                ->select(DB::raw('MAX(`'.$table.'`.`id`) as pick_id'))
+                ->groupBy($table.'.campaign_id')
+                ->limit(20000)
+                ->pluck('pick_id');
+            $rows = $latestIds->isEmpty()
+                ? collect()
+                : DB::table($table)->whereIn('id', $latestIds->all())->get();
         } elseif ($usePhpSort && $recordsFiltered <= $sortCap && in_array('id', $dbColumns, true)) {
             $query->orderBy('id', 'desc');
         } else {

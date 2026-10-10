@@ -5009,10 +5009,14 @@
                 if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) {
                     return Promise.resolve(amzBgtUniverse.rows);
                 }
+                if (amzBgtUniverse.key === key && amzBgtUniverse.failed && !amzBgtUniverse.promise) {
+                    return Promise.resolve([]);
+                }
                 if (amzBgtUniverse.key === key && amzBgtUniverse.promise) return amzBgtUniverse.promise;
                 var seq = ++amzBgtUniverse.seq;
                 amzBgtUniverse.key = key;
                 amzBgtUniverse.rows = null;
+                amzBgtUniverse.failed = false;
                 amzBgtSetCountStatus('Counting all campaigns…');
                 var source = activeRawSourceKey || 'all_reports';
                 var body = new URLSearchParams();
@@ -5040,24 +5044,40 @@
                     if (seq !== amzBgtUniverse.seq) return [];
                     if (!json || json.ok !== true || !Array.isArray(json.campaigns)) {
                         amzBgtUniverse.promise = null;
-                        amzBgtUniverse.key = '';
+                        amzBgtUniverse.failed = true;
                         amzBgtSetCountStatus('');
+                        amzBgtRefreshAllRuleCounts();
                         return [];
                     }
                     amzBgtUniverse.rows = json.campaigns;
                     amzBgtUniverse.promise = null;
+                    amzBgtUniverse.failed = false;
                     amzBgtSetCountStatus('');
                     amzBgtRefreshAllRuleCounts();
                     return json.campaigns;
                 }).catch(function () {
                     if (seq === amzBgtUniverse.seq) {
                         amzBgtUniverse.promise = null;
+                        amzBgtUniverse.failed = true;
                         amzBgtSetCountStatus('');
+                        amzBgtRefreshAllRuleCounts();
                     }
                     return [];
                 });
                 return amzBgtUniverse.promise;
             }
+            (function () {
+                var modal = document.getElementById('amazonAdsBgtRulesModal');
+                if (!modal) return;
+                modal.addEventListener('shown.bs.modal', function () {
+                    if (amzBgtUniverse.failed) {
+                        amzBgtUniverse.failed = false;
+                        amzBgtUniverse.key = '';
+                        amzBgtUniverse.rows = null;
+                    }
+                    amzBgtEnsureUniverse().then(function () { amzBgtRefreshAllRuleCounts(); });
+                });
+            })();
             function amzBgtGridRows() {
                 if (!table || typeof table.getData !== 'function') return [];
                 try { return table.getData() || []; } catch (e) { return []; }
@@ -5080,6 +5100,9 @@
                 if (!amzBgtInvBands.length) amzBgtInvBands = amzBgtInvNormalizeBands((window.amazonAdsBgtInvRule && window.amazonAdsBgtInvRule.bands) || []);
             }
             function amzBgtCountingNote() {
+                if (amzBgtUniverse.failed) {
+                    return '<div class="amz-bgt-leg-row"><span>Count did not finish. Close and open BGT Rules to try again.</span></div>';
+                }
                 var n = (typeof amzDistinctCampaignCount === 'number' && isFinite(amzDistinctCampaignCount))
                     ? Number(amzDistinctCampaignCount).toLocaleString() + ' campaigns'
                     : 'campaigns';
