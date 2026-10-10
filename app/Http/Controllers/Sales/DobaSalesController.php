@@ -139,7 +139,9 @@ class DobaSalesController extends Controller
                 $lp = isset($values["lp"]) ? floatval($values["lp"]) : 0;
             }
 
-            $lineRevenue = $totalPrice > 0 ? $totalPrice : ($itemPrice * $quantity);
+            // Sales AMT is unit price × qty once. total_price is the order total and
+            // is repeated on every line, so it is not this row's sales.
+            $lineRevenue = round($itemPrice * $quantity, 2);
             $weightAct = self::actWeightLb($values);
             $tWeight = $weightAct * $quantity;
             $cogs = $lp * $quantity;
@@ -150,7 +152,7 @@ class DobaSalesController extends Controller
                 ? 0.0
                 : self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight);
 
-            // PFT = (Sales × 95%) − COGS − COGS Ship. COGS Ship is subtracted once.
+            // GPFT$ = (Sales AMT × 95%) − COGS − COGS Ship. COGS Ship is subtracted once.
             $pft = ($lineRevenue * 0.95) - $cogs - $shipCost;
             $pftEach = $quantity > 0 ? $pft / $quantity : 0;
             $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0;
@@ -163,9 +165,9 @@ class DobaSalesController extends Controller
                 'sku' => $item->sku,
                 'title' => $item->product_name,
                 'quantity' => $quantity,
-                'sale_amount' => $totalPrice,
-                'price' => $quantity > 0 ? $totalPrice / $quantity : 0,
-                'total_amount' => $totalPrice,
+                'sale_amount' => $lineRevenue,
+                'price' => round($itemPrice, 2),
+                'total_amount' => $lineRevenue,
                 'currency' => $item->currency,
                 'order_date' => $item->order_time ? $item->order_time->format('Y-m-d H:i:s') : null,
                 'status' => $item->order_status,

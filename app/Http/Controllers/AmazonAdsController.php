@@ -6365,9 +6365,15 @@ class AmazonAdsController extends Controller
                     }
                     if (in_array('projectedSpend', $columns, true)) {
                         $arr['projectedSpend'] = is_numeric($l7) ? self::projectMonthFromLast7((float) $l7) : null;
+                        $y30Spend = is_numeric($l1) ? round(((float) $l1) * 30, 2) : null;
+                        $arr['projectedSpend_prev'] = $y30Spend;
+                        $arr['projectedSpend_trend'] = self::moneyHistoryTrend($arr['projectedSpend'], $y30Spend);
                     }
                     if (in_array('projectedSales', $columns, true)) {
                         $arr['projectedSales'] = is_numeric($l7Sales) ? self::projectMonthFromLast7((float) $l7Sales) : null;
+                        $y30Sales = is_numeric($l1Sales) ? round(((float) $l1Sales) * 30, 2) : null;
+                        $arr['projectedSales_prev'] = $y30Sales;
+                        $arr['projectedSales_trend'] = self::moneyHistoryTrend($arr['projectedSales'], $y30Sales);
                     }
                 }
             }

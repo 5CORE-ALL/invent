@@ -354,6 +354,20 @@
         .amz-lrange-box-date { font-size: 11px; color: #64748b; margin: 4px 0 8px; }
         .amz-lrange-box-val { font-size: 15px; font-weight: 700; color: #1d4ed8; }
         .amz-lrange-box.is-empty .amz-lrange-box-val { color: #94a3b8; font-weight: 600; }
+        .amz-lrange-p30 {
+            margin-top: 10px;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            background: #eff6ff;
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .amz-lrange-p30-label { font-size: 12px; font-weight: 700; color: #1e3a8a; }
+        .amz-lrange-p30-sub { font-size: 11px; color: #64748b; }
+        .amz-lrange-p30-val { font-size: 18px; font-weight: 700; color: #1d4ed8; }
         @media (max-width: 767px) {
             .amz-lrange-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
@@ -1410,6 +1424,7 @@
                     <div id="amazonAdsLRangeModalLoading" class="small text-muted">Loading…</div>
                     <p class="small text-danger mb-0 d-none" id="amazonAdsLRangeModalError" role="alert"></p>
                     <div id="amazonAdsLRangeBoxes" class="amz-lrange-boxes d-none"></div>
+                    <div id="amazonAdsLRangeP30" class="amz-lrange-p30 d-none"></div>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -2400,6 +2415,33 @@
                     + '<i class="fas fa-chart-bar"></i></button>';
                 return '<span class="amz-l1-cell">' + histBtn + l7Btn + fmtSbid(cell) + '</span>';
             }
+            function fmtProjectedCell(cell, metric) {
+                var row = cell.getRow ? cell.getRow().getData() : {};
+                var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
+                var name = row && row.campaignName != null ? String(row.campaignName) : '';
+                var ad = row && row.ad_type != null ? String(row.ad_type) : '';
+                var isSales = metric === 'sales';
+                var kind = isSales ? 'ysales' : 'yspend';
+                var trend = isSales ? (row.projectedSales_trend || 'na') : (row.projectedSpend_trend || 'na');
+                var prev = isSales ? row.projectedSales_prev : row.projectedSpend_prev;
+                var current = parseFloat(cell.getValue());
+                var cls = (trend === 'up' || trend === 'same') ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
+                var prevTxt = (prev === null || prev === undefined || prev === '') ? '—' : Number(prev).toFixed(2);
+                var nowTxt = isFinite(current) ? current.toFixed(2) : '—';
+                var histTip = isSales ? '30-day projected ads sales history' : '30-day projected ads spend history';
+                if (trend === 'up') histTip += ' · Up vs yesterday×30 $' + prevTxt + ' → $' + nowTxt;
+                else if (trend === 'down') histTip += ' · Down vs yesterday×30 $' + prevTxt + ' → $' + nowTxt;
+                else if (trend === 'flat') histTip += ' · Same as yesterday×30 $' + prevTxt;
+                else histTip += ' · Click for daily history';
+                var l7Tip = isSales ? 'L1–L7 ads sales + projected 30' : 'L1–L7 ads spend + projected 30';
+                var histBtn = '<button type="button" class="amz-cpc-avg-history-dot amz-hist-as-icon ' + cls + '" title="' + amzEsc(histTip) + '" aria-label="' + amzEsc(histTip) + '"'
+                    + ' data-history="' + kind + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
+                    + '<i class="fas fa-history"></i></button>';
+                var l7Btn = '<button type="button" class="amz-lrange-btn" title="' + amzEsc(l7Tip) + '" aria-label="' + amzEsc(l7Tip) + '"'
+                    + ' data-lrange="' + amzEsc(metric) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
+                    + '<i class="fas fa-chart-bar"></i></button>';
+                return '<span class="amz-l1-cell">' + histBtn + l7Btn + fmtSbid(cell) + '</span>';
+            }
             function fmtCvr(cell) {
                 var n = amzFiniteNumber(cell.getValue());
                 if (isNaN(n)) return amzDash();
@@ -3064,19 +3106,19 @@
                 if (c === 'costPerClick') { col.title = 'CPC1'; col.formatter = fmt2dec; return; }
                 if (c === 'sales30d') { col.title = 'SL 30'; col.formatter = fmtDashRounded; return; }
                 if (c === 'projectedSpend') {
-                    col.title = 'Projected Spend';
-                    col.headerTooltip = 'Projected monthly ads spend = (last 7 days ending yesterday ÷ 7) × 30.';
-                    col.formatter = fmtSbid;
-                    col.minWidth = 110;
-                    col.width = 122;
+                    col.title = 'P30 Spend';
+                    col.headerTooltip = 'Projected 30-day ads spend = (last 7 days ending yesterday ÷ 7) × 30.';
+                    col.formatter = function (cell) { return fmtProjectedCell(cell, 'spend'); };
+                    col.minWidth = 118;
+                    col.width = 132;
                     return;
                 }
                 if (c === 'projectedSales') {
-                    col.title = 'Projected Sales';
-                    col.headerTooltip = 'Projected monthly ads sales = (last 7 days ending yesterday ÷ 7) × 30.';
-                    col.formatter = fmtSbid;
-                    col.minWidth = 110;
-                    col.width = 122;
+                    col.title = 'P30 Sales';
+                    col.headerTooltip = 'Projected 30-day ads sales = (last 7 days ending yesterday ÷ 7) × 30.';
+                    col.formatter = function (cell) { return fmtProjectedCell(cell, 'sales'); };
+                    col.minWidth = 118;
+                    col.width = 132;
                     return;
                 }
                 if (c === 'ySpend') {
@@ -4496,7 +4538,8 @@
                     sub: document.getElementById('amazonAdsLRangeModalSub'),
                     loading: document.getElementById('amazonAdsLRangeModalLoading'),
                     error: document.getElementById('amazonAdsLRangeModalError'),
-                    boxes: document.getElementById('amazonAdsLRangeBoxes')
+                    boxes: document.getElementById('amazonAdsLRangeBoxes'),
+                    p30: document.getElementById('amazonAdsLRangeP30')
                 };
             }
             function amzShowLRangeModal() {
@@ -4516,6 +4559,7 @@
                 if (els.loading) { els.loading.classList.remove('d-none'); els.loading.textContent = 'Loading…'; }
                 if (els.error) { els.error.classList.add('d-none'); els.error.textContent = ''; }
                 if (els.boxes) { els.boxes.classList.add('d-none'); els.boxes.innerHTML = ''; }
+                if (els.p30) { els.p30.classList.add('d-none'); els.p30.innerHTML = ''; }
                 amzShowLRangeModal();
                 if (!cid) {
                     if (els.loading) els.loading.classList.add('d-none');
@@ -4540,10 +4584,12 @@
                             }
                             return;
                         }
+                        var sum7 = 0;
                         var html = points.map(function (p) {
                             var raw = metric === 'sales' ? p.sales : p.spend;
                             var n = raw == null || raw === '' ? NaN : parseFloat(raw);
                             var empty = !isFinite(n);
+                            if (!empty) sum7 += n;
                             var val = empty ? '—' : ('$' + n.toFixed(2));
                             return '<div class="amz-lrange-box' + (empty ? ' is-empty' : '') + '">'
                                 + '<div class="amz-lrange-box-ln">' + amzEsc(p.label || '') + '</div>'
@@ -4554,6 +4600,14 @@
                         if (els.boxes) {
                             els.boxes.innerHTML = html || '<div class="small text-muted">No daily rows.</div>';
                             els.boxes.classList.remove('d-none');
+                        }
+                        if (els.p30) {
+                            var p30 = (sum7 / 7) * 30;
+                            var unit = metric === 'sales' ? 'sales' : 'spend';
+                            els.p30.innerHTML = '<div><div class="amz-lrange-p30-label">Projected 30-day ' + unit + '</div>'
+                                + '<div class="amz-lrange-p30-sub">(L1–L7 ÷ 7) × 30</div></div>'
+                                + '<div class="amz-lrange-p30-val">$' + p30.toFixed(2) + '</div>';
+                            els.p30.classList.remove('d-none');
                         }
                     })
                     .catch(function () {
