@@ -2348,6 +2348,12 @@ class NeweggApiService
             return $existing;
         }
         if (! empty($existing['success']) && ChannelListingRegistry::isLiveNeweggListingId((string) ($existing['item_number'] ?? ''), $sku)) {
+            $pickedSubcategory = self::numericSubcategory($fields['subcategory_id'] ?? null);
+            if ($pickedSubcategory !== '') {
+                $existingPlatform = strtolower(trim((string) ($fields['platform'] ?? 'b2c'))) === 'b2b' ? 'b2b' : 'b2c';
+                Cache::forever($this->itemSubcategoryCacheKey($sku, $existingPlatform), $pickedSubcategory);
+            }
+
             return [
                 'success' => true,
                 'message' => 'Connected existing Newegg listing.',
@@ -2418,6 +2424,7 @@ class NeweggApiService
         Cache::forget($this->pendingNeweggFeedCacheKey($platform, $sku));
         if (! empty($resolved['success'])) {
             Cache::forget($this->neweggCreateAttemptCacheKey($platform, $sku));
+            Cache::forget($this->catalogUpcAttemptCacheKey($platform, $sku));
             $createdSubcategory = self::numericSubcategory($fields['subcategory_id'] ?? null);
             if ($createdSubcategory !== '') {
                 Cache::forever($this->itemSubcategoryCacheKey($sku, $platform), $createdSubcategory);
@@ -2471,6 +2478,10 @@ class NeweggApiService
     protected function retryAfterDeadCatalogMatch(string $sku, array $fields, string $platform, array $failed): array
     {
         $message = trim((string) ($failed['message'] ?? ''));
+        $catalogUpc = self::conflictingCatalogUpc($message);
+        if ($catalogUpc !== '') {
+            return $this->offerOnCatalogUpc($sku, $fields, $platform, $failed, $catalogUpc);
+        }
         $attemptKey = $this->neweggCreateAttemptCacheKey($platform, $sku);
         if (! self::isDeadCatalogMatchError($message)) {
             Cache::forget($attemptKey);
@@ -2538,6 +2549,78 @@ class NeweggApiService
                 .($requestId !== '' ? ' (RequestId '.$requestId.')' : '')
                 .'. Click Publish again in a minute to check the result.',
         ];
+    }
+
+    /**
+     * UPC quoted in "An item with the same manufacturer and manufacturer part # already exists
+     * in our system with a different UPC [810047164579]".
+     */
+    public static function conflictingCatalogUpc(string $message): string
+    {
+        return preg_match('/same\s+manufacturer.*different\s+UPC\s*\[?\s*(\d{8,14})/is', $message, $m) ? $m[1] : '';
+    }
+
+    /**
+     * Newegg's catalog already holds this Manufacturer + MPN under another UPC, so a new item
+     * cannot be created. Send the offer against that catalog UPC once instead.
+     *
+     * @param  array<string, mixed>  $fields
+     * @param  array{success: bool, message: string, request_id?: string, terminal?: bool}  $failed
+     * @return array{success: bool, message: string, request_id?: string, still_processing?: bool, terminal?: bool}
+     */
+    protected function offerOnCatalogUpc(string $sku, array $fields, string $platform, array $failed, string $catalogUpc): array
+    {
+        $message = trim((string) ($failed['message'] ?? ''));
+        $triedKey = $this->catalogUpcAttemptCacheKey($platform, $sku);
+        $guidance = ' Newegg already has '.$sku.' in its catalog under UPC '.$catalogUpc.'.'
+            .' In Seller Portal > Items > Item Creation, search UPC '.$catalogUpc.' and choose Sell This,'
+            .' or correct the UPC on the product if '.$catalogUpc.' is not this item, then publish again.';
+
+        if (Cache::get($triedKey) === $catalogUpc) {
+            Cache::forget($triedKey);
+
+            return [
+                'success' => false,
+                'terminal' => true,
+                'message' => $message.$guidance,
+                'request_id' => (string) ($failed['request_id'] ?? ''),
+            ];
+        }
+
+        $retry = $fields;
+        $retry['upc'] = $catalogUpc;
+        $submitted = $this->submitExistingItemFeed($sku, $retry, $platform);
+        if (empty($submitted['success'])) {
+            return [
+                'success' => false,
+                'terminal' => true,
+                'message' => $message.' Sending the offer on UPC '.$catalogUpc.' failed: '
+                    .trim((string) ($submitted['message'] ?? 'feed submit failed.')).$guidance,
+                'request_id' => (string) ($failed['request_id'] ?? ''),
+                'blocked_by_cloudflare' => ! empty($submitted['blocked_by_cloudflare']),
+            ];
+        }
+
+        Cache::put($triedKey, $catalogUpc, now()->addDays(7));
+        $requestId = trim((string) ($submitted['request_id'] ?? ''));
+        if ($requestId !== '') {
+            Cache::put($this->pendingNeweggFeedCacheKey($platform, $sku), $requestId, now()->addDays(7));
+        }
+
+        return [
+            'success' => false,
+            'still_processing' => true,
+            'request_id' => $requestId,
+            'message' => 'Newegg already has '.$sku.' in its catalog under UPC '.$catalogUpc
+                .'. Sent the listing against that catalog item'
+                .($requestId !== '' ? ' (RequestId '.$requestId.')' : '')
+                .'. Click Publish again in a minute to check the result.',
+        ];
+    }
+
+    protected function catalogUpcAttemptCacheKey(string $platform, string $sku): string
+    {
+        return 'newegg-item-feed-catalog-upc:'.$platform.':'.strtoupper(preg_replace('/\s+/', ' ', trim($sku)) ?? trim($sku));
     }
 
     protected function pendingNeweggFeedCacheKey(string $platform, string $sku): string

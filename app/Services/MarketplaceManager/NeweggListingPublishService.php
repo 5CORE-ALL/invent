@@ -192,7 +192,7 @@ class NeweggListingPublishService
         $itemNumber = trim((string) ($res['item_number'] ?? ''));
         $message = (string) ($res['message'] ?? ('Published '.$sku.' to Newegg.'));
         if (! empty($res['existing'])) {
-            $message = $this->refreshExistingContent($sku, $itemNumber, $title, $description, $bullets, $images);
+            $message = $this->refreshExistingContent($sku, $itemNumber, $title, $description, $bullets, $images, $channel === 'neweggb2b' ? 'b2b' : 'b2c');
         }
         try {
             $this->api->updateItemPrice($sku, $price);
@@ -249,6 +249,17 @@ class NeweggListingPublishService
         return true;
     }
 
+    public function isConnectedLocally(string $sku, string $channel): bool
+    {
+        $cfg = ChannelListingRegistry::get($this->normalizeChannel($channel));
+        if (! $cfg) {
+            return false;
+        }
+        $listedId = trim((string) (ChannelListingRegistry::loadListedIds($cfg, [$sku])[strtolower($sku)] ?? ''));
+
+        return ChannelListingRegistry::isLiveNeweggListingId($listedId, $sku);
+    }
+
     public function releaseFeedFollowUp(string $sku, string $channel): void
     {
         Cache::forget($this->followUpLockKey($sku, $this->normalizeChannel($channel)));
@@ -271,7 +282,7 @@ class NeweggListingPublishService
      * @param  list<string>  $bullets
      * @param  list<string>  $images
      */
-    private function refreshExistingContent(string $sku, string $itemNumber, string $title, string $description, array $bullets, array $images): string
+    private function refreshExistingContent(string $sku, string $itemNumber, string $title, string $description, array $bullets, array $images, string $platform = 'b2c'): string
     {
         $state = 'unknown';
         try {
@@ -295,7 +306,7 @@ class NeweggListingPublishService
                 'description' => $description,
                 'bullets' => $bullets,
                 'images' => $images,
-            ], (int) config('services.newegg.content_feed_wait_seconds', 30));
+            ], (int) config('services.newegg.content_feed_wait_seconds', 30), $platform);
         } catch (\Throwable $e) {
             $result = ['success' => false, 'message' => $e->getMessage()];
         }

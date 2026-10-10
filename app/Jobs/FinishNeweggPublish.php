@@ -34,12 +34,15 @@ class FinishNeweggPublish implements ShouldQueue
         public ?int $categoryId = null,
         public array $overrides = [],
     ) {
-        $this->onQueue(MarketplaceManagerRegistry::queueFor('newegg'));
+        $this->onQueue(MarketplaceManagerRegistry::listingsQueueFor('newegg'));
     }
 
     public function handle(NeweggListingPublishService $publisher): void
     {
         $publisher->releaseFeedFollowUp($this->sku, $this->channel);
+        if ($publisher->isConnectedLocally($this->sku, $this->channel)) {
+            return;
+        }
 
         try {
             $result = $publisher->publishSkus(

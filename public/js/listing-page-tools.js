@@ -1434,12 +1434,40 @@
         return done.promise();
     }
 
-    function publishGroup(skus, parent) {
-        const c = cfg();
+    function publishGroup(skus, parent, payload) {
         return $.ajax({
             url: actionUrl(),
             type: 'POST',
-            data: {
+            data: payload || publishPayload(skus, parent),
+            headers: { 'X-CSRF-TOKEN': csrf() },
+            timeout: 300000
+        });
+    }
+
+    function followSubmittedPublish(group, payload, attempt) {
+        if (attempt >= 12) return;
+        setTimeout(function () {
+            publishGroup(group.skus, group.parent, payload).done(function (response) {
+                const goodsId = String((response && response.goods_id) || '').trim();
+                if (goodsId) {
+                    markListed(findTable(), (response && response.skus) || group.skus, goodsId);
+                    const status = document.getElementById('listing-publish-status');
+                    if (!status || status.hidden) {
+                        showPublishStatus('success', (response && response.message) || ('Published ' + group.parent + '.'));
+                    }
+                    return;
+                }
+                if (response && response.submitted) followSubmittedPublish(group, payload, attempt + 1);
+            }).fail(function (xhr) {
+                const status = document.getElementById('listing-publish-status');
+                if (!status || status.hidden) showPublishStatus('error', group.parent + ': ' + ajaxError(xhr));
+            });
+        }, 30000);
+    }
+
+    function publishPayload(skus, parent) {
+        const c = cfg();
+        return {
                 skus: skus,
                 confirmed: 1,
                 publish: 1,
@@ -1451,10 +1479,7 @@
                 category_uuid: selectedCategoryUuid(),
                 weight_lb: (isAliexpressChannel() || isTiktokChannel() || isSheinChannel()) ? selectedWeightLb() : '',
                 item_specifics: isEbayChannel() ? collectEbaySpecifics() : {}
-            },
-            headers: { 'X-CSRF-TOKEN': csrf() },
-            timeout: 300000
-        });
+        };
     }
 
     function enhanceTable(table) {
@@ -1637,11 +1662,15 @@
                 const label = 'Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…';
                 if (progress) progress.textContent = label;
                 showPublishStatus('loading', label);
-                publishGroup(group.skus, group.parent).done(function (response) {
+                const payload = publishPayload(group.skus, group.parent);
+                publishGroup(group.skus, group.parent, payload).done(function (response) {
                     const goodsId = String((response && response.goods_id) || '').trim();
                     const listedSkus = (response && response.skus) || group.skus;
                     if (goodsId) markListed(table, listedSkus, goodsId);
-                    if (response && response.submitted) submitted = true;
+                    if (response && response.submitted) {
+                        submitted = true;
+                        followSubmittedPublish(group, payload, 0);
+                    }
                     ok.push((response && response.message) ? response.message : ('Published ' + group.parent + '.'));
                     next();
                 }).fail(function (xhr) {

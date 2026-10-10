@@ -32,7 +32,7 @@ class FinishB5cB2bPublish implements ShouldQueue
         public array $images = [],
         public bool $refreshCounts = false,
     ) {
-        $this->onQueue(MarketplaceManagerRegistry::queueFor('b5cb2b'));
+        $this->onQueue(MarketplaceManagerRegistry::listingsQueueFor('b5cb2b'));
     }
 
     public function handle(DirectStoreListingPublishService $publisher): void
