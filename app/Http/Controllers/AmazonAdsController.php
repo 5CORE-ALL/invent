@@ -11,6 +11,7 @@ use App\Models\AmazonAdsLiveSyncState;
 use App\Models\AmazonAdsPauseRuleState;
 use App\Models\ShopifySku;
 use App\Services\AmazonAdsPauseRuleApplicator;
+use App\Support\AmazonAdsBgtCountStore;
 use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
 use App\Support\AmazonAdsBgtInvRule;
@@ -3793,6 +3794,7 @@ class AmazonAdsController extends Controller
             'amazonAdsBgtDilRule' => AmazonAdsBgtDilRule::resolvedRule(),
             'amazonAdsBgtInvRule' => AmazonAdsBgtInvRule::resolvedRule(),
             'amazonAdsBgtSpendRule' => AmazonAdsBgtSpendRule::resolvedRule(),
+            'amazonAdsBgtCounts' => AmazonAdsBgtCountStore::read(),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
             'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
         ]);
@@ -3845,6 +3847,35 @@ class AmazonAdsController extends Controller
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache')
           ->header('Expires', '0');
+    }
+
+    /**
+     * Persist the last BGT chart counts so the modal can paint them without a live recount.
+     */
+    public function saveBgtCounts(Request $request): JsonResponse
+    {
+        $counts = $request->input('counts');
+        if (! is_array($counts)) {
+            return response()->json([
+                'message' => 'Counts are required.',
+                'status' => 422,
+            ], 422);
+        }
+
+        try {
+            AmazonAdsBgtCountStore::write($counts);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Could not save BGT counts.',
+                'status' => 500,
+            ], 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'counts' => AmazonAdsBgtCountStore::read(),
+            'status' => 200,
+        ]);
     }
 
     /**

@@ -1886,6 +1886,7 @@
             var pushSbSbgtsUrl = @json(route('amazon.ads.push-sb-sbgts'));
             var syncLiveBidBgtUrl = @json(route('amazon.ads.sync-live-bid-bgt'));
             var bgtRuleGetUrl = @json(route('amazon.ads.bgt-rule'));
+            var bgtCountsSaveUrl = @json(route('amazon.ads.bgt-counts.save'));
             var bgtRuleSaveUrl = @json(route('amazon.ads.bgt-rule.save'));
             var bgtViewsRuleGetUrl = @json(route('amazon.ads.bgt-views-rule'));
             var bgtViewsRuleSaveUrl = @json(route('amazon.ads.bgt-views-rule.save'));
@@ -1922,6 +1923,7 @@
             window.amazonAdsBgtDilRule = @json($amazonAdsBgtDilRule ?? null);
             window.amazonAdsBgtInvRule = @json($amazonAdsBgtInvRule ?? null);
             window.amazonAdsBgtSpendRule = @json($amazonAdsBgtSpendRule ?? null);
+            window.amazonAdsBgtCounts = @json($amazonAdsBgtCounts ?? null);
             window.amazonAdsSbidRule = @json($amazonAdsSbidRule ?? null);
             window.amazonAdsPauseRule = @json($amazonAdsPauseRule ?? null);
 
@@ -4923,6 +4925,9 @@
 
             // ---- BGT slab counts (every campaign in the current filters, not just this page) ----
             var amzBgtUniverse = { key: '', rows: null, promise: null, seq: 0 };
+            var amzBgtSaved = (window.amazonAdsBgtCounts && typeof window.amazonAdsBgtCounts === 'object') ? window.amazonAdsBgtCounts : null;
+            var amzBgtStaged = { columns: {}, sum: null, dirty: false };
+            var amzBgtSaveCountsTimer = null;
             function amzBgtFilterKey() {
                 var payload = {};
                 try { payload = amzFilterPayload(); } catch (e) { payload = {}; }
@@ -5017,7 +5022,7 @@
                 amzBgtUniverse.key = key;
                 amzBgtUniverse.rows = null;
                 amzBgtUniverse.failed = false;
-                amzBgtSetCountStatus('Counting all campaigns…');
+                if (!amzBgtHasSavedCounts()) amzBgtSetCountStatus('Counting all campaigns…');
                 var source = activeRawSourceKey || 'all_reports';
                 var body = new URLSearchParams();
                 body.set('draw', '1');
@@ -5137,7 +5142,72 @@
                 });
                 counts.unmatched = unmatched;
                 counts.campaigns = rows.length;
+                counts._live = true;
                 return counts;
+            }
+            function amzBgtHasSavedCounts() {
+                return !!(amzBgtSaved && amzBgtSaved.columns && Object.keys(amzBgtSaved.columns).length);
+            }
+            function amzBgtStoredColumn(key, bands) {
+                var saved = amzBgtSaved && amzBgtSaved.columns ? amzBgtSaved.columns[key] : null;
+                if (!saved || !Array.isArray(saved.counts) || !saved.counts.length) return null;
+                if (bands && saved.counts.length !== bands.length) return null;
+                var counts = saved.counts.map(function (n) { return Number(n) || 0; });
+                counts.unmatched = Number(saved.unmatched) || 0;
+                counts.campaigns = Number(saved.campaigns) || 0;
+                return counts;
+            }
+            function amzBgtStageColumn(key, counts) {
+                var list = [];
+                for (var i = 0; i < counts.length; i++) list.push(Number(counts[i]) || 0);
+                amzBgtStaged.columns[key] = {
+                    counts: list,
+                    unmatched: Number(counts.unmatched) || 0,
+                    campaigns: Number(counts.campaigns) || 0
+                };
+                amzBgtStaged.dirty = true;
+            }
+            function amzBgtScheduleSaveCounts() {
+                if (!amzBgtStaged.dirty || !bgtCountsSaveUrl) return;
+                if (amzBgtSaveCountsTimer) clearTimeout(amzBgtSaveCountsTimer);
+                amzBgtSaveCountsTimer = setTimeout(function () {
+                    amzBgtSaveCountsTimer = null;
+                    var columns = {};
+                    var base = (amzBgtSaved && amzBgtSaved.columns) || {};
+                    Object.keys(base).forEach(function (k) { columns[k] = base[k]; });
+                    Object.keys(amzBgtStaged.columns).forEach(function (k) { columns[k] = amzBgtStaged.columns[k]; });
+                    var payload = {
+                        filter: (function () { try { return amzBgtFilterKey(); } catch (e) { return ''; } })(),
+                        columns: columns,
+                        sum: amzBgtStaged.sum || (amzBgtSaved && amzBgtSaved.sum) || null
+                    };
+                    fetch(bgtCountsSaveUrl, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ counts: payload })
+                    }).then(function (res) { return res.json(); }).then(function (body) {
+                        if (body && body.counts) {
+                            amzBgtSaved = body.counts;
+                            window.amazonAdsBgtCounts = body.counts;
+                        } else {
+                            amzBgtSaved = payload;
+                        }
+                        amzBgtStaged.dirty = false;
+                    }).catch(function () {});
+                }, 700);
+            }
+            function amzBgtOnBudgetChange() {
+                if (amzBgtCountRows()) {
+                    amzBgtPaintSum();
+                    return;
+                }
+                amzBgtEnsureUniverse().then(function () { amzBgtRefreshAllRuleCounts(); });
             }
             function amzBgtRefreshCountCells() {}
             var amzBgtColCharts = {};
@@ -5246,7 +5316,12 @@
                 var legend = document.getElementById('amz-bgt-leg-' + key);
                 var canvas = document.getElementById('amz-bgt-chart-' + key);
                 if (!legend || !canvas || typeof Chart === 'undefined') return;
+                if (!counts) counts = amzBgtStoredColumn(key, bands);
                 if (!counts) { legend.innerHTML = amzBgtCountingNote(); return; }
+                if (counts._live) {
+                    amzBgtStageColumn(key, counts);
+                    amzBgtScheduleSaveCounts();
+                }
                 var rows = (bands || []).map(function (b, i) {
                     var n = counts && counts[i] != null ? Number(counts[i]) : 0;
                     if (!isFinite(n)) n = 0;
@@ -5392,6 +5467,7 @@
                 var sbgtTotal = 0;
                 var sumRows = amzBgtCountRows();
                 if (!sumRows) {
+                    if (amzBgtSaved && amzBgtSaved.sum && amzBgtApplySavedSum(amzBgtSaved.sum)) return;
                     if (legend) legend.innerHTML = amzBgtCountingNote();
                     return;
                 }
@@ -5475,13 +5551,26 @@
                         }
                     });
                 }
+                var countTotal = 0;
+                var bgtTotal = 0;
+                order.forEach(function (p) {
+                    countTotal += partCount[p.key];
+                    bgtTotal += partSum[p.key];
+                });
+                amzBgtStaged.sum = {
+                    rows: rows.map(function (r) { return { label: String(r.label), n: r.n, color: r.color }; }),
+                    totalN: totalN,
+                    sbgtTotal: sbgtTotal,
+                    campaigns: campaigns,
+                    countTotal: countTotal,
+                    bgtTotal: bgtTotal,
+                    parts: order.map(function (p) {
+                        return { label: p.label, count: partCount[p.key], sum: partSum[p.key] };
+                    })
+                };
+                amzBgtStaged.dirty = true;
+                amzBgtScheduleSaveCounts();
                 if (tbody) {
-                    var countTotal = 0;
-                    var bgtTotal = 0;
-                    order.forEach(function (p) {
-                        countTotal += partCount[p.key];
-                        bgtTotal += partSum[p.key];
-                    });
                     var html = order.map(function (p) {
                         return '<tr><td>' + amzEsc(p.label) + '</td><td class="text-center">' + partCount[p.key].toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(partSum[p.key]) + '</td></tr>';
                     }).join('');
@@ -5489,6 +5578,52 @@
                     html += '<tr class="fw-semibold"><td>SBGT</td><td class="text-center">' + campaigns.toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(sbgtTotal) + '</td></tr>';
                     tbody.innerHTML = html;
                 }
+            }
+            function amzBgtApplySavedSum(sum) {
+                if (!sum || !Array.isArray(sum.rows)) return false;
+                var legend = document.getElementById('amz-bgt-leg-sum');
+                var canvas = document.getElementById('amz-bgt-chart-sum');
+                var tbody = document.getElementById('amz-bgt-sum-tbody');
+                var rows = sum.rows.map(function (r) {
+                    return { label: String(r.label != null ? r.label : ''), n: Number(r.n) || 0, color: r.color || '#64748b' };
+                });
+                var totalN = Number(sum.totalN) || rows.reduce(function (s, r) { return s + r.n; }, 0);
+                amzBgtPaintBudgetBadges(rows, totalN, Number(sum.sbgtTotal) || 0);
+                if (legend) {
+                    legend.innerHTML = rows.map(function (r) {
+                        var pct = totalN > 0 ? Math.round((r.n / totalN) * 100) : 0;
+                        return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span></div>';
+                    }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + totalN + '</strong><span class="amz-bgt-leg-pct">' + (totalN > 0 ? '100%' : '0%') + '</span></div>' : '');
+                }
+                if (canvas && typeof Chart !== 'undefined') {
+                    if (amzBgtColCharts.sum) { try { amzBgtColCharts.sum.destroy(); } catch (e) {} amzBgtColCharts.sum = null; }
+                    amzBgtColCharts.sum = new Chart(canvas.getContext('2d'), {
+                        type: 'bar',
+                        data: {
+                            labels: rows.map(function (r) { return r.label; }),
+                            datasets: [{ data: rows.map(function (r) { return r.n; }), backgroundColor: rows.map(function (r) { return r.color; }), borderWidth: 0, borderRadius: 6, maxBarThickness: 48 }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                x: { display: true, grid: { display: false }, ticks: { color: '#334155', font: { size: 12, weight: '600' } } },
+                                y: { display: true, beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', precision: 0, font: { size: 11 } } }
+                            }
+                        }
+                    });
+                }
+                if (tbody && Array.isArray(sum.parts)) {
+                    var html = sum.parts.map(function (p) {
+                        return '<tr><td>' + amzEsc(p.label || '') + '</td><td class="text-center">' + (Number(p.count) || 0).toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(Number(p.sum) || 0) + '</td></tr>';
+                    }).join('');
+                    html += '<tr class="amz-bgt-count-total"><td>Total</td><td class="text-center">' + (Number(sum.countTotal) || 0).toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(Number(sum.bgtTotal) || 0) + '</td></tr>';
+                    html += '<tr class="fw-semibold"><td>SBGT</td><td class="text-center">' + (Number(sum.campaigns) || 0).toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(Number(sum.sbgtTotal) || 0) + '</td></tr>';
+                    tbody.innerHTML = html;
+                }
+                return true;
             }
             function amzBgtNoteSaved(label) {
                 var st = document.getElementById('amz-bgt-status');
@@ -5578,6 +5713,14 @@
                     if (err) { err.classList.add('d-none'); err.textContent = ''; }
                     var st = document.getElementById('amz-bgt-status');
                     if (st) st.textContent = '';
+                });
+                bgtModalEl.addEventListener('input', function (e) {
+                    var field = e.target && e.target.dataset ? e.target.dataset.field : '';
+                    if (field === 'bgt' || field === 'sbgt') amzBgtOnBudgetChange();
+                });
+                bgtModalEl.addEventListener('change', function (e) {
+                    var field = e.target && e.target.dataset ? e.target.dataset.field : '';
+                    if (field === 'bgt' || field === 'sbgt') amzBgtOnBudgetChange();
                 });
             }
             var bgtAddBtn = document.getElementById('amazonAdsBgtRuleAddBandBtn');
@@ -6193,6 +6336,7 @@
                 });
                 counts.unmatched = unmatched;
                 counts.campaigns = rows.length;
+                counts._live = true;
                 return counts;
             }
             function amzBgtReviewsRefreshCounts() {
