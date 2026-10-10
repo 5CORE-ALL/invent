@@ -29,14 +29,14 @@ return [
     | Marketplaces whose orders must NOT be created on Shopify by this app
     |--------------------------------------------------------------------------
     |
-    | Doba's own Shopify app ("For Doba Supplier Integration") already creates
-    | the order, so a copy from here deducted inventory twice. Comma-separated
-    | slugs; set MM_PAUSED_SHOPIFY_IMPORTS="" to resume everything.
+    | Comma-separated slugs. Doba is created here like the other channels
+    | (Veeqo and 4Seller/GOFO pick the Shopify copy up). Leave the env empty
+    | to import every channel.
     |
     */
     'paused_shopify_imports' => array_values(array_filter(array_map(
         'trim',
-        explode(',', strtolower((string) env('MM_PAUSED_SHOPIFY_IMPORTS', 'doba')))
+        explode(',', strtolower((string) env('MM_PAUSED_SHOPIFY_IMPORTS', '')))
     ))),
 
     /*

@@ -18,8 +18,13 @@ class MarketplaceSyncSettings extends Model
     {
         $row = self::where('marketplace', $marketplace)->first();
         $settings = $row ? (array) $row->settings : self::defaults($marketplace);
+        $merged = array_replace_recursive(self::defaults($marketplace), $settings);
+        if (strtolower(trim($marketplace)) === 'doba') {
+            $merged['order']['auto_import_to_shopify'] = true;
+            $merged['order']['auto_fulfill_shopify'] = true;
+        }
 
-        return array_replace_recursive(self::defaults($marketplace), $settings);
+        return $merged;
     }
 
     public static function setFor(string $marketplace, array $settings): void
@@ -97,9 +102,14 @@ class MarketplaceSyncSettings extends Model
      */
     public static function shopifyImportPaused(string $marketplace): bool
     {
+        $marketplace = strtolower(trim($marketplace));
+        // Doba orders are recorded on Shopify like the other channels.
+        if ($marketplace === 'doba') {
+            return false;
+        }
         $paused = (array) config('marketplace_manager.paused_shopify_imports', []);
 
-        return in_array(strtolower(trim($marketplace)), $paused, true);
+        return in_array($marketplace, $paused, true);
     }
 
     public static function shopifyImportPausedMessage(string $marketplace): string
@@ -110,19 +120,15 @@ class MarketplaceSyncSettings extends Model
 
     /**
      * May background jobs / page sweeps write label tracking onto this
-     * marketplace's Shopify copies (auto-fulfill)? Doba is OFF by default:
-     * its Shopify orders are fulfilled by hand. Per-order buttons and CLI
-     * `--ids` runs are explicit actions and ignore this switch.
+     * marketplace's Shopify copies (auto-fulfill)? Doba uses the same
+     * Veeqo / 4Seller (GOFO) writeback as the other channels. Per-order
+     * buttons and CLI `--ids` runs are explicit actions and ignore this switch.
      */
     public static function canAutoFulfillShopify(string $marketplace, ?array $settings = null): bool
     {
         $marketplace = strtolower(trim($marketplace));
-        if ($marketplace === '' ) {
+        if ($marketplace === '' || $marketplace === 'doba') {
             return true;
-        }
-        // Doba tracking is shown on Order Fulfillment only. It is never written onto Shopify.
-        if ($marketplace === 'doba') {
-            return false;
         }
         $settings ??= self::getFor($marketplace);
 
@@ -272,8 +278,8 @@ class MarketplaceSyncSettings extends Model
                 ], true),
                 'import_paid_orders_only' => false,
                 'keep_order_number_from_channel' => true,
-                // Label tracking → Shopify copy by cron/sweeps. Doba copies are fulfilled by hand.
-                'auto_fulfill_shopify' => ! $isDoba,
+                // Label tracking → Shopify copy by cron/sweeps, including Doba (Veeqo / 4Seller).
+                'auto_fulfill_shopify' => true,
                 // Shopify label/tracking → declare shipment (ON by default per channel).
                 'push_tracking_to_aliexpress' => $marketplace === 'aliexpress',
                 'push_tracking_to_alibaba' => $isAlibaba,

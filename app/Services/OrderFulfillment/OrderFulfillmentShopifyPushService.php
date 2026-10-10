@@ -27,8 +27,8 @@ class OrderFulfillmentShopifyPushService
     /** Rows older than this are left alone (the page itself only shows recent orders). */
     public const MAX_ROW_AGE_DAYS = 30;
 
-    /** Doba copies are fulfilled by hand. */
-    public const EXCLUDED_SLUGS = ['manual', 'doba'];
+    /** Manual rows stay on the fulfillment page. Doba is pushed like the other channels. */
+    public const EXCLUDED_SLUGS = ['manual'];
 
     public const MAX_CHANNEL_ATTEMPTS = 6;
 
@@ -386,6 +386,16 @@ class OrderFulfillmentShopifyPushService
 
         $action = (string) ($result['action'] ?? '');
         $message = (string) ($result['message'] ?? '');
+        if ($action === 'prepaid_doba' || str_contains(strtolower($message), 'prepaid doba orders are not fulfilled')) {
+            $row->shopify_push_checked_at = now();
+            $row->shopify_next_try_at = now()->addYears(5);
+            $row->shopify_push_message = 'Prepaid Doba orders are not fulfilled.';
+            $row->save();
+            $out['shopify'] = 'skipped';
+            $out['message'] = 'Prepaid Doba orders are not fulfilled.';
+
+            return $out;
+        }
         if (! in_array($action, ['shopify_fulfilled', 'already_on_shopify'], true)) {
             if (self::isRateLimitResult($action, $message)) {
                 // Shopify's shared bucket is full: not this order's fault, so no attempt is counted.

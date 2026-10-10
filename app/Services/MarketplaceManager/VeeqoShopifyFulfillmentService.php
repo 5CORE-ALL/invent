@@ -130,14 +130,11 @@ class VeeqoShopifyFulfillmentService
     /**
      * True when this (automatic) run must not write tracking onto the
      * marketplace's Shopify copies. Always false for manual actions.
+     * Doba is included: Veeqo and 4Seller (GOFO) labels are written to Shopify.
      */
     public function autoFulfillBlocked(string $marketplace): bool
     {
         $marketplace = strtolower(trim($marketplace));
-        // Doba numbers are fetched for the Order Fulfillment page and must not be written to Shopify, including from a manual fulfill action.
-        if ($marketplace === 'doba') {
-            return true;
-        }
         if ($this->manualAction) {
             return false;
         }
@@ -148,7 +145,7 @@ class VeeqoShopifyFulfillmentService
             try {
                 $this->autoFulfillAllowed[$marketplace] = MarketplaceSyncSettings::canAutoFulfillShopify($marketplace);
             } catch (\Throwable) {
-                $this->autoFulfillAllowed[$marketplace] = $marketplace !== 'doba';
+                $this->autoFulfillAllowed[$marketplace] = true;
             }
         }
 
@@ -161,9 +158,7 @@ class VeeqoShopifyFulfillmentService
     protected function autoFulfillBlockedResult(string $marketplace): array
     {
         $label = $marketplace === 'doba' ? 'Doba' : ucfirst($marketplace);
-        $message = $marketplace === 'doba'
-            ? 'Doba tracking is kept on Order Fulfillment and is not written to Shopify.'
-            : 'Automatic Shopify fulfillment is turned off for '.$label.' — fulfill the Shopify order manually (or use the per-order Fetch tracking button).';
+        $message = 'Automatic Shopify fulfillment is turned off for '.$label.' — fulfill the Shopify order manually (or use the per-order Fetch tracking button).';
 
         return [
             'success' => false,
@@ -449,6 +444,14 @@ class VeeqoShopifyFulfillmentService
             $marketplaceOrderIds,
             fn ($id) => ! $this->isShopifyInternalIdRef((string) $id)
         ));
+        if ($this->dobaRefsArePrepaid($marketplace, $marketplaceOrderIds, $shopifyOrderId)) {
+            return [
+                'success' => false,
+                'skipped' => true,
+                'action' => 'prepaid_doba',
+                'message' => 'Prepaid Doba orders are not fulfilled.',
+            ];
+        }
         $sku = app(ShopifyFulfillmentTrackingMatcher::class)->normalizeSku($sku);
 
         if ($strict && $marketplaceOrderIds === []) {
@@ -613,15 +616,6 @@ class VeeqoShopifyFulfillmentService
             }
         }
 
-        if (strtolower(trim($marketplace)) === 'doba' && ! $this->dobaMayUseExternalLabel($localTracking, $shopifyConfig, $shopifyOrderId)) {
-            return [
-                'success' => false,
-                'skipped' => true,
-                'action' => 'tracking_not_found',
-                'message' => 'Doba order is not prepaid — Veeqo/GOFO tracking was not attached.',
-            ];
-        }
-
         if (
             strtolower(trim($marketplace)) === 'wayfair'
             && self::sofLocalTrackingIfReady(is_array($localTracking) ? $localTracking : null) === null
@@ -707,7 +701,6 @@ class VeeqoShopifyFulfillmentService
         if (
             $existing !== null
             && $found !== null
-            && $marketplace !== 'doba'
             && ! app(ShopifyFulfillmentTrackingMatcher::class)->trackingNumbersEqual(
                 (string) ($existing['tracking'] ?? ''),
                 (string) ($found['tracking'] ?? '')
@@ -4144,8 +4137,168 @@ class VeeqoShopifyFulfillmentService
     }
 
     /**
-     * Regular Doba orders must not inherit a Veeqo/GOFO label.
-     * Prepaid Doba may use tracking already on the Doba/Shopify prepaid note.
+     * Prepaid Doba already has its own label and must not be fulfilled here.
+     * Seller-delivery Doba orders use a Veeqo or 4Seller (GOFO) label.
+     */
+    public function dobaOrderIsPrepaid(int $orderId): bool
+    {
+        if ($orderId <= 0 || ! Schema::hasTable('doba_daily_data')) {
+            return false;
+        }
+        $row = DobaDailyData::query()->find($orderId);
+
+        return $row !== null && $this->dobaStoredOrderIsPrepaid($row);
+    }
+
+    /**
+     * @param  list<string>  $refs
+     */
+    protected function dobaRefsArePrepaid(string $marketplace, array $refs, string $shopifyOrderId): bool
+    {
+        if ($marketplace !== 'doba' || ! Schema::hasTable('doba_daily_data')) {
+            return false;
+        }
+        $keys = [];
+        foreach ($refs as $ref) {
+            $ref = trim((string) $ref);
+            if ($ref !== '' && strlen($ref) >= 4) {
+                $keys[$ref] = true;
+            }
+        }
+        $keys = array_keys($keys);
+        $shopifyOrderId = trim($shopifyOrderId);
+        if ($keys === [] && $shopifyOrderId === '') {
+            return false;
+        }
+
+        $rows = DobaDailyData::query()
+            ->where(function ($q) use ($keys, $shopifyOrderId) {
+                if ($keys !== []) {
+                    $slice = array_slice($keys, 0, 20);
+                    $q->whereIn('order_no', $slice)->orWhereIn('platform_order_no', $slice);
+                }
+                if ($shopifyOrderId !== '' && Schema::hasColumn('doba_daily_data', 'shopify_order_id')) {
+                    $sid = preg_replace('/\D+/', '', $shopifyOrderId) ?? '';
+                    $q->orWhere('shopify_order_id', $shopifyOrderId);
+                    if ($sid !== '') {
+                        $q->orWhere('shopify_order_id', $sid);
+                    }
+                }
+            })
+            ->limit(30)
+            ->get(['order_type', 'order_json']);
+        if ($rows->isEmpty()) {
+            return false;
+        }
+
+        $sawPrepaid = false;
+        foreach ($rows as $row) {
+            $kind = $this->dobaJsonTagKind($row->order_json ?? null);
+            $type = strtolower(trim((string) ($row->order_type ?? '')));
+            if ($kind === 'seller' || (str_contains($type, 'seller') && str_contains($type, 'deliver'))) {
+                return false;
+            }
+            if ($this->dobaStoredOrderIsPrepaid($row)) {
+                $sawPrepaid = true;
+            }
+        }
+
+        return $sawPrepaid;
+    }
+
+    protected function dobaStoredOrderIsPrepaid(object $row): bool
+    {
+        $kind = $this->dobaJsonTagKind($row->order_json ?? null);
+        if ($kind === 'seller') {
+            return false;
+        }
+        if ($kind === 'prepaid') {
+            return true;
+        }
+        $type = strtolower(trim((string) ($row->order_type ?? '')));
+        if (str_contains($type, 'seller') && str_contains($type, 'deliver')) {
+            return false;
+        }
+        if ($type === 'pickup with a prepaid label' || str_contains($type, 'prepaid')) {
+            return true;
+        }
+
+        return $this->dobaJsonHasPrepaidLabel($row->order_json ?? null);
+    }
+
+    protected function dobaJsonTagKind(mixed $orderJson): ?string
+    {
+        if (is_string($orderJson)) {
+            $decoded = json_decode($orderJson, true);
+            $orderJson = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($orderJson)) {
+            return null;
+        }
+        $tags = strtolower(trim((string) ($orderJson['tags'] ?? '')));
+        if ($tags === '' && isset($orderJson['order']) && is_array($orderJson['order'])) {
+            $tags = strtolower(trim((string) ($orderJson['order']['tags'] ?? '')));
+        }
+        if ($tags === '') {
+            return null;
+        }
+        if (preg_match('/prepaid[\s\-]*label/', $tags) === 1) {
+            return 'prepaid';
+        }
+        if (preg_match('/seller[\s\-]*delivery/', $tags) === 1) {
+            return 'seller';
+        }
+
+        return null;
+    }
+
+    protected function dobaJsonHasPrepaidLabel(mixed $orderJson): bool
+    {
+        $data = is_array($orderJson) ? $orderJson : json_decode((string) $orderJson, true);
+        if (! is_array($data)) {
+            return false;
+        }
+        foreach (['buyerPrepaidLabelList', 'shippingLabels', 'shippingLabelList'] as $key) {
+            if (! empty($data[$key])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    protected function shopifyPrepaidDobaOrder(array $order): bool
+    {
+        if (! $this->shopifyOrderIsDoba($order)) {
+            return false;
+        }
+        $type = $this->shopifyDobaOrderType($order);
+        if ($type === 'seller delivery') {
+            return false;
+        }
+        if ($type === 'pickup with a prepaid label') {
+            return true;
+        }
+        foreach ((array) ($order['note_attributes'] ?? []) as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $name = strtolower((string) ($attr['name'] ?? $attr['key'] ?? ''));
+            $val = strtolower((string) ($attr['value'] ?? ''));
+            if (str_contains($name, 'prepaid') || str_contains($val, 'prepaid label')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Prepaid Doba keeps the label already on the Doba/Shopify prepaid note.
+     * Seller-delivery Doba orders use a Veeqo or 4Seller (GOFO) label.
      *
      * @param  array{tracking?: string, carrier?: string}|null  $localTracking
      * @param  array{store_url?: string, token?: string}  $shopifyConfig
@@ -4414,10 +4567,17 @@ class VeeqoShopifyFulfillmentService
 
             // Last gate for every automatic path: callers do not always know the marketplace
             // (e.g. fulfillShopifyFromVeeqo), so decide from the Shopify order itself.
-            if ($orderRes->successful()
-                && $this->shopifyOrderIsDoba((array) ($orderRes->json('order') ?? []))
-                && $this->autoFulfillBlocked('doba')) {
-                return $this->autoFulfillBlockedResult('doba');
+            if ($orderRes->successful()) {
+                $loaded = (array) ($orderRes->json('order') ?? []);
+                if ($this->shopifyOrderIsDoba($loaded) && $this->autoFulfillBlocked('doba')) {
+                    return $this->autoFulfillBlockedResult('doba');
+                }
+                if ($this->shopifyPrepaidDobaOrder($loaded)) {
+                    return [
+                        'success' => false,
+                        'message' => 'Prepaid Doba orders are not fulfilled.',
+                    ];
+                }
             }
 
             $openQty = 0;
@@ -6284,14 +6444,14 @@ GQL;
     /**
      * Shopify copy of a marketplace order whose row never got its Shopify id.
      * Used only when the copy carries the full marketplace order id and this
-     * marketplace's tag; Doba copies are never returned.
+     * marketplace's tag. Doba copies are returned for Doba orders.
      *
      * @param  list<string>  $orderIds
      */
     public function findShopifyCopyForMarketplaceOrder(string $marketplace, array $orderIds): ?string
     {
         $marketplace = strtolower(trim($marketplace));
-        if ($marketplace === '' || $marketplace === 'doba') {
+        if ($marketplace === '') {
             return null;
         }
         $config = $this->shopifyConfigFor($marketplace);
@@ -6306,7 +6466,14 @@ GQL;
                 continue;
             }
             $order = $this->shopifyOrderPayload($config, $shopifyId);
-            if ($order === null || $this->shopifyOrderIsDoba($order)) {
+            if ($order === null) {
+                continue;
+            }
+            if ($marketplace === 'doba') {
+                if (! $this->shopifyOrderIsDoba($order)) {
+                    continue;
+                }
+            } elseif ($this->shopifyOrderIsDoba($order)) {
                 continue;
             }
             $primary = $matcher->primaryMarketplaceSlug($order);

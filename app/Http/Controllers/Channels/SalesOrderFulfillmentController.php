@@ -913,6 +913,8 @@ class SalesOrderFulfillmentController extends Controller
                 continue;
             }
             if (empty($row['is_prepaid']) || ! empty($row['seller_delivery'])) {
+                $nonPrepaid[] = $row;
+
                 continue;
             }
             $labelCandidates[] = $row;
@@ -1109,42 +1111,12 @@ class SalesOrderFulfillmentController extends Controller
     }
 
     /**
-     * Write the prepaid tracking number onto the linked Shopify order.
+     * Prepaid Doba already has its label. It is not written onto Shopify.
      *
      * @param  list<array<string, mixed>>  $rows
      */
     protected function fulfillOpenDobaPrepaidOnShopify(array $rows): void
     {
-        $labels = app(\App\Services\MarketplaceManager\VeeqoShopifyFulfillmentService::class);
-        if ($labels->autoFulfillBlocked('doba')) {
-            return;
-        }
-        $deadline = microtime(true) + 35.0;
-        foreach ($rows as $row) {
-            if (microtime(true) >= $deadline) {
-                break;
-            }
-            $id = (int) ($row['show_id'] ?? $row['row_id'] ?? 0);
-            $shopifyId = trim((string) ($row['shopify_order_id'] ?? ''));
-            $tracking = \App\Support\DobaTrackingNumber::sanitize((string) ($row['tracking_number'] ?? ''));
-            if ($id <= 0 || $shopifyId === '' || strlen($tracking) < 8) {
-                continue;
-            }
-            $cacheKey = 'sof.doba.prepaid.shopify.'.md5($shopifyId.'|'.$tracking);
-            if (! Cache::add($cacheKey, 1, now()->addMinutes(30))) {
-                continue;
-            }
-            try {
-                $pushed = $labels->fulfillMarketplaceOrder('doba', $id);
-            } catch (\Throwable) {
-                Cache::forget($cacheKey);
-                continue;
-            }
-            $action = (string) ($pushed['action'] ?? '');
-            if (empty($pushed['success']) && $action !== 'already_on_shopify') {
-                Cache::forget($cacheKey);
-            }
-        }
     }
 
     /**
