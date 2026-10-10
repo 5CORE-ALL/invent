@@ -1131,5 +1131,10 @@
             publishUrl: '/listing_b5cb2b/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>
+    @php($listingPageToolsJs = @file_get_contents(public_path('js/listing-page-tools.js')))
+    @if($listingPageToolsJs)
+        <script>{!! $listingPageToolsJs !!}</script>
+    @else
+        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261010-1"></script>
+    @endif
 @endsection

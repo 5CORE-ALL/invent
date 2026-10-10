@@ -180,15 +180,16 @@ class Business5CoreB2bApiService
      * @param  array<string, mixed>|null  $body
      * @return array<string, mixed>
      */
-    public function send(string $method, string $path, array $query = [], ?array $body = null): array
+    public function send(string $method, string $path, array $query = [], ?array $body = null, int $maxAttempts = 5, int $maxRetryWait = 65, ?int $timeout = null): array
     {
         if (! $this->isConfigured()) {
             throw new RuntimeException('BUSINESS5CORE_B2B_API_URL and BUSINESS5CORE_B2B_API_KEY must be set.');
         }
 
+        $timeout = $timeout ?? $this->timeout();
         $url = $this->baseUrl().'/'.ltrim($path, '/');
         $pending = Http::withoutVerifying()
-            ->timeout($this->timeout())
+            ->timeout(max(1, $timeout))
             ->acceptJson()
             ->withHeaders([
                 'Accept' => 'application/json',
@@ -196,7 +197,7 @@ class Business5CoreB2bApiService
             ]);
 
         $method = strtoupper($method);
-        $maxAttempts = 5;
+        $maxAttempts = max(1, $maxAttempts);
         for ($attempt = 1; ; $attempt++) {
             $response = match ($method) {
                 'GET' => $pending->get($url, $query),
@@ -208,7 +209,7 @@ class Business5CoreB2bApiService
                 break;
             }
             $retryAfter = (int) $response->header('Retry-After');
-            $wait = $retryAfter > 0 ? min($retryAfter, 65) : min(5 * $attempt, 30);
+            $wait = $retryAfter > 0 ? min($retryAfter, $maxRetryWait) : min(5 * $attempt, $maxRetryWait);
             Log::info('B5C B2B API rate limited, retrying', ['url' => $url, 'attempt' => $attempt, 'wait_s' => $wait]);
             @set_time_limit($wait + $this->timeout() + 60);
             sleep($wait);

@@ -52,4 +52,11 @@ $response = $kernel->handle(
     $request = Request::capture()
 )->send();
 
+// Release the browser before terminate() work (listing recounts, image
+// follow-ups). Otherwise nginx cuts the request off and publish looks failed
+// even though the listing was already created.
+if (function_exists('fastcgi_finish_request')) {
+    fastcgi_finish_request();
+}
+
 $kernel->terminate($request, $response);

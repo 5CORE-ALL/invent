@@ -9,6 +9,7 @@ use App\Models\VideoAdsHookOption;
 use App\Models\VideoAdsMaster;
 use App\Models\VideoAdsMasterCheckHistory;
 use App\Models\VideoAdsMasterCreator;
+use App\Support\DropboxSharedThumbnail;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -82,6 +83,28 @@ class VideoAdsMasterController extends Controller
         }
 
         return response($body, $status, $headers);
+    }
+
+    /**
+     * Poster image for a Video Ads Master link. Shared Dropbox folders contain
+     * an uploaded thumbnail next to each video; this returns that image.
+     */
+    public function thumb(Request $request)
+    {
+        $hooks = array_values(array_filter(array_map(
+            static fn ($hook) => trim((string) $hook),
+            explode('|', (string) $request->query('hooks', ''))
+        )));
+
+        $image = (new DropboxSharedThumbnail())->imageFor((string) $request->query('u', ''), $hooks);
+        abort_unless($image, 404);
+
+        return response($image['body'], 200, [
+            'Content-Type' => $image['mime'],
+            'Content-Length' => (string) strlen($image['body']),
+            'Cache-Control' => 'private, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     /** Shared Dropbox file links only. Folders and every other host are rejected. */

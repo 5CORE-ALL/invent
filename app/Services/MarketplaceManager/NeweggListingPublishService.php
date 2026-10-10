@@ -70,8 +70,10 @@ class NeweggListingPublishService
             $fail = [];
             $listed = [];
             $lastId = null;
+            $submitted = false;
             foreach ($publishSkus as $sku) {
                 $one = $this->publishSkus([$sku], $channel, false, 'single', $parentHint, $categoryId, $overrides);
+                $submitted = $submitted || ! empty($one['submitted']);
                 if ($one['success'] ?? false) {
                     $ok[] = $one['message'] ?? ('Published '.$sku);
                     foreach ($one['skus'] ?? [$sku] as $listedSku) {
@@ -87,6 +89,7 @@ class NeweggListingPublishService
 
             return [
                 'success' => $fail === [],
+                'submitted' => $submitted,
                 'message' => trim(implode(' ', $ok).($fail !== [] ? ' '.implode(' ', $fail) : '')),
                 'goods_id' => $lastId,
                 'sku_id' => $lastId,
@@ -134,7 +137,7 @@ class NeweggListingPublishService
         if ($subcategoryId === '' || ! preg_match('/^\d+$/', $subcategoryId)) {
             return [
                 'success' => false,
-                'message' => $sku.': select a Newegg subcategory on the Category tab before Save & Publish.',
+                'message' => $sku.': pick a Newegg subcategory in the publish window before publishing.',
             ];
         }
 
@@ -160,6 +163,22 @@ class NeweggListingPublishService
             'pending_request_id' => trim((string) ($overrides['newegg_feed_request_id'] ?? '')),
         ]);
 
+        if (! empty($res['still_processing']) && ! empty($overrides['follow_feed'])) {
+            $requestId = trim((string) ($res['request_id'] ?? ''));
+            $scheduled = $this->scheduleFeedFollowUp($sku, $channel, (int) $subcategoryId, $overrides);
+
+            return [
+                'success' => true,
+                'submitted' => true,
+                'request_id' => $requestId,
+                'message' => 'Sent '.$sku.' to Newegg'.($requestId !== '' ? ' (RequestId '.$requestId.')' : '').'. '
+                    .($scheduled
+                        ? 'Newegg is processing the feed; the listing is connected automatically when it finishes, usually within a few minutes.'
+                        : 'Newegg is still processing the feed after repeated checks. Open Seller Portal > Data Feeds to see the result.'),
+                'skus' => [],
+            ];
+        }
+
         if (empty($res['success'])) {
             return [
                 'success' => false,
@@ -168,11 +187,12 @@ class NeweggListingPublishService
                 'request_id' => trim((string) ($res['request_id'] ?? '')),
             ];
         }
+        Cache::forget($this->followUpAttemptsKey($sku, $channel));
 
         $itemNumber = trim((string) ($res['item_number'] ?? ''));
         $message = (string) ($res['message'] ?? ('Published '.$sku.' to Newegg.'));
         if (! empty($res['existing'])) {
-            $message = $this->refreshExistingContent($sku, $itemNumber, $title, $description, $bullets, $images);
+            $message = $this->refreshExistingContent($sku, $itemNumber, $title, $description, $bullets, $images, $channel === 'neweggb2b' ? 'b2b' : 'b2c');
         }
         try {
             $this->api->updateItemPrice($sku, $price);
@@ -197,13 +217,72 @@ class NeweggListingPublishService
     }
 
     /**
+     * Queue one re-check of an open Newegg item feed. Returns false once the feed has been
+     * checked for about half an hour, so a stuck feed does not loop forever.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function scheduleFeedFollowUp(string $sku, string $channel, int $categoryId, array $overrides): bool
+    {
+        $attemptsKey = $this->followUpAttemptsKey($sku, $channel);
+        $attempts = (int) Cache::get($attemptsKey, 0);
+        if ($attempts >= 15) {
+            Cache::forget($attemptsKey);
+
+            return false;
+        }
+        if (! Cache::add($this->followUpLockKey($sku, $channel), 1, now()->addMinutes(10))) {
+            return true;
+        }
+        Cache::put($attemptsKey, $attempts + 1, now()->addDay());
+
+        try {
+            \App\Jobs\FinishNeweggPublish::dispatch($sku, $channel, $categoryId > 0 ? $categoryId : null, $overrides)
+                ->delay(now()->addMinutes(2));
+        } catch (\Throwable $e) {
+            Cache::forget($this->followUpLockKey($sku, $channel));
+            Log::warning('Newegg feed follow-up could not be queued', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    public function isConnectedLocally(string $sku, string $channel): bool
+    {
+        $cfg = ChannelListingRegistry::get($this->normalizeChannel($channel));
+        if (! $cfg) {
+            return false;
+        }
+        $listedId = trim((string) (ChannelListingRegistry::loadListedIds($cfg, [$sku])[strtolower($sku)] ?? ''));
+
+        return ChannelListingRegistry::isLiveNeweggListingId($listedId, $sku);
+    }
+
+    public function releaseFeedFollowUp(string $sku, string $channel): void
+    {
+        Cache::forget($this->followUpLockKey($sku, $this->normalizeChannel($channel)));
+    }
+
+    private function followUpLockKey(string $sku, string $channel): string
+    {
+        return 'newegg-publish-followup:'.$channel.':'.strtoupper(trim($sku));
+    }
+
+    private function followUpAttemptsKey(string $sku, string $channel): string
+    {
+        return 'newegg-publish-followup-attempts:'.$channel.':'.strtoupper(trim($sku));
+    }
+
+    /**
      * The SKU is already on Newegg (possibly inactive because content was rejected): push the
      * draft's title, description, bullets and images onto that item so Newegg can re-activate it.
      *
      * @param  list<string>  $bullets
      * @param  list<string>  $images
      */
-    private function refreshExistingContent(string $sku, string $itemNumber, string $title, string $description, array $bullets, array $images): string
+    private function refreshExistingContent(string $sku, string $itemNumber, string $title, string $description, array $bullets, array $images, string $platform = 'b2c'): string
     {
         $state = 'unknown';
         try {
@@ -227,7 +306,7 @@ class NeweggListingPublishService
                 'description' => $description,
                 'bullets' => $bullets,
                 'images' => $images,
-            ], (int) config('services.newegg.content_feed_wait_seconds', 30));
+            ], (int) config('services.newegg.content_feed_wait_seconds', 30), $platform);
         } catch (\Throwable $e) {
             $result = ['success' => false, 'message' => $e->getMessage()];
         }

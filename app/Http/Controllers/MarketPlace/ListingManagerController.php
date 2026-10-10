@@ -2311,7 +2311,10 @@ class ListingManagerController extends Controller
         if ($family === 'newegg') {
             $key = ListingChannelCounts::normalize($channel);
             $platform = in_array($key, ['neweggb2b', 'newegg-b2b', 'newegg_b2b'], true) ? 'b2b' : 'b2c';
-            $result = app(NeweggApiService::class)->searchListingCategories($q, $title, $platform);
+            $api = app(NeweggApiService::class);
+            $result = $request->boolean('all')
+                ? $api->allListingCategories($platform)
+                : $api->searchListingCategories($q, $title, $platform);
 
             return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
         }

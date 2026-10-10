@@ -3,7 +3,12 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
-    <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=3">
+    @php($listingPageToolsCss = @file_get_contents(public_path('css/listing-page-tools.css')))
+    @if($listingPageToolsCss)
+        <style>{!! $listingPageToolsCss !!}</style>
+    @else
+        <link rel="stylesheet" href="{{ asset('css/listing-page-tools.css') }}?v=20261010-1">
+    @endif
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -592,7 +597,7 @@
                         </div>
                     </div>
 
-                    @include('market-places.listing-market-places._listing_publish_modal')
+                    @include('market-places.listing-market-places._listing_publish_modal', ['publishChannel' => 'neweggb2b'])
 
 
                     <div id="neweggb2b-listing-wrap">
@@ -1131,5 +1136,10 @@
             publishUrl: '/listing_neweggb2b/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>
+    @php($listingPageToolsJs = @file_get_contents(public_path('js/listing-page-tools.js')))
+    @if($listingPageToolsJs)
+        <script>{!! $listingPageToolsJs !!}</script>
+    @else
+        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261010-1"></script>
+    @endif
 @endsection
