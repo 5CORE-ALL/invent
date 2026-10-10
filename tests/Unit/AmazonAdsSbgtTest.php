@@ -20,6 +20,8 @@ class AmazonAdsSbgtTest extends TestCase
         $this->assertSame(10, AmazonAdsSbgt::sumFromParts(2, 3, 4, 1, 0));
         $this->assertSame(8, AmazonAdsSbgt::sumFromParts(2, 3, 3, null, null));
         $this->assertSame(13, AmazonAdsSbgt::sumFromParts(2, 3, 4, 1, 0, 3));
+        $this->assertSame(13, AmazonAdsSbgt::sumFromParts(2, 3, 4, 1, 0, 3, 0));
+        $this->assertSame(16, AmazonAdsSbgt::sumFromParts(2, 3, 4, 1, 0, 3, 3));
     }
 
     public function test_bgt_acos_zero_is_added_not_a_wipe(): void
@@ -170,7 +172,7 @@ class AmazonAdsSbgtTest extends TestCase
     public function test_acos_rule_keeps_decimal_bands_for_grid_but_floors_for_crons(): void
     {
         // A decimal BGT ACOS tier (e.g. 1.5) must survive normalization so it can add its
-        // decimal to the 6-part SBGT sum on /amazon-ads/all before the total is floored.
+        // decimal to the SBGT sum on /amazon-ads/all before the total is floored.
         $rule = AmazonAcosSbgtRule::normalizeRule([
             'bands' => [
                 ['acos_from' => 0, 'acos_to' => 9999, 'sbgt' => 1.5, 'label' => 'Half', 'color' => '#16a34a'],

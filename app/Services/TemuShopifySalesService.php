@@ -873,7 +873,73 @@ class TemuShopifySalesService
      */
     public static function l30FullSalesBadgeAmount(): float
     {
-        return (float) round(self::yLineSalesBadgeAmount() * 1.1364);
+        return self::l30FullSalesBadgeAmountFromLineSales(self::sumYesterdayLineSales());
+    }
+
+    /**
+     * L30 Full Sales badge = rounded yesterday line sales × 1.1364, rounded to a dollar.
+     */
+    public static function l30FullSalesBadgeAmountFromLineSales(float $lineSales): float
+    {
+        return (float) round(round($lineSales) * 1.1364);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    public static function sumLineSalesFromRows(array $rows): float
+    {
+        $sum = 0.0;
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($r['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            $sum += (float) ($r['line_sales'] ?? 0);
+        }
+
+        return round($sum, 2);
+    }
+
+    /** /temu2-tabulator Y Line Sales: Σ Line Sales for yesterday (Pacific). */
+    public static function sumYesterdayLineSalesTemu2(): float
+    {
+        if (! Schema::hasTable('temu2_orders') || ! Temu2Order::whereNotNull('parent_order_time')->exists()) {
+            return 0.0;
+        }
+
+        $yesterday = Carbon::now(self::PST)->subDay();
+
+        return self::sumLineSalesFromRows(self::getTemu2OrdersTableRows(
+            $yesterday->copy()->startOfDay(),
+            $yesterday->copy()->endOfDay()
+        ));
+    }
+
+    public static function l30FullSalesBadgeAmountTemu2(): float
+    {
+        return self::l30FullSalesBadgeAmountFromLineSales(self::sumYesterdayLineSalesTemu2());
+    }
+
+    /** /temu3-tabulator Y Line Sales: Σ goods-base line sales for yesterday (Pacific). */
+    public static function sumYesterdayLineSalesTemu3(): float
+    {
+        if (! Schema::hasTable('temu3_orders')) {
+            return 0.0;
+        }
+
+        $yesterday = Carbon::now(self::PST)->subDay();
+
+        return self::sumLineSalesFromRows(self::getTemu3OrdersTableRows(
+            $yesterday->copy()->startOfDay(),
+            $yesterday->copy()->endOfDay()
+        ));
+    }
+
+    public static function l30FullSalesBadgeAmountTemu3(): float
+    {
+        return self::l30FullSalesBadgeAmountFromLineSales(self::sumYesterdayLineSalesTemu3());
     }
 
     /** Y Sales from temu2_orders: base-price revenue on yesterday (wall-clock Pacific). */
@@ -1462,6 +1528,15 @@ class TemuShopifySalesService
             }
         }
 
+        $slabService = null;
+        $shipSlabRates = [];
+        try {
+            $slabService = app(ShippingSlabRateService::class);
+            $shipSlabRates = $slabService->getAllSlabCarrierRates('ship');
+        } catch (\Throwable $e) {
+            \Log::warning('Temu 3 tabulator COGS ship slabs: '.$e->getMessage());
+        }
+
         $result = [];
 
         foreach ($orders as $o) {
@@ -1481,17 +1556,37 @@ class TemuShopifySalesService
                 $price = (float) ($priceBySku[$sku] ?? 0);
             }
 
+            $pmValues = [];
+            if ($pm) {
+                $pmValues = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+            }
+            $weight = self::dimWtActLb($pmValues);
+            $weightOrder = ($weight !== null && $quantity > 0) ? round($weight * $quantity, 2) : null;
+            $cogsShip = self::cogsShipForWeightOrder($slabService, $shipSlabRates, $weightOrder);
+            $lineSales = ($price > 0 && $quantity > 0) ? round($price * $quantity, 2) : 0.0;
+
             $fbPrice = self::computeFbPrice($price, $quantity);
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
             $pft = $pftDecimal * $fbPrice * $quantity;
 
             $result[] = [
                 'Parent' => $parent,
+                'image_path' => self::cpMasterImageUrl($pm, $pmValues),
                 'contribution_sku' => $sku,
                 'order_id' => $o->order_id ?? '',
                 'product_name_by_customer_order' => $o->product_name_by_customer_order ?? ($o->product_name ?? ''),
                 'variation' => $o->variation ?? '',
                 'quantity_purchased' => $quantity,
+                'weight' => $weight,
+                'weight_order' => $weightOrder,
+                'cogs_ship' => $cogsShip,
+                'line_sales' => $lineSales,
+                'goods_base_price' => round($price > 0 ? $price : 0, 2),
+                'listing_base_price' => round((float) ($priceBySku[$sku] ?? 0), 2),
+                'handling_charge' => $pmValues['handling_charge'] ?? null,
+                'o_size_charge' => $pmValues['o_size_charge'] ?? null,
                 'quantity_shipped' => (int) ($o->quantity_shipped ?? 0),
                 'quantity_to_ship' => (int) ($o->quantity_to_ship ?? 0),
                 'base_price_total' => round($price, 2),

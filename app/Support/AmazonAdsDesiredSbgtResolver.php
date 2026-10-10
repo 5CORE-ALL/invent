@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
- * 6-part SBGT (same rules as /amazon-ads/all) for cron/sync rows.
+ * 7-part SBGT (same rules as /amazon-ads/all) for cron/sync rows.
  * BGT ACOS uses lifetime ACOS, the same input as the SBGT column.
  */
 final class AmazonAdsDesiredSbgtResolver
@@ -102,8 +102,9 @@ final class AmazonAdsDesiredSbgtResolver
             $bgtPrc = AmazonAdsBgtPrcRule::apply($gm['price'] ?? null)['bgt'] ?? null;
             $bgtReviews = AmazonAdsBgtReviewsRule::apply($rating)['bgt'] ?? null;
             $bgtDil = AmazonAdsBgtDilRule::apply($dilVal)['bgt'] ?? null;
+            $bgtInv = AmazonAdsBgtInvRule::apply($inv)['bgt'] ?? null;
 
-            $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil);
+            $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtInv);
             if ($sum === null && isset($arr['sbgt']) && is_numeric($arr['sbgt'])) {
                 $sum = (int) $arr['sbgt'];
             }

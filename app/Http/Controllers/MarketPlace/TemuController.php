@@ -1216,9 +1216,10 @@ class TemuController extends Controller
     public function temu2TabulatorView()
     {
         $temuMargin = TemuShopifySalesService::temuMarginDecimal();
-        $temu2YSales = TemuShopifySalesService::computeYSalesFromTemu2Orders();
+        $temu2YSales = TemuShopifySalesService::sumYesterdayLineSalesTemu2();
+        $temu2L30FullSales = TemuShopifySalesService::l30FullSalesBadgeAmountFromLineSales($temu2YSales);
 
-        return view('market-places.temu2_tabulator_view', compact('temuMargin', 'temu2YSales'));
+        return view('market-places.temu2_tabulator_view', compact('temuMargin', 'temu2YSales', 'temu2L30FullSales'));
     }
 
     /**

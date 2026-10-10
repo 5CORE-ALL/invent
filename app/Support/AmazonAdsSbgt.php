@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Grid SBGT on /amazon-ads/all: Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil.
+ * Grid SBGT on /amazon-ads/all: Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv.
  * A part of 0 is added as zero. Amazon will not take a $0 daily budget, so a total of 0
  * is not pushable — callers pause the campaign instead.
  */
@@ -16,11 +16,11 @@ final class AmazonAdsSbgt
  * Grid SBGT. Each present part is added, including 0. All-missing → null.
  * A total of 0 is kept (pause — $0 will not push). It does not replace the other parts.
  */
-public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null): ?int
+public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null, mixed $bgtInv = null): ?int
 {
     $has = false;
         $sum = 0.0;
-        foreach ([$bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil] as $part) {
+        foreach ([$bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtInv] as $part) {
             if ($part === null || $part === '') {
                 continue;
             }

@@ -854,7 +854,10 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
                             <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_groi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-GROI% = Σ (P-Sales × GPFT%) ÷ Σ projected COGS. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-Sales = (L7 ÷ 7) × 30.">
+                            <span class="summary-trend-dot none" data-metric="p_groi_pct" title="Rolling history"></span>P-GROI%: <span id="avg-p-groi">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
                             <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>P-Npft%: <span id="avg-p-npft">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="p_npft_amt" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is last-7-day pace × 30; spend is current L30 ad spend. % is P NPFT $ vs NPFT $.">
@@ -5568,6 +5571,22 @@
                     const val = pct1(avgNpft);
                     const $el = $('#avg-npft');
                     $el.text(val.toFixed(1) + '%');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    let pGross = 0;
+                    let pCogs = 0;
+                    data.forEach(function(row) {
+                        if (!pSalesFromRow(row)) return;
+                        pGross += pGrossPftFromRow(row);
+                        pCogs += pCogsFromRow(row);
+                    });
+                    const avgPGroi = pCogs > 0 ? (pGross / pCogs) * 100 : 0;
+                    const val = pct1(avgPGroi);
+                    const $el = $('#avg-p-groi');
+                    $el.text(val.toFixed(1) + '%');
+                    $el.closest('.badge').attr('title',
+                        'P-GROI% = Σ (P-Sales × GPFT%) ÷ Σ projected COGS. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
                 })();
                 (function() {

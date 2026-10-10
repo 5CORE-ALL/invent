@@ -13,6 +13,7 @@ use App\Models\ShopifySku;
 use App\Services\AmazonAdsPauseRuleApplicator;
 use App\Support\AmazonAdsBgtCvrRule;
 use App\Support\AmazonAdsBgtDilRule;
+use App\Support\AmazonAdsBgtInvRule;
 use App\Support\AmazonAdsBgtPrcRule;
 use App\Support\AmazonAdsBgtReviewsRule;
 use App\Support\AmazonAdsBgtSpendRule;
@@ -86,7 +87,7 @@ class AmazonAdsController extends Controller
      * @var list<string>
      */
     private const PHP_SORT_DISPLAY_COLUMNS = [
-        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'sbgt',
+        'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt',
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2', 'ltCvr',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
         'pageCvr', 'viewsL30', 'viewsL7',
@@ -187,7 +188,7 @@ class AmazonAdsController extends Controller
     /**
      * Columns sent to the Amazon Ads All DataTables, including Inv/ovl30/dil/price and utilization % after `campaignName`
      * (U7%/U2%/U1% from L7 SP / L2 SP / L1 SP vs `campaignBudgetAmount`; so `ad_type` may sit before `campaign_id` without pulling U7/U2/U1 next to it).
-     * `campaignStatus` (Stat) sits immediately before `bgt` (Lbgt); `ruleStatus` follows Stat; `activeAgain` is the last column; `sbgt` and `sbgtAlert` sit beside Lbgt, then `bgtAcos`, `bgtViews`, `bgtCvr`, `bgtPrc`, `bgtReviews`, `bgtDil`.
+     * `campaignStatus` (Stat) sits immediately before `bgt` (Lbgt); `ruleStatus` follows Stat; `activeAgain` is the last column; `sbgt` and `sbgtAlert` sit beside Lbgt, then `bgtAcos`, `bgtViews`, `bgtCvr`, `bgtPrc`, `bgtReviews`, `bgtDil`, `bgtInv`.
      * `sbidHistory` sits beside SBID and `sbgtHistory` beside SBGT. Both open the daily history chart.
      * Lbid has no column of its own: its history dot sits inside the Lbid cell.
      */
@@ -305,12 +306,12 @@ class AmazonAdsController extends Controller
 
         // Lbgt, SBGT, and the SBGT alert sit together. The budget parts follow that pair.
         if (in_array('campaignBudgetAmount', self::orderedColumnsForTable($table), true)) {
-            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'bgtAcos' && $c !== 'sbgt' && $c !== 'sbgtAlert' && $c !== 'bgtViews' && $c !== 'bgtCvr' && $c !== 'bgtPrc' && $c !== 'bgtReviews' && $c !== 'bgtDil'));
+            $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'bgtAcos' && $c !== 'sbgt' && $c !== 'sbgtAlert' && $c !== 'bgtViews' && $c !== 'bgtCvr' && $c !== 'bgtPrc' && $c !== 'bgtReviews' && $c !== 'bgtDil' && $c !== 'bgtInv'));
             $idxBgtForSbgt = array_search('bgt', $ordered, true);
             if ($idxBgtForSbgt !== false) {
-                $budgetTail = ['sbgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil'];
+                $budgetTail = ['sbgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv'];
                 if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
-                    $budgetTail = ['sbgt', 'sbgtAlert', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil'];
+                    $budgetTail = ['sbgt', 'sbgtAlert', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv'];
                 }
                 array_splice($ordered, $idxBgtForSbgt + 1, 0, $budgetTail);
             }
@@ -337,7 +338,10 @@ class AmazonAdsController extends Controller
         $idxBgt = array_search('bgt', $ordered, true);
         if ($idxBgt !== false && in_array('clicks', $ordered, true)) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'clicks'));
-            $idxAfterBgt = array_search('bgtDil', $ordered, true);
+            $idxAfterBgt = array_search('bgtInv', $ordered, true);
+            if ($idxAfterBgt === false) {
+                $idxAfterBgt = array_search('bgtDil', $ordered, true);
+            }
             if ($idxAfterBgt === false) {
                 $idxAfterBgt = array_search('sbgt', $ordered, true);
             }
@@ -591,12 +595,12 @@ class AmazonAdsController extends Controller
     }
 
     /**
-     * Grid SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil.
+     * Grid SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + Bgt Reviews + Bgt Dil + Bgt Inv.
      * A part of 0 is added as zero. The campaign pauses only when the total is 0.
      */
-    private static function summedSbgtFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null): ?int
+    private static function summedSbgtFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAcos, mixed $bgtPrc = null, mixed $bgtReviews = null, mixed $bgtDil = null, mixed $bgtInv = null): ?int
     {
-        return AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil);
+        return AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtInv);
     }
 
     /**
@@ -1372,18 +1376,28 @@ class AmazonAdsController extends Controller
         if (! in_array('campaign_id', $dbColumns, true) || ! in_array('cost', $dbColumns, true)) {
             return null;
         }
-        return self::sumLatestL30MetricsForFilteredCampaigns($filteredBaseQuery, $table, $dbColumns);
+        return self::sumLatestSummaryMetricsForFilteredCampaigns($filteredBaseQuery, $table, $dbColumns, 'L30');
     }
 
     /**
-     * Badge totals: one SQL sum of the latest L30 row per filtered campaign (+ ad_type).
-     * Avoids loading every matching campaign into PHP on search and sort.
+     * One month from a 7-day total: daily average (÷ 7) times 30.
+     */
+    private static function projectMonthFromLast7(float $last7): float
+    {
+        return round(($last7 / 7) * 30, 2);
+    }
+
+    /**
+     * Badge totals: one SQL sum of the latest summary row (L1, L7, or L30) per filtered campaign (+ ad_type).
      *
      * @param  array<int, string>  $dbColumns
      * @return array{cost_sum: float, sales_sum: float, purchases_sum: float, clicks_sum: float}
      */
-    private static function sumLatestL30MetricsForFilteredCampaigns(Builder $filteredBaseQuery, string $table, array $dbColumns): array
+    private static function sumLatestSummaryMetricsForFilteredCampaigns(Builder $filteredBaseQuery, string $table, array $dbColumns, string $range): array
     {
+        if (! in_array($range, ['L1', 'L7', 'L30'], true)) {
+            $range = 'L30';
+        }
         $hasAd = in_array('ad_type', $dbColumns, true);
         $salesCol = self::l30SummarySalesDbColumn($dbColumns);
         $purchCol = self::l30SummaryPurchasesDbColumn($dbColumns);
@@ -1396,7 +1410,7 @@ class AmazonAdsController extends Controller
         }
         $pairs->distinct();
 
-        $latest = DB::table($table.' as src')->where('src.report_date_range', 'L30');
+        $latest = DB::table($table.' as src')->where('src.report_date_range', $range);
         $latest->joinSub($pairs, 'flt', function ($join) use ($hasAd) {
             $join->on('flt.campaign_id', '=', 'src.campaign_id');
             if ($hasAd) {
@@ -3777,6 +3791,7 @@ class AmazonAdsController extends Controller
             'amazonAdsBgtPrcRule' => AmazonAdsBgtPrcRule::resolvedRule(),
             'amazonAdsBgtReviewsRule' => AmazonAdsBgtReviewsRule::resolvedRule(),
             'amazonAdsBgtDilRule' => AmazonAdsBgtDilRule::resolvedRule(),
+            'amazonAdsBgtInvRule' => AmazonAdsBgtInvRule::resolvedRule(),
             'amazonAdsBgtSpendRule' => AmazonAdsBgtSpendRule::resolvedRule(),
             'amazonAdsSbidRule' => AmazonAdsSbidRule::resolvedRule(),
             'amazonAdsPauseRule' => AmazonAdsPauseRule::resolvedRule(),
@@ -4110,6 +4125,53 @@ class AmazonAdsController extends Controller
         return response()->json([
             'message' => 'Spend Rule saved.',
             'rule' => AmazonAdsBgtSpendRule::resolvedRule(),
+            'status' => 200,
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Current on-hand inventory → Bgt Inv rule.
+     */
+    public function getBgtInvRule(): JsonResponse
+    {
+        AmazonAdsBgtInvRule::forgetResolvedCache();
+
+        return response()->json([
+            'rule' => AmazonAdsBgtInvRule::resolvedRule(),
+            'timestamp' => time(),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+          ->header('Pragma', 'no-cache')
+          ->header('Expires', '0');
+    }
+
+    /**
+     * Persist inventory slabs → Bgt Inv.
+     */
+    public function saveBgtInvRule(Request $request): JsonResponse
+    {
+        try {
+            $normalized = AmazonAdsBgtInvRule::normalizeRule($request->all());
+            AmazonAdsBgtInvRule::persistRule($normalized);
+            AmazonAdsBgtInvRule::forgetResolvedCache();
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'status' => 422,
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Could not save Inv Rule.',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Inv Rule saved.',
+            'rule' => AmazonAdsBgtInvRule::resolvedRule(),
             'status' => 200,
             'timestamp' => time(),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -5107,6 +5169,10 @@ class AmazonAdsController extends Controller
      */
     public function rawData(Request $request, string $source)
     {
+        if ($request->boolean('bgt_universe')) {
+            @set_time_limit(180);
+        }
+
         if ($source === 'all_reports') {
             return response()->json($this->rawDataAllReportsPayload($request));
         }
@@ -5116,6 +5182,15 @@ class AmazonAdsController extends Controller
         }
 
         $table = self::RAW_TABLE_SOURCES[$source];
+
+        if ($request->boolean('bgt_universe')) {
+            $payload = $this->rawDataSingleSourcePayload($request, $table, 0, 20000);
+
+            return response()->json($this->bgtUniverseJson(
+                $this->tagBgtUniverseRows($payload['data'] ?? [], $table),
+                isset($payload['distinctCampaignCount']) ? (int) $payload['distinctCampaignCount'] : null
+            ));
+        }
 
         return response()->json($this->rawDataSingleSourcePayload($request, $table));
     }
@@ -5254,23 +5329,42 @@ class AmazonAdsController extends Controller
             }
         }
 
+        $yesterdaySpend = null;
+        $yesterdaySales = null;
+        $yesterdayAcosPercent = null;
+        $projectedSpend = null;
+        $projectedSales = null;
+        $projectedAcosPercent = null;
+        if (! $request->boolean('bgt_universe') && $l30AggDistinct !== null) {
+            $l1Agg = self::sumLatestSummaryMetricsForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L1');
+            $l7Agg = self::sumLatestSummaryMetricsForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L7');
+            $yesterdaySpend = round((float) $l1Agg['cost_sum'], 2);
+            $yesterdaySales = round((float) $l1Agg['sales_sum'], 2);
+            $yesterdayAcosPercent = self::overallAcosPercentFromAggregatedSums((float) $l1Agg['cost_sum'], (float) $l1Agg['sales_sum']);
+            $projectedSpend = self::projectMonthFromLast7((float) $l7Agg['cost_sum']);
+            $projectedSales = self::projectMonthFromLast7((float) $l7Agg['sales_sum']);
+            $projectedAcosPercent = self::overallAcosPercentFromAggregatedSums($projectedSpend, $projectedSales);
+        }
+
         $requestedOrderCol = ($orderColumnIndex >= 0 && $orderColumnIndex < count($columns))
             ? (string) $columns[$orderColumnIndex]
             : '';
         $lightSort = self::columnUsesLightDisplaySort($requestedOrderCol);
         $usePhpSort = $lightSort || in_array($requestedOrderCol, self::PHP_SORT_DISPLAY_COLUMNS, true);
         $phpSortPaged = false;
+        $forBgtUniverse = $request->boolean('bgt_universe');
+        $sortCap = $forBgtUniverse ? 20000 : 3000;
 
         // Correlated ORDER BY runs a lookup per campaign before the page can return.
         // On a normal day the filtered set fits in one window, so rank it in PHP instead.
-        if ($usePhpSort && $recordsFiltered <= 3000 && in_array('id', $dbColumns, true)) {
+        if ($usePhpSort && $recordsFiltered <= $sortCap && in_array('id', $dbColumns, true)) {
             $query->orderBy('id', 'desc');
         } else {
             self::applyRawDataOrder($query, $table, $dbColumns, $columns, $orderColumnIndex, $orderDir);
         }
 
         if ($usePhpSort) {
-            $fetchLen = (int) min(3000, max($recordsFiltered, $start + $length));
+            $fetchLen = (int) min($sortCap, max($recordsFiltered, $start + $length));
             $window = $query->limit(max(1, $fetchLen))->get();
             $paged = self::pageRowsMatchingDisplaySort(
                 $window,
@@ -5343,6 +5437,7 @@ class AmazonAdsController extends Controller
             || in_array('pageCvr', $columns, true) || in_array('bgtViews', $columns, true)
             || in_array('bgtCvr', $columns, true) || in_array('bgtPrc', $columns, true)
             || in_array('bgtReviews', $columns, true) || in_array('bgtDil', $columns, true)
+            || in_array('bgtInv', $columns, true)
             || in_array('viewsL30', $columns, true) || in_array('viewsL7', $columns, true);
         foreach (self::SKU_METRIC_DISPLAY_COLUMNS as $skuCol) {
             if (in_array($skuCol, $columns, true)) {
@@ -5594,6 +5689,14 @@ class AmazonAdsController extends Controller
                         $arr['bgt_dil_value'] = $dilVal;
                     }
                 }
+                if (in_array('bgtInv', $columns, true) || in_array('sbgt', $columns, true)) {
+                    $invForRule = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
+                    $hitInv = AmazonAdsBgtInvRule::apply($invForRule);
+                    $arr['bgtInv'] = $hitInv['bgt'];
+                    $arr['bgt_inv_color'] = $hitInv['color'];
+                    $arr['bgt_inv_label'] = $hitInv['label'];
+                    $arr['bgt_inv_value'] = $invForRule;
+                }
                 if (in_array('price', $columns, true) || in_array('bgtPrc', $columns, true) || in_array('sbgt', $columns, true)) {
                     $arr['price'] = $mSku['price'];
                     $arr['lmp_price'] = $mSku['lmp_price'] ?? null;
@@ -5743,7 +5846,8 @@ class AmazonAdsController extends Controller
                     $arr['bgtAcos'] ?? null,
                     $arr['bgtPrc'] ?? null,
                     $arr['bgtReviews'] ?? null,
-                    $arr['bgtDil'] ?? null
+                    $arr['bgtDil'] ?? null,
+                    $arr['bgtInv'] ?? null
                 );
                 if (in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
                     $wantSbgt = AmazonAdsSbgt::storageValue($arr['sbgt'] ?? null);
@@ -5807,10 +5911,10 @@ class AmazonAdsController extends Controller
             $data[] = $arr;
         }
 
-        if ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== []) {
+        if (! $forBgtUniverse && ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== [])) {
             AmazonBidUtilizationService::persistSuggestedSbidByRowId($table, $suggestedSbidByRowId, $suggestedSbidByCampaign);
         }
-        if ($suggestedSbgtByRowId !== [] || $suggestedSbgtByCampaign !== []) {
+        if (! $forBgtUniverse && ($suggestedSbgtByRowId !== [] || $suggestedSbgtByCampaign !== [])) {
             AmazonAdsSbgt::persistByRowId($table, $suggestedSbgtByRowId, $suggestedSbgtByCampaign);
         }
 
@@ -5826,12 +5930,12 @@ class AmazonAdsController extends Controller
             $data = array_values(array_slice($data, $start, $length));
         }
 
-        if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
+        if (! $forBgtUniverse && self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
             $data = AmazonAdsStoredLiveBid::fillRows($table, $data);
             $data = self::attachLiveSyncStatusesToRows($data, $table);
             AmazonAdsLiveSyncFollowUp::requestFromGrid($data, $table);
         }
-        if (in_array('targets', $columns, true) || in_array('nTargets', $columns, true)) {
+        if (! $forBgtUniverse && (in_array('targets', $columns, true) || in_array('nTargets', $columns, true))) {
             $data = self::attachTargetCountsToRows(
                 $data,
                 $table,
@@ -5873,8 +5977,87 @@ class AmazonAdsController extends Controller
         if ($salesTotal !== null) {
             $payload['salesTotal'] = $salesTotal;
         }
+        if ($yesterdaySpend !== null) {
+            $payload['yesterdaySpend'] = $yesterdaySpend;
+            $payload['yesterdaySales'] = $yesterdaySales;
+            $payload['yesterdayAcosPercent'] = $yesterdayAcosPercent;
+            $payload['projectedSpend'] = $projectedSpend;
+            $payload['projectedSales'] = $projectedSales;
+            $payload['projectedAcosPercent'] = $projectedAcosPercent;
+        }
 
         return $payload;
+    }
+
+    /**
+     * Slim campaign rows for BGT / SBID rule counts. Same filters as the grid, one row per
+     * campaign_id within each source (the CAMPAIGN badge is COUNT DISTINCT campaign_id per source).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{ok: bool, distinctCampaignCount: int|null, campaigns: list<array<string, mixed>>}
+     */
+    private function bgtUniverseJson(array $rows, ?int $distinctCampaignCount): array
+    {
+        $seen = [];
+        $campaigns = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $cid = trim((string) ($row['campaign_id'] ?? ''));
+            if ($cid !== '') {
+                $key = (string) ($row['_bgt_src'] ?? '')."\0".$cid;
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+            }
+            $campaigns[] = self::bgtUniverseCampaign($row);
+        }
+
+        return [
+            'ok' => true,
+            'distinctCampaignCount' => $distinctCampaignCount,
+            'campaigns' => $campaigns,
+        ];
+    }
+
+    /**
+     * @param  list<mixed>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function tagBgtUniverseRows(array $rows, string $sourceTable): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $row['_bgt_src'] = $sourceTable;
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private static function bgtUniverseCampaign(array $row): array
+    {
+        $keys = [
+            'campaign_id', 'ad_type', 'ltAcos', 'viewsL7', 'page_cvr_sess7',
+            'bgt_cvr_page_cvr', 'pageCvr', 'bgt_prc_price', 'price',
+            'bgt_reviews_rating', 'reviews', 'bgt_dil_value', 'dil', 'Inv', 'ovl30',
+            'cost', 'spend', 'U7%', 'U1%', 'costPerClick', 'CPC2', 'CPC3', 'CPCAvg',
+        ];
+        $out = [];
+        foreach ($keys as $key) {
+            $out[$key] = $row[$key] ?? null;
+        }
+
+        return $out;
     }
 
     /**
@@ -5891,13 +6074,19 @@ class AmazonAdsController extends Controller
      */
     private function rawDataAllReportsPayload(Request $request): array
     {
+        $universe = $request->boolean('bgt_universe');
         $draw = (int) $request->input('draw', 1);
         $start = max(0, (int) $request->input('start', 0));
         $length = (int) $request->input('length', 25);
         if ($length < 1) {
             $length = 25;
         }
-        $length = min($length, 500);
+        if ($universe) {
+            $start = 0;
+            $length = 20000;
+        } else {
+            $length = min($length, 500);
+        }
 
         $displayColumns = self::displayColumnsForTable('amazon_sp_campaign_reports');
         $orderColumnIndex = (int) $request->input('order.0.column', 0);
@@ -5925,6 +6114,11 @@ class AmazonAdsController extends Controller
         $haveSpend = false;
         $haveClicks = false;
         $haveSold = false;
+        $yesterdaySpendSum = 0.0;
+        $yesterdaySalesSum = 0.0;
+        $projectedSpendSum = 0.0;
+        $projectedSalesSum = 0.0;
+        $haveYesterday = false;
         $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
 
@@ -5932,6 +6126,9 @@ class AmazonAdsController extends Controller
             $part = $this->rawDataSingleSourcePayload($request, $table, 0, $fetchLen);
             if (isset($part['data']) && is_array($part['data'])) {
                 foreach ($part['data'] as $r) {
+                    if ($universe && is_array($r)) {
+                        $r['_bgt_src'] = $table;
+                    }
                     $rows[] = $r;
                 }
             }
@@ -5961,10 +6158,21 @@ class AmazonAdsController extends Controller
                 $soldSum += (int) $part['soldTotal'];
                 $haveSold = true;
             }
+            if (isset($part['yesterdaySpend'])) {
+                $yesterdaySpendSum += (float) $part['yesterdaySpend'];
+                $yesterdaySalesSum += (float) ($part['yesterdaySales'] ?? 0);
+                $projectedSpendSum += (float) ($part['projectedSpend'] ?? 0);
+                $projectedSalesSum += (float) ($part['projectedSales'] ?? 0);
+                $haveYesterday = true;
+            }
             foreach (['green', 'yellow', 'red'] as $color) {
                 $bgtSyncCounts[$color] += (int) ($part['bgt_sync_counts'][$color] ?? 0);
                 $bidSyncCounts[$color] += (int) ($part['bid_sync_counts'][$color] ?? 0);
             }
+        }
+
+        if ($universe) {
+            return $this->bgtUniverseJson($rows, $haveDistinct ? $distinctCampaignCount : null);
         }
 
         usort($rows, static function ($a, $b) use ($orderKey, $orderDir) {
@@ -6006,6 +6214,14 @@ class AmazonAdsController extends Controller
         }
         if ($haveCost && $haveSales) {
             $payload['overallAcosPercent'] = self::overallAcosPercentFromAggregatedSums($costSum, $salesSum);
+        }
+        if ($haveYesterday) {
+            $payload['yesterdaySpend'] = round($yesterdaySpendSum, 2);
+            $payload['yesterdaySales'] = round($yesterdaySalesSum, 2);
+            $payload['yesterdayAcosPercent'] = self::overallAcosPercentFromAggregatedSums($yesterdaySpendSum, $yesterdaySalesSum);
+            $payload['projectedSpend'] = round($projectedSpendSum, 2);
+            $payload['projectedSales'] = round($projectedSalesSum, 2);
+            $payload['projectedAcosPercent'] = self::overallAcosPercentFromAggregatedSums($projectedSpendSum, $projectedSalesSum);
         }
 
         return $payload;
