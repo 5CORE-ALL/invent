@@ -188,15 +188,17 @@
                             style="background-color: #0dcaf0; color: black; font-weight: bold;"
                             title="Yesterday's sales ({{ $yesterdayLabel ?? '' }} Pacific) from real eBay 2 orders — tax-inclusive, excl. cancelled & fully-refunded.">Y Sales: ${{ number_format((float) ($salesYesterday ?? 0), 2) }}</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
-                            style="color: white; font-weight: bold;">GPFT %: 0%</span>
+                            style="color: white; font-weight: bold;" title="GPFT % = rounded T PFT ÷ rounded Sales AMT. T PFT = (Sales AMT × {{ (int) ($marginPercent ?? 85) }}%) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
-                            style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                            style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded T PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2 d-none" id="avg-price-badge"
                             style="color: black; font-weight: bold;" aria-hidden="true">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2 d-none" id="pft-total-badge"
                             style="color: white; font-weight: bold;" aria-hidden="true">GPFT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
-                            style="color: white; font-weight: bold;">COGS: $0.00</span>
+                            style="color: white; font-weight: bold;">COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge"
+                            style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once.">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
@@ -424,11 +426,13 @@
                         field: "t_weight",
                         width: 45,
                         hozAlign: "center",
-                        sorter: "number"
+                        sorter: "number",
+                        headerTooltip: "T Weight = Dim & Wt ACT lb × Qty"
                     },
                     {
-                        title: "S Cost",
+                        title: "COGS Ship",
                         field: "ship_cost",
+                        headerTooltip: "Shipping Master Ship slab for T Weight. Subtracted once.",
                         width: 55,
                         hozAlign: "center",
                         sorter: "number",
@@ -491,8 +495,9 @@
                         }
                     },
                     {
-                        title: "ROI %",
+                        title: "GROI %",
                         field: "roi",
+                        headerTooltip: "GROI % = T PFT ÷ COGS × 100.",
                         width: 55,
                         hozAlign: "center",
                         sorter: "number",
@@ -529,6 +534,7 @@
                 let totalWeightedPrice = 0;
                 let totalQuantityForPrice = 0;
                 let totalCogs = 0;
+                let totalCogsShip = 0;
                 // eBay "Total sales (includes taxes)" = sum of each order's grand total
                 // (total_amount includes shipping + tax), counted once per unique order.
                 let totalOrderSales = 0;
@@ -547,39 +553,45 @@
 
                     totalOrders++;
                     const quantity = parseInt(row.quantity) || 0;
+                    const salesAmt = parseFloat(row.sale_amount) || 0;
                     const basePrice = parseFloat(row.price) || 0;
 
                     if (quantity === 0) {
                         return;
                     }
 
+                    // Sales AMT is already this row's amount. Do not multiply by Qty again.
                     totalQuantity += quantity;
-                    totalRevenue += basePrice * quantity;
+                    totalRevenue += salesAmt;
 
                     if (quantity > 0 && basePrice > 0) {
-                        totalWeightedPrice += basePrice * quantity;
+                        totalWeightedPrice += salesAmt;
                         totalQuantityForPrice += quantity;
                     }
 
                     const pft = parseFloat(row.pft) || 0;
                     const cogs = parseFloat(row.cogs) || 0;
+                    const cogsShip = parseFloat(row.ship_cost) || 0;
 
                     totalPft += pft;
                     totalCogs += cogs;
+                    totalCogsShip += cogsShip;
 
-                    const l30Sales = quantity * basePrice;
-                    totalL30Sales += l30Sales;
+                    totalL30Sales += salesAmt;
                 });
 
                 const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-                const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
-                const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+                const gpftDollars = Math.round(totalPft);
+                const salesDollars = Math.round(totalL30Sales);
+                const cogsDollars = Math.round(totalCogs);
+                const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+                const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
                 $('#total-orders-badge').text('Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
                 $('#total-sales-badge').text('Sales: $' + totalOrderSales.toFixed(2));
-                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+                $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+                $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
                 $('#pft-total-badge').text('GPFT: $' + totalPft.toFixed(2));
 
@@ -590,7 +602,8 @@
                     pftBadge.removeClass('bg-dark').addClass('bg-danger');
                 }
 
-                $('#total-cogs-badge').text('COGS: $' + totalCogs.toFixed(2));
+                $('#total-cogs-badge').text('COGS: $' + cogsDollars.toLocaleString());
+                $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
             }
 
             const COL_VIS_CATEGORY_KEYS = ['basic', 'price', 'other'];
