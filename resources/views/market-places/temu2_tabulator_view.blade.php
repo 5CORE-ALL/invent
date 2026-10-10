@@ -220,9 +220,9 @@
                             <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge" style="color: white; font-weight: bold;"
                                 title="Temu Full Price Sales = Σ Line Sales × 1.1364">Temu Full Price Sales: $0</span>
                             <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;"
-                                title="GPFT % = Σ GPFT$ ÷ Σ (Temu Price × Qty) × 100. Same formula as the GPFT % column.">GPFT: 0%</span>
+                                title="GPFT % = GPFT$ badge ÷ Temu Full Price Sales badge × 100">GPFT: 0%</span>
                             <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;"
-                                title="GROI % = Σ GPFT$ ÷ Σ COGS × 100. Same formula as the GROI % column.">GROI: 0%</span>
+                                title="GROI % = GPFT$ badge ÷ Total COGS badge × 100">GROI: 0%</span>
                             <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;"
                                 title="GPFT$ = Σ (Line Sales × Temu margin) − COGS − COGS Ship">GPFT$: $0</span>
                             <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
@@ -395,17 +395,11 @@
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return qty * (parseFloat(row && row.lp) || 0);
     }
-    /** Slab cost for the order weight. If that slab is missing, use Temu Ship × Qty so ship is not $0. */
-    function temuRowShipCost(row) {
-        const raw = row ? row.cogs_ship : null;
-        const slab = parseFloat(raw);
-        if (raw !== null && raw !== undefined && raw !== '' && isFinite(slab) && slab > 0) return slab;
-        const qty = parseInt(row && row.quantity_purchased) || 0;
-        return qty * (parseFloat(row && row.temu_ship) || 0);
-    }
+    /** Y Sales GPFT$ = Line Sales − COGS − COGS Ship. COGS = LP × Qty. */
     function temuRowYSalesGpftDollar(row) {
         const lineSales = parseFloat(row && row.line_sales) || 0;
-        return lineSales - temuRowCogs(row) - temuRowShipCost(row);
+        const ship = parseFloat(row && row.cogs_ship) || 0;
+        return lineSales - temuRowCogs(row) - ship;
     }
     function temuRowYSalesRoiPercent(row) {
         const cogs = temuRowCogs(row);
@@ -418,9 +412,13 @@
         if (!(denom > 0)) return null;
         return (temuRowYSalesGpftDollar(row) / denom) * 100;
     }
+    /** Line GPFT$ = (Line Sales × Temu margin) − COGS − COGS Ship. COGS = LP × Qty. */
     function temuRowGpftDollar(row) {
         const lineSales = parseFloat(row && row.line_sales) || 0;
-        return lineSales * TEMU_MARGIN - temuRowCogs(row) - temuRowShipCost(row);
+        const qty = parseInt(row && row.quantity_purchased) || 0;
+        const cogs = qty * (parseFloat(row && row.lp) || 0);
+        const ship = parseFloat(row && row.cogs_ship) || 0;
+        return lineSales * TEMU_MARGIN - cogs - ship;
     }
     function temuRowGpftPercent(row) {
         const qty = parseInt(row && row.quantity_purchased) || 0;
@@ -1024,8 +1022,13 @@
 
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
             const totalTemuFullPriceSales = totalApiLineSales * TEMU_PRICE_MULT;
-            const pftPercentage = totalTemuPriceSales > 0 ? (totalPft / totalTemuPriceSales) * 100 : 0;
-            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            const gpftBadge = Math.round(totalPft);
+            const fullSalesBadge = Math.round(totalTemuFullPriceSales);
+            const pftPercentage = fullSalesBadge !== 0
+                ? (gpftBadge / fullSalesBadge) * 100
+                : 0;
+            const cogsBadge = Math.round(totalCogs);
+            const roiPercentage = cogsBadge !== 0 ? (gpftBadge / cogsBadge) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
