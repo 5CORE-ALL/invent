@@ -5368,7 +5368,20 @@ class AmazonAdsController extends Controller
         }
 
         if ($forBgtUniverse && isset($rows)) {
-            // Chart counts already have the filtered campaigns. Skip the display sort fetch.
+            $seenCampaign = [];
+            $deduped = [];
+            foreach ($rows as $row) {
+                $raw = (array) $row;
+                $cid = trim((string) ($raw['campaign_id'] ?? ''));
+                if ($cid !== '' && isset($seenCampaign[$cid])) {
+                    continue;
+                }
+                if ($cid !== '') {
+                    $seenCampaign[$cid] = true;
+                }
+                $deduped[] = $row;
+            }
+            $rows = $deduped;
         } elseif ($usePhpSort) {
             $fetchLen = (int) min($sortCap, max($recordsFiltered, $start + $length));
             $window = $query->limit(max(1, $fetchLen))->get();
