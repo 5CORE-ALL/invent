@@ -73,8 +73,10 @@
                         <span class="badge bg-warning fs-6 p-2" id="total-commission-badge" style="color:black;font-weight:bold;">Commission: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-transferred-badge" style="color:white;font-weight:bold;">Transferred: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-pft-badge" style="color:white;font-weight:bold;">PFT: $0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="gpft-rev-badge" style="color:white;font-weight:bold;" title="Total PFT ÷ revenue (non-canceled lines)">GPFT % (rev): 0%</span>
-                        <span class="badge fs-6 p-2" id="groi-badge" style="background-color:#6f42c1;color:white;font-weight:bold;" title="Total PFT ÷ COGS (LP × qty), non-canceled">GROI %: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color:white;font-weight:bold;" title="COGS = LP × Qty. This is the GROI divisor.">COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color:#b45309;color:white;font-weight:bold;" title="Σ COGS Ship. COGS Ship is Ship BB, subtracted once.">COGS Ship: $0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="gpft-rev-badge" style="color:white;font-weight:bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (sales × {{ (int) ($ppMargin ?? 65) }}%) − COGS − COGS Ship. COGS Ship is Ship BB, once.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="groi-badge" style="background-color:#6f42c1;color:white;font-weight:bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge fs-6 p-2" id="tacos-percentage-badge"
                             title="Purchasing Power has no ads — TACOS%/Ads% is always 0% (same as /all-marketplace-master)"
                             style="background-color:#6f42c1;color:white;font-weight:bold;">TACOS %: 0.0%</span>
@@ -292,8 +294,8 @@
                     }
                 },
                 {
-                    title: 'Ship BB', field: 'ship', width: 70, hozAlign: 'center', sorter: 'number',
-                    headerTooltip: 'Shipping Master Ship BB (slab + Handling + O-Size)',
+                    title: 'COGS Ship', field: 'ship_cost', width: 80, hozAlign: 'center', sorter: 'number',
+                    headerTooltip: 'COGS Ship = Ship BB (ship bb base + handling + o-size). Subtracted once.',
                     formatter: function (cell) {
                         const v = parseFloat(cell.getValue() || 0);
                         return `$${v.toFixed(2)}`;
@@ -301,6 +303,7 @@
                 },
                 {
                     title: 'GROI%', field: 'groi_pct', width: 58, hozAlign: 'center', sorter: 'number',
+                    headerTooltip: 'GROI % = PFT ÷ COGS.',
                     formatter: function (cell) {
                         const v = parseFloat(cell.getValue() || 0);
                         const color = v < 40 ? '#dc3545' : v < 100 ? '#ffc107' : '#28a745';
@@ -309,6 +312,7 @@
                 },
                 {
                     title: 'GPFT%', field: 'gpft_pct', width: 60, hozAlign: 'center', sorter: 'number',
+                    headerTooltip: 'GPFT % = PFT ÷ sales. PFT = (sales × margin) − COGS − COGS Ship. COGS Ship is Ship BB, once.',
                     formatter: function (cell) {
                         const v = parseFloat(cell.getValue() || 0);
                         const color = v < 10 ? '#dc3545' : v < 20 ? '#ffc107' : '#28a745';
@@ -388,6 +392,7 @@
             let rollupRevenue = 0;
             let rollupPft = 0;
             let rollupCogs = 0;
+            let rollupCogsShip = 0;
             let totalCommission = 0;
             let totalTransferred = 0;
             let canceledCount = 0;
@@ -419,12 +424,16 @@
                     rollupQty += qty;
                     rollupPft += pft;
                     rollupCogs += parseFloat(row.cogs) || 0;
+                    rollupCogsShip += parseFloat(row.ship_cost) || 0;
                 }
             });
 
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
-            const gpftRevPct = rollupRevenue > 0 ? (rollupPft / rollupRevenue) * 100 : 0;
-            const groiPct = rollupCogs > 0 ? (rollupPft / rollupCogs) * 100 : 0;
+            const gpftDollars = Math.round(rollupPft);
+            const salesDollars = Math.round(rollupRevenue);
+            const cogsDollars = Math.round(rollupCogs);
+            const gpftRevPct = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            const groiPct = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             $('#total-orders-badge').text(`Orders: ${rollupOrders.toLocaleString()}`);
             $('#total-qty-badge').text(`Total Qty: ${rollupQty.toLocaleString()}`);
@@ -432,12 +441,13 @@
             $('#total-commission-badge').text(`Commission: $${Math.round(totalCommission).toLocaleString()}`);
             $('#total-transferred-badge').text(`Transferred: $${Math.round(totalTransferred).toLocaleString()}`);
             $('#total-pft-badge').text(`PFT: $${Math.round(rollupPft).toLocaleString()}`);
-            $('#gpft-rev-badge').text(`GPFT % (rev): ${gpftRevPct.toFixed(1)}%`);
-            $('#groi-badge').text(`GROI %: ${groiPct.toFixed(1)}%`);
-            // Purchasing Power has no ads — TACOS%=0, N PFT = GPFT, N ROI = GROI (same as /all-marketplace-master).
+            $('#total-cogs-badge').text(`COGS: $${cogsDollars.toLocaleString()}`);
+            $('#cogs-ship-badge').text(`COGS Ship: $${Math.round(rollupCogsShip).toLocaleString()}`);
+            $('#gpft-rev-badge').text(`GPFT: ${Math.round(gpftRevPct)}%`);
+            $('#groi-badge').text(`GROI: ${Math.round(groiPct)}%`);
             $('#tacos-percentage-badge').text('TACOS %: 0.0%');
-            $('#m-pft-badge').text('N PFT: ' + gpftRevPct.toFixed(1) + '%');
-            $('#n-roi-badge').text('N ROI: ' + groiPct.toFixed(1) + '%');
+            $('#m-pft-badge').text('N PFT: ' + Math.round(gpftRevPct) + '%');
+            $('#n-roi-badge').text('N ROI: ' + Math.round(groiPct) + '%');
             $('#canceled-badge').text(`Canceled: ${canceledCount}`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
 

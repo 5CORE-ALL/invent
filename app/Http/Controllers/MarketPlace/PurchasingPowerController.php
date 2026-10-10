@@ -1156,11 +1156,13 @@ class PurchasingPowerController extends Controller
                 ? (float) $r->amount
                 : ($unitPrice * $qty);
 
-            $pftEach = ($unitPrice * $pct) - $lp - $ship;
-            $pft = round($pftEach * $qty, 2);
-            $gpft = $unitPrice > 0 ? round(($pftEach / $unitPrice) * 100, 2) : 0;
+            // Sales is unit price × qty once. COGS Ship is Ship BB, subtracted once.
+            $sales = $unitPrice > 0 ? round($unitPrice * $qty, 2) : round($amount, 2);
             $cogs = round($lp * $qty, 2);
-            $groi = $lp > 0 ? round(($pftEach / $lp) * 100, 2) : 0;
+            $cogsShip = round($ship, 2);
+            $pft = round(($sales * $pct) - $cogs - $cogsShip, 2);
+            $gpft = $sales > 0 ? round(($pft / $sales) * 100, 2) : 0;
+            $groi = $cogs > 0 ? round(($pft / $cogs) * 100, 2) : 0;
 
             $orderDate = '';
             if (! empty($r->order_date)) {
@@ -1199,6 +1201,7 @@ class PurchasingPowerController extends Controller
                 'category_label' => $r->category_label ?? null,
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
+                'ship_cost' => $cogsShip,
                 'cogs' => $cogs,
                 'pft' => $pft,
                 'gpft_pct' => $gpft,
