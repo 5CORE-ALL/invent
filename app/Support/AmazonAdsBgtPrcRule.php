@@ -53,7 +53,7 @@ final class AmazonAdsBgtPrcRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('amazon_ads_bgt_prc_rule_settings');
+        $decoded = self::readStoredRule('prc', 'amazon_ads_bgt_prc_rule_settings');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -154,7 +154,7 @@ final class AmazonAdsBgtPrcRule
     {
         self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
-        self::storeRuleJson('amazon_ads_bgt_prc_rule_settings', $normalized);
+        self::storeRuleJson('prc', $normalized);
         self::forgetResolvedCache();
     }
 

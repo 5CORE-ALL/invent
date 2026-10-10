@@ -52,7 +52,7 @@ final class AmazonAdsBgtDilRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('amazon_ads_bgt_dil_rule_settings');
+        $decoded = self::readStoredRule('dil', 'amazon_ads_bgt_dil_rule_settings');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -129,7 +129,7 @@ final class AmazonAdsBgtDilRule
     {
         self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
-        self::storeRuleJson('amazon_ads_bgt_dil_rule_settings', $normalized);
+        self::storeRuleJson('dil', $normalized);
         self::forgetResolvedCache();
     }
 

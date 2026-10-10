@@ -1696,7 +1696,7 @@
                 <div class="modal-footer">
                     <div class="small text-muted me-auto" id="amz-bgt-status"></div>
                     <button type="button" class="btn btn-sm amz-auto-sync-btn" id="amazonAdsAutoPushPullBtn" aria-pressed="false" title="When on, each page load pulls live Amazon BGT and BID and pushes only values that differ. SBGT 0 pauses.">Auto Push &amp; Pull: OFF</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtSaveApplyBtn" onclick="if (window.amzBgtSaveAndApply) window.amzBgtSaveAndApply(event)">Save and apply</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="amazonAdsBgtSaveApplyBtn">Save and apply</button>
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -6812,6 +6812,8 @@
                     .finally(function () { if (btn) btn.disabled = false; });
             }
             window.amzBgtSaveAndApply = amzBgtSaveAndApply;
+            var bgtSaveApplyBtn = document.getElementById('amazonAdsBgtSaveApplyBtn');
+            if (bgtSaveApplyBtn) bgtSaveApplyBtn.addEventListener('click', amzBgtSaveAndApply);
             amzLoadBandsFromRule(window.amazonAdsBgtRule || {});
             amzLoadBgtViewsBandsFromRule(window.amazonAdsBgtViewsRule || {});
             amzLoadBgtCvrBandsFromRule(window.amazonAdsBgtCvrRule || {});

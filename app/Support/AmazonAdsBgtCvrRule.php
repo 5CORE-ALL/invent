@@ -54,7 +54,7 @@ final class AmazonAdsBgtCvrRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('amazon_ads_bgt_cvr_rule_settings');
+        $decoded = self::readStoredRule('cvr', 'amazon_ads_bgt_cvr_rule_settings');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -155,7 +155,7 @@ final class AmazonAdsBgtCvrRule
     {
         self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
-        self::storeRuleJson('amazon_ads_bgt_cvr_rule_settings', $normalized);
+        self::storeRuleJson('cvr', $normalized);
         self::forgetResolvedCache();
     }
 

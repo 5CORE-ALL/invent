@@ -2,22 +2,35 @@
 
 namespace App\Support;
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Same save path as eBay campaign ads: one JSON column, written with the query
- * builder and read back with json_decode. No model cast and no remembered copy.
+ * One table for every Amazon ads rule, same shape as ebay_sbid_rules:
+ * unique key + JSON rule, written with updateOrInsert.
  */
 trait StoresAmazonAdsRuleJson
 {
-    private static function readStoredRule(string $table): ?array
+    private static function readStoredRule(string $key, ?string $legacyTable = null): ?array
     {
-        if (! Schema::hasTable($table)) {
+        self::ensureRulesTable();
+        $decoded = self::decodeStoredRule(
+            DB::table('amazon_ads_rules')->where('key', $key)->value('rule')
+        );
+        if (is_array($decoded) && $decoded !== []) {
+            return $decoded;
+        }
+        if ($legacyTable === null || ! Schema::hasTable($legacyTable)) {
             return null;
         }
+        $legacy = self::decodeStoredRule(DB::table($legacyTable)->orderBy('id')->value('rule'));
+        if (! is_array($legacy) || $legacy === []) {
+            return null;
+        }
+        self::storeRuleJson($key, $legacy);
 
-        return self::decodeStoredRule(DB::table($table)->orderBy('id')->value('rule'));
+        return $legacy;
     }
 
     private static function decodeStoredRule(mixed $raw): ?array
@@ -39,22 +52,40 @@ trait StoresAmazonAdsRuleJson
     /**
      * @param  array<string, mixed>  $rule
      */
-    private static function storeRuleJson(string $table, array $rule): void
+    private static function storeRuleJson(string $key, array $rule): void
     {
-        if (! Schema::hasTable($table)) {
-            throw new \RuntimeException('Table '.$table.' does not exist. Run migrations.');
-        }
-        $rowId = DB::table($table)->orderBy('id')->value('id');
+        self::ensureRulesTable();
+        $exists = DB::table('amazon_ads_rules')->where('key', $key)->exists();
         $payload = [
             'rule' => json_encode($rule),
             'updated_at' => now(),
         ];
-        if ($rowId === null) {
+        if (! $exists) {
             $payload['created_at'] = now();
-            DB::table($table)->insert($payload);
+            $payload['key'] = $key;
+            DB::table('amazon_ads_rules')->insert($payload);
 
             return;
         }
-        DB::table($table)->where('id', $rowId)->update($payload);
+        DB::table('amazon_ads_rules')->where('key', $key)->update($payload);
+    }
+
+    private static function ensureRulesTable(): void
+    {
+        if (Schema::hasTable('amazon_ads_rules')) {
+            return;
+        }
+        try {
+            Schema::create('amazon_ads_rules', function (Blueprint $table) {
+                $table->id();
+                $table->string('key')->unique();
+                $table->json('rule');
+                $table->timestamps();
+            });
+        } catch (\Throwable $e) {
+            if (! Schema::hasTable('amazon_ads_rules')) {
+                throw $e;
+            }
+        }
     }
 }

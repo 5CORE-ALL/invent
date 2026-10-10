@@ -51,7 +51,7 @@ final class AmazonAdsBgtSpendRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('amazon_ads_bgt_spend_rule_settings');
+        $decoded = self::readStoredRule('spend', 'amazon_ads_bgt_spend_rule_settings');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -128,7 +128,7 @@ final class AmazonAdsBgtSpendRule
     {
         self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
-        self::storeRuleJson('amazon_ads_bgt_spend_rule_settings', $normalized);
+        self::storeRuleJson('spend', $normalized);
         self::forgetResolvedCache();
     }
 

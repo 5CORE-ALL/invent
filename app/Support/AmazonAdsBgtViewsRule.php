@@ -57,7 +57,7 @@ final class AmazonAdsBgtViewsRule
         if (! Schema::hasTable('amazon_ads_bgt_views_rule_settings')) {
             return self::defaults();
         }
-        $decoded = self::readStoredRule('amazon_ads_bgt_views_rule_settings');
+        $decoded = self::readStoredRule('views', 'amazon_ads_bgt_views_rule_settings');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -158,7 +158,7 @@ final class AmazonAdsBgtViewsRule
     {
         self::ensureSettingsTable();
         $normalized = self::normalizeRule($rule);
-        self::storeRuleJson('amazon_ads_bgt_views_rule_settings', $normalized);
+        self::storeRuleJson('views', $normalized);
         self::forgetResolvedCache();
     }
 

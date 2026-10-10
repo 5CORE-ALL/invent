@@ -58,7 +58,7 @@ final class AmazonAcosSbgtRule
      */
     private static function loadResolvedRule(): array
     {
-        $decoded = self::readStoredRule('amazon_acos_sbgt_rule_settings');
+        $decoded = self::readStoredRule('acos', 'amazon_acos_sbgt_rule_settings');
         if ($decoded === null || $decoded === []) {
             return self::defaults();
         }
@@ -103,7 +103,7 @@ final class AmazonAcosSbgtRule
      */
     public static function persistRule(array $rule): void
     {
-        self::storeRuleJson('amazon_acos_sbgt_rule_settings', $rule);
+        self::storeRuleJson('acos', $rule);
         self::forgetResolvedCache();
     }
 
