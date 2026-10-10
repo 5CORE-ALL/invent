@@ -71,7 +71,7 @@ class InvManagement5CoreController extends Controller
 
         try {
             $result = $this->hub->recordAppSales($request->user()?->id);
-            $message = 'Recorded '.$result['posted'].' app sale'
+            $message = 'Recorded '.$result['posted'].' marketplace order line'
                 .($result['posted'] === 1 ? '' : 's');
             if ($result['reversed'] > 0) {
                 $message .= ' and reversed '.$result['reversed'].' cancelled or refunded line'
@@ -90,7 +90,7 @@ class InvManagement5CoreController extends Controller
 
             return response()->json([
                 'status' => 500,
-                'message' => 'Unable to record app sales.',
+                'message' => 'Unable to record marketplace orders.',
             ], 500);
         }
     }

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Support\Inv5coreLedger;
+use App\Support\Inv5coreMarketplaceOrders;
 use PHPUnit\Framework\TestCase;
 
 class Inv5coreLedgerTest extends TestCase
@@ -45,5 +46,18 @@ class Inv5coreLedgerTest extends TestCase
         $this->assertSame(8.5, Inv5coreLedger::applyDelta(10, -1.5));
         $this->assertSame('/storage/products/a.jpg', Inv5coreLedger::imagePath('storage/products/a.jpg', 'https://cdn.example/a.jpg'));
         $this->assertSame('https://cdn.example/a.jpg', Inv5coreLedger::imagePath(null, 'https://cdn.example/a.jpg'));
+    }
+
+    public function test_marketplace_orders_cover_the_order_management_channels(): void
+    {
+        $sources = array_column(Inv5coreMarketplaceOrders::definitions(), 'source');
+
+        $this->assertContains('amazon', $sources);
+        $this->assertContains('ebay1', $sources);
+        $this->assertContains('temu', $sources);
+        $this->assertContains('wayfair', $sources);
+        $this->assertNotContains('shopify', $sources);
+        $this->assertSame('mp:amazon', Inv5coreMarketplaceOrders::sourceKey('amazon'));
+        $this->assertSame('mp:amazon:reversal', Inv5coreMarketplaceOrders::reversalKey('amazon'));
     }
 }

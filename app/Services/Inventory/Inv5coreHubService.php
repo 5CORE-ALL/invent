@@ -8,6 +8,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\CpMasterDil;
 use App\Support\Inv5coreLedger;
+use App\Support\Inv5coreMarketplaceOrders;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -191,14 +192,15 @@ class Inv5coreHubService
                 }
             });
 
+        Inv5coreMarketplaceOrders::snapshotWatermarks();
         $this->forgetL30();
 
         return ['seeded' => $seeded, 'skipped' => $skipped];
     }
 
     /**
-     * Post app sales that arrived after each SKU's opening watermark, and
-     * reverse lines that were later cancelled or refunded.
+     * Deduct marketplace orders recorded after the opening, and write each
+     * line into the SKU history. Cancelled lines are reversed.
      *
      * @return array{posted: int, reversed: int}
      */
@@ -211,21 +213,16 @@ class Inv5coreHubService
             return ['posted' => 0, 'reversed' => 0];
         }
 
-        $minOrderId = null;
         $minManualId = null;
         foreach ($balances as $balance) {
-            if ($balance->sales_after_order_id !== null) {
-                $minOrderId = $minOrderId === null ? (int) $balance->sales_after_order_id : min($minOrderId, (int) $balance->sales_after_order_id);
-            }
             if ($balance->sales_after_manual_id !== null) {
                 $minManualId = $minManualId === null ? (int) $balance->sales_after_manual_id : min($minManualId, (int) $balance->sales_after_manual_id);
             }
         }
 
-        if (Schema::hasTable('shopify_raw_orders') && $minOrderId !== null) {
-            $posted += $this->postShopifyOrderLines($balances, $minOrderId, $userId);
-            $reversed += $this->reverseShopifyOrderLines($userId);
-        }
+        Inv5coreMarketplaceOrders::snapshotWatermarks();
+        $posted += $this->postMarketplaceOrderLines($balances, $userId);
+        $reversed += $this->reverseMarketplaceOrderLines($userId);
         if (Schema::hasTable('order_fulfillment_manual_orders') && $minManualId !== null) {
             $posted += $this->postManualOrderLines($balances, $minManualId, $userId);
             $reversed += $this->reverseManualOrderLines($userId);
@@ -234,6 +231,74 @@ class Inv5coreHubService
         $this->forgetL30();
 
         return ['posted' => $posted, 'reversed' => $reversed];
+    }
+
+    /**
+     * @param  array<string, Inv5coreBalance>  $balances
+     */
+    private function postMarketplaceOrderLines(array $balances, ?int $userId): int
+    {
+        $posted = 0;
+        Inv5coreMarketplaceOrders::eachNewLine(function ($line, array $def) use ($balances, $userId, &$posted) {
+            if (Inv5coreLedger::statusSkipsSale($line->status ?? null)) {
+                return;
+            }
+            $qty = (float) ($line->qty ?? 0);
+            if ($qty <= 0) {
+                return;
+            }
+            $balance = $balances[ShopifySku::compactSkuForLookup((string) ($line->sku ?? ''))] ?? null;
+            if (! $balance) {
+                return;
+            }
+            $orderNo = trim((string) ($line->order_number ?? ''));
+            $detail = $def['label'].' order '.($orderNo !== '' ? $orderNo : $line->id).' · Qty '.$qty;
+            if ($this->postMovement(
+                $balance,
+                'sale',
+                Inv5coreMarketplaceOrders::sourceKey($def['source']),
+                (int) $line->id,
+                Inv5coreLedger::deltaForSubtract($qty),
+                $orderNo,
+                $def['label'],
+                $detail,
+                ! empty($line->order_date) ? Carbon::parse($line->order_date) : Carbon::now(),
+                $userId
+            )) {
+                $posted++;
+            }
+        });
+
+        return $posted;
+    }
+
+    private function reverseMarketplaceOrderLines(?int $userId): int
+    {
+        $reversed = 0;
+        Inv5coreMarketplaceOrders::eachReversal(function ($line, array $def) use ($userId, &$reversed) {
+            $balance = Inv5coreBalance::query()->find($line->balance_id);
+            if (! $balance) {
+                return;
+            }
+            $orderNo = trim((string) ($line->order_number ?? ''));
+            $detail = 'Reversal · '.$def['label'].' order '.($orderNo !== '' ? $orderNo : $line->line_id).' is now '.$line->status;
+            if ($this->postMovement(
+                $balance,
+                'return',
+                Inv5coreMarketplaceOrders::reversalKey($def['source']),
+                (int) $line->line_id,
+                Inv5coreLedger::deltaForAdd(abs((float) $line->qty_delta)),
+                $orderNo,
+                $def['label'],
+                $detail,
+                Carbon::now(),
+                $userId
+            )) {
+                $reversed++;
+            }
+        });
+
+        return $reversed;
     }
 
     /**
@@ -431,18 +496,7 @@ class Inv5coreHubService
         $since = Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay()->toDateString();
         $map = [];
 
-        if (Schema::hasTable('shopify_raw_orders')) {
-            $query = DB::table('shopify_raw_orders')
-                ->select('sku', DB::raw('SUM(quantity) as qty'))
-                ->where('order_date', '>=', $since)
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->where('quantity', '>', 0);
-            $this->excludeSkippedStatus($query, 'financial_status');
-            foreach ($query->groupBy('sku')->get() as $row) {
-                $this->addCompactQty($map, (string) $row->sku, (float) $row->qty);
-            }
-        }
+        Inv5coreMarketplaceOrders::addL30($map, $since);
 
         if (Schema::hasTable('order_fulfillment_manual_orders')) {
             $query = DB::table('order_fulfillment_manual_orders')
