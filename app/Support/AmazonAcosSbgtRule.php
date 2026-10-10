@@ -43,18 +43,13 @@ final class AmazonAcosSbgtRule
     }
 
     /**
-     * Active rule (cached). Falls back to {@see defaults} when the table is missing or empty.
-     * If file cache dirs are missing/unwritable, loads from DB without caching.
+     * Active rule from the database. Falls back to {@see defaults} when the table is missing or empty.
      *
      * @return array{bands: array<int, array{acos_from: float, acos_to: float, sbgt: int, label: string, color: string}>}
      */
     public static function resolvedRule(): array
     {
-        try {
-            return Cache::remember(self::CACHE_KEY, 86400, static fn (): array => self::loadResolvedRule());
-        } catch (\Throwable) {
-            return self::loadResolvedRule();
-        }
+        return self::loadResolvedRule();
     }
 
     /**

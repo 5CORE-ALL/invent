@@ -149,11 +149,7 @@ final class AmazonAdsPauseRule
      */
     public static function resolvedRule(): array
     {
-        try {
-            return Cache::remember(self::CACHE_KEY, 86400, static fn (): array => self::loadResolvedRule());
-        } catch (\Throwable) {
-            return self::loadResolvedRule();
-        }
+        return self::loadResolvedRule();
     }
 
     /**
