@@ -766,16 +766,19 @@
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar.is-min .amz-bgt-sum-sub { display: none; }
         #amazonAdsBgtRulesModal .amz-bgt-cols {
             display: flex;
-            gap: 8px;
+            flex-wrap: wrap;
             align-items: stretch;
+            align-content: flex-start;
+            gap: 8px;
             width: 100%;
-            height: 100%;
             min-width: 0;
             min-height: 0;
             flex: 1 1 auto;
+            overflow: auto;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col {
-            flex: 1 1 0;
+            flex: 1 1 calc((100% - 24px) / 4);
+            max-width: calc((100% - 24px) / 4);
             min-width: 0;
             min-height: 0;
             display: flex;
@@ -785,7 +788,7 @@
             padding: 8px;
             background: #fff;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-            overflow: hidden;
+            overflow: auto;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 4px; }
         #amazonAdsBgtRulesModal .amz-bgt-title {
@@ -807,7 +810,7 @@
         #amazonAdsBgtRulesModal .amz-bgt-col.is-max { flex: 1 1 100%; min-width: 0; max-width: none; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-max .amz-bgt-chart-canvas { height: 220px; flex: 0 0 220px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-max .amz-bgt-chart-canvas canvas { height: 220px !important; }
-        #amazonAdsBgtRulesModal .amz-bgt-col.is-min { flex: 0 0 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min { flex: 0 0 40px; width: 40px; max-width: 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min > :not(.amz-bgt-col-head) { display: none !important; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
@@ -1488,7 +1491,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>SBGT</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1516,7 +1518,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1544,7 +1545,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1572,7 +1572,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1600,7 +1599,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1628,7 +1626,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1656,7 +1653,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1684,7 +1680,6 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
-                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -5072,44 +5067,7 @@
                 counts.campaigns = rows.length;
                 return counts;
             }
-            function amzBgtRefreshCountCells(tbodyId, counts) {
-                var tbody = document.getElementById(tbodyId);
-                if (!tbody || !counts) return;
-                var matched = 0;
-                tbody.querySelectorAll('[data-count-idx]').forEach(function (el) {
-                    var i = +el.dataset.countIdx;
-                    var n = counts[i] != null ? Number(counts[i]) : 0;
-                    if (!isFinite(n)) n = 0;
-                    el.textContent = String(n);
-                    matched += n;
-                });
-                var campaigns = typeof counts.campaigns === 'number' ? counts.campaigns : matched;
-                var unmatched = typeof counts.unmatched === 'number' ? counts.unmatched : Math.max(0, campaigns - matched);
-                var tot = tbody.querySelector('[data-count-total]');
-                if (!tot) {
-                    var tr = document.createElement('tr');
-                    tr.className = 'amz-bgt-count-total';
-                    tr.innerHTML = '<td></td><td colspan="3" class="text-end">Total</td><td class="text-center" data-count-total>0</td><td></td>';
-                    tbody.appendChild(tr);
-                    tot = tr.querySelector('[data-count-total]');
-                }
-                var outsideRow = tbody.querySelector('[data-count-outside]');
-                if (unmatched > 0) {
-                    if (!outsideRow) {
-                        var otr = document.createElement('tr');
-                        otr.className = 'amz-bgt-count-outside';
-                        otr.innerHTML = '<td></td><td colspan="3" class="text-end text-muted">No match</td><td class="text-center text-muted" data-count-outside>0</td><td></td>';
-                        if (tot && tot.parentElement) tbody.insertBefore(otr, tot.parentElement);
-                        else tbody.appendChild(otr);
-                        outsideRow = otr.querySelector('[data-count-outside]');
-                    }
-                    outsideRow.textContent = String(unmatched);
-                    if (outsideRow.parentElement) outsideRow.parentElement.style.display = '';
-                } else if (outsideRow && outsideRow.parentElement) {
-                    outsideRow.parentElement.style.display = 'none';
-                }
-                if (tot) tot.textContent = String(campaigns);
-            }
+            function amzBgtRefreshCountCells() {}
             var amzBgtColCharts = {};
             var AMZ_BGT_COL_COLORS = ['#7c3aed', '#2563eb', '#16a34a', '#f59e0b', '#f97316', '#dc2626', '#64748b', '#0ea5e9'];
             function amzBgtFmtRange(v) {
@@ -5486,7 +5444,6 @@
                         + '<td><input type="number" step="0.1" class="form-control form-control-sm" value="' + (band.acos_from != null ? band.acos_from : '') + '" data-idx="' + i + '" data-field="acos_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.1" class="form-control form-control-sm" value="' + (band.acos_to != null ? band.acos_to : '') + '" data-idx="' + i + '" data-field="acos_to" placeholder="9999"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.sbgt != null ? band.sbgt : '') + '" data-idx="' + i + '" data-field="sbgt" title="0 pauses the campaign. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Remove band"><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5497,7 +5454,6 @@
                         amzCurrentBands[idx][fld] = (fld === 'sbgt') ? (this.value === '' ? '' : parseFloat(this.value))
                             : (fld === 'acos_from' || fld === 'acos_to') ? (this.value === '' ? '' : parseFloat(this.value))
                             : this.value;
-                        if (fld === 'acos_to') amzBgtCascadeNextSlabs(amzCurrentBands, idx, 'acos_from', 'acos_to', tbody);
                         if (fld === 'acos_from' || fld === 'acos_to' || fld === 'label') amzAcosRefreshCounts();
                     });
                 });
@@ -5665,7 +5621,6 @@
                         + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.views_from != null ? band.views_from : '') + '" data-idx="' + i + '" data-field="views_from" placeholder="0"></td>'
                         + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.views_to != null ? band.views_to : '') + '" data-idx="' + i + '" data-field="views_to" placeholder="9999"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5683,12 +5638,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'views_to') amzBgtCascadeNextSlabs(amzBgtViewsBands, +this.dataset.idx, 'views_from', 'views_to', tbody);
                         if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'views_to') amzBgtCascadeNextSlabs(amzBgtViewsBands, +this.dataset.idx, 'views_from', 'views_to', tbody);
                         if (this.dataset.field === 'views_from' || this.dataset.field === 'views_to' || this.dataset.field === 'label') amzBgtViewsRefreshCounts();
                     });
                 });
@@ -5839,7 +5792,6 @@
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_from != null ? band.cvr_from : '') + '" data-idx="' + i + '" data-field="cvr_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.cvr_to != null ? band.cvr_to : '') + '" data-idx="' + i + '" data-field="cvr_to" placeholder="9999"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -5857,12 +5809,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'cvr_to') amzBgtCascadeNextSlabs(amzBgtCvrBands, +this.dataset.idx, 'cvr_from', 'cvr_to', tbody);
                         if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'cvr_to') amzBgtCascadeNextSlabs(amzBgtCvrBands, +this.dataset.idx, 'cvr_from', 'cvr_to', tbody);
                         if (this.dataset.field === 'cvr_from' || this.dataset.field === 'cvr_to' || this.dataset.field === 'label') amzBgtCvrRefreshCounts();
                     });
                 });
@@ -6012,7 +5962,6 @@
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.prc_from != null ? band.prc_from : '') + '" data-idx="' + i + '" data-field="prc_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.prc_to != null ? band.prc_to : '') + '" data-idx="' + i + '" data-field="prc_to" placeholder="9999"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6026,12 +5975,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'prc_to') amzBgtCascadeNextSlabs(amzBgtPrcBands, +this.dataset.idx, 'prc_from', 'prc_to', tbody);
                         if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'prc_to') amzBgtCascadeNextSlabs(amzBgtPrcBands, +this.dataset.idx, 'prc_from', 'prc_to', tbody);
                         if (this.dataset.field === 'prc_from' || this.dataset.field === 'prc_to' || this.dataset.field === 'label') amzBgtPrcRefreshCounts();
                     });
                 });
@@ -6198,7 +6145,6 @@
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.rev_from != null ? band.rev_from : '') + '" data-idx="' + i + '" data-field="rev_from" placeholder="2.99"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.rev_to != null ? band.rev_to : '') + '" data-idx="' + i + '" data-field="rev_to" placeholder="5"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. Decimals allowed (e.g. 1.5 or -0.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6212,12 +6158,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'rev_to') amzBgtCascadeNextSlabs(amzBgtReviewsBands, +this.dataset.idx, 'rev_from', 'rev_to', tbody);
                         if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'rev_to') amzBgtCascadeNextSlabs(amzBgtReviewsBands, +this.dataset.idx, 'rev_from', 'rev_to', tbody);
                         if (this.dataset.field === 'rev_from' || this.dataset.field === 'rev_to' || this.dataset.field === 'label') amzBgtReviewsRefreshCounts();
                     });
                 });
@@ -6364,7 +6308,6 @@
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.dil_from != null ? band.dil_from : '') + '" data-idx="' + i + '" data-field="dil_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.dil_to != null ? band.dil_to : '') + '" data-idx="' + i + '" data-field="dil_to" placeholder="9999"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6382,12 +6325,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'dil_to') amzBgtCascadeNextSlabs(amzBgtDilBands, +this.dataset.idx, 'dil_from', 'dil_to', tbody);
                         if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'dil_to') amzBgtCascadeNextSlabs(amzBgtDilBands, +this.dataset.idx, 'dil_from', 'dil_to', tbody);
                         if (this.dataset.field === 'dil_from' || this.dataset.field === 'dil_to' || this.dataset.field === 'label') amzBgtDilRefreshCounts();
                     });
                 });
@@ -6529,7 +6470,6 @@
                         + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.inv_from != null ? band.inv_from : '') + '" data-idx="' + i + '" data-field="inv_from" placeholder="0"></td>'
                         + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.inv_to != null ? band.inv_to : '') + '" data-idx="' + i + '" data-field="inv_to" placeholder="9999"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="0 is allowed. Decimals allowed (e.g. 1.5) — the SBGT total is floored when pushed (4.5 → 4)."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6541,12 +6481,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'inv_to') amzBgtCascadeNextSlabs(amzBgtInvBands, +this.dataset.idx, 'inv_from', 'inv_to', tbody);
                         amzBgtInvRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'inv_to') amzBgtCascadeNextSlabs(amzBgtInvBands, +this.dataset.idx, 'inv_from', 'inv_to', tbody);
                         amzBgtInvRefreshCounts();
                     });
                 });
@@ -6649,7 +6587,6 @@
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.spend_from != null ? band.spend_from : '') + '" data-idx="' + i + '" data-field="spend_from" placeholder="0"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.spend_to != null ? band.spend_to : '') + '" data-idx="' + i + '" data-field="spend_to" placeholder="9999"></td>'
                         + '<td><input type="number" step="0.01" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt" title="Negative values are allowed. The chart counts campaigns by L30 spend."></td>'
-                        + '<td class="text-center fw-semibold" data-count-idx="' + i + '">0</td>'
                         + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '" title="Delete slab"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
                     tbody.appendChild(tr);
                 });
@@ -6665,12 +6602,10 @@
                     };
                     inp.addEventListener('input', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'spend_to') amzBgtCascadeNextSlabs(amzBgtSpendBands, +this.dataset.idx, 'spend_from', 'spend_to', tbody);
                         if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts();
                     });
                     inp.addEventListener('change', function () {
                         writeBand(this);
-                        if (this.dataset.field === 'spend_to') amzBgtCascadeNextSlabs(amzBgtSpendBands, +this.dataset.idx, 'spend_from', 'spend_to', tbody);
                         if (this.dataset.field === 'spend_from' || this.dataset.field === 'spend_to') amzBgtSpendRefreshCounts();
                     });
                 });
@@ -6802,14 +6737,14 @@
                 var st = document.getElementById('amz-bgt-status');
                 amzBgtServerLoadGen++;
                 var specs = [
-                    { label: 'BGT Vs ACOS', url: bgtRuleSaveUrl, body: 'amazonAdsBgtRuleBandsBody', bands: amzCurrentBands, from: 'acos_from', to: 'acos_to', amt: 'sbgt', store: 'amazonAdsBgtRule' },
-                    { label: 'BGT Vs VIEWS', url: bgtViewsRuleSaveUrl, body: 'amazonAdsBgtViewsRuleBandsBody', bands: amzBgtViewsBands, from: 'views_from', to: 'views_to', amt: 'bgt', store: 'amazonAdsBgtViewsRule' },
-                    { label: 'BGT Vs CVR', url: bgtCvrRuleSaveUrl, body: 'amazonAdsBgtCvrRuleBandsBody', bands: amzBgtCvrBands, from: 'cvr_from', to: 'cvr_to', amt: 'bgt', store: 'amazonAdsBgtCvrRule' },
-                    { label: 'BGT PRC', url: bgtPrcRuleSaveUrl, body: 'amazonAdsBgtPrcRuleBandsBody', bands: amzBgtPrcBands, from: 'prc_from', to: 'prc_to', amt: 'bgt', store: 'amazonAdsBgtPrcRule' },
-                    { label: 'BGT Vs REVIEWS', url: bgtReviewsRuleSaveUrl, body: 'amazonAdsBgtReviewsRuleBandsBody', bands: amzBgtReviewsBands, from: 'rev_from', to: 'rev_to', amt: 'bgt', store: 'amazonAdsBgtReviewsRule' },
-                    { label: 'BGT Vs Dil', url: bgtDilRuleSaveUrl, body: 'amazonAdsBgtDilRuleBandsBody', bands: amzBgtDilBands, from: 'dil_from', to: 'dil_to', amt: 'bgt', store: 'amazonAdsBgtDilRule' },
-                    { label: 'Inv Rule', url: bgtInvRuleSaveUrl, body: 'amazonAdsBgtInvRuleBandsBody', bands: amzBgtInvBands, from: 'inv_from', to: 'inv_to', amt: 'bgt', store: 'amazonAdsBgtInvRule' },
-                    { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, body: 'amazonAdsBgtSpendRuleBandsBody', bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule' }
+                    { label: 'BGT Vs ACOS', url: bgtRuleSaveUrl, body: 'amazonAdsBgtRuleBandsBody', bands: amzCurrentBands, from: 'acos_from', to: 'acos_to', amt: 'sbgt', store: 'amazonAdsBgtRule', load: amzLoadBandsFromRule },
+                    { label: 'BGT Vs VIEWS', url: bgtViewsRuleSaveUrl, body: 'amazonAdsBgtViewsRuleBandsBody', bands: amzBgtViewsBands, from: 'views_from', to: 'views_to', amt: 'bgt', store: 'amazonAdsBgtViewsRule', load: amzLoadBgtViewsBandsFromRule },
+                    { label: 'BGT Vs CVR', url: bgtCvrRuleSaveUrl, body: 'amazonAdsBgtCvrRuleBandsBody', bands: amzBgtCvrBands, from: 'cvr_from', to: 'cvr_to', amt: 'bgt', store: 'amazonAdsBgtCvrRule', load: amzLoadBgtCvrBandsFromRule },
+                    { label: 'BGT PRC', url: bgtPrcRuleSaveUrl, body: 'amazonAdsBgtPrcRuleBandsBody', bands: amzBgtPrcBands, from: 'prc_from', to: 'prc_to', amt: 'bgt', store: 'amazonAdsBgtPrcRule', load: amzLoadBgtPrcBandsFromRule },
+                    { label: 'BGT Vs REVIEWS', url: bgtReviewsRuleSaveUrl, body: 'amazonAdsBgtReviewsRuleBandsBody', bands: amzBgtReviewsBands, from: 'rev_from', to: 'rev_to', amt: 'bgt', store: 'amazonAdsBgtReviewsRule', load: amzLoadBgtReviewsBandsFromRule },
+                    { label: 'BGT Vs Dil', url: bgtDilRuleSaveUrl, body: 'amazonAdsBgtDilRuleBandsBody', bands: amzBgtDilBands, from: 'dil_from', to: 'dil_to', amt: 'bgt', store: 'amazonAdsBgtDilRule', load: amzLoadBgtDilBandsFromRule },
+                    { label: 'Inv Rule', url: bgtInvRuleSaveUrl, body: 'amazonAdsBgtInvRuleBandsBody', bands: amzBgtInvBands, from: 'inv_from', to: 'inv_to', amt: 'bgt', store: 'amazonAdsBgtInvRule', load: amzLoadBgtInvBandsFromRule },
+                    { label: 'Spend Rule', url: bgtSpendRuleSaveUrl, body: 'amazonAdsBgtSpendRuleBandsBody', bands: amzBgtSpendBands, from: 'spend_from', to: 'spend_to', amt: 'bgt', store: 'amazonAdsBgtSpendRule', load: amzLoadBgtSpendBandsFromRule }
                 ];
                 var jobs = [];
                 for (var i = 0; i < specs.length; i++) {
@@ -6833,7 +6768,10 @@
                             if (!out.ok || body.status === 422 || body.status === 500) {
                                 throw new Error(jobs[n].spec.label + ': ' + (body.message || body.error || 'Save failed.'));
                             }
-                            if (body.rule) window[jobs[n].spec.store] = body.rule;
+                            if (body.rule) {
+                                window[jobs[n].spec.store] = body.rule;
+                                if (typeof jobs[n].spec.load === 'function') jobs[n].spec.load(body.rule);
+                            }
                         }
                         if (typeof amzFillAcosFilterOptions === 'function') amzFillAcosFilterOptions();
                         if (typeof amzUpdatePushButtons === 'function') amzUpdatePushButtons();
