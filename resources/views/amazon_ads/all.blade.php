@@ -336,7 +336,7 @@
         }
         .amz-lrange-btn:hover { color: #1d4ed8; transform: scale(1.2); }
         .amz-lrange-pop {
-            position: fixed; z-index: 1080; min-width: 220px; max-width: 280px;
+            position: fixed; z-index: 2000; min-width: 220px; max-width: 280px;
             background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
             box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18); padding: 8px 10px;
         }
@@ -2346,7 +2346,7 @@
                 var cid = row && row.campaign_id != null ? String(row.campaign_id) : '';
                 var name = row && row.campaignName != null ? String(row.campaignName) : '';
                 var ad = row && row.ad_type != null ? String(row.ad_type) : '';
-                var label = metric === 'sales' ? 'L2–L7 ads sales' : 'L2–L7 ads spend';
+                var label = metric === 'sales' ? 'L1–L7 ads sales' : 'L1–L7 ads spend';
                 var btn = '<button type="button" class="amz-lrange-btn" title="' + amzEsc(label) + '" aria-label="' + amzEsc(label) + '"'
                     + ' data-lrange="' + amzEsc(metric) + '" data-campaign-id="' + amzEsc(cid) + '" data-campaign-name="' + amzEsc(name) + '" data-ad-type="' + amzEsc(ad) + '">'
                     + '<i class="fas fa-chart-bar"></i></button>';
@@ -3033,7 +3033,7 @@
                 }
                 if (c === 'ySpend') {
                     col.title = 'L1 Spend';
-                    col.headerTooltip = 'Yesterday ads spend (Amazon L1). Chart icon shows daily L2–L7 spend.';
+                    col.headerTooltip = 'Yesterday ads spend (Amazon L1). Chart icon shows daily L1–L7 spend.';
                     col.formatter = function (cell) { return fmtL1RangeCell(cell, 'spend'); };
                     col.minWidth = 92;
                     col.width = 102;
@@ -3041,7 +3041,7 @@
                 }
                 if (c === 'ySales') {
                     col.title = 'L1 Sales';
-                    col.headerTooltip = 'Yesterday ads sales (Amazon L1). Chart icon shows daily L2–L7 sales.';
+                    col.headerTooltip = 'Yesterday ads sales (Amazon L1). Chart icon shows daily L1–L7 sales.';
                     col.formatter = function (cell) { return fmtL1RangeCell(cell, 'sales'); };
                     col.minWidth = 92;
                     col.width = 102;
@@ -3480,6 +3480,9 @@
                     if (idx < 0) idx = 0;
                     body.set('order[0][column]', String(idx));
                     body.set('order[0][dir]', sorters[0].dir === 'asc' ? 'asc' : 'desc');
+                } else if (cols.indexOf('ySpend') !== -1) {
+                    body.set('order[0][column]', String(cols.indexOf('ySpend')));
+                    body.set('order[0][dir]', 'desc');
                 }
                 var f = amzFilterPayload();
                 Object.keys(f).forEach(function (k) { body.set(k, f[k]); });
@@ -3524,6 +3527,7 @@
                 paginationButtonCount: 10,
                 paginationInitialPage: 1,
                 sortMode: 'remote',
+                initialSort: [{ column: 'ySpend', dir: 'desc' }],
                 headerSortClickElement: 'icon',
                 placeholder: 'No rows for this source.',
                 selectableRows: true,
@@ -3928,6 +3932,10 @@
                     table.setColumns(amzBuildColumns(sourceKey));
                     amzApplyColumnVisibility(amzColVisMap);
                     amzBuildColumnDropdown();
+                    var srcCols = (rawSources[sourceKey] && rawSources[sourceKey].columns) ? rawSources[sourceKey].columns : [];
+                    if (srcCols.indexOf('ySpend') === -1) {
+                        try { table.clearSort(); } catch (e) {}
+                    }
                     Promise.resolve(table.setData()).catch(function () {});
                 }
             }
@@ -4456,7 +4464,7 @@
                 var cid = btn.getAttribute('data-campaign-id') || '';
                 var name = btn.getAttribute('data-campaign-name') || cid;
                 var metric = btn.getAttribute('data-lrange') === 'sales' ? 'sales' : 'spend';
-                var title = metric === 'sales' ? 'L2–L7 Ads Sales' : 'L2–L7 Ads Spend';
+                var title = metric === 'sales' ? 'L1–L7 Ads Sales' : 'L1–L7 Ads Spend';
                 pop.classList.remove('d-none');
                 pop.innerHTML = '<div class="amz-lrange-pop-title">' + amzEsc(name) + ' — ' + title + '</div>'
                     + '<div class="small text-muted">Loading…</div>';

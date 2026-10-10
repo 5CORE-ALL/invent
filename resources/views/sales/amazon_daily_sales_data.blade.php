@@ -483,11 +483,12 @@
                     width: 100
                 },
                 {
-                    title: "Ship Cost",
+                    title: "COGS Ship",
                     field: "ship_cost",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 100,
+                    width: 110,
+                    headerTooltip: "Shipping Master Ship slab for T Weight (Dim & Wt ACT lb × Qty). Subtracted once.",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
