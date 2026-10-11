@@ -340,35 +340,48 @@ class Inv5coreMarketplaceOrders
     }
 
     /**
-     * Every order line for one SKU. Watermarks only mark lines already inside
-     * the opening on-hand; they are not hidden from history.
+     * Every order line for one SKU from the marketplace order tables, plus any
+     * line whose Shopify copy carries this SKU. Watermarks only mark lines
+     * already inside the opening on-hand; they are not hidden from history.
      *
      * @param  array<string, int>  $maxIdBySource
+     * @param  list<string>  $shopifyOrderIds
      * @return list<object>
      */
-    public static function linesForCompactSku(string $sku, array $maxIdBySource = []): array
+    public static function linesForCompactSku(string $sku, array $maxIdBySource = [], array $shopifyOrderIds = []): array
     {
         $compact = ShopifySku::compactSkuForLookup($sku);
         if ($compact === '') {
             return [];
         }
-        $prefix = self::skuPrefix($sku);
+        $shopifyLookup = array_fill_keys($shopifyOrderIds, true);
 
         $lines = [];
         foreach (self::definitions() as $def) {
             if (! Schema::hasTable($def['table'])) {
                 continue;
             }
+            $shopifyCol = self::shopifyOrderColumn($def);
             try {
                 $query = self::lineQuery($def);
-                self::whereSku($query, $def['sku_sql'], $prefix, $compact);
-                $rows = $query->orderByRaw($def['date_sql'].' desc')->limit(400)->get();
+                $query->where(function ($inner) use ($def, $compact, $shopifyCol, $shopifyOrderIds) {
+                    self::whereSkuLike($inner, $def['sku_sql'], $compact);
+                    if ($shopifyCol !== null && $shopifyOrderIds !== []) {
+                        $inner->orWhereIn(DB::raw($shopifyCol), $shopifyOrderIds);
+                    }
+                });
+                $rows = $query->orderByRaw($def['date_sql'].' desc')->limit(1000)->get();
             } catch (\Throwable $e) {
                 Log::warning('INV 5Core history skipped '.$def['source'].': '.$e->getMessage());
                 continue;
             }
             $mark = $maxIdBySource[$def['source']] ?? null;
             foreach ($rows as $row) {
+                $row->shopify_order_id = self::shopifyId($row->shopify_order_id ?? null);
+                $linked = $row->shopify_order_id !== '' && isset($shopifyLookup[$row->shopify_order_id]);
+                if (! $linked && ShopifySku::compactSkuForLookup((string) ($row->sku ?? '')) !== $compact) {
+                    continue;
+                }
                 $row->channel = $def['label'];
                 $row->source = $def['source'];
                 $row->in_snapshot = $mark === null || (int) $row->id <= (int) $mark;
@@ -379,35 +392,51 @@ class Inv5coreMarketplaceOrders
         return $lines;
     }
 
-    public static function skuPrefix(string $sku): string
+    public static function shopifyId(mixed $value): string
     {
-        $sku = trim(str_replace(["\u{00a0}", "\xC2\xA0"], ' ', $sku));
-        if (preg_match('/[A-Za-z0-9]{2,}/', $sku, $match)) {
-            return $match[0];
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return '';
         }
-        $compact = ShopifySku::compactSkuForLookup($sku);
+        if (preg_match('/(\d{5,})\s*$/', $value, $match)) {
+            return $match[1];
+        }
 
-        return strlen($compact) >= 2 ? substr($compact, 0, 2) : $compact;
+        return ctype_digit($value) ? $value : '';
     }
 
     /**
+     * Loose SQL prefilter: every SKU character in order, so spacing and dashes
+     * do not matter. Callers compare compactSkuForLookup in PHP afterwards.
+     *
      * @param  \Illuminate\Database\Query\Builder  $query
      */
-    public static function whereSku($query, string $skuSql, string $prefix, string $compact): void
+    public static function whereSkuLike($query, string $skuSql, string $compact): void
     {
+        $pattern = implode('%', str_split($compact));
         $columns = self::skuColumns($skuSql);
-        if ($prefix !== '' && $columns !== []) {
-            $query->where(function ($inner) use ($columns, $prefix) {
-                foreach ($columns as $index => $column) {
-                    if ($index === 0) {
-                        $inner->whereRaw($column.' LIKE ?', [$prefix.'%']);
-                    } else {
-                        $inner->orWhereRaw($column.' LIKE ?', [$prefix.'%']);
-                    }
-                }
-            });
+        if ($columns === []) {
+            $query->whereRaw('UPPER(TRIM('.$skuSql.')) LIKE ?', [$pattern]);
+
+            return;
         }
-        $query->whereRaw(self::compactSkuSql($skuSql).' = ?', [$compact]);
+        $query->where(function ($inner) use ($columns, $pattern) {
+            foreach ($columns as $column) {
+                $inner->orWhereRaw('UPPER(TRIM('.$column.')) LIKE ?', [$pattern]);
+            }
+        });
+    }
+
+    /**
+     * @param  array<string, string>  $def
+     */
+    private static function shopifyOrderColumn(array $def): ?string
+    {
+        if (! empty($def['join_sql'])) {
+            return Schema::hasColumn('amazon_orders', 'shopify_order_id') ? 'o.shopify_order_id' : null;
+        }
+
+        return Schema::hasColumn($def['table'], 'shopify_order_id') ? 'shopify_order_id' : null;
     }
 
     /**
@@ -428,11 +457,6 @@ class Inv5coreMarketplaceOrders
         return array_values($columns);
     }
 
-    public static function compactSkuSql(string $expr): string
-    {
-        return "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(($expr), CHAR(160), ''), ' ', ''), '-', ''), '_', ''), '.', ''), '/', ''))";
-    }
-
     /**
      * @param  array<string, string>  $def
      */
@@ -442,9 +466,10 @@ class Inv5coreMarketplaceOrders
         if (empty($def['join_sql']) && Schema::hasColumn($def['table'], 'ship_time')) {
             $fulfilled = 'ship_time';
         }
+        $shopify = self::shopifyOrderColumn($def) ?? 'NULL';
 
         return self::baseQuery($def)->selectRaw(
-            $def['id_sql'].' as id, '.$def['sku_sql'].' as sku, '.$def['qty_sql'].' as qty, '.$def['order_sql'].' as order_number, '.$def['status_sql'].' as status, '.$def['date_sql'].' as order_date, '.$fulfilled.' as fulfilled_at'
+            $def['id_sql'].' as id, '.$def['sku_sql'].' as sku, '.$def['qty_sql'].' as qty, '.$def['order_sql'].' as order_number, '.$def['status_sql'].' as status, '.$def['date_sql'].' as order_date, '.$fulfilled.' as fulfilled_at, '.$shopify.' as shopify_order_id'
         );
     }
 

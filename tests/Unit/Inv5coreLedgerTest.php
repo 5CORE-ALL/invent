@@ -90,6 +90,15 @@ class Inv5coreLedgerTest extends TestCase
         $this->assertSame('Alex', Inv5coreLedger::historyCreatedBy('adjustment', 'App', 'Alex'));
     }
 
+    public function test_shopify_order_ids_are_normalized_for_linking(): void
+    {
+        $this->assertSame('189448832616', Inv5coreMarketplaceOrders::shopifyId('189448832616'));
+        $this->assertSame('189448832616', Inv5coreMarketplaceOrders::shopifyId('gid://shopify/Order/189448832616'));
+        $this->assertSame('', Inv5coreMarketplaceOrders::shopifyId(null));
+        $this->assertSame('', Inv5coreMarketplaceOrders::shopifyId('pending'));
+        $this->assertSame(['display_sku', 'ext_code', 'product_sku_id'], Inv5coreMarketplaceOrders::skuColumns("COALESCE(NULLIF(display_sku, ''), NULLIF(ext_code, ''), product_sku_id)"));
+    }
+
     public function test_order_history_uses_the_marketplace_and_order_number(): void
     {
         $this->assertSame('Doba', Inv5coreLedger::shopifyOrderChannel('doba', ''));
