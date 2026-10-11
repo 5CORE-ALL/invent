@@ -297,7 +297,14 @@ class SheinController extends Controller
                     $sales = $productPrice * $qty;
                     $weightAct = EbaySalesController::actWeightLb($values);
                     $tWeight = $weightAct * $qty;
-                    $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
+                    $shipCost = EbaySalesController::cogsShipForSku(
+                        $slabService,
+                        $shipSlabRates,
+                        (string) ($item->seller_sku ?? ''),
+                        $values,
+                        $qty,
+                        (string) ($pm->parent ?? '')
+                    );
                     $cogs = $resolved['lp'] * $qty;
                     $row = $item->toArray();
                     $row['lp'] = $resolved['lp'];
@@ -564,7 +571,14 @@ class SheinController extends Controller
                     $values = is_array($values) ? $values : [];
                 }
                 $weightAct = EbaySalesController::actWeightLb($values);
-                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $qty, $weightAct);
+                $shipCost = EbaySalesController::cogsShipForSku(
+                    $slabService,
+                    $shipSlabRates,
+                    (string) ($line->seller_sku ?? ''),
+                    $values,
+                    $qty,
+                    (string) ($pm->parent ?? '')
+                );
                 $lineCogs = $resolved['lp'] * $qty;
                 $spCogs += $lineCogs;
                 $spPft += ($sales * $margin) - $lineCogs - $shipCost;

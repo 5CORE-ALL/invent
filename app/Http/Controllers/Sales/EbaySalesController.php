@@ -47,11 +47,71 @@ class EbaySalesController extends Controller
     }
 
     /**
-     * Shipping Master ship slab for the order weight, once.
-     * An empty band uses the SKU's own weight slab. Missing weight is 0.
+     * COGS Ship for one order line.
+     * A combo with Label Qty >= 2 is one slab per package: "A + B" sums each component, a named combo multiplies its slab by Label Qty.
+     * Order qty scales each package weight. It does not multiply the slab again.
      *
      * @param  array<string, array{rate: ?float}>  $shipSlabRates
+     * @param  array<string, mixed>  $values
      */
+    public static function cogsShipForSku(?ShippingSlabRateService $slabs, array $shipSlabRates, string $sku, array $values, float $qty, string $parent = ''): float
+    {
+        $qty = $qty > 0 ? $qty : 1.0;
+        $labelQty = (int) ($values['label_qty'] ?? 0);
+        $itemWeight = self::actWeightLb($values);
+
+        if ($labelQty >= 2 && ProductMaster::isComboSku($sku, $parent)) {
+            $parts = ProductMaster::parseComboComponentSkus($sku);
+            if (count($parts) >= 2) {
+                $sum = 0.0;
+                $found = 0;
+                foreach (array_slice($parts, 0, $labelQty) as $part) {
+                    $componentValues = self::componentValues($part);
+                    if ($componentValues === null) {
+                        continue;
+                    }
+                    $componentWeight = self::actWeightLb($componentValues);
+                    $sum += self::cogsShipForOrderWeight($slabs, $shipSlabRates, $componentWeight * $qty, $componentWeight);
+                    $found++;
+                }
+                if ($found > 0) {
+                    return round($sum, 2);
+                }
+            }
+
+            return round(self::cogsShipForOrderWeight($slabs, $shipSlabRates, $itemWeight * $qty, $itemWeight) * $labelQty, 2);
+        }
+
+        return self::cogsShipForOrderWeight($slabs, $shipSlabRates, $itemWeight * $qty, $itemWeight);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function componentValues(string $sku): ?array
+    {
+        $key = ProductMaster::skuCompact($sku);
+        if ($key === '') {
+            return null;
+        }
+        if (! array_key_exists($key, self::$componentValuesCache)) {
+            $product = ProductMaster::findByCompactSku($sku);
+            if (! $product) {
+                self::$componentValuesCache[$key] = null;
+            } else {
+                $values = is_array($product->Values)
+                    ? $product->Values
+                    : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                self::$componentValuesCache[$key] = is_array($values) ? $values : [];
+            }
+        }
+
+        return self::$componentValuesCache[$key];
+    }
+
+    /** @var array<string, array<string, mixed>|null> */
+    private static array $componentValuesCache = [];
+
     public static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder, float $itemWeightLb = 0.0): float
     {
         $orderRate = self::slabShipRate($slabs, $shipSlabRates, $weightOrder);
