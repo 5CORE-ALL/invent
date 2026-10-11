@@ -33,6 +33,16 @@ class ListingCountsEngineNrReqTest extends TestCase
     }
 
     #[Test]
+    public function a_marketplace_item_id_stays_listed_when_portal_status_is_missing(): void
+    {
+        $this->assertFalse(ListingCountsEngine::listingStatusHidesId('MISSING', '235842695435', 'DS 01 WH'));
+        $this->assertFalse(ListingCountsEngine::listingStatusHidesId('NOT_LISTED', '236426681335', 'KS Z1 ECO BLK WHLS'));
+        $this->assertTrue(ListingCountsEngine::listingStatusHidesId('MISSING', 'DS 01 WH', 'DS 01 WH'));
+        $this->assertTrue(ListingCountsEngine::listingStatusHidesId('deleted', '235842695435', 'DS 01 WH'));
+        $this->assertTrue(ListingCountsEngine::listingStatusHidesId('draft', '235842695435', 'DS 01 WH'));
+    }
+
+    #[Test]
     public function uploaded_and_unable_to_list_are_not_live(): void
     {
         $this->assertTrue(ListingCountsEngine::isPendingOrReviewListingState('Uploaded'));

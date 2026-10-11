@@ -640,6 +640,25 @@ class ListingCountsEngine
      *
      * @param  array<string, string>  $listedIdBySkuLower
      */
+    /**
+     * Deleted, draft, and failed rows are not listings. A portal status of
+     * MISSING still counts when the marketplace id is present — eBay 1 keeps
+     * the item id on rows the seller portal sync did not return.
+     */
+    public static function listingStatusHidesId(?string $status, string $id, string $sku): bool
+    {
+        if (! MarketplaceListingPresence::isAbsent($status)) {
+            return false;
+        }
+        $normalized = strtolower(trim((string) $status));
+        $normalized = str_replace([' ', '-'], '_', $normalized);
+        if (! in_array($normalized, ['missing', 'not_listed'], true)) {
+            return true;
+        }
+
+        return $id === '' || strcasecmp($id, $sku) === 0;
+    }
+
     public static function listingIdFromMap(array $listedIdBySkuLower, string $sku): string
     {
         $sku = trim($sku);
@@ -696,7 +715,7 @@ class ListingCountsEngine
                 if ($sku === '' || $id === '') {
                     return;
                 }
-                if ($hasStatus && MarketplaceListingPresence::isAbsent($row->listing_status ?? null)) {
+                if ($hasStatus && self::listingStatusHidesId($row->listing_status ?? null, $id, $sku)) {
                     return;
                 }
                 if ($rejectSkuAsId && strcasecmp($id, $sku) === 0) {

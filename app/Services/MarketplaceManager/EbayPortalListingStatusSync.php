@@ -442,7 +442,32 @@ class EbayPortalListingStatusSync
      */
     protected function listingHasSku(array $allListings, string $sku): bool
     {
-        return isset($allListings[strtoupper(trim($sku))]);
+        $wanted = [];
+        foreach ($this->skuLookupKeys($sku) as $key) {
+            $wanted[strtoupper($key)] = true;
+        }
+        $compact = strtoupper(ShopifySku::compactSkuForLookup($sku));
+        if ($compact !== '') {
+            $wanted[$compact] = true;
+        }
+        if (isset($allListings[strtoupper(trim($sku))])) {
+            return true;
+        }
+        foreach ($allListings as $row) {
+            $listedSku = trim((string) ($row['sku'] ?? ''));
+            if ($listedSku === '') {
+                continue;
+            }
+            if (isset($wanted[strtoupper($listedSku)])) {
+                return true;
+            }
+            $listedCompact = strtoupper(ShopifySku::compactSkuForLookup($listedSku));
+            if ($compact !== '' && $listedCompact === $compact) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
