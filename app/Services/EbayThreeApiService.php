@@ -159,6 +159,18 @@ class EbayThreeApiService
 
     public string $lastGetItemError = '';
 
+    private function ebayXmlText(mixed $value): string
+    {
+        if (is_array($value)) {
+            $value = $value[0] ?? '';
+            if (is_array($value)) {
+                $value = '';
+            }
+        }
+
+        return trim((string) $value);
+    }
+
     /**
      * Match the seller SKU to one variation and return the specifics eBay requires
      * to apply StartPrice. Null when the listing is not a variation or the SKU is absent.
@@ -440,8 +452,8 @@ class EbayThreeApiService
                 $vs = $variation->addChild('VariationSpecifics');
                 foreach ($variationSpecifics as $name => $value) {
                     $nvl = $vs->addChild('NameValueList');
-                    $nvl->addChild('Name', $name);
-                    $nvl->addChild('Value', $value);
+                    $nvl->addChild('Name', $this->ebayXmlText($name));
+                    $nvl->addChild('Value', $this->ebayXmlText($value));
                 }
             }
             if ($variationSpecificsSet) {
@@ -450,7 +462,7 @@ class EbayThreeApiService
                     $nvl = $vss->addChild('NameValueList');
                     $nvl->addChild('Name', $name);
                     foreach ($values as $val) {
-                        $nvl->addChild('Value', $val);
+                        $nvl->addChild('Value', $this->ebayXmlText($val));
                     }
                 }
             }
@@ -462,11 +474,11 @@ class EbayThreeApiService
             }
 
             // Include SKU / ListingType to help pass validation.
-            if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
-                $item->addChild('SKU', $existingItem['SKU']);
+            if (isset($existingItem['SKU']) && $this->ebayXmlText($existingItem['SKU']) !== '') {
+                $item->addChild('SKU', $this->ebayXmlText($existingItem['SKU']));
             }
             if (isset($existingItem['ListingType'])) {
-                $item->addChild('ListingType', $existingItem['ListingType']);
+                $item->addChild('ListingType', $this->ebayXmlText($existingItem['ListingType']));
             }
         }
 
