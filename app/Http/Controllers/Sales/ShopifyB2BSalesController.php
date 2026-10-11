@@ -15,17 +15,75 @@ class ShopifyB2BSalesController extends Controller
         return view('sales.shopify_b2b_daily_sales_data');
     }
 
+    /**
+     * Badge integers painted by /shopify-b2b/daily-sales.
+     * Sales = price × qty. GPFT = rounded PFT ÷ rounded sales.
+     * GROI = rounded PFT ÷ rounded COGS. Ship is one weight slab, subtracted once.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int, revenue: float}
+     */
+    public static function dailySalesBadgeTotals(string $period = 'l30'): array
+    {
+        $lines = app(self::class)->salesLinesForPeriod($period);
+        $orders = 0;
+        $qty = 0;
+        $revenue = 0.0;
+        $pft = 0.0;
+        $sales = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+
+        foreach ($lines as $row) {
+            if (($row['sku'] ?? '') === '') {
+                continue;
+            }
+            $orders++;
+            $qty += (int) ($row['quantity'] ?? 0);
+            $revenue += (float) ($row['total_amount'] ?? 0);
+            $pft += (float) ($row['pft'] ?? 0);
+            $sales += (float) ($row['l30_sales'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+            'revenue' => round($revenue, 2),
+        ];
+    }
+
     public function getData(Request $request)
     {
         \Log::info('ShopifyB2BSalesController getData called');
 
+        $data = $this->salesLinesForPeriod('l30');
+        \Log::info('Found ' . count($data) . ' Shopify B2B orders');
+        \Log::info('Returning ' . count($data) . ' data items');
+
+        return response()->json($data);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function salesLinesForPeriod(string $period): array
+    {
         $orders = ShopifyB2BDailyData::query()
-            ->where('period', 'l30')
+            ->where('period', $period)
             ->countableSales()
             ->orderBy('order_date', 'desc')
             ->get();
-
-        \Log::info('Found ' . $orders->count() . ' Shopify B2B orders');
 
         // Get unique SKUs
         $skus = $orders->pluck('sku')->unique()->toArray();
@@ -112,9 +170,7 @@ class ShopifyB2BSalesController extends Controller
             ];
         }
 
-        \Log::info('Returning ' . count($data) . ' data items');
-
-        return response()->json($data);
+        return $data;
     }
 
     public function getColumnVisibility(Request $request)

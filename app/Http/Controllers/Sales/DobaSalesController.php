@@ -167,6 +167,88 @@ class DobaSalesController extends Controller
         ]);
     }
 
+    /**
+     * Same integers the /doba/daily-sales badges paint.
+     * Sales is item price × qty once. Ship is one weight slab. Prepaid-label orders stay in.
+     *
+     * @return array{l30: int, l60: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    public function dailySalesBadgeTotals(): array
+    {
+        $payload = $this->getData(request())->getData(true);
+        $lines = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $l60BySku = is_array($payload['l60_sales_by_sku'] ?? null) ? $payload['l60_sales_by_sku'] : [];
+
+        return $this->badgeFromSalesLines($lines, $l60BySku);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     * @param  array<string, mixed>  $l60BySku
+     * @return array{l30: int, l60: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    private function badgeFromSalesLines(array $lines, array $l60BySku): array
+    {
+        $orders = 0;
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+        $activeSkus = [];
+
+        foreach ($lines as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+
+            $orders++;
+            $activeSkus[strtolower($sku)] = true;
+            $quantity = (int) ($row['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
+
+            $qty += $quantity;
+            $sales += (float) ($row['sale_amount'] ?? 0);
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $l60Lookup = [];
+        foreach ($l60BySku as $sku => $amount) {
+            $l60Lookup[strtolower((string) $sku)] = (float) $amount;
+        }
+        $l60Sales = 0.0;
+        foreach (array_keys($activeSkus) as $sku) {
+            if (array_key_exists($sku, $l60Lookup)) {
+                $l60Sales += $l60Lookup[$sku];
+            }
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'l60' => (int) round($l60Sales),
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     public function getColumnVisibility(Request $request)
     {
         $defaultVisibility = [

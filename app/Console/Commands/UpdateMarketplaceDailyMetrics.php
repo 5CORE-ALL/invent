@@ -1014,6 +1014,32 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
+        try {
+            $badge = app(\App\Http\Controllers\MarketPlace\TopDawgSyncController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            $badge = ['orders' => 0, 'l30' => 0];
+        }
+        if (((int) ($badge['orders'] ?? 0)) > 0 || ((int) ($badge['l30'] ?? 0)) !== 0) {
+            return [
+                'total_orders' => $badge['orders'],
+                'total_quantity' => $badge['qty'],
+                'total_revenue' => $badge['l30'],
+                'total_sales' => $badge['l30'],
+                'total_cogs' => $badge['cogs'],
+                'total_pft' => $badge['pft'],
+                'pft_percentage' => $badge['gpft'],
+                'roi_percentage' => $badge['groi'],
+                'avg_price' => $badge['qty'] > 0 ? round($badge['l30'] / $badge['qty'], 2) : 0,
+                'l30_sales' => $badge['l30'],
+                'kw_spent' => 0,
+                'pmt_spent' => 0,
+                'tacos_percentage' => 0,
+                'ads_percentage' => 0,
+                'n_pft' => $badge['gpft'],
+                'n_roi' => $badge['groi'],
+            ];
+        }
+
         $data = $this->modelsChunked(TopDawgOrderMetric::class);
         if ($data->isEmpty()) {
             return null;
@@ -1793,9 +1819,16 @@ class UpdateMarketplaceDailyMetrics extends Command
             $totalPft += (($price * $quantity) * $margin) - $cogs - $shipCost;
         }
 
+        $badge = \App\Http\Controllers\Sales\ShopifyB2CSalesController::dailySalesBadgeTotals('l30');
+        $totalOrders = (int) ($badge['orders'] ?? $totalOrders);
+        $totalQuantity = (int) ($badge['qty'] ?? $totalQuantity);
+        $totalRevenue = (float) ($badge['revenue'] ?? $totalRevenue);
+        $totalCogs = (float) ($badge['cogs'] ?? $totalCogs);
+        $totalPft = (float) ($badge['pft'] ?? $totalPft);
+        $lineSales = (float) ($badge['l30'] ?? 0);
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $pftPercentage = (float) ($badge['gpft'] ?? 0);
+        $roiPercentage = (float) ($badge['groi'] ?? 0);
 
         // Calculate Google Ads Spent for Shopify B2C (L30)
         $yesterday = Carbon::yesterday();
@@ -1833,29 +1866,22 @@ class UpdateMarketplaceDailyMetrics extends Command
         $serpSales = (float) ($serpRow->sales ?? 0);
         $serpSold = (int) ($serpRow->sold ?? 0);
 
-        $totalGoogleSpent = $shoppingSpent + $serpSpent;
-
-        // Calculate TACOS %: (Total Google Spent / Total Sales) * 100
-        $tacosPercentage = $totalRevenue > 0 ? ($totalGoogleSpent / $totalRevenue) * 100 : 0;
-
-        // Calculate N PFT: GPFT % - TACOS %
-        $nPftPercentage = $pftPercentage - $tacosPercentage;
-
-        // Calculate N ROI: (Net Profit / COGS) * 100 where Net Profit = Gross Profit - Ad Spend
-        $netProfit = $totalPft - $totalGoogleSpent;
-        $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
+        // TACOS, N PFT, and N ROI match the /shopify-b2c/daily-sales badges.
+        $tacosPercentage = (float) ($badge['tacos'] ?? 0);
+        $nPftPercentage = (float) ($badge['n_pft'] ?? 0);
+        $nRoiPercentage = (float) ($badge['n_roi'] ?? 0);
 
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
             'total_revenue' => $totalRevenue,
-            'total_sales' => $totalRevenue,
+            'total_sales' => $lineSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
             'pft_percentage' => round($pftPercentage, 1),
             'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
-            'l30_sales' => $totalRevenue,
+            'l30_sales' => $lineSales,
             'kw_spent' => round($shoppingSpent, 2), // G-SHOP spend
             'pmt_spent' => round($serpSpent, 2),     // G-SERP spend
             'tacos_percentage' => round($tacosPercentage, 1),
@@ -1960,21 +1986,28 @@ class UpdateMarketplaceDailyMetrics extends Command
             $totalPft += (($price * $quantity) * $margin) - $cogs - $shipCost;
         }
 
+        $badge = \App\Http\Controllers\Sales\ShopifyB2BSalesController::dailySalesBadgeTotals('l30');
+        $totalOrders = (int) ($badge['orders'] ?? $totalOrders);
+        $totalQuantity = (int) ($badge['qty'] ?? $totalQuantity);
+        $totalRevenue = (float) ($badge['revenue'] ?? $totalRevenue);
+        $totalCogs = (float) ($badge['cogs'] ?? $totalCogs);
+        $totalPft = (float) ($badge['pft'] ?? $totalPft);
+        $lineSales = (float) ($badge['l30'] ?? 0);
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $pftPercentage = (float) ($badge['gpft'] ?? 0);
+        $roiPercentage = (float) ($badge['groi'] ?? 0);
 
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
             'total_revenue' => $totalRevenue,
-            'total_sales' => $totalRevenue,
+            'total_sales' => $lineSales,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
             'pft_percentage' => round($pftPercentage, 1),
             'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
-            'l30_sales' => $totalRevenue,
+            'l30_sales' => $lineSales,
             'kw_spent' => 0,
             'pmt_spent' => 0,
             'n_pft' => $totalPft,
@@ -1984,6 +2017,30 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTikTokMetrics($date)
     {
+        try {
+            $badge = \App\Http\Controllers\Sales\TikTokSalesController::dailySalesBadgeTotals('l30');
+        } catch (\Throwable $e) {
+            $badge = ['orders' => 0, 'l30' => 0];
+        }
+        if (((int) ($badge['orders'] ?? 0)) > 0 || ((int) ($badge['l30'] ?? 0)) !== 0) {
+            return [
+                'total_orders' => $badge['orders'],
+                'total_quantity' => $badge['qty'],
+                'total_revenue' => $badge['l30'],
+                'total_sales' => $badge['l30'],
+                'total_cogs' => $badge['cogs'],
+                'total_pft' => $badge['pft'],
+                'pft_percentage' => $badge['gpft'],
+                'roi_percentage' => $badge['groi'],
+                'avg_price' => $badge['qty'] > 0 ? round($badge['l30'] / $badge['qty'], 2) : 0,
+                'l30_sales' => $badge['l30'],
+                'kw_spent' => 0,
+                'pmt_spent' => 0,
+                'n_pft' => $badge['gpft'],
+                'n_roi' => $badge['groi'],
+            ];
+        }
+
         // L30 from tiktok_orders — last 30 California calendar days
         [$startDate, $endDate] = \App\Models\TiktokOrder::californiaDaysWindow(30);
         $orderItems = \App\Models\TiktokOrder::linesInWindow($startDate, $endDate);
@@ -2302,6 +2359,26 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateBestBuyMetrics($date)
     {
+        $badge = \App\Http\Controllers\Sales\BestBuySalesController::dailySalesBadgeTotals('l30');
+        if ((int) ($badge['orders'] ?? 0) > 0 || (int) ($badge['l30'] ?? 0) !== 0) {
+            return [
+                'total_orders' => (int) $badge['orders'],
+                'total_quantity' => (int) $badge['qty'],
+                'total_revenue' => (float) $badge['l30'],
+                'total_sales' => (float) $badge['l30'],
+                'total_cogs' => (float) $badge['cogs'],
+                'total_pft' => (float) $badge['pft'],
+                'pft_percentage' => (int) $badge['gpft'],
+                'roi_percentage' => (int) $badge['groi'],
+                'avg_price' => 0,
+                'l30_sales' => (float) $badge['l30'],
+                'n_roi' => (int) $badge['groi'],
+                'n_pft' => (float) $badge['pft'],
+                'kw_spent' => 0,
+                'pmt_spent' => 0,
+            ];
+        }
+
         // Get Best Buy USA L30 orders from mirakl_daily_data (exclude CLOSED status)
         $orders = MiraklDailyData::where('channel_name', 'Best Buy USA')
             ->where('period', 'l30')
@@ -2408,6 +2485,26 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateMacysMetrics($date)
     {
+        $badge = \App\Http\Controllers\Sales\MacysSalesController::dailySalesBadgeTotals('l30');
+        if ((int) ($badge['orders'] ?? 0) > 0 || (int) ($badge['l30'] ?? 0) !== 0) {
+            return [
+                'total_orders' => (int) $badge['orders'],
+                'total_quantity' => (int) $badge['qty'],
+                'total_revenue' => (float) $badge['l30'],
+                'total_sales' => (float) $badge['l30'],
+                'total_cogs' => (float) $badge['cogs'],
+                'total_pft' => (float) $badge['pft'],
+                'pft_percentage' => (int) $badge['gpft'],
+                'roi_percentage' => (int) $badge['groi'],
+                'avg_price' => 0,
+                'l30_sales' => (float) $badge['l30'],
+                'n_roi' => (int) $badge['groi'],
+                'n_pft' => (float) $badge['pft'],
+                'kw_spent' => 0,
+                'pmt_spent' => 0,
+            ];
+        }
+
         // Get Macy's L30 orders from mirakl_daily_data (exclude CLOSED status)
         $orders = MiraklDailyData::where('channel_name', "Macy's, Inc.")
             ->where('period', 'l30')
@@ -2507,6 +2604,32 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateDobaMetrics($date)
     {
+        try {
+            $badge = app(\App\Http\Controllers\Sales\DobaSalesController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            $badge = ['orders' => 0, 'l30' => 0];
+        }
+        if (((int) ($badge['orders'] ?? 0)) > 0 || ((int) ($badge['l30'] ?? 0)) !== 0) {
+            return [
+                'total_orders' => $badge['orders'],
+                'total_quantity' => $badge['qty'],
+                'total_revenue' => $badge['l30'],
+                'total_sales' => $badge['l30'],
+                'total_cogs' => $badge['cogs'],
+                'total_pft' => $badge['pft'],
+                'pft_percentage' => $badge['gpft'],
+                'roi_percentage' => $badge['groi'],
+                'avg_price' => $badge['qty'] > 0 ? round($badge['l30'] / $badge['qty'], 2) : 0,
+                'l30_sales' => $badge['l30'],
+                'kw_spent' => 0,
+                'pmt_spent' => 0,
+                'tacos_percentage' => 0,
+                'ads_percentage' => 0,
+                'n_pft' => $badge['gpft'],
+                'n_roi' => $badge['groi'],
+            ];
+        }
+
         // L30 from doba_daily_data (period stored lowercase by doba:daily), cancelled excluded.
         // Exclude "Pickup with a prepaid label" — those belong on /doba-tabulator-withoutship;
         // /doba-tabulator and channel Doba metrics use the remaining daily-sales orders.
@@ -2892,6 +3015,30 @@ class UpdateMarketplaceDailyMetrics extends Command
      */
     private function calculateFaireMetrics($date)
     {
+        try {
+            $badge = app(\App\Http\Controllers\MarketPlace\FaireController::class)->dailySalesBadgeTotals('l30');
+        } catch (\Throwable $e) {
+            $badge = ['orders' => 0, 'l30' => 0];
+        }
+        if (((int) ($badge['orders'] ?? 0)) > 0 || ((int) ($badge['l30'] ?? 0)) !== 0) {
+            return [
+                'total_orders' => $badge['orders'],
+                'total_quantity' => $badge['qty'],
+                'total_revenue' => $badge['l30'],
+                'total_sales' => $badge['l30'],
+                'total_cogs' => $badge['cogs'],
+                'total_pft' => $badge['pft'],
+                'pft_percentage' => $badge['gpft'],
+                'roi_percentage' => $badge['groi'],
+                'avg_price' => $badge['qty'] > 0 ? round($badge['l30'] / $badge['qty'], 2) : 0,
+                'l30_sales' => $badge['l30'],
+                'kw_spent' => 0,
+                'pmt_spent' => 0,
+                'n_pft' => $badge['gpft'],
+                'n_roi' => $badge['groi'],
+            ];
+        }
+
         $start = Carbon::now('America/Los_Angeles')->subDays(30)->startOfDay();
         $end = Carbon::now('America/Los_Angeles')->endOfDay();
         $data = DB::table('faire_order_metrics')

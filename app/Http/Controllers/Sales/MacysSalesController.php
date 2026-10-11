@@ -17,17 +17,76 @@ class MacysSalesController extends Controller
         return view('sales.macys_daily_sales_data');
     }
 
+    /**
+     * Badge integers painted by /macys/daily-sales.
+     * Sales = unit price × qty. GPFT = rounded PFT ÷ rounded sales.
+     * GROI = rounded PFT ÷ rounded COGS. Ship is one weight slab, subtracted once.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    public static function dailySalesBadgeTotals(string $period = 'l30'): array
+    {
+        $lines = app(self::class)->salesLines($period);
+        $orders = 0;
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+
+        foreach ($lines as $row) {
+            if (($row['sku'] ?? '') === '' || ($row['order_id'] ?? '') === '') {
+                continue;
+            }
+            $orders++;
+            $quantity = (int) ($row['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
+            $qty += $quantity;
+            $sales += (float) ($row['unit_price'] ?? 0) * $quantity;
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     public function getData(Request $request)
     {
         \Log::info('MacysSalesController getData called');
 
+        $data = $this->salesLines('l30');
+        \Log::info('Found ' . count($data) . ' Macys orders');
+        \Log::info('Returning ' . count($data) . ' data items');
+
+        return response()->json($data);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function salesLines(string $period): array
+    {
         $orders = MiraklDailyData::macys()
-            ->l30()
+            ->where('period', $period === 'l60' ? 'l60' : 'l30')
             ->whereNotIn('status', ['CLOSED', 'CHANNEL_SPECIFIC'])
             ->orderBy('order_created_at', 'desc')
             ->get();
-
-        \Log::info('Found ' . $orders->count() . ' Macys orders');
 
         // Get unique SKUs
         $skus = $orders->pluck('sku')->unique()->toArray();
@@ -113,9 +172,7 @@ class MacysSalesController extends Controller
             ];
         }
 
-        \Log::info('Returning ' . count($data) . ' data items');
-
-        return response()->json($data);
+        return $data;
     }
 
     public function getColumnVisibility(Request $request)

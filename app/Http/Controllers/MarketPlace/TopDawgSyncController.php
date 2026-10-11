@@ -1585,6 +1585,61 @@ class TopDawgSyncController extends Controller
         return response()->json($result);
     }
 
+    /**
+     * Same integers the /topdawg/sales-dashboard badges use.
+     * Every stored order is included. Sales is Amount. Ship is one weight slab.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    public function dailySalesBadgeTotals(): array
+    {
+        $payload = $this->getSalesData(request())->getData(true);
+        $lines = is_array($payload) && array_is_list($payload) ? $payload : [];
+
+        return $this->badgeFromSalesLines($lines);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    private function badgeFromSalesLines(array $lines): array
+    {
+        $orders = 0;
+        $qty = 0;
+        $revenue = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+
+        foreach ($lines as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $orders++;
+            $qty += (int) ($row['quantity'] ?? 0);
+            $revenue += (float) ($row['amount'] ?? 0);
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($revenue);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     private function topDawgMarketplacePercentage(): float
     {
         $fromTable = \App\Models\MarketplacePercentage::where('marketplace', 'TopDawg')->value('percentage');

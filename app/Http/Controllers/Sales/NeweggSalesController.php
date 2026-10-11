@@ -16,7 +16,68 @@ class NeweggSalesController extends Controller
         return view('sales.newegg_daily_sales_data');
     }
 
+    /**
+     * Badge integers painted by /newegg/daily-sales.
+     * Sales is the line amount. GPFT = rounded PFT ÷ rounded sales.
+     * GROI = rounded PFT ÷ rounded COGS. Ship is one weight slab, subtracted once.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    public static function dailySalesBadgeTotals(): array
+    {
+        $lines = app(self::class)->salesLines();
+        $orders = 0;
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+
+        foreach ($lines as $row) {
+            if (($row['sku'] ?? '') === '') {
+                continue;
+            }
+            $quantity = (int) ($row['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
+            $orders++;
+            $qty += $quantity;
+            $sale = (float) ($row['sale_amount'] ?? 0);
+            if ($sale == 0.0) {
+                $sale = (float) ($row['price'] ?? 0) * $quantity;
+            }
+            $sales += $sale;
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     public function getData(Request $request)
+    {
+        return response()->json($this->salesLines());
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function salesLines(): array
     {
         // Margin comes from marketplace_percentages (Neweggb2c): margin = percentage - ad_updates.
         // This margin (net % the seller keeps) drives the profit calculation.
@@ -104,7 +165,7 @@ class NeweggSalesController extends Controller
             }
         }
 
-        return response()->json($data);
+        return $data;
     }
 
     /**

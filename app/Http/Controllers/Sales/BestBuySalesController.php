@@ -19,28 +19,90 @@ class BestBuySalesController extends Controller
         return view('sales.bestbuy_daily_sales_data');
     }
 
+    /**
+     * Badge integers painted by /bestbuy/daily-sales.
+     * Sales = unit price × qty. GPFT = rounded PFT ÷ rounded sales.
+     * GROI = rounded PFT ÷ rounded COGS. COGS Ship is Ship BB once.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    public static function dailySalesBadgeTotals(string $period = 'l30'): array
+    {
+        $lines = app(self::class)->salesLines($period);
+        $orders = 0;
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+
+        foreach ($lines as $row) {
+            if (($row['sku'] ?? '') === '' || ($row['order_id'] ?? '') === '') {
+                continue;
+            }
+            $orders++;
+            $quantity = (int) ($row['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
+            $qty += $quantity;
+            $sales += (float) ($row['unit_price'] ?? 0) * $quantity;
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     public function getData(Request $request)
     {
         \Log::info('BestBuySalesController getData called');
 
-        $todayYmd = now(ChannelTodaySalesService::TZ)->toDateString();
-        [$todayStartUtc, $todayEndUtc] = MiraklDailyData::utcBoundsForTimezoneDate(
-            $todayYmd,
-            ChannelTodaySalesService::TZ
-        );
-        $orders = MiraklDailyData::bestBuyUsa()
-            ->where('status', '!=', 'CLOSED')
-            ->where(function ($q) use ($todayStartUtc, $todayEndUtc) {
+        $data = $this->salesLines('l30');
+        \Log::info('Found ' . count($data) . ' Best Buy orders');
+        \Log::info('Returning ' . count($data) . ' data items');
+
+        return response()->json($data);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function salesLines(string $period): array
+    {
+        $query = MiraklDailyData::bestBuyUsa()->where('status', '!=', 'CLOSED');
+        if ($period === 'l30') {
+            $todayYmd = now(ChannelTodaySalesService::TZ)->toDateString();
+            [$todayStartUtc, $todayEndUtc] = MiraklDailyData::utcBoundsForTimezoneDate(
+                $todayYmd,
+                ChannelTodaySalesService::TZ
+            );
+            $query->where(function ($q) use ($todayStartUtc, $todayEndUtc) {
                 $q->where('period', 'l30')
                     ->orWhere(function ($q2) use ($todayStartUtc, $todayEndUtc) {
                         $q2->where('order_created_at', '>=', $todayStartUtc)
                             ->where('order_created_at', '<=', $todayEndUtc);
                     });
-            })
-            ->orderBy('order_created_at', 'desc')
-            ->get();
+            });
+        } else {
+            $query->where('period', 'l60');
+        }
 
-        \Log::info('Found ' . $orders->count() . ' Best Buy orders');
+        $orders = $query->orderBy('order_created_at', 'desc')->get();
 
         // Get unique SKUs
         $skus = $orders->pluck('sku')->unique()->toArray();
@@ -118,9 +180,7 @@ class BestBuySalesController extends Controller
             ];
         }
 
-        \Log::info('Returning ' . count($data) . ' data items');
-
-        return response()->json($data);
+        return $data;
     }
 
     public function getColumnVisibility(Request $request)

@@ -92,6 +92,51 @@ class DepopSalesController extends Controller
     }
 
     /**
+     * Same figures the Depop sales badges paint. G PFT % stays one decimal.
+     * Depop sales has no ship amount.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: string, groi: float}|null
+     */
+    public function dailySalesBadgeTotals(): ?array
+    {
+        $response = $this->getData(request());
+        if ($response->getStatusCode() >= 400) {
+            return null;
+        }
+        $payload = $response->getData(true);
+        if (! is_array($payload) || ! array_is_list($payload)) {
+            return null;
+        }
+
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $qty = 0;
+        foreach ($payload as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $qty += (int) ($row['quantity'] ?? 0);
+            $sales += (float) ($row['sale_amount'] ?? 0);
+            $pft += (float) ($row['t_pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+        }
+
+        $gpft = $sales > 0 ? number_format(($pft / $sales) * 100, 1, '.', '') : '0';
+        $groi = $cogs > 0 ? round(($pft / $cogs) * 100, 1) : 0.0;
+
+        return [
+            'l30' => (int) round($sales),
+            'orders' => count($payload),
+            'qty' => $qty,
+            'pft' => (int) round($pft),
+            'cogs' => (int) round($cogs),
+            'gpft' => $gpft,
+            'groi' => $groi,
+        ];
+    }
+
+    /**
      * Upload Depop sales export (TSV/CSV): 1 header row, then data rows. Min 15 columns.
      * Column map (0-based):
      * 0=Date of sale, 1=Time of sale, 4=Bundle amount, 5=Buyer, 6=Brand, 7=SKU,

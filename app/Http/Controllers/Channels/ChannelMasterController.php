@@ -27,6 +27,9 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingOfferupController
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPlsController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPoshmarkController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingReverbController;
+use App\Http\Controllers\MarketPlace\ReverbSalesController;
+use App\Http\Controllers\MarketPlace\TopDawgSyncController;
+use App\Http\Controllers\Sales\DobaSalesController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSheinController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingShopifyB2CController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingShopifyWholesaleController;
@@ -63,7 +66,18 @@ use App\Models\AmazonProductReview;
 use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\FacebookMarketplaceController;
 use App\Http\Controllers\Sales\AlibabaSalesController;
+use App\Http\Controllers\Sales\BestBuySalesController;
+use App\Http\Controllers\Sales\MacysSalesController;
+use App\Http\Controllers\Sales\NeweggSalesController;
+use App\Http\Controllers\Sales\ShopifyB2BSalesController;
+use App\Http\Controllers\Sales\ShopifyB2CSalesController;
 use App\Http\Controllers\Sales\TikTokSalesController;
+use App\Http\Controllers\Sales\EbaySalesController;
+use App\Http\Controllers\Sales\Ebay2SalesController;
+use App\Http\Controllers\Sales\Ebay3SalesController;
+use App\Http\Controllers\Sales\DepopSalesController;
+use App\Http\Controllers\Sales\WayfairSalesController;
+use App\Http\Controllers\Sales\WalmartSalesController;
 use App\Http\Controllers\MarketPlace\ShopifyAdsMasterController;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
@@ -1659,35 +1673,66 @@ class ChannelMasterController extends Controller
 
     private function overlayLiveEbayMetricsOnChannelRows(array $rows): array
     {
+        $badges = [];
+        foreach ([1 => EbaySalesController::class, 2 => Ebay2SalesController::class, 3 => Ebay3SalesController::class] as $which => $class) {
+            try {
+                $badges[$which] = app($class)->dailySalesBadgeTotals();
+            } catch (\Throwable $e) {
+                Log::warning('eBay '.$which.' daily-sales badge failed: '.$e->getMessage());
+                $badges[$which] = null;
+            }
+        }
+
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
             $which = $this->ebayWhichFromChannelName($name);
             if ($which === null) {
                 continue;
             }
+            $badge = $badges[$which] ?? null;
             $live = EbayChannelMetricsService::liveChannelSummary($which);
-            if ($live === null) {
+            if ($badge === null && $live === null) {
                 continue;
             }
 
-            $l30Sales = (float) $live['l30_sales'];
-            $l60Sales = (float) $live['l60_sales'];
+            $l60Sales = $live !== null ? (float) $live['l60_sales'] : 0.0;
+            if ($live !== null) {
+                $row['L-60 Sales'] = (int) round($l60Sales);
+                $row['L60 Orders'] = (int) $live['l60_orders'];
+            }
 
-            $row['L30 Sales'] = (int) round($l30Sales);
-            $row['L30 Orders'] = (int) $live['l30_orders'];
-            $row['Qty'] = (int) $live['qty'];
-            $row['L-60 Sales'] = (int) round($l60Sales);
-            $row['L60 Orders'] = (int) $live['l60_orders'];
+            if ($badge !== null) {
+                $l30Sales = (float) $badge['l30'];
+                $row['L30 Sales'] = (int) $badge['l30'];
+                $row['L30 Orders'] = (int) $badge['orders'];
+                $row['Qty'] = (int) $badge['qty'];
+                $row['Total PFT'] = (int) $badge['pft'];
+                $row['cogs'] = (int) $badge['cogs'];
+                $row['Gprofit%'] = $badge['gpft'].'%';
+                $row['G Roi'] = (int) $badge['groi'];
+                $row['N PFT'] = $badge['gpft'].'%';
+                $row['N ROI'] = (int) $badge['groi'];
+                $row['sales_page_link'] = match ($which) {
+                    2 => '/ebay2/daily-sales',
+                    3 => '/ebay3/daily-sales',
+                    default => '/ebay/daily-sales',
+                };
+            } else {
+                $l30Sales = (float) $live['l30_sales'];
+                $row['L30 Sales'] = (int) round($l30Sales);
+                $row['L30 Orders'] = (int) $live['l30_orders'];
+                $row['Qty'] = (int) $live['qty'];
+            }
 
             if ($l60Sales > 0) {
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
             }
 
-            if ($l60Sales > 0 && isset($live['l60_profit'])) {
+            if ($live !== null && $l60Sales > 0 && isset($live['l60_profit'])) {
                 $row['gprofitL60'] = round(($live['l60_profit'] / $l60Sales) * 100, 2).'%';
             }
 
-            if (! empty($live['l60_cogs']) && isset($live['l60_profit'])) {
+            if ($live !== null && ! empty($live['l60_cogs']) && isset($live['l60_profit'])) {
                 $row['G RoiL60'] = round(($live['l60_profit'] / $live['l60_cogs']) * 100, 2);
             }
 
@@ -2281,6 +2326,11 @@ class ChannelMasterController extends Controller
         } catch (\Throwable $e) {
             Log::warning('Fast-path PLS overlay failed: '.$e->getMessage());
         }
+        try {
+            $rows = $this->overlayLivePurchasingPowerMetricsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Purchasing Power GPFT overlay failed: '.$e->getMessage());
+        }
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
@@ -2322,6 +2372,85 @@ class ChannelMasterController extends Controller
             $rows = $this->overlayLiveAliexpressTabulatorSalesOnChannelRows($rows);
         } catch (\Throwable $e) {
             Log::warning('Fast-path AliExpress GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveShopifyB2CDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Shopify B2C GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveBestBuyDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Best Buy GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveNeweggDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Newegg GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveMacysDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Macys GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveReverbDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Reverb GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveTopDawgDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path TopDawg GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveDobaDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Doba GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveTiktokShopSalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path TikTok GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveFaireMetricsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Faire GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveEbayMetricsOnChannelRows($rows);
+            $rows = $this->overlayLiveEbayTwoAdsOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path eBay GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveDepopDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Depop GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveWayfairDailySalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Wayfair GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveWalmartSalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Walmart GPFT overlay failed: '.$e->getMessage());
         }
 
         // Last: Pacific yesterday Y Sales including $0/NYS so stale calculated
@@ -2978,9 +3107,9 @@ class ChannelMasterController extends Controller
     private function overlayLiveFaireMetricsOnChannelRows(array $rows): array
     {
         try {
-            [$l30Start, $l30End, $l60Start, $l60End] = $this->faireTabulatorL30L60Windows();
-            $l30 = $this->computeFaireMetricsFromApi($l30Start, $l30End);
-            $l60 = $this->computeFaireMetricsFromApi($l60Start, $l60End);
+            $faire = app(FaireController::class);
+            $l30 = $faire->dailySalesBadgeTotals('l30');
+            $l60 = $faire->dailySalesBadgeTotals('l60');
             $ySales = $this->computeFaireYSalesLikeAmazon();
             $l7Sales = $this->computeFaireL7SalesLikeAmazon();
         } catch (\Throwable $e) {
@@ -2989,12 +3118,10 @@ class ChannelMasterController extends Controller
             return $rows;
         }
 
-        $l30Sales = (float) $l30['sales'];
-        $l60Sales = (float) $l60['sales'];
-        $totalPft = (float) $l30['pft'];
-        $totalCogs = (float) $l30['cogs'];
-        $gpftPct = $l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0.0;
-        $groi = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+        $l30Sales = (int) ($l30['l30'] ?? 0);
+        $l60Sales = (int) ($l60['l30'] ?? 0);
+        $gpftPct = (int) ($l30['gpft'] ?? 0);
+        $groi = (int) ($l30['groi'] ?? 0);
 
         foreach ($rows as &$row) {
             $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
@@ -3002,17 +3129,20 @@ class ChannelMasterController extends Controller
                 continue;
             }
 
-            $row['L30 Sales'] = (int) round($l30Sales);
-            $row['L30 Orders'] = (int) $l30['orders'];
-            $row['Qty'] = (int) $l30['qty'];
-            $row['L-60 Sales'] = (int) round($l60Sales);
-            $row['L60 Orders'] = (int) $l60['orders'];
-            $row['Total PFT'] = round($totalPft, 2);
-            $row['cogs'] = round($totalCogs, 2);
-            $row['Gprofit%'] = round($gpftPct, 1).'%';
-            $row['G Roi'] = round($groi, 1);
-            $row['N PFT'] = round($gpftPct, 1).'%';
-            $row['N ROI'] = round($groi, 1);
+            $row['sales_page_link'] = '/faire-tabulator';
+            $row['L30 Sales'] = $l30Sales;
+            $row['L30 Orders'] = (int) ($l30['orders'] ?? 0);
+            $row['Qty'] = (int) ($l30['qty'] ?? 0);
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
+            $row['Total PFT'] = (int) ($l30['pft'] ?? 0);
+            $row['cogs'] = (int) ($l30['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpftPct.'%';
+            $row['gprofitL60'] = ((int) ($l60['gpft'] ?? 0)).'%';
+            $row['G Roi'] = $groi;
+            $row['G RoiL60'] = (int) ($l60['groi'] ?? 0);
+            $row['N PFT'] = $gpftPct.'%';
+            $row['N ROI'] = $groi;
             $row['Total Ad Spend'] = 0;
             $row['Ads%'] = '0%';
             $row['TACOS %'] = '0%';
@@ -3127,59 +3257,47 @@ class ChannelMasterController extends Controller
      */
     private function overlayLivePurchasingPowerMetricsOnChannelRows(array $rows): array
     {
-        $live = $this->getPurchasingPowerLiveMetricsSummary();
-        if ($live === null) {
+        try {
+            $live = app(PurchasingPowerController::class)->dailySalesBadgeTotals('l30');
+            $l60 = app(PurchasingPowerController::class)->dailySalesBadgeTotals('l60');
+        } catch (\Throwable $e) {
+            Log::warning('Purchasing Power daily-sales overlay failed: '.$e->getMessage());
+
             return $rows;
         }
 
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $l60Sales = (int) ($l60['l30'] ?? 0);
+        $gpft = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
+
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($name !== 'Purchasing Power') {
+            if ($this->allMarketplaceSnapshotKey($name) !== 'purchasingpower') {
                 continue;
             }
 
-            $l30Sales = (float) $live['l30_sales'];
-            $l60Sales = (float) $live['l60_sales'];
-
-            $row['L30 Sales'] = (int) round($l30Sales);
-            $row['L30 Orders'] = (int) $live['l30_orders'];
-            $row['Qty'] = (int) $live['qty'];
-            $row['L-60 Sales'] = (int) round($l60Sales);
-            $row['L60 Orders'] = (int) $live['l60_orders'];
-
-            if ($l60Sales > 0) {
-                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
-            }
-
-            $row['Total PFT'] = round($live['pft'], 2);
-            $row['cogs'] = round($live['cogs'], 2);
-
-            if ($l30Sales > 0) {
-                $gProfitPct = round(($live['pft'] / $l30Sales) * 100, 2);
-                $row['Gprofit%'] = $gProfitPct.'%';
-                // Purchasing Power has no ads — N PFT = GPFT, Ads%/TACOS stay 0.
-                $row['N PFT'] = $gProfitPct.'%';
-            }
-
-            if ($live['cogs'] > 0) {
-                $gRoi = round(($live['pft'] / $live['cogs']) * 100, 2);
-                $row['G Roi'] = $gRoi;
-                $row['N ROI'] = $gRoi;
-            }
+            $row['L30 Sales'] = $l30Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpft.'%';
+            $row['G Roi'] = $groi;
+            $row['N PFT'] = $gpft.'%';
+            $row['N ROI'] = $groi;
+            $row['gprofitL60'] = ((int) ($l60['gpft'] ?? 0)).'%';
+            $row['G RoiL60'] = (int) ($l60['groi'] ?? 0);
 
             $row['Total Ad Spend'] = 0;
             $row['Ads%'] = '0%';
             $row['TACOS %'] = '0%';
             $row['KW Spent'] = 0;
             $row['PMT Spent'] = 0;
-
-            if ($l60Sales > 0) {
-                $row['gprofitL60'] = round(($live['l60_pft'] / $l60Sales) * 100, 2).'%';
-            }
-
-            if ($live['l60_cogs'] > 0) {
-                $row['G RoiL60'] = round(($live['l60_pft'] / $live['l60_cogs']) * 100, 2);
-            }
 
             $ySales = $this->computePurchasingPowerYSalesLikeAmazon();
             if ($ySales !== null) {
@@ -3203,6 +3321,33 @@ class ChannelMasterController extends Controller
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}|null  $badge
+     */
+    private function applyPlsDailySalesBadge(array &$row, ?array $badge): void
+    {
+        if ($badge === null) {
+            return;
+        }
+
+        $l30 = (float) $badge['l30'];
+        $l60 = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L-60 Sales'] ?? 0));
+        $row['L30 Sales'] = (int) $badge['l30'];
+        $row['L30 Orders'] = (int) $badge['orders'];
+        $row['Qty'] = (int) $badge['qty'];
+        $row['Total PFT'] = (int) $badge['pft'];
+        $row['cogs'] = (int) $badge['cogs'];
+        $row['Gprofit%'] = $badge['gpft'].'%';
+        $row['G Roi'] = (int) $badge['groi'];
+        $row['N PFT'] = $badge['gpft'].'%';
+        $row['N ROI'] = (int) $badge['groi'];
+        $row['sales_page_link'] = '/pls-sales';
+        if ($l60 > 0) {
+            $row['Growth'] = round((($l30 - $l60) / $l60) * 100, 2).'%';
+        }
+    }
+
     private function overlayLivePlsMetricsOnChannelRows(array $rows): array
     {
         $channel = ChannelMaster::query()
@@ -3215,6 +3360,13 @@ class ChannelMasterController extends Controller
         $live = $this->getPlsLiveSalesSummary();
         if ($live === null) {
             return $rows;
+        }
+
+        $badge = null;
+        try {
+            $badge = app(PlsController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('PLS daily-sales badge failed: '.$e->getMessage());
         }
 
         $section = request()?->input('section');
@@ -3230,6 +3382,7 @@ class ChannelMasterController extends Controller
             }
             $found = true;
             $row = PlsActiveChannelSales::applyToRow($row, $live);
+            $this->applyPlsDailySalesBadge($row, $badge);
             $l7 = (float) $live['l7_sales'];
             $row['P-Sales'] = $this->projectedSalesFromL7($l7);
         }
@@ -3248,6 +3401,7 @@ class ChannelMasterController extends Controller
                 'nr' => $channel->nr ?? 0,
                 'update' => $channel->update ?? 0,
             ], $live);
+            $this->applyPlsDailySalesBadge($rows[array_key_last($rows)], $badge);
             $rows[array_key_last($rows)]['P-Sales'] = $this->projectedSalesFromL7((float) $live['l7_sales']);
         }
 
@@ -4096,28 +4250,30 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast-path TikTok Shop L30 / Y / L7 from tiktok_orders (same window as getTiktokChannelData).
+     * Overlay /tiktok/daily-sales L30, GPFT, and GROI onto the TikTok Shop row.
+     * Sales is rounded unit price × qty. Ship is one weight slab. Window ends today in California.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
      */
     private function overlayLiveTiktokShopSalesOnChannelRows(array $rows): array
     {
-        if (! TiktokOrder::tableReady()) {
-            return $rows;
-        }
-
         try {
-            [$l30Start, $l30End] = TiktokOrder::californiaDaysWindow(30, Carbon::yesterday(TiktokOrder::TZ));
-            $l60End = $l30Start->copy()->subSecond();
-            $l60Start = $l60End->copy()->subDays(29)->startOfDay();
-            $l30Sales = TiktokOrder::salesAmountBetween($l30Start, $l30End);
-            $l30Orders = TiktokOrder::orderCountBetween($l30Start, $l30End);
-            $l60Sales = TiktokOrder::salesAmountBetween($l60Start, $l60End);
+            $live = TikTokSalesController::dailySalesBadgeTotals('l30');
+            $l60 = TikTokSalesController::dailySalesBadgeTotals('l60');
             $ySales = $this->computeTiktokShopYSalesFromOrders();
             $l7Sales = $this->computeTiktokShopL7SalesFromOrders();
         } catch (\Throwable $e) {
-            Log::warning('Fast-path TikTok Shop sales overlay failed: '.$e->getMessage());
+            Log::warning('TikTok daily-sales overlay failed: '.$e->getMessage());
 
             return $rows;
         }
+
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $l60Sales = (int) ($l60['l30'] ?? 0);
+        $gpft = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : ($l30Sales > 0 ? 100.0 : 0.0);
 
         foreach ($rows as &$row) {
             $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
@@ -4125,12 +4281,24 @@ class ChannelMasterController extends Controller
                 continue;
             }
 
-            $row['L30 Sales'] = (int) round($l30Sales);
-            $row['L30 Orders'] = $l30Orders;
-            $row['L-60 Sales'] = (int) round($l60Sales);
-            if ($l60Sales > 0) {
-                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
-            }
+            $row['sales_page_link'] = '/tiktok/daily-sales';
+            $row['L30 Sales'] = $l30Sales;
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpft.'%';
+            $row['gprofitL60'] = ((int) ($l60['gpft'] ?? 0)).'%';
+            $row['G Roi'] = $groi;
+            $row['G RoiL60'] = (int) ($l60['groi'] ?? 0);
+            $row['N PFT'] = $gpft.'%';
+            $row['N ROI'] = $groi;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            $row['Total Ad Spend'] = 0;
             if ($ySales !== null) {
                 $this->applyLiveYSalesIfPositive($row, $ySales);
             }
@@ -4144,7 +4312,97 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Fast-path Walmart L30 from walmart_daily_data (same window as getWalmartChannelData).
+     * Depop L30 / G PFT % from /depop sales badges. G PFT stays one decimal. No ship.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveDepopDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $badge = app(DepopSalesController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('Depop daily-sales badge failed: '.$e->getMessage());
+
+            return $rows;
+        }
+        if ($badge === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'depop') {
+                continue;
+            }
+            $l30 = (float) $badge['l30'];
+            $l60 = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L-60 Sales'] ?? 0));
+            $row['L30 Sales'] = (int) $badge['l30'];
+            $row['L30 Orders'] = (int) $badge['orders'];
+            $row['Qty'] = (int) $badge['qty'];
+            $row['Total PFT'] = (int) $badge['pft'];
+            $row['cogs'] = (int) $badge['cogs'];
+            $row['Gprofit%'] = $badge['gpft'].'%';
+            $row['G Roi'] = $badge['groi'];
+            $row['N PFT'] = $badge['gpft'].'%';
+            $row['N ROI'] = $badge['groi'];
+            $row['sales_page_link'] = '/depop/sheet';
+            if ($l60 > 0) {
+                $row['Growth'] = round((($l30 - $l60) / $l60) * 100, 2).'%';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Wayfair L30 / GPFT / GROI from /wayfair/daily-sales. Profit has no ship.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveWayfairDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $badge = app(WayfairSalesController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('Wayfair daily-sales badge failed: '.$e->getMessage());
+
+            return $rows;
+        }
+        if ($badge === null) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'wayfair') {
+                continue;
+            }
+            $l30 = (float) $badge['l30'];
+            $l60 = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L-60 Sales'] ?? 0));
+            $row['L30 Sales'] = (int) $badge['l30'];
+            $row['L30 Orders'] = (int) $badge['orders'];
+            $row['Qty'] = (int) $badge['qty'];
+            $row['Total PFT'] = (int) $badge['pft'];
+            $row['cogs'] = (int) $badge['cogs'];
+            $row['Gprofit%'] = $badge['gpft'].'%';
+            $row['G Roi'] = (int) $badge['groi'];
+            $row['N PFT'] = $badge['gpft'].'%';
+            $row['N ROI'] = (int) $badge['groi'];
+            $row['sales_page_link'] = '/wayfair/daily-sales';
+            if ($l60 > 0) {
+                $row['Growth'] = round((($l30 - $l60) / $l60) * 100, 2).'%';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Fast-path Walmart L30 from the daily-sales badges. L60 stays the prior window.
      */
     private function overlayLiveWalmartSalesOnChannelRows(array $rows): array
     {
@@ -4186,17 +4444,39 @@ class ChannelMasterController extends Controller
             return $rows;
         }
 
+        $badge = null;
+        try {
+            $badge = app(WalmartSalesController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('Walmart daily-sales badge failed: '.$e->getMessage());
+        }
+
         foreach ($rows as &$row) {
             $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
             if ($key !== 'walmart') {
                 continue;
             }
 
-            $row['L30 Sales'] = (int) round($l30Sales);
-            $row['L30 Orders'] = (int) ($l30->orders ?? 0);
-            $row['Qty'] = (int) ($l30->qty ?? 0);
             $row['L-60 Sales'] = (int) round($l60Sales);
             $row['L60 Orders'] = (int) ($l60->orders ?? 0);
+            if ($badge !== null) {
+                $l30Sales = (float) $badge['l30'];
+                $row['L30 Sales'] = (int) $badge['l30'];
+                $row['L30 Orders'] = (int) $badge['orders'];
+                $row['Qty'] = (int) $badge['qty'];
+                $row['Total PFT'] = (int) $badge['pft'];
+                $row['cogs'] = (int) $badge['cogs'];
+                $row['Gprofit%'] = $badge['gpft'].'%';
+                $row['G Roi'] = (int) $badge['groi'];
+                $ads = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Ads%'] ?? 0));
+                $row['N PFT'] = ($badge['gpft'] - (int) round($ads)).'%';
+                $row['N ROI'] = (int) $badge['groi'];
+                $row['sales_page_link'] = '/walmart/daily-sales';
+            } else {
+                $row['L30 Sales'] = (int) round($l30Sales);
+                $row['L30 Orders'] = (int) ($l30->orders ?? 0);
+                $row['Qty'] = (int) ($l30->qty ?? 0);
+            }
             if ($l60Sales > 0) {
                 $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
             }
@@ -4374,25 +4654,374 @@ class ChannelMasterController extends Controller
      * (business5core.com orders, same source as /shopify-b2b/daily-sales)
      * onto the Active Channel row.
      */
+    /**
+     * Overlay /macys/daily-sales L30, GPFT, and GROI onto the Macys row.
+     * Sales is unit price × qty. Ship is one weight slab, subtracted once.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    /**
+     * Overlay /doba/daily-sales L30, GPFT, and GROI onto the Doba row.
+     * Sales is item price × qty once. Ship is one weight slab. Prepaid-label orders stay in.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveDobaDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $live = app(DobaSalesController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('Doba daily-sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $l60Sales = (int) ($live['l60'] ?? 0);
+        $gpft = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : ($l30Sales > 0 ? 100.0 : 0.0);
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->allMarketplaceSnapshotKey($name) !== 'doba') {
+                continue;
+            }
+
+            $row['sales_page_link'] = '/doba/daily-sales';
+            $row['L30 Sales'] = $l30Sales;
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpft.'%';
+            $row['G Roi'] = $groi;
+            $row['N PFT'] = $gpft.'%';
+            $row['N ROI'] = $groi;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            $row['Total Ad Spend'] = 0;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay /topdawg/sales-dashboard L30, GPFT, and GROI onto the TopDawg row.
+     * Sales is Amount. Ship is one weight slab, subtracted once.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveTopDawgDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $live = app(TopDawgSyncController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg daily-sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $gpft = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->allMarketplaceSnapshotKey($name) !== 'topdawg') {
+                continue;
+            }
+
+            $l60Sales = (int) round((float) preg_replace('/[^0-9.-]/', '', (string) ($row['L-60 Sales'] ?? 0)));
+            $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : ($l30Sales > 0 ? 100.0 : 0.0);
+
+            $row['sales_page_link'] = '/topdawg/sales-dashboard';
+            $row['L30 Sales'] = $l30Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpft.'%';
+            $row['G Roi'] = $groi;
+            $row['N PFT'] = $gpft.'%';
+            $row['N ROI'] = $groi;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay /reverb-sales L30, GPFT, and GROI onto the Reverb row.
+     * Sales is the order total. GPFT divides by product sales. Ship is one weight slab.
+     * Bump stays in Ads%. It is not cut from N PFT.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveReverbDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $sales = app(ReverbSalesController::class);
+            $live = $sales->dailySalesBadgeTotals('l30');
+            $l60 = $sales->dailySalesBadgeTotals('l60');
+        } catch (\Throwable $e) {
+            Log::warning('Reverb daily-sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (int) ($live['l30_sales'] ?? 0);
+        $l60Sales = (int) ($l60['l30_sales'] ?? 0);
+        $gpft = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : ($l30Sales > 0 ? 100.0 : 0.0);
+        $tacos = number_format((float) ($live['tacos'] ?? 0), 1, '.', '');
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->allMarketplaceSnapshotKey($name) !== 'reverb') {
+                continue;
+            }
+
+            $row['sales_page_link'] = '/reverb-sales';
+            $row['L30 Sales'] = $l30Sales;
+            $row['reverb_pace_l30_sales'] = $l30Sales;
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpft.'%';
+            $row['gprofitL60'] = ((int) ($l60['gpft'] ?? 0)).'%';
+            $row['G Roi'] = $groi;
+            $row['G RoiL60'] = (int) ($l60['groi'] ?? 0);
+            $row['N PFT'] = $gpft.'%';
+            $row['N ROI'] = $groi;
+            $row['Ads%'] = $tacos.'%';
+            $row['TACOS %'] = $tacos.'%';
+            $row['Total Ad Spend'] = (int) ($live['bump'] ?? 0);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    private function overlayLiveMacysDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $live = MacysSalesController::dailySalesBadgeTotals('l30');
+            $l60 = MacysSalesController::dailySalesBadgeTotals('l60');
+        } catch (\Throwable $e) {
+            Log::warning('Macys daily-sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $l60Sales = (int) ($l60['l30'] ?? 0);
+        $gpft = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            $key = $this->allMarketplaceSnapshotKey($name);
+            if ($key !== 'macys' && $key !== 'macysinc') {
+                continue;
+            }
+
+            $row['L30 Sales'] = $l30Sales;
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpft.'%';
+            $row['G Roi'] = $groi;
+            $row['N PFT'] = $gpft.'%';
+            $row['N ROI'] = $groi;
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            $row['Total Ad Spend'] = 0;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay /newegg/daily-sales L30, GPFT, and GROI onto the Newegg row.
+     * Sales is the line amount. Ship is one weight slab, subtracted once.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveNeweggDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $live = NeweggSalesController::dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('Newegg daily-sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $gpft = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->allMarketplaceSnapshotKey($name) !== 'newegg') {
+                continue;
+            }
+
+            $l60Sales = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['L-60 Sales'] ?? 0));
+            $row['L30 Sales'] = $l30Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpft.'%';
+            $row['G Roi'] = $groi;
+            $row['N PFT'] = $gpft.'%';
+            $row['N ROI'] = $groi;
+            if ($l60Sales > 0) {
+                $row['Growth'] = round((($l30Sales - $l60Sales) / $l60Sales) * 100, 2).'%';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay /bestbuy/daily-sales L30, GPFT, and GROI onto the Best Buy USA row.
+     * Sales is unit price × qty. COGS Ship is Ship BB once, not the weight slab.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveBestBuyDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $live = BestBuySalesController::dailySalesBadgeTotals('l30');
+            $l60 = BestBuySalesController::dailySalesBadgeTotals('l60');
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy daily-sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $l60Sales = (int) ($l60['l30'] ?? 0);
+        $gpft = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            $key = $this->allMarketplaceSnapshotKey($name);
+            if ($key !== 'bestbuyusa' && $key !== 'bestbuy') {
+                continue;
+            }
+
+            $row['L30 Sales'] = $l30Sales;
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = $gpft.'%';
+            $row['G Roi'] = $groi;
+            $row['N PFT'] = $gpft.'%';
+            $row['N ROI'] = $groi;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Overlay /shopify-b2c/daily-sales L30, GPFT, and GROI onto the Shopify B2C row.
+     * Sales is price × qty. PFT subtracts one weight-slab COGS Ship. Margin is 95%.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveShopifyB2CDailySalesOnChannelRows(array $rows): array
+    {
+        try {
+            $live = ShopifyB2CSalesController::dailySalesBadgeTotals('l30');
+            $l60 = ShopifyB2CSalesController::dailySalesBadgeTotals('l60', false);
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C daily-sales overlay failed: '.$e->getMessage());
+
+            return $rows;
+        }
+
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $l60Sales = (int) ($l60['l30'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->allMarketplaceSnapshotKey($name) !== 'shopifyb2c') {
+                continue;
+            }
+
+            $row['sales_page_link'] = '/shopify-b2c/daily-sales';
+            $row['L30 Sales'] = $l30Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['Qty'] = (int) ($live['qty'] ?? 0);
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = (int) ($live['pft'] ?? 0);
+            $row['cogs'] = (int) ($live['cogs'] ?? 0);
+            $row['Gprofit%'] = ((int) ($live['gpft'] ?? 0)).'%';
+            $row['G Roi'] = (int) ($live['groi'] ?? 0);
+            $row['N PFT'] = ((int) ($live['n_pft'] ?? 0)).'%';
+            $row['N ROI'] = (int) ($live['n_roi'] ?? 0);
+            $row['TACOS %'] = round((float) ($live['tacos'] ?? 0), 1).'%';
+        }
+        unset($row);
+
+        return $rows;
+    }
+
     private function overlayLiveShopifyB2BMetricsOnChannelRows(array $rows): array
     {
         try {
-            $live = app(\App\Http\Controllers\MarketPlace\Shopifyb2bController::class)->l30SnapshotForMaster();
+            $live = ShopifyB2BSalesController::dailySalesBadgeTotals('l30');
+            $l60 = ShopifyB2BSalesController::dailySalesBadgeTotals('l60');
         } catch (\Throwable $e) {
             Log::warning('Shopify B2B live metrics overlay failed: '.$e->getMessage());
 
             return $rows;
         }
 
-        if (! is_array($live) || ((float) ($live['l30_sales'] ?? 0) <= 0 && (int) ($live['l30_orders'] ?? 0) <= 0)) {
-            return $rows;
-        }
-
-        $l30Sales = (float) ($live['l30_sales'] ?? 0);
-        $totalPft = (float) ($live['total_pft'] ?? 0);
-        $totalCogs = (float) ($live['total_cogs'] ?? 0);
-        $gpftPct = (float) ($live['gpft_pct'] ?? ($l30Sales > 0 ? ($totalPft / $l30Sales) * 100 : 0));
-        $groi = (float) ($live['groi_pct'] ?? ($totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0));
+        $l30Sales = (int) ($live['l30'] ?? 0);
+        $l60Sales = (int) ($l60['l30'] ?? 0);
+        $totalPft = (int) ($live['pft'] ?? 0);
+        $totalCogs = (int) ($live['cogs'] ?? 0);
+        $gpftPct = (int) ($live['gpft'] ?? 0);
+        $groi = (int) ($live['groi'] ?? 0);
+        $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
         $l7Sales = $this->computeShopifyB2xL7SalesLikeAmazon(true);
         $ySales = $this->computeShopifyB2xYSalesLikeAmazon(true);
 
@@ -4408,15 +5037,18 @@ class ChannelMasterController extends Controller
             if (empty($row['missing_link'])) {
                 $row['missing_link'] = '/shopify-b2b/daily-sales';
             }
-            $row['L30 Sales'] = (int) round($l30Sales);
-            $row['L30 Orders'] = (int) ($live['l30_orders'] ?? 0);
+            $row['L30 Sales'] = $l30Sales;
+            $row['L-60 Sales'] = $l60Sales;
+            $row['L30 Orders'] = (int) ($live['orders'] ?? 0);
+            $row['L60 Orders'] = (int) ($l60['orders'] ?? 0);
             $row['Qty'] = (int) ($live['qty'] ?? 0);
-            $row['Total PFT'] = round($totalPft, 2);
-            $row['cogs'] = round($totalCogs, 2);
-            $row['Gprofit%'] = round($gpftPct, 1).'%';
-            $row['G Roi'] = round($groi, 1);
-            $row['N PFT'] = round($gpftPct, 1).'%';
-            $row['N ROI'] = round($groi, 1);
+            $row['Growth'] = round($growth, 2).'%';
+            $row['Total PFT'] = $totalPft;
+            $row['cogs'] = $totalCogs;
+            $row['Gprofit%'] = $gpftPct.'%';
+            $row['G Roi'] = $groi;
+            $row['N PFT'] = $gpftPct.'%';
+            $row['N ROI'] = $groi;
             $row['Total Ad Spend'] = 0;
             $row['Ads%'] = '0%';
             $row['TACOS %'] = '0%';
@@ -8932,6 +9564,21 @@ class ChannelMasterController extends Controller
         // so the "Shopify" Active Channel row Sales column reflects the same value the user sees
         // on /shopify. Applied before daily snapshot + chart aggregation so both pick it up.
         $finalData = $this->overlayLiveShopifyDirectMetricsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveShopifyB2CDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveBestBuyDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveNeweggDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveMacysDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveReverbDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveTopDawgDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveDobaDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveTiktokShopSalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveFaireMetricsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveEbayMetricsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveEbayTwoAdsOnChannelRows($finalData);
+        $finalData = $this->overlayLiveDepopDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveWayfairDailySalesOnChannelRows($finalData);
+        $finalData = $this->overlayLiveWalmartSalesOnChannelRows($finalData);
+        $finalData = $this->overlayLivePurchasingPowerMetricsOnChannelRows($finalData);
         // Shopify B2C: overlay CVR + Total Views from /shopify-b2c-pricing CVR% badge
         $finalData = $this->overlayLiveShopifyB2CCvrOnChannelRows($finalData);
         $finalData = $this->overlayLiveShopifyB2BMetricsOnChannelRows($finalData);
@@ -11263,55 +11910,23 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Use MacysSalesController to get live data from MiraklDailyData (same as /macys/daily-sales page)
-        $macysSalesCtrl = app(\App\Http\Controllers\Sales\MacysSalesController::class);
-        $salesRequest = Request::create('/macys/daily-sales-data', 'GET');
-        $salesResponse = $macysSalesCtrl->getData($salesRequest);
-        $salesData = json_decode($salesResponse->getContent(), true);
-
-        // Calculate totals from sales data
-        $l30Sales = 0;
-        $l30Orders = count($salesData);
-        $totalQuantity = 0;
-        $totalProfit = 0;
-        $totalCogs = 0;
-        $totalWeightedPrice = 0;
-        $totalQuantityForPrice = 0;
-
-        foreach ($salesData as $row) {
-            $quantity = (float) ($row['quantity'] ?? 0);
-            $saleAmount = (float) ($row['sale_amount'] ?? 0);
-            $pft = (float) ($row['pft'] ?? 0);
-            $cogs = (float) ($row['cogs'] ?? 0);
-            $unitPrice = (float) ($row['unit_price'] ?? 0);
-
-            $l30Sales += $saleAmount;
-            $totalQuantity += $quantity;
-            $totalProfit += $pft;
-            $totalCogs += $cogs;
-            
-            if ($quantity > 0 && $unitPrice > 0) {
-                $totalWeightedPrice += $unitPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
-            }
-        }
-
-        // Calculate percentages
-        $gProfitPct = round($l30Sales) != 0.0 ? round(round($totalProfit) / round($l30Sales) * 100) : 0;
-        $gRoi = round($totalCogs) != 0.0 ? round(round($totalProfit) / round($totalCogs) * 100) : 0;
-
-        // L60 = previous 30-day period (days 31–60) from mirakl_daily_data, same filter (!= CLOSED)
-        // as before so existing numbers don't shift. PFT/COGS now also computed from those rows
-        // so gprofitL60 / G RoiL60 are real (previously hardcoded to 0).
-        $l60Summary = $this->computeMacysL60SummaryFromMirakl();
-        $l60Sales = $l60Summary['sales'];
-        $l60Orders = $l60Summary['orders'];
+        $badge = MacysSalesController::dailySalesBadgeTotals('l30');
+        $badgeL60 = MacysSalesController::dailySalesBadgeTotals('l60');
+        $l30Sales = (int) ($badge['l30'] ?? 0);
+        $l30Orders = (int) ($badge['orders'] ?? 0);
+        $totalQuantity = (int) ($badge['qty'] ?? 0);
+        $totalProfit = (int) ($badge['pft'] ?? 0);
+        $totalCogs = (int) ($badge['cogs'] ?? 0);
+        $gProfitPct = (int) ($badge['gpft'] ?? 0);
+        $gRoi = (int) ($badge['groi'] ?? 0);
+        $l60Sales = (int) ($badgeL60['l30'] ?? 0);
+        $l60Orders = (int) ($badgeL60['orders'] ?? 0);
 
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        $gprofitL60 = round($l60Sales) != 0.0 ? round(round($l60Summary['pft']) / round($l60Sales) * 100) : 0;
-        $gRoiL60 = round($l60Summary['cogs']) != 0.0 ? round(round($l60Summary['pft']) / round($l60Summary['cogs']) * 100) : 0;
+        $gprofitL60 = (int) ($badgeL60['gpft'] ?? 0);
+        $gRoiL60 = (int) ($badgeL60['groi'] ?? 0);
 
         // N PFT = same as Gprofit% for Macys (no ads)
         $nPft = $gProfitPct;
@@ -11660,85 +12275,43 @@ class ChannelMasterController extends Controller
 
     public function getReverbChannelData(Request $request)
     {
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
-
         $l30Sales = 0.0;
         $l60Sales = 0.0;
         $l30Orders = 0;
         $l60Orders = 0;
         $totalQuantity = 0;
         $totalProfit = 0.0;
-        $totalProfitL60 = 0.0;
         $totalCogs = 0.0;
-        $totalCogsL60 = 0.0;
         $growth = 0.0;
         $reverbPaceL30Sales = null;
 
-        $useDailyData = Schema::hasTable('reverb_daily_data');
-        $windows = $useDailyData ? $this->getReverbDailyDataPacificWindows() : null;
-
-        if ($useDailyData && $windows !== null) {
-            $fullTotals = $this->getReverbDailyDataFullTableTotals() ?? ['sum_quantity' => 0, 'sum_qty_x_amount' => 0.0];
-
-            $l30 = $this->aggregateReverbDailyProfitForWindow(
-                $windows['l30_start'],
-                $windows['l30_end'],
-                $productMasters
-            );
-            $l60 = $this->aggregateReverbDailyProfitForWindow(
-                $windows['l60_start'],
-                $windows['l60_end'],
-                $productMasters
-            );
-
-            // Master "Sales" / Orders: use L30 window (last 30 days only, matching sales badge)
-            $l30Sales = $l30['sales'];  // L30 sales from windowed calculation
-            $l30Orders = $l30['qty'];   // L30 orders from windowed calculation
-            $totalQuantity = $l30Orders;
-
-            $l60Sales = $l60['sales'];
-            $l60Orders = $l60['qty'];
-
-            // GPFT ord–style margin on L30 revenue (matching sales badge calculation)
-            $totalProfit = $l30['profit'];  // Use L30-specific profit
-            $totalCogs = $l30['cogs'];      // Use L30-specific COGS
-
-            $totalProfitL60 = $l60['profit'];
-            $totalCogsL60 = $l60['cogs'];
-
-            // Standard growth formula (consistent with Amazon/Temu/Walmart/etc.):
-            //   L60 column above is now days 31-60 (prior 30), so this is the proper month-over-month comparison.
+        $badge = [];
+        $badgeL60 = [];
+        if (Schema::hasTable('reverb_daily_data')) {
+            $sales = app(ReverbSalesController::class);
+            $badge = $sales->dailySalesBadgeTotals('l30');
+            $badgeL60 = $sales->dailySalesBadgeTotals('l60');
+            $l30Sales = (int) $badge['l30_sales'];
+            $l60Sales = (int) $badgeL60['l30_sales'];
+            $l30Orders = (int) $badge['orders'];
+            $l60Orders = (int) $badgeL60['orders'];
+            $totalQuantity = (int) $badge['qty'];
+            $totalProfit = (int) $badge['pft'];
+            $totalCogs = (int) $badge['cogs'];
             $growth = $l60Sales > 0
                 ? (($l30Sales - $l60Sales) / $l60Sales) * 100
                 : ($l30Sales > 0 ? 100.0 : 0.0);
-
-            $reverbPaceL30Sales = (int) round($l30['sales']);
-        } else {
-            $l30 = [
-                'sales' => 0.0,
-                'qty' => 0,
-                'profit' => 0.0,
-                'cogs' => 0.0,
-                'bump_fees' => 0.0,
-            ];
+            $reverbPaceL30Sales = $l30Sales;
         }
 
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // Calculate Bump % (matching frontend Ads% badge: Bump Fees / Sales × 100)
-        $totalBumpFees = $l30['bump_fees'] ?? 0;
-        $bumpPercentage = $l30Sales > 0 ? ($totalBumpFees / $l30Sales) * 100 : 0;
-
-        // Amazon-style net metrics: NPFT = GPFT − Ads%; NROI = (PFT$ − Ad Spend) / COGS × 100
-        $nPft = $gProfitPct - $bumpPercentage;
-        $nRoi = $totalCogs > 0
-            ? (($totalProfit - $totalBumpFees) / $totalCogs) * 100
-            : ($gRoi - $bumpPercentage);
+        $gProfitPct = (int) ($badge['gpft'] ?? 0);
+        $gprofitL60 = (int) ($badgeL60['gpft'] ?? 0);
+        $gRoi = (int) ($badge['groi'] ?? 0);
+        $gRoiL60 = (int) ($badgeL60['groi'] ?? 0);
+        $totalBumpFees = (int) ($badge['bump'] ?? 0);
+        $bumpPercentage = (float) ($badge['tacos'] ?? 0);
+        $nPft = $gProfitPct;
+        $nRoi = $gRoi;
 
         $channelData = ChannelMaster::where('channel', 'Reverb')->first();
         $mapMissCounts = $this->getReverbLiveMapMissNMapFromPricingData($request);
@@ -11766,7 +12339,7 @@ class ChannelMasterController extends Controller
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
             'Total Ad Spend' => round($totalBumpFees, 2),
-            // Ads%/TACOS = Bump%; NPFT/NROI cut Ads% like Amazon /reverb-pricing.
+            // Ads%/TACOS = Bump%. N PFT and N ROI match the sales-page badges.
             'Ads%'       => round($bumpPercentage, 2) . '%',
             'TACOS %'    => round($bumpPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
@@ -11847,19 +12420,27 @@ class ChannelMasterController extends Controller
         // (command runs for today only) and even when present means "L30 ending 60d ago" rather than today's L60.
         $l60Summary = $this->computeDobaL60SummaryFromDailyData();
 
-        // Current metrics
-        $l30Sales = $latestMetric ? $latestMetric->l30_sales : 0;
-        $l30Orders = $latestMetric ? $latestMetric->total_orders : 0;
-        $totalQuantity = $latestMetric ? $latestMetric->total_quantity : 0;
-        $totalCogs = $latestMetric ? $latestMetric->total_cogs : 0;
-        $totalPft = $latestMetric ? $latestMetric->total_pft : 0;
-        $gProfitPct = $latestMetric ? $latestMetric->pft_percentage : 0;
-        $gRoi = $latestMetric ? $latestMetric->roi_percentage : 0;
-        $nPftPct = $latestMetric ? $latestMetric->n_pft : 0;
-        $nRoi = $latestMetric ? $latestMetric->n_roi : 0;
+        $badge = [];
+        try {
+            $badge = app(DobaSalesController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('Doba daily-sales badge failed: '.$e->getMessage());
+        }
+        $useBadge = ((int) ($badge['orders'] ?? 0)) > 0 || ((int) ($badge['l30'] ?? 0)) !== 0;
 
-        // L60 metrics (direct from doba_daily_data)
-        $l60Sales = $l60Summary['sales'];
+        // Current metrics. The sales page includes prepaid-label orders.
+        $l30Sales = $useBadge ? (int) $badge['l30'] : ($latestMetric ? $latestMetric->l30_sales : 0);
+        $l30Orders = $useBadge ? (int) $badge['orders'] : ($latestMetric ? $latestMetric->total_orders : 0);
+        $totalQuantity = $useBadge ? (int) $badge['qty'] : ($latestMetric ? $latestMetric->total_quantity : 0);
+        $totalCogs = $useBadge ? (int) $badge['cogs'] : ($latestMetric ? $latestMetric->total_cogs : 0);
+        $totalPft = $useBadge ? (int) $badge['pft'] : ($latestMetric ? $latestMetric->total_pft : 0);
+        $gProfitPct = $useBadge ? (int) $badge['gpft'] : ($latestMetric ? $latestMetric->pft_percentage : 0);
+        $gRoi = $useBadge ? (int) $badge['groi'] : ($latestMetric ? $latestMetric->roi_percentage : 0);
+        $nPftPct = $useBadge ? $gProfitPct : ($latestMetric ? $latestMetric->n_pft : 0);
+        $nRoi = $useBadge ? $gRoi : ($latestMetric ? $latestMetric->n_roi : 0);
+
+        // L60 sales matches the page badge (SKUs that appear on the L30 view).
+        $l60Sales = $useBadge ? (int) $badge['l60'] : $l60Summary['sales'];
         $l60Orders = $l60Summary['orders'];
         $gprofitL60 = round($l60Sales) != 0.0 ? round(round($l60Summary['pft']) / round($l60Sales) * 100) : 0;
         $gRoiL60 = round($l60Summary['cogs']) != 0.0 ? round(round($l60Summary['pft']) / round($l60Summary['cogs']) * 100) : 0;
@@ -13075,19 +13656,8 @@ class ChannelMasterController extends Controller
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
         $metrics = MarketplaceDailyMetric::where('channel', 'Best Buy USA')->latest('date')->first();
 
-        // L60 Sales = previous 30-day period (days 31-60) from mirakl_daily_data,
-        // matching Amazon/eBay/Walmart convention. Same filters as the L30 metrics calc.
-        $thirtyDaysAgo = Carbon::now()->subDays(30);
-        $sixtyDaysAgo  = Carbon::now()->subDays(60);
-        $l60Agg = \App\Models\MiraklDailyData::where('channel_name', 'Best Buy USA')
-            ->where('status', '!=', 'CLOSED')
-            ->whereBetween('order_created_at', [$sixtyDaysAgo, $thirtyDaysAgo])
-            ->selectRaw('COUNT(*) as order_count, COALESCE(SUM(unit_price * quantity), 0) as total_sales')
-            ->first();
-        $l60Orders = (int) ($l60Agg->order_count ?? 0);
-        $l60Sales  = (float) ($l60Agg->total_sales ?? 0);
-
-        // Use MarketplaceDailyMetric data
+        $l60Orders = 0;
+        $l60Sales = 0.0;
         $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
         $totalQuantity = $metrics->total_quantity ?? 0;
@@ -13095,6 +13665,23 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
+        try {
+            $badge = BestBuySalesController::dailySalesBadgeTotals('l30');
+            $badgeL60 = BestBuySalesController::dailySalesBadgeTotals('l60');
+            if ((int) ($badge['orders'] ?? 0) > 0 || (int) ($badge['l30'] ?? 0) !== 0) {
+                $l30Sales = (int) $badge['l30'];
+                $l30Orders = (int) $badge['orders'];
+                $totalQuantity = (int) $badge['qty'];
+                $totalProfit = (int) $badge['pft'];
+                $totalCogs = (int) $badge['cogs'];
+                $gProfitPct = (int) $badge['gpft'];
+                $gRoi = (int) $badge['groi'];
+                $l60Sales = (int) ($badgeL60['l30'] ?? 0);
+                $l60Orders = (int) ($badgeL60['orders'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Best Buy daily-sales channel badges failed: '.$e->getMessage());
+        }
 
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
@@ -13194,10 +13781,32 @@ class ChannelMasterController extends Controller
         $l60 = $this->computeNeweggWindow($l60Start, $l60End, $productMasters, $factor);
         $l7  = $this->computeNeweggWindow($l7Start, $l7End, $productMasters, $factor);
         $y   = $this->computeNeweggWindow($yStart, $yEnd, $productMasters, $factor);
+        $badge = [];
+        try {
+            $badge = NeweggSalesController::dailySalesBadgeTotals();
+            if ((int) ($badge['orders'] ?? 0) > 0 || (int) ($badge['l30'] ?? 0) !== 0) {
+                $l30 = [
+                    'sales' => (int) $badge['l30'],
+                    'orders' => (int) $badge['orders'],
+                    'qty' => (int) $badge['qty'],
+                    'profit' => (int) $badge['pft'],
+                    'cogs' => (int) $badge['cogs'],
+                ];
+            } else {
+                $badge = [];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Newegg daily-sales channel badges failed: '.$e->getMessage());
+            $badge = [];
+        }
 
         $growth     = $l60['sales'] > 0 ? (($l30['sales'] - $l60['sales']) / $l60['sales']) * 100 : 0;
-        $gProfitPct = $l30['sales'] > 0 ? ($l30['profit'] / $l30['sales']) * 100 : 0;
-        $gRoi       = $l30['cogs'] > 0 ? ($l30['profit'] / $l30['cogs']) * 100 : 0;
+        $gProfitPct = array_key_exists('gpft', $badge)
+            ? (int) $badge['gpft']
+            : ($l30['sales'] > 0 ? (int) round(round($l30['profit']) / round($l30['sales']) * 100) : 0);
+        $gRoi       = array_key_exists('groi', $badge)
+            ? (int) $badge['groi']
+            : ($l30['cogs'] > 0 ? (int) round(round($l30['profit']) / round($l30['cogs']) * 100) : 0);
         $gprofitL60 = $l60['sales'] > 0 ? ($l60['profit'] / $l60['sales']) * 100 : 0;
         $gRoiL60    = $l60['cogs'] > 0 ? ($l60['profit'] / $l60['cogs']) * 100 : 0;
 
@@ -13943,23 +14552,22 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 and L60 from faire_order_metrics — same source as /faire-tabulator.
-        [$l30Start, $l30End, $l60Start, $l60End] = $this->faireTabulatorL30L60Windows();
+        // Same integers as /faire-tabulator. Faire has no ship.
+        $faire = app(FaireController::class);
+        $l30 = $faire->dailySalesBadgeTotals('l30');
+        $l60 = $faire->dailySalesBadgeTotals('l60');
 
-        $l30 = $this->computeFaireMetricsFromApi($l30Start, $l30End);
-        $l60 = $this->computeFaireMetricsFromApi($l60Start, $l60End);
+        $l30Sales      = (int) $l30['l30'];
+        $l30Orders     = (int) $l30['orders'];
+        $totalQuantity = (int) $l30['qty'];
+        $totalProfit   = (int) $l30['pft'];
+        $totalCogs     = (int) $l30['cogs'];
 
-        $l30Sales      = $l30['sales'];
-        $l30Orders     = $l30['orders'];
-        $totalQuantity = $l30['qty'];
-        $totalProfit   = $l30['pft'];
-        $totalCogs     = $l30['cogs'];
+        $l60Sales  = (int) $l60['l30'];
+        $l60Orders = (int) $l60['orders'];
 
-        $l60Sales  = $l60['sales'];
-        $l60Orders = $l60['orders'];
-
-        $gProfitPct = round($l30Sales) != 0.0 ? round(round($totalProfit) / round($l30Sales) * 100) : 0;
-        $gRoi       = round($totalCogs) != 0.0 ? round(round($totalProfit) / round($totalCogs) * 100) : 0;
+        $gProfitPct = (int) $l30['gpft'];
+        $gRoi       = (int) $l30['groi'];
         // Faire has no ad spend in this pipeline → N PFT% = G PFT%, N ROI = G ROI.
         $nPftPct = $gProfitPct;
         $nRoi    = $gRoi;
@@ -13967,8 +14575,8 @@ class ChannelMasterController extends Controller
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // L60 profit % derived the same way over the L60 totals for consistency.
-        $gprofitL60 = round($l60Sales) != 0.0 ? round(round($l60['pft']) / round($l60Sales) * 100) : 0;
-        $gRoiL60    = round($l60['cogs']) != 0.0 ? round(round($l60['pft']) / round($l60['cogs']) * 100) : 0;
+        $gprofitL60 = (int) $l60['gpft'];
+        $gRoiL60    = (int) $l60['groi'];
 
         $channelData = ChannelMaster::where('channel', 'Faire')->first();
         $mapMissCounts = $this->getFaireLiveMapMissNMapFromPricingData($request);
@@ -14077,11 +14685,11 @@ class ChannelMasterController extends Controller
             $lp = $cost['lp'];
             $ship = $cost['ship'];
 
-            $lineSales = $amount > 0 ? $amount : ($price * $quantity);
+            $lineSales = $price > 0 ? ($price * $quantity) : $amount;
             $totalSales += $lineSales;
             $totalQty   += $quantity;
             $totalCogs  += $lp * $quantity;
-            $totalPft   += (($price * $pct) - $lp - $ship) * $quantity;
+            $totalPft   += ($lineSales * $pct) - ($lp * $quantity) - $ship;
             if (!empty($r->order_number)) {
                 $orderSet[$r->order_number] = true;
             }
@@ -14100,31 +14708,29 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 and L60 from purchasing_power_sales (MCM OR11).
-        [$l30Start, $l30End, $l60Start, $l60End] = $this->completePacificL30L60Windows();
+        // L30 and L60 match /purchasing-power-sales badges.
+        $badge = app(PurchasingPowerController::class)->dailySalesBadgeTotals('l30');
+        $badgeL60 = app(PurchasingPowerController::class)->dailySalesBadgeTotals('l60');
 
-        $l30 = $this->computePurchasingPowerMetricsFromApi($l30Start, $l30End);
-        $l60 = $this->computePurchasingPowerMetricsFromApi($l60Start, $l60End);
+        $l30Sales      = (int) ($badge['l30'] ?? 0);
+        $l30Orders     = (int) ($badge['orders'] ?? 0);
+        $totalQuantity = (int) ($badge['qty'] ?? 0);
+        $totalProfit   = (int) ($badge['pft'] ?? 0);
+        $totalCogs     = (int) ($badge['cogs'] ?? 0);
 
-        $l30Sales      = $l30['sales'];
-        $l30Orders     = $l30['orders'];
-        $totalQuantity = $l30['qty'];
-        $totalProfit   = $l30['pft'];
-        $totalCogs     = $l30['cogs'];
+        $l60Sales  = (int) ($badgeL60['l30'] ?? 0);
+        $l60Orders = (int) ($badgeL60['orders'] ?? 0);
 
-        $l60Sales  = $l60['sales'];
-        $l60Orders = $l60['orders'];
-
-        $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
-        $gRoi       = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
+        $gProfitPct = (int) ($badge['gpft'] ?? 0);
+        $gRoi       = (int) ($badge['groi'] ?? 0);
         // Purchasing Power has no ad spend in this pipeline → N PFT% = G PFT%, N ROI = G ROI.
         $nPftPct = $gProfitPct;
         $nRoi    = $gRoi;
 
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        $gprofitL60 = $l60Sales > 0 ? round(($l60['pft'] / $l60Sales) * 100, 2) : 0.0;
-        $gRoiL60    = $l60['cogs'] > 0 ? round(($l60['pft'] / $l60['cogs']) * 100, 2) : 0.0;
+        $gprofitL60 = (int) ($badgeL60['gpft'] ?? 0);
+        $gRoiL60    = (int) ($badgeL60['groi'] ?? 0);
 
         $channelData = ChannelMaster::where('channel', 'Purchasing Power')->first();
         $mapMissCounts = $this->getPurchasingPowerLiveMapMissNMapFromPricingData($request);
@@ -14723,14 +15329,37 @@ class ChannelMasterController extends Controller
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
         $gprofitL60 = 0;
         $gRoiL60 = 0;
+        $badgeApplied = false;
+
+        try {
+            $badge = TikTokSalesController::dailySalesBadgeTotals('l30');
+            $badgeL60 = TikTokSalesController::dailySalesBadgeTotals('l60');
+            if (((int) ($badge['orders'] ?? 0)) > 0 || ((int) ($badge['l30'] ?? 0)) !== 0) {
+                $l30Sales = (int) $badge['l30'];
+                $l30Orders = (int) $badge['orders'];
+                $totalQuantity = (int) $badge['qty'];
+                $totalProfit = (int) $badge['pft'];
+                $totalCogs = (int) $badge['cogs'];
+                $gProfitPct = (int) $badge['gpft'];
+                $gRoi = (int) $badge['groi'];
+                $l60Sales = (int) $badgeL60['l30'];
+                $l60Orders = (int) $badgeL60['orders'];
+                $gprofitL60 = (int) $badgeL60['gpft'];
+                $gRoiL60 = (int) $badgeL60['groi'];
+                $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : ($l30Sales > 0 ? 100.0 : 0.0);
+                $badgeApplied = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok daily-sales badge failed: '.$e->getMessage());
+        }
 
         $channelData = ChannelMaster::where('channel', 'Tiktok Shop')->first();
         $mapMissCounts = $this->getTiktokLiveMapMissNMapFromPricingData($request);
-        $tiktokAdSpend = $this->fetchTotalAdSpendFromTables('tiktokshop');
+        $tiktokAdSpend = $badgeApplied ? 0 : $this->fetchTotalAdSpendFromTables('tiktokshop');
         $adsPct = $l30Sales > 0 ? ($tiktokAdSpend / $l30Sales) * 100 : 0;
         $netProfit = $totalProfit - $tiktokAdSpend;
-        $nPftWithAds = $gProfitPct - $adsPct;
-        $nRoiWithAds = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
+        $nPftWithAds = $badgeApplied ? $gProfitPct : ($gProfitPct - $adsPct);
+        $nRoiWithAds = $badgeApplied ? $gRoi : ($totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0);
 
         $result[] = [
             'Channel '   => 'Tiktok Shop',
@@ -15992,19 +16621,26 @@ class ChannelMasterController extends Controller
         $metrics = MarketplaceDailyMetric::where('channel', 'TopDawg')->latest('date')->first();
 
         $l60 = $this->computeTopDawgL60FromOrderMetrics();
-        if ($metrics) {
+        $badge = [];
+        try {
+            $badge = app(TopDawgSyncController::class)->dailySalesBadgeTotals();
+        } catch (\Throwable $e) {
+            Log::warning('TopDawg sales-dashboard badge failed: '.$e->getMessage());
+        }
+        $useBadge = ((int) ($badge['orders'] ?? 0)) > 0 || ((int) ($badge['l30'] ?? 0)) !== 0;
+        if ($metrics || $useBadge) {
             $l60Orders = $l60['orders'];
             $l60Sales = $l60['sales'];
-            $l30Sales = $metrics->total_sales ?? 0;
-            $l30Orders = $metrics->total_orders ?? 0;
-            $totalQuantity = $metrics->total_quantity ?? 0;
-            $totalProfit = $metrics->total_pft ?? 0;
-            $totalCogs = $metrics->total_cogs ?? 0;
-            $gProfitPct = $metrics->pft_percentage ?? 0;
-            $gRoi = $metrics->roi_percentage ?? 0;
-            $tacosPercentage = $metrics->tacos_percentage ?? 0;
-            $nPft = $metrics->n_pft ?? $gProfitPct;
-            $nRoi = $metrics->n_roi ?? $gRoi;
+            $l30Sales = $useBadge ? (int) $badge['l30'] : ($metrics->total_sales ?? 0);
+            $l30Orders = $useBadge ? (int) $badge['orders'] : ($metrics->total_orders ?? 0);
+            $totalQuantity = $useBadge ? (int) $badge['qty'] : ($metrics->total_quantity ?? 0);
+            $totalProfit = $useBadge ? (int) $badge['pft'] : ($metrics->total_pft ?? 0);
+            $totalCogs = $useBadge ? (int) $badge['cogs'] : ($metrics->total_cogs ?? 0);
+            $gProfitPct = $useBadge ? (int) $badge['gpft'] : ($metrics->pft_percentage ?? 0);
+            $gRoi = $useBadge ? (int) $badge['groi'] : ($metrics->roi_percentage ?? 0);
+            $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+            $nPft = $useBadge ? $gProfitPct : ($metrics?->n_pft ?? $gProfitPct);
+            $nRoi = $useBadge ? $gRoi : ($metrics?->n_roi ?? $gRoi);
             $totalAdSpend = $this->fetchTotalAdSpendFromTables('topdawg');
             $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
             $gprofitL60 = 0;
@@ -16134,12 +16770,6 @@ class ChannelMasterController extends Controller
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
         $totalQuantity = $metrics->total_quantity ?? 0;
-        $shopifySales = $this->getShopifyDirectL30Snapshot();
-        if ((float) ($shopifySales['l30_sales'] ?? 0) > 0) {
-            $l30Sales = $shopifySales['l30_sales'];
-            $l30Orders = $shopifySales['l30_orders'];
-            $totalQuantity = $shopifySales['qty'];
-        }
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -16147,6 +16777,26 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? $gProfitPct;
         $nRoi = $metrics->n_roi ?? $gRoi;
+        try {
+            $badge = ShopifyB2CSalesController::dailySalesBadgeTotals('l30');
+            $badgeL60 = ShopifyB2CSalesController::dailySalesBadgeTotals('l60', false);
+            if ((int) ($badge['orders'] ?? 0) > 0 || (int) ($badge['l30'] ?? 0) !== 0) {
+                $l30Sales = (int) $badge['l30'];
+                $l30Orders = (int) $badge['orders'];
+                $totalQuantity = (int) $badge['qty'];
+                $totalProfit = (int) $badge['pft'];
+                $totalCogs = (int) $badge['cogs'];
+                $gProfitPct = (int) $badge['gpft'];
+                $gRoi = (int) $badge['groi'];
+                $tacosPercentage = (float) $badge['tacos'];
+                $nPft = (int) $badge['n_pft'];
+                $nRoi = (int) $badge['n_roi'];
+                $l60Sales = (int) ($badgeL60['l30'] ?? 0);
+                $l60Orders = (int) ($badgeL60['orders'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C daily-sales channel badges failed: '.$e->getMessage());
+        }
         $googleSpent = $metrics->kw_spent ?? 0; // Google Ads spend is stored in kw_spent field
 
         // Total Ad Spend: fetch directly from google_ads_campaigns table
@@ -16296,39 +16946,38 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Live L30 from shopify_b2b_daily_data — same source as /shopify-b2b-pricing.
+        // Live L30 from /shopify-b2b/daily-sales badges.
         $live = [];
+        $l60Live = [];
         try {
-            $live = app(\App\Http\Controllers\MarketPlace\Shopifyb2bController::class)->l30SnapshotForMaster();
+            $live = ShopifyB2BSalesController::dailySalesBadgeTotals('l30');
+            $l60Live = ShopifyB2BSalesController::dailySalesBadgeTotals('l60');
         } catch (\Throwable $e) {
             Log::warning('Shopify B2B live snapshot failed: '.$e->getMessage());
         }
 
         $metrics = MarketplaceDailyMetric::where('channel', 'Shopify B2B')->latest('date')->first();
-        
-        // L60 will be 0 until we have historical data with proper dates
-        $l60Orders = 0;
-        $l60Sales = 0;
 
-        $l30Sales = (float) ($live['l30_sales'] ?? $metrics->total_sales ?? 0);
-        $l30Orders = (int) ($live['l30_orders'] ?? $metrics->total_orders ?? 0);
+        $l60Orders = (int) ($l60Live['orders'] ?? 0);
+        $l60Sales = (int) ($l60Live['l30'] ?? 0);
+
+        $l30Sales = (int) ($live['l30'] ?? $metrics->total_sales ?? 0);
+        $l30Orders = (int) ($live['orders'] ?? $metrics->total_orders ?? 0);
         $totalQuantity = (int) ($live['qty'] ?? $metrics->total_quantity ?? 0);
-        $totalProfit = (float) ($live['total_pft'] ?? $metrics->total_pft ?? 0);
-        $totalCogs = (float) ($live['total_cogs'] ?? $metrics->total_cogs ?? 0);
-        $gProfitPct = (float) ($live['gpft_pct'] ?? $metrics->pft_percentage ?? 0);
-        $gRoi = (float) ($live['groi_pct'] ?? $metrics->roi_percentage ?? 0);
-        $nPftValue = $totalProfit;
+        $totalProfit = (int) ($live['pft'] ?? $metrics->total_pft ?? 0);
+        $totalCogs = (int) ($live['cogs'] ?? $metrics->total_cogs ?? 0);
+        $gProfitPct = (int) ($live['gpft'] ?? $metrics->pft_percentage ?? 0);
+        $gRoi = (int) ($live['groi'] ?? $metrics->roi_percentage ?? 0);
         $nRoi = $gRoi;
-        
+
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
-        
+
         // L60 profit percentage
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
-        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+        $nPft = $gProfitPct;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2B')->first();

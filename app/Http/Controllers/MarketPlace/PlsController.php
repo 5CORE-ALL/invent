@@ -133,6 +133,57 @@ class PlsController extends Controller
     }
 
     /**
+     * Same integers the PLS sales badges use. Sales is the line amount once. No ship.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}|null
+     */
+    public function dailySalesBadgeTotals(): ?array
+    {
+        $response = $this->salesDataJson(request());
+        if ($response->getStatusCode() >= 400) {
+            return null;
+        }
+        $payload = $response->getData(true);
+        if (! is_array($payload) || ! array_is_list($payload)) {
+            return null;
+        }
+
+        $orders = [];
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        foreach ($payload as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $orderName = trim((string) ($row['order_name'] ?? ''));
+            if ($orderName !== '') {
+                $orders[$orderName] = true;
+            }
+            $qty += (int) ($row['quantity'] ?? 0);
+            $lineSales = isset($row['sale_amount']) ? (float) $row['sale_amount'] : NAN;
+            $sales += is_finite($lineSales) ? $lineSales : (float) ($row['total_amount'] ?? 0);
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => count($orders),
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
+    /**
      * Take-home decimal (0–1) from marketplace_percentages (PLS / Pls).
      */
     private function resolvePlsTakeHomeDecimal(): float

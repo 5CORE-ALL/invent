@@ -300,6 +300,74 @@ class EbaySalesController extends Controller
         return response()->json($data);
     }
 
+    /**
+     * Same integers the eBay daily-sales badges paint.
+     * Sales is the order total once. GPFT divides by the line amount. Ship is one weight slab.
+     *
+     * @return array{l30: int, line_sales: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    public function dailySalesBadgeTotals(): array
+    {
+        $payload = $this->getData(request())->getData(true);
+
+        return self::badgeFromDailyLines(is_array($payload) && array_is_list($payload) ? $payload : []);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     * @return array{l30: int, line_sales: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    public static function badgeFromDailyLines(array $lines): array
+    {
+        $seen = [];
+        $orderSales = 0.0;
+        $lineSales = 0.0;
+        $orders = 0;
+        $qty = 0;
+        $pft = 0.0;
+        $cogs = 0.0;
+
+        foreach ($lines as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+            if (! isset($seen[$orderId])) {
+                $seen[$orderId] = true;
+                $orderSales += (float) ($row['total_amount'] ?? 0);
+            }
+            $orders++;
+            $quantity = (int) ($row['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
+            $qty += $quantity;
+            $lineSales += (float) ($row['sale_amount'] ?? 0);
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($orderSales);
+        $lineRounded = (int) round($lineSales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'line_sales' => $lineRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'gpft' => $lineRounded !== 0 ? (int) round(($pftRounded / $lineRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     public function getColumnVisibility(Request $request)
     {
         try {

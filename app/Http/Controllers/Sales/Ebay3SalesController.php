@@ -253,4 +253,14 @@ class Ebay3SalesController extends Controller
             return response()->json(['error' => 'Failed to save preferences'], 500);
         }
     }
+
+    /**
+     * @return array{l30: int, line_sales: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    public function dailySalesBadgeTotals(): array
+    {
+        $payload = $this->getData(request())->getData(true);
+
+        return EbaySalesController::badgeFromDailyLines(is_array($payload) && array_is_list($payload) ? $payload : []);
+    }
 }
