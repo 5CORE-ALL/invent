@@ -597,12 +597,12 @@ class TemuShopifySalesService
     }
 
     /**
-     * Same rows and dollars as the /temu2-tabulator badges.
+     * Same rows and dollars as /temu-tabulator (computeTemuTabulatorMetrics).
      * SKU match is the same as /new-temu2: normalize (PCS→PC, spaces) then no-space
      * fallback onto Product Master. Parent-column "PARENT …" is the family name, not a skip.
      * Each sheet row counts as an order (the Total Orders badge), not a unique order id.
-     * sales / l30_sales = L30 Sales badge (Σ line sales; Base × Qty when line sales is empty).
-     * full_sales = Σ Line Sales × 1.1364 (Temu Full Price Sales, the GPFT% denominator).
+     * sales / l30_sales = Σ Temu Price × Qty (the L30 Sales column).
+     * base_sales = API Line Sales. full_sales = Line Sales × 1.1364 (GPFT% denominator).
      * GPFT$ = (Line Sales × Temu margin) − COGS − COGS Ship. Margin is marketplace_percentages.Temu,
      * the same value the tabulator page passes in. GROI% divides that GPFT$ by COGS.
      *
@@ -629,7 +629,7 @@ class TemuShopifySalesService
         [$pmSet, $noSpaceToNormalized] = self::temu3ProductMasterSkuSets();
         $margin = self::temuMarginDecimal();
         $totalLine = 0.0;
-        $totalL30 = 0.0;
+        $totalTemuPrice = 0.0;
         $totalQty = 0;
         $totalGpft = 0.0;
         $totalCogs = 0.0;
@@ -656,18 +656,18 @@ class TemuShopifySalesService
             $orders++;
             $totalQty += $qty;
             $totalLine += $lineSales;
-            $totalL30 += $lineSales > 0 ? $lineSales : (($qty > 0 && $base > 0) ? $qty * $base : 0.0);
             if ($qty > 0 && $base > 0) {
+                $totalTemuPrice += self::computeFullTemuPrice($base) * $qty;
                 $totalGpft += ($lineSales * $margin) - ($lp * $qty) - $cogsShip;
                 $totalCogs += $lp * $qty;
             }
         }
 
-        $l30Sales = round($totalL30, 2);
+        $l30Sales = round($totalTemuPrice, 2);
 
         return [
             'sales' => $l30Sales,
-            'base_sales' => $l30Sales,
+            'base_sales' => round($totalLine, 2),
             'full_sales' => round($totalLine * self::FULL_PRICE_MULT, 2),
             'l30_sales' => $l30Sales,
             'orders' => $orders,

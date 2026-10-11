@@ -1121,8 +1121,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 2 L30 for Active / all-marketplace-master — same badges as /temu2-tabulator.
-     * L30 Sales = Σ line sales. GPFT% = GPFT$ ÷ (Line Sales × 1.1364). GROI% = GPFT$ ÷ COGS.
+     * Temu 2 L30 for Active / all-marketplace-master — same math as /temu-tabulator.
+     * L30 Sales = Σ Temu Price × Qty. GPFT% = GPFT$ ÷ (Line Sales × 1.1364). GROI% = GPFT$ ÷ COGS.
      *
      * @return array{total_orders: int, total_quantity: int, total_revenue: float, total_pft: float, total_cogs: float, gpft_percent: float, groi_percent: float}|null
      */
@@ -12871,7 +12871,7 @@ class ChannelMasterController extends Controller
             ]);
         }
 
-        // L60: same line-sales dollars as the /temu2-tabulator L30 badge, over 60 days.
+        // L60: same Temu Price × Qty dollars as the /temu-tabulator L30 Sales column, over 60 days.
         [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
         $l60Badge = $this->temu3TabulatorBadgeTotals(
             TemuShopifySalesService::computeTemu2TabulatorMetrics($l60Start, $l60End)
@@ -13148,8 +13148,8 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Active Channel Temu 2 uses the /temu2-tabulator badges:
-     * L30 Sales = Σ line sales, GPFT% = GPFT$ ÷ Temu Full Price Sales, GROI% = GPFT$ ÷ COGS.
+     * Active Channel Temu 2 uses the same math as /temu-tabulator:
+     * L30 Sales = Σ Temu Price × Qty, GPFT% = GPFT$ ÷ Temu Full Price Sales, GROI% = GPFT$ ÷ COGS.
      * Ads stay on the row; overlayLiveTemu2AdsOnChannelRows applies them after this.
      *
      * @param  list<array<string, mixed>>  $rows

@@ -609,7 +609,7 @@
                     @endphp
                     <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge"
                         style="color: white; font-weight: bold;"
-                        title="L30 Sales = Σ official line sales (base + freight) — same dollars as Y Sales / Temu Seller Central and /temu2-tabulator ({{ $temuAds['window'] ?? 'L30' }}). SKU match = normalize + no-space. Channel total, not the filtered rows.">
+                        title="L30 Sales = Σ official line sales (base + freight) — same dollars as the API Line Sales badge on /temu2-tabulator ({{ $temuAds['window'] ?? 'L30' }}). SKU match = normalize + no-space. Channel total, not the filtered rows.">
                         L30 Sales: ${{ number_format($l30Sales, 0) }}<a
                             href="{{ url('temu2-tabulator') }}" target="_blank" rel="noopener noreferrer"
                             style="color: white; margin-left: 4px;" title="Open Temu 2 sales data"

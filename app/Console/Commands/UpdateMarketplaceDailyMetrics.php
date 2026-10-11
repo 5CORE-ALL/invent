@@ -771,8 +771,8 @@ class UpdateMarketplaceDailyMetrics extends Command
     }
 
     /**
-     * Temu 2: L30 = same API dollars as Y Sales (base + freight). Prefer temu2_orders,
-     * then the last sheet upload. Ad spend from temu2_campaign_reports.
+     * Temu 2: L30 Sales = Σ Temu Price × Qty, same as /temu-tabulator.
+     * Prefer temu2_orders, then the last sheet upload. Ad spend from temu2_campaign_reports.
      */
     private function calculateTemu2Metrics($date)
     {
