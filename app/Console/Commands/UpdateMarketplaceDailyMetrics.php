@@ -777,16 +777,19 @@ class UpdateMarketplaceDailyMetrics extends Command
         [$liveStart, $liveEnd] = TemuShopifySalesService::channelMasterL30Window();
         $live = TemuShopifySalesService::computeMetricsFromOrders($liveStart, $liveEnd, true);
         if ((float) ($live['base_sales'] ?? $live['sales'] ?? 0) > 0 || (int) ($live['qty'] ?? 0) > 0) {
-            $totalL30Sales = (float) ($live['base_sales'] ?? $live['sales'] ?? 0);
+            $totalL30Sales = (float) ($live['l30_sales'] ?? $live['base_sales'] ?? $live['sales'] ?? 0);
             $totalPft = (float) $live['pft'];
             $totalCogs = (float) $live['cogs'];
-            $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
-            $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+            $fullSales = (float) ($live['full_sales'] ?? 0);
+            $pftBadge = (int) round($totalPft);
+            $fullBadge = (int) round($fullSales);
+            $cogsBadge = (int) round($totalCogs);
+            $pftPercentage = $fullBadge !== 0 ? (int) round(($pftBadge / $fullBadge) * 100) : 0;
+            $roiPercentage = $cogsBadge !== 0 ? (int) round(($pftBadge / $cogsBadge) * 100) : 0;
             $temu2Spent = (float) (Temu2CampaignReport::where('report_range', 'L30')->sum('spend') ?? 0);
             $tacosPercentage = $totalL30Sales > 0 ? ($temu2Spent / $totalL30Sales) * 100 : 0;
             $nPftPercentage = $pftPercentage - $tacosPercentage;
-            $netProfit = $totalPft - $temu2Spent;
-            $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
+            $nRoiPercentage = $roiPercentage - $tacosPercentage;
 
             return [
                 'total_orders' => (int) $live['orders'],
