@@ -7,6 +7,7 @@ use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\Concerns\ResolvesEbayListingItemId;
 use App\Services\Support\EbaySellInventoryListingResolver;
+use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
@@ -157,6 +158,52 @@ class EbayThreeApiService
     }
 
     public string $lastGetItemError = '';
+
+    /**
+     * Match the seller SKU to one variation and return the specifics eBay requires
+     * to apply StartPrice. Null when the listing is not a variation or the SKU is absent.
+     *
+     * @return array{sku: string, specifics: array<string, string>}|null
+     */
+    private function resolveVariationSpecificsForPrice(string $itemId, string $sku): ?array
+    {
+        $sku = trim($sku);
+        if ($itemId === '' || $sku === '') {
+            return null;
+        }
+
+        $raw = $this->getItem($itemId);
+        $item = is_array($raw) && is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+        if ($item === [] || ! EbayLiveListingMapper::listingHasVariations($item)) {
+            return null;
+        }
+
+        $vars = $item['Variations']['Variation'] ?? [];
+        if (isset($vars['SKU']) || isset($vars['VariationSpecifics']) || isset($vars['StartPrice'])) {
+            $vars = [$vars];
+        }
+
+        foreach ($vars as $variation) {
+            if (! is_array($variation)) {
+                continue;
+            }
+            $vSku = trim((string) ($variation['SKU'] ?? ''));
+            if ($vSku === '' || ! EbayLiveListingMapper::skuEquals($vSku, $sku)) {
+                continue;
+            }
+            $specifics = EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+            if ($specifics === []) {
+                continue;
+            }
+
+            return [
+                'sku' => $vSku,
+                'specifics' => $specifics,
+            ];
+        }
+
+        return null;
+    }
 
     public function getItem($itemId)
     {
@@ -535,6 +582,23 @@ class EbayThreeApiService
                         'ack' => $ack,
                         'error' => $warnErr,
                     ]);
+
+                    // SKU alone is not enough on some variation listings. Retry once
+                    // with the live VariationSpecifics so the price is not a no-op.
+                    if (empty($variationSpecifics)) {
+                        $resolved = $this->resolveVariationSpecificsForPrice((string) $itemId, (string) ($variationSku ?: $sku));
+                        if ($resolved !== null) {
+                            return $this->reviseFixedPriceItem(
+                                $itemId,
+                                $price,
+                                $quantity,
+                                $resolved['sku'],
+                                $resolved['specifics'],
+                                $variationSpecificsSet,
+                                false
+                            );
+                        }
+                    }
 
                     return [
                         'success' => false,
