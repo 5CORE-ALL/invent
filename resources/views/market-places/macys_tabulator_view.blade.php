@@ -554,8 +554,11 @@
         });
 
         const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-        const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
-        const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+        const gpftDollars = Math.round(totalPft);
+        const salesDollars = Math.round(totalL30Sales);
+        const cogsDollars = Math.round(totalCogs);
+        const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+        const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
         function setMacysDsRole(role, text) {
             $('.macys-ds-aggregate[data-role="' + role + '"]').text(text);
@@ -564,11 +567,11 @@
         setMacysDsRole('orders', 'Orders: ' + totalOrders.toLocaleString());
         setMacysDsRole('quantity', 'Quantity: ' + totalQuantity.toLocaleString());
         setMacysDsRole('sales', 'Sales: $' + Math.round(totalRevenue).toLocaleString());
-        setMacysDsRole('gpft-pct', 'GPFT %: ' + Math.round(pftPercentage) + '%');
-        setMacysDsRole('roi-pct', 'ROI %: ' + Math.round(roiPercentage) + '%');
+        setMacysDsRole('gpft-pct', 'GPFT: ' + Math.round(pftPercentage) + '%');
+        setMacysDsRole('roi-pct', 'GROI: ' + Math.round(roiPercentage) + '%');
         setMacysDsRole('avg-price', 'Avg Price: $' + Math.round(avgPrice).toLocaleString());
         setMacysDsRole('pft-total', 'GPFT Total: $' + Math.round(totalPft).toLocaleString());
-        setMacysDsRole('cogs', 'Total COGS: $' + Math.round(totalCogs).toLocaleString());
+        setMacysDsRole('cogs', 'Total COGS: $' + cogsDollars.toLocaleString());
 
         $('.macys-ds-aggregate[data-role="pft-total"]').each(function() {
             const el = $(this);
@@ -587,7 +590,7 @@
             })
             .fail(function() {
                 const roles = ['orders', 'quantity', 'sales', 'gpft-pct', 'roi-pct', 'avg-price', 'pft-total', 'cogs'];
-                const labels = ['Orders', 'Quantity', 'Sales', 'GPFT %', 'ROI %', 'Avg Price', 'GPFT Total', 'Total COGS'];
+                const labels = ['Orders', 'Quantity', 'Sales', 'GPFT', 'GROI', 'Avg Price', 'GPFT Total', 'Total COGS'];
                 roles.forEach(function(role, i) {
                     $('.macys-ds-aggregate[data-role="' + role + '"]').text(labels[i] + ': —');
                 });

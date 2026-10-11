@@ -64,11 +64,12 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (Sales AMT × margin) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. One Shipping Master slab for T Weight, subtracted once. A combo with Label Qty 2 or more adds one slab per package. An empty band uses that package's SKU weight.">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
@@ -151,8 +152,13 @@
                     { title: "Customer", field: "customer", width: 150, visible: false },
                     moneyCol("LP", "lp"),
                     moneyCol("Ship", "ship"),
-                    { title: "T Weight", field: "t_weight", hozAlign: "center", sorter: "number", width: 90, visible: false },
-                    moneyCol("Ship Cost", "ship_cost", false),
+                    { title: "T Wt", field: "t_weight", hozAlign: "center", sorter: "number", width: 80, headerTooltip: "T Weight = Dim & Wt ACT lb × Qty" },
+                    {
+                        title: "COGS Ship", field: "ship_cost", hozAlign: "center", sorter: "number", width: 110,
+                        headerTooltip: "One slab for T Weight. A combo adds one slab per package.",
+                        formatter: "money",
+                        formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 }
+                    },
                     moneyCol("COGS", "cogs"),
                     {
                         title: "PFT Each", field: "pft_each", hozAlign: "center", sorter: "number", width: 100,
@@ -176,7 +182,7 @@
                         }
                     },
                     {
-                        title: "ROI %", field: "roi", hozAlign: "center", sorter: "number", width: 90,
+                        title: "GROI %", field: "roi", hozAlign: "center", sorter: "number", width: 90,
                         formatter: function(cell) {
                             const v = parseFloat(cell.getValue()) || 0;
                             let color = '#6c757d';
@@ -206,7 +212,7 @@
 
             function updateSummary() {
                 const data = table.getData("active");
-                let totalOrders = 0, totalQuantity = 0, totalRevenue = 0, totalPft = 0, totalCogs = 0;
+                let totalOrders = 0, totalQuantity = 0, totalRevenue = 0, totalPft = 0, totalCogs = 0, totalCogsShip = 0;
                 let totalWeightedPrice = 0, totalQuantityForPrice = 0;
 
                 data.forEach(row => {
@@ -217,29 +223,34 @@
 
                     totalOrders++;
                     totalQuantity += quantity;
-                    totalRevenue += basePrice * quantity;
+                    totalRevenue += parseFloat(row.sale_amount) || (basePrice * quantity);
                     if (basePrice > 0) {
                         totalWeightedPrice += basePrice * quantity;
                         totalQuantityForPrice += quantity;
                     }
                     totalPft += parseFloat(row.pft) || 0;
                     totalCogs += parseFloat(row.cogs) || 0;
+                    totalCogsShip += parseFloat(row.ship_cost) || 0;
                 });
 
                 const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-                const pftPct = totalRevenue > 0 ? (totalPft / totalRevenue) * 100 : 0;
-                const roiPct = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+                const gpftDollars = Math.round(totalPft);
+                const salesDollars = Math.round(totalRevenue);
+                const cogsDollars = Math.round(totalCogs);
+                const pftPct = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+                const roiPct = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
                 const money = (v) => '$' + Math.round(v).toLocaleString('en-US');
 
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
                 $('#total-sales-badge').text('Total Sales: ' + money(totalRevenue));
-                $('#pft-percentage-badge').text('GPFT %: ' + Math.round(pftPct) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPct) + '%');
+                $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPct) + '%');
+                $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPct) + '%');
                 $('#avg-price-badge').text('Avg Price: ' + money(avgPrice));
                 $('#pft-total-badge').text('GPFT Total: ' + money(totalPft));
                 $('#total-cogs-badge').text('Total COGS: ' + money(totalCogs));
+                $('#cogs-ship-badge').text('COGS Ship: ' + money(totalCogsShip));
 
                 const pftBadge = $('#pft-total-badge');
                 if (totalPft >= 0) pftBadge.removeClass('bg-danger').addClass('bg-dark');

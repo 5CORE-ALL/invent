@@ -120,12 +120,13 @@
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (sale price × Qty × TikTok Shop margin) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. One Shipping Master slab for T Weight, subtracted once. A combo with Label Qty 2 or more adds one slab per package.">COGS Ship: $0</span>
                         <span class="badge fs-6 p-2" id="pt-spent-badge" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="kw-spent-badge" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="hl-spent-badge" style="background-color: #dc3545; color: white; font-weight: bold;">HL Spent: ${{ number_format($hlSpent ?? 0, 0) }}</span>
@@ -365,15 +366,17 @@
                     }
                 },
                 {
-                    title: "T Weight",
+                    title: "T Wt",
                     field: "t_weight",
                     hozAlign: "center",
                     sorter: "number",
-                    width: 100
+                    headerTooltip: "T Weight = Dim & Wt ACT lb × Qty",
+                    width: 80
                 },
                 {
-                    title: "Ship Cost",
+                    title: "COGS Ship",
                     field: "ship_cost",
+                    headerTooltip: "One slab for T Weight. A combo adds one slab per package.",
                     hozAlign: "center",
                     sorter: "number",
                     width: 100,
@@ -426,7 +429,7 @@
                     }
                 },
                 {
-                    title: "ROI %",
+                    title: "GROI %",
                     field: "roi",
                     hozAlign: "center",
                     sorter: "number",
@@ -468,6 +471,7 @@
             let totalWeightedPrice = 0;
             let totalQuantityForPrice = 0;
             let totalCogs = 0;
+            let totalCogsShip = 0;
 
             data.forEach(row => {
                 // Skip rows with empty SKU or order_id
@@ -499,6 +503,7 @@
                 
                 totalPft += pft;
                 totalCogs += cogs;
+                totalCogsShip += parseFloat(row.ship_cost) || 0;
                 
                 const l30Sales = quantity * unitPrice;
                 totalL30Sales += l30Sales;
@@ -506,12 +511,11 @@
 
             // Calculate average price (weighted by quantity)
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-
-            // Calculate GPFT Percentage: (Sum of T PFT / Sum of Total Sales) * 100
-            const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
-            
-            // Calculate ROI Percentage: (Total PFT / Total COGS) * 100
-            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            const gpftDollars = Math.round(totalPft);
+            const salesDollars = Math.round(totalL30Sales);
+            const cogsDollars = Math.round(totalCogs);
+            const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             // TikTok has no ads, so Net PFT = Gross PFT
             const adsSpent = 0;
@@ -524,11 +528,12 @@
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-sales-badge').text('Total Sales: $' + Math.round(totalRevenue).toLocaleString());
-            $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+            $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
-            $('#pft-total-badge').text('GPFT Total: $' + Math.round(totalPft).toLocaleString());
-            $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
+            $('#pft-total-badge').text('GPFT Total: $' + gpftDollars.toLocaleString());
+            $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+            $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
             
             // Color code PFT Total badge based on positive/negative
             const pftBadge = $('#pft-total-badge');
@@ -552,7 +557,7 @@
             if ($('#tacos-percentage-badge').length) $('#tacos-percentage-badge').hide();
             if ($('#m-pft-badge').length) $('#m-pft-badge').hide();
             if ($('#n-roi-badge').length) {
-                $('#n-roi-badge').text('N ROI: ' + nRoi.toFixed(1) + '%');
+                $('#n-roi-badge').text('N ROI: ' + Math.round(roiPercentage) + '%');
             }
             
             // Hide unused filter badges

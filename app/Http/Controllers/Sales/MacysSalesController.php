@@ -38,18 +38,21 @@ class MacysSalesController extends Controller
         // Get marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
         $percentage = $marketplaceData ? $marketplaceData->percentage : 76;
+        $margin = $percentage / 100;
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
         $data = [];
         foreach ($orders as $order) {
             $pm = $productMasters[$order->sku] ?? null;
 
-            // Extract LP, Ship, and Weight Act
             $lp = 0;
             $ship = 0;
-            $weightAct = 0;
+            $values = [];
+            $parent = '';
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                $lp = 0;
+                $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === "lp") {
                         $lp = floatval($v);
@@ -60,7 +63,6 @@ class MacysSalesController extends Controller
                     $lp = floatval($pm->lp);
                 }
                 $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
-                $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 
             $quantity = floatval($order->quantity);
@@ -71,32 +73,18 @@ class MacysSalesController extends Controller
             // (02:50 UTC on the 18th) stays on the 17th — same as the Macy's seller page.
             $orderDatePt = MiraklDailyData::pacificDateTime($order->getRawOriginal('order_created_at'));
 
-            // T Weight = Weight Act * Quantity
+            $weightAct = EbaySalesController::actWeightLb($values);
             $tWeight = $weightAct * $quantity;
+            $shipCost = $quantity > 0
+                ? EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($order->sku ?? ''), $values, $quantity, $parent)
+                : 0.0;
 
-            // Ship Cost calculation
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity
+            // COGS = LP × Qty. unit_price is the unit, so sales is unit_price × Qty once.
             $cogs = $lp * $quantity;
-
-            // PFT Each = (price * percentage/100) - lp - ship_cost
-            $pftEach = ($unitPrice * ($percentage / 100)) - $lp - $shipCost;
-
-            // PFT Each % = (pft_each / price) * 100
+            $pft = ($saleAmount * $margin) - $cogs - $shipCost;
+            $pftEach = $quantity > 0 ? $pft / $quantity : 0;
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-
-            // ROI = (PFT / LP) * 100
-            $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
+            $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             $data[] = [
                 'order_id' => $order->order_id,
@@ -150,7 +138,7 @@ class MacysSalesController extends Controller
                 'period' => false,
                 'lp' => true,
                 'ship' => true,
-                't_weight' => false,
+                't_weight' => true,
                 'ship_cost' => true,
                 'cogs' => true,
                 'pft_each' => true,

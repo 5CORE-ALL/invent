@@ -80,32 +80,16 @@ class BestBuySalesController extends Controller
             $unitPrice = floatval($order->unit_price);
             $saleAmount = $unitPrice * $quantity;
 
-            // T Weight = Weight Act * Quantity
             $tWeight = $weightAct * $quantity;
 
-            // Ship Cost calculation
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity
+            // COGS Ship is Ship BB once. COGS = LP × Qty. unit_price is the unit, so sales is unit_price × Qty once.
+            $shipCost = $quantity > 0 ? $ship : 0.0;
             $cogs = $lp * $quantity;
-
-            // PFT Each = (price * percentage/100) - lp - ship_cost
-            $pftEach = ($unitPrice * ($percentage / 100)) - $lp - $shipCost;
-
-            // PFT Each % = (pft_each / price) * 100
+            $margin = $percentage / 100;
+            $pft = ($saleAmount * $margin) - $cogs - $shipCost;
+            $pftEach = $quantity > 0 ? $pft / $quantity : 0;
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-
-            // ROI = (PFT / LP) * 100
-            $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
+            $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             $data[] = [
                 'order_id' => $order->order_id,

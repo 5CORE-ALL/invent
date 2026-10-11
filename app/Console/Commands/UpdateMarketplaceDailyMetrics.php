@@ -65,7 +65,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         $columns = ['id', 'sku', 'Values'];
-        foreach (['lp', 'ship', 'ship_bb'] as $col) {
+        foreach (['lp', 'ship', 'ship_bb', 'parent'] as $col) {
             if (Schema::hasColumn('product_master', $col)) {
                 $columns[] = $col;
             }
@@ -252,6 +252,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         // (ProductMaster::whereIn('sku', …)->keyBy('sku')). Uppercasing here matched extra
         // rows the daily-sales page does not, skewing PFT/COGS away from that page.
         $productMasters = $this->productMastersChunked()->keyBy('sku');
+        [$amazonSlabs, $amazonRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         $totalOrders = $orderRows->pluck('amazon_order_id')->unique()->count();
         $totalQuantity = 0;
@@ -296,8 +297,8 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $totalSkuLineSales += round($lineRevenue, 2);
             }
             $lp = 0;
-            $ship = 0;
-            $weightAct = 0;
+            $values = [];
+            $pm = null;
 
             if ($sku !== '' && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
@@ -308,21 +309,17 @@ class UpdateMarketplaceDailyMetrics extends Command
                 if (isset($values['wt_act'])) $weightAct = (float) $values['wt_act'];
             }
 
-            $tWeight = $weightAct * $quantity;
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
+            $shipValues = (isset($values) && is_array($values)) ? $values : [];
+            $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+            $shipCost = ($sku !== '' && $quantity > 0)
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($amazonSlabs, $amazonRates, (string) $sku, $shipValues, $quantity, $parent)
+                : 0.0;
 
             // Round per line before summing — matches getData()'s per-row round(…, 2)
             // whose rounded values the daily-sales badge then sums.
             $cogs = round($lp * $quantity, 2);
             $totalCogs += $cogs;
-            $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
-            $pft = round($pftEach * $quantity, 2);
+            $pft = round(($lineRevenue * 0.80) - $cogs - $shipCost, 2);
             $totalPft += $pft;
         }
 
@@ -330,9 +327,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         // GPFT% denominator = Σ SKU-line sales (matches /amazon/daily-sales "GPFT %"),
         // NOT $totalRevenue (order-greatest badge total shown in the "Total Sales" badge).
         // This keeps /all-marketplace-master's Amazon Gprofit% identical to the daily-sales page.
-        $pftPercentage = $totalSkuLineSales > 0 ? ($totalPft / $totalSkuLineSales) * 100 : 0;
-        // ROI = (PFT / COGS) * 100 - but COGS is LP only
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $pftPercentage = round($totalSkuLineSales) != 0.0 ? round(round($totalPft) / round($totalSkuLineSales) * 100) : 0;
+        $roiPercentage = round($totalCogs) != 0.0 ? round(round($totalPft) / round($totalCogs) * 100) : 0;
 
         // Calculate KW Spent - use LATEST L30 row per campaign (MAX(id)) approach
         // Matches ChannelMasterController::fetchAdMetricsFromTables() exactly
@@ -1691,6 +1687,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         // Shopify B2C uses 0.95 margin (95%)
         $margin = 0.95;
+        [$b2cSlabs, $b2cRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         foreach ($orders as $order) {
             if (!$order->sku || $order->sku === '') continue;
@@ -1743,28 +1740,14 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
             }
 
-            // T Weight = Weight Act * Quantity
-            $tWeight = $weightAct * $quantity;
-
-            // Ship Cost calculation (same as ShopifyB2CSalesController):
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity (only LP, not Ship)
             $cogs = $lp * $quantity;
+            $shipValues = (isset($values) && is_array($values)) ? $values : [];
+            $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($b2cSlabs, $b2cRates, (string) ($order->sku ?? ''), $shipValues, $quantity, $parent)
+                : 0.0;
             $totalCogs += $cogs;
-
-            // PFT Each = (price * 0.95) - lp - ship_cost
-            $pftEach = ($price * $margin) - $lp - $shipCost;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-            $totalPft += $pft;
+            $totalPft += (($price * $quantity) * $margin) - $cogs - $shipCost;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
@@ -1868,6 +1851,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         // Shopify B2B (Wholesale) uses 0.95 margin (95%)
         $margin = 0.95;
+        [$b2bSlabs, $b2bRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         foreach ($orders as $order) {
             if (!$order->sku || $order->sku === '') continue;
@@ -1923,25 +1907,14 @@ class UpdateMarketplaceDailyMetrics extends Command
             // T Weight = Weight Act * Quantity
             $tWeight = $weightAct * $quantity;
 
-            // Ship Cost calculation (same as ShopifyB2BSalesController):
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity (only LP, not Ship)
             $cogs = $lp * $quantity;
+            $shipValues = (isset($values) && is_array($values)) ? $values : [];
+            $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($b2bSlabs, $b2bRates, (string) ($order->sku ?? ''), $shipValues, $quantity, $parent)
+                : 0.0;
             $totalCogs += $cogs;
-
-            // PFT Each = (price * 0.95) - lp  (B2B excludes Ship; same as Business Analytics)
-            $pftEach = ($price * $margin) - $lp;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-            $totalPft += $pft;
+            $totalPft += (($price * $quantity) * $margin) - $cogs - $shipCost;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
@@ -1987,7 +1960,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalPft = 0;
         $totalWeightedPrice = 0;
         $totalQuantityForPrice = 0;
-        $margin = 0.80;
+        $margin = \App\Http\Controllers\Sales\TikTokSalesController::marginFactorFromMarketplace(['TiktokShop']);
+        [$tiktokSlabs, $tiktokRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
         $seenOrders = [];
 
         foreach ($orderItems as $item) {
@@ -2039,19 +2013,14 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
             }
 
-            $tWeight = $weightAct * $quantity;
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
             $cogs = $lp * $quantity;
+            $shipValues = (isset($values) && is_array($values)) ? $values : [];
+            $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($tiktokSlabs, $tiktokRates, (string) ($item->seller_sku ?? ''), $shipValues, $quantity, $parent)
+                : 0.0;
             $totalCogs += $cogs;
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-            $totalPft += $pftEach * $quantity;
+            $totalPft += ($totalPrice * $margin) - $cogs - $shipCost;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
@@ -2078,7 +2047,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTikTokTwoMetrics($date)
     {
-        // L30 from tiktok2_orders — last 30 California calendar days (same Shop API as TikTok 1)
+        // L30 from tiktok2_orders — same window and profit as /tiktok-two/daily-sales.
         [$startDate, $endDate] = Tiktok2Order::californiaDaysWindow(30);
         $orderItems = Tiktok2Order::linesInWindow($startDate, $endDate);
 
@@ -2097,7 +2066,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalPft = 0;
         $totalWeightedPrice = 0;
         $totalQuantityForPrice = 0;
-        $margin = 0.80;
+        $margin = \App\Http\Controllers\Sales\TikTokSalesController::marginFactorFromMarketplace(['TiktokShop']);
+        [$slabService, $shipSlabRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
         $seenOrders = [];
 
         foreach ($orderItems as $item) {
@@ -2122,13 +2092,15 @@ class UpdateMarketplaceDailyMetrics extends Command
 
             $sku = strtoupper(trim((string) ($item->seller_sku ?? '')));
             $lp = 0;
-            $ship = 0;
-            $weightAct = 0;
+            $values = [];
+            $parent = '';
 
             if ($sku && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
 
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === 'lp') {
@@ -2139,34 +2111,24 @@ class UpdateMarketplaceDailyMetrics extends Command
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
                 }
-                if (isset($values['ship'])) {
-                    $ship = floatval($values['ship']);
-                } elseif (isset($pm->ship)) {
-                    $ship = floatval($pm->ship);
-                }
-                if (isset($values['wt_act'])) {
-                    $weightAct = floatval($values['wt_act']);
-                }
-            }
-
-            $tWeight = $weightAct * $quantity;
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
             }
 
             $cogs = $lp * $quantity;
+            $shipCost = \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku(
+                $slabService,
+                $shipSlabRates,
+                (string) ($item->seller_sku ?? ''),
+                $values,
+                $quantity,
+                $parent
+            );
             $totalCogs += $cogs;
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-            $totalPft += $pftEach * $quantity;
+            $totalPft += ($totalPrice * $margin) - $cogs - $shipCost;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $pftPercentage = round($totalRevenue) != 0.0 ? round(round($totalPft) / round($totalRevenue) * 100) : 0;
+        $roiPercentage = round($totalCogs) != 0.0 ? round(round($totalPft) / round($totalCogs) * 100) : 0;
 
         return [
             'total_orders' => count($seenOrders),
@@ -2370,40 +2332,18 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
                 
                 $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $pm);
-                
-                // Get Weight Act
-                if (isset($values['wt_act'])) {
-                    $weightAct = floatval($values['wt_act']);
-                }
             }
 
-            // T Weight = Weight Act * Quantity
-            $tWeight = $weightAct * $quantity;
-
-            // Ship Cost calculation
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity
+            // COGS Ship is Ship BB once.
             $cogs = $lp * $quantity;
             $totalCogs += $cogs;
-
-            // PFT Each = (unitPrice * margin) - lp - ship_cost
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
+            $pft = ($saleAmount * $margin) - $cogs - $ship;
             $totalPft += $pft;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $pftPercentage = round($totalRevenue) != 0.0 ? round(round($totalPft) / round($totalRevenue) * 100) : 0;
+        $roiPercentage = round($totalCogs) != 0.0 ? round(round($totalPft) / round($totalCogs) * 100) : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -2443,6 +2383,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
         $percentage = $marketplaceData ? $marketplaceData->percentage : 76;
         $margin = $percentage / 100;
+        [$slabService, $shipSlabRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -2468,18 +2409,18 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $totalQuantityForPrice += $quantity;
             }
 
-            // Get LP, Ship and Weight Act from ProductMaster
             $sku = strtoupper($order->sku);
             $lp = 0;
-            $ship = 0;
-            $weightAct = 0;
+            $values = [];
+            $parent = '';
 
             if (isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                
-                // Get LP
+                $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
+
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === "lp") {
                         $lp = floatval($v);
@@ -2489,47 +2430,19 @@ class UpdateMarketplaceDailyMetrics extends Command
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
                 }
-                
-                // Get Ship
-                if (isset($values['ship'])) {
-                    $ship = (float) $values['ship'];
-                } elseif (isset($pm->ship)) {
-                    $ship = floatval($pm->ship);
-                }
-                
-                // Get Weight Act
-                if (isset($values['wt_act'])) {
-                    $weightAct = floatval($values['wt_act']);
-                }
             }
 
-            // T Weight = Weight Act * Quantity
-            $tWeight = $weightAct * $quantity;
-
-            // Ship Cost calculation
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity
             $cogs = $lp * $quantity;
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) $order->sku, $values, $quantity, $parent)
+                : 0.0;
             $totalCogs += $cogs;
-
-            // PFT Each = (unitPrice * margin) - lp - ship_cost
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-            $totalPft += $pft;
+            $totalPft += ($saleAmount * $margin) - $cogs - $shipCost;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $pftPercentage = round($totalRevenue) != 0.0 ? round(round($totalPft) / round($totalRevenue) * 100) : 0;
+        $roiPercentage = round($totalCogs) != 0.0 ? round(round($totalPft) / round($totalCogs) * 100) : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -2573,6 +2486,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         // Doba uses 0.95 margin (matching DobaSalesController)
         $margin = 0.95;
+        [$dobaSlabs, $dobaRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         $totalOrders = 0;
         $totalQuantity = 0;
@@ -2588,19 +2502,19 @@ class UpdateMarketplaceDailyMetrics extends Command
             $totalOrders++;
             $quantity = (int) ($order->quantity ?? 1);
             $itemPrice = (float) ($order->item_price ?? 0);
-            $totalPrice = (float) ($order->total_price ?? 0);
-            
+            $lineRevenue = $itemPrice * $quantity;
+
             $totalQuantity += $quantity;
-            $totalRevenue += $totalPrice;
+            $totalRevenue += $lineRevenue;
 
             if ($quantity > 0 && $itemPrice > 0) {
                 $totalWeightedPrice += $itemPrice * $quantity;
                 $totalQuantityForPrice += $quantity;
             }
 
-            // Get LP and Ship from ProductMaster
             $lp = 0;
-            $ship = 0;
+            $values = [];
+            $pm = null;
 
             if (isset($productMasters[$order->sku])) {
                 $pm = $productMasters[$order->sku];
@@ -2622,26 +2536,12 @@ class UpdateMarketplaceDailyMetrics extends Command
             $cogs = $lp * $quantity;
             $totalCogs += $cogs;
 
-            // Ship Cost calculation (matching DobaSalesController)
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // PFT Each = (itemPrice * 0.95) - ship - lp
-            // If order type is "Pickup with a prepaid label", don't reduce shipping cost
-            if (strtolower($order->order_type ?? '') === 'pickup with a prepaid label') {
-                $pftEach = ($itemPrice * $margin) - $lp;
-            } else {
-                $pftEach = ($itemPrice * $margin) - $ship - $lp;
-            }
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-            $totalPft += $pft;
+            $shipValues = (isset($values) && is_array($values)) ? $values : [];
+            $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($dobaSlabs, $dobaRates, (string) ($order->sku ?? ''), $shipValues, $quantity, $parent)
+                : 0.0;
+            $totalPft += ($lineRevenue * $margin) - $cogs - $shipCost;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
@@ -2717,6 +2617,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         $marketplaceData = \App\Models\MarketplacePercentage::where('marketplace', 'Walmart')->first();
         $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
         $margin = $percentage / 100; // Convert to decimal
+        [$walmartSlabs, $walmartRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         // Process order items from walmart_daily_data (same as Sales page)
         foreach ($orders as $order) {
@@ -2736,9 +2637,9 @@ class UpdateMarketplaceDailyMetrics extends Command
                 $totalQuantityForPrice += $quantity;
             }
 
-            // Get LP, Ship and wt_act from ProductMaster
             $lp = 0;
-            $ship = 0;
+            $values = [];
+            $pm = null;
             $weightAct = 0;
 
             if ($sku && isset($productMasters[$sku])) {
@@ -2773,25 +2674,14 @@ class UpdateMarketplaceDailyMetrics extends Command
             // T Weight = Weight Act * Quantity
             $tWeight = $weightAct * $quantity;
 
-            // Ship Cost calculation (same as Amazon/TikTok):
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity (only LP, not Ship)
             $cogs = $lp * $quantity;
+            $shipValues = (isset($values) && is_array($values)) ? $values : [];
+            $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($walmartSlabs, $walmartRates, (string) ($order->sku ?? ''), $shipValues, $quantity, $parent)
+                : 0.0;
             $totalCogs += $cogs;
-
-            // PFT Each = (unit_price * margin) - lp - ship_cost
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-            $totalPft += $pft;
+            $totalPft += ($saleAmount * $margin) - $cogs - $shipCost;
         }
 
         $totalOrders = count($uniqueOrders);
@@ -2917,18 +2807,15 @@ class UpdateMarketplaceDailyMetrics extends Command
                 }
             }
 
-            // Wayfair Profit Formula: (unit_price * percentage) - lp (NO ship cost)
-            $profitPerUnit = ($unitPrice * $percentageFraction) - $lp;
-            $profitTotal = $profitPerUnit * $quantity;
-
-            $totalPft += $profitTotal;
-            $totalCogs += ($quantity * $lp);
+            // Wayfair Profit Formula: (unit_price × Qty × percentage) − COGS. No ship.
+            $lineCogs = $lp * $quantity;
+            $totalPft += ($unitPrice * $quantity * $percentageFraction) - $lineCogs;
+            $totalCogs += $lineCogs;
         }
 
-        // Calculate averages and percentages
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $pftPercentage = round($totalRevenue) != 0.0 ? round(round($totalPft) / round($totalRevenue) * 100) : 0;
+        $roiPercentage = round($totalCogs) != 0.0 ? round(round($totalPft) / round($totalCogs) * 100) : 0;
 
         // Wayfair doesn't have ads data
         $kwSpent = 0;
@@ -2944,15 +2831,15 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => round($pftPercentage, 1),
-            'roi_percentage' => round($roiPercentage, 1),
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
             'avg_price' => round($avgPrice, 2),
             'l30_sales' => $totalRevenue,
             'kw_spent' => 0,
             'pmt_spent' => 0,
             'tacos_percentage' => 0,
-            'n_pft' => round($nPftPercentage, 1),
-            'n_roi' => round($nRoiPercentage, 1),
+            'n_pft' => $nPftPercentage,
+            'n_roi' => $nRoiPercentage,
         ];
     }
 
@@ -3039,8 +2926,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalOrders = count($orderSet);
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
-        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0;
+        $pftPercentage = round($totalRevenue) != 0.0 ? round(round($totalPft) / round($totalRevenue) * 100) : 0;
+        $roiPercentage = round($totalCogs) != 0.0 ? round(round($totalPft) / round($totalCogs) * 100) : 0;
 
         return [
             'total_orders' => $totalOrders,
@@ -3049,15 +2936,15 @@ class UpdateMarketplaceDailyMetrics extends Command
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
             'total_pft' => $totalPft,
-            'pft_percentage' => round($pftPercentage, 1),
-            'roi_percentage' => round($roiPercentage, 1),
+            'pft_percentage' => $pftPercentage,
+            'roi_percentage' => $roiPercentage,
             'avg_price' => round($avgPrice, 2),
             'l30_sales' => $totalRevenue,
             'kw_spent' => 0,
             'pmt_spent' => 0,
             'tacos_percentage' => 0,
-            'n_pft' => round($pftPercentage, 1),
-            'n_roi' => round($roiPercentage, 1),
+            'n_pft' => $pftPercentage,
+            'n_roi' => $roiPercentage,
         ];
     }
 

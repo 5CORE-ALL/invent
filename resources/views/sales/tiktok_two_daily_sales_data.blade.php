@@ -75,11 +75,12 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">GPFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (sale price × Qty × TikTok Shop margin) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. One Shipping Master slab for T Weight, subtracted once. A combo with Label Qty 2 or more adds one slab per package. An empty band uses that package's SKU weight.">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
@@ -167,8 +168,8 @@
                 { title: "Period", field: "period", width: 80 },
                 { title: "LP", field: "lp", hozAlign: "center", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
                 { title: "Ship", field: "ship", hozAlign: "center", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
-                { title: "T Weight", field: "t_weight", hozAlign: "center", sorter: "number", width: 100 },
-                { title: "Ship Cost", field: "ship_cost", hozAlign: "center", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
+                { title: "T Wt", field: "t_weight", hozAlign: "center", sorter: "number", headerTooltip: "T Weight = Dim & Wt ACT lb × Qty", width: 80 },
+                { title: "COGS Ship", field: "ship_cost", hozAlign: "center", sorter: "number", headerTooltip: "One slab for T Weight. A combo adds one slab per package.", width: 110, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
                 { title: "COGS", field: "cogs", hozAlign: "center", sorter: "number", width: 100, formatter: "money", formatterParams: { decimal: ".", thousand: ",", symbol: "$", precision: 2 } },
                 { title: "PFT Each", field: "pft_each", hozAlign: "center", sorter: "number", width: 100, formatter: function(cell) {
                     var v = cell.getValue();
@@ -181,7 +182,7 @@
                     var color = parseFloat(v) >= 0 ? '#28a745' : '#dc3545';
                     return '<span style="color:' + color + ';font-weight:bold;">' + parseFloat(v).toFixed(2) + '%</span>';
                 }},
-                { title: "ROI %", field: "roi", hozAlign: "center", sorter: "number", width: 100, formatter: function(cell) {
+                { title: "GROI %", field: "roi", hozAlign: "center", sorter: "number", width: 100, formatter: function(cell) {
                     var v = cell.getValue();
                     var color = '#6c757d';
                     if (v < 50) color = '#dc3545';
@@ -200,7 +201,7 @@
 
         function updateSummary() {
             var data = table.getData("active");
-            var totalOrders = 0, totalQuantity = 0, totalRevenue = 0, totalPft = 0, totalL30Sales = 0, totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0;
+            var totalOrders = 0, totalQuantity = 0, totalRevenue = 0, totalPft = 0, totalL30Sales = 0, totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0, totalCogsShip = 0;
             data.forEach(function(row) {
                 if (!row.sku || !row.order_id) return;
                 var quantity = parseInt(row.quantity, 10) || 0;
@@ -215,20 +216,25 @@
                 }
                 totalPft += parseFloat(row.t_pft) || 0;
                 totalCogs += parseFloat(row.cogs) || 0;
+                totalCogsShip += parseFloat(row.ship_cost) || 0;
                 totalL30Sales += quantity * unitPrice;
             });
             var avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-            var pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
-            var roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            var gpftDollars = Math.round(totalPft);
+            var salesDollars = Math.round(totalL30Sales);
+            var cogsDollars = Math.round(totalCogs);
+            var pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            var roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-sales-badge').text('Total Sales: $' + Math.round(totalRevenue).toLocaleString());
-            $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+            $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
-            $('#pft-total-badge').text('GPFT Total: $' + Math.round(totalPft).toLocaleString());
-            $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
+            $('#pft-total-badge').text('GPFT Total: $' + gpftDollars.toLocaleString());
+            $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+            $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
             $('#pft-total-badge').removeClass('bg-danger').addClass(totalPft >= 0 ? 'bg-dark' : 'bg-danger');
         }
 

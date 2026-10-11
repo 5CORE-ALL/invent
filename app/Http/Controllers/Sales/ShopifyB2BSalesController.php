@@ -33,16 +33,20 @@ class ShopifyB2BSalesController extends Controller
         // Fetch ProductMaster data for LP and Ship
         $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
+
         $data = [];
         foreach ($orders as $order) {
             $pm = $productMasters[$order->sku] ?? null;
 
-            // Extract LP, Ship, and Weight Act
             $lp = 0;
             $ship = 0;
-            $weightAct = 0;
+            $values = [];
+            $parent = '';
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
                 $lp = 0;
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === "lp") {
@@ -54,45 +58,27 @@ class ShopifyB2BSalesController extends Controller
                     $lp = floatval($pm->lp);
                 }
                 $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
-                $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 
             $quantity = floatval($order->quantity);
             $price = floatval($order->price);
             $totalAmount = floatval($order->total_amount);
 
-            // T Weight = Weight Act * Quantity
+            $weightAct = EbaySalesController::actWeightLb($values);
             $tWeight = $weightAct * $quantity;
+            $shipCost = $quantity > 0
+                ? EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($order->sku ?? ''), $values, $quantity, $parent)
+                : 0.0;
 
-            // Ship Cost calculation:
-            // If quantity is 1: ship_cost = ship / 1
-            // If quantity > 1 and t_weight < 20: ship_cost = ship / quantity
-            // Otherwise: ship_cost = ship
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            // COGS = LP * quantity
+            // COGS = LP × Qty. Price is the unit price, so sales is price × Qty once. Margin stays 95%.
             $cogs = $lp * $quantity;
-
-            // PFT Each = (price * 0.95) - lp  (B2B excludes Ship; same as Business Analytics)
-            $pftEach = ($price * 0.95) - $lp;
-
-            // PFT Each % = (pft_each / price) * 100
+            $sales = $price * $quantity;
+            $pft = ($sales * 0.95) - $cogs - $shipCost;
+            $pftEach = $quantity > 0 ? $pft / $quantity : 0;
             $pftEachPct = $price > 0 ? ($pftEach / $price) * 100 : 0;
 
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-
-            // ROI = (PFT / COGS) * 100
             $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
-
-            // L30 Sales = Quantity * Price
-            $l30Sales = $quantity * $price;
+            $l30Sales = $sales;
 
             $data[] = [
                 'order_id' => $order->order_id,

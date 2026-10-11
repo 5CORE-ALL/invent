@@ -85,13 +85,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Mercari With Ship Daily Sales',
-        'sub_title' => 'All Mercari orders except cancelled. Ship / LP from Product Master.',
+        'sub_title' => 'All Mercari orders except cancelled. Margin 88%. COGS Ship is the weight slab, once.',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Mercari With Ship Daily Sales <span class="badge bg-success">All orders (Ship from Product Master)</span></h4>
+                <h4>Mercari With Ship Daily Sales <span class="badge bg-success">All orders</span></h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Upload Button -->
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
@@ -132,15 +132,17 @@
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge"
                             style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
-                            style="color: white; font-weight: bold;">GPFT %: 0%</span>
+                            style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (item price × 88%) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
-                            style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                            style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
                             style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge"
                             style="color: white; font-weight: bold;">GPFT Total: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge"
-                            style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                            style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge"
+                            style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. One Shipping Master slab for T Weight, subtracted once. A combo with Label Qty 2 or more adds one slab per package. An empty band uses that package's SKU weight.">COGS Ship: $0</span>
                         <span class="badge fs-6 p-2" id="net-proceeds-badge"
                             style="background-color: #17a2b8; color: white; font-weight: bold;">Net Proceeds: $0.00</span>
                         <span class="badge fs-6 p-2" id="total-fees-badge"
@@ -572,11 +574,34 @@
                         }
                     },
                     {
+                        title: "T Wt",
+                        field: "t_weight",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        headerTooltip: "T Weight = Dim & Wt ACT lb × Qty"
+                    },
+                    {
                         title: "Ship",
                         field: "ship",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
+                        formatter: "money",
+                        formatterParams: {
+                            decimal: ".",
+                            thousand: ",",
+                            symbol: "$",
+                            precision: 2
+                        }
+                    },
+                    {
+                        title: "COGS Ship",
+                        field: "ship_cost",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "One slab for T Weight. A combo adds one slab per package.",
                         formatter: "money",
                         formatterParams: {
                             decimal: ".",
@@ -611,6 +636,7 @@
                 let totalRevenue = 0;
                 let totalPft = 0;
                 let totalCogs = 0;
+                let totalCogsShip = 0;
                 let totalNetProceeds = 0;
                 let totalFees = 0;
 
@@ -632,41 +658,35 @@
                     const paymentFee = parseFloat(row.payment_processing_fee_charged_to_seller) || 0;
                     const shippingAdj = parseFloat(row.shipping_adjustment_fee) || 0;
                     const penalty = parseFloat(row.penalty_fee) || 0;
-                    const lp = parseFloat(row.lp) || 0;
-                    const ship = parseFloat(row.ship) || 0;
-                    const quantity = parseInt(row.quantity) || 1; // Default quantity = 1
-
                     totalSales += itemPrice;
                     totalRevenue += itemPrice;
                     totalNetProceeds += netProceeds;
                     totalFees += mercariFee + paymentFee + shippingAdj + penalty;
 
-                    // COGS = LP * quantity
-                    const cogs = lp * quantity;
-                    // Calculate PFT: (Item Price × 0.88) - COGS - Ship
-                    const pft = (itemPrice * 0.88) - cogs - ship;
-                    totalPft += pft;
-                    totalCogs += cogs;
+                    totalPft += parseFloat(row.pft) || 0;
+                    totalCogs += parseFloat(row.cogs) || 0;
+                    totalCogsShip += parseFloat(row.ship_cost) || 0;
                 });
 
                 // Calculate average price
                 const avgPrice = totalOrders > 0 ? totalSales / totalOrders : 0;
 
-                // Calculate PFT Percentage: (Total PFT / Total Sales) * 100
-                const pftPercentage = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
-
-                // Calculate ROI Percentage: (Total PFT / Total LP) * 100
-                const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+                const gpftDollars = Math.round(totalPft);
+                const salesDollars = Math.round(totalSales);
+                const cogsDollars = Math.round(totalCogs);
+                const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+                const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
                 // Update badges
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-sales-badge').text('Total Sales: $' + totalSales.toFixed(2));
                 $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+                $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+                $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
                 $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
-                $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+                $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+                $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
                 $('#net-proceeds-badge').text('Net Proceeds: $' + totalNetProceeds.toFixed(2));
                 $('#total-fees-badge').text('Total Fees: $' + totalFees.toFixed(2));
 

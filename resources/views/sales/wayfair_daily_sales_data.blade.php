@@ -125,9 +125,9 @@
                     <span class="badge bg-info fs-6 p-2" id="total-revenue-badge"
                         style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                     <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
-                        style="color: white; font-weight: bold;">GPFT %: 0%</span>
+                        style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (unit price × Qty × Wayfair margin) − COGS. Wayfair has no ship.">GPFT: 0%</span>
                     <span class="badge fs-6 p-2" id="roi-percentage-badge"
-                        style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                     <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
                         style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                     <span class="badge bg-dark fs-6 p-2" id="pft-total-badge"
@@ -428,7 +428,7 @@
                         }
                     },
                     {
-                        title: "ROI %",
+                        title: "GROI %",
                         field: "roi",
                         hozAlign: "center",
                         sorter: "number",
@@ -508,14 +508,12 @@
                     totalL30Sales += l30Sales;
                 });
 
-                // Calculate average price (weighted by quantity)
                 const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-
-                // Calculate PFT Percentage: (Sum of T PFT / Sum of Total Sales) * 100
-                const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
-
-                // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
-                const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+                const gpftDollars = Math.round(totalPft);
+                const salesDollars = Math.round(totalL30Sales);
+                const cogsDollars = Math.round(totalCogs);
+                const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+                const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
                 // Check if data is filtered (compare active data with total data or check for filters)
                 const totalDataCount = table.getDataCount();
@@ -528,12 +526,12 @@
                 // Update badges (matching Amazon format exactly)
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));
-                $('#total-revenue-badge').text('Total Revenue: $' + totalRevenue.toFixed(2));
-                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+                $('#total-sales-badge').text('Total Sales: $' + salesDollars.toLocaleString());
+                $('#total-revenue-badge').text('Total Revenue: $' + Math.round(totalRevenue).toLocaleString());
+                $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+                $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-                $('#pft-total-badge').text('GPFT Total: $' + totalPft.toFixed(2));
+                $('#pft-total-badge').text('GPFT Total: $' + gpftDollars.toLocaleString());
 
                 // Color code PFT Total badge
                 const pftBadge = $('#pft-total-badge');
@@ -543,12 +541,11 @@
                     pftBadge.removeClass('bg-dark').addClass('bg-danger');
                 }
 
-                $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
-                $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
-                // Wayfair has no ads — TACOS%=0, N PFT = GPFT, N ROI = ROI (same as /all-marketplace-master).
-                $('#tacos-percentage-badge').text('TACOS %: 0.0%');
-                $('#m-pft-badge').text('N PFT: ' + pftPercentage.toFixed(1) + '%');
-                $('#n-roi-badge').text('N ROI: ' + roiPercentage.toFixed(1) + '%');
+                $('#l30-sales-badge').text('L30 Sales: $' + salesDollars.toLocaleString());
+                $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+                $('#tacos-percentage-badge').text('TACOS %: 0%');
+                $('#m-pft-badge').text('N PFT: ' + Math.round(pftPercentage) + '%');
+                $('#n-roi-badge').text('N ROI: ' + Math.round(roiPercentage) + '%');
             }
 
             // Build Column Visibility Dropdown

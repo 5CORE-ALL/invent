@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Sales\EbaySalesController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Models\MarketplacePercentage;
@@ -617,11 +618,13 @@ class AliexpressController extends Controller
         // Margin from Active Channel Master (same as /aliexpress-pricing).
         $percentage = $this->resolveAliexpressMarginPercent();
         $margin = $percentage / 100.0;
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
         $totalOrders = 0;
         $totalQuantity = 0;
         $totalRevenue = 0.0;
         $totalCogs = 0.0;
+        $totalCogsShip = 0.0;
         $totalPft = 0.0;
         $totalWeightedPrice = 0.0;
         $totalQuantityForPrice = 0;
@@ -659,13 +662,16 @@ class AliexpressController extends Controller
 
             $sku = strtoupper(trim((string) ($row->sku_code ?? '')));
             $lp = 0.0;
-            $ship = 0.0;
+            $values = [];
+            $parent = '';
 
             if ($sku !== '' && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values)
                     ? $pm->Values
                     : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
 
                 foreach ($values as $k => $v) {
                     if (strtolower((string) $k) === 'lp') {
@@ -676,14 +682,13 @@ class AliexpressController extends Controller
                 if ($lp === 0.0 && isset($pm->lp)) {
                     $lp = (float) $pm->lp;
                 }
-
-                $ship = isset($values['ship'])
-                    ? (float) $values['ship']
-                    : (isset($pm->ship) ? (float) $pm->ship : 0.0);
             }
 
-            $totalCogs += $lp * $quantity;
-            $totalPft += (($unitPrice * $margin) - $lp - $ship) * $quantity;
+            $cogs = $lp * $quantity;
+            $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($row->sku_code ?? ''), $values, $quantity, $parent);
+            $totalCogs += $cogs;
+            $totalCogsShip += $shipCost;
+            $totalPft += ($lineRevenue * $margin) - $cogs - $shipCost;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0.0;
@@ -693,9 +698,10 @@ class AliexpressController extends Controller
             'total_quantity' => $totalQuantity,
             'total_sales' => $totalRevenue,
             'total_cogs' => $totalCogs,
+            'total_cogs_ship' => $totalCogsShip,
             'total_pft' => $totalPft,
-            'pft_percentage' => $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0.0,
-            'roi_percentage' => $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0,
+            'pft_percentage' => round($totalRevenue) != 0.0 ? (float) round(round($totalPft) / round($totalRevenue) * 100) : 0.0,
+            'roi_percentage' => round($totalCogs) != 0.0 ? (float) round(round($totalPft) / round($totalCogs) * 100) : 0.0,
             'avg_price' => $avgPrice,
         ];
     }
@@ -1035,21 +1041,27 @@ class AliexpressController extends Controller
             $percentage = $this->resolveAliexpressMarginPercent();
             $margin = $percentage / 100.0;
 
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
+
             $data = [];
             foreach ($aliexpressData as $item) {
                 $sku = $item->sku_code;
                 $lp = 0;
                 $ship = 0;
+                $values = [];
+                $parent = '';
 
                 // Get LP and Ship from ProductMaster (using normal 'ship' field, not 'temu_ship')
                 // Pattern matches Temu extraction logic
                 $productMaster = $productMasters[$sku]
                     ?? $productMastersByNorm[strtoupper(trim((string) $sku))] ?? null;
                 if ($productMaster !== null) {
-                    $values = is_array($productMaster->Values) 
-                        ? $productMaster->Values 
+                    $values = is_array($productMaster->Values)
+                        ? $productMaster->Values
                         : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
-                    
+                    $values = is_array($values) ? $values : [];
+                    $parent = (string) ($productMaster->parent ?? '');
+
                     // Get LP (similar to Temu extraction)
                     foreach ($values as $k => $v) {
                         if (strtolower($k) === "lp") {
@@ -1060,10 +1072,10 @@ class AliexpressController extends Controller
                     if ($lp === 0 && isset($productMaster->lp)) {
                         $lp = floatval($productMaster->lp);
                     }
-                    
-                    // Get Ship (normal ship field for Aliexpress, not temu_ship)
-                    $ship = isset($values["ship"]) 
-                        ? floatval($values["ship"]) 
+
+                    // Saved product ship stays on the Ship column. COGS Ship is the weight slab.
+                    $ship = isset($values["ship"])
+                        ? floatval($values["ship"])
                         : (isset($productMaster->ship) ? floatval($productMaster->ship) : 0);
                 }
 
@@ -1084,17 +1096,13 @@ class AliexpressController extends Controller
                 }
                 $unitPrice = $lineTotal > 0 ? $lineTotal / $quantity : 0;
 
-                // Calculate PFT Each (per unit) = (unit_price * 0.89) - lp - ship (same as eBay)
-                $pftEach = ($unitPrice * $margin) - $lp - $ship;
-
-                // Calculate PFT Each % = (pft_each / unit_price) * 100
-                $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-
-                // Calculate Total PFT = pft_each * quantity
-                $tPft = $pftEach * $quantity;
-
-                // COGS = LP * quantity
+                // COGS = LP × Qty. COGS Ship is one slab for T Weight. A combo adds one slab per package.
+                $weightAct = EbaySalesController::actWeightLb($values);
+                $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($item->sku_code ?? ''), $values, $quantity, $parent);
                 $cogs = $lp * $quantity;
+                $tPft = ($lineTotal * $margin) - $cogs - $shipCost;
+                $pftEach = $quantity > 0 ? $tPft / $quantity : 0;
+                $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
 
                 // ROI = (Total PFT / COGS) * 100
                 $roi = $cogs > 0 ? ($tPft / $cogs) * 100 : 0;
@@ -1117,6 +1125,8 @@ class AliexpressController extends Controller
                     'quantity' => $item->quantity ?? 1,
                     'lp' => round($lp, 2),
                     'ship' => round($ship, 2),
+                    't_weight' => round($weightAct * $quantity, 2),
+                    'ship_cost' => round($shipCost, 2),
                     'cogs' => round($cogs, 2),
                     'pft_each' => round($pftEach, 2),
                     'pft_each_pct' => round($pftEachPct, 2),
@@ -1228,6 +1238,7 @@ class AliexpressController extends Controller
             'total_quantity' => (int) ($agg['total_quantity'] ?? 0),
             'total_sales' => round((float) ($agg['total_sales'] ?? 0), 2),
             'total_cogs' => round((float) ($agg['total_cogs'] ?? 0), 2),
+            'total_cogs_ship' => round((float) ($agg['total_cogs_ship'] ?? 0), 2),
             'total_pft' => round((float) ($agg['total_pft'] ?? 0), 2),
             'pft_percentage' => round((float) ($agg['pft_percentage'] ?? 0), 1),
             'roi_percentage' => round((float) ($agg['roi_percentage'] ?? 0), 1),

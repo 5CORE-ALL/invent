@@ -106,6 +106,7 @@ class WalmartSalesController extends Controller
             ->keyBy(function ($item) {
                 return strtoupper($item->sku);
             });
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
         // Fetch ad spend data from WalmartCampaignReport (L30)
         // Filter by recently updated records (within last 2 hours) for consistency
@@ -142,45 +143,36 @@ class WalmartSalesController extends Controller
                 // Extract LP, Ship, and Weight from Values JSON
                 $lp = 0;
                 $ship = 0;
-                $weightAct = 0;
-                
+                $values = [];
+                $parent = '';
+
                 if ($pm) {
                     $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    if (is_array($values)) {
-                        foreach ($values as $key => $value) {
-                            if (strtolower($key) === 'lp') {
-                                $lp = floatval($value);
-                            } elseif (strtolower($key) === 'ship') {
-                                $ship = floatval($value);
-                            } elseif (strtolower($key) === 'wt_act' || strtolower($key) === 'weight_act') {
-                                $weightAct = floatval($value);
-                            }
+                    $values = is_array($values) ? $values : [];
+                    $parent = (string) ($pm->parent ?? '');
+                    foreach ($values as $key => $value) {
+                        if (strtolower($key) === 'lp') {
+                            $lp = floatval($value);
+                        } elseif (strtolower($key) === 'ship') {
+                            $ship = floatval($value);
                         }
                     }
-                    
-                    // Fallback to direct properties if needed
+
                     if ($lp === 0 && isset($pm->lp)) $lp = floatval($pm->lp);
                     if ($ship === 0 && isset($pm->ship)) $ship = floatval($pm->ship);
                 }
 
-                // Calculate Ship Cost (Amazon-like logic)
+                $weightAct = EbaySalesController::actWeightLb($values);
                 $tWeight = $weightAct * $quantity;
-                $shipCost = ($quantity == 1) ? $ship : (($quantity > 1 && $tWeight < 20) ? ($ship / $quantity) : $ship);
+                $shipCost = $quantity > 0
+                    ? EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, $sku, $values, $quantity, $parent)
+                    : 0.0;
 
-                // COGS = LP × Quantity
                 $cogs = $lp * $quantity;
-
-                // PFT Each = (Unit Price × Margin) - LP - Ship Cost
-                $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-                
-                // PFT Each % = (PFT Each / Unit Price) × 100
+                $pft = ($saleAmount * $margin) - $cogs - $shipCost;
+                $pftEach = $quantity > 0 ? $pft / $quantity : 0;
                 $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-
-                // T PFT = PFT Each × Quantity
-                $pft = $pftEach * $quantity;
-
-                // ROI = (PFT Each / LP) × 100
-                $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
+                $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
                 // Get ad spend for this SKU (using MAX spend to avoid duplicates)
                 $normalizedSku = $normalizeSku($sku);

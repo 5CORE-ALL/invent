@@ -85,7 +85,8 @@ class TikTokSalesController extends Controller
             $l60Sales = Tiktok2Order::salesAmountBetween($l60StartDate, $l60EndDate);
             $l60Orders = Tiktok2Order::orderCountBetween($l60StartDate, $l60EndDate);
             $mapped = self::mapTikTokOrderLinesToSalesRows(
-                Tiktok2Order::linesInWindow($l30StartDate, $l30EndDate)
+                Tiktok2Order::linesInWindow($l30StartDate, $l30EndDate),
+                true
             );
 
             $l30Sales = 0.0;
@@ -110,8 +111,8 @@ class TikTokSalesController extends Controller
                 $totalProfit += (float) ($row['t_pft'] ?? 0);
             }
 
-            $gpft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0.0;
-            $roi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0.0;
+            $gpft = round($l30Sales) != 0.0 ? round(round($totalProfit) / round($l30Sales) * 100) : 0;
+            $roi = round($totalCogs) != 0.0 ? round(round($totalProfit) / round($totalCogs) * 100) : 0;
 
             return [
                 'ok' => true,
@@ -152,7 +153,8 @@ class TikTokSalesController extends Controller
             [$startDate, $endDate] = TiktokOrder::californiaDaysWindow(30);
 
             return response()->json(self::mapTikTokOrderLinesToSalesRows(
-                TiktokOrder::linesInWindow($startDate, $endDate)
+                TiktokOrder::linesInWindow($startDate, $endDate),
+                true
             ));
         } catch (\Exception $e) {
             Log::error('TikTok Sales Data Error: ' . $e->getMessage());
@@ -196,7 +198,8 @@ class TikTokSalesController extends Controller
             [$startDate, $endDate] = Tiktok2Order::californiaDaysWindow(30);
 
             return response()->json(self::mapTikTokOrderLinesToSalesRows(
-                Tiktok2Order::linesInWindow($startDate, $endDate)
+                Tiktok2Order::linesInWindow($startDate, $endDate),
+                true
             ));
         } catch (\Exception $e) {
             Log::error('TikTok Sales Two Data Error: ' . $e->getMessage());
@@ -208,7 +211,7 @@ class TikTokSalesController extends Controller
      * @param  \Illuminate\Support\Collection<int, TiktokOrder>  $orderItems
      * @return list<array<string, mixed>>
      */
-    private static function mapTikTokOrderLinesToSalesRows($orderItems): array
+    private static function mapTikTokOrderLinesToSalesRows($orderItems, bool $slabShip = false): array
     {
         if ($orderItems->isEmpty()) {
             return [];
@@ -220,6 +223,11 @@ class TikTokSalesController extends Controller
             ->keyBy(fn ($item) => strtoupper((string) $item->sku));
 
         $margin = self::marginFactorFromMarketplace(['TiktokShop']);
+        $slabService = null;
+        $shipSlabRates = [];
+        if ($slabShip) {
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
+        }
         $data = [];
 
         foreach ($orderItems as $item) {
@@ -236,22 +244,24 @@ class TikTokSalesController extends Controller
             $lp = 0;
             $ship = 0;
             $weightAct = 0;
+            $values = [];
+            $parent = '';
 
             if ($sku && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values) ? $pm->Values
                     : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
 
-                if (is_array($values)) {
-                    foreach ($values as $k => $v) {
-                        $key = strtolower((string) $k);
-                        if ($key === 'lp') {
-                            $lp = floatval($v);
-                        } elseif ($key === 'ship') {
-                            $ship = floatval($v);
-                        } elseif ($key === 'wt_act') {
-                            $weightAct = floatval($v);
-                        }
+                foreach ($values as $k => $v) {
+                    $key = strtolower((string) $k);
+                    if ($key === 'lp') {
+                        $lp = floatval($v);
+                    } elseif ($key === 'ship') {
+                        $ship = floatval($v);
+                    } elseif ($key === 'wt_act') {
+                        $weightAct = floatval($v);
                     }
                 }
                 if ($lp === 0 && isset($pm->lp)) {
@@ -262,20 +272,39 @@ class TikTokSalesController extends Controller
                 }
             }
 
-            $tWeight = $weightAct * $quantity;
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
+            if ($slabShip) {
+                $weightAct = EbaySalesController::actWeightLb($values);
+                $tWeight = $weightAct * $quantity;
+                $shipCost = EbaySalesController::cogsShipForSku(
+                    $slabService,
+                    $shipSlabRates,
+                    (string) ($item->seller_sku ?? ''),
+                    $values,
+                    $quantity,
+                    $parent
+                );
             } else {
-                $shipCost = $ship;
+                $tWeight = $weightAct * $quantity;
+                if ($quantity == 1) {
+                    $shipCost = $ship;
+                } elseif ($quantity > 1 && $tWeight < 20) {
+                    $shipCost = $ship / $quantity;
+                } else {
+                    $shipCost = $ship;
+                }
             }
 
             $cogs = $lp * $quantity;
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+            if ($slabShip) {
+                $pft = ($saleAmount * $margin) - $cogs - $shipCost;
+                $pftEach = $pft / $quantity;
+                $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
+            } else {
+                $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+                $pft = $pftEach * $quantity;
+                $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
+            }
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-            $pft = $pftEach * $quantity;
-            $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
 
             $data[] = [
                 'order_id' => $item->order_id,

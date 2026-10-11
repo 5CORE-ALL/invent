@@ -176,11 +176,10 @@ class WayfairSalesController extends Controller
 
             // Extract LP, Ship, and Weight Act
             $lp = 0;
-            $ship = 0;
             $weightAct = 0;
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                $lp = 0;
+                $values = is_array($values) ? $values : [];
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === "lp") {
                         $lp = floatval($v);
@@ -190,7 +189,6 @@ class WayfairSalesController extends Controller
                 if ($lp === 0 && isset($pm->lp)) {
                     $lp = floatval($pm->lp);
                 }
-                $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
                 $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
             }
 
@@ -200,22 +198,17 @@ class WayfairSalesController extends Controller
             // T Weight = Weight Act * Quantity
             $tWeight = $weightAct * $quantity;
 
-            // COGS = LP * quantity
+            // unit_price is the unit. Sales = unit × Qty once.
+            // PFT = (sales × Wayfair percentage) − COGS. Wayfair has no ship amount, so nothing is subtracted for ship.
+            $unitPrice = $price;
+            $saleAmount = $unitPrice * $quantity;
             $cogs = $lp * $quantity;
-
-            // PFT Each = (price * (percentage / 100)) - lp
-            // Use marketplace percentage from database
-            // Note: Ship cost is NOT included in Wayfair profit calculation
-            $unitPrice = $price; // unit_price is already per unit
-            $pftEach = ($unitPrice * ($percentage / 100)) - $lp;
+            $pft = ($saleAmount * ($percentage / 100)) - $cogs;
+            $pftEach = $quantity > 0 ? $pft / $quantity : 0;
 
             // PFT Each % = (pft_each / price) * 100
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
 
-            // T PFT = pft_each * quantity
-            $pft = $pftEach * $quantity;
-
-            // ROI = (T PFT / COGS) * 100
             $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             $data[] = [
@@ -223,7 +216,7 @@ class WayfairSalesController extends Controller
                 'po_date' => $order->po_date,
                 'sku' => $order->sku,
                 'quantity' => $order->quantity,
-                'sale_amount' => round($price * $quantity, 2),
+                'sale_amount' => round($saleAmount, 2),
                 'price' => round($price, 2),
                 'total_price' => round($order->total_price, 2),
                 'status' => $order->status,

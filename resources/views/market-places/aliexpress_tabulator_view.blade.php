@@ -83,11 +83,12 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;" title="L30 orders from AliExpress API">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;" title="L30 units from AliExpress API">Qty: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge" style="color: white; font-weight: bold;" title="L30 sales from AliExpress API">Sales: $0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="L30 GPFT % = PFT ÷ Sales">GPFT: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="L30 GROI % = PFT ÷ COGS">GROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (sales × margin) − COGS − COGS Ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;" title="L30 qty-weighted avg unit price">Prc: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;" title="L30 profit">PFT: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;" title="L30 LP × qty">COGS: $0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;" title="L30 LP × Qty">COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. One Shipping Master slab for T Weight, subtracted once. A combo with Label Qty 2 or more adds one slab per package. An empty band uses that package's SKU weight.">COGS Ship: $0</span>
                         <span class="badge fs-6 p-2" id="l60-sales-badge" style="background-color: #667eea; color: white; font-weight: bold;" title="L60 sales from AliExpress API">L60 Sales: $0</span>
                         <span class="badge fs-6 p-2" id="l60-orders-badge" style="background-color: #f5576c; color: white; font-weight: bold;" title="L60 orders from AliExpress API">L60 Orders: 0</span>
                         <span class="badge fs-6 p-2" id="l60-quantity-badge" style="background-color: #00b4d8; color: white; font-weight: bold;" title="L60 units from AliExpress API">L60 Qty: 0</span>
@@ -164,6 +165,7 @@
             $('#pft-total-badge').text('PFT: ' + money0(pft));
             $('#pft-total-badge').toggleClass('bg-danger', pft < 0).toggleClass('bg-dark', pft >= 0);
             $('#total-cogs-badge').text('COGS: ' + money0(l30.total_cogs));
+            $('#cogs-ship-badge').text('COGS Ship: ' + money0(l30.total_cogs_ship));
             $('#l60-sales-badge').text('L60 Sales: ' + money0(l60.total_sales));
             $('#l60-orders-badge').text('L60 Orders: ' + (parseInt(l60.total_orders, 10) || 0).toLocaleString());
             $('#l60-quantity-badge').text('L60 Qty: ' + (parseInt(l60.total_quantity, 10) || 0).toLocaleString());
@@ -433,11 +435,34 @@
                     }
                 },
                 {
+                    title: "T Wt",
+                    field: "t_weight",
+                    width: 80,
+                    hozAlign: "right",
+                    sorter: "number",
+                    headerTooltip: "T Weight = Dim & Wt ACT lb × Qty"
+                },
+                {
                     title: "Ship",
                     field: "ship",
                     width: 80,
                     hozAlign: "right",
                     sorter: "number",
+                    formatter: "money",
+                    formatterParams: {
+                        decimal: ".",
+                        thousand: ",",
+                        symbol: "$",
+                        precision: 2
+                    }
+                },
+                {
+                    title: "COGS Ship",
+                    field: "ship_cost",
+                    width: 110,
+                    hozAlign: "right",
+                    sorter: "number",
+                    headerTooltip: "One slab for T Weight. A combo adds one slab per package.",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",
@@ -497,7 +522,7 @@
                     }
                 },
                 {
-                    title: "ROI %",
+                    title: "GROI %",
                     field: "roi",
                     width: 80,
                     hozAlign: "right",
