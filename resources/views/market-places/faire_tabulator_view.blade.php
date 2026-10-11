@@ -95,8 +95,8 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Sold: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-sales-badge" style="color: white; font-weight: bold;">Total Sales: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;">PFT %: 0%</span>
-                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (unit price × Qty × Faire margin) − COGS. Faire has no ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'faire-price-gt-lmp-badge', 'pglChannelKey' => 'faire', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'faire-price-lt80-lmp-badge', 'pltChannelKey' => 'faire', 'pltPriceField' => 'price'])
@@ -243,7 +243,7 @@
                     }
                 },
                 {
-                    title: "ROI %",
+                    title: "GROI %",
                     field: "roi",
                     width: 100,
                     hozAlign: "right",
@@ -300,17 +300,20 @@
             });
 
             const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-            const pftPercentage = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
-            const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+            const gpftDollars = Math.round(totalPft);
+            const salesDollars = Math.round(totalSales);
+            const cogsDollars = Math.round(totalCogs);
+            const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             $('#total-orders-badge').text('Total Orders: ' + uniqueOrders.size.toLocaleString());
             $('#total-quantity-badge').text('Sold: ' + totalQuantity.toLocaleString());
-            $('#total-sales-badge').text('Total Sales: $' + totalSales.toFixed(2));
-            $('#pft-percentage-badge').text('PFT %: ' + Math.round(pftPercentage) + '%');
-            $('#roi-percentage-badge').text('ROI %: ' + Math.round(roiPercentage) + '%');
+            $('#total-sales-badge').text('Total Sales: $' + salesDollars.toLocaleString());
+            $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-            $('#pft-total-badge').text('PFT Total: $' + totalPft.toFixed(2));
-            $('#total-cogs-badge').text('Total COGS: $' + totalCogs.toFixed(2));
+            $('#pft-total-badge').text('PFT Total: $' + gpftDollars.toLocaleString());
+            $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
             if (window.PriceGtLmpBadge && table) {
                 PriceGtLmpBadge.update('#faire-price-gt-lmp-badge', table.getData(), 'faire', 'price');
                 if (window.PriceLt80LmpBadge) {

@@ -61,33 +61,75 @@ class PlsController extends Controller
     public function salesDataJson(Request $request)
     {
         $thirtyDaysAgo = now()->subDays(30);
-        
+
         $sales = \App\Models\PlsSale::where('order_date', '>=', $thirtyDaysAgo)
             ->orderBy('order_date', 'desc')
-            ->get()
-            ->map(function ($sale) {
-                return [
-                    'id' => $sale->id,
-                    'order_date' => $sale->order_date ? $sale->order_date->format('Y-m-d') : '',
-                    'order_number' => $sale->order_number,
-                    'order_name' => $sale->order_name,
-                    'sku' => $sale->sku,
-                    'product_title' => $sale->product_title,
-                    'variant_title' => $sale->variant_title,
-                    'quantity' => $sale->quantity,
-                    'price' => $sale->price,
-                    'total_amount' => $sale->total_amount,
-                    'discount_amount' => $sale->discount_amount,
-                    'tax_amount' => $sale->tax_amount,
-                    'financial_status' => $sale->financial_status,
-                    'fulfillment_status' => $sale->fulfillment_status,
-                    'customer_email' => $sale->customer_email,
-                    'customer_name' => $sale->customer_name,
-                    'currency' => $sale->currency,
-                ];
-            });
+            ->get();
 
-        return response()->json($sales);
+        $skus = $sales->pluck('sku')->filter()->unique()->values()->all();
+        $productMasters = $skus === []
+            ? collect()
+            : ProductMaster::whereIn('sku', $skus)->get()->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)));
+        $margin = MarketplacePercentage::takeHomeDecimal('PLS', 'Pls');
+
+        $rows = $sales->map(function ($sale) use ($productMasters, $margin) {
+            $quantity = (float) ($sale->quantity ?? 0);
+            $unitPrice = (float) ($sale->price ?? 0);
+            $saleAmount = (float) ($sale->total_amount ?? 0);
+            if ($saleAmount <= 0) {
+                $saleAmount = $unitPrice * $quantity;
+            }
+
+            $sku = strtoupper(trim((string) ($sale->sku ?? '')));
+            $lp = 0.0;
+            $pm = $sku !== '' ? ($productMasters[$sku] ?? null) : null;
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+            }
+
+            // price is the unit. total_amount is already unit × Qty, so sales is that amount once.
+            // PLS sales has no ship amount, so nothing is subtracted for ship.
+            $cogs = $lp * $quantity;
+            $pft = ($saleAmount * $margin) - $cogs;
+            $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
+
+            return [
+                'id' => $sale->id,
+                'order_date' => $sale->order_date ? $sale->order_date->format('Y-m-d') : '',
+                'order_number' => $sale->order_number,
+                'order_name' => $sale->order_name,
+                'sku' => $sale->sku,
+                'product_title' => $sale->product_title,
+                'variant_title' => $sale->variant_title,
+                'quantity' => $sale->quantity,
+                'price' => $sale->price,
+                'total_amount' => $sale->total_amount,
+                'sale_amount' => round($saleAmount, 2),
+                'discount_amount' => $sale->discount_amount,
+                'tax_amount' => $sale->tax_amount,
+                'financial_status' => $sale->financial_status,
+                'fulfillment_status' => $sale->fulfillment_status,
+                'customer_email' => $sale->customer_email,
+                'customer_name' => $sale->customer_name,
+                'currency' => $sale->currency,
+                'lp' => round($lp, 2),
+                'cogs' => round($cogs, 2),
+                'pft' => round($pft, 2),
+                'roi' => round($roi, 2),
+            ];
+        });
+
+        return response()->json($rows);
     }
 
     /**

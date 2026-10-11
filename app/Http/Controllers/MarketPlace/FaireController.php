@@ -632,8 +632,8 @@ class FaireController extends Controller
                 $address  = is_array(data_get($payload, 'address')) ? data_get($payload, 'address') : [];
                 $retailer = is_array(data_get($payload, 'retailer')) ? data_get($payload, 'retailer') : [];
 
-                // PFT each = (price × keep-rate) − LP. Keep-rate comes from marketplace_percentages
-                // (Faire). No ship cost on Faire.
+                // amount is the unit price. Sales = unit × Qty once.
+                // PFT = (sales × Faire keep-rate) − COGS. Faire has no ship amount, so nothing is subtracted for ship.
                 $pftEachAmount = ($price * $keepRate) - $lp;
                 $pftEachPct    = $price > 0 ? ($pftEachAmount / $price) * 100 : 0;
                 $totalPft      = $pftEachAmount * $quantity;

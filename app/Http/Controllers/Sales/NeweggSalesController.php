@@ -41,6 +41,7 @@ class NeweggSalesController extends Controller
         }
         $skus = array_values(array_unique($skus));
         $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
         $data = [];
         foreach ($orders as $order) {
@@ -48,27 +49,35 @@ class NeweggSalesController extends Controller
                 $sku = $item->seller_part_number;
                 $pm  = $sku ? ($productMasters[$sku] ?? null) : null;
 
-                [$lp, $ship, $weightAct] = $this->extractCosts($pm);
+                [$lp, $ship] = $this->extractCosts($pm);
+                $values = [];
+                $parent = '';
+                if ($pm) {
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
+                        : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+                    $values = is_array($values) ? $values : [];
+                    $parent = (string) ($pm->parent ?? '');
+                }
 
                 $quantity  = (float) ($item->ordered_qty ?? 0);
                 $unitPrice = (float) ($item->unit_price ?? 0);
-                $saleAmount = (float) ($item->extend_unit_price ?? ($unitPrice * $quantity));
-
-                $tWeight = $weightAct * $quantity;
-
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $quantity > 0 ? $ship / $quantity : $ship;
-                } else {
-                    $shipCost = $ship;
+                $saleAmount = (float) ($item->extend_unit_price ?? 0);
+                if ($saleAmount <= 0) {
+                    $saleAmount = $unitPrice * $quantity;
                 }
 
+                $weightAct = EbaySalesController::actWeightLb($values);
+                $tWeight = $weightAct * $quantity;
+                $shipCost = $quantity > 0
+                    ? EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($sku ?? ''), $values, $quantity, $parent)
+                    : 0.0;
+
                 $cogs       = $lp * $quantity;
-                $pftEach    = ($unitPrice * $factor) - $lp - $shipCost;
+                $pft        = ($saleAmount * $factor) - $cogs - $shipCost;
+                $pftEach    = $quantity > 0 ? $pft / $quantity : 0;
                 $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-                $pft        = $pftEach * $quantity;
-                $roi        = $lp > 0 ? ($pft / $lp) * 100 : 0;
+                $roi        = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
                 $data[] = [
                     'order_id'     => $order->order_number,

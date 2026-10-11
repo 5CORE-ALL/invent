@@ -10085,10 +10085,11 @@ class ChannelMasterController extends Controller
             $productMasters = collect();
             foreach ($skus->chunk(500) as $chunk) {
                 $productMasters = $productMasters->merge(
-                    ProductMaster::query()->whereIn('sku', $chunk->all())->get(['sku', 'Values'])
+                    ProductMaster::query()->whereIn('sku', $chunk->all())->get(['sku', 'parent', 'Values'])
                 );
             }
             $productMasters = $productMasters->keyBy('sku');
+            [$amazonSlabs, $amazonRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
             $totalCogs = 0.0;
             $totalPft = 0.0;
@@ -10107,8 +10108,8 @@ class ChannelMasterController extends Controller
                 }
 
                 $lp = 0.0;
-                $ship = 0.0;
-                $weightAct = 0.0;
+                $values = [];
+                $pm = null;
                 if ($sku !== '' && isset($productMasters[$sku])) {
                     $pm = $productMasters[$sku];
                     $values = is_array($pm->Values) ? $pm->Values
@@ -10124,25 +10125,22 @@ class ChannelMasterController extends Controller
                     }
                 }
 
-                $tWeight = $weightAct * $quantity;
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
+                $shipValues = (isset($values) && is_array($values)) ? $values : [];
+                $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+                $shipCost = ($sku !== '' && $quantity > 0)
+                    ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($amazonSlabs, $amazonRates, (string) $sku, $shipValues, $quantity, $parent)
+                    : 0.0;
 
-                $totalCogs += round($lp * $quantity, 2);
-                $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
-                $totalPft += round($pftEach * $quantity, 2);
+                $lineCogs = round($lp * $quantity, 2);
+                $totalCogs += $lineCogs;
+                $totalPft += round(($lineRevenue * 0.80) - $lineCogs - $shipCost, 2);
             }
 
             return [
                 'total_pft' => $totalPft,
                 'total_cogs' => $totalCogs,
-                'pft_percentage' => $totalSkuLineSales > 0 ? ($totalPft / $totalSkuLineSales) * 100 : 0.0,
-                'roi_percentage' => $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0.0,
+                'pft_percentage' => round($totalSkuLineSales) != 0.0 ? round(round($totalPft) / round($totalSkuLineSales) * 100) : 0.0,
+                'roi_percentage' => round($totalCogs) != 0.0 ? round(round($totalPft) / round($totalCogs) * 100) : 0.0,
             ];
         } catch (\Throwable $e) {
             Log::warning('Amazon live profit window failed: '.$e->getMessage());
@@ -11303,8 +11301,8 @@ class ChannelMasterController extends Controller
         }
 
         // Calculate percentages
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        $gProfitPct = round($l30Sales) != 0.0 ? round(round($totalProfit) / round($l30Sales) * 100) : 0;
+        $gRoi = round($totalCogs) != 0.0 ? round(round($totalProfit) / round($totalCogs) * 100) : 0;
 
         // L60 = previous 30-day period (days 31–60) from mirakl_daily_data, same filter (!= CLOSED)
         // as before so existing numbers don't shift. PFT/COGS now also computed from those rows
@@ -11316,8 +11314,8 @@ class ChannelMasterController extends Controller
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        $gprofitL60 = $l60Sales > 0 ? ($l60Summary['pft'] / $l60Sales) * 100 : 0;
-        $gRoiL60 = $l60Summary['cogs'] > 0 ? ($l60Summary['pft'] / $l60Summary['cogs']) * 100 : 0;
+        $gprofitL60 = round($l60Sales) != 0.0 ? round(round($l60Summary['pft']) / round($l60Sales) * 100) : 0;
+        $gRoiL60 = round($l60Summary['cogs']) != 0.0 ? round(round($l60Summary['pft']) / round($l60Summary['cogs']) * 100) : 0;
 
         // N PFT = same as Gprofit% for Macys (no ads)
         $nPft = $gProfitPct;
@@ -11402,6 +11400,7 @@ class ChannelMasterController extends Controller
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
         $margin = ($marketplaceData ? $marketplaceData->percentage : 76) / 100;
+        [$slabService, $shipSlabRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         $sales = 0.0;
         $orderCount = 0;
@@ -11423,12 +11422,14 @@ class ChannelMasterController extends Controller
             $sales += $saleAmount;
 
             $lp = 0.0;
-            $ship = 0.0;
-            $weightAct = 0.0;
+            $values = [];
+            $parent = '';
             if (isset($productMasters[$order->sku])) {
                 $pm = $productMasters[$order->sku];
                 $values = is_array($pm->Values) ? $pm->Values :
                     (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
 
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === 'lp') {
@@ -11439,24 +11440,14 @@ class ChannelMasterController extends Controller
                 if ($lp === 0.0 && isset($pm->lp)) {
                     $lp = (float) $pm->lp;
                 }
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
-                if (isset($values['wt_act'])) {
-                    $weightAct = (float) $values['wt_act'];
-                }
             }
 
-            $tWeight = $weightAct * $quantity;
-            if ((int) $quantity === 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            $cogs += $lp * $quantity;
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-            $pft += $pftEach * $quantity;
+            $lineCogs = $lp * $quantity;
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) $order->sku, $values, $quantity, $parent)
+                : 0.0;
+            $cogs += $lineCogs;
+            $pft += ($saleAmount * $margin) - $lineCogs - $shipCost;
         }
 
         return [
@@ -11874,8 +11865,8 @@ class ChannelMasterController extends Controller
         // L60 metrics (direct from doba_daily_data)
         $l60Sales = $l60Summary['sales'];
         $l60Orders = $l60Summary['orders'];
-        $gprofitL60 = $l60Sales > 0 ? ($l60Summary['pft'] / $l60Sales) * 100 : 0;
-        $gRoiL60 = $l60Summary['cogs'] > 0 ? ($l60Summary['pft'] / $l60Summary['cogs']) * 100 : 0;
+        $gprofitL60 = round($l60Sales) != 0.0 ? round(round($l60Summary['pft']) / round($l60Sales) * 100) : 0;
+        $gRoiL60 = round($l60Summary['cogs']) != 0.0 ? round(round($l60Summary['pft']) / round($l60Summary['cogs']) * 100) : 0;
 
         // Growth calculation
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
@@ -11990,6 +11981,7 @@ class ChannelMasterController extends Controller
         $productMasters = ProductMaster::whereIn('sku', $rawSkus)->get()->keyBy('sku');
 
         $margin = 0.95;
+        [$dobaSlabs, $dobaRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
         $sales = 0.0;
         $orderCount = 0;
         $qty = 0;
@@ -12005,30 +11997,30 @@ class ChannelMasterController extends Controller
             $orderCount++;
             $quantity = (int) ($order->quantity ?? 1);
             $itemPrice = (float) ($order->item_price ?? 0);
-            $totalPrice = (float) ($order->total_price ?? 0);
+            $lineRevenue = $itemPrice * $quantity;
 
             $qty += $quantity;
-            $sales += $totalPrice;
+            $sales += $lineRevenue;
 
             $lp = 0.0;
-            $ship = 0.0;
+            $values = [];
+            $pm = null;
             if (isset($productMasters[$order->sku])) {
                 $pm = $productMasters[$order->sku];
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($values) ? $values : [];
                 if (isset($values['lp'])) {
                     $lp = (float) $values['lp'];
                 }
-                if (isset($values['ship'])) {
-                    $ship = (float) $values['ship'];
-                }
             }
 
-            $cogs += $lp * $quantity;
-
-            $shipCost = $quantity > 0 ? ($quantity === 1 ? $ship : $ship / $quantity) : $ship;
-            $pftEach = ($itemPrice * $margin) - $shipCost - $lp;
-            $pft += $pftEach * $quantity;
+            $lineCogs = $lp * $quantity;
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($dobaSlabs, $dobaRates, (string) ($order->sku ?? ''), $values, $quantity, (string) ($pm?->parent ?? ''))
+                : 0.0;
+            $cogs += $lineCogs;
+            $pft += ($lineRevenue * $margin) - $lineCogs - $shipCost;
         }
 
         return [
@@ -12557,6 +12549,7 @@ class ChannelMasterController extends Controller
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
         $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
         $margin = $percentage / 100; // convert % to fraction
+        [$walmartSlabs, $walmartRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         // Get L30 order items from walmart_daily_data (same as Sales page)
         $l30Orders = \App\Models\WalmartDailyData::where('period', 'l30')
@@ -12630,14 +12623,13 @@ class ChannelMasterController extends Controller
                 if ($ship === 0 && isset($pm->ship)) $ship = floatval($pm->ship);
             }
 
-            // Calculate ship cost
-            $tWeight = $weightAct * $quantity;
-            $shipCost = ($quantity == 1) ? $ship : (($quantity > 1 && $tWeight < 20) ? ($ship / $quantity) : $ship);
-
-            // Calculate profit
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-            $profit = $pftEach * $quantity;
+            $shipValues = (isset($values) && is_array($values)) ? $values : [];
+            $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($walmartSlabs, $walmartRates, (string) ($order->sku ?? ''), $shipValues, $quantity, $parent)
+                : 0.0;
             $cogs = $lp * $quantity;
+            $profit = ($saleAmount * $margin) - $cogs - $shipCost;
 
             $l30Sales += $saleAmount;
             $totalProfit += $profit;
@@ -12680,14 +12672,13 @@ class ChannelMasterController extends Controller
                 if ($ship === 0 && isset($pm->ship)) $ship = floatval($pm->ship);
             }
 
-            // Calculate ship cost
-            $tWeight = $weightAct * $quantity;
-            $shipCost = ($quantity == 1) ? $ship : (($quantity > 1 && $tWeight < 20) ? ($ship / $quantity) : $ship);
-
-            // Calculate profit
-            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
-            $profit = $pftEach * $quantity;
+            $shipValues = (isset($values) && is_array($values)) ? $values : [];
+            $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($walmartSlabs, $walmartRates, (string) ($order->sku ?? ''), $shipValues, $quantity, $parent)
+                : 0.0;
             $cogs = $lp * $quantity;
+            $profit = ($saleAmount * $margin) - $cogs - $shipCost;
 
             $l60Sales += $saleAmount;
             $totalProfitL60 += $profit;
@@ -13059,6 +13050,7 @@ class ChannelMasterController extends Controller
             ->get();
 
         $sales = 0.0; $qty = 0.0; $profit = 0.0; $cogs = 0.0;
+        [$slabService, $shipSlabRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
@@ -13068,19 +13060,28 @@ class ChannelMasterController extends Controller
                     continue;
                 }
 
-                [$lp, $ship] = $this->neweggItemCosts($item->seller_part_number, $productMasters);
+                [$lp, , $values, $parent] = $this->neweggItemCosts($item->seller_part_number, $productMasters);
 
-                // Same sales $ as /newegg/daily-sales (extend_unit_price, else unit × qty).
-                $lineSales = (float) ($item->extend_unit_price ?? 0);
-                if ($lineSales <= 0) {
-                    $lineSales = $unitPrice * $quantity;
+                // Same sales $ as /newegg/daily-sales (extend_unit_price, else unit price × Qty).
+                $saleAmount = (float) ($item->extend_unit_price ?? 0);
+                if ($saleAmount <= 0) {
+                    $saleAmount = $unitPrice * $quantity;
                 }
                 $qtyForCost = $quantity > 0 ? $quantity : 1;
+                $shipCost = \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku(
+                    $slabService,
+                    $shipSlabRates,
+                    (string) ($item->seller_part_number ?? ''),
+                    $values,
+                    $qtyForCost,
+                    $parent
+                );
+                $lineCogs = $lp * $qtyForCost;
 
-                $sales  += $lineSales;
+                $sales  += $saleAmount;
                 $qty    += $quantity;
-                $profit += (($unitPrice * $factor) - $lp - $ship) * $qtyForCost;
-                $cogs   += $lp * $qtyForCost;
+                $profit += ($saleAmount * $factor) - $lineCogs - $shipCost;
+                $cogs   += $lineCogs;
             }
         }
 
@@ -13096,28 +13097,29 @@ class ChannelMasterController extends Controller
     /**
      * LP + Ship for a Newegg SKU from ProductMaster.
      *
-     * @return array{0:float,1:float} [lp, ship]
+     * @return array{0:float,1:float,2:array<string,mixed>,3:string} [lp, ship, values, parent]
      */
     private function neweggItemCosts(?string $sku, $productMasters): array
     {
         if (!$sku) {
-            return [0.0, 0.0];
+            return [0.0, 0.0, [], ''];
         }
 
         $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
         $pm = $productMasters[$norm] ?? null;
         if (!$pm) {
-            return [0.0, 0.0];
+            return [0.0, 0.0, [], ''];
         }
 
         $values = is_array($pm->Values)
             ? $pm->Values
             : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+        $values = is_array($values) ? $values : [];
 
         $lp   = isset($values['lp']) ? (float) $values['lp'] : (float) ($pm->lp ?? 0);
         $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($pm->ship ?? 0);
 
-        return [$lp, $ship];
+        return [$lp, $ship, $values, (string) ($pm->parent ?? '')];
     }
 
     /**
@@ -13482,14 +13484,14 @@ class ChannelMasterController extends Controller
         }
 
         // Use L30 Sales for denominator
-        $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
-        $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
+        $gProfitPct = round($l30Sales) != 0.0 ? round(round($totalProfit) / round($l30Sales) * 100) : 0;
+        $gprofitL60 = round($l60Sales) != 0.0 ? round(round($totalProfitL60) / round($l60Sales) * 100) : 0;
 
-        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
-        $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
+        $gRoi = round($totalCogs) != 0.0 ? round(round($totalProfit) / round($totalCogs) * 100) : 0;
+        $gRoiL60 = round($totalCogsL60) != 0.0 ? round(round($totalProfitL60) / round($totalCogsL60) * 100) : 0;
 
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        // N PFT = GPFT. Wayfair has no ads.
+        $nPft = $gProfitPct;
 
         // N ROI = same as G ROI for Wayfair (no ads)
         $nRoi = $gRoi;
@@ -13677,8 +13679,8 @@ class ChannelMasterController extends Controller
         $l60Sales  = $l60['sales'];
         $l60Orders = $l60['orders'];
 
-        $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
-        $gRoi       = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
+        $gProfitPct = round($l30Sales) != 0.0 ? round(round($totalProfit) / round($l30Sales) * 100) : 0;
+        $gRoi       = round($totalCogs) != 0.0 ? round(round($totalProfit) / round($totalCogs) * 100) : 0;
         // Faire has no ad spend in this pipeline → N PFT% = G PFT%, N ROI = G ROI.
         $nPftPct = $gProfitPct;
         $nRoi    = $gRoi;
@@ -13686,8 +13688,8 @@ class ChannelMasterController extends Controller
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
         // L60 profit % derived the same way over the L60 totals for consistency.
-        $gprofitL60 = $l60Sales > 0 ? round(($l60['pft'] / $l60Sales) * 100, 2) : 0.0;
-        $gRoiL60    = $l60['cogs'] > 0 ? round(($l60['pft'] / $l60['cogs']) * 100, 2) : 0.0;
+        $gprofitL60 = round($l60Sales) != 0.0 ? round(round($l60['pft']) / round($l60Sales) * 100) : 0;
+        $gRoiL60    = round($l60['cogs']) != 0.0 ? round(round($l60['pft']) / round($l60['cogs']) * 100) : 0;
 
         $channelData = ChannelMaster::where('channel', 'Faire')->first();
         $mapMissCounts = $this->getFaireLiveMapMissNMapFromPricingData($request);
@@ -14365,6 +14367,7 @@ class ChannelMasterController extends Controller
         // Same margin + ship as /price-increase and /tiktok-pricing (TikTok 1):
         // marketplace_percentages.marketplace = TiktokShop; product_master ship (not tt_ship).
         $tiktokMargin = TikTokSalesController::marginFactorFromMarketplace(['TiktokShop']);
+        [$tiktokSlabs, $tiktokRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
         // L30 = last 30 California calendar days; L60 = prior contiguous 30 days
         [$l30StartDate, $l30EndDate] = TiktokOrder::californiaDaysWindow(30, Carbon::yesterday(TiktokOrder::TZ));
@@ -14424,19 +14427,14 @@ class ChannelMasterController extends Controller
                     }
                 }
 
-                $tWeight = $weightAct * $quantity;
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
-
+                $shipValues = (isset($values) && is_array($values)) ? $values : [];
+                $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
+                $shipCost = $quantity > 0
+                    ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($tiktokSlabs, $tiktokRates, (string) ($item->seller_sku ?? ''), $shipValues, $quantity, $parent)
+                    : 0.0;
                 $cogs = $lp * $quantity;
-                $pftEach = ($unitPrice * $tiktokMargin) - $lp - $shipCost;
                 $totalCogs += $cogs;
-                $totalProfit += $pftEach * $quantity;
+                $totalProfit += ($saleAmount * $tiktokMargin) - $cogs - $shipCost;
             }
 
             $l30Orders = count($orderIds);

@@ -98,15 +98,17 @@
                         <span class="badge fs-6 p-2" id="total-sales-badge"
                             style="background-color: #17a2b8; color: white; font-weight: bold;">Sales: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
-                            style="color: white; font-weight: bold;">GPFT %: 0%</span>
+                            style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (unit price × Qty × Macy's margin) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"
-                            style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
+                            style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge"
                             style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge"
                             style="color: white; font-weight: bold;">GPFT Total: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
                             style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge"
+                            style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. One Shipping Master slab for T Weight, subtracted once. A combo with Label Qty 2 or more adds one slab per package. An empty band uses that package's SKU weight.">COGS Ship: $0</span>
                         <span class="badge fs-6 p-2" id="tacos-percentage-badge"
                             title="Macys has no ads — TACOS%/Ads% is always 0% (same as /all-marketplace-master)"
                             style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0.0%</span>
@@ -356,19 +358,20 @@
                         }
                     },
                     {
-                        title: "T Weight",
+                        title: "T Wt",
                         field: "t_weight",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 80,
-                        visible: false
+                        headerTooltip: "T Weight = Dim & Wt ACT lb × Qty",
+                        width: 80
                     },
                     {
-                        title: "Ship Cost",
+                        title: "COGS Ship",
                         field: "ship_cost",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 80,
+                        headerTooltip: "One slab for T Weight. A combo adds one slab per package.",
+                        width: 110,
                         formatter: "money",
                         formatterParams: {
                             decimal: ".",
@@ -428,7 +431,7 @@
                         }
                     },
                     {
-                        title: "ROI %",
+                        title: "GROI %",
                         field: "roi",
                         hozAlign: "center",
                         sorter: "number",
@@ -480,6 +483,7 @@
                 let totalWeightedPrice = 0;
                 let totalQuantityForPrice = 0;
                 let totalCogs = 0;
+                let totalCogsShip = 0;
 
                 data.forEach(row => {
                     if (!row.sku || row.sku === '' || !row.order_id || row.order_id === '') {
@@ -507,20 +511,24 @@
 
                     totalPft += pft;
                     totalCogs += cogs;
+                    totalCogsShip += parseFloat(row.ship_cost) || 0;
 
                     const l30Sales = quantity * unitPrice;
                     totalL30Sales += l30Sales;
                 });
 
                 const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
-                const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
-                const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+                const gpftDollars = Math.round(totalPft);
+                const salesDollars = Math.round(totalL30Sales);
+                const cogsDollars = Math.round(totalCogs);
+                const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+                const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
                 $('#total-orders-badge').text('Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
                 $('#total-sales-badge').text('Sales: $' + Math.round(totalRevenue).toLocaleString());
-                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+                $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+                $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
                 $('#pft-total-badge').text('GPFT Total: $' + Math.round(totalPft).toLocaleString());
 
@@ -531,11 +539,11 @@
                     pftBadge.removeClass('bg-dark').addClass('bg-danger');
                 }
 
-                $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
-                // Macys has no ads — TACOS%=0, N PFT = GPFT, N ROI = ROI (same as /all-marketplace-master).
-                $('#tacos-percentage-badge').text('TACOS %: 0.0%');
-                $('#m-pft-badge').text('N PFT: ' + pftPercentage.toFixed(1) + '%');
-                $('#n-roi-badge').text('N ROI: ' + roiPercentage.toFixed(1) + '%');
+                $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+                $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
+                $('#tacos-percentage-badge').text('TACOS %: 0%');
+                $('#m-pft-badge').text('N PFT: ' + Math.round(pftPercentage) + '%');
+                $('#n-roi-badge').text('N ROI: ' + Math.round(roiPercentage) + '%');
             }
 
             // Build Column Visibility Dropdown

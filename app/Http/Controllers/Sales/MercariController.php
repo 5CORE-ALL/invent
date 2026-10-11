@@ -489,8 +489,8 @@ class MercariController extends Controller
             $data = $this->mercariOrdersExcludingCancelled()
                 ->orderBy('sold_date', 'desc')
                 ->get();
-            
-            return $this->formatMercariData($data);
+
+            return $this->formatMercariData($data, true);
         } catch (\Exception $e) {
             Log::error('Error fetching Mercari With Ship data: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
@@ -512,9 +512,10 @@ class MercariController extends Controller
     }
 
     /**
-     * Format Mercari data with LP and Ship from ProductMaster
+     * Format Mercari data with LP and Ship from ProductMaster.
+     * With-ship orders also get the weight-slab COGS Ship, once per order.
      */
-    private function formatMercariData($data)
+    private function formatMercariData($data, bool $withCogsShip = false)
     {
         // Fetch all ProductMaster records and create lookup maps
         $productMastersBySku = ProductMaster::all()->mapWithKeys(function($pm) {
@@ -525,9 +526,13 @@ class MercariController extends Controller
                 $skuNoSpaces => $pm,
             ];
         });
-        
+        [$slabService, $shipSlabRates] = $withCogsShip
+            ? EbaySalesController::shipSlabLookup()
+            : [null, []];
+        $margin = 0.88;
+
         // Enhance data with LP, Ship, and matched SKU from ProductMaster
-        $data = $data->map(function($item) use ($productMastersBySku) {
+        $data = $data->map(function($item) use ($productMastersBySku, $withCogsShip, $slabService, $shipSlabRates, $margin) {
             $matchedSku = $this->extractAndMatchSkuFromTitle($item->item_title, $productMastersBySku);
             
             $responseItem = [
@@ -557,7 +562,10 @@ class MercariController extends Controller
                 'lp' => 0,
                 'ship' => 0,
             ];
-            
+
+            $values = [];
+            $parent = '';
+            $lp = 0.0;
             if ($matchedSku) {
                 $pm = null;
                 foreach ($productMastersBySku as $pmSku => $pmRecord) {
@@ -566,31 +574,52 @@ class MercariController extends Controller
                         break;
                     }
                 }
-                
+
                 if ($pm) {
-                    $values = is_array($pm->Values) 
-                        ? $pm->Values 
+                    $values = is_array($pm->Values)
+                        ? $pm->Values
                         : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    $lp = 0;
+                    $values = is_array($values) ? $values : [];
+                    $parent = (string) ($pm->parent ?? '');
+
                     foreach ($values as $k => $v) {
                         if (strtolower($k) === "lp") {
                             $lp = floatval($v);
                             break;
                         }
                     }
-                    if ($lp === 0 && isset($pm->lp)) {
+                    if ($lp === 0.0 && isset($pm->lp)) {
                         $lp = floatval($pm->lp);
                     }
                     $responseItem['lp'] = $lp;
-                    
-                    $ship = isset($values["ship"]) 
-                        ? floatval($values["ship"]) 
+
+                    $ship = isset($values["ship"])
+                        ? floatval($values["ship"])
                         : (isset($pm->ship) ? floatval($pm->ship) : 0);
                     $responseItem['ship'] = $ship;
                 }
             }
-            
+
+            if ($withCogsShip) {
+                $qty = 1;
+                $sales = (float) ($item->item_price ?? 0);
+                $weightAct = EbaySalesController::actWeightLb($values);
+                $shipCost = EbaySalesController::cogsShipForSku(
+                    $slabService,
+                    $shipSlabRates,
+                    (string) ($matchedSku ?? ''),
+                    $values,
+                    $qty,
+                    $parent
+                );
+                $cogs = $lp * $qty;
+                $responseItem['quantity'] = $qty;
+                $responseItem['t_weight'] = round($weightAct * $qty, 2);
+                $responseItem['ship_cost'] = round($shipCost, 2);
+                $responseItem['cogs'] = round($cogs, 2);
+                $responseItem['pft'] = round(($sales * $margin) - $cogs - $shipCost, 2);
+            }
+
             return $responseItem;
         });
         

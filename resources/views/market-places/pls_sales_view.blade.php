@@ -72,6 +72,10 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-qty-badge">Total Qty: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge">Revenue: $0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (line total × PLS margin) − COGS. PLS sales has no ship.">GPFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
+                        <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-discount-badge">Discount: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="avg-price-badge">Avg Price: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="paid-count-badge">Paid: 0</span>
@@ -226,6 +230,34 @@
                     }
                 },
                 {
+                    title: 'LP', field: 'lp', width: 80, hozAlign: 'right', sorter: 'number',
+                    formatter: function (cell) {
+                        return `$${parseFloat(cell.getValue() || 0).toFixed(2)}`;
+                    }
+                },
+                {
+                    title: 'COGS', field: 'cogs', width: 90, hozAlign: 'right', sorter: 'number',
+                    formatter: function (cell) {
+                        return `$${parseFloat(cell.getValue() || 0).toFixed(2)}`;
+                    }
+                },
+                {
+                    title: 'T PFT', field: 'pft', width: 90, hozAlign: 'right', sorter: 'number',
+                    formatter: function (cell) {
+                        const v = parseFloat(cell.getValue() || 0);
+                        const color = v >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color:${color};font-weight:600;">$${v.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: 'GROI %', field: 'roi', width: 90, hozAlign: 'right', sorter: 'number',
+                    formatter: function (cell) {
+                        const v = parseFloat(cell.getValue() || 0);
+                        const color = v >= 0 ? '#28a745' : '#dc3545';
+                        return `<span style="color:${color};font-weight:600;">${Math.round(v)}%</span>`;
+                    }
+                },
+                {
                     title: 'Discount', field: 'discount_amount', width: 80, hozAlign: 'right', sorter: 'number',
                     formatter: function (cell) {
                         const v = parseFloat(cell.getValue() || 0);
@@ -278,6 +310,9 @@
             let uniqueOrders = new Set();
             let totalQty = 0;
             let totalRevenue = 0;
+            let totalSales = 0;
+            let totalPft = 0;
+            let totalCogs = 0;
             let totalDiscount = 0;
             let totalPrice = 0;
             let priceCount = 0;
@@ -294,6 +329,10 @@
                 
                 totalQty += qty;
                 totalRevenue += amount;
+                const lineSales = parseFloat(row.sale_amount);
+                totalSales += isFinite(lineSales) ? lineSales : amount;
+                totalPft += parseFloat(row.pft) || 0;
+                totalCogs += parseFloat(row.cogs) || 0;
                 totalDiscount += discount;
 
                 if (price > 0) {
@@ -306,10 +345,20 @@
             });
 
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
+            const gpftDollars = Math.round(totalPft);
+            const salesDollars = Math.round(totalSales);
+            const cogsDollars = Math.round(totalCogs);
+            const pftPercentage = salesDollars !== 0 ? (gpftDollars / salesDollars) * 100 : 0;
+            const roiPercentage = cogsDollars !== 0 ? (gpftDollars / cogsDollars) * 100 : 0;
 
             $('#total-orders-badge').text(`Orders: ${uniqueOrders.size}`);
             $('#total-qty-badge').text(`Total Qty: ${totalQty.toLocaleString()}`);
             $('#total-revenue-badge').text(`Revenue: $${Math.round(totalRevenue).toLocaleString()}`);
+            $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
+            $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
+            $('#pft-total-badge').text('GPFT Total: $' + gpftDollars.toLocaleString());
+            $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+            $('#pft-total-badge').removeClass('bg-danger').addClass(totalPft >= 0 ? 'bg-dark' : 'bg-danger');
             $('#total-discount-badge').text(`Discount: $${Math.round(totalDiscount).toLocaleString()}`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
             $('#paid-count-badge').text(`Paid: ${paidCount}`);
