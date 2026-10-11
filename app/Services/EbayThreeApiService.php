@@ -656,6 +656,7 @@ class EbayThreeApiService
             }
             
             $isAccountRestricted = false;
+            $errorBlob = '';
             
             // Log all errors with details
             \Illuminate\Support\Facades\Log::error('❌ eBay3 API Error - ReviseFixedPriceItem Failed', [
@@ -689,6 +690,7 @@ class EbayThreeApiService
                     }
                 }
                 $fullErrorText = $errorMsg . ' ' . implode(' ', $paramMessages);
+                $errorBlob .= ' '.$errorCode.' '.$fullErrorText;
                 
                 // Log individual error details
                 \Illuminate\Support\Facades\Log::error('eBay3 Error Details', [
@@ -735,6 +737,20 @@ class EbayThreeApiService
                     'rlogId' => $rlogId
                 ]);
                 return $this->reviseItemWithFullDetails($itemId, $price, $quantity, $itemDetails['Item']);
+            }
+
+            // ReviseFixedPriceItem re-checks variation names. Categories that no longer
+            // allow "Model" reject the price even when the request does not send it
+            // (21920061). ReviseInventoryStatus updates StartPrice by SKU and keeps
+            // the live quantity.
+            if (
+                str_contains($errorBlob, '21920061')
+                || stripos($errorBlob, 'not allowed as a variation specific') !== false
+            ) {
+                $viaInventory = $this->revisePriceKeepingQuantity((string) $itemId, (float) $price, $skuTrim !== '' ? $skuTrim : null);
+                if ($viaInventory !== null) {
+                    return $viaInventory;
+                }
             }
 
             // A variation revise that did not match must not fall back to item-level
@@ -1800,6 +1816,76 @@ class EbayThreeApiService
         return trim((string) $appId) !== ''
             && trim((string) $certId) !== ''
             && trim((string) $refresh) !== '';
+    }
+
+    /**
+     * Price-only update that does not resend variation names. Quantity is copied
+     * from the live listing so stock does not change.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function revisePriceKeepingQuantity(string $itemId, float $price, ?string $sku): ?array
+    {
+        $raw = $this->getItem($itemId);
+        $item = is_array($raw) && is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+        if ($item === []) {
+            return null;
+        }
+
+        $qty = null;
+        $matchedSku = $sku;
+        $vars = $item['Variations']['Variation'] ?? null;
+        if (is_array($vars) && $vars !== []) {
+            if (isset($vars['SKU']) || isset($vars['StartPrice']) || isset($vars['Quantity'])) {
+                $vars = [$vars];
+            }
+            foreach ($vars as $variation) {
+                if (! is_array($variation)) {
+                    continue;
+                }
+                $vSku = trim((string) ($variation['SKU'] ?? ''));
+                if ($sku !== null && $sku !== '' && ! EbayLiveListingMapper::skuEquals($vSku, $sku)) {
+                    continue;
+                }
+                if (isset($variation['Quantity']) && is_numeric($variation['Quantity'])) {
+                    $qty = (int) $variation['Quantity'];
+                    $matchedSku = $vSku !== '' ? $vSku : $sku;
+                    break;
+                }
+            }
+        } elseif (isset($item['Quantity']) && is_numeric($item['Quantity'])) {
+            $qty = (int) $item['Quantity'];
+        }
+
+        if ($qty === null) {
+            return null;
+        }
+
+        $result = $this->reviseInventoryStatus($itemId, $qty, $matchedSku, $price);
+        if (! ($result['success'] ?? false)) {
+            return [
+                'success' => false,
+                'message' => (string) ($result['message'] ?? 'ReviseInventoryStatus failed.'),
+                'errors' => [[
+                    'code' => 'InventoryStatus',
+                    'message' => (string) ($result['message'] ?? 'ReviseInventoryStatus failed.'),
+                ]],
+                'data' => $result['data'] ?? [],
+            ];
+        }
+
+        Log::info('eBay3 price updated via ReviseInventoryStatus after variation-specific rejection', [
+            'itemId' => $itemId,
+            'sku' => $matchedSku,
+            'price' => $price,
+            'qty' => $qty,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Item updated successfully.',
+            'data' => $result['data'] ?? [],
+        ];
     }
 
     /**
