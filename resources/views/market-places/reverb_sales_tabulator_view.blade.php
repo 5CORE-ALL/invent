@@ -97,7 +97,7 @@
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'reverb'])
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">PFT: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">COGS: $0</span>
-                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once. An empty band uses the SKU weight's slab.">COGS Ship: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. One Shipping Master slab for T Weight, subtracted once. A combo with Label Qty 2 or more adds one slab per package. An empty band uses that package's SKU weight.">COGS Ship: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-fees-badge" style="color: white; font-weight: bold;">T Fees: $0</span>
                         <span class="badge fs-6 p-2" id="fee-percentage-badge" style="background-color: #6c757d; color: white; font-weight: bold;">Fee: 0%</span>
                         <span class="badge fs-6 p-2" id="bump-fees-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">Bump Fees: $0</span>
@@ -480,7 +480,7 @@
                     width: 90,
                     hozAlign: "right",
                     sorter: "number",
-                    headerTooltip: "Shipping Master Ship slab for T Weight. Subtracted once.",
+                    headerTooltip: "One slab for T Weight. A combo adds one slab per package.",
                     formatter: "money",
                     formatterParams: {
                         decimal: ".",

@@ -239,7 +239,7 @@ class EbayTwoController extends Controller
                     }
                     $itemWeight = EbaySalesController::actWeightLb($values);
                     $weightOrder = $itemWeight * $quantity;
-                    $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightOrder, $itemWeight);
+                    $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($item->sku ?? ''), $values, $quantity, (string) ($pm?->parent ?? ''));
                     $rowCogs = $lp * $quantity;
                     $rowPft = ($price * $margin) - $rowCogs - $shipCost;
 

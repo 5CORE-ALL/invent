@@ -1558,7 +1558,7 @@ class TopDawgSyncController extends Controller
             $quantity = $quantity >= 1 ? $quantity : 1;
             $weightAct = EbaySalesController::actWeightLb($values);
             $tWeight = $weightAct * $quantity;
-            $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
+            $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) $sku, $values, $quantity, (string) ($pm?->parent ?? ''));
             $cogs = $lp * $quantity;
             // Amount is already this row's sales. COGS Ship is subtracted once.
             $pft = ($amount * $margin) - $cogs - $shipCost;

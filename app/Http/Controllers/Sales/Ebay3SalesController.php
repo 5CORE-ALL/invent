@@ -107,7 +107,7 @@ class Ebay3SalesController extends Controller
 
             $weightAct = EbaySalesController::actWeightLb($values);
             $tWeight = $weightAct * $quantity;
-            $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
+            $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) $sku, $values, $quantity, (string) $parent);
 
             // COGS = LP × Qty. COGS Ship is subtracted once. eBay 3 margin stays 85%.
             $cogs = $lp * $quantity;

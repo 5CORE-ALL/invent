@@ -521,7 +521,7 @@ class TopDawgPricingController extends Controller
                 $quantity = (int) ($row->quantity ?? 1);
                 $quantity = $quantity >= 1 ? $quantity : 1;
                 $weightAct = EbaySalesController::actWeightLb($values);
-                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $quantity, $weightAct);
+                $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) $sku, $values, $quantity, (string) ($pm?->parent ?? ''));
                 $cogs = $lp * $quantity;
                 $pft = ($amount * $margin) - $cogs - $shipCost;
 

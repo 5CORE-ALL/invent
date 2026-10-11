@@ -260,7 +260,7 @@ class EbaySalesController extends Controller
                 // Item price is already this row's Sales AMT. T Weight = ACT lb × Qty.
                 $weightAct = self::actWeightLb($values);
                 $tWeight = $weightAct * $quantity;
-                $shipCost = self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
+                $shipCost = self::cogsShipForSku($slabService, $shipSlabRates, (string) ($item->sku ?? ''), $values, $quantity, (string) ($pm?->parent ?? ''));
 
                 // COGS = LP × Qty. COGS Ship is subtracted once.
                 $cogs = $lp * $quantity;

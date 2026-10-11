@@ -137,7 +137,14 @@ class ReverbSalesController extends Controller
 
                 $weightAct = EbaySalesController::actWeightLb($values);
                 $tWeight = $weightAct * $quantity;
-                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
+                $shipCost = EbaySalesController::cogsShipForSku(
+                    $slabService,
+                    $shipSlabRates,
+                    (string) $sku,
+                    $values,
+                    $quantity,
+                    (string) (isset($productMasters[$sku]) ? ($productMasters[$sku]->parent ?? '') : '')
+                );
 
                 // COGS = LP × Qty. COGS Ship is subtracted once.
                 $cogs = $lp * $quantity;
@@ -306,7 +313,14 @@ class ReverbSalesController extends Controller
 
                 $qty = $quantity > 0 ? $quantity : 1;
                 $weightAct = EbaySalesController::actWeightLb($values);
-                $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $qty, $weightAct);
+                $shipCost = EbaySalesController::cogsShipForSku(
+                    $slabService,
+                    $shipSlabRates,
+                    (string) $sku,
+                    $values,
+                    $qty,
+                    (string) (isset($productMasters[$sku]) ? ($productMasters[$sku]->parent ?? '') : '')
+                );
                 $pft = ($revenue * $margin) - ($lp * $qty) - $shipCost;
                 $totalPft += $pft;
             }

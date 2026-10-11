@@ -221,7 +221,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
                             style="color: white; font-weight: bold;">COGS: $0</span>
                         <span class="badge fs-6 p-2" id="cogs-ship-badge"
-                            style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. Each order is the Shipping Master Ship slab for T Weight (Dim &amp; Wt ACT lb × Qty), subtracted once. An empty band uses the SKU weight's slab.">COGS Ship: $0</span>
+                            style="background-color: #b45309; color: white; font-weight: bold;" title="Σ COGS Ship. One Shipping Master slab for T Weight, subtracted once. A combo with Label Qty 2 or more adds one slab per package. An empty band uses that package's SKU weight.">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
@@ -485,7 +485,7 @@
                     {
                         title: "COGS Ship",
                         field: "ship_cost",
-                        headerTooltip: "Shipping Master Ship slab for T Weight. Subtracted once.",
+                        headerTooltip: "One slab for T Weight. A combo adds one slab per package.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
