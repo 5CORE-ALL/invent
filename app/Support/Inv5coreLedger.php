@@ -137,26 +137,55 @@ class Inv5coreLedger
         'google',
     ];
 
-    /** @var list<string> */
-    private const MARKETPLACE_SOURCE_TOKENS = [
-        'amazon', 'ebay', 'shein', 'tiktok', 'temu', 'macy', 'wayfair',
-        'doba', '145019994113', 'reverb', 'faire', 'best buy', 'bestbuy',
-        'newegg', 'aliexpress', 'ali express', 'alibaba', 'topdawg',
-        'purchasing power', 'purchasingpower', 'walmart', 'mercari',
-        '179763773441', '189863297025',
+    /**
+     * Longer names first so "temu2" is not labeled Temu.
+     *
+     * @var array<string, string>
+     */
+    private const MARKETPLACE_CHANNELS = [
+        '145019994113' => 'Doba',
+        '179763773441' => "Macy's",
+        '189863297025' => 'Newegg',
+        'temu 2' => 'Temu 2',
+        'temu2' => 'Temu 2',
+        'temu 3' => 'Temu 3',
+        'temu3' => 'Temu 3',
+        'tiktok 2' => 'TikTok 2',
+        'tiktok2' => 'TikTok 2',
+        'best buy' => 'Best Buy',
+        'bestbuy' => 'Best Buy',
+        'purchasing power' => 'Purchasing Power',
+        'purchasingpower' => 'Purchasing Power',
+        'aliexpress' => 'AliExpress',
+        'ali express' => 'AliExpress',
+        'alibaba' => 'Alibaba',
+        'wayfair' => 'Wayfair',
+        'newegg' => 'Newegg',
+        'topdawg' => 'TopDawg',
+        'reverb' => 'Reverb',
+        'faire' => 'Faire',
+        'shein' => 'Shein',
+        'tiktok' => 'TikTok',
+        'temu' => 'Temu',
+        'ebay' => 'eBay',
+        'amazon' => 'Amazon',
+        'doba' => 'Doba',
+        'macy' => "Macy's",
+        'walmart' => 'Walmart',
+        'mercari' => 'Mercari',
     ];
 
     /**
-     * Shopify order copies keep a marketplace name when the sale came from
-     * that channel. Only a storefront order is labeled Shopify.
+     * A copied Shopify order is labeled with the marketplace it came from.
+     * Storefront orders stay Shopify.
      */
     public static function shopifyOrderChannel(string $sourceName, string $tags = ''): ?string
     {
         $source = strtolower(trim($sourceName));
         $blob = trim($source.' '.strtolower($tags));
-        foreach (self::MARKETPLACE_SOURCE_TOKENS as $token) {
+        foreach (self::MARKETPLACE_CHANNELS as $token => $label) {
             if ($blob !== '' && str_contains($blob, $token)) {
-                return null;
+                return $label;
             }
         }
         if ($source === '' || is_numeric($source)) {
