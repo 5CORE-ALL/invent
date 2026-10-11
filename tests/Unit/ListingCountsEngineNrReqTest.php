@@ -43,6 +43,23 @@ class ListingCountsEngineNrReqTest extends TestCase
     }
 
     #[Test]
+    public function a_saved_ebay_link_is_the_listing_id(): void
+    {
+        $this->assertSame(
+            '235842695435',
+            ListingCountsEngine::listingIdFromLinks('https://www.ebay.com/itm/235842695435')
+        );
+        $this->assertSame(
+            '236426681335',
+            ListingCountsEngine::listingIdFromLinks(
+                null,
+                'https://www.ebay.com/sh/lst/active?keyword=236426681335&source=filterbar&action=search'
+            )
+        );
+        $this->assertSame('', ListingCountsEngine::listingIdFromLinks('', 'https://www.ebay.com/'));
+    }
+
+    #[Test]
     public function uploaded_and_unable_to_list_are_not_live(): void
     {
         $this->assertTrue(ListingCountsEngine::isPendingOrReviewListingState('Uploaded'));

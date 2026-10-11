@@ -678,6 +678,34 @@ class ListingCountsEngine
     }
 
     /**
+     * Item id stored on the listing row as a buyer or seller link.
+     * eBay links look like https://www.ebay.com/itm/235842695435.
+     */
+    public static function listingIdFromLinks(mixed ...$links): string
+    {
+        foreach ($links as $link) {
+            $link = trim((string) $link);
+            if ($link === '') {
+                continue;
+            }
+            if (preg_match('/^\d{6,}$/', $link)) {
+                return $link;
+            }
+            if (preg_match('~/itm/(\d{6,})~i', $link, $match)) {
+                return $match[1];
+            }
+            if (preg_match('/[?&]keyword=(\d{6,})/i', $link, $match)) {
+                return $match[1];
+            }
+            if (preg_match('~/(?:listing|product|item|dp|p)/(\d{6,})(?:[/?#]|$)~i', $link, $match)) {
+                return $match[1];
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Load sku_lower → id from a metric/product model column (non-empty string = listed).
      *
      * @param  class-string  $modelClass

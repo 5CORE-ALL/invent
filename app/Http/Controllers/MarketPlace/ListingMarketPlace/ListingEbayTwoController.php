@@ -88,8 +88,14 @@ class ListingEbayTwoController extends Controller
                 ListingCountsEngine::lookupNrValue($nrValues, $childSku)
             );
 
-            // Listed / Not Listed from ebay_2_metrics.item_id (Missing Listing logic)
+            // Listed / Not Listed from ebay_2_metrics.item_id, then the saved buyer/seller link.
             $itemId = \App\Support\Marketplace\ListingCountsEngine::listingIdFromMap($ebayMetrics, $childSku);
+            if ($itemId === '') {
+                $itemId = \App\Support\Marketplace\ListingCountsEngine::listingIdFromLinks(
+                    $item->buyer_link,
+                    $item->seller_link
+                );
+            }
             $item->eBay_item_id = $itemId !== '' ? $itemId : null;
             $item->listed = $item->eBay_item_id ? 'Listed' : 'Pending';
 
