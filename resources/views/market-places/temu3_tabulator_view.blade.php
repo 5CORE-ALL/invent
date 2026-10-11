@@ -457,10 +457,10 @@
         return lineSales * TEMU_MARGIN - temuRowCogs(row) - ship;
     }
     function temuRowGpftPercent(row) {
-        const qty = parseInt(row && row.quantity_purchased) || 0;
-        const sales = temuRowTemuPrice(row) * qty;
-        if (!(sales > 0)) return 0;
-        return (temuRowGpftDollar(row) / sales) * 100;
+        const lineSales = parseFloat(row && row.line_sales) || 0;
+        const denom = lineSales * TEMU_PRICE_MULT;
+        if (!(denom > 0)) return 0;
+        return (temuRowGpftDollar(row) / denom) * 100;
     }
     function temuRowGroiPercent(row) {
         const cogs = temuRowCogs(row);
@@ -848,7 +848,7 @@
                     field: "gpft_percent",
                     hozAlign: "center",
                     sorter: "number",
-                    headerTooltip: "GPFT % = GPFT$ ÷ (Temu Price × Qty) × 100",
+                    headerTooltip: "GPFT % = GPFT$ ÷ (Line Sales × 1.1364) × 100",
                     mutator: function(value, data) {
                         return temuRowGpftPercent(data);
                     },

@@ -501,23 +501,24 @@ class YesterdayMarketplaceMetricsService
     }
 
     /**
-     * Temu 3 sheet: Full Temu Price sales, no ads.
+     * Temu 3 sheet: L30 Sales is Temu Price × Qty. GPFT divides by Line Sales × 1.1364. No ads.
      *
      * @return array<string, mixed>
      */
     private function temu3(Carbon $start, Carbon $end): array
     {
         $m = TemuShopifySalesService::computeMetricsFromTemu3Orders($start, $end);
+        $full = (float) ($m['full_sales'] ?? $m['sales'] ?? 0);
 
         return $this->pack(
             (float) ($m['sales'] ?? 0),
-            (float) ($m['sales'] ?? 0),
+            $full,
             (float) ($m['pft'] ?? 0),
             (float) ($m['cogs'] ?? 0),
             0.0,
             (int) ($m['orders'] ?? 0),
             (int) ($m['qty'] ?? 0),
-            (float) ($m['sales'] ?? 0),
+            $full,
             0.0
         );
     }
