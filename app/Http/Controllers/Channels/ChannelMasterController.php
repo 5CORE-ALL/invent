@@ -2248,6 +2248,7 @@ class ChannelMasterController extends Controller
             $rows = $this->overlayLiveTemu1AdsOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
             $rows = $this->overlayLiveTemuViewsOnChannelRows($rows);
+            $rows = $this->overlayLiveTemu3TabulatorSalesOnChannelRows($rows);
         } catch (\Throwable $e) {
             Log::warning('Fast-path Temu overlay failed: '.$e->getMessage());
         }
@@ -12375,31 +12376,104 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Temu 3 Active Channel row — same temu3_orders sales as /temu3-decrease.
-     * Same Full Temu Price / GPFT / GROI as /temu3-decrease. No ads API (Ads% = 0).
+     * Badge dollars for /temu3-tabulator: round the dollar totals first, then the percent.
+     *
+     * @param  array{sales?: float, full_sales?: float, orders?: int, qty?: int, pft?: float, cogs?: float}  $m
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    private function temu3TabulatorBadgeTotals(array $m): array
+    {
+        $l30Sales = (float) ($m['l30_sales'] ?? $m['sales'] ?? 0);
+        $full = (float) ($m['full_sales'] ?? 0);
+        if ($full <= 0) {
+            $full = (float) ($m['base_sales'] ?? 0) * TemuShopifySalesService::FULL_PRICE_MULT;
+        }
+        $pft = (int) round((float) ($m['pft'] ?? 0));
+        $fullBadge = (int) round($full);
+        $cogsBadge = (int) round((float) ($m['cogs'] ?? 0));
+
+        return [
+            'l30' => (int) round($l30Sales),
+            'orders' => (int) ($m['orders'] ?? 0),
+            'qty' => (int) ($m['qty'] ?? 0),
+            'pft' => $pft,
+            'cogs' => $cogsBadge,
+            'gpft' => $fullBadge !== 0 ? (int) round(($pft / $fullBadge) * 100) : 0,
+            'groi' => $cogsBadge !== 0 ? (int) round(($pft / $cogsBadge) * 100) : 0,
+        ];
+    }
+
+    /**
+     * Active Channel Temu 3 uses the /temu3-tabulator badges:
+     * L30 Sales = Σ Temu Price × Qty, GPFT% = GPFT$ ÷ Temu Full Price Sales, GROI% = GPFT$ ÷ COGS.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveTemu3TabulatorSalesOnChannelRows(array $rows): array
+    {
+        $l30 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemu3ActiveChannelL30());
+        $l60 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemu3ActiveChannelL60());
+        $l7 = TemuShopifySalesService::computeL7SalesFromTemu3Orders();
+
+        foreach ($rows as &$row) {
+            $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($this->temuMasterChannelKey($name) !== 'temu3') {
+                continue;
+            }
+            if ($l30['l30'] <= 0 && $l30['qty'] <= 0) {
+                continue;
+            }
+
+            $row['L30 Sales'] = $l30['l30'];
+            $row['L30 Orders'] = $l30['orders'];
+            $row['Qty'] = $l30['qty'];
+            $row['Total PFT'] = $l30['pft'];
+            $row['cogs'] = $l30['cogs'];
+            $row['Gprofit%'] = $l30['gpft'].'%';
+            $row['G Roi'] = $l30['groi'];
+            $row['N PFT'] = $l30['gpft'].'%';
+            $row['N ROI'] = $l30['groi'];
+            $row['Ads%'] = '0%';
+            $row['TACOS %'] = '0%';
+            $row['L-60 Sales'] = $l60['l30'];
+            $row['L60 Orders'] = $l60['orders'];
+            $row['Growth'] = $l60['l30'] > 0
+                ? round((($l30['l30'] - $l60['l30']) / $l60['l30']) * 100, 2).'%'
+                : '0%';
+            if ($l7 !== null) {
+                $row['L7 Sales'] = round((float) $l7);
+                $row['P-Sales'] = $this->projectedSalesFromL7($row['L7 Sales']);
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Temu 3 Active Channel row — same L30 Sales, GPFT, and GROI as /temu3-tabulator.
+     * No ads API (Ads% = 0).
      */
     public function getTemu3ChannelData(Request $request)
     {
         $result = [];
 
-        $l30 = TemuShopifySalesService::computeTemu3ActiveChannelL30();
-        $l60 = TemuShopifySalesService::computeTemu3ActiveChannelL60();
+        $l30 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemu3ActiveChannelL30());
+        $l60 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemu3ActiveChannelL60());
 
-        $l30Sales = (float) ($l30['sales'] ?? 0);
-        $l30Orders = (int) ($l30['orders'] ?? 0);
-        $totalQuantity = (int) ($l30['qty'] ?? 0);
-        $totalProfit = (float) ($l30['pft'] ?? 0);
-        $totalGpft = (float) ($l30['gpft'] ?? 0);
-        $totalCogs = (float) ($l30['cogs'] ?? 0);
-        $l60Sales = (float) ($l60['sales'] ?? 0);
-        $l60Orders = (int) ($l60['orders'] ?? 0);
+        $l30Sales = $l30['l30'];
+        $l30Orders = $l30['orders'];
+        $totalQuantity = $l30['qty'];
+        $totalProfit = $l30['pft'];
+        $totalCogs = $l30['cogs'];
+        $l60Sales = $l60['l30'];
+        $l60Orders = $l60['orders'];
 
-        $gProfitPct = $l30Sales > 0 ? round(($totalGpft / $l30Sales) * 100, 2) : 0.0;
-        $gRoi = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
-        $gprofitL60 = $l60Sales > 0 ? round(((float) ($l60['gpft'] ?? 0) / $l60Sales) * 100, 2) : 0.0;
-        $gRoiL60 = ((float) ($l60['cogs'] ?? 0)) > 0
-            ? round(((float) ($l60['pft'] ?? 0) / (float) $l60['cogs']) * 100, 2)
-            : 0.0;
+        $gProfitPct = $l30['gpft'];
+        $gRoi = $l30['groi'];
+        $gprofitL60 = $l60['gpft'];
+        $gRoiL60 = $l60['groi'];
 
         $totalAdSpend = 0.0;
         $adsPercentage = 0.0;

@@ -975,7 +975,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalPft = (float) $m['pft'];
         $totalGpft = (float) $m['gpft'];
         $totalCogs = (float) $m['cogs'];
-        $pftPercentage = $totalL30Sales > 0 ? ($totalGpft / $totalL30Sales) * 100 : 0;
+        $fullSales = (float) ($m['full_sales'] ?? 0);
+        $pftPercentage = $fullSales > 0 ? ($totalGpft / $fullSales) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         return [
