@@ -725,18 +725,38 @@ class EbayThreeApiService
                 return $this->reviseItemWithFullDetails($itemId, $price, $quantity, $itemDetails['Item']);
             }
 
-            // Variation revise can fail on true single-SKU listings — retry item-level once.
-            if ($allowItemLevelFallback && $isVariationListing && $skuTrim !== '') {
-                $errText = strtolower(json_encode($errors) ?: '');
-                $looksLikeNonVariation = str_contains($errText, 'variation')
-                    || str_contains($errText, 'not found')
-                    || str_contains($errText, 'invalid');
-                if ($looksLikeNonVariation) {
+            // A variation revise that did not match must not fall back to item-level
+            // StartPrice. eBay ignores that on multi-variation listings. Retry once
+            // with the live VariationSpecifics. Item-level is only for single-SKU items.
+            if ($allowItemLevelFallback && $isVariationListing && $skuTrim !== '' && empty($variationSpecifics)) {
+                $resolved = $this->resolveVariationSpecificsForPrice((string) $itemId, $skuTrim);
+                if ($resolved !== null) {
+                    Log::info('eBay3 variation revise failed — retrying with VariationSpecifics', [
+                        'itemId' => $itemId,
+                        'sku' => $resolved['sku'],
+                        'rlogId' => $rlogId,
+                    ]);
+
+                    return $this->reviseFixedPriceItem(
+                        $itemId,
+                        $price,
+                        $quantity,
+                        $resolved['sku'],
+                        $resolved['specifics'],
+                        $variationSpecificsSet,
+                        false
+                    );
+                }
+
+                $probe = $this->getItem($itemId);
+                $probeItem = is_array($probe) && is_array($probe['Item'] ?? null) ? $probe['Item'] : [];
+                if ($probeItem !== [] && ! EbayLiveListingMapper::listingHasVariations($probeItem)) {
                     Log::info('eBay3 variation revise failed — retrying item-level StartPrice', [
                         'itemId' => $itemId,
                         'sku' => $skuTrim,
                         'rlogId' => $rlogId,
                     ]);
+
                     return $this->reviseFixedPriceItem(
                         $itemId,
                         $price,
