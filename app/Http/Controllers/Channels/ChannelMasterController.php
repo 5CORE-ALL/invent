@@ -2078,6 +2078,47 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Amazon GPFT / GROI on /all-marketplace-master = the /amazon/daily-sales badges.
+     * GPFT% = rounded GPFT$ ÷ rounded SKU-line sales. GROI% = rounded GPFT$ ÷ rounded COGS.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveAmazonProfitOnChannelRows(array $rows): array
+    {
+        $fin = AmazonSalesController::l30OrdersFinancials();
+        if ((float) ($fin['line_sales'] ?? 0) <= 0 && (float) ($fin['pft'] ?? 0) == 0.0 && (float) ($fin['cogs'] ?? 0) == 0.0) {
+            return $rows;
+        }
+
+        $gpft = (float) ($fin['gpft'] ?? 0);
+        $groi = (float) ($fin['groi'] ?? 0);
+        $pft = (float) ($fin['pft'] ?? 0);
+        $cogs = (float) ($fin['cogs'] ?? 0);
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'amazon') {
+                continue;
+            }
+
+            $row['Gprofit%'] = round($gpft).'%';
+            $row['G Roi'] = round($groi);
+            $row['Total PFT'] = round($pft, 2);
+            $row['cogs'] = round($cogs, 2);
+
+            $adsPct = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Ads%'] ?? $row['TACOS %'] ?? 0));
+            $row['N PFT'] = round($gpft - $adsPct, 2).'%';
+            $spend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? 0));
+            $row['N ROI'] = $cogs > 0 ? round((($pft - $spend) / $cogs) * 100, 2) : 0;
+            break;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Fast-path Amazon L30 Sales / Orders / Qty — same Pacific window as
      * /amazon/daily-sales so the Active Channel row moves when new orders land.
      */
@@ -2257,6 +2298,12 @@ class ChannelMasterController extends Controller
             $rows = $this->overlayLiveEbayTwoListingCvrOnChannelRows($rows);
         } catch (\Throwable $e) {
             Log::warning('Fast-path EbayTwo views overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveAmazonProfitOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Amazon GPFT overlay failed: '.$e->getMessage());
         }
 
         // Last: Pacific yesterday Y Sales including $0/NYS so stale calculated
@@ -10051,9 +10098,7 @@ class ChannelMasterController extends Controller
 
 
     /**
-     * Amazon GPFT / COGS / ROI from amazon_orders for the Pacific daily-sales window.
-     * Same line math as UpdateMarketplaceDailyMetrics::calculateAmazonMetrics() so
-     * /all-marketplace-master no longer freezes on a stale marketplace_daily_metrics row.
+     * Amazon GPFT / COGS / GROI for the same window and line math as /amazon/daily-sales.
      *
      * @return array{total_pft: float, total_cogs: float, pft_percentage: float, roi_percentage: float}
      */
@@ -10067,81 +10112,13 @@ class ChannelMasterController extends Controller
         ];
 
         try {
-            $orderRows = AmazonOrder::constrainOrderDate(
-                DB::table('amazon_orders as o')
-                    ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-                    ->where(function ($q) {
-                        $q->whereNull('o.status')
-                            ->orWhereNotIn('o.status', ['Canceled', 'Cancelled']);
-                    }),
-                $start,
-                $end
-            )->select(['i.sku', 'i.quantity', 'i.price as line_price'])->get();
-
-            if ($orderRows->isEmpty()) {
-                return $empty;
-            }
-
-            $skus = $orderRows->pluck('sku')->filter(fn ($sku) => $sku !== null && $sku !== '')->unique()->values();
-            $productMasters = collect();
-            foreach ($skus->chunk(500) as $chunk) {
-                $productMasters = $productMasters->merge(
-                    ProductMaster::query()->whereIn('sku', $chunk->all())->get(['sku', 'parent', 'Values'])
-                );
-            }
-            $productMasters = $productMasters->keyBy('sku');
-            [$amazonSlabs, $amazonRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
-
-            $totalCogs = 0.0;
-            $totalPft = 0.0;
-            $totalSkuLineSales = 0.0;
-            $qtyTimesPrice = AmazonOrder::salesTotalMode() === AmazonOrder::SALES_TOTAL_MODE_QTY_TIMES_PRICE;
-
-            foreach ($orderRows as $row) {
-                $quantity = (int) $row->quantity;
-                $linePrice = (float) $row->line_price;
-                $lineRevenue = $qtyTimesPrice ? $quantity * $linePrice : $linePrice;
-                $unitPrice = $quantity > 0 ? $lineRevenue / $quantity : 0;
-                $sku = $row->sku ?? '';
-
-                if ($sku !== '' && $quantity > 0) {
-                    $totalSkuLineSales += round($lineRevenue, 2);
-                }
-
-                $lp = 0.0;
-                $values = [];
-                $pm = null;
-                if ($sku !== '' && isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values
-                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    if (isset($values['lp'])) {
-                        $lp = (float) $values['lp'];
-                    }
-                    if (isset($values['ship'])) {
-                        $ship = (float) $values['ship'];
-                    }
-                    if (isset($values['wt_act'])) {
-                        $weightAct = (float) $values['wt_act'];
-                    }
-                }
-
-                $shipValues = (isset($values) && is_array($values)) ? $values : [];
-                $parent = (isset($pm) ? (string) ($pm->parent ?? '') : '');
-                $shipCost = ($sku !== '' && $quantity > 0)
-                    ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($amazonSlabs, $amazonRates, (string) $sku, $shipValues, $quantity, $parent)
-                    : 0.0;
-
-                $lineCogs = round($lp * $quantity, 2);
-                $totalCogs += $lineCogs;
-                $totalPft += round(($lineRevenue * 0.80) - $lineCogs - $shipCost, 2);
-            }
+            $fin = AmazonSalesController::l30OrdersFinancials($start, $end);
 
             return [
-                'total_pft' => $totalPft,
-                'total_cogs' => $totalCogs,
-                'pft_percentage' => round($totalSkuLineSales) != 0.0 ? round(round($totalPft) / round($totalSkuLineSales) * 100) : 0.0,
-                'roi_percentage' => round($totalCogs) != 0.0 ? round(round($totalPft) / round($totalCogs) * 100) : 0.0,
+                'total_pft' => (float) $fin['pft'],
+                'total_cogs' => (float) $fin['cogs'],
+                'pft_percentage' => (float) $fin['gpft'],
+                'roi_percentage' => (float) $fin['groi'],
             ];
         } catch (\Throwable $e) {
             Log::warning('Amazon live profit window failed: '.$e->getMessage());

@@ -103,7 +103,7 @@ class AmazonSalesController extends Controller
      *
      * @return array{qty: int, line_sales: float, pft: float, cogs: float, gpft: float, groi: float}
      */
-    public static function l30OrdersFinancials(): array
+    public static function l30OrdersFinancials(?Carbon $startWindow = null, ?Carbon $endDate = null): array
     {
         $empty = [
             'qty' => 0,
@@ -119,7 +119,9 @@ class AmazonSalesController extends Controller
                 return $empty;
             }
 
-            [$startWindow, $endDate] = AmazonOrder::dailySalesL30Window(self::DAILY_SALES_WINDOW_DAYS);
+            if ($startWindow === null || $endDate === null) {
+                [$startWindow, $endDate] = AmazonOrder::dailySalesL30Window(self::DAILY_SALES_WINDOW_DAYS);
+            }
             $lineRevExpr = AmazonOrder::lineRevenueSelectSql('i');
 
             $orderRows = AmazonOrder::constrainOrderDate(
