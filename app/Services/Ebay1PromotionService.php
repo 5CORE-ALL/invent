@@ -308,15 +308,15 @@ class Ebay1PromotionService
 
                 continue;
             }
-            $blob .= ' '.strtolower((string) ($error['message'] ?? ''));
-            $blob .= ' '.strtolower((string) ($error['LongMessage'] ?? ''));
-            $blob .= ' '.strtolower((string) ($error['ShortMessage'] ?? ''));
-            $blob .= ' '.(string) ($error['ErrorCode'] ?? $error['code'] ?? '');
+            $blob .= ' '.strtolower($this->ebayErrorText($error['message'] ?? ''));
+            $blob .= ' '.strtolower($this->ebayErrorText($error['LongMessage'] ?? ''));
+            $blob .= ' '.strtolower($this->ebayErrorText($error['ShortMessage'] ?? ''));
+            $blob .= ' '.$this->ebayErrorText($error['ErrorCode'] ?? $error['code'] ?? '');
             $params = $error['ErrorParameters'] ?? [];
             if (is_array($params)) {
                 foreach ($params as $param) {
                     if (is_array($param) && isset($param['Value'])) {
-                        $blob .= ' '.strtolower((string) $param['Value']);
+                        $blob .= ' '.strtolower($this->ebayErrorText($param['Value']));
                     }
                 }
             }
@@ -326,6 +326,27 @@ class Ebay1PromotionService
             || str_contains($blob, 'always allow price updates')
             || str_contains($blob, 'blockpriceincrease')
             || str_contains($blob, '21919248');
+    }
+
+    private function ebayErrorText(mixed $value): string
+    {
+        if (is_array($value)) {
+            $parts = [];
+            foreach ($value as $part) {
+                $text = $this->ebayErrorText($part);
+                if ($text !== '') {
+                    $parts[] = $text;
+                }
+            }
+
+            return implode(' ', $parts);
+        }
+
+        if (is_bool($value) || $value === null) {
+            return '';
+        }
+
+        return trim(strip_tags((string) $value));
     }
 
     /**
