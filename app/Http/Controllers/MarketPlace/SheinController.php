@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Sales\EbaySalesController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ApiController;
 use App\Models\MarketplacePercentage;
@@ -272,21 +273,46 @@ class SheinController extends Controller
         try {
             $productMasters = $this->productMasterByNormalizedSku();
             $normalizeSku = fn ($v) => $this->normalizeSheinSkuExact((string) $v);
+            $margin = $this->sheinMarketplaceMarginPercent() / 100;
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
             $data = SheinDailyData::query()
                 ->orderByDesc('order_processed_on')
                 ->orderByDesc('id')
                 ->get()
-                ->map(function ($item) use ($productMasters, $normalizeSku) {
+                ->map(function ($item) use ($productMasters, $normalizeSku, $margin, $slabService, $shipSlabRates) {
                     $key = $item->seller_sku ? $normalizeSku($item->seller_sku) : '';
                     $pm = $key !== '' ? $productMasters->get($key) : null;
                     if (! $pm instanceof ProductMaster) {
                         $pm = null;
                     }
                     $resolved = $this->lpAndShipFromProductMaster($pm);
+                    $values = [];
+                    if ($pm) {
+                        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                        $values = is_array($values) ? $values : [];
+                    }
+                    $qty = max(1, (int) ($item->quantity ?? 0));
+                    $productPrice = (float) ($item->product_price ?? 0);
+                    $sales = $productPrice * $qty;
+                    $weightAct = EbaySalesController::actWeightLb($values);
+                    $tWeight = $weightAct * $qty;
+                    $shipCost = EbaySalesController::cogsShipForSku(
+                        $slabService,
+                        $shipSlabRates,
+                        (string) ($item->seller_sku ?? ''),
+                        $values,
+                        $qty,
+                        (string) ($pm->parent ?? '')
+                    );
+                    $cogs = $resolved['lp'] * $qty;
                     $row = $item->toArray();
                     $row['lp'] = $resolved['lp'];
                     $row['ship'] = $resolved['ship'];
+                    $row['t_weight'] = round($tWeight, 2);
+                    $row['ship_cost'] = round($shipCost, 2);
+                    $row['cogs'] = round($cogs, 2);
+                    $row['pft'] = round(($sales * $margin) - $cogs - $shipCost, 2);
                     // Ensure dates are plain strings for Tabulator
                     foreach (['order_processed_on', 'collection_deadline', 'requested_shipping_time', 'delivery_deadline', 'delivery_time'] as $dateField) {
                         if (! empty($row[$dateField]) && ! is_string($row[$dateField])) {
@@ -324,7 +350,9 @@ class SheinController extends Controller
      */
     public function sheinTabulatorView()
     {
-        return view('market-places.shein_tabulator_view');
+        return view('market-places.shein_tabulator_view', [
+            'marginPercent' => (int) round($this->sheinMarketplaceMarginPercent()),
+        ]);
     }
 
     /**
@@ -467,7 +495,7 @@ class SheinController extends Controller
             if (Schema::hasTable($pmTable)) {
                 $pmHasLpCol = Schema::hasColumn($pmTable, 'lp');
                 $pmHasShipCol = Schema::hasColumn($pmTable, 'ship');
-                $pmLiteCols = ['id', 'sku', 'parent'];
+                $pmLiteCols = ['id', 'sku', 'parent', 'Values'];
                 if ($pmHasLpCol) {
                     $pmLiteCols[] = 'lp';
                 }
@@ -486,6 +514,7 @@ class SheinController extends Controller
             // ── 3. Shein sales — one live GROUP BY (no second daily-data scan)
             $percentage = $this->sheinMarketplaceMarginPercent();
             $margin = $percentage / 100;
+            [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
             $excludedStatuses = ['refund', 'return', 'cancel', 'closed', 'exchange'];
             $groupedSales = SheinDailyData::query()
                 ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
@@ -520,12 +549,39 @@ class SheinController extends Controller
                 }
                 $salesAggArr[$key]['al30'] += $qty;
                 $salesAggArr[$key]['sales'] += $rev;
+            }
+            $lineRows = SheinDailyData::query()
+                ->whereNotNull('seller_sku')->where('seller_sku', '!=', '')
+                ->where(function ($q) use ($excludedStatuses) {
+                    foreach ($excludedStatuses as $s) {
+                        $q->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ["%{$s}%"]);
+                    }
+                })
+                ->get(['seller_sku', 'quantity', 'product_price']);
+            foreach ($lineRows as $line) {
+                $key = $normalizeSku($line->seller_sku);
+                $qty = max(1, (int) ($line->quantity ?? 0));
+                $sales = (float) ($line->product_price ?? 0) * $qty;
                 $pm = $productMasterBySku->get($key);
-                $resolved = $this->lpAndShipFromProductMaster(
-                    $pm instanceof ProductMaster ? $pm : null
+                $pm = $pm instanceof ProductMaster ? $pm : null;
+                $resolved = $this->lpAndShipFromProductMaster($pm);
+                $values = [];
+                if ($pm) {
+                    $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                    $values = is_array($values) ? $values : [];
+                }
+                $weightAct = EbaySalesController::actWeightLb($values);
+                $shipCost = EbaySalesController::cogsShipForSku(
+                    $slabService,
+                    $shipSlabRates,
+                    (string) ($line->seller_sku ?? ''),
+                    $values,
+                    $qty,
+                    (string) ($pm->parent ?? '')
                 );
-                $spCogs += $resolved['lp'] * $qty;
-                $spPft += ($rev * $margin) - (($resolved['lp'] + $resolved['ship']) * $qty);
+                $lineCogs = $resolved['lp'] * $qty;
+                $spCogs += $lineCogs;
+                $spPft += ($sales * $margin) - $lineCogs - $shipCost;
             }
             $salesAgg = SupportCollection::make($salesAggArr)->map(fn ($a) => (object) $a);
             $salesPage = [
@@ -534,8 +590,8 @@ class SheinController extends Controller
                 'total_sales' => round($spSales, 2),
                 'total_cogs' => round($spCogs, 2),
                 'total_pft' => round($spPft, 2),
-                'pft_percentage' => round($spSales > 0 ? ($spPft / $spSales) * 100 : 0.0, 1),
-                'roi_percentage' => round($spCogs > 0 ? ($spPft / $spCogs) * 100 : 0.0, 1),
+                'pft_percentage' => round($spSales) != 0.0 ? (float) round(round($spPft) / round($spSales) * 100) : 0.0,
+                'roi_percentage' => round($spCogs) != 0.0 ? (float) round(round($spPft) / round($spCogs) * 100) : 0.0,
                 'avg_price' => round($spQty > 0 ? $spSales / $spQty : 0.0, 2),
                 'total_commission' => round($spCommission, 2),
             ];

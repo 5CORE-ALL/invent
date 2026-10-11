@@ -221,7 +221,7 @@ class EbayController extends Controller
                     $quantity = (float) ($item->quantity ?? 0);
                     $price = (float) ($item->price ?? 0);
                     $weightAct = EbaySalesController::actWeightLb($values);
-                    $shipCost = EbaySalesController::cogsShipForOrderWeight($slabService, $shipSlabRates, $weightAct * $quantity, $weightAct);
+                    $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($item->sku ?? ''), $values, $quantity, (string) ($pm?->parent ?? ''));
                     $lineCogs = $lp * $quantity;
                     $linePft = ($price * 0.85) - $lineCogs - $shipCost;
 

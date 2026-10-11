@@ -45,52 +45,6 @@ class DobaSalesController extends Controller
         }
     }
 
-    /**
-     * Shipping Master ship slab for the order weight, once.
-     * An empty band uses the SKU's own weight slab. Missing weight is 0.
-     *
-     * @param  array<string, array{rate: ?float}>  $shipSlabRates
-     */
-    private static function cogsShipForOrderWeight(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightOrder, float $itemWeightLb = 0.0): float
-    {
-        $orderRate = self::slabShipRate($slabs, $shipSlabRates, $weightOrder);
-        if ($orderRate !== null) {
-            return $orderRate;
-        }
-
-        if ($itemWeightLb > 0 && abs($itemWeightLb - $weightOrder) > 0.001) {
-            $itemRate = self::slabShipRate($slabs, $shipSlabRates, $itemWeightLb);
-            if ($itemRate !== null) {
-                return $itemRate;
-            }
-        }
-
-        return 0.0;
-    }
-
-    /**
-     * @param  array<string, array{rate: ?float}>  $shipSlabRates
-     */
-    private static function slabShipRate(?ShippingSlabRateService $slabs, array $shipSlabRates, float $weightLb): ?float
-    {
-        if ($slabs === null || $weightLb <= 0 || $shipSlabRates === []) {
-            return null;
-        }
-
-        $declared = $slabs->roundWeightLbUpToSlab($weightLb);
-        $key = $slabs->resolveSlabKeyForWeight($declared ?? $weightLb);
-        if ($key === null || ! isset($shipSlabRates[$key])) {
-            return null;
-        }
-
-        $rate = $shipSlabRates[$key]['rate'] ?? null;
-        if ($rate === null || ! is_numeric($rate) || (float) $rate <= 0) {
-            return null;
-        }
-
-        return round((float) $rate, 2);
-    }
-
     public function index()
     {
         // No KW/PT spent for Doba
@@ -115,7 +69,7 @@ class DobaSalesController extends Controller
 
         // QUERY: ProductMaster for ship values
         $productMasters = ProductMaster::whereIn('sku', $skus)
-            ->select(['sku', 'Values'])
+            ->select(['sku', 'parent', 'Values'])
             ->get()
             ->keyBy('sku');
 
@@ -168,7 +122,7 @@ class DobaSalesController extends Controller
             $cogs = $lp * $quantity;
 
             // Every order uses the weight slab, including pickup with a prepaid label.
-            $shipCost = self::cogsShipForOrderWeight($slabService, $shipSlabRates, $tWeight, $weightAct);
+            $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($item->sku ?? ''), $values, $quantity, (string) ($pm?->parent ?? ''));
 
             // GPFT$ = (Sales AMT × 95%) − COGS − COGS Ship. COGS Ship is subtracted once.
             $pft = ($lineRevenue * 0.95) - $cogs - $shipCost;
