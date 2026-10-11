@@ -660,10 +660,26 @@
             $('#data-loader').fadeOut(100);
         }
 
+        function listingItemId(item) {
+            const direct = String((item && (item.eBay_item_id || item.listing_id)) || '').trim();
+            if (/^\d{6,}$/.test(direct)) {
+                return direct;
+            }
+            const blobs = [item && item.buyer_link, item && item.seller_link, direct];
+            for (let i = 0; i < blobs.length; i++) {
+                const text = String(blobs[i] || '');
+                const itm = text.match(/\/itm\/(\d{6,})/i);
+                if (itm) return itm[1];
+                const keyword = text.match(/[?&]keyword=(\d{6,})/i);
+                if (keyword) return keyword[1];
+            }
+            return '';
+        }
+
         function normalizeListingRows(rows) {
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
-                const itemId = String(item.eBay_item_id || '').trim();
+                const itemId = listingItemId(item);
                 // Automated: NRL from EbayTwoDataView; Listed from ebay_2_metrics.item_id
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
                 const listed = itemId ? 'Listed' : 'Pending';

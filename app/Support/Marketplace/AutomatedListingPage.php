@@ -91,14 +91,34 @@ class AutomatedListingPage
                 $item->seller_link = $status['seller_link'] ?? null;
             }
 
-            $item->nr_req = ListingCountsEngine::nrReqFromDataView(
-                ListingCountsEngine::lookupNrValue($nrValues, $childSku)
-            );
+            $nrRaw = ListingCountsEngine::lookupNrValue($nrValues, $childSku);
+            $nrArray = is_array($nrRaw) ? $nrRaw : (json_decode((string) $nrRaw, true) ?: []);
+            if (! is_array($nrArray)) {
+                $nrArray = [];
+            }
+            if (! $item->buyer_link && ! empty($nrArray['buyer_link'])) {
+                $item->buyer_link = $nrArray['buyer_link'];
+            }
+            if (! $item->seller_link && ! empty($nrArray['seller_link'])) {
+                $item->seller_link = $nrArray['seller_link'];
+            }
+
+            $item->nr_req = ListingCountsEngine::nrReqFromDataView($nrRaw);
             if ($item->nr_req === 'REQ' && $status !== []) {
                 $item->nr_req = ListingCountsEngine::nrReqFromDataView($status);
             }
 
             $listingId = ListingCountsEngine::listingIdFromMap($listedMap, $childSku);
+            if ($listingId === '') {
+                $listingId = ListingCountsEngine::listingIdFromLinks(
+                    $item->buyer_link,
+                    $item->seller_link,
+                    $status['buyer_link'] ?? null,
+                    $status['seller_link'] ?? null,
+                    $nrArray['buyer_link'] ?? null,
+                    $nrArray['seller_link'] ?? null
+                );
+            }
             $idOrNull = $listingId !== '' ? $listingId : null;
             $item->{$idField} = $idOrNull;
             $item->listing_id = $idOrNull;
