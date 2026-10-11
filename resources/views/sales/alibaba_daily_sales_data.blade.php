@@ -602,20 +602,20 @@
                 // Calculate average price (weighted by quantity)
                 const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
 
-                // Calculate PFT Percentage: (Sum of T PFT / Sum of Total Sales) * 100
-                const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
+                const pftRounded = Math.round(totalPft);
+                const cogsRounded = Math.round(totalCogs);
+                const lineRounded = Math.round(totalL30Sales);
+                const salesRounded = Math.round(totalOrderSales);
+                const pftPercentage = lineRounded > 0 ? Math.round((pftRounded / lineRounded) * 100) : 0;
+                const roiPercentage = cogsRounded > 0 ? Math.round((pftRounded / cogsRounded) * 100) : 0;
 
-                // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
-                const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
-
-                // Update badges (same set as /amazon/daily-sales)
                 $('#total-orders-badge').text('Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-sales-badge').text('Sales: $' + totalOrderSales.toFixed(2));
-                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage.toFixed(1) + '%');
-                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage.toFixed(1) + '%');
+                $('#total-sales-badge').text('Sales: $' + salesRounded.toLocaleString());
+                $('#pft-percentage-badge').text('GPFT %: ' + pftPercentage + '%');
+                $('#roi-percentage-badge').text('ROI %: ' + roiPercentage + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-                $('#pft-total-badge').text('GPFT: $' + totalPft.toFixed(2));
+                $('#pft-total-badge').text('GPFT: $' + pftRounded.toLocaleString());
 
                 const pftBadge = $('#pft-total-badge');
                 if (totalPft >= 0) {
@@ -624,7 +624,7 @@
                     pftBadge.removeClass('bg-dark').addClass('bg-danger');
                 }
 
-                $('#total-cogs-badge').text('COGS: $' + totalCogs.toFixed(2));
+                $('#total-cogs-badge').text('COGS: $' + cogsRounded.toLocaleString());
             }
 
             const COL_VIS_CATEGORY_KEYS = ['basic', 'price', 'other'];

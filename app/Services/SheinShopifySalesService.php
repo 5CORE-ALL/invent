@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Http\Controllers\Sales\EbaySalesController;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\SheinDailyData;
 use App\Models\SheinDailyDataL60;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Shein L30/L60 metrics from Shein Open API order sync
@@ -326,5 +328,127 @@ class SheinShopifySalesService
         }
 
         return [$lp, $ship];
+    }
+
+    /**
+     * /shein-tabulator badge integers.
+     * L30 uses every shein_daily_data row the tabulator loads. L60 uses shein_daily_data_l60.
+     * GPFT$ = (product price × Qty × margin) − COGS − COGS Ship. Dollars are rounded before the percent.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    public static function computeTabulatorBadgeTotals(bool $l60 = false): array
+    {
+        $empty = ['l30' => 0, 'orders' => 0, 'qty' => 0, 'pft' => 0, 'cogs' => 0, 'gpft' => 0, 'groi' => 0];
+        $model = $l60 ? SheinDailyDataL60::class : SheinDailyData::class;
+        if (! Schema::hasTable((new $model)->getTable()) || ! $model::query()->exists()) {
+            return $empty;
+        }
+
+        $productMasters = self::productMastersByNormalizedSku();
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
+        $margin = self::sheinMarginDecimal();
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalSales = 0.0;
+        $totalPft = 0.0;
+        $totalCogs = 0.0;
+
+        foreach ($model::query()->orderByDesc('id')->cursor() as $item) {
+            $orderStatus = strtolower((string) ($item->order_status ?? ''));
+            if (self::isExcludedStatus($orderStatus)) {
+                continue;
+            }
+            $orderNum = trim((string) ($item->order_number ?? ''));
+            $sellerSku = trim((string) ($item->seller_sku ?? ''));
+            if ($orderNum === '' && $sellerSku === '') {
+                continue;
+            }
+
+            $quantity = (int) ($item->quantity ?? 0);
+            if ($quantity <= 0) {
+                $quantity = 1;
+            }
+            $productPrice = (float) ($item->product_price ?? 0);
+            $sales = $productPrice * $quantity;
+            $key = $sellerSku !== '' ? self::normalizeSheinSku($sellerSku) : '';
+            $pm = $key !== '' ? ($productMasters->get($key) ?: null) : null;
+            $values = [];
+            $parent = '';
+            $lp = 0.0;
+            if ($pm instanceof ProductMaster) {
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+                $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
+                $lp = (float) ($values['lp'] ?? 0);
+                if ($lp === 0.0) {
+                    foreach ($values as $k => $v) {
+                        if (strtolower((string) $k) === 'lp') {
+                            $lp = (float) $v;
+                            break;
+                        }
+                    }
+                }
+                if ($lp === 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+            }
+
+            $shipCost = EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, $sellerSku, $values, $quantity, $parent);
+            $cogsRaw = $lp * $quantity;
+            $pft = round(($sales * $margin) - $cogsRaw - $shipCost, 2);
+            $cogs = round($cogsRaw, 2);
+
+            $totalOrders++;
+            $totalQuantity += $quantity;
+            $totalSales += $sales;
+            $totalPft += $pft;
+            $totalCogs += $cogs;
+        }
+
+        $pftBadge = (int) round($totalPft);
+        $salesBadge = (int) round($totalSales);
+        $cogsBadge = (int) round($totalCogs);
+
+        return [
+            'l30' => $salesBadge,
+            'orders' => $totalOrders,
+            'qty' => $totalQuantity,
+            'pft' => $pftBadge,
+            'cogs' => $cogsBadge,
+            'gpft' => $salesBadge !== 0 ? (int) round(($pftBadge / $salesBadge) * 100) : 0,
+            'groi' => $cogsBadge !== 0 ? (int) round(($pftBadge / $cogsBadge) * 100) : 0,
+        ];
+    }
+
+    private static function normalizeSheinSku(string $sku): string
+    {
+        $sku = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($sku));
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $sku);
+
+        return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $sku));
+    }
+
+    private static function productMastersByNormalizedSku(): Collection
+    {
+        $pm = new ProductMaster;
+        if (! Schema::hasTable($pm->getTable())) {
+            return collect();
+        }
+
+        $cols = ['sku', 'parent', 'Values'];
+        foreach (['lp', 'ship'] as $col) {
+            if (Schema::hasColumn($pm->getTable(), $col)) {
+                $cols[] = $col;
+            }
+        }
+
+        return ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get($cols)
+            ->keyBy(fn (ProductMaster $row) => self::normalizeSheinSku((string) $row->sku));
     }
 }

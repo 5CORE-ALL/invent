@@ -2306,6 +2306,24 @@ class ChannelMasterController extends Controller
             Log::warning('Fast-path Amazon GPFT overlay failed: '.$e->getMessage());
         }
 
+        try {
+            $rows = $this->overlayLiveSheinTabulatorSalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Shein GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveMercariWithShipSalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path Mercari with ship GPFT overlay failed: '.$e->getMessage());
+        }
+
+        try {
+            $rows = $this->overlayLiveAliexpressTabulatorSalesOnChannelRows($rows);
+        } catch (\Throwable $e) {
+            Log::warning('Fast-path AliExpress GPFT overlay failed: '.$e->getMessage());
+        }
+
         // Last: Pacific yesterday Y Sales including $0/NYS so stale calculated
         // yesterday_sales cannot stay on the grid after a quiet day.
         $rows = $this->overlayLivePacificYSalesOnChannelRows($rows);
@@ -3989,12 +4007,12 @@ class ChannelMasterController extends Controller
             $row['L60 Orders'] = (int) ($live['l60_orders'] ?? 0);
             $row['Qty'] = (int) ($live['qty'] ?? 0);
             $row['Growth'] = round($growth, 2).'%';
-            $row['Total PFT'] = round($totalPft, 2);
-            $row['cogs'] = round($totalCogs, 2);
-            $row['Gprofit%'] = round($gpftPct, 1).'%';
-            $row['G Roi'] = round($roiPct, 1);
-            $row['N PFT'] = round($gpftPct, 1).'%';
-            $row['N ROI'] = round($roiPct, 1);
+            $row['Total PFT'] = (int) round($totalPft);
+            $row['cogs'] = (int) round($totalCogs);
+            $row['Gprofit%'] = ((int) round($gpftPct)).'%';
+            $row['G Roi'] = (int) round($roiPct);
+            $row['N PFT'] = ((int) round($gpftPct)).'%';
+            $row['N ROI'] = (int) round($roiPct);
             $row['Total Ad Spend'] = 0;
             $row['Ads%'] = '0%';
             $row['TACOS %'] = '0%';
@@ -12387,6 +12405,126 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Active Channel AliExpress uses the /aliexpress-tabulator badges.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveAliexpressTabulatorSalesOnChannelRows(array $rows): array
+    {
+        $ctrl = app(AliexpressController::class);
+        $l30 = $ctrl->tabulatorBadgeTotals('l30');
+        $l60 = $ctrl->tabulatorBadgeTotals('l60');
+        if ($l30['l30'] <= 0 && $l30['orders'] <= 0) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'aliexpress') {
+                continue;
+            }
+            $row['L30 Sales'] = $l30['l30'];
+            $row['L30 Orders'] = $l30['orders'];
+            $row['Qty'] = $l30['qty'];
+            $row['Total PFT'] = $l30['pft'];
+            $row['cogs'] = $l30['cogs'];
+            $row['Gprofit%'] = $l30['gpft'].'%';
+            $row['G Roi'] = $l30['groi'];
+            $row['N PFT'] = $l30['gpft'].'%';
+            $row['N ROI'] = $l30['groi'];
+            if ($l60['l30'] > 0 || $l60['orders'] > 0) {
+                $row['L-60 Sales'] = $l60['l30'];
+                $row['L60 Orders'] = $l60['orders'];
+                $row['Growth'] = $l60['l30'] > 0
+                    ? round((($l30['l30'] - $l60['l30']) / $l60['l30']) * 100, 2).'%'
+                    : '0%';
+            }
+            break;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Active Channel Mercari w ship uses the /mercari-with-ship badges.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveMercariWithShipSalesOnChannelRows(array $rows): array
+    {
+        $badge = app(\App\Http\Controllers\Sales\MercariController::class)->mercariWithShipBadgeTotals();
+        if ($badge['l30'] <= 0 && $badge['orders'] <= 0) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'mercariwship') {
+                continue;
+            }
+            $row['L30 Sales'] = $badge['l30'];
+            $row['L30 Orders'] = $badge['orders'];
+            $row['Qty'] = $badge['qty'];
+            $row['Total PFT'] = $badge['pft'];
+            $row['cogs'] = $badge['cogs'];
+            $row['Gprofit%'] = $badge['gpft'].'%';
+            $row['G Roi'] = $badge['groi'];
+            $row['N PFT'] = $badge['gpft'].'%';
+            $row['N ROI'] = $badge['groi'];
+            break;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * Active Channel Shein uses the /shein-tabulator badges:
+     * L30 Sales = Σ product price × Qty, GPFT% = rounded PFT ÷ rounded sales, GROI% = rounded PFT ÷ rounded COGS.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveSheinTabulatorSalesOnChannelRows(array $rows): array
+    {
+        $l30 = SheinShopifySalesService::computeTabulatorBadgeTotals(false);
+        $l60 = SheinShopifySalesService::computeTabulatorBadgeTotals(true);
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'shein') {
+                continue;
+            }
+            if ($l30['l30'] <= 0 && $l30['orders'] <= 0) {
+                continue;
+            }
+
+            $row['L30 Sales'] = $l30['l30'];
+            $row['L30 Orders'] = $l30['orders'];
+            $row['Qty'] = $l30['qty'];
+            $row['Total PFT'] = $l30['pft'];
+            $row['cogs'] = $l30['cogs'];
+            $row['Gprofit%'] = $l30['gpft'].'%';
+            $row['G Roi'] = $l30['groi'];
+            $row['N PFT'] = $l30['gpft'].'%';
+            $row['N ROI'] = $l30['groi'];
+            if ($l60['l30'] > 0 || $l60['orders'] > 0) {
+                $row['L-60 Sales'] = $l60['l30'];
+                $row['L60 Orders'] = $l60['orders'];
+                $row['Growth'] = $l60['l30'] > 0
+                    ? round((($l30['l30'] - $l60['l30']) / $l60['l30']) * 100, 2).'%'
+                    : '0%';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
      * Active Channel Temu uses the /temu-tabulator badges:
      * L30 Sales = Σ Temu Price × Qty, GPFT% = GPFT$ ÷ Temu Full Price Sales, GROI% = GPFT$ ÷ COGS.
      * Ads stay on the row; overlayLiveTemu1AdsOnChannelRows applies them after this.
@@ -14310,24 +14448,23 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // L30 from Shein Open API order sync (shein_daily_data) — same source as /shein-tabulator.
-        // Fallback: marketplace_daily_metrics when daily table is empty.
-        [$l30Start, $l30End] = SheinShopifySalesService::tabulatorL30Window();
-        $shopifyL30 = SheinShopifySalesService::computeChannelSummary($l30Start, $l30End);
-
+        // L30 / GPFT / GROI: same rounded badges as /shein-tabulator.
+        $sheinBadge = SheinShopifySalesService::computeTabulatorBadgeTotals(false);
         $metrics = MarketplaceDailyMetric::where('channel', 'Shein')->latest('date')->first();
-        $shopifyHasTotals = $shopifyL30['total_orders'] > 0 || $shopifyL30['total_sales'] > 0.00001;
+        $shopifyHasTotals = $sheinBadge['orders'] > 0 || $sheinBadge['l30'] > 0;
+        $nPftIsBadge = false;
 
         if ($shopifyHasTotals) {
-            $l30Sales = $shopifyL30['total_sales'];
-            $l30Orders = $shopifyL30['total_orders'];
-            $totalQuantity = $shopifyL30['total_quantity'];
-            $totalProfit = $shopifyL30['total_pft'];
-            $totalCogs = $shopifyL30['total_cogs'];
-            $gProfitPct = $shopifyL30['pft_percentage'];
-            $gRoi = $shopifyL30['roi_percentage'];
-            $nPftValue = $totalProfit;
+            $l30Sales = $sheinBadge['l30'];
+            $l30Orders = $sheinBadge['orders'];
+            $totalQuantity = $sheinBadge['qty'];
+            $totalProfit = $sheinBadge['pft'];
+            $totalCogs = $sheinBadge['cogs'];
+            $gProfitPct = $sheinBadge['gpft'];
+            $gRoi = $sheinBadge['groi'];
+            $nPftValue = $gProfitPct;
             $nRoi = $gRoi;
+            $nPftIsBadge = true;
         } else {
             $agg = $this->aggregateSheinDailyDataLikeTabulator();
             $aggLooksEmpty = $agg !== null
@@ -14372,16 +14509,14 @@ class ChannelMasterController extends Controller
             }
         }
 
-        // L60 from Shopify Sen Shp (days 31–60 PST). Fallback to legacy shein_daily_data_l60
-        // when Shopify returns nothing in that window.
-        [$l60Start, $l60End] = SheinShopifySalesService::channelMasterL60Window();
-        $shopifyL60 = SheinShopifySalesService::computeChannelSummary($l60Start, $l60End);
+        // L60 sales / orders: same shein_daily_data_l60 total as the tabulator L60 badge.
+        $sheinL60Badge = SheinShopifySalesService::computeTabulatorBadgeTotals(true);
 
-        if ($shopifyL60['total_orders'] > 0 || $shopifyL60['total_sales'] > 0.00001) {
-            $l60Orders = $shopifyL60['total_orders'];
-            $l60Sales = $shopifyL60['total_sales'];
-            $gprofitL60 = $shopifyL60['pft_percentage'];
-            $gRoiL60 = $shopifyL60['roi_percentage'];
+        if ($sheinL60Badge['orders'] > 0 || $sheinL60Badge['l30'] > 0) {
+            $l60Orders = $sheinL60Badge['orders'];
+            $l60Sales = $sheinL60Badge['l30'];
+            $gprofitL60 = $sheinL60Badge['gpft'];
+            $gRoiL60 = $sheinL60Badge['groi'];
         } else {
             $l60Agg = $this->aggregateSheinDailyDataL60LikeTabulator();
             $l60Orders = 0;
@@ -14398,9 +14533,11 @@ class ChannelMasterController extends Controller
         
         // Calculate growth: (L30 - L60) / L60 * 100 when L60 > 0
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : ($l30Sales > 0 ? 100.0 : 0);
-        
-        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+
+        // Shein has no ads. The badge path already holds GPFT%. The fallback stores dollars.
+        $nPft = $nPftIsBadge
+            ? $nPftValue
+            : ($l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0);
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shein')->first();
@@ -14829,13 +14966,13 @@ class ChannelMasterController extends Controller
                 'L60 Orders' => (int) ($live['l60_orders'] ?? 0),
                 'L30 Orders' => (int) ($live['l30_orders'] ?? 0),
                 'Qty' => (int) ($live['qty'] ?? 0),
-                'Gprofit%' => round($gpft, 1).'%',
+                'Gprofit%' => ((int) round($gpft)).'%',
                 'gprofitL60' => 0,
-                'G Roi' => round($roi, 1),
+                'G Roi' => (int) round($roi),
                 'G RoiL60' => 0,
-                'Total PFT' => round((float) ($live['total_pft'] ?? 0), 2),
-                'N PFT' => round($gpft, 1).'%',
-                'N ROI' => round($roi, 1),
+                'Total PFT' => (int) round((float) ($live['total_pft'] ?? 0)),
+                'N PFT' => ((int) round($gpft)).'%',
+                'N ROI' => (int) round($roi),
                 'Ads%' => '0%',
                 'KW Spent' => 0,
                 'PT Spent' => 0,
@@ -14848,7 +14985,7 @@ class ChannelMasterController extends Controller
                 'W/Ads' => optional($channelData)->w_ads ?? 0,
                 'NR' => optional($channelData)->nr ?? 0,
                 'Update' => optional($channelData)->update ?? 0,
-                'cogs' => round((float) ($live['total_cogs'] ?? 0), 2),
+                'cogs' => (int) round((float) ($live['total_cogs'] ?? 0)),
                 'base' => optional($channelData)->base ?? 0,
                 'sheet_link' => optional($channelData)->sheet_link ?? '/alibaba/daily-sales',
                 'ra' => optional($channelData)->ra ?? 0,
@@ -15149,34 +15286,30 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $agg = $this->aggregateAliexpressDailyDataLikeTabulator();
+        $ae = app(AliexpressController::class);
+        $l30Badge = $ae->tabulatorBadgeTotals('l30');
+        $l60Badge = $ae->tabulatorBadgeTotals('l60');
         $metrics = null;
-        if ($agg === null) {
+        $useBadge = $l30Badge['orders'] > 0 || $l30Badge['l30'] > 0;
+        if (! $useBadge) {
             $metrics = MarketplaceDailyMetric::where('channel', 'AliExpress')->latest('date')->first();
         }
 
-        $l60Agg = $this->aggregateAliexpressDailyDataL60LikeTabulator();
-        if ($l60Agg !== null) {
-            $l60Orders = (int) ($l60Agg['total_orders'] ?? 0);
-            $l60Sales = (float) ($l60Agg['total_sales'] ?? 0);
-            $gprofitL60 = (float) ($l60Agg['pft_percentage'] ?? 0);
-            $gRoiL60 = (float) ($l60Agg['roi_percentage'] ?? 0);
-        } else {
-            $l60Orders = 0;
-            $l60Sales = 0.0;
-            $gprofitL60 = 0.0;
-            $gRoiL60 = 0.0;
-        }
+        $l60Orders = $l60Badge['orders'];
+        $l60Sales = $l60Badge['l30'];
+        $gprofitL60 = $l60Badge['gpft'];
+        $gRoiL60 = $l60Badge['groi'];
 
-        if ($agg !== null) {
-            $l30Sales = $agg['total_sales'];
-            $l30Orders = $agg['total_orders'];
-            $totalQuantity = $agg['total_quantity'];
-            $totalProfit = $agg['total_pft'];
-            $totalCogs = $agg['total_cogs'];
-            $gProfitPct = $agg['pft_percentage'];
-            $gRoi = $agg['roi_percentage'];
+        if ($useBadge) {
+            $l30Sales = $l30Badge['l30'];
+            $l30Orders = $l30Badge['orders'];
+            $totalQuantity = $l30Badge['qty'];
+            $totalProfit = $l30Badge['pft'];
+            $totalCogs = $l30Badge['cogs'];
+            $gProfitPct = $l30Badge['gpft'];
+            $gRoi = $l30Badge['groi'];
             $nRoi = $gRoi;
+            $nPft = $gProfitPct;
         } else {
             $l30Sales = (float) ($metrics?->total_sales ?? 0);
             $l30Orders = (int) ($metrics?->total_orders ?? 0);
@@ -15191,8 +15324,9 @@ class ChannelMasterController extends Controller
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;
 
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        if (! $useBadge) {
+            $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        }
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Aliexpress')->first();
@@ -15287,25 +15421,36 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated)
         $metrics = MarketplaceDailyMetric::where('channel', 'Mercari With Ship')->latest('date')->first();
+        $badge = app(\App\Http\Controllers\Sales\MercariController::class)->mercariWithShipBadgeTotals();
+        $useBadge = $badge['orders'] > 0 || $badge['l30'] > 0;
 
         $l60 = $this->computeMercariL60FromDailyData(true);
         $l60Orders = $l60['orders'];
         $l60Sales = $l60['sales'];
 
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $nPftValue = $metrics->n_pft ?? $totalProfit;
-        $nRoi = $metrics->n_roi ?? $gRoi;
-        
-        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+        if ($useBadge) {
+            $l30Sales = $badge['l30'];
+            $l30Orders = $badge['orders'];
+            $totalQuantity = $badge['qty'];
+            $totalProfit = $badge['pft'];
+            $totalCogs = $badge['cogs'];
+            $gProfitPct = $badge['gpft'];
+            $gRoi = $badge['groi'];
+            $nPft = $gProfitPct;
+            $nRoi = $gRoi;
+        } else {
+            $l30Sales = $metrics->total_sales ?? 0;
+            $l30Orders = $metrics->total_orders ?? 0;
+            $totalQuantity = $metrics->total_quantity ?? 0;
+            $totalProfit = $metrics->total_pft ?? 0;
+            $totalCogs = $metrics->total_cogs ?? 0;
+            $gProfitPct = $metrics->pft_percentage ?? 0;
+            $gRoi = $metrics->roi_percentage ?? 0;
+            $nPftValue = $metrics->n_pft ?? $totalProfit;
+            $nRoi = $metrics->n_roi ?? $gRoi;
+            $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+        }
         
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;

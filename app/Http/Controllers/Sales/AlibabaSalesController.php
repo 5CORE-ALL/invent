@@ -46,17 +46,21 @@ class AlibabaSalesController extends Controller
         $l60 = $self->summarizeLines($self->buildLineRows($self->ordersBetween($now->copy()->subDays(60), $l30Start)));
         $yesterday = Carbon::yesterday(self::TZ);
 
+        $pft = (int) round($l30['pft']);
+        $cogs = (int) round($l30['cogs']);
+        $lineSales = (int) round($l30['line_sales']);
+
         return [
             'ok' => true,
-            'l30_sales' => $l30['order_sales'],
+            'l30_sales' => (int) round($l30['order_sales']),
             'l30_orders' => $l30['orders'],
             'qty' => $l30['qty'],
-            'l60_sales' => $l60['order_sales'],
+            'l60_sales' => (int) round($l60['order_sales']),
             'l60_orders' => $l60['orders'],
-            'total_pft' => $l30['pft'],
-            'total_cogs' => $l30['cogs'],
-            'gpft_percent' => $l30['line_sales'] > 0 ? ($l30['pft'] / $l30['line_sales']) * 100 : 0.0,
-            'roi_percent' => $l30['cogs'] > 0 ? ($l30['pft'] / $l30['cogs']) * 100 : 0.0,
+            'total_pft' => $pft,
+            'total_cogs' => $cogs,
+            'gpft_percent' => self::badgePercent($pft, $lineSales),
+            'roi_percent' => self::badgePercent($pft, $cogs),
             'y_sales' => $self->salesForDate($yesterday),
             'l7_sales' => $self->orderSalesBetween(
                 $yesterday->copy()->subDays(6)->startOfDay(),
@@ -192,16 +196,25 @@ class AlibabaSalesController extends Controller
         $seen = [];
         $orderSales = 0.0;
         $lineSales = 0.0;
+        $orders = 0;
         $qty = 0;
         $pft = 0.0;
         $cogs = 0.0;
         foreach ($lines as $line) {
             $orderId = (string) ($line['order_id'] ?? '');
-            if ($orderId !== '' && ! isset($seen[$orderId])) {
+            $sku = (string) ($line['sku'] ?? '');
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+            if (! isset($seen[$orderId])) {
                 $seen[$orderId] = true;
                 $orderSales += (float) ($line['total_amount'] ?? 0);
             }
+            $orders++;
             $quantity = (int) ($line['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
             $qty += $quantity;
             $lineSales += (float) ($line['price'] ?? 0) * $quantity;
             $pft += (float) ($line['pft'] ?? 0);
@@ -211,7 +224,7 @@ class AlibabaSalesController extends Controller
         return [
             'order_sales' => round($orderSales, 2),
             'line_sales' => round($lineSales, 2),
-            'orders' => count($seen),
+            'orders' => $orders,
             'qty' => $qty,
             'pft' => round($pft, 2),
             'cogs' => round($cogs, 2),
@@ -320,6 +333,15 @@ class AlibabaSalesController extends Controller
         }
 
         return round($total, 2);
+    }
+
+    private static function badgePercent(int $part, int $whole): int
+    {
+        if ($whole === 0) {
+            return 0;
+        }
+
+        return (int) round(($part / $whole) * 100);
     }
 
     /**

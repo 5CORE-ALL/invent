@@ -1126,37 +1126,56 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateSheinMetrics($date)
     {
-        // L30 from Shopify Sen Shp (same source as /shein-tabulator).
-        // Previous logic read app/uploads-only shein_daily_data which no longer reflects live sales.
-        [$start, $end] = SheinShopifySalesService::tabulatorL30Window();
-        $summary = SheinShopifySalesService::computeChannelSummary($start, $end);
+        // Same rounded badges as /shein-tabulator (shein_daily_data, slab COGS Ship).
+        $badge = SheinShopifySalesService::computeTabulatorBadgeTotals(false);
 
-        if ($summary['total_orders'] === 0 && $summary['total_sales'] <= 0.00001) {
+        if ($badge['orders'] === 0 && $badge['l30'] <= 0) {
             return null;
         }
 
-        // Shein has no ads, so N ROI = G ROI and N PFT = G PFT
         return [
-            'total_orders' => $summary['total_orders'],
-            'total_quantity' => $summary['total_quantity'],
-            'total_revenue' => $summary['total_sales'],
-            'total_sales' => $summary['total_sales'],
-            'total_cogs' => $summary['total_cogs'],
-            'total_pft' => $summary['total_pft'],
-            'pft_percentage' => round($summary['pft_percentage'], 1),
-            'roi_percentage' => round($summary['roi_percentage'], 1),
-            'avg_price' => $summary['avg_price'],
-            'l30_sales' => $summary['total_sales'],
-            'total_commission' => $summary['total_commission'],
+            'total_orders' => $badge['orders'],
+            'total_quantity' => $badge['qty'],
+            'total_revenue' => $badge['l30'],
+            'total_sales' => $badge['l30'],
+            'total_cogs' => $badge['cogs'],
+            'total_pft' => $badge['pft'],
+            'pft_percentage' => $badge['gpft'],
+            'roi_percentage' => $badge['groi'],
+            'avg_price' => $badge['qty'] > 0 ? round($badge['l30'] / $badge['qty'], 2) : 0,
+            'l30_sales' => $badge['l30'],
+            'total_commission' => 0,
             'kw_spent' => 0,
             'pmt_spent' => 0,
-            'n_pft' => $summary['total_pft'],
-            'n_roi' => round($summary['roi_percentage'], 1),
+            'n_pft' => $badge['pft'],
+            'n_roi' => $badge['groi'],
         ];
     }
 
     private function calculateMercariWithShipMetrics($date)
     {
+        $badge = app(\App\Http\Controllers\Sales\MercariController::class)->mercariWithShipBadgeTotals();
+        if ($badge['orders'] > 0 || $badge['l30'] > 0) {
+            return [
+                'total_orders' => $badge['orders'],
+                'total_quantity' => $badge['qty'],
+                'total_revenue' => $badge['l30'],
+                'total_sales' => $badge['l30'],
+                'total_cogs' => $badge['cogs'],
+                'total_pft' => $badge['pft'],
+                'pft_percentage' => $badge['gpft'],
+                'roi_percentage' => $badge['groi'],
+                'avg_price' => $badge['orders'] > 0 ? round($badge['l30'] / $badge['orders'], 2) : 0,
+                'l30_sales' => $badge['l30'],
+                'total_fees' => 0,
+                'net_proceeds' => 0,
+                'kw_spent' => 0,
+                'pmt_spent' => 0,
+                'n_pft' => $badge['pft'],
+                'n_roi' => $badge['groi'],
+            ];
+        }
+
         // Get Mercari daily data - With Ship: buyer_shipping_fee = 0 or null (seller pays shipping)
         $data = MercariDailyData::where(function ($query) {
             $query->whereNull('buyer_shipping_fee')
@@ -1545,6 +1564,24 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAliexpressMetrics($date)
     {
+        $badge = app(\App\Http\Controllers\MarketPlace\AliexpressController::class)->tabulatorBadgeTotals('l30');
+        if ($badge['orders'] > 0 || $badge['l30'] > 0) {
+            return [
+                'total_orders' => $badge['orders'],
+                'total_quantity' => $badge['qty'],
+                'total_revenue' => $badge['l30'],
+                'total_sales' => $badge['l30'],
+                'total_cogs' => $badge['cogs'],
+                'total_pft' => $badge['pft'],
+                'pft_percentage' => $badge['gpft'],
+                'roi_percentage' => $badge['groi'],
+                'avg_price' => $badge['qty'] > 0 ? round($badge['l30'] / $badge['qty'], 2) : 0,
+                'l30_sales' => $badge['l30'],
+                'n_roi' => $badge['groi'],
+                'n_pft' => $badge['pft'],
+            ];
+        }
+
         // Get AliExpress daily data
         $data = $this->modelsChunked(AliexpressDailyData::class);
 

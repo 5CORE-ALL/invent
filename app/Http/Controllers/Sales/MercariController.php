@@ -446,6 +446,56 @@ class MercariController extends Controller
     }
 
     /**
+     * Same integers as the /mercari-with-ship badges.
+     * Sales = Σ item price. GPFT$ = (item price × 88%) − COGS − COGS Ship.
+     * Dollars are rounded before the percent.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    public function mercariWithShipBadgeTotals(): array
+    {
+        $empty = ['l30' => 0, 'orders' => 0, 'qty' => 0, 'pft' => 0, 'cogs' => 0, 'gpft' => 0, 'groi' => 0];
+        $response = $this->getDailyDataWithShip(request());
+        $rows = json_decode($response->getContent(), true);
+        if (! is_array($rows) || isset($rows['error'])) {
+            return $empty;
+        }
+
+        $orders = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+
+        foreach ($rows as $row) {
+            if (! is_array($row) || empty($row['item_id'])) {
+                continue;
+            }
+            $status = strtolower((string) ($row['order_status'] ?? ''));
+            if (str_contains($status, 'cancelled') || str_contains($status, 'canceled')) {
+                continue;
+            }
+            $orders++;
+            $sales += (float) ($row['item_price'] ?? 0);
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+        }
+
+        $pftBadge = (int) round($pft);
+        $salesBadge = (int) round($sales);
+        $cogsBadge = (int) round($cogs);
+
+        return [
+            'l30' => $salesBadge,
+            'orders' => $orders,
+            'qty' => $orders,
+            'pft' => $pftBadge,
+            'cogs' => $cogsBadge,
+            'gpft' => $salesBadge !== 0 ? (int) round(($pftBadge / $salesBadge) * 100) : 0,
+            'groi' => $cogsBadge !== 0 ? (int) round(($pftBadge / $cogsBadge) * 100) : 0,
+        ];
+    }
+
+    /**
      * Show Mercari tabulator view (all non-canceled orders; Ship comes from Product Master)
      */
     public function mercariTabulatorView()
