@@ -679,6 +679,84 @@ class TemuShopifySalesService
     }
 
     /**
+     * Same rows and dollars as the /temu-tabulator badges.
+     * Each sheet row counts as an order. Parent-column "PARENT …" is the family name, not a skip.
+     * sales / l30_sales = Σ Temu Price × Qty (the L30 Sales column).
+     * base_sales = API Line Sales. full_sales = Line Sales × 1.1364 (GPFT% denominator).
+     * GPFT$ = (Line Sales × Temu margin) − COGS − COGS Ship. GROI% divides that GPFT$ by COGS.
+     *
+     * @return array{sales: float, base_sales: float, full_sales: float, l30_sales: float, orders: int, qty: int, pft: float, gpft: float, cogs: float}
+     */
+    public static function computeTemuTabulatorMetrics(Carbon $startDate, Carbon $endDate): array
+    {
+        $empty = [
+            'sales' => 0.0,
+            'base_sales' => 0.0,
+            'full_sales' => 0.0,
+            'l30_sales' => 0.0,
+            'orders' => 0,
+            'qty' => 0,
+            'pft' => 0.0,
+            'gpft' => 0.0,
+            'cogs' => 0.0,
+        ];
+        $rows = self::getOrdersTableRows($startDate, $endDate);
+        if ($rows === []) {
+            return $empty;
+        }
+
+        $margin = self::temuMarginDecimal();
+        $totalLine = 0.0;
+        $totalTemuPrice = 0.0;
+        $totalQty = 0;
+        $totalGpft = 0.0;
+        $totalCogs = 0.0;
+        $orders = 0;
+
+        foreach ($rows as $r) {
+            $sku = trim((string) ($r['contribution_sku'] ?? ''));
+            $orderId = trim((string) ($r['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            if (array_key_exists('pm_matched', $r) && $r['pm_matched'] === false) {
+                continue;
+            }
+
+            $qty = (int) ($r['quantity_purchased'] ?? 0);
+            $lineSales = (float) ($r['line_sales'] ?? 0);
+            $goods = (float) ($r['goods_base_price'] ?? 0);
+            $base = $goods > 0 ? $goods : (float) ($r['base_price_total'] ?? 0);
+            $base = $base > 0 ? round($base, 2) : 0.0;
+            $lp = (float) ($r['lp'] ?? 0);
+            $cogsShip = (float) ($r['cogs_ship'] ?? 0);
+
+            $orders++;
+            $totalQty += $qty;
+            $totalLine += $lineSales;
+            if ($qty > 0 && $base > 0) {
+                $totalTemuPrice += self::computeFullTemuPrice($base) * $qty;
+                $totalGpft += ($lineSales * $margin) - ($lp * $qty) - $cogsShip;
+                $totalCogs += $lp * $qty;
+            }
+        }
+
+        $l30Sales = round($totalTemuPrice, 2);
+
+        return [
+            'sales' => $l30Sales,
+            'base_sales' => round($totalLine, 2),
+            'full_sales' => round($totalLine * self::FULL_PRICE_MULT, 2),
+            'l30_sales' => $l30Sales,
+            'orders' => $orders,
+            'qty' => $totalQty,
+            'pft' => round($totalGpft, 2),
+            'gpft' => round($totalGpft, 2),
+            'cogs' => round($totalCogs, 2),
+        ];
+    }
+
+    /**
      * Sales/orders/qty/pft/cogs from the temu_orders table (Temu API order-wise data).
      * Temu 2 delegates to computeTemu2TabulatorMetrics (the /temu2-tabulator badges).
      *

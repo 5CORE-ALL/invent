@@ -2284,6 +2284,7 @@ class ChannelMasterController extends Controller
         $rows = $this->overlayLiveTodaySalesOnChannelRows($rows);
 
         try {
+            $rows = $this->overlayLiveTemuTabulatorSalesOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2TabulatorSalesOnChannelRows($rows);
             $rows = $this->overlayLiveTemu1AdsOnChannelRows($rows);
             $rows = $this->overlayLiveTemu2AdsOnChannelRows($rows);
@@ -12112,26 +12113,26 @@ class ChannelMasterController extends Controller
         // /temu-tabulator — not Carbon::now()->subDays(30), which is 31 days.
         [$l30Start, $l30End] = TemuShopifySalesService::channelMasterL30Window();
         [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
-        $l30 = TemuShopifySalesService::computeMetricsFromOrders($l30Start, $l30End);
-        $l60 = TemuShopifySalesService::computeMetricsFromOrders($l60Start, $l60End);
+        $l30 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemuTabulatorMetrics($l30Start, $l30End));
+        $l60 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemuTabulatorMetrics($l60Start, $l60End));
 
-        $l30Sales = $l30['sales'];
+        $l30Sales = $l30['l30'];
         $l30Orders = $l30['orders'];
         $totalQuantity = $l30['qty'];
         $totalProfit = $l30['pft'];
         $totalCogs = $l30['cogs'];
-        $l60Sales = $l60['sales'];
+        $l60Sales = $l60['l30'];
         $l60Orders = $l60['orders'];
 
-        // L30 / L60 Sales = Temu Price × Qty (same as /temu-tabulator).
-        // Y Sales / L7 stay Seller Central amount-API (base + freight).
-        $l30SalesReported = $l30['sales'];
-        $l60SalesReported = $l60['sales'];
+        // L30 / L60 Sales = Σ Temu Price × Qty (the /temu-tabulator L30 Sales column).
+        // GPFT% / GROI% = the tabulator badges. Y Sales / L7 stay the page's full-price yesterday.
+        $l30SalesReported = $l30Sales;
+        $l60SalesReported = $l60Sales;
 
-        $gProfitPct = $l30Sales > 0 ? round(($totalProfit / $l30Sales) * 100, 2) : 0.0;
-        $gRoi = $totalCogs > 0 ? round(($totalProfit / $totalCogs) * 100, 2) : 0.0;
-        $gprofitL60 = $l60Sales > 0 ? round(($l60['pft'] / $l60Sales) * 100, 2) : 0.0;
-        $gRoiL60 = $l60['cogs'] > 0 ? round(($l60['pft'] / $l60['cogs']) * 100, 2) : 0.0;
+        $gProfitPct = $l30['gpft'];
+        $gRoi = $l30['groi'];
+        $gprofitL60 = $l60['gpft'];
+        $gRoiL60 = $l60['groi'];
 
         $temuAdMetrics = $this->fetchAdMetricsFromTables('temu');
         $totalAdSpend = (float) ($temuAdMetrics['Total Ad Spend'] ?? $this->fetchTotalAdSpendFromTables('temu'));
@@ -12383,6 +12384,48 @@ class ChannelMasterController extends Controller
             'gpft' => $fullBadge !== 0 ? (int) round(($pft / $fullBadge) * 100) : 0,
             'groi' => $cogsBadge !== 0 ? (int) round(($pft / $cogsBadge) * 100) : 0,
         ];
+    }
+
+    /**
+     * Active Channel Temu uses the /temu-tabulator badges:
+     * L30 Sales = Σ Temu Price × Qty, GPFT% = GPFT$ ÷ Temu Full Price Sales, GROI% = GPFT$ ÷ COGS.
+     * Ads stay on the row; overlayLiveTemu1AdsOnChannelRows applies them after this.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayLiveTemuTabulatorSalesOnChannelRows(array $rows): array
+    {
+        [$l30Start, $l30End] = TemuShopifySalesService::channelMasterL30Window();
+        [$l60Start, $l60End] = TemuShopifySalesService::channelMasterL60Window();
+        $l30 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemuTabulatorMetrics($l30Start, $l30End));
+        $l60 = $this->temu3TabulatorBadgeTotals(TemuShopifySalesService::computeTemuTabulatorMetrics($l60Start, $l60End));
+
+        foreach ($rows as &$row) {
+            $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
+            if ($key !== 'temu') {
+                continue;
+            }
+            if ($l30['l30'] <= 0 && $l30['qty'] <= 0) {
+                continue;
+            }
+
+            $row['L30 Sales'] = $l30['l30'];
+            $row['L30 Orders'] = $l30['orders'];
+            $row['Qty'] = $l30['qty'];
+            $row['Total PFT'] = $l30['pft'];
+            $row['cogs'] = $l30['cogs'];
+            $row['Gprofit%'] = $l30['gpft'].'%';
+            $row['G Roi'] = $l30['groi'];
+            $row['L-60 Sales'] = $l60['l30'];
+            $row['L60 Orders'] = $l60['orders'];
+            $row['Growth'] = $l60['l30'] > 0
+                ? round((($l30['l30'] - $l60['l30']) / $l60['l30']) * 100, 2).'%'
+                : '0%';
+        }
+        unset($row);
+
+        return $rows;
     }
 
     /**

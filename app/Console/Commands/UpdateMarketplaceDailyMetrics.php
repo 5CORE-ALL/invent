@@ -725,19 +725,22 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTemuMetrics($date)
     {
-        // Source: temu_orders — same Pacific 30-day window as /temu-tabulator + master.
+        // Source: temu_orders — same Pacific 30-day window and badges as /temu-tabulator.
         [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
-        $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end);
+        $m = TemuShopifySalesService::computeTemuTabulatorMetrics($start, $end);
 
-        if ($m['sales'] <= 0 && $m['qty'] <= 0) {
+        if ((float) ($m['l30_sales'] ?? 0) <= 0 && (int) ($m['qty'] ?? 0) <= 0) {
             return null;
         }
 
-        $totalL30Sales = $m['sales'];
-        $totalPft = $m['pft'];
-        $totalCogs = $m['cogs'];
-        $pftPercentage = $totalL30Sales > 0 ? ($totalPft / $totalL30Sales) * 100 : 0;
-        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+        $totalL30Sales = (float) $m['l30_sales'];
+        $totalPft = (float) $m['pft'];
+        $totalCogs = (float) $m['cogs'];
+        $fullBadge = (int) round((float) ($m['full_sales'] ?? 0));
+        $pftBadge = (int) round($totalPft);
+        $cogsBadge = (int) round($totalCogs);
+        $pftPercentage = $fullBadge !== 0 ? (int) round(($pftBadge / $fullBadge) * 100) : 0;
+        $roiPercentage = $cogsBadge !== 0 ? (int) round(($pftBadge / $cogsBadge) * 100) : 0;
 
         $temuSpent = TemuCampaignReport::where('report_range', 'L30')
             ->selectRaw('SUM(spend) as total_spend')
@@ -745,8 +748,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         $tacosPercentage = $totalL30Sales > 0 ? ($temuSpent / $totalL30Sales) * 100 : 0;
         $nPftPercentage = $pftPercentage - $tacosPercentage;
-        $netProfit = $totalPft - $temuSpent;
-        $nRoiPercentage = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
+        $nRoiPercentage = $roiPercentage - $tacosPercentage;
 
         return [
             'total_orders' => $m['orders'],
