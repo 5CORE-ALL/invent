@@ -92,9 +92,10 @@ class Inv5coreLedgerTest extends TestCase
 
     public function test_order_history_uses_the_marketplace_and_order_number(): void
     {
-        $this->assertNull(Inv5coreLedger::shopifyOrderChannel('doba', ''));
-        $this->assertNull(Inv5coreLedger::shopifyOrderChannel('145019994113', 'Doba'));
-        $this->assertNull(Inv5coreLedger::shopifyOrderChannel('web', 'amazon'));
+        $this->assertSame('Doba', Inv5coreLedger::shopifyOrderChannel('doba', ''));
+        $this->assertSame('Doba', Inv5coreLedger::shopifyOrderChannel('145019994113', 'Doba'));
+        $this->assertSame('Temu 2', Inv5coreLedger::shopifyOrderChannel('web', 'temu2-PO-211-03193669693912757'));
+        $this->assertSame('Amazon', Inv5coreLedger::shopifyOrderChannel('web', 'amazon'));
         $this->assertSame('Shopify', Inv5coreLedger::shopifyOrderChannel('web', ''));
         $this->assertSame('Shopify', Inv5coreLedger::shopifyOrderChannel('shopify_draft_order', ''));
 

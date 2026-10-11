@@ -12,6 +12,7 @@ use App\Support\Inv5coreMarketplaceOrders;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class Inv5coreHubService
@@ -457,10 +458,18 @@ class Inv5coreHubService
             $syntheticCommitted += (float) $event['committed_delta'];
             $syntheticUnavailable += (float) $event['unavailable_delta'];
         }
+        $extraOnHand = 0.0;
+        foreach ($events as $event) {
+            if (! empty($event['in_balance']) || ! empty($event['in_snapshot'])) {
+                continue;
+            }
+            $extraOnHand += (float) $event['on_hand_delta'];
+        }
+        $endOnHand = (float) $balance->qty_on_hand + $extraOnHand;
         $endCommitted = (Schema::hasColumn('inv_5core_balances', 'qty_committed') ? (float) ($balance->qty_committed ?? 0) : 0.0) + $syntheticCommitted;
         $endUnavailable = (Schema::hasColumn('inv_5core_balances', 'qty_unavailable') ? (float) ($balance->qty_unavailable ?? 0) : 0.0) + $syntheticUnavailable;
         $rows = [];
-        foreach (array_slice(Inv5coreLedger::replayHistory((float) $balance->qty_on_hand, $endCommitted, $endUnavailable, $events), 0, 500) as $row) {
+        foreach (array_slice(Inv5coreLedger::replayHistory($endOnHand, $endCommitted, $endUnavailable, $events), 0, 500) as $row) {
             $at = $row['at'] > 0 ? Carbon::createFromTimestamp($row['at'])->timezone(config('app.timezone')) : null;
             $rows[] = [
                 'id' => 0,
@@ -1105,6 +1114,7 @@ class Inv5coreHubService
                 'unavailable_delta' => $hasStates ? (float) ($row->unavailable_delta ?? 0) : 0.0,
                 'available_delta' => $hasStates ? (float) ($row->available_delta ?? 0) : $onHandDelta,
                 'in_balance' => true,
+                'in_snapshot' => true,
             ];
         }
 
@@ -1114,8 +1124,7 @@ class Inv5coreHubService
                 $maxIds[(string) $mark->source] = (int) $mark->watermark_id;
             }
         }
-        $compactSku = (string) ($balance->sku_compact ?: ShopifySku::compactSkuForLookup((string) $balance->sku));
-        foreach (Inv5coreMarketplaceOrders::linesForCompactSku($compactSku, $maxIds) as $line) {
+        foreach (Inv5coreMarketplaceOrders::linesForCompactSku((string) $balance->sku, $maxIds) as $line) {
             if ($this->orderLinePosted($posted, (string) $line->source, (int) $line->id)) {
                 continue;
             }
@@ -1125,14 +1134,16 @@ class Inv5coreHubService
             if ($fulfilledAt !== null && ! Inv5coreLedger::statusSkipsSale($status) && ! Inv5coreLedger::statusIsFulfilled($status)) {
                 $status = 'shipped';
             }
-            array_push($events, ...Inv5coreLedger::orderMovementEvents(
+            $this->pushOrderEvents(
+                $events,
                 (float) ($line->qty ?? 0),
                 $status,
                 $reference !== '' ? $reference : (string) $line->id,
                 (string) $line->channel,
                 $this->historyTimestamp($line->order_date ?? null) ?? 0,
-                $fulfilledAt
-            ));
+                $fulfilledAt,
+                (bool) ($line->in_snapshot ?? true)
+            );
         }
 
         $this->appendManualHistory($events, $posted, $balance);
@@ -1165,28 +1176,35 @@ class Inv5coreHubService
      */
     private function appendManualHistory(array &$events, array $posted, Inv5coreBalance $balance): void
     {
-        if (! Schema::hasTable('order_fulfillment_manual_orders') || $balance->sales_after_manual_id === null) {
+        if (! Schema::hasTable('order_fulfillment_manual_orders')) {
             return;
         }
-        $compact = ShopifySku::compactSkuForLookup((string) $balance->sku);
-        $rows = DB::table('order_fulfillment_manual_orders')
-            ->where('id', '<=', (int) $balance->sales_after_manual_id)
-            ->whereRaw(Inv5coreMarketplaceOrders::compactSkuSql('sku').' = ?', [$compact])
-            ->orderByDesc('id')
-            ->limit(300)
-            ->get(['id', 'qty', 'order_id', 'order_date', 'marketplace', 'status']);
+        $sku = (string) $balance->sku;
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        try {
+            $query = DB::table('order_fulfillment_manual_orders');
+            Inv5coreMarketplaceOrders::whereSku($query, 'sku', Inv5coreMarketplaceOrders::skuPrefix($sku), $compact);
+            $rows = $query->orderByDesc('id')->limit(400)->get(['id', 'qty', 'order_id', 'order_date', 'marketplace', 'status']);
+        } catch (\Throwable $e) {
+            Log::warning('INV 5Core history skipped manual orders: '.$e->getMessage());
+
+            return;
+        }
+        $mark = $balance->sales_after_manual_id !== null ? (int) $balance->sales_after_manual_id : null;
         foreach ($rows as $line) {
             if (isset($posted['manual_order:open#'.$line->id]) || isset($posted['manual_order:fulfilled#'.$line->id]) || isset($posted['manual_order#'.$line->id])) {
                 continue;
             }
-            array_push($events, ...Inv5coreLedger::orderMovementEvents(
+            $this->pushOrderEvents(
+                $events,
                 (float) ($line->qty ?? 0),
                 isset($line->status) ? (string) $line->status : null,
                 trim((string) ($line->order_id ?? '')) ?: (string) $line->id,
                 $this->marketplaceChannel((string) ($line->marketplace ?? '')),
                 $this->historyTimestamp($line->order_date ?? null) ?? 0,
-                null
-            ));
+                null,
+                $mark === null || (int) $line->id <= $mark
+            );
         }
     }
 
@@ -1196,52 +1214,91 @@ class Inv5coreHubService
      */
     private function appendShopifyStoreHistory(array &$events, array $posted, Inv5coreBalance $balance): void
     {
-        if (! Schema::hasTable('shopify_raw_orders') || $balance->sales_after_order_id === null) {
+        if (! Schema::hasTable('shopify_raw_orders') || ! Schema::hasColumn('shopify_raw_orders', 'sku')) {
             return;
         }
-        $compact = ShopifySku::compactSkuForLookup((string) $balance->sku);
-        $columns = ['id', 'quantity', 'order_number', 'order_date', 'source_name', 'financial_status'];
+        $sku = (string) $balance->sku;
+        $compact = ShopifySku::compactSkuForLookup($sku);
+        $columns = ['id', 'quantity', 'order_number', 'order_date', 'source_name'];
         $hasTags = Schema::hasColumn('shopify_raw_orders', 'tags');
         $hasFulfillment = Schema::hasColumn('shopify_raw_orders', 'fulfillment_status');
+        $hasFinancial = Schema::hasColumn('shopify_raw_orders', 'financial_status');
         if ($hasTags) {
             $columns[] = 'tags';
         }
         if ($hasFulfillment) {
             $columns[] = 'fulfillment_status';
         }
-        $rows = DB::table('shopify_raw_orders')
-            ->where('id', '<=', (int) $balance->sales_after_order_id)
-            ->whereRaw(Inv5coreMarketplaceOrders::compactSkuSql('sku').' = ?', [$compact])
-            ->orderByDesc('id')
-            ->limit(300)
-            ->get($columns);
+        if ($hasFinancial) {
+            $columns[] = 'financial_status';
+        }
+        try {
+            $query = DB::table('shopify_raw_orders');
+            Inv5coreMarketplaceOrders::whereSku($query, 'sku', Inv5coreMarketplaceOrders::skuPrefix($sku), $compact);
+            $rows = $query->orderByDesc('id')->limit(400)->get($columns);
+        } catch (\Throwable $e) {
+            Log::warning('INV 5Core history skipped Shopify orders: '.$e->getMessage());
+
+            return;
+        }
+        $known = [];
+        foreach ($events as $event) {
+            $ref = strtolower(trim((string) ($event['reference'] ?? '')));
+            if (strlen($ref) >= 6) {
+                $known[$ref] = true;
+            }
+        }
+        $mark = $balance->sales_after_order_id !== null ? (int) $balance->sales_after_order_id : null;
         foreach ($rows as $line) {
             if (isset($posted['shopify_raw_orders#'.$line->id]) || isset($posted['shopify_raw_orders_reversal#'.$line->id])) {
                 continue;
             }
-            $channel = Inv5coreLedger::shopifyOrderChannel(
-                (string) ($line->source_name ?? ''),
-                $hasTags ? (string) ($line->tags ?? '') : ''
-            );
+            $tags = $hasTags ? (string) ($line->tags ?? '') : '';
+            $channel = Inv5coreLedger::shopifyOrderChannel((string) ($line->source_name ?? ''), $tags);
             if ($channel === null || $channel === '') {
                 continue;
             }
+            $blob = strtolower($tags.' '.(string) ($line->order_number ?? ''));
+            $already = false;
+            foreach ($known as $ref => $unused) {
+                if (str_contains($blob, $ref)) {
+                    $already = true;
+                    break;
+                }
+            }
+            if ($already) {
+                continue;
+            }
             $fulfillment = $hasFulfillment ? strtolower(trim((string) ($line->fulfillment_status ?? ''))) : '';
-            if (Inv5coreLedger::statusSkipsSale($line->financial_status ?? null)) {
+            if ($hasFinancial && Inv5coreLedger::statusSkipsSale($line->financial_status ?? null)) {
                 $status = (string) $line->financial_status;
-            } elseif (in_array($fulfillment, ['partial', 'partially_fulfilled'], true)) {
+            } elseif (in_array($fulfillment, ['partial', 'partially_fulfilled', 'fulfilled'], true) || Inv5coreLedger::statusIsFulfilled($fulfillment)) {
                 $status = 'shipped';
             } else {
                 $status = $fulfillment;
             }
-            array_push($events, ...Inv5coreLedger::orderMovementEvents(
+            $reference = trim((string) ($line->order_number ?? ''));
+            $this->pushOrderEvents(
+                $events,
                 (float) ($line->quantity ?? 0),
                 $status,
-                trim((string) ($line->order_number ?? '')) ?: (string) $line->id,
+                $reference !== '' ? $reference : (string) $line->id,
                 $channel,
                 $this->historyTimestamp($line->order_date ?? null) ?? 0,
-                null
-            ));
+                null,
+                $mark === null || (int) $line->id <= $mark
+            );
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $events
+     */
+    private function pushOrderEvents(array &$events, float $qty, ?string $status, string $reference, string $channel, int $createdAt, ?int $fulfilledAt, bool $inSnapshot): void
+    {
+        foreach (Inv5coreLedger::orderMovementEvents($qty, $status, $reference, $channel, $createdAt, $fulfilledAt) as $event) {
+            $event['in_snapshot'] = $inSnapshot;
+            $events[] = $event;
         }
     }
 

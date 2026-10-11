@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\ShopifySku;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -339,38 +340,92 @@ class Inv5coreMarketplaceOrders
     }
 
     /**
-     * Order lines already in the app for one SKU. Callers pass the per-source
-     * id captured at opening so later lines stay out of this read.
+     * Every order line for one SKU. Watermarks only mark lines already inside
+     * the opening on-hand; they are not hidden from history.
      *
      * @param  array<string, int>  $maxIdBySource
      * @return list<object>
      */
-    public static function linesForCompactSku(string $compact, array $maxIdBySource): array
+    public static function linesForCompactSku(string $sku, array $maxIdBySource = []): array
     {
-        $compact = ShopifySku::compactSkuForLookup($compact);
+        $compact = ShopifySku::compactSkuForLookup($sku);
         if ($compact === '') {
             return [];
         }
+        $prefix = self::skuPrefix($sku);
 
         $lines = [];
         foreach (self::definitions() as $def) {
-            if (! isset($maxIdBySource[$def['source']]) || ! Schema::hasTable($def['table'])) {
+            if (! Schema::hasTable($def['table'])) {
                 continue;
             }
-            $rows = self::lineQuery($def)
-                ->whereRaw(self::compactSkuSql($def['sku_sql']).' = ?', [$compact])
-                ->whereRaw($def['id_sql'].' <= ?', [(int) $maxIdBySource[$def['source']]])
-                ->orderByRaw($def['date_sql'].' desc')
-                ->limit(300)
-                ->get();
+            try {
+                $query = self::lineQuery($def);
+                self::whereSku($query, $def['sku_sql'], $prefix, $compact);
+                $rows = $query->orderByRaw($def['date_sql'].' desc')->limit(400)->get();
+            } catch (\Throwable $e) {
+                Log::warning('INV 5Core history skipped '.$def['source'].': '.$e->getMessage());
+                continue;
+            }
+            $mark = $maxIdBySource[$def['source']] ?? null;
             foreach ($rows as $row) {
                 $row->channel = $def['label'];
                 $row->source = $def['source'];
+                $row->in_snapshot = $mark === null || (int) $row->id <= (int) $mark;
                 $lines[] = $row;
             }
         }
 
         return $lines;
+    }
+
+    public static function skuPrefix(string $sku): string
+    {
+        $sku = trim(str_replace(["\u{00a0}", "\xC2\xA0"], ' ', $sku));
+        if (preg_match('/[A-Za-z0-9]{2,}/', $sku, $match)) {
+            return $match[0];
+        }
+        $compact = ShopifySku::compactSkuForLookup($sku);
+
+        return strlen($compact) >= 2 ? substr($compact, 0, 2) : $compact;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $query
+     */
+    public static function whereSku($query, string $skuSql, string $prefix, string $compact): void
+    {
+        $columns = self::skuColumns($skuSql);
+        if ($prefix !== '' && $columns !== []) {
+            $query->where(function ($inner) use ($columns, $prefix) {
+                foreach ($columns as $index => $column) {
+                    if ($index === 0) {
+                        $inner->whereRaw($column.' LIKE ?', [$prefix.'%']);
+                    } else {
+                        $inner->orWhereRaw($column.' LIKE ?', [$prefix.'%']);
+                    }
+                }
+            });
+        }
+        $query->whereRaw(self::compactSkuSql($skuSql).' = ?', [$compact]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function skuColumns(string $skuSql): array
+    {
+        preg_match_all('/[A-Za-z_][A-Za-z0-9_.]*/', $skuSql, $matches);
+        $skip = ['coalesce', 'nullif', 'null', 'upper', 'trim', 'replace', 'if'];
+        $columns = [];
+        foreach ($matches[0] as $name) {
+            if (in_array(strtolower($name), $skip, true) || ! preg_match('/^[A-Za-z_][A-Za-z0-9_.]*$/', $name)) {
+                continue;
+            }
+            $columns[$name] = $name;
+        }
+
+        return array_values($columns);
     }
 
     public static function compactSkuSql(string $expr): string
