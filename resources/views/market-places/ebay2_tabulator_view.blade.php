@@ -640,14 +640,6 @@
                         <span class="badge bg-info" id="total-views-badge" style="color: black; font-weight: bold;"
                               title="Σ listing views for child rows with E Stock &gt; 0 (PARENT rows excluded). Same scope as CVR and /all-marketplace-master EbayTwo Views.">Views: 0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay2'])
-                        <span class="badge fs-6 p-2" id="ebay2-blue-triangle-badge"
-                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2" id="ebay2-ended-listing-badge"
-                            style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
-                            title="Inactive / ended listings. Click to filter. Relisted SKUs with a new item ID are pulled automatically.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay2-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: S PRC &gt; LMP. Click to show only those rows. Click again to clear.">
@@ -656,10 +648,6 @@
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
                             LMP M. 0</span>
-                        <span class="badge fs-6 p-2" id="ebay2-purple-triangle-badge"
-                            style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Purple triangle: Price &lt; 80% of LMP. Click to show only those rows.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
                         
                     </div>
@@ -3472,9 +3460,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
                                     + value.toFixed(2) + ' &gt; LMP $' + lmpPrice.toFixed(2) + '"></i>'
                                 : '';
-                            const yellowTri = ebay2IsEndedListing(rowData)
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#ffc107;font-size:10px;margin-left:3px;" title="Ended listing"></i>'
-                                : '';
+                            const yellowTri = '';
                             const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, lmpPrice) : '');
                             const yesterday = parseFloat(rowData.price_yesterday);
                             const hasYesterday = isFinite(yesterday) && yesterday > 0;
@@ -3719,24 +3705,6 @@
                                 : null;
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const ended = ebay2IsEndedListing(rowData);
-                            const yellowTri = ended
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#ffc107;font-size:10px;margin-left:3px;" title="Ended listing"></i>'
-                                : '';
-                            const redTri = (!ended && atOrAboveLmp)
-                                ? (appliedLmp
-                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                        + Number(lmpNow).toFixed(2) + '"></i>'
-                                    : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
-                                        + Number(lmpNow).toFixed(2)
-                                        + ' not applied — SGROI would be '
-                                        + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
-                                        + '% (&lt; 20%)"></i>')
-                                : '';
-                            const blueTri = (!ended && ebayPrice > 0 && sprice > 0
-                                && Math.round(sprice * 100) !== Math.round(ebayPrice * 100))
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                    + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
-                                : '';
 
                             let formattedValue = '$' + Number(sprice).toFixed(2);
                             if (ended) {
@@ -3746,7 +3714,7 @@
                             }
 
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + blueTri + formattedValue + yellowTri + redTri + '</span>';
+                                + formattedValue + '</span>';
                         },
                         width: 118
                     },
@@ -4674,13 +4642,6 @@
                     if (ebay2HasRedTriangle(row)) redTriangleCount++;
                     if (ebay2IsEndedListing(row)) endedListingCount++;
                 });
-                $('#ebay2-blue-triangle-badge').html(
-                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
-                );
-                if (blueTriangleCount > 0 && typeof window.chPromoEbayPushLeftoverBlues === 'function') {
-                    clearTimeout(window._chPromoEbayBlueLeftoverTimer);
-                    window._chPromoEbayBlueLeftoverTimer = setTimeout(window.chPromoEbayPushLeftoverBlues, 2000);
-                }
                 $('#ebay2-red-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
                 );

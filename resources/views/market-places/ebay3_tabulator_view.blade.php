@@ -477,22 +477,10 @@
                         <span class="badge bg-warning ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
                         <span class="badge bg-danger ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay3'])
-                        <span class="badge fs-6 p-2" id="ebay3-blue-triangle-badge"
-                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2" id="ebay3-ended-listing-badge"
-                            style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
-                            title="Ended listing">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay3-lmp-missing-badge"
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
                             LMP M. 0</span>
-                        <span class="badge fs-6 p-2" id="ebay3-purple-triangle-badge"
-                            style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Purple triangle: Price &lt; 80% of LMP. Click to show only those rows.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours">L7: 0</span>
                         <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                     </div>
@@ -2869,28 +2857,13 @@
                             ? ebay3SgroiAtPrice(rowData, lmpNow)
                             : null;
                         const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-                        const redTri = atOrAboveLmp
-                            ? (appliedLmp
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                    + Number(lmpNow).toFixed(2) + '"></i>'
-                                : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
-                                    + Number(lmpNow).toFixed(2)
-                                    + ' not applied — SGROI would be '
-                                    + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
-                                    + '% (&lt; 20%)"></i>')
-                            : '';
-                        const blueTri = (ebayPrice > 0 && sprice > 0
-                            && Math.round(sprice * 100) !== Math.round(ebayPrice * 100))
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
-                            : '';
 
                         let formattedValue = '$' + Number(sprice).toFixed(2);
                         if (atOrAboveLmp) {
                             formattedValue = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
                         }
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + blueTri + formattedValue + redTri + '</span>';
+                            + formattedValue + '</span>';
                     },
                     width: 118
                 },
@@ -3971,13 +3944,6 @@
                 if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
                 if (ebay3IsEndedListing(row)) endedListingCount++;
             });
-            $('#ebay3-blue-triangle-badge').html(
-                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
-            );
-            if (blueTriangleCount > 0 && typeof window.chPromoEbayPushLeftoverBlues === 'function') {
-                clearTimeout(window._chPromoEbayBlueLeftoverTimer);
-                window._chPromoEbayBlueLeftoverTimer = setTimeout(window.chPromoEbayPushLeftoverBlues, 2000);
-            }
             $('#ebay3-ended-listing-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
             );

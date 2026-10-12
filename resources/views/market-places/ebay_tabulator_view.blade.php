@@ -914,14 +914,6 @@
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="Views. Click dot for rolling history.">Views: 0<span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span></span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
-                        <span class="badge fs-6 p-2" id="ebay1-blue-triangle-badge"
-                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: INV > 0, listing not ended, S PRC ≠ eBay Price. Counts ALL loaded SKUs, ignoring the filters above, so it can be higher than the Rows count. Click to show those rows. Click again to clear.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2" id="ebay1-ended-listing-badge"
-                            style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
-                            title="Ended listing">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay1-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: Price &gt; LMP and INV &gt; 0. Click to show only those rows. Click again to clear.">
@@ -932,10 +924,6 @@
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="LMP M.: INV &gt; 0 SKUs with no LMP data. INV = 0 is not counted. Green = 0 missing. Click badge to filter. Click dot for rolling history.">
                             <span class="summary-trend-dot none" data-metric="lmp_missing_count" title="Rolling history"></span>LMP M. 0</span>
-                        <span class="badge fs-6 p-2" id="ebay1-purple-triangle-badge"
-                            style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Purple triangle: Price &lt; 80% of LMP. Click to show only those rows.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                     </div>
                 </div>
             </div>
@@ -5051,50 +5039,7 @@
                             const sku = rowData['(Child) sku'] || '';
                             const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
 
-                            const yesterday = parseFloat(rowData.sprice_yesterday);
-                            const hasYesterday = isFinite(yesterday) && yesterday > 0;
-                            const yDate = String(rowData.sprice_yesterday_date || '');
-                            const yestPt = (typeof ebay1LastCompletedPtDate === 'function') ? ebay1LastCompletedPtDate() : '';
-                            const isActualYesterday = yDate !== '' && yDate === yestPt;
-                            const vsWhen = isActualYesterday
-                                ? ('yesterday ($' + yesterday.toFixed(2) + ')')
-                                : (yDate
-                                    ? ('last recorded ' + (typeof ebay1ChartDateLabel === 'function' ? ebay1ChartDateLabel(yDate) : yDate) + ' ($' + yesterday.toFixed(2) + ')')
-                                    : ('last recorded ($' + yesterday.toFixed(2) + ')'));
-
-                            let dotColor = '#6c757d';
-                            let dotTip = hasYesterday
-                                ? ('Same as ' + vsWhen)
-                                : 'No prior S PRC snapshot yet';
-                            if (hasYesterday) {
-                                if (sprice > yesterday) {
-                                    dotColor = '#28a745';
-                                    dotTip = 'Up vs ' + vsWhen;
-                                } else if (sprice < yesterday) {
-                                    dotColor = '#a00211';
-                                    dotTip = 'Down vs ' + vsWhen;
-                                }
-                            }
-                            const dotBtn = (sku && !isParent && !rowData.is_parent_summary)
-                                ? `<button type="button" class="btn btn-sm p-0 view-sku-chart ch-pef-hist-dot align-middle" data-sku="${sku}" data-metric="sprice" title="${dotTip} — click for S PRC chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`
-                                : '';
-
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-                            const redTri = atOrAboveLmp
-                                ? (appliedLmp
-                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                        + Number(lmpNow).toFixed(2) + '"></i>'
-                                    : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
-                                        + Number(lmpNow).toFixed(2)
-                                        + ' not applied — SGROI would be '
-                                        + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
-                                        + '% (&lt; 20%)"></i>')
-                                : '';
-                            const blueTri = (ebayPrice > 0 && sprice > 0
-                                && Math.round(sprice * 100) !== Math.round(ebayPrice * 100))
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                    + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
-                                : '';
 
                             let formattedValue = '$' + Number(sprice).toFixed(2);
                             if (atOrAboveLmp) {
@@ -5102,17 +5047,7 @@
                             }
 
                             return '<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">'
-                                + blueTri + formattedValue + redTri + dotBtn + '</span>';
-                        },
-                        cellClick: function(e) {
-                            const el = e.target.closest('.view-sku-chart') || e.target.closest('.ch-pef-hist-dot');
-                            if (!el) return;
-                            e.stopPropagation();
-                            e.preventDefault();
-                            if (typeof openEbaySkuHistoryChart === 'function') {
-                                openEbaySkuHistoryChart(el.getAttribute('data-sku'), el.getAttribute('data-metric') || 'sprice');
-                            }
-                            return false;
+                                + formattedValue + '</span>';
                         },
                         width: 118
                     },
@@ -6131,13 +6066,6 @@
                     if (ebay1HasRedTriangle(row)) redTriangleCount++;
                     if (ebay1IsEndedListing(row)) endedListingCount++;
                 });
-                $('#ebay1-blue-triangle-badge').html(
-                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
-                );
-                if (blueTriangleCount > 0 && typeof window.chPromoEbayPushLeftoverBlues === 'function') {
-                    clearTimeout(window._chPromoEbayBlueLeftoverTimer);
-                    window._chPromoEbayBlueLeftoverTimer = setTimeout(window.chPromoEbayPushLeftoverBlues, 2000);
-                }
                 $('#ebay1-ended-listing-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
                 );
