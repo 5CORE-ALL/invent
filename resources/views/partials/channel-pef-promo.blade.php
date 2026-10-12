@@ -10084,6 +10084,9 @@
         function chPromoTryEbayBluePush() {
             if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
             if (!chPromoPageReloadPushAllowed()) return;
+            // eBay 1/2/3: the page never pushes its own prices; ask the server to push the rule
+            // (Std-vs-Dil / Sprc Dil) price for the blue rows instead.
+            if (chPromoStartServerBluePush()) return;
             if (window._chPromoEbayBlueScanStarted) return;
             if (!window._chPromoEbayRuleReady
                 && window.spriceActiveRuleReady

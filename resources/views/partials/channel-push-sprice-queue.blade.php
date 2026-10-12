@@ -166,6 +166,15 @@
             function chPushSpriceUsesClientPump() {
                 return !!CH_PUSH_SPRICE_PUSH_URL;
             }
+            /**
+             * eBay 1/2/3: the browser never pushes prices. Its S PRC is calculated from page data and
+             * differed from the server's Std-vs-Dil rule (Std, +5%, ...), so those pushes overwrote the
+             * rule price. Only the server (hourly runner / channel:push-blue) pushes the rule price;
+             * the server also rejects any page push that is not that price (EbayRuleOnlyPushGuard).
+             */
+            function chPushSpriceServerOnly() {
+                return /^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            }
             function chPushClientBusy() {
                 return chPushClientInflight > 0 || chPushClientQ.length > 0;
             }
@@ -921,6 +930,7 @@
                 return found || {};
             }
             function enqueueChannelPushSpriceAfterSave(sku, price, row, opts) {
+                if (chPushSpriceServerOnly()) return false;
                 opts = opts || {};
                 const isTemu = CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2' || CH_PUSH_SPRICE_CHANNEL === 'temu3';
                 const force = opts.force === true || (isTemu && opts.force !== false);
@@ -1074,6 +1084,7 @@
                 }
             }
             function enqueueChannelPushSpriceClient(items, opts) {
+                if (chPushSpriceServerOnly()) return 0;
                 opts = opts || {};
                 if (!CH_PUSH_SPRICE_LIVE) {
                     chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
@@ -1428,6 +1439,7 @@
                 return chPushSpriceSavedFromRow(d);
             }
             function scanAndQueueChannelPushSprice(tbl, opts) {
+                if (chPushSpriceServerOnly()) return;
                 opts = opts || {};
                 // Catalog catch-up is opt-in ({ catalog: true }). Only saved S PRC ≠ live Price.
                 if (!opts.catalog) return;
