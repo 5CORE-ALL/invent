@@ -376,7 +376,12 @@
                 if (typeof table === 'undefined' || !table || !Array.isArray(tasks)) return;
                 const bySku = {};
                 tasks.forEach(function(t) {
-                    if (t && t.sku) bySku[String(t.sku).toUpperCase()] = t;
+                    if (!t || !t.sku) return;
+                    const key = String(t.sku).toUpperCase();
+                    // A SKU queued twice: the pushed (ok) task is the live Price; a later pending copy must not hide it.
+                    const prev = bySku[key];
+                    if (prev && String(prev.status) === 'ok' && String(t.status) !== 'ok') return;
+                    bySku[key] = t;
                 });
                 if (!Object.keys(bySku).length) return;
                 function patchRecord(d, t) {
@@ -501,10 +506,11 @@
                 const extra = (typeof window !== 'undefined' && Array.isArray(window.allTableData))
                     ? window.allTableData
                     : [];
-                extra.forEach(function(d) {
+                extra.forEach(function walkData(d) {
                     const sku = String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim().toUpperCase();
                     const t = sku ? bySku[sku] : null;
                     if (t) patchRecord(d, t);
+                    if (d && Array.isArray(d._children)) d._children.forEach(walkData);
                 });
                 if (priceChanged && typeof window.ttRefreshBlueBadge === 'function') {
                     try { window.ttRefreshBlueBadge(); } catch (e) { /* ignore */ }

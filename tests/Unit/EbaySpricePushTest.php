@@ -74,6 +74,21 @@ class EbaySpricePushTest extends TestCase
         $this->assertFalse(EbaySpricePush::looksMultiVariation(null));
     }
 
+    public function test_already_pushed_in_job_only_for_same_sku_and_price(): void
+    {
+        $tasks = [
+            ['sku' => 'CS 04 2W', 'price' => 18.39, 'status' => 'ok', 'message' => 'pushed'],
+            ['sku' => 'CS 04 2W', 'price' => 18.39, 'status' => 'pending'],
+            ['sku' => 'NEG', 'price' => 9.99, 'status' => 'ok', 'message' => 'negative SNROI'],
+            ['sku' => 'NEG', 'price' => 9.99, 'status' => 'pending'],
+        ];
+
+        $this->assertTrue(EbaySpricePush::alreadyPushedInJob($tasks, 1, 'cs 04 2w', 18.39));
+        $this->assertFalse(EbaySpricePush::alreadyPushedInJob($tasks, 1, 'CS 04 2W', 19.99));
+        $this->assertFalse(EbaySpricePush::alreadyPushedInJob($tasks, 0, 'CS 04 2W', 18.39));
+        $this->assertFalse(EbaySpricePush::alreadyPushedInJob($tasks, 3, 'NEG', 9.99));
+    }
+
     public function test_live_matches(): void
     {
         $this->assertTrue(EbaySpricePush::liveMatches($this->metric(['ebay_price' => 24.99]), 24.99));

@@ -96,6 +96,32 @@ final class EbaySpricePush
     }
 
     /**
+     * Another task in this job already pushed this SKU at this price (re-queued before the page saw it).
+     *
+     * @param  array<int, mixed>  $tasks
+     */
+    public static function alreadyPushedInJob(array $tasks, int $index, string $sku, float $price): bool
+    {
+        $key = strtoupper(trim($sku));
+        foreach ($tasks as $i => $t) {
+            if ($i === $index || ! is_array($t) || ($t['status'] ?? '') !== 'ok') {
+                continue;
+            }
+            if (strtoupper(trim((string) ($t['sku'] ?? ''))) !== $key) {
+                continue;
+            }
+            if (($t['message'] ?? '') === 'negative SNROI') {
+                continue;
+            }
+            if (abs((float) ($t['price'] ?? 0) - $price) < 0.005) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Live eBay Price already equal to $price (no API call needed).
      */
     public static function liveMatches(?object $metric, float $price): bool
@@ -184,6 +210,14 @@ final class EbaySpricePush
             || str_contains($blob, 'variation sku')
             || str_contains($blob, 'variation listings')
             || str_contains($blob, '21916618');
+    }
+
+    public static function storeAcceptedPriceFor(string $channel, string $sku, float $price): void
+    {
+        $metric = self::supports($channel) ? self::metric($channel, $sku) : null;
+        if ($metric) {
+            self::storeAcceptedPrice($metric, $price);
+        }
     }
 
     /**

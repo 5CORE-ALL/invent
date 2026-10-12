@@ -235,7 +235,14 @@ class ChannelPushSpriceRunner
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
                 }
-                if (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
+                if (EbaySpricePush::supports($this->channel)
+                    && EbaySpricePush::alreadyPushedInJob($store->load()['tasks'] ?? [], $index, $sku, $price)) {
+                    $ok = true;
+                    $dupSkip = true;
+                    $live = round($price, 2);
+                    EbaySpricePush::storeAcceptedPriceFor($this->channel, $sku, $live);
+                    $store->appendMessage('Skip '.$sku.': already pushed at $'.number_format($price, 2));
+                } elseif (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
                     $ok = true;
                     $negSnroi = true;
                     $logger->info('S PRC background push skipped — negative SNROI', [
