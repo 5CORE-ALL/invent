@@ -1378,6 +1378,15 @@ class EbayThreeController extends Controller
 
         $priceFloat = round($priceFloat, 2);
 
+        // Only the Std-vs-Dil / Sprc Dil rule price may go live (not Std, not a browser-calculated value).
+        if ($reason = \App\Services\Support\EbayRuleOnlyPushGuard::rejectReason('ebay3', $sku, $priceFloat, 'pushEbay3Price')) {
+            return response()->json([
+                'success' => false,
+                'message' => $reason,
+                'errors' => [['code' => 'RuleOnlyPush', 'message' => $reason]],
+            ], 422);
+        }
+
         try {
             $ebayMetric = $this->findEbay3MetricBySku($sku);
 

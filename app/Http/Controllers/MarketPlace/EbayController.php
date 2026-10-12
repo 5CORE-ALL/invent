@@ -1951,7 +1951,10 @@ class EbayController extends Controller
             'ebay_price' => null,
         ];
         if (! $skipPush) {
-            $push = $this->pushEbay1PriceAndPullLive($sku, $spriceFloat);
+            $ruleReject = \App\Services\Support\EbayRuleOnlyPushGuard::rejectReason('ebay1', $sku, $spriceFloat, 'saveSprice');
+            $push = $ruleReject !== null
+                ? ['success' => false, 'status' => 'saved', 'message' => $ruleReject, 'ebay_price' => null]
+                : $this->pushEbay1PriceAndPullLive($sku, $spriceFloat);
             $this->saveSpriceStatus($sku, $push['success'] ? 'pushed' : ($push['status'] ?: 'error'));
         } else {
             $this->saveSpriceStatus($sku, 'saved');
@@ -3740,6 +3743,15 @@ class EbayController extends Controller
 
         // Cap to two decimal places
         $priceFloat = round($priceFloat, 2);
+
+        // Only the Std-vs-Dil / Sprc Dil rule price may go live (not Std, not a browser-calculated value).
+        if ($reason = \App\Services\Support\EbayRuleOnlyPushGuard::rejectReason('ebay1', $sku, $priceFloat, 'pushEbayPrice')) {
+            return response()->json([
+                'success' => false,
+                'message' => $reason,
+                'errors' => [['code' => 'RuleOnlyPush', 'message' => $reason]],
+            ], 422);
+        }
 
         try {
             // Resolve eBay listing metadata from the local DB

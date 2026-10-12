@@ -206,35 +206,59 @@ class ChannelLivePriceSync
         float $price,
         \Illuminate\Support\Carbon $now
     ): ?string {
-        if ($pushedValue === null || $pushedAt === null || ! PushedListingPrice::same($pushedValue, $price)) {
-            return null; // first push of this price
-        }
+        $livePrice = ($livePrice !== null && $livePrice > 0) ? $livePrice : null;
         if ($livePrice !== null && PushedListingPrice::same($livePrice, $price)) {
             return null; // already live; callers handle that case themselves
         }
 
-        $ageMinutes = $pushedAt->diffInMinutes($now, false);
-        if ($ageMinutes < 0) {
-            return null; // clock skew: do not trust the stamp
+        $ageMinutes = $pushedAt !== null ? $pushedAt->diffInMinutes($now, false) : null;
+        if ($ageMinutes !== null && $ageMinutes < 0) {
+            return null; // clock skew: do not trust the push stamp
+        }
+        $hasPush = $pushedValue !== null && $pushedValue > 0 && $pushedAt !== null;
+        $freshLive = $livePrice !== null && $liveSeenAt !== null && ($pushedAt === null || $liveSeenAt->greaterThan($pushedAt));
+
+        // What the listing is believed to be at right now.
+        if ($freshLive) {
+            $current = $livePrice;
+            $currentLabel = 'live price '.number_format($livePrice, 2, '.', '');
+        } elseif ($hasPush && $ageMinutes < self::EBAY_STALE_SNAPSHOT_SKIP_HOURS * 60) {
+            $current = $pushedValue;
+            $currentLabel = 'pushed '.number_format($pushedValue, 2, '.', '').' at '.$pushedAt->toDateTimeString()
+                .' (live price not refreshed since)';
+        } else {
+            // Nothing newer than a day: let the push go out and verify it.
+            return null;
         }
 
-        $liveIsOlderThanPush = $liveSeenAt === null || $liveSeenAt->lessThanOrEqualTo($pushedAt);
-        if ($liveIsOlderThanPush) {
-            if ($ageMinutes < self::EBAY_STALE_SNAPSHOT_SKIP_HOURS * 60) {
-                return 'already pushed '.number_format($price, 2, '.', '').' at '.$pushedAt->toDateTimeString()
-                    .'; live price not refreshed since';
-            }
-
-            return null; // nothing refreshed for a day: let the push verify it
+        // 1) Revert case: a reading taken after our push still differs. Re-push, but never in a tight loop.
+        if ($freshLive && $hasPush && PushedListingPrice::same($pushedValue, $price)
+            && abs($current - $price) >= self::ebayPushDeadband($price)) {
+            return $ageMinutes < self::EBAY_REPUSH_COOLDOWN_MINUTES
+                ? 'same price pushed '.(int) $ageMinutes.' min ago; re-push cooldown'
+                : null;
         }
 
-        // A reading taken after our push still differs: the listing was changed back. Re-push,
-        // but never in a tight loop.
-        if ($ageMinutes < self::EBAY_REPUSH_COOLDOWN_MINUTES) {
-            return 'same price pushed '.(int) $ageMinutes.' min ago; re-push cooldown';
+        // 2) Same price again, or only a few cents away (Ads% / input noise): not worth a listing revise.
+        if (abs($current - $price) < self::ebayPushDeadband($price)) {
+            return 'within '.number_format(self::ebayPushDeadband($price), 2, '.', '').' of '.$currentLabel;
         }
 
         return null;
+    }
+
+    /**
+     * Smallest S PRC move that is pushed to an eBay listing once a price is known to be on it.
+     * Ads% and other live inputs shift S PRC by a few cents every run (ebay2 on 12 Oct: average
+     * 0.33%, none above 5%); that noise was revised on the listing hourly.
+     */
+    public const EBAY_PUSH_DEADBAND_PCT = 1.0;
+
+    public const EBAY_PUSH_DEADBAND_MIN = 0.10;
+
+    public static function ebayPushDeadband(float $price): float
+    {
+        return max(self::EBAY_PUSH_DEADBAND_MIN, round($price * self::EBAY_PUSH_DEADBAND_PCT / 100, 2));
     }
 
     public static function stamp(string $channel, string $sku, float $sprice): void

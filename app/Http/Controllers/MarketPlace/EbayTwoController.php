@@ -2750,6 +2750,11 @@ class EbayTwoController extends Controller
 
         $priceFloat = round($priceFloat, 2);
 
+        // Only the Std-vs-Dil / Sprc Dil rule price may go live (not Std, not a browser-calculated value).
+        if ($reason = \App\Services\Support\EbayRuleOnlyPushGuard::rejectReason('ebay2', $sku, $priceFloat, 'pushEbay2Price')) {
+            return response()->json(['success' => false, 'message' => $reason], 422);
+        }
+
         try {
             $ebayMetric = EbayListingEnded::preferredRow(Ebay2Metric::class, $sku);
 

@@ -187,6 +187,10 @@ class EbayRuleSpriceApplyService
     public function collectPushTasks(?array $onlySkus = null): array
     {
         $out = [];
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
+        $store = $this->loadDilGroiStore();
+        $margin = $this->takeHome();
+        $adsPct = $this->channelAdsPercent();
         foreach ($this->hydrateAll($onlySkus) as $row) {
             if (! ((float) ($row['inv'] ?? 0) > 0)) {
                 continue;
@@ -194,6 +198,12 @@ class EbayRuleSpriceApplyService
             $saved = round((float) ($row['saved_sprice'] ?? 0), 2);
             $live = round((float) ($row['live'] ?? 0), 2);
             if ($saved <= 0 || $live <= 0 || self::sameCents($saved, $live)) {
+                continue;
+            }
+            // Rule-only: a saved S PRC that the page wrote (or anything else) must not be pushed
+            // unless it equals what the Std-vs-Dil / Sprc Dil rule computes right now.
+            $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin, $adsPct);
+            if ($computed === null || ! self::sameCents($saved, round((float) $computed['sprice'], 2))) {
                 continue;
             }
             if (ChannelLivePriceSync::duplicateEbayPushReason($this->channel, (string) $row['sku'], $saved) !== null) {
@@ -206,6 +216,25 @@ class EbayRuleSpriceApplyService
         }
 
         return $out;
+    }
+
+    /**
+     * S PRC the Std-vs-Dil / Sprc Dil rule computes for one SKU right now (server side), or null
+     * when the rule cannot price it. Used to reject any eBay price push that is not the rule price.
+     */
+    public function ruleSpriceForSku(string $sku): ?float
+    {
+        $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
+        $store = $this->loadDilGroiStore();
+        $margin = $this->takeHome();
+        $adsPct = $this->channelAdsPercent();
+        foreach ($this->hydrateAll([$sku]) as $row) {
+            $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin, $adsPct);
+
+            return $computed === null ? null : round((float) $computed['sprice'], 2);
+        }
+
+        return null;
     }
 
     public static function sameCents(float $a, float $b): bool
