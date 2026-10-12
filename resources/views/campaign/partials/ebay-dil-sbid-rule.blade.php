@@ -1144,7 +1144,7 @@ function dilSbidOfRow(row) {
     }
     return { bid: capped, color: part.color, skip: false, off: false, title: title };
 }
-/** Signed S Bid each rule adds. Discount is the sum of the negative diffs. */
+/** S Bid from each Dil vs SBid table. Total is Dil + Views + CVR % + eBay Sold + Std NPFT % + both up/down overlays. */
 function dilSbidBreakdown(row) {
     if (DIL_SBID_LISTING_WISE && row && !row._dilSbidRolled) {
         const key = dilSbidListingKey(row);
@@ -1164,26 +1164,26 @@ function dilSbidBreakdown(row) {
     const pieces = [
         { key: 'dil', label: 'Dil', bid: parseFloat(part.bid) || 0 },
         { key: 'views', label: 'Views', bid: pick('views') },
-        { key: 'cvr', label: 'CVR', bid: pick('cvr') },
+        { key: 'cvr', label: 'CVR %', bid: pick('cvr') },
         { key: 'sold', label: 'eBay Sold', bid: pick('sold') },
-        { key: 'npft', label: 'Std NPFT', bid: pick('npft') },
-        { key: 'cvrAdj', label: 'CVR up/down', bid: parseFloat(cvrAdj.adj) || 0 },
-        { key: 'viewAdj', label: 'L30 View', bid: parseFloat(viewAdj.adj) || 0 },
+        { key: 'npft', label: 'Std NPFT %', bid: pick('npft') },
+        { key: 'cvrAdj', label: 'CVR up / down', bid: parseFloat(cvrAdj.adj) || 0 },
+        { key: 'viewAdj', label: 'L30 View up / down', bid: parseFloat(viewAdj.adj) || 0 },
     ];
     const byKey = {};
-    let discount = 0;
+    let total = 0;
     const bits = [];
     pieces.forEach(function(p) {
-        byKey[p.key] = p.bid;
-        if (p.bid < 0) {
-            discount += p.bid;
-            bits.push(p.label + ' ' + p.bid);
-        }
+        const bid = dilSbidRound(p.bid);
+        byKey[p.key] = bid;
+        total += bid;
+        if (bid) bits.push(p.label + ' ' + (bid > 0 ? '+' : '') + bid);
     });
+    total = dilSbidRound(total);
     return {
         byKey: byKey,
-        discount: dilSbidRound(discount),
-        discountTip: bits.length ? ('Discount applied: ' + bits.join(', ')) : 'No rule discounted this row',
+        discount: total,
+        discountTip: bits.length ? (bits.join(', ') + ' = ' + (total > 0 ? '+' : '') + total) : 'No S Bid from these rules',
     };
 }
 window.dilSbidBreakdown = dilSbidBreakdown;
