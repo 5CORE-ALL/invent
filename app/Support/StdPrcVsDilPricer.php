@@ -588,6 +588,16 @@ class StdPrcVsDilPricer
      */
     private function soldQty(array $row): ?float
     {
+        if ($this->channel === 'alibaba') {
+            foreach (['al30', 'AB L30', 'AL30'] as $alt) {
+                if (array_key_exists($alt, $row) && is_numeric($row[$alt])) {
+                    return (float) $row[$alt];
+                }
+            }
+
+            // OV L30 / Amazon A L30 are not Alibaba sales. Missing AB L30 is not 0 sold.
+            return null;
+        }
         $key = match ($this->channel) {
             'ebay1', 'ebay2', 'ebay3', 'ebay2op' => 'ebay_l30',
             'shopify_b2c' => 'b2c_l30',
