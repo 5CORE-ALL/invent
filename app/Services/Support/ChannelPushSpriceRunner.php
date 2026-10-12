@@ -20,6 +20,7 @@ use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
 use App\Support\MacysAmazonPriceCap;
+use App\Support\Marketplace\EbaySpricePush;
 use App\Support\NegativeSnroiPushGuard;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
@@ -472,6 +473,11 @@ class ChannelPushSpriceRunner
 
     private function liveListingPriceIfMatches(string $sku, float $price): ?float
     {
+        if (EbaySpricePush::supports($this->channel)) {
+            return EbaySpricePush::liveMatches(EbaySpricePush::metric($this->channel, $sku), $price)
+                ? round($price, 2)
+                : null;
+        }
         if (! in_array($this->channel, ['shopify_b2c', 'shopify_b2b'], true)) {
             return null;
         }
@@ -497,6 +503,12 @@ class ChannelPushSpriceRunner
     private function pushPrice(string $sku, float $price)
     {
         $pushPrice = $price;
+        if (EbaySpricePush::supports($this->channel)) {
+            $res = EbaySpricePush::push($this->channel, $sku, $pushPrice);
+
+            return response()->json($res, ! empty($res['success']) ? 200 : 422);
+        }
+
         if ($this->channel === 'alibaba') {
             $alibabaReq = Request::create('/alibaba-analytics/push-price', 'POST', [
                 'sku' => $sku,

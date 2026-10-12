@@ -57,6 +57,7 @@ class ChannelPromoPricingController extends Controller
         'aliexpress', 'shein', 'newegg', 'faire', 'pls',
         'mercari_wship', 'mercari_woship', 'fb_marketplace',
         'vinted', 'instagram', 'depop', 'alibaba',
+        'ebay1', 'ebay2', 'ebay3',
     ];
 
     /** Push PRMT % sale-event queue retired — no channel creates markdown sales. */

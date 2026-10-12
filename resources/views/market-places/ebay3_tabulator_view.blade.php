@@ -2849,8 +2849,20 @@
                         if (atOrAboveLmp) {
                             formattedValue = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
                         }
+                        const blueTri = ebay3HasBlueTriangle(rowData)
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
+                            : '';
+                        const redTri = atOrAboveLmp
+                            ? (appliedLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                    + lmpNow.toFixed(2) + '"></i>'
+                                : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
+                                    + lmpNow.toFixed(2) + ' not applied — SGROI would be '
+                                    + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
+                            : '';
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + formattedValue + '</span>';
+                            + formattedValue + blueTri + redTri + '</span>';
                     },
                     width: 118
                 },

@@ -1011,7 +1011,7 @@
         window.analyticsBussDiscountPct = chStdBussDiscPct;
         function chStdRepaintDiscColumns() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
-            ['buss_discount', 'sum_discount'].forEach(function(field) {
+            ['age_discount', 'dil_discount', 'buss_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
                 let col = null;
                 try { col = table.getColumn(field); } catch (e) { col = null; }
                 if (!col || typeof col.getCells !== 'function') return;

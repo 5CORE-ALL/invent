@@ -610,7 +610,7 @@
             text-overflow: clip !important;
         }
         @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
-        @unless(in_array(strtolower((string) ($channelPromoChannel ?? 'ebay1')), ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true))
+        @unless(strtolower((string) ($channelPromoChannel ?? 'ebay1')) === 'ebay2op')
         @push('page-title-after')
             <div class="ch-promo-reload-push-cluster" id="ch-promo-reload-push-cluster">
                 <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
@@ -10022,10 +10022,15 @@
             const n = (tbl && typeof tbl.getDataCount === 'function') ? tbl.getDataCount() : 0;
             return (n > 0 || extraN > 0) && typeof chPromoEbayBlueFn() === 'function';
         }
-        /** eBay 1/2/3 never push prices from the page or the server; these stay as harmless no-ops for callers. */
-        function chPromoEbayPushLeftoverBlues() {}
+        /** Same as Amazon: queue blue SKUs (INV > 0, saved S PRC ≠ Price) for the server push when Push on reload is On. */
+        function chPromoEbayPushLeftoverBlues() {
+            if (!chPromoPageReloadPushAllowed()) return;
+            if (typeof window.chPushSpriceScheduleLeftover === 'function') window.chPushSpriceScheduleLeftover(2000);
+        }
         window.chPromoEbayPushLeftoverBlues = chPromoEbayPushLeftoverBlues;
-        function chPromoTryEbayBluePush() {}
+        function chPromoTryEbayBluePush() {
+            chPromoEbayPushLeftoverBlues();
+        }
         window.chPromoTryEbayBluePush = chPromoTryEbayBluePush;
         function chPromoQueueReloadSpricePush(opts) {
             opts = opts || {};

@@ -162,13 +162,11 @@
                 return !!CH_PUSH_SPRICE_PUSH_URL;
             }
             /**
-             * eBay 1/2/3: the browser never pushes prices. Its S PRC is calculated from page data and
-             * differed from the server's Std-vs-Dil rule (Std, +5%, ...), so those pushes overwrote the
-             * rule price. Only the server (hourly runner / channel:push-blue) pushes the rule price;
-             * the server also rejects any page push that is not that price (EbayRuleOnlyPushGuard).
+             * eBay 1/2/3 queue the saved S PRC on the server runner (same as Amazon Push Prc).
+             * The runner only pushes a price equal to the S PRC saved for that SKU.
              */
             function chPushSpriceServerOnly() {
-                return /^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL);
+                return false;
             }
             function chPushClientBusy() {
                 return chPushClientInflight > 0 || chPushClientQ.length > 0;
@@ -1548,6 +1546,8 @@
             function chPushSpriceAnyBusy() {
                 if (chPushSpriceUsesClientPump() && chPushClientBusy()) return true;
                 if (chPushSpriceFlushing) return true;
+                // Same as Amazon: while a server job is polling, do not re-append the same blues.
+                if (chPushSpricePollTimer && /^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) return true;
                 return false;
             }
             function chPushSpricePushLeftoverBlues() {
@@ -1610,31 +1610,6 @@
                     timeout: 15000,
                 }).done(function(resp) {
                     window._chPromoEbayLeftoverStatus = resp || null;
-                    if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
-                        const leftoverActive = !!(resp && resp.active && (Number(resp.total) || 0) > 0);
-                        const afterCancel = function() {
-                            if (typeof window.chPromoTryEbayBluePush === 'function') {
-                                window.chPromoTryEbayBluePush();
-                            }
-                        };
-                        if (leftoverActive && typeof chPushSpriceCancelSilent === 'function') {
-                            window._chPromoEbayLeftoverCleared = true;
-                            setChannelPushSpriceProgress({
-                                active: true,
-                                done: 0,
-                                total: 0,
-                                pct: 0,
-                                msg: 'Starting…',
-                            });
-                            chPushSpriceCancelSilent().always(function() {
-                                window._chPromoEbayLeftoverStatus = null;
-                                afterCancel();
-                            });
-                            return;
-                        }
-                        afterCancel();
-                        return;
-                    }
                     if (resp && resp.active) startChannelPushSpricePoll();
                 }).fail(function() {
                     window._chPromoEbayLeftoverStatus = null;
