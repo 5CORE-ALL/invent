@@ -1856,6 +1856,40 @@
             return skuRows;
         }
 
+        /**
+         * Every loaded child SKU, one row per SKU, walked the same way as the S PRC push scan:
+         * live table rows (with tree children) first, then the loaded dataset. Badge count = push queue.
+         */
+        function ebay3GetAllSkuRowsForBadge() {
+            const out = [];
+            const seen = new Set();
+            function add(d) {
+                if (!d || ebay3IsAlertParentRow(d)) return;
+                const key = String(d['(Child) sku'] || d.SKU || d.sku || '').trim().toUpperCase();
+                if (!key || key.includes('PARENT') || seen.has(key)) return;
+                seen.add(key);
+                out.push(d);
+            }
+            function walkRow(row) {
+                if (!row || typeof row.getData !== 'function') return;
+                add(row.getData());
+                if (typeof row.getTreeChildren === 'function') (row.getTreeChildren() || []).forEach(walkRow);
+            }
+            function walkData(node) {
+                if (!node) return;
+                add(node);
+                if (Array.isArray(node._children)) node._children.forEach(walkData);
+            }
+            try {
+                if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+                    (table.getRows() || []).forEach(walkRow);
+                }
+            } catch (e) { /* table not ready */ }
+            (Array.isArray(window.allTableData) && window.allTableData.length ? window.allTableData : (allTableData || []))
+                .forEach(walkData);
+            return out;
+        }
+
         // Child SKUs currently shown in the table (active filters / search).
         function ebay3GetVisibleSkuRows() {
             const skuRows = [];
@@ -3960,8 +3994,8 @@
             visible.forEach(function(row) {
                 if (ebay3IsEndedListing(row)) endedListingCount++;
             });
-            // Same as Amazon: blue count is every loaded SKU, ignoring filters.
-            ebay3GetBackendSkuRows().forEach(function(row) {
+            // Same as Amazon: blue count is every loaded SKU, ignoring filters (same rows the push scans).
+            ebay3GetAllSkuRowsForBadge().forEach(function(row) {
                 if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
             });
             $('#ebay3-blue-triangle-badge').html(
