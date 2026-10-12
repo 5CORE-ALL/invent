@@ -44,6 +44,9 @@ class ListingVariationPreviewService
         if (in_array($channel, ['temu3', 'temuthree'], true)) {
             return $this->temu3->previewFromSkus($seedSkus, $skuParents, $mode);
         }
+        if (in_array($channel, ['temu', 'temu1'], true)) {
+            return $this->temu->previewFromSkus($seedSkus, $skuParents, $mode);
+        }
 
         $seeds = [];
         foreach ($seedSkus as $sku) {
