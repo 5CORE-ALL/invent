@@ -63,6 +63,17 @@ class EbaySpricePushTest extends TestCase
         $this->assertNull(EbaySpricePush::blockReason(24.99, 24.99, $this->metric(), 3.0));
     }
 
+    public function test_detects_item_level_price_ignored_on_variation_listing(): void
+    {
+        $this->assertTrue(EbaySpricePush::looksMultiVariation([
+            'success' => false,
+            'message' => 'eBay ignored the price update because this is a multi-variation listing. Retry with the variation SKU.',
+            'errors' => [['code' => '21916618', 'message' => 'Item level start price will be ignored on variation listings.']],
+        ]));
+        $this->assertFalse(EbaySpricePush::looksMultiVariation(['success' => false, 'message' => 'Auction ended']));
+        $this->assertFalse(EbaySpricePush::looksMultiVariation(null));
+    }
+
     public function test_live_matches(): void
     {
         $this->assertTrue(EbaySpricePush::liveMatches($this->metric(['ebay_price' => 24.99]), 24.99));

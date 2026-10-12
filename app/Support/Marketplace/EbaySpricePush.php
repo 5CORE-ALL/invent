@@ -121,7 +121,17 @@ final class EbaySpricePush
         }
 
         $api = app(self::MAP[$channel][2]);
-        $res = $api->reviseFixedPriceItem((string) $metric->item_id, $price, null, $sku);
+        $itemId = (string) $metric->item_id;
+        if (self::reviseAsSingleListing($channel, $itemId)) {
+            // Passing the SKU first tries a variation revise, which eBay rejects for a single listing
+            // before the service falls back (3 calls). Item-level revise is 2 calls.
+            $res = $api->reviseFixedPriceItem($itemId, $price, null, null);
+            if (! (is_array($res) && ! empty($res['success'])) && self::looksMultiVariation($res)) {
+                $res = $api->reviseFixedPriceItem($itemId, $price, null, $sku);
+            }
+        } else {
+            $res = $api->reviseFixedPriceItem($itemId, $price, null, $sku);
+        }
         $ok = is_array($res) && ! empty($res['success']);
         $msg = is_array($res) ? (string) ($res['message'] ?? ($ok ? 'Price updated' : 'eBay update failed')) : 'eBay update failed';
         if (! $ok && is_array($res) && ! empty($res['errors'])) {
@@ -135,6 +145,45 @@ final class EbaySpricePush
         return $ok
             ? ['success' => true, 'message' => $msg, 'ebay_price' => $price]
             : ['success' => false, 'message' => $msg];
+    }
+
+    /**
+     * eBay 1 only: no other SKU in our metrics shares this item_id.
+     */
+    private static function reviseAsSingleListing(string $channel, string $itemId): bool
+    {
+        if ($channel !== 'ebay1' || trim($itemId) === '') {
+            return false;
+        }
+        try {
+            $skus = EbayMetric::query()
+                ->where('item_id', $itemId)
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->pluck('sku')
+                ->map(fn ($s) => strtoupper(trim((string) $s)))
+                ->unique();
+
+            return $skus->count() === 1;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Item-level price was ignored because the listing has variations; retry with the SKU.
+     */
+    public static function looksMultiVariation($res): bool
+    {
+        if (! is_array($res)) {
+            return false;
+        }
+        $blob = strtolower(json_encode([$res['message'] ?? '', $res['errors'] ?? '']) ?: '');
+
+        return str_contains($blob, 'multi-variation')
+            || str_contains($blob, 'variation sku')
+            || str_contains($blob, 'variation listings')
+            || str_contains($blob, '21916618');
     }
 
     /**
