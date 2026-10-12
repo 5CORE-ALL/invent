@@ -8,9 +8,6 @@ use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\MacyController;
 use App\Http\Controllers\MarketPlace\DobaController;
-use App\Http\Controllers\MarketPlace\EbayController;
-use App\Http\Controllers\MarketPlace\EbayThreeController;
-use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Http\Controllers\MarketPlace\NeweggPricingController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\TemuController;
@@ -23,6 +20,7 @@ use App\Services\NeweggApiService;
 use App\Services\TemuApiService;
 use App\Services\Temu2ApiService;
 use App\Support\MacysAmazonPriceCap;
+use App\Support\Marketplace\EbaySpricePush;
 use App\Support\NegativeSnroiPushGuard;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
@@ -91,54 +89,6 @@ class ChannelPushSpriceRunner
             return true;
         } catch (\Throwable $e) {
             Log::warning('Channel S PRC worker spawn failed', [
-                'channel' => $channel,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
-    }
-
-    /**
-     * Scan blue SKUs (S PRC ≠ live Price) off the web request so the page
-     * can show progress while the catalog is still being collected.
-     */
-    public static function spawnBlueEnqueue(string $channel): bool
-    {
-        $channel = strtolower(trim($channel));
-        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true)) {
-            return false;
-        }
-        if (! self::livePushAllowed()) {
-            Log::warning('Channel blue enqueue skipped — live push disabled in local', [
-                'channel' => $channel,
-            ]);
-
-            return false;
-        }
-        try {
-            $php = PHP_BINARY ?: 'php';
-            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
-                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
-                if ($cli !== '') {
-                    $php = $cli;
-                }
-            }
-            $artisan = base_path('artisan');
-            $log = storage_path('logs/'.$channel.'-push-blue.log');
-            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
-                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' channel:push-blue '.escapeshellarg($channel), 'r'));
-
-                return true;
-            }
-            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
-                .' channel:push-blue '.escapeshellarg($channel)
-                .' >> '.escapeshellarg($log).' 2>&1 &';
-            pclose(popen($cmd, 'r'));
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning('Channel blue enqueue spawn failed', [
                 'channel' => $channel,
                 'error' => $e->getMessage(),
             ]);
@@ -280,11 +230,19 @@ class ChannelPushSpriceRunner
             $live = null;
             $alreadyLive = false;
             $negSnroi = false;
+            $dupSkip = false;
             try {
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
                 }
-                if (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
+                if (EbaySpricePush::supports($this->channel)
+                    && EbaySpricePush::alreadyPushedInJob($store->load()['tasks'] ?? [], $index, $sku, $price)) {
+                    $ok = true;
+                    $dupSkip = true;
+                    $live = round($price, 2);
+                    EbaySpricePush::storeAcceptedPriceFor($this->channel, $sku, $live);
+                    $store->appendMessage('Skip '.$sku.': already pushed at $'.number_format($price, 2));
+                } elseif (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
                     $ok = true;
                     $negSnroi = true;
                     $logger->info('S PRC background push skipped — negative SNROI', [
@@ -387,14 +345,16 @@ class ChannelPushSpriceRunner
                 $this->markListingEndedIfNeeded($sku, $error);
             }
 
-            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi) {
+            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi, $dupSkip) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;
                 }
                 if ($ok) {
                     $state['tasks'][$index]['status'] = 'ok';
                     $state['tasks'][$index]['error'] = null;
-                    $state['tasks'][$index]['message'] = $negSnroi ? 'negative SNROI' : ($alreadyLive ? 'already live' : 'pushed');
+                    $state['tasks'][$index]['message'] = $negSnroi
+                        ? 'negative SNROI'
+                        : ($dupSkip ? 'already pushed' : ($alreadyLive ? 'already live' : 'pushed'));
                     if ($live !== null) {
                         $state['tasks'][$index]['ebay_price'] = $live;
                     }
@@ -419,11 +379,13 @@ class ChannelPushSpriceRunner
                 return $state;
             });
 
-            $store->appendMessage(
-                ($ok ? (($negSnroi || $alreadyLive) ? 'Skip ' : 'OK ') : 'Fail ').$sku
-                    .($negSnroi ? ': negative SNROI' : ($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : ''))),
-                $ok
-            );
+            if (! $dupSkip) { // the duplicate-push skip already appended its own message above
+                $store->appendMessage(
+                    ($ok ? (($negSnroi || $alreadyLive) ? 'Skip ' : 'OK ') : 'Fail ').$sku
+                        .($negSnroi ? ': negative SNROI' : ($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : ''))),
+                    $ok
+                );
+            }
             usleep($this->pauseAfterPushMicros());
         }
     }
@@ -518,6 +480,11 @@ class ChannelPushSpriceRunner
 
     private function liveListingPriceIfMatches(string $sku, float $price): ?float
     {
+        if (EbaySpricePush::supports($this->channel)) {
+            return EbaySpricePush::liveMatches(EbaySpricePush::metric($this->channel, $sku), $price)
+                ? round($price, 2)
+                : null;
+        }
         if (! in_array($this->channel, ['shopify_b2c', 'shopify_b2b'], true)) {
             return null;
         }
@@ -543,6 +510,12 @@ class ChannelPushSpriceRunner
     private function pushPrice(string $sku, float $price)
     {
         $pushPrice = $price;
+        if (EbaySpricePush::supports($this->channel)) {
+            $res = EbaySpricePush::push($this->channel, $sku, $pushPrice);
+
+            return response()->json($res, ! empty($res['success']) ? 200 : 422);
+        }
+
         if ($this->channel === 'alibaba') {
             $alibabaReq = Request::create('/alibaba-analytics/push-price', 'POST', [
                 'sku' => $sku,
@@ -682,9 +655,6 @@ class ChannelPushSpriceRunner
         }
 
         return match ($this->channel) {
-            'ebay1' => app(EbayController::class)->pushEbayPrice($req),
-            'ebay2', 'ebay2op' => app(EbayTwoController::class)->pushEbay2Price($req),
-            'ebay3' => app(EbayThreeController::class)->pushEbay3Price($req),
             'shopify_b2c' => app(OverallAmazonController::class)->pushShopifyB2CPrice($req),
             default => throw new \RuntimeException('Live S PRC push is not available for '.$this->channel),
         };

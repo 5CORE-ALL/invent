@@ -438,7 +438,6 @@
             cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay2'])
     </style>
 @endsection
 
@@ -542,9 +541,8 @@
                         <option value="blank">Blank SPRICE only</option>
                     </select>
 
-                    {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / 0 Sold removed --}}
+                    {{-- CVR% / coupons / Push Prc — PRMT% / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay2'])
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
                         title="Set S Bid from Dil. eBay 2 keeps its own slabs.">
                         Dil vs SBid
@@ -644,12 +642,9 @@
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay2'])
                         <span class="badge fs-6 p-2" id="ebay2-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2" id="ebay2-ended-listing-badge"
-                            style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
-                            title="Inactive / ended listings. Click to filter. Relisted SKUs with a new item ID are pulled automatically.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
+                            title="Blue alert: INV > 0 and Price ≠ S PRC. Click to show only those SKUs.">
+                            <i class="fas fa-exclamation-triangle"></i> 0
+                        </span>
                         <span class="badge fs-6 p-2" id="ebay2-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: S PRC &gt; LMP. Click to show only those rows. Click again to clear.">
@@ -658,10 +653,6 @@
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
                             LMP M. 0</span>
-                        <span class="badge fs-6 p-2" id="ebay2-purple-triangle-badge"
-                            style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Purple triangle: Price &lt; 80% of LMP. Click to show only those rows.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours and Sbid (Views)">L7: 0</span>
                         
                     </div>
@@ -1027,7 +1018,6 @@
     </div>
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay2'])
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'modal',
         'account' => 'eBay 2',
@@ -1052,7 +1042,6 @@
         const EBAY2_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
         @include('campaign.partials.ebay-dil-sbid-rule', [
             'part' => 'script',
             'account' => 'eBay 2',
@@ -1127,39 +1116,19 @@
             }
             return out;
         }
+        /** Saved SPRICE only: the server value from load, or a successful save. Rule auto-fills write
+         *  row.SPRICE in memory without saving, so they must not show here. */
         function ebay2RawRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return 0;
-            if (typeof chPromoTableSprice === 'function') {
-                const saved = Number(chPromoTableSprice(rowData)) || 0;
-                if (saved > 0) return saved;
-            }
-            if (typeof chPromoSavedOrLiveSprice === 'function') {
-                const saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
-                if (saved > 0) return saved;
-            }
-            const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
-            return stored > 0 ? stored : 0;
+            const raw = rowData.SPRICE_SERVER !== undefined ? rowData.SPRICE_SERVER : rowData.SPRICE;
+            const n = Number(raw);
+            return (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
         }
         function ebay2DisplayedSprice(rowData) {
-            if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return 0;
-            if (typeof ebayTiktokRuleDiscount === 'function') {
-                const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
-                if (live > 0) return live;
-            }
             return ebay2RawRuleSprice(rowData);
         }
         function ebay2SpriceAmount(rowData) {
-            if (typeof ebay2DisplayedSprice === 'function') {
-                const shown = ebay2DisplayedSprice(rowData);
-                if (shown > 0) return shown;
-            }
-            if (typeof chPromoSavedOrLiveSprice === 'function') {
-                const saved = Number(chPromoSavedOrLiveSprice(rowData));
-                if (isFinite(saved) && saved > 0) return saved;
-            }
-            const stored = Number(rowData && (rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice));
-            if (isFinite(stored) && stored > 0) return stored;
-            return 0;
+            return ebay2DisplayedSprice(rowData) || 0;
         }
         function ebay2ComputeNetRoi(rowData, priceKey) {
             if (!rowData) return null;
@@ -1677,9 +1646,13 @@
         }
         function ebay2HasBlueTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;
-            if (!(parseFloat(data && data.INV) > 0)) return false;
+            if (!(Number(String(data && data.INV != null ? data.INV : '').replace(/[,\s\u00A0]/g, '')) > 0)) return false;
             if (ebay2IsEndedListing(data)) return false;
-            const sprice = ebay2RowSpriceForAlert(data);
+            // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
+            // the page's own recalculation, so the badge and the pushes cannot disagree.
+            const sprice = (data.SPRICE_SERVER !== undefined)
+                ? (Number(data.SPRICE_SERVER) || 0)
+                : ebay2RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
@@ -2599,6 +2572,7 @@
                             if (row) {
                                 ebay2SafeRowUpdate(row, {
                                     SPRICE: sprice,
+                                    SPRICE_SERVER: Number(sprice) > 0 ? Number(sprice) : 0,
                                     SPFT: response.spft_percent,
                                     SROI: response.sroi_percent,
                                     SGPFT: response.sgpft_percent,
@@ -2885,6 +2859,7 @@
                 ajaxResponse: function(url, params, response) {
                     var payload = (response && response.data) ? response.data : response;
                     if (!Array.isArray(payload)) payload = [];
+                    if (typeof window.chPromoCaptureServerSprice === 'function') window.chPromoCaptureServerSprice(payload);
                     allTableData = payload;
                     ebay2StampAllOrder(allTableData);
                     if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
@@ -3471,9 +3446,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Price $'
                                     + value.toFixed(2) + ' &gt; LMP $' + lmpPrice.toFixed(2) + '"></i>'
                                 : '';
-                            const yellowTri = ebay2IsEndedListing(rowData)
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#ffc107;font-size:10px;margin-left:3px;" title="Ended listing"></i>'
-                                : '';
+                            const yellowTri = '';
                             const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(value, lmpPrice) : '');
                             const yesterday = parseFloat(rowData.price_yesterday);
                             const hasYesterday = isFinite(yesterday) && yesterday > 0;
@@ -3676,40 +3649,8 @@
                             }
                         },
                     },
-                    // CPN % / Push Prc — PRMT% removed; Sprc Dil + CPN
+                    // CPN % / Push Prc — PRMT% removed
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-                    {
-                        title: "Sprc Dil",
-                        field: "SPRC_DIL",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof ebaySprcDilForRow === 'function')
-                                    ? (ebaySprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
-                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            if (typeof isEbay2TabulatorParentRow === 'function' && isEbay2TabulatorParentRow(rowData)) return '';
-                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                            const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = (typeof ebayDilGroiTipText === 'function')
-                                ? ebayDilGroiTipText(meta)
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                    + ' → ' + meta.label
-                                    + ' → GROI ' + meta.groi + '%'
-                                    + ' → $' + meta.sprc.toFixed(2));
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
-                        },
-                        width: 78
-                    },
                     {
                         title: "S PRC",
                         field: "SPRICE",
@@ -3750,24 +3691,6 @@
                                 : null;
                             const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
                             const ended = ebay2IsEndedListing(rowData);
-                            const yellowTri = ended
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#ffc107;font-size:10px;margin-left:3px;" title="Ended listing"></i>'
-                                : '';
-                            const redTri = (!ended && atOrAboveLmp)
-                                ? (appliedLmp
-                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                        + Number(lmpNow).toFixed(2) + '"></i>'
-                                    : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
-                                        + Number(lmpNow).toFixed(2)
-                                        + ' not applied — SGROI would be '
-                                        + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
-                                        + '% (&lt; 20%)"></i>')
-                                : '';
-                            const blueTri = (!ended && ebayPrice > 0 && sprice > 0
-                                && Math.round(sprice * 100) !== Math.round(ebayPrice * 100))
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                    + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
-                                : '';
 
                             let formattedValue = '$' + Number(sprice).toFixed(2);
                             if (ended) {
@@ -3775,9 +3698,21 @@
                             } else if (atOrAboveLmp) {
                                 formattedValue = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
                             }
+                            const blueTri = ebay2HasBlueTriangle(rowData)
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                    + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
+                                : '';
+                            const redTri = (atOrAboveLmp && !ended)
+                                ? (appliedLmp
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                        + lmpNow.toFixed(2) + '"></i>'
+                                    : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
+                                        + lmpNow.toFixed(2) + ' not applied — SGROI would be '
+                                        + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
+                                : '';
 
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + blueTri + formattedValue + yellowTri + redTri + '</span>';
+                                + formattedValue + blueTri + redTri + '</span>';
                         },
                         width: 118
                     },
@@ -4258,6 +4193,21 @@
                     });
                 }
 
+                // Same as Amazon: blue click = only INV > 0, Price ≠ S PRC SKUs. Other filters do not stack,
+                // so the row count matches the badge.
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay2HasBlueTriangle(data);
+                    });
+                    updateCalcValues();
+                    updateSummary();
+                    setTimeout(function() {
+                        if (typeof ebay2UpdatePaginationCounter === 'function') ebay2UpdatePaginationCounter();
+                        updateSelectAllCheckbox();
+                    }, 100);
+                    return;
+                }
+
                 if (skuSearch) {
                     const skuQ = skuSearch.toUpperCase();
                     table.addFilter(function(data) {
@@ -4606,6 +4556,8 @@
             }
 
             // Update summary badges - use filtered data for accurate counts
+            // Shared partials (S PRC save, push queue) recount the badges through window.updateSummary.
+            window.updateSummary = function() { try { return updateSummary(); } catch (e) { /* table not ready yet */ } };
             function updateSummary() {
                 // Use active (filtered) data for all counts to match what's actually visible
                 const data = table.getData('active');
@@ -4708,10 +4660,6 @@
                 $('#ebay2-blue-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                 );
-                if (blueTriangleCount > 0 && typeof window.chPromoEbayPushLeftoverBlues === 'function') {
-                    clearTimeout(window._chPromoEbayBlueLeftoverTimer);
-                    window._chPromoEbayBlueLeftoverTimer = setTimeout(window.chPromoEbayPushLeftoverBlues, 2000);
-                }
                 $('#ebay2-red-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
                 );

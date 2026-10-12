@@ -687,32 +687,91 @@ class InvDaysController extends Controller
      *
      * @return array<string, int>
      */
+    public const AGE_MAP_CACHE_KEY = 'inv_days_age_map_v1';
+
+    /** Kept warm by inv-days:warm-age-map every 10 min; building it takes ~16s on production. */
+    private const AGE_MAP_TTL = 1800;
+
     public function ageDayMap(): array
     {
-        return Cache::remember('inv_days_age_map_v1', 120, function () {
-            $sources = $this->cachedAgeSources();
-            $out = [];
-            ShopifySku::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->select(['id', 'sku', 'inv'])
-                ->chunkById(2000, function ($rows) use (&$out, $sources) {
-                    foreach ($rows as $row) {
-                        $days = $this->ageDays(
-                            (string) $row->sku,
-                            (float) ($row->inv ?? 0),
-                            $sources['push'],
-                            $sources['last_sale']
-                        );
-                        if ($days === null) {
-                            continue;
-                        }
-                        $out[$this->skuKey((string) $row->sku)] = $days;
-                    }
-                });
+        return Cache::remember(self::AGE_MAP_CACHE_KEY, self::AGE_MAP_TTL, fn () => $this->buildAgeDayMap());
+    }
 
-            return $out;
-        });
+    /**
+     * Rebuild the age map and store it, so analytics pages never wait on a cold build.
+     */
+    public function warmAgeDayMap(): int
+    {
+        $map = $this->buildAgeDayMap();
+        Cache::put(self::AGE_MAP_CACHE_KEY, $map, self::AGE_MAP_TTL);
+
+        return count($map);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function buildAgeDayMap(): array
+    {
+        $sources = $this->cachedAgeSources();
+        $out = [];
+        ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->select(['id', 'sku', 'inv'])
+            ->chunkById(2000, function ($rows) use (&$out, $sources) {
+                foreach ($rows as $row) {
+                    $days = $this->ageDays(
+                        (string) $row->sku,
+                        (float) ($row->inv ?? 0),
+                        $sources['push'],
+                        $sources['last_sale']
+                    );
+                    if ($days === null) {
+                        continue;
+                    }
+                    $out[$this->skuKey((string) $row->sku)] = $days;
+                }
+            });
+
+        return $out;
+    }
+
+    /**
+     * Same as /amazon-tabulator-view: stamp age_days on every SKU row (and tree _children).
+     *
+     * @param  array<int, mixed>  $rows
+     * @return array<int, mixed>
+     */
+    public function attachAgeDays(array $rows): array
+    {
+        try {
+            $ageMap = $this->ageDayMap();
+        } catch (\Throwable $e) {
+            Log::warning('attachAgeDays: age map failed: '.$e->getMessage());
+
+            return $rows;
+        }
+        $walk = function (array $rows) use (&$walk, $ageMap): array {
+            foreach ($rows as $i => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                if (! empty($row['_children']) && is_array($row['_children'])) {
+                    $row['_children'] = $walk($row['_children']);
+                }
+                $sku = trim((string) ($row['(Child) sku'] ?? $row['sku'] ?? ''));
+                if ($sku !== '' && stripos($sku, 'PARENT') === false
+                    && empty($row['is_parent_summary']) && empty($row['is_parent'])) {
+                    $row['age_days'] = $ageMap[$this->skuKey($sku)] ?? null;
+                }
+                $rows[$i] = $row;
+            }
+
+            return $rows;
+        };
+
+        return $walk($rows);
     }
 
     public function ageMap()

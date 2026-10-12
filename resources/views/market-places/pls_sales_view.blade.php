@@ -72,10 +72,11 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge">Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-qty-badge">Total Qty: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge">Revenue: $0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (line total × PLS margin) − COGS. PLS sales has no ship.">GPFT: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (line total × PLS margin) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-dark fs-6 p-2" id="pft-total-badge" style="color: white; font-weight: bold;">GPFT Total: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge" style="background-color: #b45309; color: white; font-weight: bold;" title="Shipping Master slab cost for each line's weight. Already subtracted from GPFT and GROI.">COGS Ship: $0</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-discount-badge">Discount: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="avg-price-badge">Avg Price: $0</span>
                         <span class="badge bg-success fs-6 p-2" id="paid-count-badge">Paid: 0</span>
@@ -236,6 +237,18 @@
                     }
                 },
                 {
+                    title: 'T Weight', field: 't_weight', width: 90, hozAlign: 'right', sorter: 'number',
+                    formatter: function (cell) {
+                        return parseFloat(cell.getValue() || 0).toFixed(2);
+                    }
+                },
+                {
+                    title: 'COGS Ship', field: 'ship_cost', width: 100, hozAlign: 'right', sorter: 'number',
+                    formatter: function (cell) {
+                        return `$${parseFloat(cell.getValue() || 0).toFixed(2)}`;
+                    }
+                },
+                {
                     title: 'COGS', field: 'cogs', width: 90, hozAlign: 'right', sorter: 'number',
                     formatter: function (cell) {
                         return `$${parseFloat(cell.getValue() || 0).toFixed(2)}`;
@@ -313,6 +326,7 @@
             let totalSales = 0;
             let totalPft = 0;
             let totalCogs = 0;
+            let totalCogsShip = 0;
             let totalDiscount = 0;
             let totalPrice = 0;
             let priceCount = 0;
@@ -333,6 +347,7 @@
                 totalSales += isFinite(lineSales) ? lineSales : amount;
                 totalPft += parseFloat(row.pft) || 0;
                 totalCogs += parseFloat(row.cogs) || 0;
+                totalCogsShip += parseFloat(row.ship_cost) || 0;
                 totalDiscount += discount;
 
                 if (price > 0) {
@@ -358,6 +373,7 @@
             $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
             $('#pft-total-badge').text('GPFT Total: $' + gpftDollars.toLocaleString());
             $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());
+            $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
             $('#pft-total-badge').removeClass('bg-danger').addClass(totalPft >= 0 ? 'bg-dark' : 'bg-danger');
             $('#total-discount-badge').text(`Discount: $${Math.round(totalDiscount).toLocaleString()}`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);

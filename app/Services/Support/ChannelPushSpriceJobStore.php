@@ -92,8 +92,13 @@ class ChannelPushSpriceJobStore
 
             $added = 0;
             $updated = 0;
+            $skipped = 0;
             foreach ($normalized as $task) {
                 $skuKey = strtoupper((string) ($task['sku'] ?? ''));
+                if ($this->alreadyDoneAtPrice($state['tasks'], $skuKey, (float) ($task['price'] ?? 0))) {
+                    $skipped++;
+                    continue;
+                }
                 $pendingIdx = null;
                 foreach ($state['tasks'] as $i => $existing) {
                     if (! is_array($existing)) {
@@ -127,6 +132,7 @@ class ChannelPushSpriceJobStore
             $state['finished_at'] = null;
             $msg = 'Added '.$added.' SKU(s)'
                 .($updated ? (', updated '.$updated.' pending') : '')
+                .($skipped ? (', skipped '.$skipped.' already pushed') : '')
                 .' — S PRC queue now '.$state['total'].'.';
             $messages = $state['messages'] ?? [];
             $messages[] = [
@@ -139,6 +145,29 @@ class ChannelPushSpriceJobStore
 
             return $state;
         });
+    }
+
+    /**
+     * eBay 1/2/3: this job already pushed (or is pushing) this SKU at this price, so do not queue it again.
+     *
+     * @param  array<int, mixed>  $tasks
+     */
+    private function alreadyDoneAtPrice(array $tasks, string $skuKey, float $price): bool
+    {
+        if (! in_array($this->channel, ['ebay1', 'ebay2', 'ebay3'], true) || $skuKey === '' || ! ($price > 0)) {
+            return false;
+        }
+        foreach ($tasks as $existing) {
+            if (! is_array($existing) || strtoupper((string) ($existing['sku'] ?? '')) !== $skuKey) {
+                continue;
+            }
+            if (in_array((string) ($existing['status'] ?? ''), ['ok', 'pushing'], true)
+                && abs((float) ($existing['price'] ?? 0) - $price) < 0.005) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

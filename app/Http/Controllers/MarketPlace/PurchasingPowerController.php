@@ -1018,6 +1018,86 @@ class PurchasingPowerController extends Controller
             });
     }
 
+    /**
+     * Badge integers painted by /purchasing-power-sales.
+     * Sales is unit price × qty. GPFT = rounded PFT ÷ rounded sales.
+     * GROI = rounded PFT ÷ rounded COGS. COGS Ship is Ship BB, once.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    public function dailySalesBadgeTotals(string $period = 'l30'): array
+    {
+        $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');
+        $percentage = ($rawPct !== null && (float) $rawPct > 0) ? (float) $rawPct : 65.0;
+
+        if ($period === 'l60') {
+            $lines = Cache::remember('pp_l60_or11_lines_v1', 180, function () {
+                $today = Carbon::now('America/Los_Angeles');
+                $ppApi = app(PurchasingPowerApiService::class);
+                $result = $ppApi->fetchOrders(
+                    $today->copy()->subDays(59)->startOfDay(),
+                    $today->copy()->subDays(30)->endOfDay()
+                );
+
+                return collect($ppApi->flattenOrdersToLineRows($result['orders'] ?? []));
+            });
+        } else {
+            $lines = $this->fetchL30OrderLines(false);
+        }
+
+        return $this->badgeFromMappedSalesRows(
+            $this->mapPurchasingPowerSalesRows($lines, $percentage, 'pp_mcm_or11')
+        );
+    }
+
+    /**
+     * @param  iterable<int, array<string, mixed>>  $rows
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    private function badgeFromMappedSalesRows(iterable $rows): array
+    {
+        $orders = 0;
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+
+        foreach ($rows as $row) {
+            $row = (array) $row;
+            $orders++;
+            $lineQty = (int) ($row['quantity'] ?? 0);
+            if ($lineQty <= 0) {
+                continue;
+            }
+            $unit = (float) ($row['unit_price'] ?? 0);
+            if ($unit <= 0) {
+                $amount = (float) ($row['amount'] ?? 0);
+                $unit = $amount / $lineQty;
+            }
+            $sales += $unit * $lineQty;
+            $qty += $lineQty;
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     public function salesView(Request $request)
     {
         $rawPct = MarketplacePercentage::where('marketplace', 'Purchase')->value('percentage');

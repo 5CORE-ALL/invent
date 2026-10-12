@@ -29,10 +29,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use App\Models\EbayListingStatus;
 use App\Services\Ebay1CouponService;
-use App\Services\EbayRuleSpriceApplyService;
-use App\Services\EbayApiService;
+use App\Services\EbaySpriceExportPercents;
 use App\Services\Ebay1PromotionService;
-use App\Services\EbayPushService;
 use App\Services\EbayLivePriceFetcher;
 use App\Services\EbayCompetitorVariationFamilySync;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -448,6 +446,7 @@ class EbayController extends Controller
             if (!is_array($rows)) {
                 $rows = [];
             }
+            $rows = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($rows);
 
             array_walk_recursive($rows, static function (&$value) {
                 if (is_float($value) && !is_finite($value)) {
@@ -1943,19 +1942,8 @@ class EbayController extends Controller
         });
         Log::info('Data saved successfully', ['sku' => $sku]);
 
-        $skipPush = $request->boolean('skip_push');
-        $push = [
-            'success' => false,
-            'status' => $skipPush ? 'skipped' : 'error',
-            'message' => $skipPush ? 'Push skipped' : '',
-            'ebay_price' => null,
-        ];
-        if (! $skipPush) {
-            $push = $this->pushEbay1PriceAndPullLive($sku, $spriceFloat);
-            $this->saveSpriceStatus($sku, $push['success'] ? 'pushed' : ($push['status'] ?: 'error'));
-        } else {
-            $this->saveSpriceStatus($sku, 'saved');
-        }
+        // eBay prices are never pushed from here: S PRC is only saved.
+        $this->saveSpriceStatus($sku, 'saved');
 
         return response()->json([
             'message' => 'Data saved successfully.',
@@ -1963,13 +1951,11 @@ class EbayController extends Controller
             'sroi_percent' => $sroi,
             'sgroi_percent' => $sgroi,
             'sgpft_percent' => $sgpft,
-            'price_push_success' => (bool) ($push['success'] ?? false),
-            'price_push_status' => $push['status'] ?? null,
-            'price_push_message' => $push['message'] ?? '',
-            'ebay_price' => $push['ebay_price'] ?? null,
-            'SPRICE_STATUS' => $push['success']
-                ? 'pushed'
-                : ($skipPush ? 'saved' : ($push['status'] ?: 'error')),
+            'price_push_success' => false,
+            'price_push_status' => 'saved',
+            'price_push_message' => 'Saved only — eBay price push is disabled',
+            'ebay_price' => null,
+            'SPRICE_STATUS' => 'saved',
         ]);
     }
 
@@ -2512,21 +2498,15 @@ class EbayController extends Controller
             $response = $this->getViewEbayData($request);
             $data = json_decode($response->getContent(), true);
             $ebayData = $data['data'] ?? [];
-            // S PRC column paints Dil → NROI (then saved SPRICE only when Dil has no price).
-            // S GPFT / S GROI / SNROI / SNPFT use that same price, matching the tabulator cells.
-            $spriceService = EbayRuleSpriceApplyService::for('ebay1');
-            $cellSpriceBySku = $spriceService->cellSpriceMapForExport($ebayData);
+            // S PRC is the saved SPRICE (no Dil rule). S GPFT / S GROI / SNROI / SNPFT use that price.
+            $spriceService = EbaySpriceExportPercents::for('ebay1');
             $channelAdsPct = $spriceService->channelAdsPercent();
-            $paintedSprice = function (array $item) use ($cellSpriceBySku): float {
+            $paintedSprice = function (array $item): float {
                 if (! empty($item['is_parent_summary'])) {
                     return 0.0;
                 }
-                $sku = strtoupper(trim((string) ($item['(Child) sku'] ?? '')));
-                $price = $cellSpriceBySku[$sku] ?? null;
-                if (! ($price > 0)) {
-                    $saved = $item['SPRICE'] ?? null;
-                    $price = is_numeric($saved) ? (float) $saved : 0;
-                }
+                $saved = $item['SPRICE'] ?? null;
+                $price = is_numeric($saved) ? (float) $saved : 0;
 
                 return ($price > 0) ? (float) $price : 0.0;
             };
@@ -3707,330 +3687,6 @@ class EbayController extends Controller
         $chartData = array_values($dataByDate);
 
         return response()->json($chartData);
-    }
-
-    public function pushEbayPrice(Request $request)
-    {
-        $sku   = strtoupper(trim($request->input('sku')));
-        $price = $request->input('price');
-
-        // --- Input validation (kept identical to original) ---
-
-        if (empty($sku)) {
-            $this->saveSpriceStatus($sku, 'error');
-            return response()->json([
-                'errors' => [['code' => 'InvalidInput', 'message' => 'SKU is required.']]
-            ], 400);
-        }
-
-        $priceFloat = floatval($price);
-        if (!is_numeric($price) || $priceFloat <= 0) {
-            $this->saveSpriceStatus($sku, 'error');
-            return response()->json([
-                'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be a positive number.']]
-            ], 400);
-        }
-
-        if ($priceFloat < 0.01 || $priceFloat > 10000) {
-            $this->saveSpriceStatus($sku, 'error');
-            return response()->json([
-                'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be between $0.01 and $10,000.']]
-            ], 400);
-        }
-
-        // Cap to two decimal places
-        $priceFloat = round($priceFloat, 2);
-
-        try {
-            // Resolve eBay listing metadata from the local DB
-            $ebayMetric = EbayMetric::where('sku', $sku)->first();
-
-            if (!$ebayMetric || !$ebayMetric->item_id) {
-                $this->saveSpriceStatus($sku, 'error');
-                Log::error('[EbayController] eBay item_id not found', ['sku' => $sku]);
-                return response()->json([
-                    'errors' => [['code' => 'NotFound', 'message' => 'eBay listing not found for SKU: ' . $sku]]
-                ], 404);
-            }
-
-            $pushed = $this->pushEbay1PriceAndPullLive($sku, $priceFloat);
-            if ($pushed['success']) {
-                $this->saveSpriceStatus($sku, 'pushed');
-                Log::info('[EbayController] eBay price push successful via microservice', [
-                    'sku'     => $sku,
-                    'price'   => $priceFloat,
-                    'item_id' => $ebayMetric->item_id,
-                    'ebay_price' => $pushed['ebay_price'] ?? null,
-                ]);
-                return response()->json([
-                    'success' => true,
-                    'message' => $pushed['message'] ?: 'Price updated successfully',
-                    'ebay_price' => $pushed['ebay_price'] ?? $priceFloat,
-                ]);
-            }
-
-            $result = [
-                'success' => false,
-                'accountRestricted' => ($pushed['status'] ?? '') === 'account_restricted',
-                'errors' => $pushed['errors'] ?? [['code' => 'UnknownError', 'message' => $pushed['message'] ?? 'Failed to update price']],
-            ];
-
-            // --- Failure path ---
-
-            // accountRestricted is forwarded from the microservice (which itself
-            // forwards it from eBay's Trading API response).
-            $isAccountRestricted = isset($result['accountRestricted']) && $result['accountRestricted'];
-
-            $this->saveSpriceStatus($sku, $isAccountRestricted ? 'account_restricted' : 'error');
-
-            // EbayPushService already normalizes errors to [{code, message}].
-            // We also handle the raw eBay format (ErrorCode / LongMessage) in
-            // case the microservice forwards it verbatim, so both shapes work.
-            $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
-
-            if (!is_array($errors)) {
-                $errors = [$errors];
-            }
-
-            $errorMessages = [];
-            $hasLvisError  = false;
-
-            foreach ($errors as $error) {
-                // Support both microservice normalized format {code, message}
-                // and raw eBay Trading API format {ErrorCode, LongMessage, ...}
-                $errorCode   = is_array($error) ? ($error['code'] ?? $error['ErrorCode'] ?? '') : '';
-                $errorMsg    = is_array($error)
-                    ? ($error['message'] ?? $error['LongMessage'] ?? $error['ShortMessage'] ?? 'Unknown error')
-                    : (string) $error;
-                $errorParams = is_array($error) ? ($error['ErrorParameters'] ?? []) : [];
-
-                // Append any embedded parameter values into the full error text
-                $paramMessages = [];
-                if (is_array($errorParams)) {
-                    foreach ($errorParams as $param) {
-                        if (is_array($param) && isset($param['Value'])) {
-                            $paramMessages[] = strip_tags($param['Value']);
-                        }
-                    }
-                }
-                $fullErrorText = trim($errorMsg . ' ' . implode(' ', $paramMessages));
-
-                // Detect account-level restrictions that cannot be bypassed
-                $isRestricted      = false;
-                $isEmbargoedCountry = false;
-
-                if (
-                    stripos($fullErrorText, 'account is restricted') !== false ||
-                    stripos($fullErrorText, 'restrictions on your account') !== false ||
-                    stripos($fullErrorText, 'embargoed country') !== false ||
-                    stripos($fullErrorText, 'ACCOUNT RESTRICTION') !== false
-                ) {
-                    $isRestricted       = true;
-                    $isEmbargoedCountry = stripos($fullErrorText, 'embargoed country') !== false;
-                }
-
-                if ($errorCode === '21916293' || stripos($errorMsg, 'Lvis') !== false || $isRestricted) {
-                    $hasLvisError = true;
-
-                    if ($isRestricted) {
-                        $errorMessages[] = [
-                            'code'    => $errorCode ?: 'AccountRestricted',
-                            'message' => $isEmbargoedCountry
-                                ? 'ACCOUNT RESTRICTION: Your eBay account is restricted due to country/embargo restrictions. Please check your eBay Messages for "Your eBay account is restricted" and resolve the account restrictions before updating prices. This cannot be bypassed programmatically.'
-                                : 'ACCOUNT RESTRICTION: Your eBay account has restrictions that prevent price updates. Please check your eBay Messages for "Your eBay account is restricted" and provide the requested information to remove restrictions. Contact eBay Customer Service if you believe this is an error.',
-                        ];
-                    } else {
-                        $errorMessages[] = [
-                            'code'    => $errorCode ?: 'LvisBlocked',
-                            'message' => 'Listing validation blocked: This listing may have policy violations or restrictions. Please check the listing status in eBay Seller Hub and resolve any issues before updating the price.',
-                        ];
-                    }
-                } else {
-                    // Business-policy warnings (21919456) are non-blocking – log but do not surface to the UI
-                    if ($errorCode === '21919456' || stripos($errorMsg, 'business policies') !== false) {
-                        Log::warning('[EbayController] eBay business policy warning (non-blocking)', [
-                            'sku'   => $sku,
-                            'error' => $errorMsg,
-                        ]);
-                    } else {
-                        $errorMessages[] = [
-                            'code'    => $errorCode ?: 'APIError',
-                            'message' => $errorMsg,
-                        ];
-                    }
-                }
-            }
-
-            Log::error('[EbayController] eBay price push failed via microservice', [
-                'sku'          => $sku,
-                'price'        => $priceFloat,
-                'item_id'      => $ebayMetric->item_id,
-                'errors'       => $errors,
-                'hasLvisError' => $hasLvisError,
-            ]);
-
-            return response()->json(['errors' => $errorMessages], 400);
-
-        } catch (\Exception $e) {
-            // Catch-all: log the failure but do not let it propagate and break
-            // the UI. EbayPushService already catches its own exceptions; this
-            // guard covers any unexpected error in the controller logic itself.
-            $this->saveSpriceStatus($sku, 'error');
-            Log::error('[EbayController] Exception in pushEbayPrice', [
-                'sku'   => $sku,
-                'price' => $priceFloat ?? null,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json([
-                'errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]
-            ], 500);
-        }
-    }
-
-    /**
-     * Push S PRC to eBay, then GetItem and write the live price to ebay_metrics.
-     *
-     * @return array{success: bool, status: string, message: string, ebay_price: ?float, errors: array}
-     */
-    private function pushEbay1PriceAndPullLive(string $sku, float $priceFloat): array
-    {
-        $empty = [
-            'success' => false,
-            'status' => 'error',
-            'message' => '',
-            'ebay_price' => null,
-            'errors' => [],
-        ];
-
-        $ebayMetric = EbayMetric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])->first()
-            ?? EbayMetric::query()->where('sku', $sku)->first();
-
-        if (! $ebayMetric || ! $ebayMetric->item_id) {
-            return array_merge($empty, [
-                'status' => 'not_listed',
-                'message' => 'eBay listing not found for SKU: '.$sku,
-                'errors' => [['code' => 'NotFound', 'message' => 'eBay listing not found for SKU: '.$sku]],
-            ]);
-        }
-
-        $liveNow = $this->ebay1PullLivePriceAndUpdateMetric($ebayMetric, $sku);
-        if ($liveNow !== null && abs($liveNow - $priceFloat) < 0.005) {
-            return [
-                'success' => true,
-                'status' => 'already_live',
-                'message' => 'eBay already at $'.number_format($priceFloat, 2),
-                'ebay_price' => $liveNow,
-                'errors' => [],
-            ];
-        }
-
-        try {
-            $ebayService = new EbayApiService();
-            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
-            $result = Ebay1PromotionService::for('ebay1')->withPriceRevisionAllowed(
-                $sku,
-                fn () => $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat, null, $apiSku)
-            );
-        } catch (\Throwable $e) {
-            Log::error('[EbayController] Auto-push S PRC failed', [
-                'sku' => $sku,
-                'price' => $priceFloat,
-                'error' => $e->getMessage(),
-            ]);
-
-            return array_merge($empty, [
-                'message' => $e->getMessage(),
-                'errors' => [['code' => 'Exception', 'message' => $e->getMessage()]],
-            ]);
-        }
-
-        if (! isset($result['success']) || ! $result['success']) {
-            $isAccountRestricted = ! empty($result['accountRestricted']);
-            $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => $result['message'] ?? 'Failed to update price']];
-            if (! is_array($errors)) {
-                $errors = [$errors];
-            }
-
-            return [
-                'success' => false,
-                'status' => $isAccountRestricted ? 'account_restricted' : 'error',
-                'message' => $this->ebay1FirstPushErrorMessage($errors),
-                'ebay_price' => null,
-                'errors' => $errors,
-            ];
-        }
-
-        $live = $this->ebay1PullLivePriceAndUpdateMetric($ebayMetric, $sku, $ebayService);
-        if ($live === null) {
-            $live = $priceFloat;
-            $ebayMetric->ebay_price = $live;
-            $ebayMetric->save();
-            $this->ebay1SyncDailyPrice($sku, $live);
-        }
-
-        Log::info('[EbayController] S PRC auto-pushed and live price pulled', [
-            'sku' => $sku,
-            'pushed' => $priceFloat,
-            'ebay_price' => $live,
-            'item_id' => $ebayMetric->item_id,
-        ]);
-
-        return [
-            'success' => true,
-            'status' => 'pushed',
-            'message' => 'Price updated successfully',
-            'ebay_price' => $live,
-            'errors' => [],
-        ];
-    }
-
-    /**
-     * @param  array<int, mixed>  $errors
-     */
-    private function ebay1FirstPushErrorMessage(array $errors): string
-    {
-        foreach ($errors as $error) {
-            if (is_array($error)) {
-                $msg = (string) ($error['message'] ?? $error['LongMessage'] ?? $error['ShortMessage'] ?? '');
-                if ($msg !== '') {
-                    return $msg;
-                }
-            } elseif (is_string($error) && $error !== '') {
-                return $error;
-            }
-        }
-
-        return 'Failed to update price';
-    }
-
-    private function ebay1PullLivePriceAndUpdateMetric(EbayMetric $ebayMetric, string $sku, ?EbayApiService $ebayService = null): ?float
-    {
-        try {
-            $ebayService = $ebayService ?: new EbayApiService();
-            $info = $ebayService->getItem((string) $ebayMetric->item_id);
-            $item = is_array($info['Item'] ?? null) ? $info['Item'] : [];
-            if ($item === []) {
-                return null;
-            }
-            $live = $this->ebay1LivePriceFromGetItem($item, $sku);
-            if ($live === null || $live <= 0) {
-                return null;
-            }
-            $ebayMetric->ebay_price = $live;
-            $ebayMetric->save();
-            $this->ebay1SyncDailyPrice($sku, $live);
-
-            return $live;
-        } catch (\Throwable $e) {
-            Log::warning('[EbayController] GetItem after S PRC push failed', [
-                'sku' => $sku,
-                'item_id' => $ebayMetric->item_id ?? null,
-                'error' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
     }
 
     /**

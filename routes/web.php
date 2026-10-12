@@ -5030,7 +5030,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/tabulator-column-visibility-user', [ChannelTabulatorColumnController::class, 'storeUser'])->name('tabulator.column.visibility.user.set');
     Route::get('/tabulator-column-order', [ChannelTabulatorColumnController::class, 'showOrder'])->name('tabulator.column.order.get');
     Route::post('/tabulator-column-order', [ChannelTabulatorColumnController::class, 'storeOrder'])->name('tabulator.column.order.set');
-    Route::post('/push-ebay3-price-tabulator', [EbayThreeController::class, 'pushEbay3Price'])->name('ebay3.push.price.tabulator');
     Route::post('/update-ebay3-sprice-status', [EbayThreeController::class, 'updateEbay3SpriceStatus'])->name('ebay3.update.sprice.status');
     Route::post('/clear-all-sprice-ebay3', [EbayThreeController::class, 'clearAllSprice'])->name('ebay3.clear.all.sprice');
 
@@ -5148,8 +5147,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-analytics/export', [EbayController::class, 'exportEbayAnalytics'])->name('ebay.analytics.export');
     Route::get('/ebay-analytics/sample', [EbayController::class, 'downloadSample'])->name('ebay.analytics.sample');
 
-    Route::any('/update-ebay-sku-pricing', [EbayController::class, 'updateEbayPricing'])->name('ebay.priceUpdate');
-    Route::any('/update-ebay2-sku-pricing', [EbayTwoController::class, 'updateEbayPricing'])->name('ebay2.priceUpdate');
     // Route::post('/update-amazon-pricing', [OverallAmazonController::class, 'updatePrice'])->name('amazon.priceUpdate');
     Route::get('/check-amazon-auth', [OverallAmazonController::class, 'checkAmazonAuth']);
 
@@ -5161,7 +5158,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-pricing-increase', action: [EbayController::class, 'ebayPricingIncrease'])->name('ebay.pricing.inc');
     Route::post('/save-nr-ebay', [EbayController::class, 'saveNrToDatabase'])->name('ebay.save.nr');
     Route::post('/save-sprice-ebay', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay.save.sprice');
-    Route::post('/push-ebay-price-tabulator', [EbayController::class, 'pushEbayPrice'])->name('ebay.push.price.tabulator');
     Route::post('/update-ebay-sprice-status', [EbayController::class, 'updateEbaySpriceStatus'])->name('ebay.update.sprice.status');
     Route::post('/update-listed-live-ebay', [EbayController::class, 'updateListedLive'])->name('ebay.update.listed.live');
 
@@ -5206,7 +5202,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/export-ebay2-pricing-data', [EbayTwoController::class, 'exportEbay2PricingData'])->name('ebay2.export');
     Route::post('/save-ebay2-nr', [EbayTwoController::class, 'saveNrToDatabase'])->name('ebay2.save.nr');
     Route::post('/save-ebay2-sprice', [EbayTwoController::class, 'saveSpriceToDatabase'])->name('ebay2.save.sprice');
-    Route::post('/push-ebay2-price', [EbayTwoController::class, 'pushEbay2Price'])->name('ebay2.push.price');
     Route::post('/update-ebay2-sprice-status', [EbayTwoController::class, 'updateEbay2SpriceStatus'])->name('ebay2.update.sprice.status');
     Route::post('/update-listed-live-ebay2', [EbayTwoController::class, 'updateListedLive'])->name('ebay2.update.listed.live');
     Route::post('/ebay2-analytics/import', [EbayTwoController::class, 'importEbayTwoAnalytics'])->name('ebay2.analytics.import');
@@ -6040,10 +6035,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/sprice-active-rule', [ChannelPromoPricingController::class, 'saveSpriceActiveRule'])->name('channel.promo.sprice-active-rule.save');
     Route::get('/channel-promo-pricing/{channel}/ignore-neg-snroi', [ChannelPromoPricingController::class, 'ignoreNegSnroiSetting'])->name('channel.promo.ignore-neg-snroi.get');
     Route::post('/channel-promo-pricing/{channel}/ignore-neg-snroi', [ChannelPromoPricingController::class, 'saveIgnoreNegSnroiSetting'])->name('channel.promo.ignore-neg-snroi.save');
-    Route::post('/channel-promo-pricing/{channel}/push-blue', [ChannelPromoPricingController::class, 'startBackgroundBluePush'])->name('channel.promo.push-blue');
-    Route::post('/channel-push-prc/{channel}', [ChannelPromoPricingController::class, 'queuePushPrc'])->name('channel.push-prc.queue');
-    Route::get('/channel-push-prc/{channel}/status', [ChannelPromoPricingController::class, 'pushPrcJobStatus'])->name('channel.push-prc.status');
-    Route::post('/channel-push-prc/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushPrc'])->name('channel.push-prc.cancel');
     Route::post('/channel-push-sprice/{channel}', [ChannelPromoPricingController::class, 'queuePushSprice'])->name('channel.push-sprice.queue');
     Route::get('/channel-push-sprice/{channel}/status', [ChannelPromoPricingController::class, 'pushSpriceJobStatus'])->name('channel.push-sprice.status');
     Route::post('/channel-push-sprice/{channel}/cancel', [ChannelPromoPricingController::class, 'cancelPushSprice'])->name('channel.push-sprice.cancel');
@@ -8060,98 +8051,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
 
 // Attendance Desktop Agent API — see routes/attendance-agent.php (registered in RouteServiceProvider)
-
-// =============================================================================
-// eBay Push Microservice — LOCAL MOCK ENDPOINT (for testing only)
-// -----------------------------------------------------------------------------
-// Use this to test the full price-push flow before the real cPanel microservice
-// at businessnew.5coremanagement.com is deployed.
-//
-// HOW TO USE:
-//   1. In .env set:
-//        EBAY_PUSH_MICROSERVICE_URL=http://localhost/invent/public
-//   2. Push a price from the tabulator UI
-//   3. Check storage/logs/laravel.log for [MockMicroservice] entries
-//   4. Once the real microservice is live, revert the URL and remove this block
-// =============================================================================
-Route::post('/mock-push-ebay-price', function (\Illuminate\Http\Request $request) {
-    // 1. Verify Bearer token (must match EBAY_PUSH_MICROSERVICE_TOKEN in .env)
-    $expectedToken = config('services.ebay_push_microservice.token', '');
-    $providedToken = $request->bearerToken();
-
-    if (empty($expectedToken) || !$providedToken || !hash_equals($expectedToken, $providedToken)) {
-        \Illuminate\Support\Facades\Log::warning('[MockMicroservice] Unauthorized request', ['ip' => $request->ip()]);
-        return response()->json(['success' => false, 'message' => 'Unauthorized.'], 401);
-    }
-
-    // 2. Validate payload
-    $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
-        'sku'          => 'required|string',
-        'price'        => 'required|numeric|min:0.01|max:10000',
-        'ebay_item_id' => 'required|string',
-        'quantity'     => 'nullable|integer|min:0',
-        'title'        => 'nullable|string',
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'message' => $validator->errors()->first(),
-            'errors'  => [['code' => 'ValidationError', 'message' => $validator->errors()->first()]],
-        ], 422);
-    }
-
-    $data   = $validator->validated();
-    $itemId = (string) $data['ebay_item_id'];
-    $price  = round((float) $data['price'], 2);
-    $qty    = isset($data['quantity']) ? (int) $data['quantity'] : null;
-
-    \Illuminate\Support\Facades\Log::info('[MockMicroservice] Received push — forwarding to EbayApiService', [
-        'sku'     => $data['sku'],
-        'item_id' => $itemId,
-        'price'   => $price,
-    ]);
-
-    // 3. Call real eBay Trading API (same as the real microservice will do)
-    try {
-        $ebay   = new \App\Services\EbayApiService();
-        $result = $ebay->reviseFixedPriceItem($itemId, $price, $qty);
-    } catch (\Throwable $e) {
-        \Illuminate\Support\Facades\Log::error('[MockMicroservice] EbayApiService exception', ['error' => $e->getMessage()]);
-        return response()->json([
-            'success' => false,
-            'message' => $e->getMessage(),
-            'errors'  => [['code' => 'Exception', 'message' => $e->getMessage()]],
-        ], 500);
-    }
-
-    // 4. Return normalized JSON (same shape the real microservice will return)
-    if (!empty($result['success'])) {
-        \Illuminate\Support\Facades\Log::info('[MockMicroservice] Push succeeded', ['sku' => $data['sku'], 'price' => $price]);
-        return response()->json(['success' => true, 'message' => 'Price updated successfully.', 'data' => $result]);
-    }
-
-    $rawErrors = (is_array($result['errors'] ?? null) && !empty($result['errors']))
-        ? $result['errors']
-        : [['code' => 'UnknownError', 'message' => $result['message'] ?? 'Failed to update price']];
-
-    $errors = array_map(fn($e) => !is_array($e)
-        ? ['code' => 'APIError', 'message' => (string) $e]
-        : [
-            'code'    => (string) ($e['ErrorCode'] ?? $e['code'] ?? 'APIError'),
-            'message' => $e['LongMessage'] ?? $e['ShortMessage'] ?? $e['message'] ?? 'Unknown error',
-        ], $rawErrors);
-
-    \Illuminate\Support\Facades\Log::error('[MockMicroservice] Push failed', ['sku' => $data['sku'], 'errors' => $errors]);
-
-    return response()->json([
-        'success'           => false,
-        'message'           => $errors[0]['message'] ?? 'Failed to update price',
-        'errors'            => $errors,
-        'accountRestricted' => (bool) ($result['accountRestricted'] ?? false),
-    ], 400);
-});
-
 
 // Shopify Meta Campaigns Routes (Facebook & Instagram)
 Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function () {

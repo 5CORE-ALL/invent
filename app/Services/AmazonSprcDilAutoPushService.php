@@ -47,7 +47,10 @@ class AmazonSprcDilAutoPushService
         int $sleepMs = 300,
         ?array $onlySkus = null,
         ?callable $logger = null,
-        bool $pushAll = false
+        bool $pushAll = false,
+        bool $blueCatchUp = false,
+        int $cooldownMinutes = 120,
+        int $maxPushes = 0
     ): array {
         $dilStore = $this->loadDilGroiStore();
         $dilRules = $dilStore['rules'];
@@ -122,7 +125,36 @@ class AmazonSprcDilAutoPushService
                         continue;
                     }
 
-                    if (! $pushAll && $this->isUnchanged($row, $computed)) {
+                    if ($blueCatchUp) {
+                        // Headless "Push on reload": the blue-triangle SKUs (INV > 0, Price ≠ S PRC).
+                        // The twice-daily run skips a SKU whose last pushed offer already equals the
+                        // target, so a Price that drifted afterwards stayed blue until someone opened the page.
+                        if ($maxPushes > 0 && $stats['pushed'] + $stats['push_failed'] >= $maxPushes) {
+                            $this->log($logger, "Reached max pushes ({$maxPushes}) — rest next run");
+                            break;
+                        }
+                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $cooldownMinutes)) {
+                            // Amazon rejected the last push — retry after the cooldown, not every run.
+                            $stats['skipped']++;
+                            continue;
+                        }
+                        if ($this->isUnchanged($row, $computed)) {
+                            if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
+                                $stats['skipped_unchanged']++;
+                                continue;
+                            }
+                            // Pull the live Price first. Amazon may already be right and only the Price column stale.
+                            if (! $dryRun && ! $skipPush) {
+                                $pull = app(AmazonPushedPricePullService::class)->pullSkusNow([(string) $row['sku']])[0] ?? null;
+                                if ($pull && ! empty($pull['success'])
+                                    && AmazonSpApiService::listingPriceMatchesSprice($pull['price'] ?? 0, $computed['sprice'])) {
+                                    $stats['price_repaired']++;
+                                    $stats['skipped_unchanged']++;
+                                    continue;
+                                }
+                            }
+                        }
+                    } elseif (! $pushAll && $this->isUnchanged($row, $computed)) {
                         if (! $dryRun && $this->repairStalePriceColumn($row, (float) $computed['sprice'])) {
                             $stats['price_repaired']++;
                         }
@@ -144,7 +176,9 @@ class AmazonSprcDilAutoPushService
                     }
 
                     $plan = AmazonSpApiService::computeSaleBusinessMin((float) $computed['sprice']);
-                    $reason = $pushAll
+                    $reason = $blueCatchUp
+                        ? 'Blue catch-up'
+                        : ($pushAll
                         ? 'Push All'
                         : AmazonSpApiService::offerMismatchReason(
                             $row['pushed_sale'] ?? null,
@@ -153,7 +187,7 @@ class AmazonSprcDilAutoPushService
                             $plan['sale_price'],
                             $plan['business_price'],
                             $plan['min_price']
-                        );
+                        ));
                     AmazonSpApiService::logPushDelta(
                         $row['sku'],
                         $row['pushed_sale'] ?? null,
@@ -535,6 +569,10 @@ class AmazonSprcDilAutoPushService
                 'age_days' => $ageDays->ageDays($sellerSku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => $std,
                 'sprice' => (float) ($dv['SPRICE'] ?? 0),
+                'pushed_at' => $dv['SPRICE_PUSHED_AT'] ?? null,
+                'push_error_at' => (($dv['SPRICE_STATUS'] ?? '') === 'error')
+                    ? ($dv['SPRICE_STATUS_UPDATED_AT'] ?? null)
+                    : null,
                 'pushed_value' => $lastOffer['sale'],
                 'pushed_sale' => $lastOffer['sale'],
                 'pushed_business' => $lastOffer['business'],
@@ -898,6 +936,18 @@ class AmazonSprcDilAutoPushService
             $plan['business_price'],
             $plan['min_price']
         );
+    }
+
+    protected function withinCooldown(string $at, int $cooldownMinutes): bool
+    {
+        if ($cooldownMinutes <= 0 || $at === '') {
+            return false;
+        }
+        try {
+            return Carbon::parse($at)->gt(now()->subMinutes($cooldownMinutes));
+        } catch (Throwable $e) {
+            return false;
+        }
     }
 
     /**

@@ -369,15 +369,8 @@ class ChannelLivePriceSync
             return false;
         }
 
-        $pushed = (float) ($row['pushed_sprice'] ?? 0);
-        if ($pushed > 0 && PushedListingPrice::same($pushed, $next)) {
-            if (! $dryRun) {
-                self::writeLive($channel, (string) ($row['sku'] ?? ''), $next);
-            }
-
-            return true;
-        }
-
+        // Live price still differs. A stored "already pushed" value must not
+        // skip the revise or paint the local price as if the site had changed.
         return false;
     }
 

@@ -37,26 +37,125 @@ class ReverbSalesController extends Controller
     }
 
     /**
+     * Same integers the /reverb-sales badges paint.
+     * Sales is the order total. GPFT divides by product sales. Bump is not cut from N PFT.
+     *
+     * @return array{l30_sales: int, product_sales: int, orders: int, qty: int, pft: int, cogs: int, ship: int, bump: int, gpft: int, groi: int, tacos: float}
+     */
+    public function dailySalesBadgeTotals(string $period = 'l30'): array
+    {
+        $nowPt = Carbon::now('America/Los_Angeles');
+        $l30End = $nowPt->toDateString();
+        $l30Start = $nowPt->copy()->subDays(30)->toDateString();
+        if ($period === 'l60') {
+            $end = Carbon::parse($l30Start)->subDay()->toDateString();
+            $start = Carbon::parse($end)->subDays(30)->toDateString();
+        } else {
+            $start = $l30Start;
+            $end = $l30End;
+        }
+
+        return $this->badgeFromSalesLines($this->salesLines($start, $end));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array{l30_sales: int, product_sales: int, orders: int, qty: int, pft: int, cogs: int, ship: int, bump: int, gpft: int, groi: int, tacos: float}
+     */
+    private function badgeFromSalesLines(array $lines): array
+    {
+        $orders = 0;
+        $qty = 0;
+        $revenue = 0.0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+        $bump = 0.0;
+
+        foreach ($lines as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku === '') {
+                $sku = trim((string) ($row['display_sku'] ?? ''));
+            }
+            if ($sku === '' || trim((string) ($row['order_number'] ?? '')) === '' || empty($row['order_date'])) {
+                continue;
+            }
+            $status = strtolower((string) ($row['status'] ?? ''));
+            if (str_contains($status, 'cancel') || str_contains($status, 'refund')) {
+                continue;
+            }
+
+            $orders++;
+            $qty += (int) ($row['quantity'] ?? 1);
+            $product = (float) ($row['product_subtotal'] ?? 0);
+            $amount = (float) ($row['amount'] ?? 0);
+            $revenue += $product != 0.0 ? $product : $amount;
+            $sales += $amount != 0.0 ? $amount : $product;
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+            $bump += (float) ($row['bump_fee'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $revenueRounded = (int) round($revenue);
+        $cogsRounded = (int) round($cogs);
+        $tacos = $sales > 0 ? ($bump / $sales) * 100 : 0.0;
+
+        return [
+            'l30_sales' => $salesRounded,
+            'product_sales' => $revenueRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'bump' => (int) round($bump),
+            'gpft' => $revenueRounded !== 0 ? (int) round(($pftRounded / $revenueRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+            'tacos' => round($tacos, 1),
+        ];
+    }
+
+    /**
      * Get daily sales data from reverb_daily_data table for tabulator
      */
     public function getDailyData(Request $request)
     {
         try {
-            // Check if table exists
-            if (!Schema::hasTable('reverb_daily_data')) {
+            if (! Schema::hasTable('reverb_daily_data')) {
                 return response()->json(['error' => 'Reverb daily data table not found'], 404);
             }
 
-            // Last 31 Pacific days (inclusive of today). order_date is the seller
-            // Order Date (created_at) in California — same 17th as the Reverb orders page.
             $nowPt = Carbon::now('America/Los_Angeles');
-            $l30EndDate = $nowPt->toDateString();
-            $l30StartDate = $nowPt->copy()->subDays(30)->toDateString();
 
-            // Fetch L30 data only (last 30 days based on Pacific windows)
+            return response()->json($this->salesLines(
+                $nowPt->copy()->subDays(30)->toDateString(),
+                $nowPt->toDateString()
+            ))->header('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            Log::error('Error fetching Reverb daily data: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function salesLines(string $startDate, string $endDate): array
+    {
+        if (! Schema::hasTable('reverb_daily_data')) {
+            return [];
+        }
+
             $reverbData = DB::table('reverb_daily_data')
                 ->whereNotNull('order_date')
-                ->whereBetween('order_date', [$l30StartDate, $l30EndDate])
+                ->whereBetween('order_date', [$startDate, $endDate])
                 ->orderBy('order_date', 'desc')
                 ->get();
 
@@ -203,13 +302,7 @@ class ReverbSalesController extends Controller
                 'processed_records' => count($data)
             ]);
             
-            return response()->json($data)->header('Content-Type', 'application/json');
-        } catch (\Exception $e) {
-            Log::error('Error fetching Reverb daily data: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
-        }
+            return $data;
     }
 
     /**

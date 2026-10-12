@@ -571,7 +571,7 @@
                 pftBadge.removeClass('bg-dark').addClass('bg-danger');
             }
             
-            $('#l30-sales-badge').text('L30 Sales: $' + totalL30Sales.toFixed(2));
+            $('#l30-sales-badge').text('L30 Sales: $' + salesDollars.toLocaleString());
 
             // L60 Sales: sum the L60 totals only for SKUs visible in the current (filtered) view.
             // l60SalesBySku is keyed by the original SKU casing from DB; compare case-insensitively.
@@ -585,8 +585,7 @@
                     totalL60Sales += l60Lookup[sku];
                 }
             });
-            const l60Formatted = totalL60Sales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            $('#l60-sales-badge').text('L60 Sales: $' + l60Formatted);
+            $('#l60-sales-badge').text('L60 Sales: $' + Math.round(totalL60Sales).toLocaleString());
             $('#l60-sales-badge').attr('title', l60RangeDisplay ? ('L60 window: ' + l60RangeDisplay) : '');
 
             $('#total-cogs-badge').text('Total COGS: $' + cogsDollars.toLocaleString());

@@ -610,6 +610,7 @@
             text-overflow: clip !important;
         }
         @include('partials.analytics-column-visibility', ['colVisPart' => 'css'])
+        @unless(strtolower((string) ($channelPromoChannel ?? 'ebay1')) === 'ebay2op')
         @push('page-title-after')
             <div class="ch-promo-reload-push-cluster" id="ch-promo-reload-push-cluster">
                 <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
@@ -642,6 +643,7 @@
                 </div>
             </div>
         @endpush
+        @endunless
 @endif
 
 @if($channelPromoPart === 'buttons' || $channelPromoPart === 'all')
@@ -1271,7 +1273,7 @@
             ebay1: {
                 label: 'eBay',
                 saveSpriceUrl: '/ebay-one/save-sprice',
-                pushPriceUrl: '/push-ebay-price-tabulator',
+                pushPriceUrl: null, // eBay price push removed
                 priceField: 'eBay Price',
                 cvrField: 'SCVR',
                 dilField: 'E Dil%',
@@ -1282,7 +1284,7 @@
             ebay2: {
                 label: 'eBay2',
                 saveSpriceUrl: '/save-ebay2-sprice',
-                pushPriceUrl: '/push-ebay2-price',
+                pushPriceUrl: null, // eBay price push removed
                 priceField: 'eBay Price',
                 cvrField: 'SCVR',
                 dilField: 'E Dil%',
@@ -1293,7 +1295,7 @@
             ebay2op: {
                 label: 'eBay2 OP',
                 saveSpriceUrl: '/save-ebay2-sprice',
-                pushPriceUrl: '/push-ebay2-price',
+                pushPriceUrl: null, // eBay price push removed
                 priceField: 'eBay Price',
                 cvrField: 'SCVR',
                 dilField: 'E Dil%',
@@ -1304,7 +1306,7 @@
             ebay3: {
                 label: 'eBay3',
                 saveSpriceUrl: '/ebay3/save-sprice',
-                pushPriceUrl: '/push-ebay3-price-tabulator',
+                pushPriceUrl: null, // eBay price push removed
                 priceField: 'eBay Price',
                 cvrField: 'SCVR',
                 dilField: 'E Dil%',
@@ -3412,7 +3414,7 @@
                 total: total,
             };
         }
-        const CH_PROMO_PUSH_QUEUE_CHANNELS = ['ebay1', 'ebay2', 'ebay2op', 'ebay3'];
+        const CH_PROMO_PUSH_QUEUE_CHANNELS = []; // Push Prc queue removed
         const chPromoPushQueueEnabled = CH_PROMO_PUSH_QUEUE_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
         const CH_PROMO_PUSH_QUEUE_URL = '/channel-push-prc/' + encodeURIComponent(CHANNEL_PROMO_CHANNEL);
         @include('partials.channel-push-sprice-queue', ['channelPushSpriceChannel' => $channelPromoChannel])
@@ -3967,6 +3969,22 @@
             if (isFinite(s) && s > 0) return s;
             return 0;
         }
+        /**
+         * eBay 1/2/3 badge: remember the S PRC the SERVER saved when the rows were loaded. The page
+         * overwrites row.SPRICE with its own calculation, but the server (runner / blue push) only ever
+         * pushes the saved rule price, so the blue badge has to be judged on that saved price.
+         */
+        function chPromoCaptureServerSprice(rows) {
+            (function walk(list) {
+                (list || []).forEach(function(d) {
+                    if (!d) return;
+                    const n = Number(d.SPRICE);
+                    d.SPRICE_SERVER = (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
+                    if (Array.isArray(d._children)) walk(d._children);
+                });
+            })(rows);
+        }
+        window.chPromoCaptureServerSprice = chPromoCaptureServerSprice;
         /** Keep in-memory SPRICE / sprice equal to the visible rule price. */
         function chPromoWriteStoredSprice(d, live) {
             if (!d || !(live > 0)) return;
@@ -5485,6 +5503,9 @@
             // triangle can clear on this page (production still uses live Price).
             if (window._chPushSpriceLiveAllowed === false && fill > 0 && updates['eBay Price'] == null) {
                 updates['eBay Price'] = fill;
+            }
+            if (saveRes && chPromoIsEbayChannel()) {
+                updates.SPRICE_SERVER = fill > 0 ? chPromoRound2(fill) : 0;
             }
             if (saveRes && saveRes.SPRICE_STATUS) {
                 updates.SPRICE_STATUS = saveRes.SPRICE_STATUS;
@@ -9973,55 +9994,6 @@
             } catch (e) { /* TDZ before let table */ }
             return (typeof window !== 'undefined' && window.table) ? window.table : null;
         }
-        function chPromoStartServerBluePush() {
-            if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return false;
-            if (!chPromoPageReloadPushAllowed()) return false;
-            if (window._chPromoServerBluePushStarted) return true;
-            window._chPromoServerBluePushStarted = true;
-            if (typeof setChannelPushSpriceProgress === 'function') {
-                setChannelPushSpriceProgress({
-                    active: true,
-                    done: 0,
-                    total: 0,
-                    pct: 0,
-                    msg: 'Starting…',
-                });
-            }
-            if (typeof window.chPushSpriceMarkExpecting === 'function') window.chPushSpriceMarkExpecting();
-            if (typeof startChannelPushSpricePoll === 'function') startChannelPushSpricePoll();
-            $.ajax({
-                url: CH_PROMO_RULES_BASE + '/push-blue',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
-                data: { _token: chPromoCsrf() },
-            }).done(function(res) {
-                const started = !!(res && (res.started || res.scanning));
-                const n = Number(res && res.queued) || 0;
-                const msg = (res && res.message) || (started ? 'Scanning blue SKUs…' : (n > 0 ? ('Background push ' + n) : 'No S PRC to push'));
-                if (typeof setChannelPushSpriceProgress === 'function') {
-                    setChannelPushSpriceProgress({
-                        active: started || n > 0,
-                        done: 0,
-                        total: n,
-                        pct: 0,
-                        msg: msg,
-                    });
-                }
-                if ((started || n > 0) && typeof startChannelPushSpricePoll === 'function') {
-                    startChannelPushSpricePoll();
-                }
-                if (!started && n <= 0 && typeof window.chPushSpriceClearExpecting === 'function') {
-                    window.chPushSpriceClearExpecting();
-                }
-            }).fail(function() {
-                window._chPromoServerBluePushStarted = false;
-                if (typeof window.chPushSpriceClearExpecting === 'function') window.chPushSpriceClearExpecting();
-                if (typeof setChannelPushSpriceProgress === 'function') {
-                    setChannelPushSpriceProgress({ active: false, msg: 'Push did not start' });
-                }
-            });
-            return true;
-        }
         function chPromoEbayBlueFn() {
             if (CHANNEL_PROMO_CHANNEL === 'ebay2') return window.ebay2HasBlueTriangle;
             if (CHANNEL_PROMO_CHANNEL === 'ebay3') return window.ebay3HasBlueTriangle;
@@ -10050,123 +10022,15 @@
             const n = (tbl && typeof tbl.getDataCount === 'function') ? tbl.getDataCount() : 0;
             return (n > 0 || extraN > 0) && typeof chPromoEbayBlueFn() === 'function';
         }
-        /** Keep pushing leftover blue-triangle rows without a page reload. */
+        /** Same as Amazon: queue blue SKUs (INV > 0, saved S PRC ≠ Price) for the server push when Push on reload is On. */
         function chPromoEbayPushLeftoverBlues() {
-            if (typeof window.chPushSpricePushLeftoverBlues === 'function'
-                && !/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) {
-                window.chPushSpricePushLeftoverBlues();
-                return;
-            }
-            if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
             if (!chPromoPageReloadPushAllowed()) return;
-            let busy = false;
-            try {
-                busy = typeof window.chPushSpriceClientBusy === 'function' && window.chPushSpriceClientBusy();
-            } catch (e) { busy = false; }
-            if (busy) return;
-            const n = chPromoEbayBlueCount();
-            if (!(n > 0)) {
-                window._chPromoEbayBlueLeftoverLastN = 0;
-                return;
-            }
-            if (n !== window._chPromoEbayBlueLeftoverLastN) {
-                window._chPromoEbayBlueLeftoverLastN = n;
-                window._chPromoEbayBlueLeftoverPasses = 0;
-            }
-            if ((window._chPromoEbayBlueLeftoverPasses || 0) >= 12) return;
-            window._chPromoEbayBlueLeftoverPasses = (window._chPromoEbayBlueLeftoverPasses || 0) + 1;
-            window._chPromoEbayBlueScanStarted = false;
-            window._chPromoEbayBluePushWaits = 20;
-            chPromoTryEbayBluePush();
+            if (typeof window.chPushSpriceScheduleLeftover === 'function') window.chPushSpriceScheduleLeftover(2000);
         }
         window.chPromoEbayPushLeftoverBlues = chPromoEbayPushLeftoverBlues;
-        /** Queue only the blue-triangle rows (S PRC ≠ Price), the same set as the badge. */
         function chPromoTryEbayBluePush() {
-            if (!/^(ebay1|ebay2|ebay3)$/.test(CHANNEL_PROMO_CHANNEL)) return;
-            if (!chPromoPageReloadPushAllowed()) return;
-            if (window._chPromoEbayBlueScanStarted) return;
-            if (!window._chPromoEbayRuleReady
-                && window.spriceActiveRuleReady
-                && typeof window.spriceActiveRuleReady.then === 'function') {
-                window.spriceActiveRuleReady.then(function() {
-                    window._chPromoEbayRuleReady = true;
-                    chPromoTryEbayBluePush();
-                });
-                if (!window._chPromoEbayRuleWaitArmed) {
-                    window._chPromoEbayRuleWaitArmed = true;
-                    setTimeout(function() {
-                        if (window._chPromoEbayRuleReady) return;
-                        window._chPromoEbayRuleReady = true;
-                        chPromoTryEbayBluePush();
-                    }, 2000);
-                }
-                return;
-            }
-            window._chPromoEbayBluePushWaits = (window._chPromoEbayBluePushWaits || 0) + 1;
-            const waitedLongEnough = window._chPromoEbayBluePushWaits > 20;
-            if (!chPromoEbaySpriceSlabsReady() && !waitedLongEnough) {
-                clearTimeout(window._chPromoEbayBluePushTimer);
-                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
-                return;
-            }
-            let saveBusy = false;
-            try {
-                saveBusy = typeof window.ebayDgSpriceSaveBusy === 'function' && window.ebayDgSpriceSaveBusy();
-            } catch (e) { saveBusy = false; }
-            if (saveBusy && window._chPromoEbayBluePushWaits < 40) {
-                clearTimeout(window._chPromoEbayBluePushTimer);
-                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 600);
-                return;
-            }
-            if (!chPromoEbayBlueRowsReady() && window._chPromoEbayBluePushWaits < 50) {
-                clearTimeout(window._chPromoEbayBluePushTimer);
-                window._chPromoEbayBluePushTimer = setTimeout(chPromoTryEbayBluePush, 400);
-                return;
-            }
-            const scan = (typeof scanAndQueueChannelPushSprice === 'function')
-                ? scanAndQueueChannelPushSprice
-                : (window.scanAndQueueChannelPushSprice || null);
-            if (typeof scan !== 'function') return;
-            const leftover = window._chPromoEbayLeftoverStatus || null;
-            const leftoverActive = !!(leftover && leftover.active);
-            const leftoverTotal = leftover ? (Number(leftover.total) || 0) : 0;
-            const blueN = chPromoEbayBlueCount();
-            const startScan = function() {
-                window._chPromoEbayBlueScanStarted = true;
-                if (typeof setChannelPushSpriceProgress === 'function') {
-                    setChannelPushSpriceProgress({
-                        active: true,
-                        done: 0,
-                        total: blueN > 0 ? blueN : 0,
-                        pct: 0,
-                        msg: 'Starting…',
-                    });
-                }
-                scan(chPromoSafeTable(), { once: false, silent: false, catalog: true });
-            };
-            if (leftoverActive && leftoverTotal > 0
-                && !window._chPromoEbayLeftoverCleared
-                && typeof window.chPushSpriceCancelSilent === 'function') {
-                window._chPromoEbayBlueScanStarted = true;
-                window._chPromoEbayLeftoverCleared = true;
-                if (typeof setChannelPushSpriceProgress === 'function') {
-                    setChannelPushSpriceProgress({
-                        active: true,
-                        done: 0,
-                        total: 0,
-                        pct: 0,
-                        msg: 'Starting…',
-                    });
-                }
-                window.chPushSpriceCancelSilent().always(function() {
-                    window._chPromoEbayLeftoverStatus = null;
-                    startScan();
-                });
-                return;
-            }
-            startScan();
+            chPromoEbayPushLeftoverBlues();
         }
-        window.chPromoStartServerBluePush = chPromoStartServerBluePush;
         window.chPromoTryEbayBluePush = chPromoTryEbayBluePush;
         function chPromoQueueReloadSpricePush(opts) {
             opts = opts || {};
@@ -10175,7 +10039,6 @@
                 chPromoTryEbayBluePush();
                 return;
             }
-            if (chPromoStartServerBluePush()) return;
             const scan = (typeof scanAndQueueChannelPushSprice === 'function')
                 ? scanAndQueueChannelPushSprice
                 : (window.scanAndQueueChannelPushSprice || null);
@@ -10765,7 +10628,7 @@
                 const ajax = (typeof pushChannelPriceAjax === 'function')
                     ? pushChannelPriceAjax(sku, std)
                     : $.ajax({
-                        url: chPromoCfg.pushPriceUrl || '/push-ebay-price-tabulator',
+                        url: chPromoCfg.pushPriceUrl || '/push-price-not-configured',
                         method: 'POST',
                         headers: { 'X-CSRF-TOKEN': chPromoCsrf() },
                         data: CHANNEL_PROMO_CHANNEL === 'doba_withoutship'

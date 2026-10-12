@@ -209,14 +209,16 @@
                     </a>
                 </div>
 
+                <div id="amount-api-warning" class="alert alert-warning py-2 px-3 mt-2 mb-0" style="display:none; font-size: 13px;"></div>
                 <div id="summary-stats" class="mt-2">
                     <div class="amm-badge-block amm-badge-block--l30">
                         <div class="amm-badge-block-title">L30</div>
                         <div class="ebay2-summary-badge-row">
                             <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                             <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
-                            <span class="badge bg-secondary fs-6 p-2" id="l30-sales-badge" style="color: white; font-weight: bold;"
-                                title="L30 Sales = Σ official line sales (base + freight).">L30 Sales: $0</span>
+                            <span class="badge fs-6 p-2" id="api-line-sales-badge"
+                                style="background-color: #0f766e; color: white; font-weight: bold;"
+                                title="Σ Line Sales for the L30 window. API line sales = basePrice + shipAmountTotal (same as the Line Sales column).">API Line Sales: $0</span>
                             <span class="badge bg-info fs-6 p-2" id="temu-full-price-sales-badge" style="color: white; font-weight: bold;"
                                 title="Temu Full Price Sales = Σ Line Sales × 1.1364">Temu Full Price Sales: $0</span>
                             <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;"
@@ -247,7 +249,7 @@
                         <div class="amm-badge-block-title">Projected</div>
                         <div class="ebay2-summary-badge-row">
                             <span class="badge fs-6 p-2" id="p-sales-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"
-                                title="P-Sales = (L7 Line Sales ÷ 7) × 30. % is P-Sales vs L30 line sales.">P-Sales: $0<span id="p-sales-vs"></span></span>
+                                title="P-Sales = (L7 Line Sales ÷ 7) × 30. L7 is the last 7 complete Pacific days. % is P-Sales vs API Line Sales.">P-Sales: $0<span id="p-sales-vs"></span></span>
                             <span class="badge fs-6 p-2" id="p-full-price-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"
                                 title="P Full Price = P-Sales × 1.1364">P Full Price: $0</span>
                             <span class="badge fs-6 p-2" id="p-gpft-badge" style="background-color: #0d6efd; color: white; font-weight: bold;"
@@ -383,14 +385,6 @@
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return temuFbPrice(temuRowBase(row), qty);
     }
-    /** Same dollars as Y Sales: API line_sales (base + freight), else Base × Qty. */
-    function temu2LineSales(row) {
-        const line = parseFloat(row && row.line_sales) || 0;
-        if (line > 0) return line;
-        const qty = parseInt(row && row.quantity_purchased) || 0;
-        const base = temuRowBase(row);
-        return (qty > 0 && base > 0) ? qty * base : 0;
-    }
     function temuRowCogs(row) {
         const qty = parseInt(row && row.quantity_purchased) || 0;
         return qty * (parseFloat(row && row.lp) || 0);
@@ -421,10 +415,10 @@
         return lineSales * TEMU_MARGIN - cogs - ship;
     }
     function temuRowGpftPercent(row) {
-        const qty = parseInt(row && row.quantity_purchased) || 0;
-        const sales = temuRowTemuPrice(row) * qty;
-        if (!(sales > 0)) return 0;
-        return (temuRowGpftDollar(row) / sales) * 100;
+        const lineSales = parseFloat(row && row.line_sales) || 0;
+        const denom = lineSales * TEMU_PRICE_MULT;
+        if (!(denom > 0)) return 0;
+        return (temuRowGpftDollar(row) / denom) * 100;
     }
     function temuRowGroiPercent(row) {
         const cogs = temuRowCogs(row);
@@ -816,7 +810,7 @@
                     hozAlign: "right",
                     sorter: "number",
                     width: 100,
-                    headerTooltip: "GPFT % = GPFT$ ÷ (Temu Price × Qty) × 100",
+                    headerTooltip: "GPFT % = GPFT$ ÷ (Line Sales × 1.1364) × 100",
                     mutator: function(value, data) {
                         return temuRowGpftPercent(data);
                     },
@@ -925,11 +919,12 @@
 
         function updateSummary() {
             const data = table.getData("active");
-            let totalOrders = 0, totalQuantity = 0, totalPft = 0, totalL30Sales = 0;
-            let totalApiLineSales = 0, totalTemuPriceSales = 0;
+            let totalOrders = 0, totalQuantity = 0, totalPft = 0;
+            let totalApiLineSales = 0;
             let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0, totalCogsShip = 0;
             let totalYSalesGpft = 0, totalYSalesCogs = 0;
             let l7LineSales = 0, l7Gpft = 0, l7Cogs = 0;
+            let rowsEstimated = 0, rowsListPrice = 0, rowsApi = 0;
             const l7Keys = temuL7DateKeys();
 
             data.forEach(row => {
@@ -938,12 +933,14 @@
                 if (sku.toUpperCase().indexOf('PARENT') !== -1) return;
                 if (row.pm_matched === false) return;
                 totalOrders++;
+                if (row.line_sales_source === 'temu1_paid_estimate') rowsEstimated++;
+                else if (row.line_sales_source === 'list_price') rowsListPrice++;
+                else rowsApi++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = temuRowBase(row);
                 const lp = parseFloat(row.lp) || 0;
                 const lineSales = parseFloat(row.line_sales) || 0;
                 totalQuantity += quantity;
-                totalL30Sales += temu2LineSales(row);
                 totalApiLineSales += lineSales;
                 totalCogsShip += parseFloat(row.cogs_ship) || 0;
                 totalYSalesGpft += temuRowYSalesGpftDollar(row);
@@ -955,7 +952,6 @@
                     totalQuantityForPrice += quantity;
                     const gpft = temuRowGpftDollar(row);
                     totalPft += gpft;
-                    totalTemuPriceSales += temuRowTemuPrice(row) * quantity;
                     totalCogs += lp * quantity;
                     if (inL7) {
                         l7Gpft += gpft;
@@ -974,6 +970,17 @@
             const cogsBadge = Math.round(totalCogs);
             const roiPercentage = cogsBadge !== 0 ? (gpftBadge / cogsBadge) * 100 : 0;
 
+            const warnEl = $('#amount-api-warning');
+            if (rowsEstimated + rowsListPrice > 0) {
+                warnEl.html('<strong>Temu 2 paid amounts missing.</strong> ' +
+                    rowsApi.toLocaleString() + ' of ' + totalOrders.toLocaleString() + ' orders have real API amounts; ' +
+                    rowsEstimated.toLocaleString() + ' use Temu 1\'s paid price (estimate) and ' +
+                    rowsListPrice.toLocaleString() + ' use catalog list price (overstated). ' +
+                    'Authorize <code>bg.order.amount.query</code> for the Temu 2 app in Seller Center and refresh <code>TEMU2_ACCESS_TOKEN</code> for exact sales and profit.').show();
+            } else {
+                warnEl.hide();
+            }
+
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
@@ -981,7 +988,7 @@
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toLocaleString());
             $('#pft-total-badge').text('GPFT$: $' + Math.round(totalPft).toLocaleString());
             $('#pft-total-badge').toggleClass('bg-danger', totalPft < 0).toggleClass('bg-dark', totalPft >= 0);
-            $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
+            $('#api-line-sales-badge').text('API Line Sales: $' + Math.round(totalApiLineSales).toLocaleString());
             $('#temu-full-price-sales-badge').text('Temu Full Price Sales: $' + Math.round(totalTemuFullPriceSales).toLocaleString());
             $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
             $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());

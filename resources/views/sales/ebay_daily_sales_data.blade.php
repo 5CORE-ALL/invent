@@ -652,7 +652,7 @@
                 // Update badges (same set as /amazon/daily-sales)
                 $('#total-orders-badge').text('Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Quantity: ' + totalQuantity.toLocaleString());
-                $('#total-sales-badge').text('Sales: $' + totalOrderSales.toFixed(2));
+                $('#total-sales-badge').text('Sales: $' + Math.round(totalOrderSales).toLocaleString());
                 $('#pft-percentage-badge').text('GPFT: ' + Math.round(pftPercentage) + '%');
                 $('#roi-percentage-badge').text('GROI: ' + Math.round(roiPercentage) + '%');
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));

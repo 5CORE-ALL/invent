@@ -624,7 +624,11 @@ class EbayApiService
                 if (is_array($errorParams)) {
                     foreach ($errorParams as $param) {
                         if (is_array($param) && isset($param['Value'])) {
-                            $paramMessages[] = strip_tags($param['Value']);
+                            $paramValue = $param['Value'];
+                            if (is_array($paramValue)) {
+                                $paramValue = json_encode($paramValue);
+                            }
+                            $paramMessages[] = strip_tags((string) $paramValue);
                         }
                     }
                 }

@@ -28,37 +28,92 @@ class ShopifyB2CSalesController extends Controller
         ]);
     }
 
+    /**
+     * Badge integers painted by /shopify-b2c/daily-sales.
+     * Sales = price × qty. GPFT = rounded PFT ÷ rounded sales.
+     * GROI = rounded PFT ÷ rounded COGS. Ship is one weight slab, subtracted once.
+     *
+     * @return array{
+     *   l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int,
+     *   gpft: int, groi: int, revenue: float, google: float, tacos: float,
+     *   n_pft: int, n_roi: int
+     * }
+     */
+    public static function dailySalesBadgeTotals(string $period = 'l30', bool $withAds = true): array
+    {
+        $lines = app(self::class)->salesLinesForPeriod($period);
+        $orders = 0;
+        $qty = 0;
+        $revenue = 0.0;
+        $pft = 0.0;
+        $sales = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+
+        foreach ($lines as $row) {
+            if (($row['sku'] ?? '') === '') {
+                continue;
+            }
+            $orders++;
+            $qty += (int) ($row['quantity'] ?? 0);
+            $revenue += (float) ($row['total_amount'] ?? 0);
+            $pft += (float) ($row['pft'] ?? 0);
+            $sales += (float) ($row['l30_sales'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+        $gpftRaw = $salesRounded !== 0 ? ($pftRounded / $salesRounded) * 100 : 0.0;
+        $groiRaw = $cogsRounded !== 0 ? ($pftRounded / $cogsRounded) * 100 : 0.0;
+
+        $google = 0.0;
+        if ($withAds && $period === 'l30') {
+            $yesterday = \Carbon\Carbon::yesterday();
+            $startDate = $yesterday->copy()->subDays(29);
+            $google = (float) DB::table('google_ads_campaigns')
+                ->whereDate('date', '>=', $startDate)
+                ->whereDate('date', '<=', $yesterday)
+                ->where('advertising_channel_type', 'SHOPPING')
+                ->sum('metrics_cost_micros') / 1000000;
+        }
+        $tacos = $revenue > 0 ? ($google / $revenue) * 100 : 0.0;
+        $nRoi = $cogsRounded !== 0
+            ? (int) round((($pftRounded - (int) round($google)) / $cogsRounded) * 100)
+            : 0;
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => (int) round($gpftRaw),
+            'groi' => (int) round($groiRaw),
+            'revenue' => round($revenue, 2),
+            'google' => $google,
+            'tacos' => $tacos,
+            'n_pft' => (int) round($gpftRaw - $tacos),
+            'n_roi' => $nRoi,
+        ];
+    }
+
     public function getData(Request $request)
     {
         Log::info('ShopifyB2CSalesController getData called');
 
-        // Hardcoded 95% margin for Shopify B2C
-        $percentageValue = 0.95;
-
-        // Calculate date range
         $yesterday = \Carbon\Carbon::yesterday();
-        $startDate = $yesterday->copy()->subDays(29); // 30 days total
+        $startDate = $yesterday->copy()->subDays(29);
         $startDateStr = $startDate->format('Y-m-d');
         $yesterdayStr = $yesterday->format('Y-m-d');
 
-        $orders = ShopifyB2CDailyData::where('period', 'l30')
-            ->where('financial_status', '!=', 'refunded')
-            ->orderBy('order_date', 'desc')
-            ->get()
-            ->filter(function ($order) {
-                // Filter out PARENT SKUs
-                return stripos($order->sku, 'PARENT') === false;
-            });
+        $data = $this->salesLinesForPeriod('l30');
+        Log::info('Found ' . count($data) . ' Shopify B2C orders (excluding PARENT SKUs)');
 
-        Log::info('Found ' . $orders->count() . ' Shopify B2C orders (excluding PARENT SKUs)');
-
-        // Get unique SKUs
-        $skus = $orders->pluck('sku')->unique()->toArray();
-
-        // Fetch ProductMaster data for LP and Ship
-        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
-
-        // Fetch Google Ads spend per SKU (campaign_name = SKU)
+        $skus = array_values(array_unique(array_column($data, 'sku')));
         $googleSpentData = DB::table('google_ads_campaigns')
             ->whereDate('date', '>=', $startDateStr)
             ->whereDate('date', '<=', $yesterdayStr)
@@ -70,13 +125,34 @@ class ShopifyB2CSalesController extends Controller
             ->pluck('total_spend', 'sku_key')
             ->toArray();
 
-        // Build Google spend lookup by SKU
-        $googleSpentBySku = [];
-        foreach ($skus as $sku) {
-            $skuUpper = strtoupper(trim($sku));
-            $googleSpentBySku[$sku] = $googleSpentData[$skuUpper] ?? 0;
+        foreach ($data as &$row) {
+            $skuUpper = strtoupper(trim((string) ($row['sku'] ?? '')));
+            $row['google_spent'] = round((float) ($googleSpentData[$skuUpper] ?? 0), 2);
         }
+        unset($row);
 
+        Log::info('Returning ' . count($data) . ' data items');
+
+        return response()->json($data);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function salesLinesForPeriod(string $period): array
+    {
+        $percentageValue = 0.95;
+
+        $orders = ShopifyB2CDailyData::where('period', $period)
+            ->where('financial_status', '!=', 'refunded')
+            ->orderBy('order_date', 'desc')
+            ->get()
+            ->filter(function ($order) {
+                return stripos((string) $order->sku, 'PARENT') === false;
+            });
+
+        $skus = $orders->pluck('sku')->unique()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
         [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
         $data = [];
@@ -156,13 +232,10 @@ class ShopifyB2CSalesController extends Controller
                 'pft' => round($pft, 2),
                 'roi' => round($roi, 2),
                 'l30_sales' => round($l30Sales, 2),
-                'google_spent' => round($googleSpentBySku[$order->sku] ?? 0, 2),
             ];
         }
 
-        Log::info('Returning ' . count($data) . ' data items');
-
-        return response()->json($data);
+        return $data;
     }
 
     public function getColumnVisibility(Request $request)

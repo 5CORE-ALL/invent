@@ -22,10 +22,7 @@ class MasterDilGroiSync
      */
     public const CHANNELS = [
         'amazon',
-        'ebay1',
-        'ebay2',
         'ebay2op',
-        'ebay3',
         'aliexpress',
         'faire',
         'tiktok',
@@ -62,10 +59,7 @@ class MasterDilGroiSync
      */
     public const CHANNEL_LABELS = [
         'amazon' => 'Amazon',
-        'ebay1' => 'eBay',
-        'ebay2' => 'eBay 2',
         'ebay2op' => 'eBay 2 OP',
-        'ebay3' => 'eBay 3',
         'aliexpress' => 'AliExpress',
         'faire' => 'Faire',
         'tiktok' => 'TikTok',

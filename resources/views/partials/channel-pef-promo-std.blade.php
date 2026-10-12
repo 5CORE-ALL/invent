@@ -6,12 +6,12 @@
         'ebay2' => [
             'label' => 'eBay2',
             'saveSpriceUrl' => '/save-ebay2-sprice',
-            'pushPriceUrl' => '/push-ebay2-price',
+            'pushPriceUrl' => null,
         ],
         'ebay3' => [
             'label' => 'eBay3',
             'saveSpriceUrl' => '/ebay3/save-sprice',
-            'pushPriceUrl' => '/push-ebay3-price-tabulator',
+            'pushPriceUrl' => null,
         ],
     ];
     $channelPromoStdActive = $channelPromoStdCfg[$channelPromoChannel] ?? $channelPromoStdCfg['ebay2'];
@@ -270,6 +270,9 @@
             }
         }
         function pushChannelPriceAjax(sku, price) {
+            if (!chPromoCfg.pushPriceUrl) {
+                return $.Deferred().reject({ responseJSON: { message: 'Price push is not available for this channel' } }).promise();
+            }
             return $.ajax({
                 url: chPromoCfg.pushPriceUrl,
                 method: 'POST',

@@ -180,7 +180,7 @@
             $("#avg-price-badge").text("Avg Price: $" + avgPrice.toFixed(2));
             $("#pft-total-badge").text("PFT Total: $" + totalPft.toFixed(2));
             $("#pft-total-badge").toggleClass("bg-danger", totalPft < 0).toggleClass("bg-dark", totalPft >= 0);
-            $("#l30-sales-badge").text("L30 Sales: $" + totalRevenue.toFixed(2));
+            $("#l30-sales-badge").text("L30 Sales: $" + Math.round(totalRevenue).toLocaleString());
             $("#total-cogs-badge").text("Total COGS: $" + cogsDollars.toLocaleString());
             $("#cogs-ship-badge").text("COGS Ship: $" + Math.round(totalCogsShip).toLocaleString());
         }

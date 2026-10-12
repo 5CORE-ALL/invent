@@ -5,11 +5,8 @@ namespace App\Http\Controllers\MarketingMaster;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\UpdatePriceApiController;
-use App\Jobs\EbayTwoPriceJob;
-use App\Jobs\UpdateEbayOnePriceJob;
 use App\Jobs\UpdateEbayPriceJob;
 use App\Jobs\UpdateEbaySPriceJob;
-use App\Jobs\UpdateEbayThreePriceJob;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\AmazonListingStatus;
@@ -826,32 +823,5 @@ class MovementPricingMaster extends Controller
                 'code' => $result['code'] ?? 500,
             ], 500);
         }
-    }
-
-    public function pushEbayPriceBySku(Request $request)
-    {
-        $sku = $request->input('sku');
-        $price = $request->input('price');
-
-        $itemId = EbayMetric::where('sku', $sku)->value('item_id');
-        UpdateEbayOnePriceJob::dispatch($itemId, $price);
-    }
-
-    public function pushEbayTwoPriceBySku(Request $request)
-    {
-        $sku = $request->input('sku');
-        $price = $request->input('price');
-
-        $itemId = Ebay2Metric::where('sku', $sku)->value('item_id');
-        EbayTwoPriceJob::dispatch($itemId, $price);
-    }
-
-    public function pushEbayThreePriceBySku(Request $request)
-    {
-        $sku = $request->input('sku');
-        $price = $request->input('price');
-
-        $itemId = Ebay3Metric::where('sku', $sku)->value('item_id');
-        UpdateEbayThreePriceJob::dispatch($itemId, $price);
     }
 }

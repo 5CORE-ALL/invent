@@ -5,9 +5,6 @@
 # /etc/cron.d/dil-sprice-apply (server TZ Asia/Kolkata):
 #   0 4,20 * * *  ... cron-dil-sprice-apply.sh amazon
 #   10 4,20 * * * ... cron-dil-sprice-apply.sh newtemuone
-#   20 4,20 * * * ... cron-dil-sprice-apply.sh ebay1
-#   35 4,20 * * * ... cron-dil-sprice-apply.sh ebay2
-#   50 4,20 * * * ... cron-dil-sprice-apply.sh ebay3
 #   5 5,21 * * *  ... cron-dil-sprice-apply.sh bestbuy
 #   15 5,21 * * * ... cron-dil-sprice-apply.sh aliexpress
 #   25 5,21 * * * ... cron-dil-sprice-apply.sh newegg
@@ -51,9 +48,6 @@ case "$MODE" in
   newtemuone|temu1)
     CMD=(newtemuone:sprc-dil-auto-push)
     MODE=newtemuone
-    ;;
-  ebay1|ebay2|ebay3)
-    CMD=(ebay:rule-sprice-apply "$MODE" --push)
     ;;
   shopify_b2c|shopify-b2c)
     CMD=(shopify-b2c:rule-sprice-apply)

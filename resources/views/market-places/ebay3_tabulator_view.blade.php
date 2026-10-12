@@ -446,7 +446,6 @@
             font-size: 11px; font-weight: 700; line-height: 1; cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay3'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
@@ -480,20 +479,13 @@
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay3'])
                         <span class="badge fs-6 p-2" id="ebay3-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ Price. Click to show only those rows. Click again to clear.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2" id="ebay3-ended-listing-badge"
-                            style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"
-                            title="Ended listing">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
+                            title="Blue alert: INV > 0 and Price ≠ S PRC. Click to show only those SKUs.">
+                            <i class="fas fa-exclamation-triangle"></i> 0
+                        </span>
                         <span class="badge fs-6 p-2" id="ebay3-lmp-missing-badge"
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
                             LMP M. 0</span>
-                        <span class="badge fs-6 p-2" id="ebay3-purple-triangle-badge"
-                            style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Purple triangle: Price &lt; 80% of LMP. Click to show only those rows.">
-                            <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge" id="avg-l7-views-badge" style="background-color: #6610f2; color: white; font-weight: bold;" title="Average L7 views across rows with E Stock &gt; 0 — drives L7 View colours">L7: 0</span>
                         <span class="badge bg-primary d-none" id="total-inv-badge" style="color: black; font-weight: bold;" aria-hidden="true">E Stock: 0</span>
                     </div>
@@ -630,7 +622,6 @@
                         Dil vs SBid
                     </button>
                     @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 3'])
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay3'])
 
                 </div>
@@ -836,7 +827,6 @@
         'account' => 'eBay 3',
         'extended' => true,
     ])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay3'])
 @endsection
 
@@ -860,7 +850,6 @@
         'applyUrl' => url('/ebay3/campaign-ads/push-selected'),
     ])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     let table = null;
 
@@ -986,39 +975,19 @@
         }
         return out;
     }
+    /** Saved SPRICE only: the server value from load, or a successful save. Rule auto-fills write
+     *  row.SPRICE in memory without saving, so they must not show here. */
     function ebay3RawRuleSprice(rowData) {
         if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
-        if (typeof chPromoTableSprice === 'function') {
-            const saved = Number(chPromoTableSprice(rowData)) || 0;
-            if (saved > 0) return saved;
-        }
-        if (typeof chPromoSavedOrLiveSprice === 'function') {
-            const saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
-            if (saved > 0) return saved;
-        }
-        const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
-        return stored > 0 ? stored : 0;
+        const raw = rowData.SPRICE_SERVER !== undefined ? rowData.SPRICE_SERVER : rowData.SPRICE;
+        const n = Number(raw);
+        return (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
     }
     function ebay3DisplayedSprice(rowData) {
-        if (!rowData || rowData.is_parent_summary || rowData.is_parent_row || rowData.is_parent) return 0;
-        if (typeof ebayTiktokRuleDiscount === 'function') {
-            const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
-            if (live > 0) return live;
-        }
         return ebay3RawRuleSprice(rowData);
     }
     function ebay3SpriceAmount(rowData) {
-        if (typeof ebay3DisplayedSprice === 'function') {
-            const shown = ebay3DisplayedSprice(rowData);
-            if (shown > 0) return shown;
-        }
-        if (typeof chPromoSavedOrLiveSprice === 'function') {
-            const saved = Number(chPromoSavedOrLiveSprice(rowData));
-            if (isFinite(saved) && saved > 0) return saved;
-        }
-        const stored = Number(rowData && (rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice));
-        if (isFinite(stored) && stored > 0) return stored;
-        return 0;
+        return ebay3DisplayedSprice(rowData) || 0;
     }
     function ebay3ComputeGrossRoi(rowData, priceKey) {
         if (!rowData) return null;
@@ -1463,6 +1432,7 @@
                             if (numSprice === 0) {
                                 targetRow.update({
                                     SPRICE: null,
+                                    SPRICE_SERVER: 0,
                                     SPFT: null,
                                     SROI: null,
                                     SGROI: null,
@@ -1473,6 +1443,7 @@
                             } else {
                                 targetRow.update({
                                     SPRICE: numSprice,
+                                    SPRICE_SERVER: numSprice,
                                     SPFT: response.data?.spft || response.spft_percent,
                                     SROI: response.data?.sroi || response.sroi_percent,
                                     SGROI: response.data?.sgroi ?? response.sgroi_percent ?? null,
@@ -1885,6 +1856,40 @@
             return skuRows;
         }
 
+        /**
+         * Every loaded child SKU, one row per SKU, walked the same way as the S PRC push scan:
+         * live table rows (with tree children) first, then the loaded dataset. Badge count = push queue.
+         */
+        function ebay3GetAllSkuRowsForBadge() {
+            const out = [];
+            const seen = new Set();
+            function add(d) {
+                if (!d || ebay3IsAlertParentRow(d)) return;
+                const key = String(d['(Child) sku'] || d.SKU || d.sku || '').trim().toUpperCase();
+                if (!key || key.includes('PARENT') || seen.has(key)) return;
+                seen.add(key);
+                out.push(d);
+            }
+            function walkRow(row) {
+                if (!row || typeof row.getData !== 'function') return;
+                add(row.getData());
+                if (typeof row.getTreeChildren === 'function') (row.getTreeChildren() || []).forEach(walkRow);
+            }
+            function walkData(node) {
+                if (!node) return;
+                add(node);
+                if (Array.isArray(node._children)) node._children.forEach(walkData);
+            }
+            try {
+                if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+                    (table.getRows() || []).forEach(walkRow);
+                }
+            } catch (e) { /* table not ready */ }
+            (Array.isArray(window.allTableData) && window.allTableData.length ? window.allTableData : (allTableData || []))
+                .forEach(walkData);
+            return out;
+        }
+
         // Child SKUs currently shown in the table (active filters / search).
         function ebay3GetVisibleSkuRows() {
             const skuRows = [];
@@ -1941,9 +1946,13 @@
         }
         function ebay3HasBlueTriangle(data) {
             if (ebay3IsAlertParentRow(data)) return false;
-            if (!(parseFloat(data && data.INV) > 0)) return false;
+            if (!(ebay3Qty(data && data.INV) > 0)) return false;
             if (ebay3IsEndedListing(data)) return false;
-            const sprice = ebay3RowSpriceForAlert(data);
+            // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
+            // the page's own recalculation, so the badge and the pushes cannot disagree.
+            const sprice = (data.SPRICE_SERVER !== undefined)
+                ? (Number(data.SPRICE_SERVER) || 0)
+                : ebay3RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
@@ -2321,6 +2330,7 @@
                 } else {
                     rows = Array.isArray(response) ? response : [];
                 }
+                if (typeof window.chPromoCaptureServerSprice === 'function') window.chPromoCaptureServerSprice(rows || []);
                 allTableData = rows || [];
                 if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
                 window.allTableData = allTableData;
@@ -2828,38 +2838,6 @@
                 },
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
-                    title: "Sprc Dil",
-                    field: "SPRC_DIL",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (rowData.is_parent_summary || rowData.is_parent_row) return '';
-                        if (typeof ebay3IsAlertParentRow === 'function' && ebay3IsAlertParentRow(rowData)) return '';
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(meta)
-                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2));
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
-                    },
-                    width: 78
-                    },
-                    {
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
@@ -2900,28 +2878,25 @@
                             ? ebay3SgroiAtPrice(rowData, lmpNow)
                             : null;
                         const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
-                        const redTri = atOrAboveLmp
-                            ? (appliedLmp
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                    + Number(lmpNow).toFixed(2) + '"></i>'
-                                : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
-                                    + Number(lmpNow).toFixed(2)
-                                    + ' not applied — SGROI would be '
-                                    + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?')
-                                    + '% (&lt; 20%)"></i>')
-                            : '';
-                        const blueTri = (ebayPrice > 0 && sprice > 0
-                            && Math.round(sprice * 100) !== Math.round(ebayPrice * 100))
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
-                            : '';
 
                         let formattedValue = '$' + Number(sprice).toFixed(2);
                         if (atOrAboveLmp) {
                             formattedValue = '<span style="color:#dc3545;font-weight:600;">' + formattedValue + '</span>';
                         }
+                        const blueTri = ebay3HasBlueTriangle(rowData)
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                                + Number(sprice).toFixed(2) + ' ≠ Price $' + ebayPrice.toFixed(2) + '"></i>'
+                            : '';
+                        const redTri = atOrAboveLmp
+                            ? (appliedLmp
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
+                                    + lmpNow.toFixed(2) + '"></i>'
+                                : '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="LMP $'
+                                    + lmpNow.toFixed(2) + ' not applied — SGROI would be '
+                                    + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
+                            : '';
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + blueTri + formattedValue + redTri + '</span>';
+                            + formattedValue + blueTri + redTri + '</span>';
                     },
                     width: 118
                 },
@@ -3429,6 +3404,22 @@
             // If 'both' is selected, no additional filter needed
             // If 'sku' is selected, data is already filtered above
 
+            // Same as Amazon: blue click = only INV > 0, Price ≠ S PRC SKUs. Other filters do not stack,
+            // so the row count matches the badge. Parent rows stay so tree children remain visible.
+            if (blueTriangleFilterActive) {
+                const blueOnlyParents = ebay3TriangleParentKeys(ebay3HasBlueTriangle);
+                table.addFilter(function(data) {
+                    return ebay3TriangleFilterMatch(data, ebay3HasBlueTriangle, blueOnlyParents);
+                });
+                updateCalcValues();
+                updateSummary();
+                setTimeout(function() {
+                    if (typeof ebay3UpdatePaginationCounter === 'function') ebay3UpdatePaginationCounter();
+                    updateSelectAllCheckbox();
+                }, 100);
+                return;
+            }
+
             const skuSearch = String($('#sku-search').val() || '').trim().toUpperCase();
             const parentSearch = String($('#parent-search').val() || '').trim().toUpperCase();
             if (skuSearch) {
@@ -3930,6 +3921,8 @@
         }
 
         // Update summary badges — same metrics/order as Ebay 2 (E Stock gate uses eBay Stock with E Stock fallback)
+        // Shared partials (S PRC save, push queue) recount the badges through window.updateSummary.
+        window.updateSummary = function() { try { return updateSummary(); } catch (e) { /* table not ready yet */ } };
         function updateSummary() {
             const data = ebay3GetBackendSkuRows();
 
@@ -3999,16 +3992,15 @@
             let blueTriangleCount = 0;
             let endedListingCount = 0;
             visible.forEach(function(row) {
-                if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
                 if (ebay3IsEndedListing(row)) endedListingCount++;
+            });
+            // Same as Amazon: blue count is every loaded SKU, ignoring filters (same rows the push scans).
+            ebay3GetAllSkuRowsForBadge().forEach(function(row) {
+                if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
             });
             $('#ebay3-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
-            if (blueTriangleCount > 0 && typeof window.chPromoEbayPushLeftoverBlues === 'function') {
-                clearTimeout(window._chPromoEbayBlueLeftoverTimer);
-                window._chPromoEbayBlueLeftoverTimer = setTimeout(window.chPromoEbayPushLeftoverBlues, 2000);
-            }
             $('#ebay3-ended-listing-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
             );
@@ -4053,7 +4045,7 @@
             const tl = t.toLowerCase();
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(prc|price|std\s*prc|gpft|groi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc|es\s*bid|c\s*bid|s\s*bid|alert)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {

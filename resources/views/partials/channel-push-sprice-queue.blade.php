@@ -91,12 +91,7 @@
             const CH_PUSH_SPRICE_IS_TOPDAWG = CH_PUSH_SPRICE_CHANNEL === 'topdawg';
             const CH_PUSH_SPRICE_PULL_DELAY_MS = CH_PUSH_SPRICE_IS_TIKTOK ? 1500 : (CH_PUSH_SPRICE_IS_TOPDAWG ? 800 : 0);
             const CH_PUSH_SPRICE_CHUNK = 200;
-            const CH_PUSH_SPRICE_PUSH_URL = ({
-                ebay1: '/push-ebay-price-tabulator',
-                ebay2: '/push-ebay2-price',
-                ebay2op: '/push-ebay2-price',
-                ebay3: '/push-ebay3-price-tabulator',
-            })[CH_PUSH_SPRICE_CHANNEL] || '';
+            const CH_PUSH_SPRICE_PUSH_URL = ''; // eBay price push endpoints were removed
             const CH_PUSH_SPRICE_CLIENT_MAX = 2;
             let chPushSpriceBuf = {};
             let chPushSpriceTimer = null;
@@ -165,6 +160,13 @@
             }
             function chPushSpriceUsesClientPump() {
                 return !!CH_PUSH_SPRICE_PUSH_URL;
+            }
+            /**
+             * eBay 1/2/3 queue the saved S PRC on the server runner (same as Amazon Push Prc).
+             * The runner only pushes a price equal to the S PRC saved for that SKU.
+             */
+            function chPushSpriceServerOnly() {
+                return false;
             }
             function chPushClientBusy() {
                 return chPushClientInflight > 0 || chPushClientQ.length > 0;
@@ -374,7 +376,12 @@
                 if (typeof table === 'undefined' || !table || !Array.isArray(tasks)) return;
                 const bySku = {};
                 tasks.forEach(function(t) {
-                    if (t && t.sku) bySku[String(t.sku).toUpperCase()] = t;
+                    if (!t || !t.sku) return;
+                    const key = String(t.sku).toUpperCase();
+                    // A SKU queued twice: the pushed (ok) task is the live Price; a later pending copy must not hide it.
+                    const prev = bySku[key];
+                    if (prev && String(prev.status) === 'ok' && String(t.status) !== 'ok') return;
+                    bySku[key] = t;
                 });
                 if (!Object.keys(bySku).length) return;
                 function patchRecord(d, t) {
@@ -499,10 +506,11 @@
                 const extra = (typeof window !== 'undefined' && Array.isArray(window.allTableData))
                     ? window.allTableData
                     : [];
-                extra.forEach(function(d) {
+                extra.forEach(function walkData(d) {
                     const sku = String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim().toUpperCase();
                     const t = sku ? bySku[sku] : null;
                     if (t) patchRecord(d, t);
+                    if (d && Array.isArray(d._children)) d._children.forEach(walkData);
                 });
                 if (priceChanged && typeof window.ttRefreshBlueBadge === 'function') {
                     try { window.ttRefreshBlueBadge(); } catch (e) { /* ignore */ }
@@ -921,6 +929,7 @@
                 return found || {};
             }
             function enqueueChannelPushSpriceAfterSave(sku, price, row, opts) {
+                if (chPushSpriceServerOnly()) return false;
                 opts = opts || {};
                 const isTemu = CH_PUSH_SPRICE_CHANNEL === 'temu' || CH_PUSH_SPRICE_CHANNEL === 'temu2' || CH_PUSH_SPRICE_CHANNEL === 'temu3';
                 const force = opts.force === true || (isTemu && opts.force !== false);
@@ -1074,6 +1083,7 @@
                 }
             }
             function enqueueChannelPushSpriceClient(items, opts) {
+                if (chPushSpriceServerOnly()) return 0;
                 opts = opts || {};
                 if (!CH_PUSH_SPRICE_LIVE) {
                     chPushSpriceToast('error', 'Live S PRC push is disabled on this environment');
@@ -1378,6 +1388,11 @@
             }
             function chPushSpriceSavedFromRow(d) {
                 if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
+                    // Saved S PRC is what the blue badge compares and the only price the server will push.
+                    if (d && d.SPRICE_SERVER !== undefined) {
+                        const savedServer = chPushSpriceRound2(d.SPRICE_SERVER);
+                        if (savedServer > 0) return savedServer;
+                    }
                     const pageFn = CH_PUSH_SPRICE_CHANNEL === 'ebay2'
                         ? global.ebay2DisplayedSprice
                         : (CH_PUSH_SPRICE_CHANNEL === 'ebay3'
@@ -1428,6 +1443,7 @@
                 return chPushSpriceSavedFromRow(d);
             }
             function scanAndQueueChannelPushSprice(tbl, opts) {
+                if (chPushSpriceServerOnly()) return;
                 opts = opts || {};
                 // Catalog catch-up is opt-in ({ catalog: true }). Only saved S PRC ≠ live Price.
                 if (!opts.catalog) return;
@@ -1541,6 +1557,8 @@
             function chPushSpriceAnyBusy() {
                 if (chPushSpriceUsesClientPump() && chPushClientBusy()) return true;
                 if (chPushSpriceFlushing) return true;
+                // Same as Amazon: while a server job is polling, do not re-append the same blues.
+                if (chPushSpricePollTimer && /^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) return true;
                 return false;
             }
             function chPushSpricePushLeftoverBlues() {
@@ -1603,31 +1621,6 @@
                     timeout: 15000,
                 }).done(function(resp) {
                     window._chPromoEbayLeftoverStatus = resp || null;
-                    if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
-                        const leftoverActive = !!(resp && resp.active && (Number(resp.total) || 0) > 0);
-                        const afterCancel = function() {
-                            if (typeof window.chPromoTryEbayBluePush === 'function') {
-                                window.chPromoTryEbayBluePush();
-                            }
-                        };
-                        if (leftoverActive && typeof chPushSpriceCancelSilent === 'function') {
-                            window._chPromoEbayLeftoverCleared = true;
-                            setChannelPushSpriceProgress({
-                                active: true,
-                                done: 0,
-                                total: 0,
-                                pct: 0,
-                                msg: 'Starting…',
-                            });
-                            chPushSpriceCancelSilent().always(function() {
-                                window._chPromoEbayLeftoverStatus = null;
-                                afterCancel();
-                            });
-                            return;
-                        }
-                        afterCancel();
-                        return;
-                    }
                     if (resp && resp.active) startChannelPushSpricePoll();
                 }).fail(function() {
                     window._chPromoEbayLeftoverStatus = null;

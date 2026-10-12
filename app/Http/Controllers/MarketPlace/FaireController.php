@@ -577,14 +577,92 @@ class FaireController extends Controller
     public function getDailyData(Request $request)
     {
         try {
-            // Source: faire_order_metrics (Faire External API v2 via faire:sync-orders).
+            return response()->json($this->faireMappedLines(self::faireL30Start(), null))
+                ->header('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            Log::error('Error fetching Faire data from faire_order_metrics: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Same integers the /faire-tabulator badges paint.
+     * Sales is unit price × qty. Faire has no ship.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    public function dailySalesBadgeTotals(string $period = 'l30'): array
+    {
+        if ($period === 'l60') {
+            $l30Start = self::faireL30Start();
+            $lines = $this->faireMappedLines(
+                $l30Start->copy()->subDays(30)->startOfDay(),
+                $l30Start->copy()->subSecond()
+            );
+        } else {
+            $lines = $this->faireMappedLines(self::faireL30Start(), null);
+        }
+
+        return $this->badgeFromSalesLines($lines);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    private function badgeFromSalesLines(array $lines): array
+    {
+        $orders = [];
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+
+        foreach ($lines as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $orderNumber = trim((string) ($row['order_number'] ?? ''));
+            if ($orderNumber !== '') {
+                $orders[$orderNumber] = true;
+            }
+            $quantity = (int) ($row['quantity'] ?? 0);
+            $qty += $quantity;
+            $sales += ((float) ($row['price'] ?? 0)) * $quantity;
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => count($orders),
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function faireMappedLines(\Carbon\Carbon $start, ?\Carbon\Carbon $end): array
+    {
             if (! Schema::hasTable('faire_order_metrics')) {
-                return response()->json([]);
+                return [];
             }
 
-            $thirtyDaysAgo = self::faireL30Start();
             $rows = DB::table('faire_order_metrics')
-                ->where('order_date', '>=', $thirtyDaysAgo)
+                ->where('order_date', '>=', $start)
+                ->when($end !== null, fn ($q) => $q->where('order_date', '<=', $end))
                 ->where(fn ($q) => self::applyFaireApiOrderFilter($q))
                 ->orderBy('order_date', 'desc')
                 ->orderBy('id', 'desc')
@@ -677,13 +755,7 @@ class FaireController extends Controller
                 ];
             });
 
-            return response()->json($mapped->values())->header('Content-Type', 'application/json');
-        } catch (\Exception $e) {
-            Log::error('Error fetching Faire data from faire_order_metrics: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
-        }
+            return $mapped->values()->all();
     }
 
     /**

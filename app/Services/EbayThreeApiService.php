@@ -7,6 +7,7 @@ use App\Services\Concerns\ResolvesBulletPointIdentifier;
 use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\Concerns\ResolvesEbayListingItemId;
 use App\Services\Support\EbaySellInventoryListingResolver;
+use App\Services\MarketplaceManager\EbayLiveListingMapper;
 use App\Services\Support\EbayTradingReviseItem;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
@@ -157,6 +158,64 @@ class EbayThreeApiService
     }
 
     public string $lastGetItemError = '';
+
+    private function ebayXmlText(mixed $value): string
+    {
+        if (is_array($value)) {
+            $value = $value[0] ?? '';
+            if (is_array($value)) {
+                $value = '';
+            }
+        }
+
+        return trim((string) $value);
+    }
+
+    /**
+     * Match the seller SKU to one variation and return the specifics eBay requires
+     * to apply StartPrice. Null when the listing is not a variation or the SKU is absent.
+     *
+     * @return array{sku: string, specifics: array<string, string>}|null
+     */
+    private function resolveVariationSpecificsForPrice(string $itemId, string $sku): ?array
+    {
+        $sku = trim($sku);
+        if ($itemId === '' || $sku === '') {
+            return null;
+        }
+
+        $raw = $this->getItem($itemId);
+        $item = is_array($raw) && is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+        if ($item === [] || ! EbayLiveListingMapper::listingHasVariations($item)) {
+            return null;
+        }
+
+        $vars = $item['Variations']['Variation'] ?? [];
+        if (isset($vars['SKU']) || isset($vars['VariationSpecifics']) || isset($vars['StartPrice'])) {
+            $vars = [$vars];
+        }
+
+        foreach ($vars as $variation) {
+            if (! is_array($variation)) {
+                continue;
+            }
+            $vSku = trim((string) ($variation['SKU'] ?? ''));
+            if ($vSku === '' || ! EbayLiveListingMapper::skuEquals($vSku, $sku)) {
+                continue;
+            }
+            $specifics = EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null);
+            if ($specifics === []) {
+                continue;
+            }
+
+            return [
+                'sku' => $vSku,
+                'specifics' => $specifics,
+            ];
+        }
+
+        return null;
+    }
 
     public function getItem($itemId)
     {
@@ -393,8 +452,8 @@ class EbayThreeApiService
                 $vs = $variation->addChild('VariationSpecifics');
                 foreach ($variationSpecifics as $name => $value) {
                     $nvl = $vs->addChild('NameValueList');
-                    $nvl->addChild('Name', $name);
-                    $nvl->addChild('Value', $value);
+                    $nvl->addChild('Name', $this->ebayXmlText($name));
+                    $nvl->addChild('Value', $this->ebayXmlText($value));
                 }
             }
             if ($variationSpecificsSet) {
@@ -403,7 +462,7 @@ class EbayThreeApiService
                     $nvl = $vss->addChild('NameValueList');
                     $nvl->addChild('Name', $name);
                     foreach ($values as $val) {
-                        $nvl->addChild('Value', $val);
+                        $nvl->addChild('Value', $this->ebayXmlText($val));
                     }
                 }
             }
@@ -415,11 +474,11 @@ class EbayThreeApiService
             }
 
             // Include SKU / ListingType to help pass validation.
-            if (isset($existingItem['SKU']) && !empty($existingItem['SKU'])) {
-                $item->addChild('SKU', $existingItem['SKU']);
+            if (isset($existingItem['SKU']) && $this->ebayXmlText($existingItem['SKU']) !== '') {
+                $item->addChild('SKU', $this->ebayXmlText($existingItem['SKU']));
             }
             if (isset($existingItem['ListingType'])) {
-                $item->addChild('ListingType', $existingItem['ListingType']);
+                $item->addChild('ListingType', $this->ebayXmlText($existingItem['ListingType']));
             }
         }
 
@@ -536,6 +595,23 @@ class EbayThreeApiService
                         'error' => $warnErr,
                     ]);
 
+                    // SKU alone is not enough on some variation listings. Retry once
+                    // with the live VariationSpecifics so the price is not a no-op.
+                    if (empty($variationSpecifics)) {
+                        $resolved = $this->resolveVariationSpecificsForPrice((string) $itemId, (string) ($variationSku ?: $sku));
+                        if ($resolved !== null) {
+                            return $this->reviseFixedPriceItem(
+                                $itemId,
+                                $price,
+                                $quantity,
+                                $resolved['sku'],
+                                $resolved['specifics'],
+                                $variationSpecificsSet,
+                                false
+                            );
+                        }
+                    }
+
                     return [
                         'success' => false,
                         'message' => 'eBay ignored the price update because this is a multi-variation listing. Retry with the variation SKU.',
@@ -580,6 +656,7 @@ class EbayThreeApiService
             }
             
             $isAccountRestricted = false;
+            $errorBlob = '';
             
             // Log all errors with details
             \Illuminate\Support\Facades\Log::error('❌ eBay3 API Error - ReviseFixedPriceItem Failed', [
@@ -604,11 +681,16 @@ class EbayThreeApiService
                 if (is_array($errorParams)) {
                     foreach ($errorParams as $param) {
                         if (is_array($param) && isset($param['Value'])) {
-                            $paramMessages[] = strip_tags($param['Value']);
+                            $paramValue = $param['Value'];
+                            if (is_array($paramValue)) {
+                                $paramValue = json_encode($paramValue);
+                            }
+                            $paramMessages[] = strip_tags((string) $paramValue);
                         }
                     }
                 }
                 $fullErrorText = $errorMsg . ' ' . implode(' ', $paramMessages);
+                $errorBlob .= ' '.$errorCode.' '.$fullErrorText;
                 
                 // Log individual error details
                 \Illuminate\Support\Facades\Log::error('eBay3 Error Details', [
@@ -657,18 +739,52 @@ class EbayThreeApiService
                 return $this->reviseItemWithFullDetails($itemId, $price, $quantity, $itemDetails['Item']);
             }
 
-            // Variation revise can fail on true single-SKU listings — retry item-level once.
-            if ($allowItemLevelFallback && $isVariationListing && $skuTrim !== '') {
-                $errText = strtolower(json_encode($errors) ?: '');
-                $looksLikeNonVariation = str_contains($errText, 'variation')
-                    || str_contains($errText, 'not found')
-                    || str_contains($errText, 'invalid');
-                if ($looksLikeNonVariation) {
+            // ReviseFixedPriceItem re-checks variation names. Categories that no longer
+            // allow "Model" reject the price even when the request does not send it
+            // (21920061). ReviseInventoryStatus updates StartPrice by SKU and keeps
+            // the live quantity.
+            if (
+                str_contains($errorBlob, '21920061')
+                || stripos($errorBlob, 'not allowed as a variation specific') !== false
+            ) {
+                $viaInventory = $this->revisePriceKeepingQuantity((string) $itemId, (float) $price, $skuTrim !== '' ? $skuTrim : null);
+                if ($viaInventory !== null) {
+                    return $viaInventory;
+                }
+            }
+
+            // A variation revise that did not match must not fall back to item-level
+            // StartPrice. eBay ignores that on multi-variation listings. Retry once
+            // with the live VariationSpecifics. Item-level is only for single-SKU items.
+            if ($allowItemLevelFallback && $isVariationListing && $skuTrim !== '' && empty($variationSpecifics)) {
+                $resolved = $this->resolveVariationSpecificsForPrice((string) $itemId, $skuTrim);
+                if ($resolved !== null) {
+                    Log::info('eBay3 variation revise failed — retrying with VariationSpecifics', [
+                        'itemId' => $itemId,
+                        'sku' => $resolved['sku'],
+                        'rlogId' => $rlogId,
+                    ]);
+
+                    return $this->reviseFixedPriceItem(
+                        $itemId,
+                        $price,
+                        $quantity,
+                        $resolved['sku'],
+                        $resolved['specifics'],
+                        $variationSpecificsSet,
+                        false
+                    );
+                }
+
+                $probe = $this->getItem($itemId);
+                $probeItem = is_array($probe) && is_array($probe['Item'] ?? null) ? $probe['Item'] : [];
+                if ($probeItem !== [] && ! EbayLiveListingMapper::listingHasVariations($probeItem)) {
                     Log::info('eBay3 variation revise failed — retrying item-level StartPrice', [
                         'itemId' => $itemId,
                         'sku' => $skuTrim,
                         'rlogId' => $rlogId,
                     ]);
+
                     return $this->reviseFixedPriceItem(
                         $itemId,
                         $price,
@@ -1700,6 +1816,76 @@ class EbayThreeApiService
         return trim((string) $appId) !== ''
             && trim((string) $certId) !== ''
             && trim((string) $refresh) !== '';
+    }
+
+    /**
+     * Price-only update that does not resend variation names. Quantity is copied
+     * from the live listing so stock does not change.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function revisePriceKeepingQuantity(string $itemId, float $price, ?string $sku): ?array
+    {
+        $raw = $this->getItem($itemId);
+        $item = is_array($raw) && is_array($raw['Item'] ?? null) ? $raw['Item'] : [];
+        if ($item === []) {
+            return null;
+        }
+
+        $qty = null;
+        $matchedSku = $sku;
+        $vars = $item['Variations']['Variation'] ?? null;
+        if (is_array($vars) && $vars !== []) {
+            if (isset($vars['SKU']) || isset($vars['StartPrice']) || isset($vars['Quantity'])) {
+                $vars = [$vars];
+            }
+            foreach ($vars as $variation) {
+                if (! is_array($variation)) {
+                    continue;
+                }
+                $vSku = trim((string) ($variation['SKU'] ?? ''));
+                if ($sku !== null && $sku !== '' && ! EbayLiveListingMapper::skuEquals($vSku, $sku)) {
+                    continue;
+                }
+                if (isset($variation['Quantity']) && is_numeric($variation['Quantity'])) {
+                    $qty = (int) $variation['Quantity'];
+                    $matchedSku = $vSku !== '' ? $vSku : $sku;
+                    break;
+                }
+            }
+        } elseif (isset($item['Quantity']) && is_numeric($item['Quantity'])) {
+            $qty = (int) $item['Quantity'];
+        }
+
+        if ($qty === null) {
+            return null;
+        }
+
+        $result = $this->reviseInventoryStatus($itemId, $qty, $matchedSku, $price);
+        if (! ($result['success'] ?? false)) {
+            return [
+                'success' => false,
+                'message' => (string) ($result['message'] ?? 'ReviseInventoryStatus failed.'),
+                'errors' => [[
+                    'code' => 'InventoryStatus',
+                    'message' => (string) ($result['message'] ?? 'ReviseInventoryStatus failed.'),
+                ]],
+                'data' => $result['data'] ?? [],
+            ];
+        }
+
+        Log::info('eBay3 price updated via ReviseInventoryStatus after variation-specific rejection', [
+            'itemId' => $itemId,
+            'sku' => $matchedSku,
+            'price' => $price,
+            'qty' => $qty,
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Item updated successfully.',
+            'data' => $result['data'] ?? [],
+        ];
     }
 
     /**

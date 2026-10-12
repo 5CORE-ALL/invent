@@ -219,6 +219,62 @@ class WalmartSalesController extends Controller
         }
     }
 
+    /**
+     * Same integers the Walmart daily-sales badges paint. Ship is one weight slab.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}|null
+     */
+    public function dailySalesBadgeTotals(): ?array
+    {
+        $response = $this->getData(request());
+        if ($response->getStatusCode() >= 400) {
+            return null;
+        }
+        $payload = $response->getData(true);
+        if (! is_array($payload) || ! array_is_list($payload)) {
+            return null;
+        }
+
+        $orders = [];
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        foreach ($payload as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+            $orders[$orderId] = true;
+            $quantity = (int) ($row['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
+            $qty += $quantity;
+            $sales += ((float) ($row['unit_price'] ?? 0)) * $quantity;
+            $pft += (float) ($row['pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => count($orders),
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     public function getColumnVisibility()
     {
         $visibility = Cache::get('walmart_sales_column_visibility', []);

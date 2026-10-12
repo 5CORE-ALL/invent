@@ -162,6 +162,83 @@ class TikTokSalesController extends Controller
         }
     }
 
+    /**
+     * Same integers the /tiktok/daily-sales badges paint.
+     * Sales is rounded unit price × qty. Ship is one weight slab. Window ends today in California.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    public static function dailySalesBadgeTotals(string $period = 'l30'): array
+    {
+        $empty = ['l30' => 0, 'orders' => 0, 'qty' => 0, 'pft' => 0, 'cogs' => 0, 'ship' => 0, 'gpft' => 0, 'groi' => 0];
+        if (! TiktokOrder::tableReady()) {
+            return $empty;
+        }
+
+        [$l30Start, $l30End] = TiktokOrder::californiaDaysWindow(30);
+        if ($period === 'l60') {
+            $end = $l30Start->copy()->subDay()->endOfDay();
+            $start = $l30Start->copy()->subDays(30)->startOfDay();
+        } else {
+            $start = $l30Start;
+            $end = $l30End;
+        }
+
+        return self::badgeFromSalesLines(self::mapTikTokOrderLinesToSalesRows(
+            TiktokOrder::linesInWindow($start, $end),
+            true
+        ));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    private static function badgeFromSalesLines(array $lines): array
+    {
+        $orders = 0;
+        $qty = 0;
+        $sales = 0.0;
+        $pft = 0.0;
+        $cogs = 0.0;
+        $ship = 0.0;
+
+        foreach ($lines as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $orderId = trim((string) ($row['order_id'] ?? ''));
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+
+            $orders++;
+            $quantity = (int) ($row['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
+
+            $qty += $quantity;
+            $sales += ((float) ($row['price'] ?? 0)) * $quantity;
+            $pft += (float) ($row['t_pft'] ?? 0);
+            $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
+        }
+
+        $pftRounded = (int) round($pft);
+        $salesRounded = (int) round($sales);
+        $cogsRounded = (int) round($cogs);
+
+        return [
+            'l30' => $salesRounded,
+            'orders' => $orders,
+            'qty' => $qty,
+            'pft' => $pftRounded,
+            'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
+            'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
+            'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
+        ];
+    }
+
     public function getColumnVisibility()
     {
         $visibility = Cache::get('tiktok_sales_column_visibility', []);

@@ -32,7 +32,7 @@ class AlibabaSalesController extends Controller
      * @return array{
      *   ok: bool, l30_sales: float, l30_orders: int, qty: int,
      *   l60_sales: float, l60_orders: int,
-     *   total_pft: float, total_cogs: float,
+     *   total_pft: float, total_cogs: float, total_cogs_ship: int,
      *   gpft_percent: float, roi_percent: float,
      *   y_sales: float, l7_sales: float
      * }
@@ -46,17 +46,22 @@ class AlibabaSalesController extends Controller
         $l60 = $self->summarizeLines($self->buildLineRows($self->ordersBetween($now->copy()->subDays(60), $l30Start)));
         $yesterday = Carbon::yesterday(self::TZ);
 
+        $pft = (int) round($l30['pft']);
+        $cogs = (int) round($l30['cogs']);
+        $lineSales = (int) round($l30['line_sales']);
+
         return [
             'ok' => true,
-            'l30_sales' => $l30['order_sales'],
+            'l30_sales' => (int) round($l30['order_sales']),
             'l30_orders' => $l30['orders'],
             'qty' => $l30['qty'],
-            'l60_sales' => $l60['order_sales'],
+            'l60_sales' => (int) round($l60['order_sales']),
             'l60_orders' => $l60['orders'],
-            'total_pft' => $l30['pft'],
-            'total_cogs' => $l30['cogs'],
-            'gpft_percent' => $l30['line_sales'] > 0 ? ($l30['pft'] / $l30['line_sales']) * 100 : 0.0,
-            'roi_percent' => $l30['cogs'] > 0 ? ($l30['pft'] / $l30['cogs']) * 100 : 0.0,
+            'total_pft' => $pft,
+            'total_cogs' => $cogs,
+            'total_cogs_ship' => (int) round($l30['ship']),
+            'gpft_percent' => self::badgePercent($pft, $lineSales),
+            'roi_percent' => self::badgePercent($pft, $cogs),
             'y_sales' => $self->salesForDate($yesterday),
             'l7_sales' => $self->orderSalesBetween(
                 $yesterday->copy()->subDays(6)->startOfDay(),
@@ -123,6 +128,7 @@ class AlibabaSalesController extends Controller
         })->filter()->unique()->values()->all();
         $productMasters = ProductMaster::whereIn('sku', $resolvedSkus)->get()->keyBy('sku');
         $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
+        [$slabService, $shipSlabRates] = EbaySalesController::shipSlabLookup();
 
         $orderTotals = [];
         foreach ($rows as $row) {
@@ -148,10 +154,21 @@ class AlibabaSalesController extends Controller
             $unitPrice = (float) $row->amount;
             $lineAmount = round($unitPrice * max($quantity, 0), 2);
 
+            // COGS Ship: one Shipping Master slab for the line's total weight (same rule as
+            // the eBay / Shopify daily-sales pages), subtracted once from the line profit.
+            $values = $this->productValues($pm);
+            $parent = $pm ? (string) ($pm->parent ?? '') : '';
+            $weightAct = EbaySalesController::actWeightLb($values);
+            $tWeight = $weightAct * max($quantity, 0);
+            $shipCost = $quantity > 0
+                ? EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, $sku, $values, $quantity, $parent)
+                : 0.0;
+            $savedShip = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+
             $cogs = $lp * $quantity;
-            $pftEach = ($unitPrice * $margin) - $lp;
+            $pft = ($lineAmount * $margin) - $cogs - $shipCost;
+            $pftEach = $quantity > 0 ? $pft / $quantity : 0;
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-            $pft = $pftEach * $quantity;
             $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             $orderId = (string) $row->order_id;
@@ -172,6 +189,9 @@ class AlibabaSalesController extends Controller
                 'status' => (string) ($row->status ?? ''),
                 'period' => 'l30',
                 'lp' => round($lp, 2),
+                'ship' => round($savedShip, 2),
+                't_weight' => round($tWeight, 2),
+                'ship_cost' => round($shipCost, 2),
                 'cogs' => round($cogs, 2),
                 'pft_each' => round($pftEach, 2),
                 'pft_each_pct' => round($pftEachPct, 2),
@@ -185,36 +205,48 @@ class AlibabaSalesController extends Controller
 
     /**
      * @param  list<array<string, mixed>>  $lines
-     * @return array{order_sales: float, line_sales: float, orders: int, qty: int, pft: float, cogs: float}
+     * @return array{order_sales: float, line_sales: float, orders: int, qty: int, pft: float, cogs: float, ship: float}
      */
     private function summarizeLines(array $lines): array
     {
         $seen = [];
         $orderSales = 0.0;
         $lineSales = 0.0;
+        $orders = 0;
         $qty = 0;
         $pft = 0.0;
         $cogs = 0.0;
+        $ship = 0.0;
         foreach ($lines as $line) {
             $orderId = (string) ($line['order_id'] ?? '');
-            if ($orderId !== '' && ! isset($seen[$orderId])) {
+            $sku = (string) ($line['sku'] ?? '');
+            if ($sku === '' || $orderId === '') {
+                continue;
+            }
+            if (! isset($seen[$orderId])) {
                 $seen[$orderId] = true;
                 $orderSales += (float) ($line['total_amount'] ?? 0);
             }
+            $orders++;
             $quantity = (int) ($line['quantity'] ?? 0);
+            if ($quantity === 0) {
+                continue;
+            }
             $qty += $quantity;
             $lineSales += (float) ($line['price'] ?? 0) * $quantity;
             $pft += (float) ($line['pft'] ?? 0);
             $cogs += (float) ($line['cogs'] ?? 0);
+            $ship += (float) ($line['ship_cost'] ?? 0);
         }
 
         return [
             'order_sales' => round($orderSales, 2),
             'line_sales' => round($lineSales, 2),
-            'orders' => count($seen),
+            'orders' => $orders,
             'qty' => $qty,
             'pft' => round($pft, 2),
             'cogs' => round($cogs, 2),
+            'ship' => round($ship, 2),
         ];
     }
 
@@ -234,6 +266,9 @@ class AlibabaSalesController extends Controller
                 'status' => true,
                 'period' => true,
                 'lp' => true,
+                'ship' => true,
+                't_weight' => true,
+                'ship_cost' => true,
                 'cogs' => true,
                 'pft_each' => true,
                 'pft_each_pct' => true,
@@ -322,6 +357,15 @@ class AlibabaSalesController extends Controller
         return round($total, 2);
     }
 
+    private static function badgePercent(int $part, int $whole): int
+    {
+        if ($whole === 0) {
+            return 0;
+        }
+
+        return (int) round(($part / $whole) * 100);
+    }
+
     /**
      * Orders without sku_code store the Alibaba product id in sku. Use the sheet/metric SKU.
      *
@@ -360,6 +404,19 @@ class AlibabaSalesController extends Controller
         }
 
         return trim((string) (is_array($product) ? ($product['model_number'] ?? '') : ''));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function productValues(?ProductMaster $pm): array
+    {
+        if (! $pm) {
+            return [];
+        }
+        $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+        return is_array($values) ? $values : [];
     }
 
     private function productLp(?ProductMaster $pm): float

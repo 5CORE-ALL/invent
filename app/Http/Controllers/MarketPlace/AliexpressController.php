@@ -536,6 +536,30 @@ class AliexpressController extends Controller
     }
 
     /**
+     * Same integers the /aliexpress-tabulator badges paint.
+     * Sales, PFT, and COGS are rounded to a dollar, then GPFT and GROI divide those dollars.
+     *
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}
+     */
+    public function tabulatorBadgeTotals(string $period = 'l30'): array
+    {
+        $agg = $this->aliexpressRoundBadgeAgg($this->aggregateOrderRowsForChannelMaster($period));
+        $sales = (int) round((float) ($agg['total_sales'] ?? 0));
+        $pft = (int) round((float) ($agg['total_pft'] ?? 0));
+        $cogs = (int) round((float) ($agg['total_cogs'] ?? 0));
+
+        return [
+            'l30' => $sales,
+            'orders' => (int) ($agg['total_orders'] ?? 0),
+            'qty' => (int) ($agg['total_quantity'] ?? 0),
+            'pft' => $pft,
+            'cogs' => $cogs,
+            'gpft' => (int) round((float) ($agg['pft_percentage'] ?? 0)),
+            'groi' => (int) round((float) ($agg['roi_percentage'] ?? 0)),
+        ];
+    }
+
+    /**
      * API line sales in a Pacific window (cancel/refund/closed skipped). Same $ as tabulator.
      */
     public function sumApiOrderSalesBetween(Carbon $start, Carbon $end): float
