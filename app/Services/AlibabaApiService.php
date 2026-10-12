@@ -1732,7 +1732,8 @@ class AlibabaApiService extends AliExpressApiService
 
     /**
      * Incremental schema XML that sets the buyer-facing unit price.
-     * FOB listings set the single-piece min and max. Ladder listings change only the MOQ tier.
+     * Range (FOB) listings are pushed as SKU pricing, not range_min / range_max.
+     * Ladder listings change only the MOQ tier.
      *
      * @param  array<string, mixed>  $product
      */
@@ -1746,15 +1747,11 @@ class AlibabaApiService extends AliExpressApiService
         $type = $this->listedPriceType($product);
         $amount = number_format($price, 2, '.', '');
 
-        if ($type === 'sku') {
-            return $this->skuPriceXml($product, $amount, $sku);
-        }
-
         if ($type === 'ladder') {
             return $this->ladderPriceXml($product, $amount, $sku);
         }
 
-        return $this->fobPriceXml($product, $amount);
+        return $this->skuPriceXml($product, $amount, $sku);
     }
 
     /**
@@ -1805,6 +1802,8 @@ class AlibabaApiService extends AliExpressApiService
     }
 
     /**
+     * Range (FOB) schema. Price push does not send this. Alibaba asks for SKU pricing instead.
+     *
      * @param  array<string, mixed>  $product
      */
     protected function fobPriceXml(array $product, string $amount): string
