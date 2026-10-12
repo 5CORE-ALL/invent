@@ -477,6 +477,11 @@
                         <span class="badge bg-warning ebay3-badge-chart ebay3-hover-chart" id="avg-price-badge" data-metric="avg_price" style="color: black; font-weight: bold; cursor: pointer;" title="View trend">Prc: $0.00</span>
                         <span class="badge bg-danger ebay3-badge-chart ebay3-hover-chart" id="avg-cvr-badge" data-metric="cvr_percent" style="color: white; font-weight: bold; cursor: pointer;" title="CVR = (real-orders L30 units sold / Σ Views) × 100. Numerator is the orders-API L30 units (same source /ebay3/daily-sales uses), denominator is Σ views across rows with E Stock > 0. Click for trend.">CVR: 0%</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay3'])
+                        <span class="badge fs-6 p-2" id="ebay3-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue alert: INV > 0 and Price ≠ S PRC. Click to show only those SKUs.">
+                            <i class="fas fa-exclamation-triangle"></i> 0
+                        </span>
                         <span class="badge fs-6 p-2" id="ebay3-lmp-missing-badge"
                             style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                             title="LMP M.: SKUs with no LMP data. Green = 0 missing. Click to show only those rows.">
@@ -3353,6 +3358,22 @@
             // If 'both' is selected, no additional filter needed
             // If 'sku' is selected, data is already filtered above
 
+            // Same as Amazon: blue click = only INV > 0, Price ≠ S PRC SKUs. Other filters do not stack,
+            // so the row count matches the badge. Parent rows stay so tree children remain visible.
+            if (blueTriangleFilterActive) {
+                const blueOnlyParents = ebay3TriangleParentKeys(ebay3HasBlueTriangle);
+                table.addFilter(function(data) {
+                    return ebay3TriangleFilterMatch(data, ebay3HasBlueTriangle, blueOnlyParents);
+                });
+                updateCalcValues();
+                updateSummary();
+                setTimeout(function() {
+                    if (typeof ebay3UpdatePaginationCounter === 'function') ebay3UpdatePaginationCounter();
+                    updateSelectAllCheckbox();
+                }, 100);
+                return;
+            }
+
             const skuSearch = String($('#sku-search').val() || '').trim().toUpperCase();
             const parentSearch = String($('#parent-search').val() || '').trim().toUpperCase();
             if (skuSearch) {
@@ -3923,9 +3944,15 @@
             let blueTriangleCount = 0;
             let endedListingCount = 0;
             visible.forEach(function(row) {
-                if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
                 if (ebay3IsEndedListing(row)) endedListingCount++;
             });
+            // Same as Amazon: blue count is every loaded SKU, ignoring filters.
+            ebay3GetBackendSkuRows().forEach(function(row) {
+                if (ebay3HasBlueTriangle(row)) blueTriangleCount++;
+            });
+            $('#ebay3-blue-triangle-badge').html(
+                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+            );
             $('#ebay3-ended-listing-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
             );

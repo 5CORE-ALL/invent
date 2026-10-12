@@ -914,6 +914,11 @@
                             style="color: black; font-weight: bold; cursor: pointer;"
                             title="Views. Click dot for rolling history.">Views: 0<span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span></span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
+                        <span class="badge fs-6 p-2" id="ebay1-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue alert: INV > 0 and Price ≠ S PRC. Click to show only those SKUs.">
+                            <i class="fas fa-exclamation-triangle"></i> 0
+                        </span>
                         <span class="badge fs-6 p-2" id="ebay1-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: Price &gt; LMP and INV &gt; 0. Click to show only those rows. Click again to clear.">
@@ -5555,6 +5560,21 @@
 
                 table.clearFilter(true);
 
+                // Same as Amazon: blue click = only INV > 0, Price ≠ S PRC SKUs. Other filters do not stack,
+                // so the row count matches the badge.
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay1HasBlueTriangle(data);
+                    });
+                    updateCalcValues();
+                    if (typeof updateSummary === 'function') updateSummary();
+                    setTimeout(function() {
+                        if (typeof ebayUpdatePaginationCounter === 'function') ebayUpdatePaginationCounter();
+                        updateSelectAllCheckbox();
+                    }, 100);
+                    return;
+                }
+
                 // When Play is active: show only current parent group (child SKUs + parent summary row, like product-master photo)
                 // Skip View so we always show both children and parent row for that group
                 if (!isProductNavigationActive) {
@@ -6048,6 +6068,9 @@
                 });
                 $('#ebay1-ended-listing-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + endedListingCount.toLocaleString()
+                );
+                $('#ebay1-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
                 );
                 $('#ebay1-red-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()

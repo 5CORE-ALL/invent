@@ -640,6 +640,11 @@
                         <span class="badge bg-info" id="total-views-badge" style="color: black; font-weight: bold;"
                               title="Σ listing views for child rows with E Stock &gt; 0 (PARENT rows excluded). Same scope as CVR and /all-marketplace-master EbayTwo Views.">Views: 0</span>
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay2'])
+                        <span class="badge fs-6 p-2" id="ebay2-blue-triangle-badge"
+                            style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Blue alert: INV > 0 and Price ≠ S PRC. Click to show only those SKUs.">
+                            <i class="fas fa-exclamation-triangle"></i> 0
+                        </span>
                         <span class="badge fs-6 p-2" id="ebay2-red-triangle-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="Red triangle: S PRC &gt; LMP. Click to show only those rows. Click again to clear.">
@@ -4176,6 +4181,21 @@
                     });
                 }
 
+                // Same as Amazon: blue click = only INV > 0, Price ≠ S PRC SKUs. Other filters do not stack,
+                // so the row count matches the badge.
+                if (blueTriangleFilterActive) {
+                    table.addFilter(function(data) {
+                        return ebay2HasBlueTriangle(data);
+                    });
+                    updateCalcValues();
+                    updateSummary();
+                    setTimeout(function() {
+                        if (typeof ebay2UpdatePaginationCounter === 'function') ebay2UpdatePaginationCounter();
+                        updateSelectAllCheckbox();
+                    }, 100);
+                    return;
+                }
+
                 if (skuSearch) {
                     const skuQ = skuSearch.toUpperCase();
                     table.addFilter(function(data) {
@@ -4623,6 +4643,9 @@
                     if (ebay2HasRedTriangle(row)) redTriangleCount++;
                     if (ebay2IsEndedListing(row)) endedListingCount++;
                 });
+                $('#ebay2-blue-triangle-badge').html(
+                    '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
+                );
                 $('#ebay2-red-triangle-badge').html(
                     '<i class="fas fa-exclamation-triangle"></i> ' + redTriangleCount.toLocaleString()
                 );
