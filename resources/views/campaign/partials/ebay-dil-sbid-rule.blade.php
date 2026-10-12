@@ -460,10 +460,12 @@ function campaignSbid(row) {
 let dilSbidRollupMemo = {};
 let dilSbidListingKeyFn = null;
 let dilSbidListingKeySrc = null;
+let dilSbidKidsByListing = null;
 function dilSbidClearListingCache() {
     dilSbidRollupMemo = {};
     dilSbidListingKeyFn = null;
     dilSbidListingKeySrc = null;
+    dilSbidKidsByListing = null;
 }
 function dilSbidIsChildRow(row) {
     if (typeof chPromoIsChildRow === 'function') return chPromoIsChildRow(row);
@@ -494,10 +496,38 @@ function dilSbidListingKey(row) {
 function dilSbidUnitKey(row) {
     return DIL_SBID_LISTING_WISE ? dilSbidListingKey(row) : dilSbidSkuKey(row);
 }
+function dilSbidKidsFor(listingKey) {
+    if (!dilSbidKidsByListing) {
+        const rows = dilSbidRows();
+        const fallbackKey = function(d) {
+            const itemId = String((d && (d.listing_id || d.eBay_item_id || d.item_id || d.ebay_item_id)) || '').trim();
+            return (itemId && itemId !== '0') ? ('item:' + itemId) : '';
+        };
+        // Build the key function once for this snapshot. Calling it through
+        // dilSbidListingKey() would copy the whole table again for every row.
+        dilSbidListingKeySrc = rows;
+        if (typeof chPromoVariationKeyFn === 'function') {
+            dilSbidListingKeyFn = chPromoVariationKeyFn(rows);
+        } else if (!dilSbidListingKeyFn) {
+            dilSbidListingKeyFn = fallbackKey;
+        }
+        const keyFn = dilSbidListingKeyFn || fallbackKey;
+        const map = {};
+        rows.forEach(function(d) {
+            if (!dilSbidIsChildRow(d)) return;
+            const key = String(keyFn(d) || '');
+            if (!key) return;
+            if (!map[key]) map[key] = [];
+            map[key].push(d);
+        });
+        dilSbidKidsByListing = map;
+    }
+    return dilSbidKidsByListing[listingKey] || [];
+}
 function dilSbidRollupRow(listingKey) {
     if (!listingKey) return null;
     if (dilSbidRollupMemo[listingKey]) return dilSbidRollupMemo[listingKey];
-    const kids = dilSbidChildRows().filter(function(d) { return dilSbidListingKey(d) === listingKey; });
+    const kids = dilSbidKidsFor(listingKey);
     if (!kids.length) return null;
     let inv = 0, qty = 0, views = 0, l30 = 0, l60 = 0, l7 = 0;
     let stdSum = 0, stdN = 0, lpSum = 0, shipSum = 0, costN = 0;

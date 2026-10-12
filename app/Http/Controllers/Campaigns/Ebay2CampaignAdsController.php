@@ -1008,8 +1008,21 @@ class Ebay2CampaignAdsController extends Controller
 
     public function getData(Request $request)
     {
-        EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
-        $this->backfillMissingEligibleForSearch($request->input('search'));
+        $page = max(1, (int) $request->input('page', 1));
+        $size = (int) $request->input('size', 100);
+        if ($size < 1) {
+            $size = 100;
+        }
+        if ($size > 500) {
+            $size = 500;
+        }
+
+        // Remap and the eBay search backfill rewrite rows. Run them on the
+        // first page only so flipping pages is a read of one slice.
+        if ($page === 1) {
+            EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
+            $this->backfillMissingEligibleForSearch($request->input('search'));
+        }
 
         // One preferred metric per listing, then a plain join. A per-row subquery
         // here re-ran for every ad and made this page much slower than eBay 1 raw.
@@ -1112,15 +1125,33 @@ class Ebay2CampaignAdsController extends Controller
                   });
             });
         }
+        if ($request->boolean('missing')) {
+            $query->where(function ($q) {
+                $q->whereNull('ca.campaign_id')->orWhere('ca.campaign_id', '');
+            })
+            ->whereRaw("COALESCE(em.sku, ca.sku) IS NOT NULL")
+            ->whereRaw("COALESCE(em.sku, ca.sku) != ''")
+            ->whereRaw("COALESCE(em.ebay_price, ca.price) > 0")
+            ->whereRaw("(SELECT ss.inv FROM shopify_skus ss WHERE ss.sku = COALESCE(em.sku, ca.sku) LIMIT 1) > 0")
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('ebay2_campaign_ads as enrolled')
+                    ->whereColumn('enrolled.listing_id', 'ca.listing_id')
+                    ->whereNotNull('enrolled.campaign_id')
+                    ->where('enrolled.campaign_id', '!=', '');
+            });
+        }
 
-        $data  = $query->orderBy('ca.id', 'desc')->get();
-        $total = $data->count();
+        $total = (int) (clone $query)->count();
+        $data = $query->orderBy('ca.id', 'desc')->forPage($page, $size)->get();
         CpMasterDil::hydrate($data);
         EbayListingReportHistory::attachToRows($data, 'ebay_2_general_reports');
 
         return response()->json([
             'total' => $total,
-            'data'  => $data,
+            'last_row' => $total,
+            'last_page' => max(1, (int) ceil($total / $size)),
+            'data' => $data,
         ]);
     }
 

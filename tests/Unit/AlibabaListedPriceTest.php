@@ -232,4 +232,40 @@ class AlibabaListedPriceTest extends TestCase
         $this->assertStringContainsString('<field id="skuId" type="input"><value>11</value></field><field id="price" type="input"><value>13.09</value></field>', $xml);
         $this->assertStringNotContainsString('PLACEHOLDER', $xml);
     }
+
+    public function test_every_listing_on_a_product_is_kept_with_its_price(): void
+    {
+        $rows = app(AlibabaApiService::class)->analyticsRowsFromProduct([
+            'display' => 'Y',
+            'status' => 'approved',
+            'sourcingTrade' => [
+                'fobMinPrice' => '19.00',
+            ],
+            'productSku' => [
+                'skus' => [
+                    [
+                        'skuCode' => 'MS 080 YLW',
+                        'bulkDiscountPrices' => [
+                            ['startQuantity' => 1, 'price' => '20.99'],
+                        ],
+                    ],
+                    [
+                        'skuCode' => 'MS 080 RED',
+                        'bulkDiscountPrices' => [
+                            ['startQuantity' => 1, 'price' => '18.40'],
+                        ],
+                    ],
+                    [
+                        'skuCode' => 'MS 080 BLK',
+                    ],
+                ],
+            ],
+        ], '10000049298625');
+
+        $this->assertSame(['MS 080 YLW', 'MS 080 RED', 'MS 080 BLK'], array_column($rows, 'sku'));
+        $this->assertEqualsWithDelta(20.99, $rows[0]['sku_price'], 0.001);
+        $this->assertEqualsWithDelta(18.40, $rows[1]['sku_price'], 0.001);
+        $this->assertEqualsWithDelta(19.00, $rows[2]['sku_price'], 0.001);
+        $this->assertSame('Active', $rows[0]['status']);
+    }
 }
