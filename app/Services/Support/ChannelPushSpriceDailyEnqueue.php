@@ -3,13 +3,6 @@
 namespace App\Services\Support;
 
 use App\Jobs\RunChannelPushSpriceJob;
-use App\Models\AmazonDataView;
-use App\Models\Ebay2Metric;
-use App\Models\Ebay3Metric;
-use App\Models\EbayDataView;
-use App\Models\EbayMetric;
-use App\Models\EbayThreeDataView;
-use App\Models\EbayTwoDataView;
 use App\Models\MacysPriceData;
 use App\Models\MacyDataView;
 use App\Models\Shopifyb2cDataView;
@@ -19,7 +12,6 @@ use App\Models\TemuMetric;
 use App\Services\TemuShopifySalesService;
 use App\Services\ChannelPromoPricingService;
 use App\Services\DilRuleSpriceApplyService;
-use App\Services\EbayRuleSpriceApplyService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -30,7 +22,8 @@ use Illuminate\Support\Facades\Log;
  */
 class ChannelPushSpriceDailyEnqueue
 {
-    public const CHANNELS = ['ebay1', 'ebay2', 'ebay3'];
+    /** eBay 1/2/3 S PRC pushing was removed; no channel is queued by default. */
+    public const CHANNELS = [];
 
     /** Sprc Dil pages whose live push is not in the eBay or Dil channel lists. */
     public const EXTRA_PUSH_CHANNELS = ['shopify_b2c', 'macys', 'newtemuone'];
@@ -151,9 +144,6 @@ class ChannelPushSpriceDailyEnqueue
         if (in_array($channel, DilRuleSpriceApplyService::CHANNELS, true)) {
             return DilRuleSpriceApplyService::for($channel)->collectPushTasks();
         }
-        if (in_array($channel, EbayRuleSpriceApplyService::CHANNELS, true)) {
-            return EbayRuleSpriceApplyService::for($channel)->collectPushTasks();
-        }
         if ($channel === 'shopify_b2c') {
             return $this->collectSavedAgainstLive(Shopifyb2cDataView::class, ShopifySku::class, 'price', 'b2c_price');
         }
@@ -164,126 +154,7 @@ class ChannelPushSpriceDailyEnqueue
             return $this->collectNewTemuonePushTasks();
         }
 
-        $metricClass = match ($channel) {
-            'ebay2' => Ebay2Metric::class,
-            'ebay3' => Ebay3Metric::class,
-            default => EbayMetric::class,
-        };
-        $viewClass = match ($channel) {
-            'ebay2' => EbayTwoDataView::class,
-            'ebay3' => EbayThreeDataView::class,
-            default => EbayDataView::class,
-        };
-
-        $out = [];
-        $seen = [];
-
-        $metricClass::query()
-            ->whereNotNull('sku')
-            ->where('sku', '!=', '')
-            ->whereNotNull('item_id')
-            ->where('item_id', '!=', '')
-            ->where('ebay_price', '>', 0)
-            ->orderBy('id')
-            ->chunkById(400, function ($rows) use ($channel, $viewClass, &$out, &$seen) {
-                $skus = [];
-                $liveBySku = [];
-                foreach ($rows as $row) {
-                    $sku = strtoupper(trim((string) $row->sku));
-                    if ($sku === '' || str_contains($sku, 'PARENT') || isset($seen[$sku])) {
-                        continue;
-                    }
-                    $live = round((float) $row->ebay_price, 2);
-                    if (! ($live > 0)) {
-                        continue;
-                    }
-                    if (\App\Support\Marketplace\EbayListingEnded::isEnded($row->listing_status ?? null)) {
-                        continue;
-                    }
-                    $skus[] = $sku;
-                    $liveBySku[$sku] = $live;
-                    $seen[$sku] = true;
-                }
-                if ($skus === []) {
-                    return;
-                }
-
-                $stdBySku = $this->standardPrices($skus);
-                $promoBySku = $this->promo->mapForSkus($channel, $skus);
-                $savedSprice = $this->savedSprices($viewClass, $skus);
-
-                foreach ($skus as $sku) {
-                    $live = $liveBySku[$sku] ?? 0;
-                    $std = $stdBySku[$sku] ?? 0;
-                    $fill = $this->spriceForChannel($channel, $std, $promoBySku[$sku] ?? [], $savedSprice[$sku] ?? 0);
-                    $saved = $savedSprice[$sku] ?? 0;
-                    // Page S PRC includes Dil/CVR slabs; if that was saved, push it even when
-                    // saved promo % is still 0 and Std already matches live Price.
-                    if ($saved > 0 && abs($saved - $live) >= 0.005) {
-                        $fill = $saved;
-                    }
-                    if (! ($fill > 0) || ! ($live > 0)) {
-                        continue;
-                    }
-                    if (abs($fill - $live) < 0.005) {
-                        continue;
-                    }
-                    $out[] = [
-                        'sku' => $sku,
-                        'price' => $fill,
-                    ];
-                }
-            });
-
-        return $out;
-    }
-
-    /**
-     * @param  array<string, mixed>  $promo
-     */
-    private function spriceForChannel(string $channel, float $std, array $promo, float $saved): float
-    {
-        if ($channel === 'ebay3') {
-            if ($saved > 0) {
-                return $saved;
-            }
-
-            return $std > 0 ? $std : 0.0;
-        }
-
-        if (! ($std > 0)) {
-            return 0.0;
-        }
-        $prmt = is_numeric($promo['prmt_pct'] ?? null)
-            ? (float) $promo['prmt_pct']
-            : (float) ($promo['_prmt_pct_applied'] ?? 0);
-        $cpn = is_numeric($promo['cpn_pct'] ?? null)
-            ? (float) $promo['cpn_pct']
-            : (float) ($promo['_cpn_pct_applied'] ?? 0);
-        $t = min(99.99, max(0, $prmt + $cpn));
-        $price = $t > 0 ? round($std * (1 - $t / 100), 2) : round($std, 2);
-
-        return $price >= 0.01 ? $price : 0.0;
-    }
-
-    /**
-     * @param  list<string>  $skus
-     * @return array<string, float>
-     */
-    private function standardPrices(array $skus): array
-    {
-        $map = [];
-        foreach (AmazonDataView::whereIn(DB::raw('UPPER(TRIM(sku))'), $skus)->get(['sku', 'value']) as $row) {
-            $val = is_array($row->value)
-                ? $row->value
-                : (json_decode((string) ($row->value ?? ''), true) ?: []);
-            $std = $val['STANDARD_PRICE'] ?? null;
-            if (is_numeric($std) && (float) $std > 0) {
-                $map[strtoupper(trim((string) $row->sku))] = round((float) $std, 2);
-            }
-        }
-
-        return $map;
+        return [];
     }
 
     /**

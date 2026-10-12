@@ -446,7 +446,6 @@
             font-size: 11px; font-weight: 700; line-height: 1; cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay3'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay3'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
 @endsection
@@ -630,7 +629,6 @@
                         Dil vs SBid
                     </button>
                     @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 3'])
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay3'])
                     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay3'])
 
                 </div>
@@ -836,7 +834,6 @@
         'account' => 'eBay 3',
         'extended' => true,
     ])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay3'])
 @endsection
 
@@ -860,7 +857,6 @@
         'applyUrl' => url('/ebay3/campaign-ads/push-selected'),
     ])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     let table = null;
 
@@ -2833,38 +2829,6 @@
                 },
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                     {
-                    title: "Sprc Dil",
-                    field: "SPRC_DIL",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (rowData.is_parent_summary || rowData.is_parent_row) return '';
-                        if (typeof ebay3IsAlertParentRow === 'function' && ebay3IsAlertParentRow(rowData)) return '';
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(meta)
-                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2));
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
-                    },
-                    width: 78
-                    },
-                    {
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
@@ -4058,7 +4022,7 @@
             const tl = t.toLowerCase();
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SPRC_DIL|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(prc|price|std\s*prc|gpft|groi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc|es\s*bid|c\s*bid|s\s*bid|alert)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {

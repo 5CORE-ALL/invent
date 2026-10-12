@@ -42,7 +42,6 @@ class StdPrcVsDilDailyCommand extends Command
             $saveAndPush = $dry ? ['--dry-run' => true] : ['--push' => true];
             $steps = [
                 ['amazon:sprc-dil-auto-push', $save],
-                ['ebay:rule-sprice-apply', ['channel' => 'all'] + $saveAndPush],
                 ['dil:rule-sprice-apply', ['channel' => 'all'] + $saveAndPush],
                 ['shopify-b2c:rule-sprice-apply', $saveAndPush],
                 ['macys:rule-sprice-apply', $saveAndPush],

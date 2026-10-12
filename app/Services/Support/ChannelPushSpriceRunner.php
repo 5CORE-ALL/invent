@@ -8,9 +8,6 @@ use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\MacyController;
 use App\Http\Controllers\MarketPlace\DobaController;
-use App\Http\Controllers\MarketPlace\EbayController;
-use App\Http\Controllers\MarketPlace\EbayThreeController;
-use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Http\Controllers\MarketPlace\NeweggPricingController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\TemuController;
@@ -91,54 +88,6 @@ class ChannelPushSpriceRunner
             return true;
         } catch (\Throwable $e) {
             Log::warning('Channel S PRC worker spawn failed', [
-                'channel' => $channel,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
-    }
-
-    /**
-     * Scan blue SKUs (S PRC ≠ live Price) off the web request so the page
-     * can show progress while the catalog is still being collected.
-     */
-    public static function spawnBlueEnqueue(string $channel): bool
-    {
-        $channel = strtolower(trim($channel));
-        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true)) {
-            return false;
-        }
-        if (! self::livePushAllowed()) {
-            Log::warning('Channel blue enqueue skipped — live push disabled in local', [
-                'channel' => $channel,
-            ]);
-
-            return false;
-        }
-        try {
-            $php = PHP_BINARY ?: 'php';
-            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
-                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
-                if ($cli !== '') {
-                    $php = $cli;
-                }
-            }
-            $artisan = base_path('artisan');
-            $log = storage_path('logs/'.$channel.'-push-blue.log');
-            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
-                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' channel:push-blue '.escapeshellarg($channel), 'r'));
-
-                return true;
-            }
-            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
-                .' channel:push-blue '.escapeshellarg($channel)
-                .' >> '.escapeshellarg($log).' 2>&1 &';
-            pclose(popen($cmd, 'r'));
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning('Channel blue enqueue spawn failed', [
                 'channel' => $channel,
                 'error' => $e->getMessage(),
             ]);
@@ -285,18 +234,7 @@ class ChannelPushSpriceRunner
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
                 }
-                $dupReason = ChannelLivePriceSync::duplicateEbayPushReason($this->channel, $sku, $price);
-                if ($dupReason !== null) {
-                    // Same price was already pushed and the stored live price is only a stale snapshot.
-                    $ok = true;
-                    $dupSkip = true;
-                    $logger->info('S PRC background push skipped — '.$dupReason, [
-                        'channel' => $this->channel,
-                        'sku' => $sku,
-                        'price' => $price,
-                    ]);
-                    $store->appendMessage('Skip '.$sku.': '.$dupReason);
-                } elseif (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
+                if (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
                     $ok = true;
                     $negSnroi = true;
                     $logger->info('S PRC background push skipped — negative SNROI', [
@@ -358,15 +296,6 @@ class ChannelPushSpriceRunner
                             ? (string) (($payload['errors'][0]['message'] ?? null) ?: ($payload['message'] ?? 'S PRC push failed'))
                             : 'S PRC push failed';
                         throw new \RuntimeException($error);
-                    }
-                    // eBay: success means "eBay reported this price on the listing", not "eBay accepted the call".
-                    // Never stamp pushed / clear the badge on the price we asked for.
-                    if (in_array($this->channel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true)
-                        && ! \App\Services\EbayRuleSpriceApplyService::sameCents(
-                            (float) (is_array($payload) && is_numeric($payload['ebay_price'] ?? null) ? $payload['ebay_price'] : -1),
-                            round($price, 2)
-                        )) {
-                        throw new \RuntimeException('eBay price not confirmed after push (listing did not report $'.number_format($price, 2).')');
                     }
                     $live = is_array($payload)
                         ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
@@ -707,9 +636,6 @@ class ChannelPushSpriceRunner
         }
 
         return match ($this->channel) {
-            'ebay1' => app(EbayController::class)->pushEbayPrice($req),
-            'ebay2', 'ebay2op' => app(EbayTwoController::class)->pushEbay2Price($req),
-            'ebay3' => app(EbayThreeController::class)->pushEbay3Price($req),
             'shopify_b2c' => app(OverallAmazonController::class)->pushShopifyB2CPrice($req),
             default => throw new \RuntimeException('Live S PRC push is not available for '.$this->channel),
         };

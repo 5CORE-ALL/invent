@@ -438,7 +438,6 @@
             cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay2'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'ebay2'])
     </style>
 @endsection
 
@@ -542,9 +541,8 @@
                         <option value="blank">Blank SPRICE only</option>
                     </select>
 
-                    {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / 0 Sold removed --}}
+                    {{-- CVR% / coupons / Push Prc — PRMT% / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay2'])
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'ebay2'])
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
                         title="Set S Bid from Dil. eBay 2 keeps its own slabs.">
                         Dil vs SBid
@@ -1027,7 +1025,6 @@
     </div>
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay2'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'ebay2'])
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'modal',
         'account' => 'eBay 2',
@@ -1052,7 +1049,6 @@
         const EBAY2_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'ebay2'])
         @include('campaign.partials.ebay-dil-sbid-rule', [
             'part' => 'script',
             'account' => 'eBay 2',
@@ -3681,40 +3677,8 @@
                             }
                         },
                     },
-                    // CPN % / Push Prc — PRMT% removed; Sprc Dil + CPN
+                    // CPN % / Push Prc — PRMT% removed
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-                    {
-                        title: "Sprc Dil",
-                        field: "SPRC_DIL",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof ebaySprcDilForRow === 'function')
-                                    ? (ebaySprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
-                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Every INV > 0 SKU Dil-matches, including 0 Sold; Dil outside the table uses the nearest slab. CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            if (typeof isEbay2TabulatorParentRow === 'function' && isEbay2TabulatorParentRow(rowData)) return '';
-                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                            const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = (typeof ebayDilGroiTipText === 'function')
-                                ? ebayDilGroiTipText(meta)
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                    + ' → ' + meta.label
-                                    + ' → GROI ' + meta.groi + '%'
-                                    + ' → $' + meta.sprc.toFixed(2));
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
-                        },
-                        width: 78
-                    },
                     {
                         title: "S PRC",
                         field: "SPRICE",

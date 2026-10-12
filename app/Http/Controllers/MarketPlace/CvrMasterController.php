@@ -8834,126 +8834,24 @@ class CvrMasterController extends Controller
         }
     }
 
-    /**
-     * Push price to eBay 1 — same path as /push-ebay-price-tabulator (EbayController::pushEbayPrice).
-     */
+    /** eBay 1 price push was removed: eBay prices are never pushed from CVR Master. */
     private function pushToEbay($sku, $price)
     {
-        try {
-            $ebayMetric = EbayMetric::where('sku', $sku)->first();
-            if (!$ebayMetric) {
-                $ebayMetric = EbayMetric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
-            }
-
-            if (!$ebayMetric || !$ebayMetric->item_id) {
-                $this->savePricePushStatus($sku, 'ebay', 'error', $price);
-                Log::warning('CVR Master - eBay item_id not found', ['sku' => $sku]);
-                return response()->json([
-                    'success' => false,
-                    'message' => "eBay listing not found for SKU: $sku",
-                    'errors' => [['message' => 'eBay listing not found for this SKU']]
-                ], 404);
-            }
-
-            // Prefer metric SKU casing so multi-variation listings match (same as eBay3).
-            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
-
-            $ebayService = new EbayApiService();
-            $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $price, null, $apiSku);
-
-            if (isset($result['success']) && $result['success']) {
-                if (isset($ebayMetric->ebay_price)) {
-                    $ebayMetric->ebay_price = $price;
-                    $ebayMetric->save();
-                }
-                $this->savePricePushStatus($sku, 'ebay', 'pushed', $price);
-                Log::info('CVR Master - eBay price push successful', [
-                    'sku' => $sku,
-                    'price' => $price,
-                    'item_id' => $ebayMetric->item_id,
-                    'api_sku' => $apiSku,
-                ]);
-                return response()->json([
-                    'success' => true,
-                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay for SKU: $sku",
-                    'result' => $result
-                ]);
-            }
-
-            $isAccountRestricted = !empty($result['accountRestricted']);
-            $this->savePricePushStatus($sku, 'ebay', $isAccountRestricted ? 'account_restricted' : 'error', $price);
-
-            $firstMsg = $this->extractEbayPushErrorMessage($result, 'Failed to update eBay price');
-
-            return response()->json([
-                'success' => false,
-                'message' => $firstMsg,
-                'errors' => $result['errors'] ?? [['message' => $firstMsg]],
-            ], 400);
-        } catch (\Exception $e) {
-            $this->savePricePushStatus($sku, 'ebay', 'error', $price);
-            Log::error('CVR Master - eBay push exception', [
-                'sku' => $sku,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'eBay API error: ' . $e->getMessage(),
-            ], 500);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'eBay price push is disabled.',
+            'errors' => [['message' => 'eBay price push is disabled.']],
+        ], 403);
     }
 
-    /**
-     * Push price to eBay 2 — same path as /push-ebay2-price (EbayTwoController::pushEbay2Price).
-     */
+    /** eBay 2 price push was removed: eBay prices are never pushed from CVR Master. */
     private function pushToEbay2($sku, $price)
     {
-        try {
-            $ebayMetric = Ebay2Metric::where('sku', $sku)->first();
-            if (!$ebayMetric) {
-                $ebayMetric = Ebay2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])->first();
-            }
-            if (!$ebayMetric) {
-                $ebayMetric = Ebay2Metric::where('sku', 'LIKE', '%' . $sku . '%')->first();
-            }
-
-            if (!$ebayMetric || !$ebayMetric->item_id) {
-                $this->savePricePushStatus($sku, 'ebay2', 'error', $price);
-                return response()->json([
-                    'success' => false,
-                    'message' => "eBay2 listing not found for SKU: $sku",
-                ], 404);
-            }
-
-            // Multi-variation listings need the variation SKU (same as eBay3 / EbayThreeApiService).
-            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
-
-            $result = (new Ebay2ApiService())->reviseFixedPriceItem(
-                itemId: $ebayMetric->item_id,
-                price: $price,
-                sku: $apiSku
-            );
-
-            if (!empty($result['success'])) {
-                $ebayMetric->ebay_price = $price;
-                $ebayMetric->save();
-                $this->savePricePushStatus($sku, 'ebay2', 'pushed', $price);
-                return response()->json([
-                    'success' => true,
-                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay2 for SKU: $apiSku",
-                    'result' => $result,
-                ]);
-            }
-
-            $this->savePricePushStatus($sku, 'ebay2', !empty($result['accountRestricted']) ? 'account_restricted' : 'error', $price);
-            $message = $this->extractEbayPushErrorMessage($result, 'Failed to update price on eBay2');
-            return response()->json(['success' => false, 'message' => $message, 'errors' => $result['errors'] ?? []], 400);
-        } catch (\Exception $e) {
-            $this->savePricePushStatus($sku, 'ebay2', 'error', $price);
-            Log::error('CVR Master - eBay2 push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'eBay2 API error: ' . $e->getMessage()], 500);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'eBay price push is disabled.',
+            'errors' => [['message' => 'eBay price push is disabled.']],
+        ], 403);
     }
 
     /**
@@ -8990,64 +8888,14 @@ class CvrMasterController extends Controller
         return $msg !== '' ? $msg : $fallback;
     }
 
-    /**
-     * Push price to eBay 3 — same path as /push-ebay3-price-tabulator.
-     */
+    /** eBay 3 price push was removed: eBay prices are never pushed from CVR Master. */
     private function pushToEbay3($sku, $price)
     {
-        try {
-            $skuNorm = strtoupper(trim((string) $sku));
-            $ebayMetric = Ebay3Metric::where('sku', $sku)->first();
-            if (!$ebayMetric) {
-                $ebayMetric = Ebay3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [$skuNorm])->first();
-            }
-            if (!$ebayMetric && $skuNorm !== '') {
-                // Same fallback as eBay2 — some rows store OPEN BOX / USED prefixes.
-                $ebayMetric = Ebay3Metric::where('sku', 'LIKE', '%' . $sku . '%')->first();
-            }
-
-            if (!$ebayMetric || !$ebayMetric->item_id) {
-                $this->savePricePushStatus($sku, 'ebay3', 'error', $price);
-                return response()->json([
-                    'success' => false,
-                    'message' => "eBay3 listing not found for SKU: $sku",
-                ], 404);
-            }
-
-            // Prefer the metric's exact SKU casing so variation listings match on eBay.
-            $apiSku = trim((string) ($ebayMetric->sku ?: $sku));
-
-            $result = (new EbayThreeApiService())->reviseFixedPriceItem(
-                $ebayMetric->item_id,
-                $price,
-                null,
-                $apiSku
-            );
-
-            if (!empty($result['success'])) {
-                // Keep /pricing-master-cvr modal in sync after reload (same as eBay2).
-                $ebayMetric->ebay_price = $price;
-                $ebayMetric->save();
-                $this->savePricePushStatus($apiSku, 'ebay3', 'pushed', $price);
-                return response()->json([
-                    'success' => true,
-                    'message' => "Price $" . number_format($price, 2) . " pushed to eBay3 for SKU: $apiSku",
-                    'result' => $result,
-                ]);
-            }
-
-            $this->savePricePushStatus($apiSku, 'ebay3', !empty($result['accountRestricted']) ? 'account_restricted' : 'error', $price);
-            $firstMsg = $this->extractEbayPushErrorMessage($result, 'Failed to update eBay3 price');
-            return response()->json([
-                'success' => false,
-                'message' => $firstMsg,
-                'errors' => $result['errors'] ?? [['message' => $firstMsg]],
-            ], 400);
-        } catch (\Exception $e) {
-            $this->savePricePushStatus($sku, 'ebay3', 'error', $price);
-            Log::error('CVR Master - eBay3 push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'eBay3 API error: ' . $e->getMessage()], 500);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'eBay price push is disabled.',
+            'errors' => [['message' => 'eBay price push is disabled.']],
+        ], 403);
     }
 
     /**

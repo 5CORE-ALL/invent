@@ -662,7 +662,6 @@
             cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'ebay1'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css'])
     </style>
 @endsection
 
@@ -800,9 +799,8 @@
                         <option value="pink">Pink</option>
                     </select>
 
-                    {{-- CVR% / coupons / Push Prc / Sprc Dil — PRMT% / CVR Up/Dn / 0 Sold removed --}}
+                    {{-- CVR% / coupons / Push Prc — PRMT% / CVR Up/Dn / 0 Sold removed --}}
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'ebay1'])
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons'])
                     <button type="button" class="btn btn-sm btn-outline-primary pricing-filter-item" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
                         title="Set S Bid from Dil. eBay 1 keeps its own slabs.">
                         Dil vs SBid
@@ -1291,7 +1289,6 @@
     </div>
 
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'ebay1'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals'])
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'modal',
         'account' => 'eBay 1',
@@ -1340,7 +1337,6 @@
         const EBAY_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay1'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script'])
         @include('campaign.partials.ebay-dil-sbid-rule', [
             'part' => 'script',
             'account' => 'eBay 1',
@@ -5011,39 +5007,8 @@
                             }
                         },
                     },
-                    // CPN % / Push Prc — PRMT% / CVR Up/Dn / 0 Sold removed; Sprc Dil + CPN
+                    // CPN % / Push Prc — PRMT% / CVR Up/Dn / 0 Sold removed
                     ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
-                    {
-                        title: "Sprc Dil",
-                        field: "SPRC_DIL",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof ebaySprcDilForRow === 'function')
-                                    ? (ebaySprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
-                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil outside the table uses the nearest slab (including 0 Sold). CVR < 7% subtracts 10 from Target NROI%; CVR > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData.is_parent_summary) return '';
-                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                            const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = (typeof ebayDilGroiTipText === 'function')
-                                ? ebayDilGroiTipText(meta)
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                    + ' → ' + meta.label
-                                    + ' → GROI ' + meta.groi + '%'
-                                    + ' → $' + meta.sprc.toFixed(2));
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
-                        },
-                        width: 78
-                    },
                     {
                         title: "S PRC",
                         field: "SPRICE",

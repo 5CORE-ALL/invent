@@ -91,12 +91,7 @@
             const CH_PUSH_SPRICE_IS_TOPDAWG = CH_PUSH_SPRICE_CHANNEL === 'topdawg';
             const CH_PUSH_SPRICE_PULL_DELAY_MS = CH_PUSH_SPRICE_IS_TIKTOK ? 1500 : (CH_PUSH_SPRICE_IS_TOPDAWG ? 800 : 0);
             const CH_PUSH_SPRICE_CHUNK = 200;
-            const CH_PUSH_SPRICE_PUSH_URL = ({
-                ebay1: '/push-ebay-price-tabulator',
-                ebay2: '/push-ebay2-price',
-                ebay2op: '/push-ebay2-price',
-                ebay3: '/push-ebay3-price-tabulator',
-            })[CH_PUSH_SPRICE_CHANNEL] || '';
+            const CH_PUSH_SPRICE_PUSH_URL = ''; // eBay price push endpoints were removed
             const CH_PUSH_SPRICE_CLIENT_MAX = 2;
             let chPushSpriceBuf = {};
             let chPushSpriceTimer = null;

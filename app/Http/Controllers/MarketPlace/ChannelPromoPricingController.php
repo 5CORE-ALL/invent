@@ -5,7 +5,6 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Http\Controllers\Controller;
 use App\Jobs\RunChannelPushCpnJob;
-use App\Jobs\RunChannelPushPrcJob;
 use App\Jobs\RunChannelPushPrmtJob;
 use App\Jobs\RunChannelPushSpriceJob;
 use App\Jobs\RunShopifyB2cRuleSpriceApplyJob;
@@ -33,7 +32,6 @@ use App\Services\DilRuleSpriceApplyService;
 use App\Services\Ebay1CouponService;
 use App\Services\Ebay1PromotionService;
 use App\Services\Support\ChannelPushCpnJobStore;
-use App\Services\Support\ChannelPushPrcJobStore;
 use App\Services\Support\ChannelPushPrmtJobStore;
 use App\Services\Support\ChannelPushSpriceDailyEnqueue;
 use App\Services\Support\ChannelPushSpriceJobStore;
@@ -50,12 +48,8 @@ use Illuminate\Support\Facades\Schema;
 
 class ChannelPromoPricingController extends Controller
 {
-    /** Channels that support background Push Prc queue (Std listing + sale + coupon). */
-    private const PUSH_QUEUE_CHANNELS = ['ebay1', 'ebay2', 'ebay2op', 'ebay3'];
-
     /** Channels that support background S PRC → live listing price queue. */
     private const PUSH_SPRICE_CHANNELS = [
-        'ebay1', 'ebay2', 'ebay2op', 'ebay3',
         'shopify_b2c', 'shopify_b2b', 'reverb',
         'macys', 'macy', 'bestbuy', 'walmart', 'wayfair',
         'temu', 'temu2', 'temu3', 'newtemuone', 'newtemutwo', 'doba', 'doba_withoutship',
@@ -79,136 +73,8 @@ class ChannelPromoPricingController extends Controller
     ) {}
 
     /**
-     * Queue Push Prc jobs (background). Appends if a job is already running.
-     * Same pattern as /amazon-push-prc.
-     */
-    public function queuePushPrc(Request $request, string $channel): JsonResponse
-    {
-        $channel = strtolower(trim($channel));
-        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true) || ! $this->promo->isSupported($channel)) {
-            return response()->json(['success' => false, 'message' => 'Unsupported channel for Push Prc queue'], 422);
-        }
-
-        $items = $request->input('items', []);
-        if (! is_array($items) || $items === []) {
-            return response()->json(['success' => false, 'message' => 'No items to push'], 400);
-        }
-
-        $tasks = [];
-        foreach ($items as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $tasks[] = [
-                'sku' => $item['sku'] ?? null,
-                'std' => $item['std'] ?? $item['price'] ?? null,
-                'sale' => $item['sale'] ?? $item['sale_price'] ?? null,
-                'max' => $item['max'] ?? $item['max_price'] ?? null,
-                'min' => $item['min'] ?? $item['min_price'] ?? null,
-                'business' => $item['business'] ?? $item['business_price'] ?? null,
-                'effective' => $item['effective'] ?? $item['std'] ?? $item['price'] ?? null,
-                'prmt' => $item['prmt'] ?? $item['prmt_pct'] ?? 0,
-                'cpn' => $item['cpn'] ?? $item['cpn_pct'] ?? 0,
-                'cvr_disc' => $item['cvr_disc'] ?? $item['cvrDisc'] ?? 0,
-            ];
-        }
-
-        $store = ChannelPushPrcJobStore::for($channel);
-        $result = $store->createOrAppend($tasks);
-        $state = $result['state'];
-        $mode = $result['mode'];
-        if ((int) ($state['total'] ?? 0) === 0) {
-            return response()->json(['success' => false, 'message' => 'No valid push items (need SKU + Std > 0)'], 400);
-        }
-
-        $this->releaseUniqueJobLock($channel);
-        $spawned = $this->spawnPushPrcWorker($channel);
-        if (! $spawned) {
-            try {
-                RunChannelPushPrcJob::dispatch($channel);
-                Log::warning('Channel Push Prc sync spawn failed — fell back to queue dispatch', ['channel' => $channel]);
-            } catch (\Throwable $e) {
-                Log::error('Channel Push Prc queue dispatch also failed', [
-                    'channel' => $channel,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        $store->update(function (array $s) use ($spawned, $mode) {
-            $s['worker_spawned_at'] = now()->toDateTimeString();
-            if ($mode === 'append') {
-                $s['last_message'] = $spawned
-                    ? ('Appended — worker continuing ('.$s['total'].' total)…')
-                    : ('Appended — waiting for worker ('.$s['total'].' total)');
-            } else {
-                $s['last_message'] = $spawned
-                    ? ('Worker started — pushing '.$s['total'].' SKU(s)…')
-                    : ('Queued — waiting for worker (run: php artisan channel:push-prc-run '.$s['channel'].' --sync)');
-            }
-
-            return $s;
-        });
-
-        $api = $store->toApiResponse($store->load());
-
-        return response()->json(array_merge($api, [
-            'success' => true,
-            'mode' => $mode,
-            'worker_spawned' => $spawned,
-            'message' => $mode === 'append'
-                ? ('Added to running Push Prc queue ('.$api['total'].' total).')
-                : ('Push Prc started in background ('.$api['total'].' SKU(s)). You can refresh or queue more.'),
-        ]));
-    }
-
-    public function pushPrcJobStatus(string $channel): JsonResponse
-    {
-        $channel = strtolower(trim($channel));
-        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true)) {
-            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
-        }
-
-        $store = ChannelPushPrcJobStore::for($channel);
-        $state = $store->load();
-
-        if ($store->isActive($state) && $store->isStale($state, 180) && ! $this->runnerLockHeld($channel)) {
-            $this->releaseUniqueJobLock($channel);
-            $kicked = $this->spawnPushPrcWorker($channel);
-            $store->update(function (array $s) use ($kicked) {
-                $s['last_message'] = $kicked
-                    ? 'Worker re-started after stall — continuing Push Prc…'
-                    : 'Push Prc stalled — could not start worker. Cancel and retry, or run: php artisan channel:push-prc-run --sync';
-                $s['worker_spawned_at'] = now()->toDateTimeString();
-
-                return $s;
-            });
-            $state = $store->load();
-        }
-
-        return response()->json($store->toApiResponse($state));
-    }
-
-    public function cancelPushPrc(string $channel): JsonResponse
-    {
-        $channel = strtolower(trim($channel));
-        if (! in_array($channel, self::PUSH_QUEUE_CHANNELS, true)) {
-            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
-        }
-
-        $store = ChannelPushPrcJobStore::for($channel);
-        $job = $store->forceStop('Cancelled by user.');
-        $this->releaseUniqueJobLock($channel);
-
-        return response()->json(array_merge($store->toApiResponse($job), [
-            'success' => true,
-            'message' => 'Push Prc cancelled.',
-        ]));
-    }
-
-    /**
      * Queue S PRC → live listing price (background). Survives page close.
-     * ebay1 / ebay2 / ebay2op / ebay3 / shopify_b2c / reverb. Does not create sale or coupon.
+     * shopify_b2c / reverb and the other non-eBay channels. Does not create sale or coupon.
      */
     public function queuePushSprice(Request $request, string $channel): JsonResponse
     {
@@ -366,6 +232,9 @@ class ChannelPromoPricingController extends Controller
     public function spriceActiveRule(string $channel): JsonResponse
     {
         $channel = \App\Support\SpriceActiveRule::normalize($channel);
+        if (self::ebayDilRuleRemoved($channel)) {
+            return self::ebayDilRuleRemovedResponse();
+        }
         if (! $this->allowsSpriceActiveRuleChannel($channel)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
@@ -380,6 +249,9 @@ class ChannelPromoPricingController extends Controller
     public function saveSpriceActiveRule(Request $request, string $channel): JsonResponse
     {
         $channel = \App\Support\SpriceActiveRule::normalize($channel);
+        if (self::ebayDilRuleRemoved($channel)) {
+            return self::ebayDilRuleRemovedResponse();
+        }
         if (! $this->allowsSpriceActiveRuleChannel($channel)) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
@@ -436,58 +308,6 @@ class ChannelPromoPricingController extends Controller
             'success' => true,
             'channel' => $channel,
             'enabled' => $enabled,
-        ]);
-    }
-
-    /**
-     * Blue badges (S PRC ≠ live Price, INV > 0, not ended) on a server worker.
-     * Same idea as amazon:sprc-dil-auto-push: the browser can close.
-     */
-    public function startBackgroundBluePush(string $channel): JsonResponse
-    {
-        $channel = strtolower(trim($channel));
-        if (! in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true)) {
-            return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
-        }
-        if (! self::isPageReloadPushEnabled($channel)) {
-            return response()->json([
-                'success' => true,
-                'enabled' => false,
-                'queued' => 0,
-                'message' => 'Push on reload is off',
-            ]);
-        }
-
-        if (! ChannelPushSpriceRunner::livePushAllowed()) {
-            return response()->json([
-                'success' => true,
-                'enabled' => true,
-                'started' => false,
-                'queued' => 0,
-                'message' => 'Skipped — live S PRC push is disabled on local',
-            ]);
-        }
-
-        Cache::put(PushChannelBlueSpriceCommand::SCANNING_PREFIX.$channel, true, now()->addMinutes(30));
-        $spawned = ChannelPushSpriceRunner::spawnBlueEnqueue($channel);
-        if (! $spawned) {
-            Cache::forget(PushChannelBlueSpriceCommand::SCANNING_PREFIX.$channel);
-
-            return response()->json([
-                'success' => false,
-                'started' => false,
-                'queued' => 0,
-                'message' => 'Could not start the background push. Try again.',
-            ], 500);
-        }
-
-        return response()->json([
-            'success' => true,
-            'enabled' => true,
-            'started' => true,
-            'scanning' => true,
-            'queued' => 0,
-            'message' => 'Scanning blue SKUs…',
         ]);
     }
 
@@ -1256,72 +1076,6 @@ class ChannelPromoPricingController extends Controller
         }
     }
 
-    private function spawnPushPrcWorker(string $channel): bool
-    {
-        try {
-            if ($this->runnerLockHeld($channel)) {
-                return true;
-            }
-            $php = PHP_BINARY ?: 'php';
-            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
-                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
-                if ($cli !== '') {
-                    $php = $cli;
-                }
-            }
-            $artisan = base_path('artisan');
-            $log = storage_path('logs/'.$channel.'-push-prc.log');
-            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
-                pclose(popen('start /B '.escapeshellarg($php).' '.escapeshellarg($artisan).' channel:push-prc-run '.escapeshellarg($channel).' --sync', 'r'));
-
-                return true;
-            }
-            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg($artisan)
-                .' channel:push-prc-run '.escapeshellarg($channel)
-                .' --sync >> '.escapeshellarg($log).' 2>&1 &';
-            exec($cmd);
-
-            return true;
-        } catch (\Throwable $e) {
-            Log::warning('Channel Push Prc worker spawn failed', [
-                'channel' => $channel,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
-        }
-    }
-
-    private function runnerLockHeld(string $channel): bool
-    {
-        $lockPath = storage_path('app/'.$channel.'-push-prc/runner.lock');
-        if (! is_file($lockPath)) {
-            return false;
-        }
-        $h = @fopen($lockPath, 'c+');
-        if (! $h) {
-            return false;
-        }
-        $got = flock($h, LOCK_EX | LOCK_NB);
-        if ($got) {
-            flock($h, LOCK_UN);
-        }
-        fclose($h);
-
-        return ! $got;
-    }
-
-    private function releaseUniqueJobLock(string $channel): void
-    {
-        try {
-            \Illuminate\Support\Facades\Cache::lock(
-                'laravel_unique_job:'.RunChannelPushPrcJob::class.':'.$channel.'-push-prc'
-            )->forceRelease();
-        } catch (\Throwable) {
-            // ignore
-        }
-    }
-
     public function save(Request $request): JsonResponse
     {
         $channel = strtolower(trim((string) $request->input('channel', '')));
@@ -1913,6 +1667,10 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
 
+        if (self::ebayDilRuleRemoved($channel)) {
+            return self::ebayDilRuleRemovedResponse();
+        }
+
         if ($channel === 'newtemutwo') {
             DilRuleSpriceApplyService::copyDilGroiStoreIfMissing('newtemutwo', 'temu');
         }
@@ -1951,6 +1709,10 @@ class ChannelPromoPricingController extends Controller
         $channel = $this->normalizeRulesChannel($channel);
         if ($channel === null) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        if (self::ebayDilRuleRemoved($channel)) {
+            return self::ebayDilRuleRemovedResponse();
         }
 
         $incoming = $request->input('rules');
@@ -2031,6 +1793,10 @@ class ChannelPromoPricingController extends Controller
         $channel = $this->normalizeRulesChannel($channel);
         if ($channel === null) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
+        }
+
+        if (self::ebayDilRuleRemoved($channel)) {
+            return self::ebayDilRuleRemovedResponse();
         }
 
         $days = (int) $request->input('days', 30);
@@ -2922,6 +2688,17 @@ class ChannelPromoPricingController extends Controller
     private function dilTargetMetric(string $channel): string
     {
         return 'nroi';
+    }
+
+    /** eBay 1 / 2 / 3 no longer have a Dil / Sprc Dil rule (data and editor removed). */
+    private static function ebayDilRuleRemoved(string $channel): bool
+    {
+        return in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true);
+    }
+
+    private static function ebayDilRuleRemovedResponse(): JsonResponse
+    {
+        return response()->json(['success' => false, 'message' => 'Dil / Sprc Dil rule is removed for eBay.'], 410);
     }
 
     private function normalizeRulesChannel(string $channel): ?string
