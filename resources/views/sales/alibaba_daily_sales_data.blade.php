@@ -220,6 +220,9 @@
                             style="color: white; font-weight: bold;" aria-hidden="true">GPFT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
                             style="color: white; font-weight: bold;">COGS: $0.00</span>
+                        <span class="badge fs-6 p-2" id="cogs-ship-badge"
+                            style="background-color: #b45309; color: white; font-weight: bold;"
+                            title="Shipping Master slab cost for each line's weight. Already subtracted from GPFT and ROI.">COGS Ship: $0</span>
                     </div>
                 </div>
             </div>
@@ -460,6 +463,45 @@
                         }
                     },
                     {
+                        title: "Ship",
+                        field: "ship",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        formatter: "money",
+                        formatterParams: {
+                            decimal: ".",
+                            thousand: ",",
+                            symbol: "$",
+                            precision: 2
+                        }
+                    },
+                    {
+                        title: "T Weight",
+                        field: "t_weight",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const v = parseFloat(cell.getValue()) || 0;
+                            return v.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "COGS Ship",
+                        field: "ship_cost",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        formatter: "money",
+                        formatterParams: {
+                            decimal: ".",
+                            thousand: ",",
+                            symbol: "$",
+                            precision: 2
+                        }
+                    },
+                    {
                         title: "COGS",
                         field: "cogs",
                         hozAlign: "center",
@@ -552,6 +594,7 @@
                 let totalWeightedPrice = 0;
                 let totalQuantityForPrice = 0;
                 let totalCogs = 0;
+                let totalCogsShip = 0;
                 // Alibaba order total, counted once per order.
                 let totalOrderSales = 0;
                 const seenOrders = new Set();
@@ -593,6 +636,7 @@
 
                     totalPft += pft;
                     totalCogs += cogs;
+                    totalCogsShip += parseFloat(row.ship_cost) || 0;
 
                     // L30 Sales = Quantity * price
                     const l30Sales = quantity * basePrice;
@@ -625,6 +669,7 @@
                 }
 
                 $('#total-cogs-badge').text('COGS: $' + cogsRounded.toLocaleString());
+                $('#cogs-ship-badge').text('COGS Ship: $' + Math.round(totalCogsShip).toLocaleString());
             }
 
             const COL_VIS_CATEGORY_KEYS = ['basic', 'price', 'other'];
@@ -639,8 +684,8 @@
                 const t = String(title || field || '').toLowerCase();
 
                 if (
-                    /^(price|sale_amount|lp|cogs|pft_each|pft_each_pct|pft|roi)$/i.test(f) ||
-                    /\b(price|sales?\s*amt|lp|cogs|pft|roi)\b/i.test(t)
+                    /^(price|sale_amount|lp|ship|t_weight|ship_cost|cogs|pft_each|pft_each_pct|pft|roi)$/i.test(f) ||
+                    /\b(price|sales?\s*amt|lp|ship|t weight|cogs|pft|roi)\b/i.test(t)
                 ) {
                     return 'price';
                 }

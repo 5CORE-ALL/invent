@@ -4990,6 +4990,17 @@ class ChannelMasterController extends Controller
         $l60Sales = (int) ($l60['l30'] ?? 0);
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0.0;
 
+        // N PFT / N ROI are after ALL Shopify ad spend (Google + YouTube + Meta), the same
+        // rollup /shopify and /shopify-ads-master use. The daily-sales badge only knows
+        // Google Shopping spend over order totals, so it must not drive the net figures.
+        $rolledSpend = 0.0;
+        try {
+            $rollup = app(ShopifyAdsMasterController::class)->getRolledUpSpend();
+            $rolledSpend = (float) ($rollup['total_spend'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('Shopify B2C overlay rollup spend failed: '.$e->getMessage());
+        }
+
         foreach ($rows as &$row) {
             $name = trim((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
             if ($this->allMarketplaceSnapshotKey($name) !== 'shopifyb2c') {
@@ -5007,9 +5018,21 @@ class ChannelMasterController extends Controller
             $row['cogs'] = (int) ($live['cogs'] ?? 0);
             $row['Gprofit%'] = ((int) ($live['gpft'] ?? 0)).'%';
             $row['G Roi'] = (int) ($live['groi'] ?? 0);
-            $row['N PFT'] = ((int) ($live['n_pft'] ?? 0)).'%';
-            $row['N ROI'] = (int) ($live['n_roi'] ?? 0);
-            $row['TACOS %'] = round((float) ($live['tacos'] ?? 0), 1).'%';
+
+            $rowSpend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? 0));
+            $adSpend = $rolledSpend > 0
+                ? $rolledSpend
+                : ($rowSpend > 0 ? $rowSpend : (float) ($live['google'] ?? 0));
+            $pft = (float) ($live['pft'] ?? 0);
+            $cogs = (float) ($live['cogs'] ?? 0);
+            $adsPct = $l30Sales > 0 ? ($adSpend / $l30Sales) * 100 : 0.0;
+            $gpftExact = $l30Sales > 0 ? ($pft / $l30Sales) * 100 : 0.0;
+
+            $row['Total Ad Spend'] = round($adSpend, 2);
+            $row['Ads%'] = round($adsPct, 1).'%';
+            $row['TACOS %'] = round($adsPct, 1).'%';
+            $row['N PFT'] = round($gpftExact - $adsPct, 1).'%';
+            $row['N ROI'] = $cogs > 0 ? round((($pft - $adSpend) / $cogs) * 100, 1) : 0.0;
         }
         unset($row);
 
