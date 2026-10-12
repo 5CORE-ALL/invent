@@ -5201,6 +5201,7 @@
                             return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
                         }
                     },
+                    ...(typeof ebaySbidDiffColumns === 'function' ? ebaySbidDiffColumns() : []),
                     {
                         title: "S BID",
                         field: "ca_suggested_bid",
@@ -6150,7 +6151,7 @@
 
                 // Advertisement first (views / bids / ads / promote)
                 if (
-                    /^(views|l7_views|l7_views_prev|_ads_pct|y_spend|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_prev|_ads_pct|y_spend|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad|_bid_alert|sbid_diff_.+|sbid_total_discount)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view|y\s*spend)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
