@@ -1689,6 +1689,46 @@ class TemuShopifySalesService
         return $result;
     }
 
+    /**
+     * Temu 1 paid price per unit by SKU (last 60 days, amount-API rows only), used to estimate
+     * Temu 2 sales while its token cannot call bg.order.amount.query.
+     *
+     * @return array<string, array{line_unit: float, goods_unit: float}> keyed by lowercase SKU
+     */
+    private static function temu1PaidUnitBySku(Carbon $end): array
+    {
+        static $cache = [];
+        $key = $end->copy()->startOfDay()->format('Y-m-d');
+        if (isset($cache[$key])) {
+            return $cache[$key];
+        }
+
+        $start = $end->copy()->subDays(59)->startOfDay();
+        $agg = [];
+        foreach (self::getChannelOrdersTableRows($start, $end, false) as $r) {
+            $qty = (int) ($r['quantity_purchased'] ?? 0);
+            $line = (float) ($r['line_sales'] ?? 0);
+            $sku = strtolower(trim((string) ($r['contribution_sku'] ?? '')));
+            if ($sku === '' || $qty <= 0 || $line <= 0) {
+                continue;
+            }
+            $goods = (float) ($r['goods_base_price'] ?? 0);
+            $agg[$sku]['q'] = ($agg[$sku]['q'] ?? 0) + $qty;
+            $agg[$sku]['line'] = ($agg[$sku]['line'] ?? 0) + $line;
+            $agg[$sku]['goods'] = ($agg[$sku]['goods'] ?? 0) + $goods * $qty;
+        }
+
+        $out = [];
+        foreach ($agg as $sku => $a) {
+            $out[$sku] = [
+                'line_unit' => $a['line'] / $a['q'],
+                'goods_unit' => $a['goods'] / $a['q'],
+            ];
+        }
+
+        return $cache[$key] = $out;
+    }
+
     private static function getChannelOrdersTableRows(Carbon $startDate, Carbon $endDate, bool $isTemu2): array
     {
         // FetchTemuOrders / FetchTemu2Orders store parent_order_time in Pacific (Temu's
@@ -1761,6 +1801,16 @@ class TemuShopifySalesService
 
         $result = [];
 
+        $temu1PaidBySku = [];
+        if ($isTemu2) {
+            // Only needed when some Temu 2 line lacks amount-API data.
+            $needsEstimate = $orders->contains(fn ($o) => TemuOrderAmountParser::lineSalesAmount($o) === null
+                || TemuOrderAmountParser::lineSalesAmount($o) <= 0);
+            if ($needsEstimate) {
+                $temu1PaidBySku = self::temu1PaidUnitBySku($end);
+            }
+        }
+
         foreach ($orders as $o) {
             $sku = trim((string) ($o->ext_code ?? ''));
             if ($sku === '') {
@@ -1791,6 +1841,20 @@ class TemuShopifySalesService
             }
 
             $hasApiSales = $lineSales !== null && $lineSales > 0;
+
+            // Temu 2 without bg.order.amount.query data (token not authorized) would book the
+            // catalog list price, far above what customers pay. For SKUs Temu 1 also sells,
+            // use Temu 1's paid unit so sales/profit stay realistic. Flagged as an estimate;
+            // rows with real API amounts never take this path.
+            $paidEstimate = null;
+            if ($isTemu2 && ! $hasApiSales && $quantity > 0 && $sku !== '') {
+                $paidEstimate = $temu1PaidBySku[strtolower($sku)] ?? null;
+            }
+            if ($paidEstimate !== null) {
+                $lineSales = round($paidEstimate['line_unit'] * $quantity, 2);
+                $hasApiSales = true;
+            }
+
             $officialUnit = $hasApiSales && $quantity > 0 ? $lineSales / $quantity : $price;
             $fbPrice = $hasApiSales ? $officialUnit : self::computeFbPrice($price, $quantity);
             $pftDecimal = $fbPrice > 0 ? (($fbPrice * $margin) - $lp - $temuShip) / $fbPrice : 0;
@@ -1800,10 +1864,14 @@ class TemuShopifySalesService
             // With the payload, base_price_total is goods + the $2.99 Temu pays on top, so
             // deriving R Price / Temu Price from it adds that freight a second time. Pages that
             // add the freight themselves (/temu-tabulator) read this field instead.
-            $lineBase = $hasApiSales ? TemuOrderAmountParser::lineBaseAmount($o) : null;
-            $goodsBasePrice = $hasApiSales
-                ? ($lineBase !== null && $quantity > 0 ? $lineBase / $quantity : $officialUnit)
-                : $price;
+            if ($paidEstimate !== null) {
+                $goodsBasePrice = $paidEstimate['goods_unit'] > 0 ? $paidEstimate['goods_unit'] : $officialUnit;
+            } else {
+                $lineBase = $hasApiSales ? TemuOrderAmountParser::lineBaseAmount($o) : null;
+                $goodsBasePrice = $hasApiSales
+                    ? ($lineBase !== null && $quantity > 0 ? $lineBase / $quantity : $officialUnit)
+                    : $price;
+            }
 
             $mapped = [
                 'Parent' => $parent,
@@ -1827,6 +1895,10 @@ class TemuShopifySalesService
                 // Same line as Temu 1: API base + freight when present, otherwise R Price × Qty
                 // (goods, +$2.99 when the unit is ≤ $26.99).
                 'line_sales' => $hasApiSales ? round($lineSales, 2) : round(self::lineSales($price, $quantity), 2),
+                // api | temu1_paid_estimate | list_price (no amount API data, catalog price).
+                'line_sales_source' => $paidEstimate !== null
+                    ? 'temu1_paid_estimate'
+                    : ($hasApiSales ? 'api' : 'list_price'),
                 'fb_price' => round($fbPrice, 2),
                 'lp' => $lp,
                 'temu_ship' => $temuShip,

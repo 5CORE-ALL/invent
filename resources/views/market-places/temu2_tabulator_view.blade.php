@@ -209,6 +209,7 @@
                     </a>
                 </div>
 
+                <div id="amount-api-warning" class="alert alert-warning py-2 px-3 mt-2 mb-0" style="display:none; font-size: 13px;"></div>
                 <div id="summary-stats" class="mt-2">
                     <div class="amm-badge-block amm-badge-block--l30">
                         <div class="amm-badge-block-title">L30</div>
@@ -923,6 +924,7 @@
             let totalWeightedPrice = 0, totalQuantityForPrice = 0, totalCogs = 0, totalCogsShip = 0;
             let totalYSalesGpft = 0, totalYSalesCogs = 0;
             let l7LineSales = 0, l7Gpft = 0, l7Cogs = 0;
+            let rowsEstimated = 0, rowsListPrice = 0, rowsApi = 0;
             const l7Keys = temuL7DateKeys();
 
             data.forEach(row => {
@@ -931,6 +933,9 @@
                 if (sku.toUpperCase().indexOf('PARENT') !== -1) return;
                 if (row.pm_matched === false) return;
                 totalOrders++;
+                if (row.line_sales_source === 'temu1_paid_estimate') rowsEstimated++;
+                else if (row.line_sales_source === 'list_price') rowsListPrice++;
+                else rowsApi++;
                 const quantity = parseInt(row.quantity_purchased) || 0;
                 const basePrice = temuRowBase(row);
                 const lp = parseFloat(row.lp) || 0;
@@ -964,6 +969,17 @@
                 : 0;
             const cogsBadge = Math.round(totalCogs);
             const roiPercentage = cogsBadge !== 0 ? (gpftBadge / cogsBadge) * 100 : 0;
+
+            const warnEl = $('#amount-api-warning');
+            if (rowsEstimated + rowsListPrice > 0) {
+                warnEl.html('<strong>Temu 2 paid amounts missing.</strong> ' +
+                    rowsApi.toLocaleString() + ' of ' + totalOrders.toLocaleString() + ' orders have real API amounts; ' +
+                    rowsEstimated.toLocaleString() + ' use Temu 1\'s paid price (estimate) and ' +
+                    rowsListPrice.toLocaleString() + ' use catalog list price (overstated). ' +
+                    'Authorize <code>bg.order.amount.query</code> for the Temu 2 app in Seller Center and refresh <code>TEMU2_ACCESS_TOKEN</code> for exact sales and profit.').show();
+            } else {
+                warnEl.hide();
+            }
 
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
