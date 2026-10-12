@@ -757,8 +757,7 @@ class EbayCampaignAdsController extends Controller
     }
 
     /**
-     * Daily Y Spend for the history dot. mode=row is one campaign-ads line;
-     * mode=sku is keyword CPC plus promoted fees for /ebay-tabulator-view.
+     * C Bid for the 7 days before today, then today.
      */
     public function cbidHistory(Request $request)
     {
