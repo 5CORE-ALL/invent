@@ -21,11 +21,8 @@
             <button class="btn btn-sm btn-info text-white d-none" id="enroll-selected-btn" data-bs-toggle="modal" data-bs-target="#enrollModal">
                 <i class="fas fa-plus-circle me-1"></i>Enroll in Campaign (<span id="enroll-count">0</span>)
             </button>
-            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#dilRuleModal">
-                <i class="fas fa-tint me-1"></i>Dil Rule
-            </button>
             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#dilSbidRuleModal"
-                    title="Set S Bid from Dil. This account keeps its own slabs.">
+                    title="S Bid = Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap.">
                 <i class="fas fa-percent me-1"></i>Dil vs SBid
             </button>
             @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 1'])
@@ -111,7 +108,7 @@
                 <p class="small text-muted mb-3">
                     <strong id="enroll-listing-count">0</strong> listing(s) can be enrolled
                     (ENDED / no campaign). Already <strong>RUNNING</strong> ads are skipped.
-                    Bid comes from SCVR + the current SBID rule.
+                    Bid comes from Dil vs SBid.
                 </p>
                 <label class="form-label fw-semibold">Select Campaign (RUNNING · COST_PER_SALE)</label>
                 <select class="form-select" id="enroll-campaign-select">
@@ -129,62 +126,10 @@
     </div>
 </div>
 
-{{-- Dilution Rule Modal --}}
-<div class="modal fade" id="dilRuleModal" tabindex="-1" aria-labelledby="dilRuleModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h5 class="modal-title" id="dilRuleModalLabel">
-                    <i class="fas fa-tint me-2 text-danger"></i>eBay Dilution Rule — DIL % → Color
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="small text-muted mb-3">
-                    Bands evaluated <strong>top to bottom</strong> — first match wins.
-                    <code>DIL = (L30 sold / Inventory) × 100</code>. Each band sets a color and a bid.
-                </p>
-
-                <table class="table table-sm table-bordered align-middle" id="dil-rule-table">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width:40px;">#</th>
-                            <th>Label</th>
-                            <th>Color</th>
-                            <th>DIL ≤ (%)</th>
-                            <th>Bid (%)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dil-bands-body">
-                        {{-- filled by JS --}}
-                    </tbody>
-                </table>
-
-                <button type="button" class="btn btn-sm btn-outline-primary py-0 mb-2" id="dil-add-band-btn">
-                    <i class="fas fa-plus me-1"></i>Add band
-                </button>
-
-                <div class="alert alert-info small py-2 mb-0">
-                    <i class="fas fa-info-circle me-1"></i>
-                    Set DIL Max to <code>9999</code> for the last band (catches everything above the previous threshold).
-                    <strong>Push logic:</strong> if a listing's SCVR <em>or</em> DIL lands in its <strong>Pink (catch-all)</strong>
-                    band, the Pink bid (e.g. 2.1%) is pushed; otherwise the SCVR rule's bid is used.
-                </div>
-                <p class="small text-danger mb-0 mt-2 d-none" id="dil-rule-err"></p>
-            </div>
-            <div class="modal-footer py-2">
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-sm btn-primary" id="dil-rule-save-btn">
-                    <i class="fas fa-save me-1"></i>Save Rule
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 @include('campaign.partials.ebay-dil-sbid-rule', [
     'part' => 'modal',
     'account' => 'eBay 1',
+    'extended' => true,
 ])
 
 <div class="modal fade" id="ecaYSpendModal" tabindex="-1" aria-hidden="true">
@@ -627,7 +572,7 @@ $(document).ready(function () {
             },
             {
                 title: 'S Bid', field: 'ebay_l30', width: 110, hozAlign: 'center',
-                headerTooltip: 'Dil vs SBid switch on: Dil slabs, then the CVR overlay. Switch off: S Bid is not changed.',
+                headerTooltip: 'eBay 1 Dil vs SBid: Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Switch off: S Bid is not changed.',
                 sorter: function(a, b, aRow, bRow) {
                     return campaignSbid(aRow.getData()).bid - campaignSbid(bRow.getData()).bid;
                 },
@@ -1025,86 +970,7 @@ document.getElementById('force-push-btn').addEventListener('click', function() {
     ebayForcePush(null);
 });
 
-// ── SBID Rule helper — used by S Bid column ────────
-// Walk bands top-to-bottom (ascending scvr_max) and return the first match's bid.
-// CVR = 0 is a valid value and falls into the lowest band (e.g. ≤ 4 → 10.1%) — no skip.
-// `row` (optional) carries metric values so a matched band can resolve a dynamic sub-rule.
-function getBidFromRule(scvr, row) {
-    const s = parseFloat(scvr);
-    const safeScvr = (!isFinite(s) || s < 0) ? 0 : s;
-    const bands = currentRule.bands || [];
-    const ctx = {
-        scvr:       safeScvr,
-        ebay_price: parseFloat(row && row.metric_price) || 0,
-        ebay_l30:   parseFloat(row && row.ebay_l30)     || 0,
-        views:      parseFloat(row && row.views)        || 0,
-        es_bid:     parseFloat(row && row.suggested_bid) || 0,
-    };
-    // First band whose [scvr_min, scvr_max] range contains the SCVR wins.
-    for (let i = 0; i < bands.length; i++) {
-        const min = parseFloat(bands[i].scvr_min);
-        const max = parseFloat(bands[i].scvr_max);
-        const lo = isFinite(min) ? min : 0;
-        const hi = isFinite(max) ? max : 9999;
-        if (safeScvr >= lo && safeScvr <= hi) {
-            return resolveBandBid(bands[i], ctx);
-        }
-    }
-    // fallback: last band
-    const last = bands[bands.length - 1] || { bid: 2.1, color: '#e83e8c' };
-    return resolveBandBid(last, ctx);
-}
-
-// Resolve a band's bid.
-function resolveBandBid(band, ctx) {
-    // Band flagged to use the row's ES Bid (raw eBay suggested_bid).
-    if (band.use_es_bid) {
-        return esBidResult(parseFloat(ctx.es_bid));
-    }
-    return { bid: parseFloat(band.bid), color: band.color || '#333', skip: false };
-}
-
-// ── SBID Rule (editor removed; the S Bid column still uses this rule) ──
-let currentRule = @json($sbidRule ?? ['bands' => []]);
-// Normalize bands (ensure scvr_min/scvr_max) so the S Bid column resolves correctly.
-if (currentRule && typeof currentRule === 'object') {
-    currentRule.bands = normalizeSbidBands(currentRule.bands || []);
-}
-
-// Default dynamic CVR bands (editable Min/Max). 0% band uses each row's ES Bid.
-function defaultSbidBands() {
-    return [
-        { scvr_min: 0,     scvr_max: 0,    use_es_bid: true, bid: 0 },
-        { scvr_min: 0.01,  scvr_max: 3,    bid: 10.1 },
-        { scvr_min: 3.01,  scvr_max: 7,    bid: 8.1 },
-        { scvr_min: 7.01,  scvr_max: 13,   bid: 5.1 },
-        { scvr_min: 13.01, scvr_max: 9999, bid: 5.1 },
-    ];
-}
-
-// Ensure every band has explicit scvr_min / scvr_max. Legacy bands with only
-// scvr_max get a min derived from the previous band's max (+0.01).
-function normalizeSbidBands(bands) {
-    let arr = Array.isArray(bands) ? bands.slice() : [];
-    if (!arr.length) return defaultSbidBands();
-    let prevMax = null;
-    arr.forEach(function(b, i) {
-        if (b.scvr_max == null || b.scvr_max === '') b.scvr_max = 9999;
-        if (b.scvr_min == null || b.scvr_min === '') {
-            b.scvr_min = (i === 0 || prevMax == null)
-                ? 0
-                : +(parseFloat(prevMax) + 0.01).toFixed(2);
-        }
-        if (parseFloat(b.scvr_min) === 0 && parseFloat(b.scvr_max) === 0) b.use_es_bid = true;
-        prevMax = parseFloat(b.scvr_max);
-    });
-    return arr;
-}
-
-// ── Dilution Rule ───────────────────────────────────
-// DIL = (L30 sold / Inventory) × 100. Bands evaluated top-to-bottom, first DIL ≤ max wins.
-const dilGetUrl  = '/ebay/campaign-ads/dil-rule';
-const dilSaveUrl = '/ebay/campaign-ads/dil-rule';
+// Dil column colours only. S Bid comes from Dil vs SBid.
 let currentDilRule = @json($dilRule ?? ['bands' => []]);
 
 // CP Master Dil = round(OV L30 sold / Inventory × 100). Inv 0 or missing is not Dil 0.
@@ -1143,150 +1009,10 @@ function getDilColor(dil) {
     return last ? (last.color || '#333') : '#e83e8c';
 }
 
-// True when value falls in the last (Pink / catch-all) band
-function isPinkBand(value, bands) {
-    const n = (bands || []).length;
-    if (!n) return false;
-    for (let i = 0; i < n; i++) {
-        const max = parseFloat(bands[i].scvr_max != null ? bands[i].scvr_max : bands[i].dil_max);
-        if (value <= max) return i === n - 1;
-    }
-    return true;
-}
-
-function pinkBidOf(bands) {
-    const last = (bands || [])[(bands || []).length - 1] || { bid: 2.1, color: '#e83e8c' };
-    return { bid: parseFloat(last.bid), color: last.color || '#e83e8c' };
-}
-
-// S Bid for the column:
-//   Step 1 — if L30 sold ≤ l30_sold_es_bid_max → ES Bid (suggested_bid).
-//   Step 2 — if row's `l7_views` < `l7_views_threshold` → fall back to ES Bid (suggested_bid).
-//   Step 3 — else evaluate SCVR bands (the existing SBID Rule modal) top-to-bottom.
-function shouldUseEsBid(sold, l7, rule) {
-    const l30Max = parseFloat(rule && rule.l30_sold_es_bid_max);
-    const l7Thr = parseFloat(rule && rule.l7_views_threshold);
-    const l30Limit = isFinite(l30Max) ? l30Max : 0;
-    const l7Limit = isFinite(l7Thr) ? l7Thr : 70;
-    return sold <= l30Limit || l7 < l7Limit;
-}
-
-function esBidResult(esBidRaw) {
-    if (!isFinite(esBidRaw) || esBidRaw <= 0) {
-        return { bid: 0, color: '#6c757d', skip: true };
-    }
-    return { bid: esBidRaw, color: '#0dcaf0', skip: false };
-}
-
-
-function getCombinedSbid() {
-    return { bid: 0, color: '#6c757d', skip: true, title: 'Sbid Rule removed' };
-}
-
-function renderDilBands(bands) {
-    const tbody = document.getElementById('dil-bands-body');
-    tbody.innerHTML = '';
-    bands.forEach(function(band, i) {
-        const isLast = (parseFloat(band.dil_max) >= 9999);
-        tbody.innerHTML += `
-        <tr>
-            <td class="text-center text-muted small">${i+1}</td>
-            <td><input type="text" class="form-control form-control-sm" value="${band.label || ''}"
-                       data-idx="${i}" data-field="label" onchange="updateDilBand(this)"></td>
-            <td>
-                <div class="d-flex align-items-center gap-2">
-                    <input type="color" class="form-control form-control-color form-control-sm" style="width:40px;height:31px;"
-                           value="${band.color || '#6c757d'}" data-idx="${i}" data-field="color" onchange="updateDilBand(this)">
-                    <span class="badge" style="background:${band.color || '#6c757d'};">${band.label || ''}</span>
-                </div>
-            </td>
-            <td>
-                ${isLast
-                    ? '<span class="text-muted small">∞ (catch-all)</span><input type="hidden" value="9999" data-idx="'+i+'" data-field="dil_max">'
-                    : `<input type="number" step="0.01" min="0" class="form-control form-control-sm" value="${band.dil_max}"
-                              data-idx="${i}" data-field="dil_max" onchange="updateDilBand(this)">`
-                }
-            </td>
-            <td>
-                <div class="input-group input-group-sm">
-                    <input type="number" step="0.1" min="0" max="100" class="form-control form-control-sm fw-semibold"
-                           value="${band.bid != null ? band.bid : ''}" data-idx="${i}" data-field="bid"
-                           style="color:${band.color || '#333'}; font-weight:600;" onchange="updateDilBand(this)">
-                    <span class="input-group-text">%</span>
-                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="removeDilBand(${i})"
-                            title="Remove band">&times;</button>
-                </div>
-            </td>
-        </tr>`;
-    });
-}
-
-function updateDilBand(el) {
-    const idx   = parseInt(el.dataset.idx);
-    const field = el.dataset.field;
-    currentDilRule.bands[idx][field] = (field === 'dil_max' || field === 'bid') ? parseFloat(el.value) : el.value;
-    if (field === 'color') {
-        el.closest('tr').querySelector('.badge').style.background = el.value;
-    }
-}
-
-function removeDilBand(idx) {
-    currentDilRule.bands.splice(idx, 1);
-    renderDilBands(currentDilRule.bands);
-}
-
-document.getElementById('dil-add-band-btn').addEventListener('click', function() {
-    const bands = currentDilRule.bands;
-    const lastIsCatch = bands.length && parseFloat(bands[bands.length - 1].dil_max) >= 9999;
-    const newBand = { dil_max: 0, bid: 2.1, label: 'New', color: '#6c757d' };
-    if (lastIsCatch) bands.splice(bands.length - 1, 0, newBand);
-    else bands.push(newBand);
-    renderDilBands(bands);
-});
-
-// Load rule when modal opens
-document.getElementById('dilRuleModal').addEventListener('show.bs.modal', function() {
-    $.get(dilGetUrl, function(data) {
-        currentDilRule = data;
-        renderDilBands(data.bands || []);
-    });
-});
-
-// Save rule
-document.getElementById('dil-rule-save-btn').addEventListener('click', function() {
-    const errEl = document.getElementById('dil-rule-err');
-    errEl.classList.add('d-none');
-    const btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
-
-    $.ajax({
-        url: dilSaveUrl,
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-        contentType: 'application/json',
-        data: JSON.stringify({ bands: currentDilRule.bands }),
-        success: function(resp) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
-            currentDilRule = resp.rule;
-            if (table) table.redraw(true);
-            setTimeout(() => {
-                btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-                bootstrap.Modal.getInstance(document.getElementById('dilRuleModal')).hide();
-            }, 1200);
-        },
-        error: function(xhr) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-save me-1"></i>Save Rule';
-            errEl.textContent = 'Error: ' + (xhr.responseJSON?.error || xhr.responseText);
-            errEl.classList.remove('d-none');
-        }
-    });
-});
 @include('campaign.partials.ebay-dil-sbid-rule', [
     'part' => 'script',
     'account' => 'eBay 1',
+    'extended' => true,
     'getUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
     'saveUrl' => url('/ebay/campaign-ads/dil-sbid-rule'),
     'applyUrl' => url('/ebay/campaign-ads/push-selected'),
