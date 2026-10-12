@@ -132,25 +132,7 @@
     'extended' => true,
 ])
 
-<div class="modal fade" id="ecaCbidModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header py-2">
-                <h6 class="modal-title mb-0" id="ecaCbidTitle">C Bid</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="small text-muted mb-2">The 7 days before today, then today. Today is recorded from now on.</p>
-                <div id="ecaCbidLoading" class="text-center py-4">
-                    <div class="spinner-border spinner-border-sm text-primary"></div>
-                    <p class="mt-2 text-muted small mb-0">Loading C Bid history…</p>
-                </div>
-                <div id="ecaCbidEmpty" class="text-center text-muted py-4 d-none">No C Bid recorded yet. Today is saved the next time this listing’s live bid is stored.</div>
-                <div id="ecaCbidChart" class="d-none" style="height:320px;"></div>
-            </div>
-        </div>
-    </div>
-</div>
+@include('campaign.partials.ebay-cbid-history')
 
 <div class="modal fade" id="ecaYSpendModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
@@ -220,6 +202,23 @@
         font-weight: 700;
         line-height: 1;
         cursor: help;
+    }
+    #ebayCbidModal.modal {
+        --tz-modal-width: 100%;
+        --tz-modal-margin: 0.5rem 0;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        z-index: 10800;
+    }
+    #ebayCbidModal .modal-dialog {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0.5rem 0 0 0 !important;
+    }
+    #ebayCbidModal .modal-content {
+        border-radius: 0;
+        width: 100%;
+        max-width: 100%;
     }
     .eca-y-spend-dot {
         display: inline-block;
@@ -557,7 +556,13 @@ $(document).ready(function () {
                 cellClick: function(e, cell) {
                     if (!e.target.closest('.eca-cbid-hist')) return;
                     e.stopPropagation();
-                    openEcaCbidChart(cell.getRow().getData());
+                    const row = cell.getRow().getData();
+                    if (typeof openStandardCbidChart === 'function') {
+                        openStandardCbidChart({
+                            title: (row.resolved_sku || row.sku || row.listing_id || ''),
+                            listingId: row.listing_id || ''
+                        });
+                    }
                 }
             },
             {
@@ -1160,87 +1165,5 @@ function renderEcaYSpendChart(rows) {
 }
 
 document.getElementById('eca-y-spend-days')?.addEventListener('change', loadEcaYSpendChart);
-
-let ecaCbidRow = null;
-let ecaCbidChart = null;
-
-function openEcaCbidChart(row) {
-    ecaCbidRow = row || null;
-    const sku = (row && (row.resolved_sku || row.sku)) || '';
-    const titleEl = document.getElementById('ecaCbidTitle');
-    if (titleEl) titleEl.textContent = 'C Bid — ' + (sku || (row && row.listing_id) || '');
-    const modalEl = document.getElementById('ecaCbidModal');
-    if (modalEl && window.bootstrap && bootstrap.Modal) {
-        bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    }
-    const loading = document.getElementById('ecaCbidLoading');
-    const empty = document.getElementById('ecaCbidEmpty');
-    const chartEl = document.getElementById('ecaCbidChart');
-    if (loading) loading.classList.remove('d-none');
-    if (empty) empty.classList.add('d-none');
-    if (chartEl) chartEl.classList.add('d-none');
-    const params = new URLSearchParams({ listing_id: (row && row.listing_id) || '' });
-    fetch(@json(url('/ebay/cbid-history')) + '?' + params.toString(), { headers: { Accept: 'application/json' } })
-        .then(function(r) { return r.json(); })
-        .then(function(rows) { renderEcaCbidChart(Array.isArray(rows) ? rows : []); })
-        .catch(function() { renderEcaCbidChart([]); });
-}
-
-function renderEcaCbidChart(rows) {
-    const loading = document.getElementById('ecaCbidLoading');
-    const empty = document.getElementById('ecaCbidEmpty');
-    const chartEl = document.getElementById('ecaCbidChart');
-    if (loading) loading.classList.add('d-none');
-    const points = rows || [];
-    const hasBid = points.some(function(d) { return d && d.bid !== null && isFinite(parseFloat(d.bid)); });
-    if (!hasBid || typeof Highcharts === 'undefined') {
-        if (chartEl) chartEl.classList.add('d-none');
-        if (empty) empty.classList.remove('d-none');
-        return;
-    }
-    if (empty) empty.classList.add('d-none');
-    if (chartEl) chartEl.classList.remove('d-none');
-    if (ecaCbidChart) {
-        ecaCbidChart.destroy();
-        ecaCbidChart = null;
-    }
-    const values = points.map(function(d) {
-        const n = parseFloat(d.bid);
-        return isFinite(n) ? n : null;
-    });
-    ecaCbidChart = Highcharts.chart('ecaCbidChart', {
-        chart: { type: 'line', height: 320 },
-        title: { text: null },
-        credits: { enabled: false },
-        legend: { enabled: false },
-        xAxis: {
-            categories: points.map(function(d) { return d.date_formatted || d.date; }),
-            labels: { style: { fontSize: '11px', fontWeight: '600' } }
-        },
-        yAxis: {
-            title: { text: null },
-            labels: { formatter: function() { return Highcharts.numberFormat(this.value, 1) + '%'; } }
-        },
-        tooltip: {
-            pointFormatter: function() {
-                if (this.y === null || !isFinite(this.y)) return 'No C Bid recorded';
-                return '<b>' + Highcharts.numberFormat(this.y, 1) + '%</b>';
-            }
-        },
-        plotOptions: { series: { connectNulls: false, marker: { radius: 4, lineWidth: 1, lineColor: '#fff' } } },
-        series: [{
-            name: 'C Bid',
-            color: '#0d6efd',
-            data: values.map(function(v, i) {
-                if (v === null) return null;
-                let color = '#0d6efd';
-                const prev = values.slice(0, i).reverse().find(function(n) { return n !== null; });
-                if (prev !== undefined && v > prev) color = '#28a745';
-                else if (prev !== undefined && v < prev) color = '#a00211';
-                return { y: v, color: color };
-            })
-        }]
-    });
-}
 </script>
 @endsection

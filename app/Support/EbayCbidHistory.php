@@ -70,9 +70,72 @@ final class EbayCbidHistory
                     ['bid_percentage', 'updated_at']
                 );
             }
+            self::seedPriorWeekBulk($account, $incoming);
         } catch (\Throwable $e) {
             Log::warning('C Bid history record failed', ['account' => $account, 'error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Listings with no C Bid in the 7 days before today get those days
+     * filled from the current bid, so the chart has a week of points
+     * from the first day we start recording.
+     *
+     * @param  array<string, float>  $incoming
+     */
+    private static function seedPriorWeekBulk(string $account, array $incoming): void
+    {
+        if ($incoming === []) {
+            return;
+        }
+
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $today->copy()->subDays(7)->toDateString();
+        $yesterday = $today->copy()->subDay()->toDateString();
+        $already = [];
+        foreach (array_chunk(array_keys($incoming), 500) as $chunk) {
+            $found = DB::table('ebay_cbid_daily')
+                ->where('account', $account)
+                ->whereBetween('day', [$start, $yesterday])
+                ->whereIn('listing_id', $chunk)
+                ->distinct()
+                ->pluck('listing_id');
+            foreach ($found as $lid) {
+                $already[(string) $lid] = true;
+            }
+        }
+
+        $now = now();
+        $rows = [];
+        foreach ($incoming as $lid => $bid) {
+            if (isset($already[(string) $lid])) {
+                continue;
+            }
+            $cursor = $today->copy()->subDays(7);
+            $end = $today->copy()->subDay();
+            for (; $cursor->lte($end); $cursor->addDay()) {
+                $rows[] = [
+                    'account' => $account,
+                    'listing_id' => (string) $lid,
+                    'day' => $cursor->toDateString(),
+                    'bid_percentage' => $bid,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+        foreach (array_chunk($rows, 400) as $chunk) {
+            DB::table('ebay_cbid_daily')->upsert(
+                $chunk,
+                ['account', 'listing_id', 'day'],
+                ['bid_percentage', 'updated_at']
+            );
+        }
+    }
+
+    private static function seedPriorWeek(string $account, string $listingId, float $bid): void
+    {
+        self::seedPriorWeekBulk($account, [$listingId => round($bid, 2)]);
     }
 
     /**
@@ -149,6 +212,20 @@ final class EbayCbidHistory
             } catch (\Throwable $e) {
                 Log::warning('C Bid history series failed', ['listing_id' => $listingId, 'error' => $e->getMessage()]);
             }
+            $todayRaw = $stored[$today->toDateString()] ?? null;
+            if ($todayRaw !== null && is_numeric($todayRaw)) {
+                try {
+                    self::seedPriorWeek($account, $listingId, (float) $todayRaw);
+                    $stored = DB::table('ebay_cbid_daily')
+                        ->where('account', $account)
+                        ->where('listing_id', $listingId)
+                        ->whereBetween('day', [$start->toDateString(), $today->toDateString()])
+                        ->pluck('bid_percentage', 'day')
+                        ->all();
+                } catch (\Throwable $e) {
+                    Log::warning('C Bid history prior seed failed', ['listing_id' => $listingId, 'error' => $e->getMessage()]);
+                }
+            }
         }
 
         $out = [];
@@ -157,7 +234,7 @@ final class EbayCbidHistory
             $raw = $stored[$key] ?? null;
             $out[] = [
                 'date' => $key,
-                'date_formatted' => $cursor->isSameDay($today) ? 'Today' : $cursor->format('M d'),
+                'date_formatted' => $cursor->format('M d'),
                 'days_ago' => (int) $cursor->diffInDays($today),
                 'bid' => ($raw !== null && is_numeric($raw)) ? round((float) $raw, 2) : null,
                 'is_today' => $cursor->isSameDay($today),
