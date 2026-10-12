@@ -2887,14 +2887,14 @@
             const hasPrev = prevRaw !== null && prevRaw !== undefined && prevRaw !== '' && isFinite(parseFloat(prevRaw));
             const prev = hasPrev ? parseFloat(prevRaw) : null;
             const prevDate = String(rowData[dateField] || '');
-            const prevWhen = prevDate && typeof ebay1ChartDateLabel === 'function'
+            const prevWhen = (/^\d{4}-\d{2}-\d{2}$/.test(prevDate) && typeof ebay1ChartDateLabel === 'function')
                 ? ebay1ChartDateLabel(prevDate)
-                : 'the last recorded day';
+                : (prevDate || 'the prior 7 days');
             const fmt = function(n) {
                 return money ? ('$' + Number(n).toFixed(2)) : Math.round(Number(n)).toLocaleString('en-US');
             };
             let dotColor = '#6c757d';
-            let dotTip = hasPrev ? ('Same as ' + prevWhen + ' (' + fmt(prev) + ')') : 'No prior day yet';
+            let dotTip = hasPrev ? ('Same as ' + prevWhen + ' (' + fmt(prev) + ')') : 'No prior 7 days yet';
             if (hasPrev && amount > prev) {
                 dotColor = '#28a745';
                 dotTip = 'Up vs ' + prevWhen + ' (' + fmt(prev) + ')';
@@ -2906,8 +2906,9 @@
             const listingAttr = String(rowData.eBay_item_id || '').replace(/"/g, '&quot;');
             const tipAttr = String(dotTip).replace(/"/g, '&quot;');
             const label = metric === 'rpt_spend' ? 'Spend' : (metric === 'rpt_sales' ? 'Sales' : 'Clicks');
+            const range = rowData.rpt_range ? ('Last 7 days ' + rowData.rpt_range) : 'Last 7 days';
             const dotBtn = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${skuAttr}" data-listing="${listingAttr}" data-metric="${metric}" title="${tipAttr} — click for ${label} history" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`;
-            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${skuAttr}" data-listing="${listingAttr}" data-metric="${metric}" title="View ${label} history" style="font-weight: 600; cursor: pointer;">${fmt(amount)}</span>${dotBtn}</span>`;
+            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${skuAttr}" data-listing="${listingAttr}" data-metric="${metric}" title="${range}. Click for daily history." style="font-weight: 600; cursor: pointer;">${fmt(amount)}</span>${dotBtn}</span>`;
         }
 
         function openEbaySkuHistoryChart(sku, metric, listingId) {
@@ -5226,7 +5227,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        headerTooltip: "Daily listing clicks from the eBay report. Green = up vs the last recorded day, red = down. Click the dot for history.",
+                        headerTooltip: "Clicks over the last 7 report days. A single quiet day is not the whole column. Green = up vs the 7 days before, red = down. Click the dot for each day.",
                         formatter: function(cell) {
                             return ebayRptHistCell(cell.getRow().getData(), 'rpt_clicks', 'rpt_clicks_prev', 'rpt_clicks_prev_date', 'rpt_clicks', false);
                         }
@@ -5237,7 +5238,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 110,
-                        headerTooltip: "Daily listing ad spend from the eBay report. Green = up vs the last recorded day, red = down. Click the dot for history.",
+                        headerTooltip: "Ad spend over the last 7 report days. A single quiet day is not the whole column. Green = up vs the 7 days before, red = down. Click the dot for each day.",
                         formatter: function(cell) {
                             return ebayRptHistCell(cell.getRow().getData(), 'rpt_spend', 'rpt_spend_prev', 'rpt_spend_prev_date', 'rpt_spend', true);
                         }
@@ -5248,7 +5249,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
-                        headerTooltip: "Daily listing sales count from the eBay report. Green = up vs the last recorded day, red = down. Click the dot for history.",
+                        headerTooltip: "Sales count over the last 7 report days. A single quiet day is not the whole column. Green = up vs the 7 days before, red = down. Click the dot for each day.",
                         formatter: function(cell) {
                             return ebayRptHistCell(cell.getRow().getData(), 'rpt_sales', 'rpt_sales_prev', 'rpt_sales_prev_date', 'rpt_sales', false);
                         }

@@ -1131,6 +1131,7 @@ class EbayController extends Controller
             $row['rpt_sales'] = $rpt['sales'] ?? null;
             $row['rpt_sales_prev'] = $rpt['sales_prev'] ?? null;
             $row['rpt_sales_prev_date'] = $rpt['sales_prev_date'] ?? null;
+            $row['rpt_range'] = $rpt['range'] ?? null;
             $row['views'] = $ebayMetric?->views ?? 0;
 
             if ($ebayMetric && isset($ebayCampaignAdsByListing[$ebayMetric->item_id])) {

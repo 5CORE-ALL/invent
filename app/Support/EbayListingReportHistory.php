@@ -8,14 +8,15 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Daily clicks, ad spend, and sales from ebay_general_reports.report_range.
+ * Clicks, ad spend, and sales from ebay_general_reports.
+ * The grid shows the last 7 completed days. The chart is one point per report day.
  */
 final class EbayListingReportHistory
 {
     /**
-     * Latest dated day and the day before it, per listing.
+     * Last 7 days per listing, compared with the 7 days before that.
      *
-     * @return array<string, array{clicks: int, clicks_prev: int|null, clicks_prev_date: string|null, spend: float, spend_prev: float|null, spend_prev_date: string|null, sales: int, sales_prev: int|null, sales_prev_date: string|null}>
+     * @return array<string, array{clicks: int, clicks_prev: int|null, clicks_prev_date: string|null, spend: float, spend_prev: float|null, spend_prev_date: string|null, sales: int, sales_prev: int|null, sales_prev_date: string|null, range: string}>
      */
     public static function latestByListing(): array
     {
@@ -24,50 +25,45 @@ final class EbayListingReportHistory
         }
 
         $end = Carbon::now('America/Los_Angeles')->startOfDay()->subDay();
-        $start = $end->copy()->subDays(20)->toDateString();
-        $byListing = [];
+        $curStart = $end->copy()->subDays(6);
+        $prevEnd = $curStart->copy()->subDay();
+        $prevStart = $prevEnd->copy()->subDays(6);
+        $rangeLabel = $curStart->format('M d').' – '.$end->format('M d');
+        $prevLabel = $prevStart->format('M d').' – '.$prevEnd->format('M d');
+
         try {
-            $rows = DB::table('ebay_general_reports')
-                ->whereRaw('CHAR_LENGTH(report_range) = 10')
-                ->whereBetween('report_range', [$start, $end->toDateString()])
-                ->get(['listing_id', 'report_range', 'clicks', 'ad_fees', 'sales']);
-            foreach ($rows as $row) {
-                $lid = trim((string) $row->listing_id);
-                $day = (string) $row->report_range;
-                if ($lid === '' || $day === '') {
-                    continue;
-                }
-                if (! isset($byListing[$lid][$day])) {
-                    $byListing[$lid][$day] = ['clicks' => 0, 'spend' => 0.0, 'sales' => 0];
-                }
-                $byListing[$lid][$day]['clicks'] += (int) ($row->clicks ?? 0);
-                $byListing[$lid][$day]['spend'] = round($byListing[$lid][$day]['spend'] + EbayYesterdaySpend::money($row->ad_fees), 2);
-                $byListing[$lid][$day]['sales'] += (int) ($row->sales ?? 0);
-            }
+            $daily = self::dailyTotals($prevStart->toDateString(), $end->toDateString());
+            $l7 = self::rangeTotals('L7');
         } catch (\Throwable $e) {
             Log::warning('Listing report history lookup failed', ['error' => $e->getMessage()]);
 
             return [];
         }
 
+        $ids = array_unique(array_merge(array_keys($daily), array_keys($l7)));
         $out = [];
-        foreach ($byListing as $lid => $days) {
-            ksort($days);
-            $dates = array_keys($days);
-            $lastDay = (string) array_pop($dates);
-            $prevDay = $dates === [] ? null : (string) array_pop($dates);
-            $last = $days[$lastDay];
-            $prev = $prevDay !== null ? $days[$prevDay] : null;
+        foreach ($ids as $lid) {
+            $days = $daily[$lid] ?? [];
+            $cur = self::sumWindow($days, $curStart->toDateString(), $end->toDateString());
+            $prev = self::sumWindow($days, $prevStart->toDateString(), $prevEnd->toDateString());
+            if ($cur === null && isset($l7[$lid])) {
+                $cur = $l7[$lid];
+                $prev = null;
+            }
+            if ($cur === null) {
+                continue;
+            }
             $out[$lid] = [
-                'clicks' => $last['clicks'],
+                'clicks' => $cur['clicks'],
                 'clicks_prev' => $prev['clicks'] ?? null,
-                'clicks_prev_date' => $prevDay,
-                'spend' => $last['spend'],
+                'clicks_prev_date' => $prev !== null ? $prevLabel : null,
+                'spend' => $cur['spend'],
                 'spend_prev' => $prev['spend'] ?? null,
-                'spend_prev_date' => $prevDay,
-                'sales' => $last['sales'],
+                'spend_prev_date' => $prev !== null ? $prevLabel : null,
+                'sales' => $cur['sales'],
                 'sales_prev' => $prev['sales'] ?? null,
-                'sales_prev_date' => $prevDay,
+                'sales_prev_date' => $prev !== null ? $prevLabel : null,
+                'range' => $rangeLabel,
             ];
         }
 
@@ -123,5 +119,79 @@ final class EbayListingReportHistory
         }
 
         return $out;
+    }
+
+    /**
+     * @return array<string, array<string, array{clicks: int, spend: float, sales: int}>>
+     */
+    private static function dailyTotals(string $start, string $end): array
+    {
+        $byListing = [];
+        $rows = DB::table('ebay_general_reports')
+            ->whereRaw('CHAR_LENGTH(report_range) = 10')
+            ->whereBetween('report_range', [$start, $end])
+            ->get(['listing_id', 'report_range', 'clicks', 'ad_fees', 'sales']);
+        foreach ($rows as $row) {
+            $lid = trim((string) $row->listing_id);
+            $day = (string) $row->report_range;
+            if ($lid === '' || $day === '') {
+                continue;
+            }
+            if (! isset($byListing[$lid][$day])) {
+                $byListing[$lid][$day] = ['clicks' => 0, 'spend' => 0.0, 'sales' => 0];
+            }
+            $byListing[$lid][$day]['clicks'] += (int) ($row->clicks ?? 0);
+            $byListing[$lid][$day]['spend'] = round($byListing[$lid][$day]['spend'] + EbayYesterdaySpend::money($row->ad_fees), 2);
+            $byListing[$lid][$day]['sales'] += (int) ($row->sales ?? 0);
+        }
+
+        return $byListing;
+    }
+
+    /**
+     * @return array<string, array{clicks: int, spend: float, sales: int}>
+     */
+    private static function rangeTotals(string $range): array
+    {
+        $out = [];
+        $rows = DB::table('ebay_general_reports')
+            ->where('report_range', $range)
+            ->get(['listing_id', 'clicks', 'ad_fees', 'sales']);
+        foreach ($rows as $row) {
+            $lid = trim((string) $row->listing_id);
+            if ($lid === '') {
+                continue;
+            }
+            if (! isset($out[$lid])) {
+                $out[$lid] = ['clicks' => 0, 'spend' => 0.0, 'sales' => 0];
+            }
+            $out[$lid]['clicks'] += (int) ($row->clicks ?? 0);
+            $out[$lid]['spend'] = round($out[$lid]['spend'] + EbayYesterdaySpend::money($row->ad_fees), 2);
+            $out[$lid]['sales'] += (int) ($row->sales ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, array{clicks: int, spend: float, sales: int}>  $days
+     * @return array{clicks: int, spend: float, sales: int}|null
+     */
+    private static function sumWindow(array $days, string $start, string $end): ?array
+    {
+        $sum = null;
+        foreach ($days as $day => $vals) {
+            if ($day < $start || $day > $end) {
+                continue;
+            }
+            if ($sum === null) {
+                $sum = ['clicks' => 0, 'spend' => 0.0, 'sales' => 0];
+            }
+            $sum['clicks'] += $vals['clicks'];
+            $sum['spend'] = round($sum['spend'] + $vals['spend'], 2);
+            $sum['sales'] += $vals['sales'];
+        }
+
+        return $sum;
     }
 }
