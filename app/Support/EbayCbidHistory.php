@@ -27,6 +27,7 @@ final class EbayCbidHistory
             return;
         }
 
+        self::purgeBackfill($account);
         $day = self::today();
         $incoming = [];
         foreach ($rows as $row) {
@@ -70,72 +71,29 @@ final class EbayCbidHistory
                     ['bid_percentage', 'updated_at']
                 );
             }
-            self::seedPriorWeekBulk($account, $incoming);
         } catch (\Throwable $e) {
             Log::warning('C Bid history record failed', ['account' => $account, 'error' => $e->getMessage()]);
         }
     }
 
     /**
-     * Listings with no C Bid in the 7 days before today get those days
-     * filled from the current bid, so the chart has a week of points
-     * from the first day we start recording.
-     *
-     * @param  array<string, float>  $incoming
+     * Drop days that were copied from today's bid. A real row is inserted on that calendar day.
      */
-    private static function seedPriorWeekBulk(string $account, array $incoming): void
+    private static function purgeBackfill(string $account): void
     {
-        if ($incoming === []) {
+        static $done = false;
+        if ($done) {
             return;
         }
-
-        $today = Carbon::now('America/Los_Angeles')->startOfDay();
-        $start = $today->copy()->subDays(7)->toDateString();
-        $yesterday = $today->copy()->subDay()->toDateString();
-        $already = [];
-        foreach (array_chunk(array_keys($incoming), 500) as $chunk) {
-            $found = DB::table('ebay_cbid_daily')
+        $done = true;
+        try {
+            DB::table('ebay_cbid_daily')
                 ->where('account', $account)
-                ->whereBetween('day', [$start, $yesterday])
-                ->whereIn('listing_id', $chunk)
-                ->distinct()
-                ->pluck('listing_id');
-            foreach ($found as $lid) {
-                $already[(string) $lid] = true;
-            }
+                ->whereRaw('`day` < DATE(`created_at`)')
+                ->delete();
+        } catch (\Throwable $e) {
+            Log::warning('C Bid history backfill purge failed', ['account' => $account, 'error' => $e->getMessage()]);
         }
-
-        $now = now();
-        $rows = [];
-        foreach ($incoming as $lid => $bid) {
-            if (isset($already[(string) $lid])) {
-                continue;
-            }
-            $cursor = $today->copy()->subDays(7);
-            $end = $today->copy()->subDay();
-            for (; $cursor->lte($end); $cursor->addDay()) {
-                $rows[] = [
-                    'account' => $account,
-                    'listing_id' => (string) $lid,
-                    'day' => $cursor->toDateString(),
-                    'bid_percentage' => $bid,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-        }
-        foreach (array_chunk($rows, 400) as $chunk) {
-            DB::table('ebay_cbid_daily')->upsert(
-                $chunk,
-                ['account', 'listing_id', 'day'],
-                ['bid_percentage', 'updated_at']
-            );
-        }
-    }
-
-    private static function seedPriorWeek(string $account, string $listingId, float $bid): void
-    {
-        self::seedPriorWeekBulk($account, [$listingId => round($bid, 2)]);
     }
 
     /**
@@ -157,6 +115,7 @@ final class EbayCbidHistory
             $rows = DB::table('ebay_cbid_daily')
                 ->where('account', $account)
                 ->whereBetween('day', [$start, $end])
+                ->whereRaw('`day` >= DATE(`created_at`)')
                 ->orderBy('day')
                 ->get(['listing_id', 'day', 'bid_percentage']);
             foreach ($rows as $row) {
@@ -202,29 +161,17 @@ final class EbayCbidHistory
         $start = $today->copy()->subDays(7);
         $stored = [];
         if ($listingId !== '' && Schema::hasTable('ebay_cbid_daily')) {
+            self::purgeBackfill($account);
             try {
                 $stored = DB::table('ebay_cbid_daily')
                     ->where('account', $account)
                     ->where('listing_id', $listingId)
                     ->whereBetween('day', [$start->toDateString(), $today->toDateString()])
+                    ->whereRaw('`day` >= DATE(`created_at`)')
                     ->pluck('bid_percentage', 'day')
                     ->all();
             } catch (\Throwable $e) {
                 Log::warning('C Bid history series failed', ['listing_id' => $listingId, 'error' => $e->getMessage()]);
-            }
-            $todayRaw = $stored[$today->toDateString()] ?? null;
-            if ($todayRaw !== null && is_numeric($todayRaw)) {
-                try {
-                    self::seedPriorWeek($account, $listingId, (float) $todayRaw);
-                    $stored = DB::table('ebay_cbid_daily')
-                        ->where('account', $account)
-                        ->where('listing_id', $listingId)
-                        ->whereBetween('day', [$start->toDateString(), $today->toDateString()])
-                        ->pluck('bid_percentage', 'day')
-                        ->all();
-                } catch (\Throwable $e) {
-                    Log::warning('C Bid history prior seed failed', ['listing_id' => $listingId, 'error' => $e->getMessage()]);
-                }
             }
         }
 
@@ -232,11 +179,14 @@ final class EbayCbidHistory
         for ($cursor = $start->copy(); $cursor->lte($today); $cursor->addDay()) {
             $key = $cursor->toDateString();
             $raw = $stored[$key] ?? null;
+            if ($raw === null || ! is_numeric($raw)) {
+                continue;
+            }
             $out[] = [
                 'date' => $key,
                 'date_formatted' => $cursor->format('M d'),
                 'days_ago' => (int) $cursor->diffInDays($today),
-                'bid' => ($raw !== null && is_numeric($raw)) ? round((float) $raw, 2) : null,
+                'bid' => round((float) $raw, 2),
                 'is_today' => $cursor->isSameDay($today),
             ];
         }

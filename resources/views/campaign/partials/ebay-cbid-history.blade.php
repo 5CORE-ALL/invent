@@ -35,7 +35,7 @@
                 </div>
                 <div id="ebayCbidEmpty" class="text-center py-3" style="display: none;">
                     <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
-                    <p class="text-muted small mb-0">No C Bid history for this listing yet.</p>
+                    <p class="text-muted small mb-0">No saved C Bid for this listing on those days. The chart shows only the days stored from ebay_campaign_ads.</p>
                 </div>
             </div>
         </div>
