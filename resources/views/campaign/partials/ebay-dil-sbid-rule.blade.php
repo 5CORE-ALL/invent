@@ -1144,6 +1144,110 @@ function dilSbidOfRow(row) {
     }
     return { bid: capped, color: part.color, skip: false, off: false, title: title };
 }
+/** S Bid from each Dil vs SBid table. Total is Dil + Views + CVR % + eBay Sold + Std NPFT % + both up/down overlays. */
+function dilSbidBreakdown(row) {
+    if (DIL_SBID_LISTING_WISE && row && !row._dilSbidRolled) {
+        const key = dilSbidListingKey(row);
+        const rolled = key ? dilSbidRollupRow(key) : null;
+        return rolled ? dilSbidBreakdown(rolled) : null;
+    }
+    const dil = dilSbidMetric(row);
+    if (dil === null || !isFinite(dil)) return null;
+    const part = dilSbidDilPart(row, dil);
+    const extra = DIL_SBID_EXT ? dilSbidExtBids(row) : null;
+    const pick = function(key) {
+        return (extra && extra[key]) ? (parseFloat(extra[key].bid) || 0) : 0;
+    };
+    const base = dilSbidRound((parseFloat(part.bid) || 0) + pick('views') + pick('cvr') + pick('sold') + pick('npft'));
+    const cvrAdj = dilSbidApplyCvr(base, row);
+    const viewAdj = dilSbidApplyView(cvrAdj.bid, row);
+    const pieces = [
+        { key: 'dil', label: 'Dil', bid: parseFloat(part.bid) || 0 },
+        { key: 'views', label: 'Views', bid: pick('views') },
+        { key: 'cvr', label: 'CVR %', bid: pick('cvr') },
+        { key: 'sold', label: 'eBay Sold', bid: pick('sold') },
+        { key: 'npft', label: 'Std NPFT %', bid: pick('npft') },
+        { key: 'cvrAdj', label: 'CVR up / down', bid: parseFloat(cvrAdj.adj) || 0 },
+        { key: 'viewAdj', label: 'L30 View up / down', bid: parseFloat(viewAdj.adj) || 0 },
+    ];
+    const byKey = {};
+    let total = 0;
+    const bits = [];
+    pieces.forEach(function(p) {
+        const bid = dilSbidRound(p.bid);
+        byKey[p.key] = bid;
+        total += bid;
+        if (bid) bits.push(p.label + ' ' + (bid > 0 ? '+' : '') + bid);
+    });
+    total = dilSbidRound(total);
+    return {
+        byKey: byKey,
+        discount: total,
+        discountTip: bits.length ? (bits.join(', ') + ' = ' + (total > 0 ? '+' : '') + total) : 'No S Bid from these rules',
+    };
+}
+window.dilSbidBreakdown = dilSbidBreakdown;
+function dilSbidDiffEsc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function dilSbidDiffOf(row, key) {
+    if (typeof dilSbidBreakdown !== 'function') return null;
+    const parts = dilSbidBreakdown(row);
+    if (!parts) return null;
+    if (key === 'discount') return parts.discount;
+    return parts.byKey[key];
+}
+function dilSbidDiffHtml(n, tip) {
+    const title = tip ? (' title="' + dilSbidDiffEsc(tip) + '"') : '';
+    if (n === null || !isFinite(n) || n === 0) return '<span class="text-muted"' + title + '>—</span>';
+    const color = n < 0 ? '#dc3545' : '#198754';
+    const sign = n > 0 ? '+' : '';
+    return '<span style="color:' + color + ';font-weight:700;"' + title + '>' + sign + n.toFixed(1) + '</span>';
+}
+function ebaySbidDiffColumns() {
+    const specs = [
+        ['Dil', 'dil', 70, 'S Bid from the Dil slab this SKU falls in.'],
+        ['Views', 'views', 78, 'S Bid from the Views range this SKU falls in.'],
+        ['CVR %', 'cvr', 72, 'S Bid from the CVR % range this SKU falls in.'],
+        ['eBay Sold', 'sold', 92, 'S Bid from the eBay Sold range this SKU falls in.'],
+        ['Std NPFT %', 'npft', 100, 'S Bid from the Std NPFT % range this SKU falls in.'],
+        ['CVR up / down', 'cvrAdj', 118, 'Adj S Bid from CVR up / down.'],
+        ['L30 View up / down', 'viewAdj', 140, 'Adj S Bid from L30 View up / down.'],
+    ];
+    const cols = specs.map(function(spec) {
+        const title = spec[0], key = spec[1], width = spec[2], tip = spec[3];
+        return {
+            title: title,
+            field: 'sbid_diff_' + key,
+            width: width,
+            hozAlign: 'center',
+            headerTooltip: tip,
+            sorter: function(a, b, aRow, bRow) {
+                return (dilSbidDiffOf(aRow.getData(), key) || 0) - (dilSbidDiffOf(bRow.getData(), key) || 0);
+            },
+            formatter: function(cell) {
+                return dilSbidDiffHtml(dilSbidDiffOf(cell.getRow().getData(), key), tip);
+            }
+        };
+    });
+    cols.push({
+        title: 'Sum S Bid',
+        field: 'sbid_total_discount',
+        width: 100,
+        hozAlign: 'center',
+        headerTooltip: 'Dil + Views + CVR % + eBay Sold + Std NPFT % + CVR up / down + L30 View up / down.',
+        sorter: function(a, b, aRow, bRow) {
+            return (dilSbidDiffOf(aRow.getData(), 'discount') || 0) - (dilSbidDiffOf(bRow.getData(), 'discount') || 0);
+        },
+        formatter: function(cell) {
+            const parts = dilSbidBreakdown(cell.getRow().getData());
+            const tip = (parts && parts.discountTip) ? parts.discountTip : 'Sum S Bid';
+            return dilSbidDiffHtml(parts ? parts.discount : null, tip);
+        }
+    });
+    return cols;
+}
+window.ebaySbidDiffColumns = ebaySbidDiffColumns;
 function dilSbidEachUnit(fn) {
     const seen = {};
     const rows = DIL_SBID_LISTING_WISE ? dilSbidChildRows() : dilSbidRows();

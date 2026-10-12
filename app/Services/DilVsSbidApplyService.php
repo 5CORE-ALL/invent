@@ -735,6 +735,12 @@ class DilVsSbidApplyService
                 'campaign_status' => 'RUNNING',
                 'updated_at' => now(),
             ]);
+        if ($adsTable === 'ebay_campaign_ads') {
+            \App\Support\EbayCbidHistory::recordToday('ebay1', [(object) [
+                'listing_id' => (string) $r['listingId'],
+                'bid_percentage' => round($live, 1),
+            ]]);
+        }
     }
 
     private function pauseVerify(int $round): void

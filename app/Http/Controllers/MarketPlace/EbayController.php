@@ -21,6 +21,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
+use App\Support\EbayCbidHistory;
 use App\Support\EbayYesterdaySpend;
 use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\DB;
@@ -798,6 +799,8 @@ class EbayController extends Controller
         } catch (\Throwable $e) {
             Log::warning('eBay getViewEbayData: ebay_campaign_ads unavailable: ' . $e->getMessage());
         }
+        EbayCbidHistory::recordToday('ebay1', $ebayCampaignAdsByListing);
+        $ebayCbidPriorByListing = EbayCbidHistory::priorByListing('ebay1');
 
         // Latest NR/REQ + links from Listing eBay page (source of truth).
         // Key by a normalized SKU (UPPER + trim) so saved rows — which saveSpriceToDatabase
@@ -1137,6 +1140,10 @@ class EbayController extends Controller
                 ? $ebayCampaignAdsByListing[$ebayMetric->item_id]
                 : null;
             $row['ca_bid_percentage'] = $caRow->bid_percentage ?? null;
+            $cbidItemId = $ebayMetric ? (string) $ebayMetric->item_id : '';
+            $cbidPrior = $ebayCbidPriorByListing[$cbidItemId] ?? null;
+            $row['cbid_prev'] = $cbidPrior['bid'] ?? null;
+            $row['cbid_prev_date'] = $cbidPrior['date'] ?? null;
             $row['ca_suggested_bid']  = $caRow->suggested_bid  ?? null;
             $row['ca_promote_with_ad'] = $caRow->promote_with_ad ?? null;
             $row['ca_funding_strategy'] = $caRow->funding_strategy ?? null;

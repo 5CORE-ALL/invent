@@ -132,6 +132,8 @@
     'extended' => true,
 ])
 
+@include('campaign.partials.ebay-cbid-history')
+
 <div class="modal fade" id="ecaYSpendModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
@@ -200,6 +202,23 @@
         font-weight: 700;
         line-height: 1;
         cursor: help;
+    }
+    #ebayCbidModal.modal {
+        --tz-modal-width: 100%;
+        --tz-modal-margin: 0.5rem 0;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        z-index: 10800;
+    }
+    #ebayCbidModal .modal-dialog {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0.5rem 0 0 0 !important;
+    }
+    #ebayCbidModal .modal-content {
+        border-radius: 0;
+        width: 100%;
+        max-width: 100%;
     }
     .eca-y-spend-dot {
         display: inline-block;
@@ -504,7 +523,7 @@ $(document).ready(function () {
             {
                 title: 'C Bid', field: 'bid_percentage', width: 110, hozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'Live eBay bid vs S Bid. Green = they match. Yellow = still waiting to push. Red = the last push failed.',
+                headerTooltip: 'Live eBay bid vs S Bid. Click the value for C Bid history: the 7 days before today, then today. Green dot = up vs the last recorded day in that week, red = down.',
                 formatter: function(cell) {
                     const row = cell.getRow().getData();
                     const v = parseFloat(cell.getValue());
@@ -513,9 +532,37 @@ $(document).ready(function () {
                         const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
                         valueHtml = '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
                     }
+                    const prevRaw = row.cbid_prev;
+                    const hasPrev = prevRaw !== null && prevRaw !== undefined && prevRaw !== '' && isFinite(parseFloat(prevRaw));
+                    const prev = hasPrev ? parseFloat(prevRaw) : null;
+                    const prevWhen = row.cbid_prev_date ? String(row.cbid_prev_date) : 'a day in the last 7';
+                    let dotColor = '#6c757d';
+                    let dotTip = hasPrev ? ('Same as ' + prevWhen + ' (' + prev.toFixed(1) + '%)') : 'No C Bid in the last 7 days — recording from today';
+                    if (hasPrev && isFinite(v) && v > prev) {
+                        dotColor = '#28a745';
+                        dotTip = 'Up vs ' + prevWhen + ' (' + prev.toFixed(1) + '%)';
+                    } else if (hasPrev && isFinite(v) && v < prev) {
+                        dotColor = '#a00211';
+                        dotTip = 'Down vs ' + prevWhen + ' (' + prev.toFixed(1) + '%)';
+                    }
                     const sync = ebayBidSync(row);
-                    if (!sync) return valueHtml;
-                    return '<span class="eca-sync-cell"><span class="eca-sync-dot is-' + sync.color + '" title="' + ebayEsc(sync.tip) + '"></span>' + valueHtml + '</span>';
+                    const syncDot = sync
+                        ? '<span class="eca-sync-dot is-' + sync.color + '" title="' + ebayEsc(sync.tip) + '"></span>'
+                        : '';
+                    return '<span class="eca-cbid-hist" style="white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="' + ebayEsc(dotTip) + ' — click for C Bid history">'
+                        + syncDot + valueHtml
+                        + '<span class="eca-y-spend-dot" style="background:' + dotColor + ';"></span></span>';
+                },
+                cellClick: function(e, cell) {
+                    if (!e.target.closest('.eca-cbid-hist')) return;
+                    e.stopPropagation();
+                    const row = cell.getRow().getData();
+                    if (typeof openStandardCbidChart === 'function') {
+                        openStandardCbidChart({
+                            title: (row.resolved_sku || row.sku || row.listing_id || ''),
+                            listingId: row.listing_id || ''
+                        });
+                    }
                 }
             },
             {
@@ -588,6 +635,7 @@ $(document).ready(function () {
                     return `<span style="color:${res.color}; font-weight:700;" title="${title}">${res.bid.toFixed(1)}%</span>`;
                 }
             },
+            ...ebaySbidDiffColumns(),
             {
                 title: 'CVR', field: 'ebay_l30', width: 80, hozAlign: 'center',
                 sorter: function(a, b, aRow, bRow) {

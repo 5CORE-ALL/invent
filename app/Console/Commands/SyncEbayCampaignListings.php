@@ -100,7 +100,8 @@ class SyncEbayCampaignListings extends Command
                     continue;
                 }
 
-                $chunkStats = DB::transaction(function () use ($adChunk, $campaignId, $campaignName, $funding, $campaignStatus) {
+                $snapRows = [];
+                $chunkStats = DB::transaction(function () use ($adChunk, $campaignId, $campaignName, $funding, $campaignStatus, &$snapRows) {
                     $ins = 0;
                     $upd = 0;
                     $skip = 0;
@@ -141,6 +142,12 @@ class SyncEbayCampaignListings extends Command
                                 DB::table('ebay_campaign_ads')->insert($row);
                                 $ins++;
                             }
+                            if (isset($row['bid_percentage']) && is_numeric($row['bid_percentage'])) {
+                                $snapRows[] = (object) [
+                                    'listing_id' => $listingId,
+                                    'bid_percentage' => $row['bid_percentage'],
+                                ];
+                            }
                         } catch (\Exception $e) {
                             $this->error('      ❌ DB: '.$e->getMessage());
                             $skip++;
@@ -153,6 +160,7 @@ class SyncEbayCampaignListings extends Command
                 $inserted += $chunkStats['ins'];
                 $updated += $chunkStats['upd'];
                 $skipped += $chunkStats['skip'];
+                \App\Support\EbayCbidHistory::recordToday('ebay1', $snapRows);
             }
         }
         } // end Step 1 (!$eligibleOnly)

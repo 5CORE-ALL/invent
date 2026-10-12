@@ -9,6 +9,7 @@ use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\CpMasterDil;
+use App\Support\EbayCbidHistory;
 use App\Support\EbayStdNpftLookup;
 use App\Support\EbayYesterdaySpend;
 use Illuminate\Http\Request;
@@ -27,22 +28,11 @@ class EbayCampaignAdsController extends Controller
 
     public function index()
     {
-        $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
-        $ruleData = $rule ? json_decode($rule->rule, true) : $this->defaultRule();
-        // Backfill threshold for existing rule rows saved before this field was added.
-        if (!isset($ruleData['l7_views_threshold'])) {
-            $ruleData['l7_views_threshold'] = 70;
-        }
-        if (!isset($ruleData['l30_sold_es_bid_max'])) {
-            $ruleData['l30_sold_es_bid_max'] = 0;
-        }
-
         $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
         $dilData = $dil ? json_decode($dil->rule, true) : $this->defaultDilRule();
 
         return view('campaign.ebay-campaign-ads', [
-            'sbidRule' => $ruleData,
-            'dilRule'  => $dilData,
+            'dilRule' => $dilData,
         ]);
     }
 
@@ -732,6 +722,8 @@ class EbayCampaignAdsController extends Controller
         CpMasterDil::hydrate($data);
         EbayYesterdaySpend::attachToCampaignRows($data);
         $this->attachStdNpft($data);
+        EbayCbidHistory::recordToday('ebay1', $data);
+        EbayCbidHistory::attachPrior($data);
 
         return response()->json([
             'total' => $total,
@@ -765,9 +757,16 @@ class EbayCampaignAdsController extends Controller
     }
 
     /**
-     * Daily Y Spend for the history dot. mode=row is one campaign-ads line;
-     * mode=sku is keyword CPC plus promoted fees for /ebay-tabulator-view.
+     * C Bid for the 7 days before today, then today.
      */
+    public function cbidHistory(Request $request)
+    {
+        return response()->json(EbayCbidHistory::series(
+            'ebay1',
+            (string) $request->input('listing_id', '')
+        ));
+    }
+
     public function ySpendHistory(Request $request)
     {
         $days = (int) $request->input('days', 30);

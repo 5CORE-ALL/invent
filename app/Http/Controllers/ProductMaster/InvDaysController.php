@@ -738,6 +738,32 @@ class InvDaysController extends Controller
     }
 
     /**
+     * Age days and Amazon Dil / CVR inputs embedded into analytics pages at render,
+     * so the page discounts use the same inputs as StdPrcVsDilPricer.
+     *
+     * @return array{age_days: array<string, int>, amazon: array<string, array<int, float>>}
+     */
+    public function stdPrcPageMaps(bool $withAmazon = true): array
+    {
+        $out = ['age_days' => [], 'amazon' => []];
+        try {
+            $age = Cache::get(self::AGE_MAP_CACHE_KEY);
+            $out['age_days'] = is_array($age) ? $age : $this->ageDayMap();
+        } catch (\Throwable $e) {
+            Log::warning('stdPrcPageMaps: age map failed: '.$e->getMessage());
+        }
+        if ($withAmazon) {
+            try {
+                $out['amazon'] = $this->amazonStdMetricMap();
+            } catch (\Throwable $e) {
+                Log::warning('stdPrcPageMaps: Amazon std map failed: '.$e->getMessage());
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Same as /amazon-tabulator-view: stamp age_days on every SKU row (and tree _children).
      *
      * @param  array<int, mixed>  $rows
