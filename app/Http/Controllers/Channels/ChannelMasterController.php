@@ -13064,21 +13064,26 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Active Channel Mercari w ship uses the /mercari-with-ship badges.
+     * Active Channel Mercari w ship / wo ship use the /mercari-with-ship and /mercari-without-ship badges.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
     private function overlayLiveMercariWithShipSalesOnChannelRows(array $rows): array
     {
-        $badge = app(\App\Http\Controllers\Sales\MercariController::class)->mercariWithShipBadgeTotals();
-        if ($badge['l30'] <= 0 && $badge['orders'] <= 0) {
-            return $rows;
-        }
+        $mercari = app(\App\Http\Controllers\Sales\MercariController::class);
+        $badges = [
+            'mercariwship' => $mercari->mercariWithShipBadgeTotals(),
+            'mercariwoship' => $mercari->mercariWithoutShipBadgeTotals(),
+        ];
 
         foreach ($rows as &$row) {
             $key = $this->allMarketplaceSnapshotKey((string) ($row['Channel '] ?? $row['Channel'] ?? ''));
-            if ($key !== 'mercariwship') {
+            if (! isset($badges[$key])) {
+                continue;
+            }
+            $badge = $badges[$key];
+            if ($badge['l30'] <= 0 && $badge['orders'] <= 0) {
                 continue;
             }
             $row['L30 Sales'] = $badge['l30'];
@@ -13090,7 +13095,6 @@ class ChannelMasterController extends Controller
             $row['G Roi'] = $badge['groi'];
             $row['N PFT'] = $badge['gpft'].'%';
             $row['N ROI'] = $badge['groi'];
-            break;
         }
         unset($row);
 
@@ -16214,23 +16218,37 @@ class ChannelMasterController extends Controller
 
         // Get metrics from marketplace_daily_metrics table (pre-calculated)
         $metrics = MarketplaceDailyMetric::where('channel', 'Mercari Without Ship')->latest('date')->first();
+        $badge = app(\App\Http\Controllers\Sales\MercariController::class)->mercariWithoutShipBadgeTotals();
+        $useBadge = $badge['orders'] > 0 || $badge['l30'] > 0;
 
         $l60 = $this->computeMercariL60FromDailyData(false);
         $l60Orders = $l60['orders'];
         $l60Sales = $l60['sales'];
 
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $nPftValue = $metrics->n_pft ?? $totalProfit;
-        $nRoi = $metrics->n_roi ?? $gRoi;
-        
-        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+        if ($useBadge) {
+            // Same numbers as /mercari-without-ship. No ads, so NPFT = GPFT.
+            $l30Sales = $badge['l30'];
+            $l30Orders = $badge['orders'];
+            $totalQuantity = $badge['qty'];
+            $totalProfit = $badge['pft'];
+            $totalCogs = $badge['cogs'];
+            $gProfitPct = $badge['gpft'];
+            $gRoi = $badge['groi'];
+            $nPft = $gProfitPct;
+            $nRoi = $gRoi;
+        } else {
+            $l30Sales = $metrics->total_sales ?? 0;
+            $l30Orders = $metrics->total_orders ?? 0;
+            $totalQuantity = $metrics->total_quantity ?? 0;
+            $totalProfit = $metrics->total_pft ?? 0;
+            $totalCogs = $metrics->total_cogs ?? 0;
+            $gProfitPct = $metrics->pft_percentage ?? 0;
+            $gRoi = $metrics->roi_percentage ?? 0;
+            $nPftValue = $metrics->n_pft ?? $totalProfit;
+            $nRoi = $metrics->n_roi ?? $gRoi;
+            // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
+            $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+        }
         
         // Calculate growth
         $growth = $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l60Sales) * 100 : 0;

@@ -1337,6 +1337,29 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateMercariWithoutShipMetrics($date)
     {
+        // Use the /mercari-without-ship page numbers so the master matches the page.
+        $badge = app(\App\Http\Controllers\Sales\MercariController::class)->mercariWithoutShipBadgeTotals();
+        if ($badge['orders'] > 0 || $badge['l30'] > 0) {
+            return [
+                'total_orders' => $badge['orders'],
+                'total_quantity' => $badge['qty'],
+                'total_revenue' => $badge['l30'],
+                'total_sales' => $badge['l30'],
+                'total_cogs' => $badge['cogs'],
+                'total_pft' => $badge['pft'],
+                'pft_percentage' => $badge['gpft'],
+                'roi_percentage' => $badge['groi'],
+                'avg_price' => $badge['orders'] > 0 ? round($badge['l30'] / $badge['orders'], 2) : 0,
+                'l30_sales' => $badge['l30'],
+                'total_fees' => 0,
+                'net_proceeds' => 0,
+                'kw_spent' => 0,
+                'pmt_spent' => 0,
+                'n_pft' => $badge['pft'],
+                'n_roi' => $badge['groi'],
+            ];
+        }
+
         // Get Mercari daily data - Without Ship: buyer_shipping_fee > 0 (buyer pays shipping)
         $data = MercariDailyData::where('buyer_shipping_fee', '>', 0)->get();
 
