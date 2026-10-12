@@ -588,6 +588,7 @@ $(document).ready(function () {
                     return `<span style="color:${res.color}; font-weight:700;" title="${title}">${res.bid.toFixed(1)}%</span>`;
                 }
             },
+            ...ebaySbidDiffColumns(),
             {
                 title: 'CVR', field: 'ebay_l30', width: 80, hozAlign: 'center',
                 sorter: function(a, b, aRow, bRow) {
@@ -673,6 +674,65 @@ $(document).ready(function () {
 
 function ebayEsc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Signed diff one Dil vs SBid rule adds. key "discount" is the sum of the negative diffs. */
+function ebaySbidDiffOf(row, key) {
+    if (typeof dilSbidBreakdown !== 'function') return null;
+    const parts = dilSbidBreakdown(row);
+    if (!parts) return null;
+    if (key === 'discount') return parts.discount;
+    return parts.byKey[key];
+}
+function ebaySbidDiffColumns() {
+    const specs = [
+        ['Dil Diff', 'dil', 'Dil rule diff. The S Bid that Dil slab adds. A minus is a discount.'],
+        ['Views Diff', 'views', 'Views rule diff. The S Bid that Views range adds. A minus is a discount.'],
+        ['CVR Diff', 'cvr', 'CVR rule diff. The S Bid that CVR range adds. A minus is a discount.'],
+        ['Sold Diff', 'sold', 'eBay Sold rule diff. The S Bid that eBay Sold range adds. A minus is a discount.'],
+        ['NPFT Diff', 'npft', 'Std NPFT rule diff. The S Bid that Std NPFT range adds. A minus is a discount.'],
+        ['CVR Δ', 'cvrAdj', 'CVR up / down diff. The adjustment that overlay adds. A minus is a discount.'],
+        ['View Δ', 'viewAdj', 'L30 View up / down diff. The adjustment that overlay adds. A minus is a discount.'],
+    ];
+    const diffCol = function(title, key, tip) {
+        return {
+            title: title,
+            field: 'sbid_diff_' + key,
+            width: 78,
+            hozAlign: 'center',
+            headerTooltip: tip,
+            sorter: function(a, b, aRow, bRow) {
+                return (ebaySbidDiffOf(aRow.getData(), key) || 0) - (ebaySbidDiffOf(bRow.getData(), key) || 0);
+            },
+            formatter: function(cell) {
+                const n = ebaySbidDiffOf(cell.getRow().getData(), key);
+                if (n === null || !isFinite(n) || n === 0) return '<span class="text-muted">—</span>';
+                const color = n < 0 ? '#dc3545' : '#198754';
+                const sign = n > 0 ? '+' : '';
+                return '<span style="color:' + color + ';font-weight:700;" title="' + ebayEsc(tip) + '">' + sign + n.toFixed(1) + '</span>';
+            }
+        };
+    };
+    const cols = specs.map(function(spec) { return diffCol(spec[0], spec[1], spec[2]); });
+    cols.push({
+        title: 'T Discount',
+        field: 'sbid_total_discount',
+        width: 96,
+        hozAlign: 'center',
+        headerTooltip: 'Total discount: the sum of every rule diff that is below 0.',
+        sorter: function(a, b, aRow, bRow) {
+            return (ebaySbidDiffOf(aRow.getData(), 'discount') || 0) - (ebaySbidDiffOf(bRow.getData(), 'discount') || 0);
+        },
+        formatter: function(cell) {
+            const row = cell.getRow().getData();
+            const n = ebaySbidDiffOf(row, 'discount');
+            if (n === null || !isFinite(n) || n === 0) return '<span class="text-muted" title="No discount">—</span>';
+            const parts = (typeof dilSbidBreakdown === 'function') ? dilSbidBreakdown(row) : null;
+            const tip = (parts && parts.discountTip) ? parts.discountTip : 'Total discount';
+            return '<span style="color:#dc3545;font-weight:700;" title="' + ebayEsc(tip) + '">' + n.toFixed(1) + '</span>';
+        }
+    });
+    return cols;
 }
 
 /** Last failed S Bid push, keyed by listing id. A later match clears it. */

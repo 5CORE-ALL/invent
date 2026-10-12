@@ -1144,6 +1144,49 @@ function dilSbidOfRow(row) {
     }
     return { bid: capped, color: part.color, skip: false, off: false, title: title };
 }
+/** Signed S Bid each rule adds. Discount is the sum of the negative diffs. */
+function dilSbidBreakdown(row) {
+    if (DIL_SBID_LISTING_WISE && row && !row._dilSbidRolled) {
+        const key = dilSbidListingKey(row);
+        const rolled = key ? dilSbidRollupRow(key) : null;
+        return rolled ? dilSbidBreakdown(rolled) : null;
+    }
+    const dil = dilSbidMetric(row);
+    if (dil === null || !isFinite(dil)) return null;
+    const part = dilSbidDilPart(row, dil);
+    const extra = DIL_SBID_EXT ? dilSbidExtBids(row) : null;
+    const pick = function(key) {
+        return (extra && extra[key]) ? (parseFloat(extra[key].bid) || 0) : 0;
+    };
+    const base = dilSbidRound((parseFloat(part.bid) || 0) + pick('views') + pick('cvr') + pick('sold') + pick('npft'));
+    const cvrAdj = dilSbidApplyCvr(base, row);
+    const viewAdj = dilSbidApplyView(cvrAdj.bid, row);
+    const pieces = [
+        { key: 'dil', label: 'Dil', bid: parseFloat(part.bid) || 0 },
+        { key: 'views', label: 'Views', bid: pick('views') },
+        { key: 'cvr', label: 'CVR', bid: pick('cvr') },
+        { key: 'sold', label: 'eBay Sold', bid: pick('sold') },
+        { key: 'npft', label: 'Std NPFT', bid: pick('npft') },
+        { key: 'cvrAdj', label: 'CVR up/down', bid: parseFloat(cvrAdj.adj) || 0 },
+        { key: 'viewAdj', label: 'L30 View', bid: parseFloat(viewAdj.adj) || 0 },
+    ];
+    const byKey = {};
+    let discount = 0;
+    const bits = [];
+    pieces.forEach(function(p) {
+        byKey[p.key] = p.bid;
+        if (p.bid < 0) {
+            discount += p.bid;
+            bits.push(p.label + ' ' + p.bid);
+        }
+    });
+    return {
+        byKey: byKey,
+        discount: dilSbidRound(discount),
+        discountTip: bits.length ? ('Discount applied: ' + bits.join(', ')) : 'No rule discounted this row',
+    };
+}
+window.dilSbidBreakdown = dilSbidBreakdown;
 function dilSbidEachUnit(fn) {
     const seen = {};
     const rows = DIL_SBID_LISTING_WISE ? dilSbidChildRows() : dilSbidRows();

@@ -27,22 +27,11 @@ class EbayCampaignAdsController extends Controller
 
     public function index()
     {
-        $rule = DB::table('ebay_sbid_rules')->where('key', 'ebay1')->first();
-        $ruleData = $rule ? json_decode($rule->rule, true) : $this->defaultRule();
-        // Backfill threshold for existing rule rows saved before this field was added.
-        if (!isset($ruleData['l7_views_threshold'])) {
-            $ruleData['l7_views_threshold'] = 70;
-        }
-        if (!isset($ruleData['l30_sold_es_bid_max'])) {
-            $ruleData['l30_sold_es_bid_max'] = 0;
-        }
-
         $dil = DB::table('ebay_sbid_rules')->where('key', 'ebay1_dil')->first();
         $dilData = $dil ? json_decode($dil->rule, true) : $this->defaultDilRule();
 
         return view('campaign.ebay-campaign-ads', [
-            'sbidRule' => $ruleData,
-            'dilRule'  => $dilData,
+            'dilRule' => $dilData,
         ]);
     }
 
