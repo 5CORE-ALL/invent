@@ -10,6 +10,7 @@ use App\Support\Marketplace\ChannelListingRegistry;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuListingStatus;
+use App\Services\MarketplaceManager\TemuListingPublishService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -85,6 +86,89 @@ class ListingTemuController extends Controller
     public function getNrReqCount()
     {
         return ChannelListingRegistry::nrReqCountArray('temu');
+    }
+
+    public function publish(Request $request, TemuListingPublishService $publisher)
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(180);
+        }
+
+        $skus = $this->skusFromRequest($request);
+        if ($skus === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'SKU is required.',
+            ], 422);
+        }
+
+        try {
+            $mode = strtolower(trim((string) $request->input('mode', 'variation'))) === 'single'
+                ? 'single'
+                : 'variation';
+            $parentHint = trim((string) $request->input('parent', $request->input('parent_hint', '')));
+            $result = $publisher->publishSkus($skus, ! $request->boolean('confirmed'), $mode, $parentHint);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Publish to Temu failed: '.$e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    public function publishPreview(Request $request, TemuListingPublishService $publisher)
+    {
+        $skus = $this->skusFromRequest($request);
+        if ($skus === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select at least one SKU.',
+                'groups' => [],
+            ], 422);
+        }
+
+        $raw = $request->input('sku_parents', $request->input('skuParents', []));
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        $parents = [];
+        foreach (is_array($raw) ? $raw : [] as $sku => $parent) {
+            if (is_array($parent)) {
+                $sku = $parent['sku'] ?? $sku;
+                $parent = $parent['parent'] ?? '';
+            }
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $parents[$sku] = trim((string) $parent);
+            }
+        }
+
+        return response()->json($publisher->previewFromSkus($skus, $parents));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function skusFromRequest(Request $request): array
+    {
+        $skus = $request->input('skus');
+        if (! is_array($skus) || $skus === []) {
+            $single = trim((string) $request->input('sku', ''));
+            $skus = $single !== '' ? [$single] : [];
+        }
+
+        $out = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $out[] = $sku;
+            }
+        }
+
+        return $out;
     }
 
     public function import(Request $request)

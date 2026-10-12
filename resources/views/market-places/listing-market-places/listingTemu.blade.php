@@ -298,7 +298,25 @@
             display: flex;
             flex: 0 0 auto;
             align-items: center;
+            gap: 4px;
             margin-left: 0;
+        }
+
+        #temu-listing-toolbar .temu-bulk-publish-btn {
+            height: 30px;
+            padding: 0 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        #temu-listing-toolbar .temu-bulk-publish-btn:disabled {
+            opacity: 0.65;
+            cursor: wait;
         }
 
         #temu-listing-toolbar .listing-io-btn {
@@ -458,6 +476,154 @@
             line-height: 1;
         }
 
+        .temu-publish-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border: 0;
+            border-radius: 6px;
+            background: #0d6efd;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.3;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        }
+
+        .temu-publish-btn:hover {
+            background: #0b5ed7;
+            color: #fff;
+        }
+
+        .temu-publish-btn:disabled,
+        .temu-publish-btn.is-publishing {
+            opacity: 0.75;
+            cursor: wait;
+        }
+
+        .temu-publish-modal-note {
+            font-size: 13px;
+            color: #475569;
+            margin-bottom: 12px;
+        }
+
+        .temu-publish-mode {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            font-size: 13px;
+            color: #0f172a;
+        }
+
+        .temu-publish-mode label {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin: 0;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .temu-publish-mode label:has(input:checked) {
+            border-color: #0d6efd;
+            background: #eff6ff;
+            box-shadow: 0 0 0 1px #0d6efd;
+        }
+
+        .temu-publish-mode label strong { display: block; font-size: 13px; color: #0f172a; }
+        .temu-publish-mode label em {
+            display: block;
+            font-style: normal;
+            font-weight: 400;
+            font-size: 12px;
+            color: #475569;
+            margin-top: 2px;
+        }
+
+        .temu-publish-mode input {
+            margin-top: 3px;
+            flex: 0 0 auto;
+        }
+
+        .temu-publish-role {
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 1px 7px;
+            white-space: nowrap;
+        }
+        .temu-publish-role.is-picked { background: #dcfce7; color: #166534; }
+        .temu-publish-role.is-suggested { background: #f1f5f9; color: #475569; }
+
+        @media (max-width: 640px) {
+            .temu-publish-mode { grid-template-columns: 1fr; }
+        }
+
+        .temu-publish-group {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .temu-publish-group-head {
+            background: #f8fafc;
+            padding: 8px 12px;
+            font-weight: 700;
+            font-size: 13px;
+            color: #0f172a;
+        }
+
+        .temu-publish-group table {
+            width: 100%;
+            margin: 0;
+            font-size: 12px;
+        }
+
+        .temu-publish-group th,
+        .temu-publish-group td {
+            padding: 6px 10px;
+            vertical-align: middle;
+        }
+
+        .temu-publish-status {
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .temu-publish-status.is-publish { color: #15803d; }
+        .temu-publish-status.is-skip { color: #64748b; }
+        .temu-publish-status.is-missing { color: #b45309; }
+
+        #temu-publish-groups table tbody tr {
+            display: table-row;
+        }
+
+        #temu-publish-groups .sku-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        #temu-publish-progress {
+            font-size: 13px;
+            color: #334155;
+            min-height: 1.2em;
+        }
+
         /* ========== LINK CELL ========== */
         #temu-listing-wrap a.listing-item-link {
             font-weight: 600;
@@ -550,9 +716,9 @@
                                 <option value="Pending">Missing L</option>
                             </select>
                             <button type="button"
-                                class="btn btn-sm btn-primary listing-page-tools-btn"
+                                class="btn btn-sm btn-primary temu-bulk-publish-btn"
                                 id="bulk-publish-btn"
-                                title="Publish selected SKUs independently or as parent variations">
+                                title="Publish selected SKUs as parent variations">
                                 <i class="fas fa-cloud-upload-alt"></i> Publish selected
                             </button>
                             <div class="toolbar-actions">
@@ -592,8 +758,45 @@
                         </div>
                     </div>
 
-                    @include('market-places.listing-market-places._listing_publish_modal')
-
+                    <div class="modal fade" id="temuPublishModal" tabindex="-1" aria-labelledby="temuPublishModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="temuPublishModalLabel">Publish listings</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="temu-publish-modal-note" id="temu-publish-modal-note">
+                                        Only SKUs you check are published. Suggested siblings stay off until you check them.
+                                    </p>
+                                    <div class="temu-publish-mode" role="radiogroup" aria-label="How do you want to list?">
+                                        <label>
+                                            <input type="radio" name="temu-publish-mode" value="single" checked>
+                                            <span>
+                                                <strong>Single listing</strong>
+                                                <em>Each checked SKU becomes its own listing. Suggested siblings are hidden.</em>
+                                            </span>
+                                        </label>
+                                        <label>
+                                            <input type="radio" name="temu-publish-mode" value="variation">
+                                            <span>
+                                                <strong>Variation listing</strong>
+                                                <em>One listing with the SKUs you check. Suggested siblings start unchecked.</em>
+                                            </span>
+                                        </label>
+                                    </div>
+                                    <div id="temu-publish-groups"></div>
+                                    <div id="temu-publish-progress"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" id="temu-publish-confirm">
+                                        <i class="fas fa-cloud-upload-alt"></i> Publish listing(s)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <div id="temu-listing-wrap">
                         <div id="temuListing-table"></div>
@@ -644,11 +847,51 @@
                 </div>
             `);
             $('body').append(notification);
-            setTimeout(() => notification.find('.alert').alert('close'), 3000);
+            setTimeout(() => notification.find('.alert').alert('close'), type === 'danger' ? 10000 : 4000);
         }
 
         function showLoader() {
             $('#data-loader').fadeIn(100);
+        }
+
+        function copySkuToClipboard(text, btn) {
+            const done = function () {
+                showNotification('success', 'Copied: ' + text);
+                if (!btn) return;
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.classList.remove('fa-copy');
+                    icon.classList.add('fa-check');
+                    setTimeout(function () {
+                        icon.classList.remove('fa-check');
+                        icon.classList.add('fa-copy');
+                    }, 1200);
+                }
+            };
+            const fallback = function () {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.top = '0';
+                ta.style.left = '0';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                try {
+                    document.execCommand('copy');
+                    done();
+                } catch (err) {
+                    showNotification('danger', 'Could not copy SKU');
+                }
+                document.body.removeChild(ta);
+            };
+            if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(fallback);
+            } else {
+                fallback();
+            }
         }
 
         function hideLoader() {
@@ -659,7 +902,7 @@
             const mapped = (rows || []).map(item => {
                 const inv = parseFloat(item.INV) || 0;
                 const goodsId = String(item.goods_id || item.listing_id || item.eBay_item_id || '').trim();
-                // Automated: NRL from TemuDataView; Listed from temu_metrics.goods_id
+                // Automated: NRL from TemuDataView; Listed from temu_metrics.goods_id (API)
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
                 const listed = goodsId ? 'Listed' : 'Pending';
                 return {
@@ -859,6 +1102,28 @@
             return `<span class="listing-auto-badge listing-auto-badge--not-listed" title="Missing L — no Temu goods_id">Missing L</span>`;
         }
 
+        function formatPublishToTemu(cell) {
+            const data = cell.getRow().getData();
+            if (data.is_parent) return '';
+
+            const goodsId = String(data.goods_id || data.listing_id || data.eBay_item_id || '').trim();
+            if (goodsId) {
+                return '<span class="text-muted" title="Already listed on Temu">—</span>';
+            }
+
+            const nrReq = String(data.nr_req || 'REQ');
+            if (nrReq === 'NR' || nrReq === 'NRL') {
+                return '<span class="text-muted" title="NRL SKUs are not published">—</span>';
+            }
+
+            const sku = String(data.sku || '').trim();
+            if (!sku) return '';
+
+            return `<button type="button" class="temu-publish-btn" data-sku="${escapeHtml(sku)}" title="Review variations for ${escapeHtml(sku)} then publish to Temu">
+                <i class="fas fa-cloud-upload-alt"></i> Publish
+            </button>`;
+        }
+
         $(document).ready(function () {
             showLoader();
 
@@ -920,8 +1185,19 @@
                         field: 'sku',
                         hozAlign: 'left',
                         headerHozAlign: 'center',
-                        minWidth: 160,
-                        widthGrow: 1.2
+                        minWidth: 180,
+                        widthGrow: 1.2,
+                        formatter: function (cell) {
+                            const sku = String(cell.getValue() || '').trim();
+                            if (!sku) return '';
+                            const safe = escapeHtml(sku);
+                            return `<span class="sku-cell"><span class="sku-cell-text">${safe}</span><button type="button" class="copy-sku-btn" data-sku="${safe}" title="Copy SKU"><i class="fas fa-copy"></i></button></span>`;
+                        },
+                        cellClick: function (e) {
+                            if (e.target.closest && e.target.closest('.copy-sku-btn')) {
+                                e.stopPropagation();
+                            }
+                        }
                     },
                     {
                         title: 'INV',
@@ -1004,6 +1280,16 @@
                         width: 130,
                         headerTooltip: 'Automatic from temu_metrics.goods_id (Missing L when REQ and no goods_id)',
                         formatter: formatListed
+                    },
+                    {
+                        title: 'Publish to Temu',
+                        field: 'publish_to_temu',
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerSort: false,
+                        width: 150,
+                        headerTooltip: 'Review parent variations, then publish Missing L SKUs to Temu',
+                        formatter: formatPublishToTemu
                     }
                 ]
             });
@@ -1067,6 +1353,495 @@
                 }
             });
 
+            function publishStatusLabel(status, reason) {
+                if (status === 'will_publish') {
+                    const extra = reason ? ` title="${escapeHtml(reason)}"` : '';
+                    return `<span class="temu-publish-status is-publish"${extra}>${reason ? escapeHtml(reason) : 'Will publish'}</span>`;
+                }
+                const text = reason || 'Skipped';
+                const missing = ['skipped_no_title', 'skipped_no_description', 'skipped_no_image', 'skipped_no_dim'].indexOf(status) !== -1;
+                return `<span class="temu-publish-status ${missing ? 'is-missing' : 'is-skip'}">${escapeHtml(text)}</span>`;
+            }
+
+            function listingRows() {
+                if (allListingData && allListingData.length) {
+                    return allListingData;
+                }
+                return (temuListingTable && temuListingTable.getData()) || [];
+            }
+
+            function skuKey(sku) {
+                return String(sku || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+            }
+
+            function normalizePreviewChildren(children) {
+                if (Array.isArray(children)) {
+                    return children.filter(function (child) { return child && typeof child === 'object'; });
+                }
+                if (children && typeof children === 'object') {
+                    if (children.sku) {
+                        return [children];
+                    }
+                    return Object.keys(children).map(function (key) {
+                        return children[key];
+                    }).filter(function (child) { return child && typeof child === 'object'; });
+                }
+                return [];
+            }
+
+            function listingParentForSku(sku) {
+                sku = String(sku || '').trim();
+                const want = skuKey(sku);
+                const rows = listingRows();
+                for (let i = 0; i < rows.length; i++) {
+                    const rowSku = String(rows[i].sku || '').trim();
+                    if (rowSku === sku || skuKey(rowSku) === want) {
+                        return String(rows[i].parent || '').trim();
+                    }
+                }
+                return '';
+            }
+
+            function listingChildrenForParent(parent) {
+                parent = String(parent || '').trim();
+                const parentWant = skuKey(parent);
+                if (!parentWant) return [];
+                const out = [];
+                const seen = {};
+                listingRows().forEach(function (row) {
+                    const sku = String(row.sku || '').trim();
+                    if (!sku || isParentSku(sku) || seen[sku]) return;
+                    const rowParent = String(row.parent || '').trim();
+                    if (skuKey(rowParent) !== parentWant && rowParent.toUpperCase() !== parent.toUpperCase()) return;
+                    seen[sku] = true;
+                    out.push(row);
+                });
+                return out;
+            }
+
+            let temuPreviewSeedSkus = [];
+
+            function isPreviewSeedSku(sku) {
+                const want = skuKey(sku);
+                return temuPreviewSeedSkus.some(function (seed) {
+                    return skuKey(seed) === want;
+                });
+            }
+
+            function skuParentsMap(skus) {
+                const pairs = [];
+                const seen = {};
+                (skus || []).forEach(function (sku) {
+                    sku = String(sku || '').trim();
+                    if (!sku || seen[sku]) return;
+                    seen[sku] = true;
+                    pairs.push({ sku: sku, parent: listingParentForSku(sku) });
+                });
+                return pairs;
+            }
+
+            function expandPreviewSkus(skus) {
+                const unique = [];
+                const seen = {};
+                (skus || []).forEach(function (sku) {
+                    sku = String(sku || '').trim();
+                    if (!sku || isParentSku(sku) || seen[sku]) return;
+                    seen[sku] = true;
+                    unique.push(sku);
+                });
+                return unique;
+            }
+
+            function fallbackGroupsFromTable(skus) {
+                const parentOrder = [];
+                const byParent = {};
+                (skus || []).forEach(function (sku) {
+                    sku = String(sku || '').trim();
+                    if (!sku || isParentSku(sku)) return;
+                    const parent = listingParentForSku(sku) || sku;
+                    const key = parent.toUpperCase();
+                    if (!byParent[key]) {
+                        byParent[key] = { parent: parent, children: [] };
+                        parentOrder.push(key);
+                    }
+                    const single = selectedPublishMode() === 'single';
+                    listingChildrenForParent(parent).forEach(function (row) {
+                        const childSku = String(row.sku || '').trim();
+                        if (!childSku) return;
+                        if (single && !isPreviewSeedSku(childSku)) return;
+                        if (byParent[key].children.some(function (c) { return skuKey(c.sku) === skuKey(childSku); })) return;
+                        byParent[key].children.push({
+                            sku: childSku,
+                            spec: childSku,
+                            inv: row.INV ?? 0,
+                            status: 'will_publish',
+                            reason: '',
+                            selected: isPreviewSeedSku(childSku)
+                        });
+                    });
+                    if (!byParent[key].children.some(function (c) { return skuKey(c.sku) === skuKey(sku); })) {
+                        byParent[key].children.push({
+                            sku: sku,
+                            spec: sku,
+                            inv: 0,
+                            status: 'will_publish',
+                            reason: '',
+                            selected: isPreviewSeedSku(sku)
+                        });
+                    }
+                });
+                return parentOrder.map(function (key) { return byParent[key]; }).filter(function (g) {
+                    return g.children && g.children.length;
+                });
+            }
+
+            function mergePreviewGroups(groups, skus) {
+                const parentOrder = [];
+                const byParent = {};
+                const addChild = function (parent, child, overwrite) {
+                    parent = String(parent || '').trim() || 'Standalone';
+                    const key = parent.toUpperCase();
+                    if (!byParent[key]) {
+                        byParent[key] = { parent: parent, children: [], single_child: false };
+                        parentOrder.push(key);
+                    }
+                    const sku = String((child && child.sku) || '').trim();
+                    if (!sku) return;
+                    const existing = byParent[key].children.find(function (row) {
+                        return skuKey(row.sku) === skuKey(sku);
+                    });
+                    if (existing) {
+                        if (overwrite) Object.assign(existing, child);
+                        return;
+                    }
+                    byParent[key].children.push(child);
+                };
+                (groups || []).forEach(function (group) {
+                    const parent = String(group.parent || '').trim();
+                    if (group.single_child) {
+                        const key = (parent || 'Standalone').toUpperCase();
+                        if (!byParent[key]) {
+                            byParent[key] = { parent: parent || 'Standalone', children: [], single_child: true };
+                            parentOrder.push(key);
+                        } else {
+                            byParent[key].single_child = true;
+                        }
+                    }
+                    normalizePreviewChildren(group.children).forEach(function (child) {
+                        addChild(parent, child, true);
+                    });
+                });
+                fallbackGroupsFromTable(skus).forEach(function (group) {
+                    normalizePreviewChildren(group.children).forEach(function (child) {
+                        addChild(group.parent, child, false);
+                    });
+                });
+                return parentOrder.map(function (key) {
+                    const group = byParent[key];
+                    group.single_child = group.single_child || group.children.length <= 1;
+                    return group;
+                }).filter(function (group) {
+                    return group.children.length;
+                });
+            }
+
+            function selectedPublishMode() {
+                const mode = String($('input[name="temu-publish-mode"]:checked').val() || 'single').toLowerCase();
+                return mode === 'variation' ? 'variation' : 'single';
+            }
+
+            function updateTemuModalCopy() {
+                const single = selectedPublishMode() === 'single';
+                $('#temuPublishModalLabel').text(single ? 'Publish single listings' : 'Publish variation listing');
+                $('#temu-publish-modal-note').text(single
+                    ? 'Each checked SKU becomes its own Temu listing. Suggested siblings are hidden in this mode.'
+                    : 'One Temu listing per group. Only the SKUs you check are included — suggested siblings stay off until you check them.');
+                const $btn = $('#temu-publish-confirm');
+                if (!$btn.prop('disabled')) {
+                    $btn.html(single
+                        ? '<i class="fas fa-cloud-upload-alt"></i> Publish listing(s)'
+                        : '<i class="fas fa-cloud-upload-alt"></i> Publish variation(s)');
+                }
+            }
+
+            function childShouldCheck(child) {
+                if (child.status !== 'will_publish') return false;
+                if (typeof child.selected === 'boolean') return child.selected;
+                return isPreviewSeedSku(child.sku);
+            }
+
+            function renderPublishGroups(groups) {
+                if (!groups || !groups.length) {
+                    $('#temu-publish-groups').html('<p class="text-muted mb-0">No children found to publish.</p>');
+                    $('#temu-publish-confirm').prop('disabled', true);
+                    return;
+                }
+                const single = selectedPublishMode() === 'single';
+                let html = '';
+                let canPublish = false;
+                groups.forEach(function (group, gi) {
+                    const parent = String(group.parent || 'Standalone');
+                    const children = normalizePreviewChildren(group.children);
+                    const selectedCount = children.filter(childShouldCheck).length;
+                    html += `<div class="temu-publish-group" data-group-index="${gi}" data-parent="${escapeHtml(parent)}">`;
+                    html += `<div class="temu-publish-group-head">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</div>`;
+                    html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th><th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
+                    children.forEach(function (child) {
+                        const sku = String(child.sku || '');
+                        const publishable = child.status === 'will_publish';
+                        const checked = childShouldCheck(child);
+                        if (checked) canPublish = true;
+                        const role = checked
+                            ? '<span class="temu-publish-role is-picked">Your pick</span>'
+                            : '<span class="temu-publish-role is-suggested">Suggested sibling</span>';
+                        html += '<tr>';
+                        html += `<td><input type="checkbox" class="temu-publish-sku-check" data-sku="${escapeHtml(sku)}" ${checked ? 'checked' : ''} ${publishable ? '' : 'disabled'}></td>`;
+                        html += `<td><span class="sku-cell"><span class="sku-cell-text">${escapeHtml(sku)}</span><button type="button" class="copy-sku-btn" data-sku="${escapeHtml(sku)}" title="Copy SKU"><i class="fas fa-copy"></i></button></span></td>`;
+                        html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
+                        html += `<td>${role}</td>`;
+                        html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;
+                        html += '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                });
+                $('#temu-publish-groups').html(html);
+                $('#temu-publish-confirm').prop('disabled', !canPublish);
+                $('#temu-publish-progress').text('');
+                updateTemuModalCopy();
+            }
+
+            $(document).on('change', '.temu-publish-sku-check', function () {
+                const $group = $(this).closest('.temu-publish-group');
+                const parent = String($group.attr('data-parent') || '').trim();
+                const selectedCount = $group.find('.temu-publish-sku-check:checked:not(:disabled)').length;
+                const single = selectedPublishMode() === 'single';
+                const $role = $(this).closest('tr').find('.temu-publish-role');
+                if ($role.length) {
+                    if (this.checked && !this.disabled) {
+                        $role.removeClass('is-suggested').addClass('is-picked').text('Your pick');
+                    } else {
+                        $role.removeClass('is-picked').addClass('is-suggested').text('Suggested sibling');
+                    }
+                }
+                $group.find('.temu-publish-group-head').text(
+                    parent + ' · ' + selectedCount + ' selected for ' +
+                    (single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation')
+                );
+                const anyChecked = $('#temu-publish-groups .temu-publish-sku-check:checked:not(:disabled)').length > 0;
+                $('#temu-publish-confirm').prop('disabled', !anyChecked);
+            });
+
+            function selectedPublishGroups() {
+                const groups = [];
+                $('#temu-publish-groups .temu-publish-group').each(function () {
+                    const parent = String($(this).attr('data-parent') || $(this).find('.temu-publish-group-head').text().split(' · ')[0] || '').trim();
+                    const skus = [];
+                    $(this).find('.temu-publish-sku-check:checked:not(:disabled)').each(function () {
+                        const sku = String($(this).attr('data-sku') || '').trim();
+                        if (sku) skus.push(sku);
+                    });
+                    if (skus.length) {
+                        groups.push({ parent: parent, skus: skus });
+                    }
+                });
+                if (selectedPublishMode() !== 'single') return groups;
+                const out = [];
+                groups.forEach(function (group) {
+                    group.skus.forEach(function (sku) {
+                        out.push({ parent: sku, skus: [sku] });
+                    });
+                });
+                return out;
+            }
+
+            function markRowsListed(skus, goodsId) {
+                if (!temuListingTable || !skus || !skus.length) return;
+                const want = {};
+                skus.forEach(function (sku) { want[String(sku).trim()] = true; });
+                (temuListingTable.getRows() || []).forEach(function (row) {
+                    const data = row.getData() || {};
+                    if (!want[String(data.sku || '').trim()]) return;
+                    row.update({
+                        goods_id: goodsId,
+                        listing_id: goodsId,
+                        eBay_item_id: goodsId,
+                        listed: 'Listed'
+                    });
+                });
+                calculateTotals();
+            }
+
+            function requestTemuPreview(unique) {
+                $.ajax({
+                    url: "{{ url('/listing_temu/save-status') }}",
+                    type: 'POST',
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify({
+                        skus: unique,
+                        sku_parents: skuParentsMap(unique),
+                        preview: 1,
+                        channel: 'temu',
+                        mode: selectedPublishMode()
+                    }),
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                    success: function (response) {
+                        renderPublishGroups(mergePreviewGroups((response && response.groups) || [], unique));
+                    },
+                    error: function (xhr) {
+                        const groups = mergePreviewGroups((xhr.responseJSON && xhr.responseJSON.groups) || [], unique);
+                        if (groups.length) {
+                            renderPublishGroups(groups);
+                            return;
+                        }
+                        hideBsModal('temuPublishModal');
+                        let msg = 'Could not build listing preview.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                        showNotification('danger', msg);
+                    }
+                });
+            }
+
+            function openPublishPreview(skus) {
+                const unique = expandPreviewSkus(skus);
+                if (!unique.length) {
+                    showNotification('danger', 'Select at least one SKU.');
+                    return;
+                }
+                temuPreviewSeedSkus = unique.slice();
+                $('#temu-publish-groups').html('<p class="text-muted mb-0">Loading listing preview…</p>');
+                $('#temu-publish-confirm').prop('disabled', true);
+                $('#temu-publish-progress').text('');
+                updateTemuModalCopy();
+                showBsModal('temuPublishModal');
+                renderPublishGroups(fallbackGroupsFromTable(unique));
+                requestTemuPreview(unique);
+            }
+
+            $(document).on('change', 'input[name="temu-publish-mode"]', function () {
+                updateTemuModalCopy();
+                if (!temuPreviewSeedSkus.length) return;
+                $('#temu-publish-groups').html('<p class="text-muted mb-0">Updating preview…</p>');
+                requestTemuPreview(temuPreviewSeedSkus);
+            });
+
+            function publishAjaxError(xhr) {
+                if (xhr.status === 0) {
+                    return 'Publish timed out or the connection dropped. Try again.';
+                }
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    return xhr.responseJSON.message;
+                }
+                if (xhr.responseJSON && xhr.responseJSON.errors) {
+                    const first = Object.values(xhr.responseJSON.errors)[0];
+                    return Array.isArray(first) ? String(first[0]) : String(first);
+                }
+                if (xhr.status === 419) {
+                    return 'Session expired. Refresh the page and try Publish again.';
+                }
+                return 'Publish to Temu failed.';
+            }
+
+            function publishGroup(skus, parent) {
+                return $.ajax({
+                    url: "{{ url('/listing_temu/save-status') }}",
+                    type: 'POST',
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify({
+                        skus: skus,
+                        confirmed: 1,
+                        publish: 1,
+                        channel: 'temu',
+                        mode: selectedPublishMode(),
+                        parent: parent || ''
+                    }),
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                    timeout: 180000
+                });
+            }
+
+            $(document).on('click', '.copy-sku-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                const sku = String($(this).attr('data-sku') || '').trim();
+                if (sku) copySkuToClipboard(sku, this);
+            });
+
+            $(document).on('click', '.temu-publish-btn', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const sku = String($(this).attr('data-sku') || $(this).data('sku') || '').trim();
+                if (!sku) {
+                    showNotification('danger', 'SKU is missing.');
+                    return;
+                }
+                openPublishPreview([sku]);
+            });
+
+            $('#bulk-publish-btn').on('click', function () {
+                if (!temuListingTable) return;
+                const selected = (temuListingTable.getSelectedData() || [])
+                    .map(function (row) { return String(row.sku || '').trim(); })
+                    .filter(function (sku) { return sku && !isParentSku(sku); });
+                if (!selected.length) {
+                    showNotification('danger', 'Select one or more SKUs first.');
+                    return;
+                }
+                openPublishPreview(selected);
+            });
+
+            $('#temu-publish-confirm').on('click', function () {
+                const $btn = $(this);
+                if ($btn.prop('disabled')) return;
+                const groups = selectedPublishGroups();
+                if (!groups.length) {
+                    showNotification('danger', 'Check at least one SKU to publish.');
+                    return;
+                }
+                const originalHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Publishing');
+                $('#temuPublishModal .btn-close, #temuPublishModal [data-bs-dismiss="modal"]').prop('disabled', true);
+
+                let index = 0;
+                const ok = [];
+                const fail = [];
+
+                function next() {
+                    if (index >= groups.length) {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        $('#temuPublishModal .btn-close, #temuPublishModal [data-bs-dismiss="modal"]').prop('disabled', false);
+                        if (ok.length) {
+                            showNotification('success', ok.join(' '));
+                        }
+                        if (fail.length) {
+                            showNotification('danger', fail.join(' '));
+                        }
+                        if (ok.length && !fail.length) {
+                            hideBsModal('temuPublishModal');
+                        }
+                        return;
+                    }
+                    const group = groups[index];
+                    index += 1;
+                    $('#temu-publish-progress').text('Publishing ' + group.parent + ' (' + index + '/' + groups.length + ')…');
+                    publishGroup(group.skus, group.parent).done(function (response) {
+                        const goodsId = String((response && response.goods_id) || '').trim();
+                        const listedSkus = (response && response.skus) || group.skus;
+                        if (goodsId) {
+                            markRowsListed(listedSkus, goodsId);
+                        }
+                        ok.push((response && response.message) ? response.message : ('Published ' + group.parent + '.'));
+                        next();
+                    }).fail(function (xhr) {
+                        fail.push(group.parent + ': ' + publishAjaxError(xhr));
+                        next();
+                    });
+                }
+                next();
+            });
+
             $('#import-btn').on('click', function () {
                 showBsModal('importModal');
             });
@@ -1126,8 +1901,6 @@
             exportName: 'temu_listing',
             channel: 'temu',
             channelLabel: "Temu",
-            supportsIndependentPublish: true,
-            defaultPublishMode: 'single',
             previewUrl: '/listing_temu/save-status',
             publishUrl: '/listing_temu/save-status'
         };
