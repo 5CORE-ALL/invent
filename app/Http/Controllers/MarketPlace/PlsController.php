@@ -71,8 +71,9 @@ class PlsController extends Controller
             ? collect()
             : ProductMaster::whereIn('sku', $skus)->get()->keyBy(fn ($pm) => strtoupper(trim((string) $pm->sku)));
         $margin = MarketplacePercentage::takeHomeDecimal('PLS', 'Pls');
+        [$slabService, $shipSlabRates] = \App\Http\Controllers\Sales\EbaySalesController::shipSlabLookup();
 
-        $rows = $sales->map(function ($sale) use ($productMasters, $margin) {
+        $rows = $sales->map(function ($sale) use ($productMasters, $margin, $slabService, $shipSlabRates) {
             $quantity = (float) ($sale->quantity ?? 0);
             $unitPrice = (float) ($sale->price ?? 0);
             $saleAmount = (float) ($sale->total_amount ?? 0);
@@ -82,10 +83,13 @@ class PlsController extends Controller
 
             $sku = strtoupper(trim((string) ($sale->sku ?? '')));
             $lp = 0.0;
+            $values = [];
+            $parent = '';
             $pm = $sku !== '' ? ($productMasters[$sku] ?? null) : null;
             if ($pm) {
                 $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
                 $values = is_array($values) ? $values : [];
+                $parent = (string) ($pm->parent ?? '');
                 foreach ($values as $k => $v) {
                     if (strtolower((string) $k) === 'lp') {
                         $lp = (float) $v;
@@ -98,9 +102,14 @@ class PlsController extends Controller
             }
 
             // price is the unit. total_amount is already unit × Qty, so sales is that amount once.
-            // PLS sales has no ship amount, so nothing is subtracted for ship.
+            // COGS Ship: one Shipping Master slab for the line's total weight (same rule as
+            // the eBay / Shopify daily-sales pages), subtracted once from the line profit.
+            $shipCost = $quantity > 0
+                ? \App\Http\Controllers\Sales\EbaySalesController::cogsShipForSku($slabService, $shipSlabRates, (string) ($sale->sku ?? ''), $values, $quantity, $parent)
+                : 0.0;
+            $tWeight = \App\Http\Controllers\Sales\EbaySalesController::actWeightLb($values) * max($quantity, 0);
             $cogs = $lp * $quantity;
-            $pft = ($saleAmount * $margin) - $cogs;
+            $pft = ($saleAmount * $margin) - $cogs - $shipCost;
             $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             return [
@@ -123,6 +132,8 @@ class PlsController extends Controller
                 'customer_name' => $sale->customer_name,
                 'currency' => $sale->currency,
                 'lp' => round($lp, 2),
+                't_weight' => round($tWeight, 2),
+                'ship_cost' => round($shipCost, 2),
                 'cogs' => round($cogs, 2),
                 'pft' => round($pft, 2),
                 'roi' => round($roi, 2),
@@ -133,9 +144,9 @@ class PlsController extends Controller
     }
 
     /**
-     * Same integers the PLS sales badges use. Sales is the line amount once. No ship.
+     * Same integers the PLS sales badges use. Sales is the line amount once. Ship is one weight slab per line, already subtracted from PFT.
      *
-     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, gpft: int, groi: int}|null
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}|null
      */
     public function dailySalesBadgeTotals(): ?array
     {
@@ -153,6 +164,7 @@ class PlsController extends Controller
         $sales = 0.0;
         $pft = 0.0;
         $cogs = 0.0;
+        $ship = 0.0;
         foreach ($payload as $row) {
             if (! is_array($row)) {
                 continue;
@@ -166,6 +178,7 @@ class PlsController extends Controller
             $sales += is_finite($lineSales) ? $lineSales : (float) ($row['total_amount'] ?? 0);
             $pft += (float) ($row['pft'] ?? 0);
             $cogs += (float) ($row['cogs'] ?? 0);
+            $ship += (float) ($row['ship_cost'] ?? 0);
         }
 
         $pftRounded = (int) round($pft);
@@ -178,6 +191,7 @@ class PlsController extends Controller
             'qty' => $qty,
             'pft' => $pftRounded,
             'cogs' => $cogsRounded,
+            'ship' => (int) round($ship),
             'gpft' => $salesRounded !== 0 ? (int) round(($pftRounded / $salesRounded) * 100) : 0,
             'groi' => $cogsRounded !== 0 ? (int) round(($pftRounded / $cogsRounded) * 100) : 0,
         ];
