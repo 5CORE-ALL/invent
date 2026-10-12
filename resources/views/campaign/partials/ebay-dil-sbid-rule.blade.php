@@ -1032,6 +1032,11 @@ function dilSbidIndexIn(slabs, value) {
 }
 /** Std NPFT % as on /lmp-overall: ((Std × 0.70 − ship − LP) / Std) × 100, 2 decimals. Null without a Std Prc. */
 function dilSbidStdNpft(row) {
+    if (row && Object.prototype.hasOwnProperty.call(row, 'std_npft')) {
+        if (row.std_npft === null || row.std_npft === '') return null;
+        const preset = parseFloat(row.std_npft);
+        return isFinite(preset) ? preset : null;
+    }
     const std = parseFloat(row && row.STANDARD_PRICE);
     if (!(std > 0)) return null;
     const lp = parseFloat(row.LP_productmaster);

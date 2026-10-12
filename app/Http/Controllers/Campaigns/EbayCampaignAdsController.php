@@ -9,6 +9,7 @@ use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\CpMasterDil;
+use App\Support\EbayStdNpftLookup;
 use App\Support\EbayYesterdaySpend;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -730,11 +731,37 @@ class EbayCampaignAdsController extends Controller
         $data  = $query->orderBy('ca.id', 'desc')->get();
         CpMasterDil::hydrate($data);
         EbayYesterdaySpend::attachToCampaignRows($data);
+        $this->attachStdNpft($data);
 
         return response()->json([
             'total' => $total,
             'data'  => $data,
         ]);
+    }
+
+    /**
+     * Std NPFT % from /lmp-overall, including Sku Link siblings, so the Dil vs
+     * SBid modal counts the same number the push uses.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $rows
+     */
+    private function attachStdNpft($rows): void
+    {
+        $skus = [];
+        foreach ($rows as $row) {
+            if ((int) ($row->sku_matched ?? 0) !== 1) {
+                continue;
+            }
+            $sku = trim((string) ($row->resolved_sku ?? ''));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $npft = EbayStdNpftLookup::forSkus($skus);
+        foreach ($rows as $row) {
+            $key = EbayStdNpftLookup::key((string) ($row->resolved_sku ?? ''));
+            $row->std_npft = ($key !== '' && array_key_exists($key, $npft)) ? $npft[$key] : null;
+        }
     }
 
     /**

@@ -165,6 +165,18 @@ class ChannelPushSpriceRunner
 
     private function runLocked(ChannelPushSpriceJobStore $store, \Psr\Log\LoggerInterface $logger): int
     {
+        // This process holds the only runner lock, so a task still marked "pushing" was left by a worker
+        // that died or was restarted mid-push. Re-queue it, otherwise the job never completes.
+        $store->update(function (array $state) {
+            foreach ($state['tasks'] ?? [] as $i => $task) {
+                if (is_array($task) && ($task['status'] ?? '') === 'pushing') {
+                    $state['tasks'][$i]['status'] = 'pending';
+                }
+            }
+
+            return $state;
+        });
+
         while (true) {
             $state = $store->load();
             if (($state['status'] ?? 'idle') !== 'running') {
