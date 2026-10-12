@@ -1912,7 +1912,7 @@
         }
         function ebay3HasBlueTriangle(data) {
             if (ebay3IsAlertParentRow(data)) return false;
-            if (!(parseFloat(data && data.INV) > 0)) return false;
+            if (!(ebay3Qty(data && data.INV) > 0)) return false;
             if (ebay3IsEndedListing(data)) return false;
             // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
             // the page's own recalculation, so the badge and the pushes cannot disagree.
@@ -3887,6 +3887,8 @@
         }
 
         // Update summary badges — same metrics/order as Ebay 2 (E Stock gate uses eBay Stock with E Stock fallback)
+        // Shared partials (S PRC save, push queue) recount the badges through window.updateSummary.
+        window.updateSummary = function() { try { return updateSummary(); } catch (e) { /* table not ready yet */ } };
         function updateSummary() {
             const data = ebay3GetBackendSkuRows();
 

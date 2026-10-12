@@ -1437,6 +1437,13 @@
             if (typeof chPromoPatchDatasetSprice === 'function') {
                 chunk.forEach(function(u) { chPromoPatchDatasetSprice(u.sku, { SPRICE_SERVER: u.sprice }); });
             }
+            // Blue badge counts on the saved S PRC; recount as each chunk lands, not only after the last one.
+            clearTimeout(chStdMarkEbaySaved._t);
+            chStdMarkEbaySaved._t = setTimeout(function() {
+                if (typeof updateSummary === 'function') {
+                    try { updateSummary(); } catch (e) { /* ignore */ }
+                }
+            }, 300);
         }
         /**
          * eBay: S PRC is saved through the channel's own save endpoint ({ updates }) and never pushed to eBay.

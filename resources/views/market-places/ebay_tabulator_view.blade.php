@@ -3308,7 +3308,7 @@
             /** Same as Amazon: INV > 0, listed, live S PRC ≠ Price. Badge + auto-push share this. */
             function ebay1HasBlueTriangle(data) {
                 if (!data || ebay1IsAlertParentRow(data)) return false;
-                if (!(parseFloat(data.INV) > 0)) return false;
+                if (!(Number(String(data.INV == null ? '' : data.INV).replace(/[,\s\u00A0]/g, '')) > 0)) return false;
                 if (ebay1IsEndedListing(data)) return false;
                 // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
                 // the page's own recalculation, so the badge and the pushes cannot disagree.
@@ -5935,6 +5935,8 @@
             }
 
             // Update summary badges - use ALL data (not filtered) to match KW/PMP ads pages
+            // Shared partials (S PRC save, push queue) recount the badges through window.updateSummary.
+            window.updateSummary = function() { try { return updateSummary(); } catch (e) { /* table not ready yet */ } };
             function updateSummary() {
                 if (!table) return;
                 // Use getData("all") to get ALL data without filters

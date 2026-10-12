@@ -1646,7 +1646,7 @@
         }
         function ebay2HasBlueTriangle(data) {
             if (isEbay2TabulatorParentRow(data)) return false;
-            if (!(parseFloat(data && data.INV) > 0)) return false;
+            if (!(Number(String(data && data.INV != null ? data.INV : '').replace(/[,\s\u00A0]/g, '')) > 0)) return false;
             if (ebay2IsEndedListing(data)) return false;
             // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
             // the page's own recalculation, so the badge and the pushes cannot disagree.
@@ -4556,6 +4556,8 @@
             }
 
             // Update summary badges - use filtered data for accurate counts
+            // Shared partials (S PRC save, push queue) recount the badges through window.updateSummary.
+            window.updateSummary = function() { try { return updateSummary(); } catch (e) { /* table not ready yet */ } };
             function updateSummary() {
                 // Use active (filtered) data for all counts to match what's actually visible
                 const data = table.getData('active');

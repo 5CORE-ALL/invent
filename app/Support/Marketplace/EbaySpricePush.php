@@ -8,6 +8,7 @@ use App\Models\EbayDataView;
 use App\Models\EbayMetric;
 use App\Models\EbayThreeDataView;
 use App\Models\EbayTwoDataView;
+use App\Models\ShopifySku;
 use App\Services\Ebay2ApiService;
 use App\Services\EbayApiService;
 use App\Services\EbayThreeApiService;
@@ -31,10 +32,13 @@ final class EbaySpricePush
     /**
      * Returns a block reason, or null when the push may go ahead.
      */
-    public static function blockReason(?float $savedSprice, float $price, ?object $metric): ?string
+    public static function blockReason(?float $savedSprice, float $price, ?object $metric, ?float $inv = null): ?string
     {
         if ($price <= 0) {
             return 'Invalid price';
+        }
+        if ($inv !== null && $inv <= 0) {
+            return 'INV 0';
         }
         if ($savedSprice === null || $savedSprice <= 0) {
             return 'No saved S PRC';
@@ -72,6 +76,18 @@ final class EbaySpricePush
         return round((float) $value['SPRICE'], 2);
     }
 
+    /**
+     * Shopify INV, the same INV the eBay pages show (blue badge = INV > 0). Missing SKU counts as 0.
+     */
+    public static function inventory(string $sku): float
+    {
+        $row = ShopifySku::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+            ->first(['inv']);
+
+        return (float) ($row->inv ?? 0);
+    }
+
     public static function metric(string $channel, string $sku): ?object
     {
         $metricClass = self::MAP[$channel][0] ?? null;
@@ -99,7 +115,7 @@ final class EbaySpricePush
         }
         $price = round($price, 2);
         $metric = self::metric($channel, $sku);
-        $reason = self::blockReason(self::savedSprice($channel, $sku), $price, $metric);
+        $reason = self::blockReason(self::savedSprice($channel, $sku), $price, $metric, self::inventory($sku));
         if ($reason !== null) {
             return ['success' => false, 'message' => 'Not pushed: '.$reason];
         }

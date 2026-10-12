@@ -56,6 +56,13 @@ class EbaySpricePushTest extends TestCase
         $this->assertSame('Ended listing', EbaySpricePush::blockReason(24.99, 24.99, $this->metric(['listing_status' => 'ENDED'])));
     }
 
+    public function test_blocks_inv_zero_like_the_blue_badge(): void
+    {
+        $this->assertSame('INV 0', EbaySpricePush::blockReason(24.99, 24.99, $this->metric(), 0.0));
+        $this->assertSame('INV 0', EbaySpricePush::blockReason(24.99, 24.99, $this->metric(), -2.0));
+        $this->assertNull(EbaySpricePush::blockReason(24.99, 24.99, $this->metric(), 3.0));
+    }
+
     public function test_live_matches(): void
     {
         $this->assertTrue(EbaySpricePush::liveMatches($this->metric(['ebay_price' => 24.99]), 24.99));
