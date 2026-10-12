@@ -150,47 +150,63 @@ final class EbayCbidHistory
     }
 
     /**
-     * Seven days before today, then today.
+     * Seven days before today from ebay_general_reports.
+     * report_range is the day. ad_fees is that day's promoted spend.
      *
-     * @return array<int, array{date: string, date_formatted: string, days_ago: int, bid: float|null, is_today: bool}>
+     * @return array<int, array{date: string, date_formatted: string, days_ago: int, bid: float|null, impressions: int|null, clicks: int|null, is_today: bool}>
      */
     public static function series(string $account, string $listingId): array
     {
         $listingId = trim($listingId);
         $today = Carbon::now('America/Los_Angeles')->startOfDay();
         $start = $today->copy()->subDays(7);
-        $stored = [];
-        if ($listingId !== '' && Schema::hasTable('ebay_cbid_daily')) {
-            self::purgeBackfill($account);
+        $end = $today->copy()->subDay();
+        $byDay = [];
+        if ($listingId !== '' && Schema::hasTable('ebay_general_reports')) {
             try {
-                $stored = DB::table('ebay_cbid_daily')
-                    ->where('account', $account)
+                $rows = DB::table('ebay_general_reports')
                     ->where('listing_id', $listingId)
-                    ->whereBetween('day', [$start->toDateString(), $today->toDateString()])
-                    ->whereRaw('`day` >= DATE(`created_at`)')
-                    ->pluck('bid_percentage', 'day')
-                    ->all();
+                    ->whereRaw('CHAR_LENGTH(report_range) = 10')
+                    ->whereBetween('report_range', [$start->toDateString(), $end->toDateString()])
+                    ->get(['report_range', 'ad_fees', 'impressions', 'clicks']);
+                foreach ($rows as $row) {
+                    $day = (string) $row->report_range;
+                    if (! isset($byDay[$day])) {
+                        $byDay[$day] = ['fees' => 0.0, 'impressions' => 0, 'clicks' => 0];
+                    }
+                    $byDay[$day]['fees'] = round($byDay[$day]['fees'] + self::money($row->ad_fees), 2);
+                    $byDay[$day]['impressions'] += (int) ($row->impressions ?? 0);
+                    $byDay[$day]['clicks'] += (int) ($row->clicks ?? 0);
+                }
             } catch (\Throwable $e) {
-                Log::warning('C Bid history series failed', ['listing_id' => $listingId, 'error' => $e->getMessage()]);
+                Log::warning('C Bid history general report failed', ['listing_id' => $listingId, 'error' => $e->getMessage()]);
             }
         }
 
         $out = [];
-        for ($cursor = $start->copy(); $cursor->lte($today); $cursor->addDay()) {
+        for ($cursor = $start->copy(); $cursor->lte($end); $cursor->addDay()) {
             $key = $cursor->toDateString();
-            $raw = $stored[$key] ?? null;
-            if ($raw === null || ! is_numeric($raw)) {
-                continue;
-            }
+            $hit = $byDay[$key] ?? null;
             $out[] = [
                 'date' => $key,
                 'date_formatted' => $cursor->format('M d'),
                 'days_ago' => (int) $cursor->diffInDays($today),
-                'bid' => round((float) $raw, 2),
-                'is_today' => $cursor->isSameDay($today),
+                'bid' => $hit ? $hit['fees'] : null,
+                'impressions' => $hit['impressions'] ?? null,
+                'clicks' => $hit['clicks'] ?? null,
+                'is_today' => false,
             ];
         }
 
         return $out;
+    }
+
+    private static function money(mixed $raw): float
+    {
+        if (is_numeric($raw)) {
+            return round((float) $raw, 2);
+        }
+        $clean = preg_replace('/[^0-9.\-]/', '', (string) $raw);
+        return is_numeric($clean) ? round((float) $clean, 2) : 0.0;
     }
 }
