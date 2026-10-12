@@ -1107,21 +1107,30 @@
         function chStdRowIsZeroSold(d) {
             if (!d || d.is_parent_summary) return false;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return false;
-            // Alibaba 0 Sold is AB L30 = 0 with this page's INV. OV L30 (L30) and Amazon A L30 do not count as a sale.
+            // Alibaba 0 Sold is AB L30 = 0. OV L30 (field L30) and Amazon A L30 are not Alibaba sales.
+            // Use the same stock gate as Age / Dil so a row that already shows those discs also gets 0 Sold.
             if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'alibaba') {
-                const inv = (typeof chPromoInv === 'function') ? (Number(chPromoInv(d)) || 0) : (Number(d.INV) || 0);
-                if (!(inv > 0)) return false;
+                const pageInv = (typeof chPromoInv === 'function') ? (Number(chPromoInv(d)) || 0) : (Number(d.INV) || Number(d.inv) || 0);
+                if (!(chStdStockForAge(d) > 0) && !(pageInv > 0)) return false;
                 const sold = chStdAlibabaSoldQty(d);
                 return sold != null && !(sold > 0);
             }
             if (!(chStdStockForAge(d) > 0)) return false;
             if (typeof chPromoIsZeroSoldRow === 'function') return !!chPromoIsZeroSoldRow(d);
-            return !(chStdNum(d, ['L30', 'l30', 'AL30', 'al30', 'A_L30', 'sold', 'E L30', 'RV L30']) > 0);
+            return !(chStdNum(d, ['sold', 'al30', 'AL30', 'AB L30', 'A_L30', 'E L30', 'RV L30', 'L30', 'l30']) > 0);
+        }
+        function chStdZeroSoldDiscNow() {
+            const modal = document.getElementById('chStdPrcModal');
+            if (modal && modal.classList.contains('show')) {
+                const n = Number($('#ch-sp-zs-disc').val());
+                if (isFinite(n)) return Math.min(100, Math.max(0, n));
+            }
+            return Number(chStdZeroSoldDisc) || 0;
         }
         function chStdZeroSoldDiscPct(d) {
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return null;
             if (!chStdRowIsZeroSold(d)) return 0;
-            return chStdScaleDisc(chStdRowStd(d), Number(chStdZeroSoldDisc) || 0);
+            return chStdScaleDisc(chStdRowStd(d), chStdZeroSoldDiscNow());
         }
         window.chStdZeroSoldDiscPct = chStdZeroSoldDiscPct;
         function chStdDiscCol(title, field, tip, read) {
