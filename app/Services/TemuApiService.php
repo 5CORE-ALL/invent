@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\Schema;
 use App\Models\ProductMaster;
 use App\Models\ProductStockMapping;
 use App\Models\TemuMetric;
-use App\Services\Support\DescriptionWithImagesFormatter;
 use App\Services\Support\ShopifyBulletPointsFormatter;
 use App\Services\Support\SavesMarketplaceVideoMetrics;
 use App\Services\Support\VideoMasterMarketplaceMethods;
@@ -2197,6 +2196,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $requestBodies = [];
         $requestBodies[] = [
             'type' => $apiType,
+            'language' => 'en',
             'goodsId' => (int) $goodsId,
             $goodsBasicField => [
                 'goodsName' => $title,
@@ -2237,7 +2237,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
             }
             $outcome = $this->temuWriteOutcome($data, "Temu title updated for SKU: {$sku}.", $response->status());
             if ($outcome['success']) {
-                return ['success' => true, 'message' => $outcome['message']];
+                $unchanged = $outcome['review'] ? null : $this->confirmTemuGoodsChange((string) $goodsId, 'goodsName', $title, $data, 'title');
+                if ($unchanged === null) {
+                    return ['success' => true, 'message' => $outcome['message']];
+                }
+                $outcome['message'] = $unchanged;
             }
             $lastError = $outcome['message'];
             Log::warning('Temu updateTitle rejected', ['sku' => $sku, 'goodsId' => $goodsId, 'error' => $lastError]);
@@ -2453,6 +2457,15 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 $data = $response->json();
                 $outcome = $this->temuWriteOutcome(is_array($data) ? $data : null, $successMessage, $response->status());
                 if ($outcome['success']) {
+                    if (isset($requestBody['goodsDesc']) && $basicFieldKey === $goodsDescField && ! $outcome['review']) {
+                        $unchanged = $this->confirmTemuGoodsChange((string) $goodsId, 'goodsDesc', $requestBody['goodsDesc'], is_array($data) ? $data : [], 'description');
+                        if ($unchanged !== null) {
+                            Log::warning($logContext.' not applied', ['sku' => $sku, 'goodsId' => $goodsId, 'error' => $unchanged]);
+
+                            return ['success' => false, 'message' => $unchanged];
+                        }
+                    }
+
                     return ['success' => true, 'message' => $outcome['message']];
                 }
                 $lastBody = $outcome['message'];
@@ -3055,7 +3068,7 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
-     * Long-form description via `goodsDesc` (text only — images go to carouselImageUrlList after upload).
+     * Long-form description via `goodsDesc` (text only — images go to the gallery carousel after upload).
      *
      * @param  list<string>  $imageUrls
      * @return array{success: bool, message: string}
@@ -3076,15 +3089,11 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $resolved = $this->resolveTemuGoodsAndSku($identifier);
         $skuForImages = (string) ($resolved['sku'] ?? $identifier);
 
-        $built = DescriptionWithImagesFormatter::buildHtmlWithImages(
-            $description,
-            $identifier,
-            $skuForImages,
-            'Product Image',
-            12,
-            $imageUrls
-        );
-        $descriptionForGoodsDesc = $built['text_html'];
+        // goodsDesc is plain text on Temu: HTML (tags, <img>) shows up raw or is dropped without an error.
+        $descriptionForGoodsDesc = $this->temuPlainDescription($description);
+        if ($descriptionForGoodsDesc === '') {
+            return ['success' => false, 'message' => 'Description is empty.'];
+        }
 
         $res = $this->pushTemuGoodsBasicField(
             $identifier,
@@ -3167,67 +3176,72 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
         $url = $this->openApiRouterUrl();
         $skuListField = $this->temuCfg('update_sku_list_field', 'skuList');
         $goodsBasicField = $this->temuCfg('goods_basic_field', 'goodsBasic');
-        $imageField = $this->temuCfg('goods_image_urls_field', 'carouselImageUrlList');
         $skuIdField = $this->temuCfg('sku_id_field', 'skuId');
         $skuCodeField = $this->temuCfg('sku_code_field', 'outSkuSn');
 
-        $requestBody = [
+        // Temu reads the carousel only from goodsBasic.goodsGallery.goodsCarouselImage; other keys are
+        // dropped while the call still succeeds. No package fields: Temu 2/3 reject weightUnit "g".
+        $baseBody = [
             'type' => $apiType,
+            'language' => 'en',
             'goodsId' => (int) $goodsId,
             $goodsBasicField => [
-                $imageField => $urls,
+                'goodsGallery' => [
+                    'goodsCarouselImage' => $urls,
+                    'detailImage' => $urls,
+                ],
             ],
         ];
-
-        $price = $this->getProductPrice($sku);
-        $dimensions = $this->getProductDimensions($sku);
-
+        $attempts = [$baseBody];
         if ($skuInfo !== null && isset($skuInfo['skuId'])) {
-            $requestBody[$skuListField] = [[
-                $skuIdField => (int) $skuInfo['skuId'],
-                $skuCodeField => $sku,
-                'listPrice' => [
-                    'amount' => (string) ($price ?? 1.00),
-                    'currency' => 'USD',
-                ],
-                'listPriceType' => 0,
-                'weight' => $dimensions['weight'],
-                'length' => $dimensions['length'],
-                'width' => $dimensions['width'],
-                'height' => $dimensions['height'],
-                'weightUnit' => $dimensions['weightUnit'],
-                'volumeUnit' => $dimensions['volumeUnit'],
-                'images' => $urls,
-            ]];
+            $attempts[] = $baseBody + [
+                $skuListField => [[
+                    $skuIdField => (int) $skuInfo['skuId'],
+                    $skuCodeField => $sku,
+                    'images' => $urls,
+                ]],
+            ];
         }
 
         try {
-            $signedRequest = $this->generateSignValue($requestBody);
             $request = Http::withHeaders(['Content-Type' => 'application/json']);
             if (config('filesystems.default') === 'local') {
                 $request = $request->withoutVerifying();
             }
-            $response = $request->post($url, $signedRequest);
-            $data = $response->json();
-            $outcome = $this->temuWriteOutcome(is_array($data) ? $data : null, 'Temu listing images updated.', $response->status());
-            if ($outcome['success']) {
-                return ['success' => true, 'message' => $outcome['message']];
-            }
 
-            $imageError = $outcome['message'];
-            if ($this->temuMallGoodsMismatch($imageError)) {
-                $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, (string) $goodsId);
-                if ($freshGoodsId !== null && $freshGoodsId !== '' && (string) $freshGoodsId !== (string) $goodsId) {
-                    $requestBody['goodsId'] = (int) $freshGoodsId;
-                    $signedRetry = $this->generateSignValue($requestBody);
-                    $retry = $request->post($url, $signedRetry);
-                    $retryData = $retry->json();
-                    $retryOutcome = $this->temuWriteOutcome(is_array($retryData) ? $retryData : null, 'Temu listing images updated.', $retry->status());
-                    if ($retryOutcome['success']) {
-                        return ['success' => true, 'message' => $retryOutcome['message']];
+            $imageError = 'Temu listing images update failed.';
+            foreach ($attempts as $requestBody) {
+                $response = $request->post($url, $this->generateSignValue($requestBody));
+                $data = $response->json();
+                $outcome = $this->temuWriteOutcome(is_array($data) ? $data : null, 'Temu listing images updated.', $response->status());
+
+                if (! $outcome['success'] && $this->temuMallGoodsMismatch($outcome['message'])) {
+                    $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, (string) $goodsId);
+                    if ($freshGoodsId !== null && $freshGoodsId !== '' && (string) $freshGoodsId !== (string) $goodsId) {
+                        $goodsId = $freshGoodsId;
+                        foreach ($attempts as &$attemptBody) {
+                            $attemptBody['goodsId'] = (int) $freshGoodsId;
+                        }
+                        unset($attemptBody);
+                        $requestBody['goodsId'] = (int) $freshGoodsId;
+                        $response = $request->post($url, $this->generateSignValue($requestBody));
+                        $data = $response->json();
+                        $outcome = $this->temuWriteOutcome(is_array($data) ? $data : null, 'Temu listing images updated.', $response->status());
                     }
-                    $imageError = $retryOutcome['message'];
                 }
+
+                if ($outcome['success']) {
+                    if ($outcome['review']) {
+                        return ['success' => true, 'message' => $outcome['message']];
+                    }
+                    $unchanged = $this->confirmTemuGoodsChange((string) $goodsId, 'images', $urls, is_array($data) ? $data : [], 'images');
+                    if ($unchanged === null) {
+                        return ['success' => true, 'message' => $outcome['message']];
+                    }
+                    $imageError = $unchanged;
+                    continue;
+                }
+                $imageError = $outcome['message'];
             }
             Log::warning('Temu updateListingImages rejected', ['sku' => $sku, 'goodsId' => $goodsId, 'error' => $imageError]);
 
@@ -3639,6 +3653,165 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
      * @param  array<string, mixed>|null  $data
      * @return array{success: bool, message: string, review: bool}
      */
+    /**
+     * Temu's partial update answers success even when it drops a field, so read the goods back.
+     * Returns null when the change is live (or Temu does not expose the field), else a failure message.
+     *
+     * @param  array<string, mixed>  $responseData
+     */
+    protected function confirmTemuGoodsChange(string $goodsId, string $field, mixed $expected, array $responseData, string $label): ?string
+    {
+        if ($goodsId === '') {
+            return null;
+        }
+
+        $actual = null;
+        foreach ([1500000, 3000000] as $waitMicros) {
+            usleep($waitMicros);
+            $detail = $this->fetchTemuGoodsDetail($goodsId);
+            if ($detail === []) {
+                return null;
+            }
+            $actual = $field === 'images'
+                ? $this->temuFindKey($detail, ['goodsCarouselImage', 'carouselImageUrlList', 'carouselImageList'])
+                : $this->temuFindKey($detail, [$field]);
+            if ($actual === null) {
+                return null;
+            }
+            if ($this->temuValueMatches($field, $expected, $actual)) {
+                return null;
+            }
+        }
+
+        $warnings = $this->temuResponseWarnings($responseData);
+        Log::warning('Temu update not applied', ['goodsId' => $goodsId, 'field' => $field, 'warnings' => $warnings]);
+
+        return 'Temu accepted the '.$label.' update but the live listing still shows the old '.$label.'.'
+            .($warnings !== ''
+                ? ' Temu says: '.$warnings
+                : ' The field may be locked by a pending Temu review; check the product in Seller Center.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function fetchTemuGoodsDetail(string $goodsId): array
+    {
+        $types = array_values(array_unique(array_filter([
+            (string) $this->temuCfg('goods_detail_type', 'temu.local.goods.detail.retrieve'),
+            'bg.local.goods.detail.query',
+        ])));
+        $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(30);
+        if (config('filesystems.default') === 'local') {
+            $request = $request->withoutVerifying();
+        }
+
+        foreach ($types as $type) {
+            try {
+                $response = $request->post($this->openApiRouterUrl(), $this->generateSignValue([
+                    'type' => $type,
+                    'goodsId' => (int) $goodsId,
+                ]));
+                $data = $response->json();
+            } catch (\Throwable) {
+                continue;
+            }
+            if (is_array($data) && ($data['success'] ?? false) && is_array($data['result'] ?? null) && $data['result'] !== []) {
+                return $data['result'];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  list<string>  $keys
+     */
+    private function temuFindKey(mixed $node, array $keys, int $depth = 0): mixed
+    {
+        if (! is_array($node) || $depth > 4) {
+            return null;
+        }
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $node) && $node[$key] !== null) {
+                return $node[$key];
+            }
+        }
+        foreach ($node as $child) {
+            $found = $this->temuFindKey($child, $keys, $depth + 1);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    private function temuValueMatches(string $field, mixed $expected, mixed $actual): bool
+    {
+        if ($field === 'images') {
+            $path = static fn ($url): string => strtolower((string) (parse_url(trim((string) $url), PHP_URL_PATH) ?? ''));
+            $live = array_filter(array_map($path, is_array($actual) ? $actual : [$actual]));
+            $sent = array_filter(array_map($path, is_array($expected) ? $expected : [$expected]));
+
+            return $sent === [] || array_intersect($sent, $live) !== [];
+        }
+
+        $norm = static fn ($v): string => mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags(is_array($v) ? implode(' ', $v) : (string) $v), ENT_QUOTES | ENT_HTML5, 'UTF-8'))));
+        $want = $norm($expected);
+        $have = $norm($actual);
+        if ($want === '' || $want === $have) {
+            return true;
+        }
+        if ($field === 'goodsDesc') {
+            $head = mb_substr($want, 0, 80);
+
+            return $head !== '' && str_contains($have, $head);
+        }
+        similar_text($want, $have, $percent);
+
+        return $percent >= 90;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function temuResponseWarnings(array $data): string
+    {
+        $warnings = $data['result']['warnings'] ?? $data['warnings'] ?? [];
+        if (! is_array($warnings)) {
+            return '';
+        }
+        $messages = [];
+        foreach ($warnings as $warning) {
+            $text = trim((string) (is_array($warning) ? ($warning['message'] ?? $warning['msg'] ?? '') : $warning));
+            if ($text !== '' && ! in_array($text, $messages, true)) {
+                $messages[] = $text;
+            }
+        }
+
+        return implode(' ', $messages);
+    }
+
+    protected function temuPlainDescription(string $text): string
+    {
+        $text = (string) preg_replace('~<\s*/?\s*br\s*/?\s*>~i', "\n", $text);
+        $text = (string) preg_replace('~<\s*/\s*(p|div|li|h[1-6]|tr|ul|ol)\s*>|<\s*(ul|ol)\b[^>]*>~i', "\n", $text);
+        $text = (string) preg_replace('~<\s*li\b[^>]*>~i', '• ', $text);
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        $lines = [];
+        foreach (preg_split('/\r\n|\r|\n/', $text) ?: [] as $line) {
+            $line = trim((string) preg_replace('/[ \t\x{00A0}]+/u', ' ', $line));
+            if ($line === '' && ($lines === [] || end($lines) === '')) {
+                continue;
+            }
+            $lines[] = $line;
+        }
+
+        return trim(implode("\n", $lines));
+    }
+
     protected function temuWriteOutcome(?array $data, string $successMessage, ?int $httpStatus = null): array
     {
         $data = is_array($data) ? $data : [];

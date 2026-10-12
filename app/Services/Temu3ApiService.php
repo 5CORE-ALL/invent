@@ -377,6 +377,12 @@ class Temu3ApiService extends TemuApiService
             }
 
             $outcome = $this->temuWriteOutcome($data, "Temu 3 title updated for SKU: {$sku}.");
+            if ($outcome['success'] && ! $outcome['review']) {
+                $unchanged = $this->confirmTemuGoodsChange($attemptGoodsId, 'goodsName', $title, $data, 'title');
+                if ($unchanged !== null) {
+                    $outcome = ['success' => false, 'message' => $unchanged, 'review' => false];
+                }
+            }
             if ($outcome['success']) {
                 Log::info('Temu3 title updated', ['sku' => $sku, 'goodsId' => $attemptGoodsId, 'attempt' => $i + 1, 'review' => $outcome['review']]);
 
