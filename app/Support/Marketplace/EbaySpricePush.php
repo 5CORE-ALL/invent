@@ -128,8 +128,32 @@ final class EbaySpricePush
             $msg .= ': '.(is_string($res['errors']) ? $res['errors'] : json_encode($res['errors']));
         }
 
+        if ($ok) {
+            self::storeAcceptedPrice($metric, $price);
+        }
+
         return $ok
             ? ['success' => true, 'message' => $msg, 'ebay_price' => $price]
             : ['success' => false, 'message' => $msg];
+    }
+
+    /**
+     * eBay accepted the revise, so its listing price is now $price. Store it on this SKU's metric row,
+     * otherwise the page keeps the SKU blue (old Price ≠ S PRC) and re-queues it on every reload.
+     */
+    private static function storeAcceptedPrice(object $metric, float $price): void
+    {
+        if (! $metric instanceof \Illuminate\Database\Eloquent\Model) {
+            return;
+        }
+        try {
+            $metric->ebay_price = $price;
+            $metric->save();
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('eBay S PRC push: could not store accepted price', [
+                'sku' => $metric->sku ?? null,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

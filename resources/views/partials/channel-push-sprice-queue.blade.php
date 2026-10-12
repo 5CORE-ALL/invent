@@ -1382,6 +1382,11 @@
             }
             function chPushSpriceSavedFromRow(d) {
                 if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
+                    // Saved S PRC is what the blue badge compares and the only price the server will push.
+                    if (d && d.SPRICE_SERVER !== undefined) {
+                        const savedServer = chPushSpriceRound2(d.SPRICE_SERVER);
+                        if (savedServer > 0) return savedServer;
+                    }
                     const pageFn = CH_PUSH_SPRICE_CHANNEL === 'ebay2'
                         ? global.ebay2DisplayedSprice
                         : (CH_PUSH_SPRICE_CHANNEL === 'ebay3'
