@@ -366,26 +366,54 @@
         .lm-push-preview .cell .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lm-push-preview .cell.is-empty .v { color: #b91c1c; }
         #lmProductPushModal { z-index: 1065; }
-        #lmProductPushModal .modal-dialog { max-width: min(1180px, 96vw); }
+        #lmProductPushModal .modal-dialog { max-width: min(1080px, 96vw); }
+        #lmProductPushModal .modal-content { overflow: hidden; }
+        #lmProductPushModal .modal-header,
+        #lmProductPushModal .modal-footer { padding: .7rem 1rem; }
+        #lmProductPushModal .modal-body { padding: .85rem 1rem 1rem; overflow-x: hidden; }
+        #lm-push-modal-sub {
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden; line-height: 1.3;
+        }
+        #lmProductPushModal .lc-help { font-size: .78rem; line-height: 1.35; }
+        .lm-push-badge.create { background: #eef4ff; color: #1d4ed8; }
         #lm-prod-push-channels.lm-channel-list {
             max-height: none;
             overflow: visible;
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: .5rem;
+            gap: .45rem;
         }
         #lm-prod-push-channels > .text-muted { grid-column: 1 / -1; }
         #lm-prod-push-channels .lm-channel-row {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
             margin-bottom: 0;
-            padding: .5rem .65rem;
-            gap: .45rem;
+            padding: .5rem .6rem;
+            gap: .35rem;
             min-width: 0;
+            overflow: hidden;
         }
+        #lm-prod-push-channels .lm-ch-main {
+            display: flex; align-items: center; gap: .45rem; min-width: 0;
+        }
+        #lm-prod-push-channels .lm-channel-row img,
+        #lm-prod-push-channels .lm-thumb-empty { width: 22px; height: 22px; flex-shrink: 0; }
         #lm-prod-push-channels .lm-channel-row .fw-semibold {
+            flex: 1;
             min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            font-size: .84rem;
+        }
+        #lm-prod-push-channels .lm-push-badge {
+            margin-left: 0;
+            align-self: flex-start;
+            max-width: 100%;
+            white-space: normal;
+            line-height: 1.25;
         }
         @media (max-width: 900px) {
             #lm-prod-push-channels.lm-channel-list { grid-template-columns: 1fr; }
@@ -1710,7 +1738,7 @@
             </div>
             <div class="modal-body">
                 <div class="lc-section-title mb-1">What to update</div>
-                <p class="lc-help">Only the ticked fields are sent. Values come from what is currently shown in the product window (including unsaved edits).</p>
+                <p class="lc-help mb-2">Ticked fields update listings that already exist. Select a marketplace that is not listed to create a draft in Channel Listings.</p>
                 <div class="d-flex flex-wrap gap-3 mb-3" id="lm-push-parts">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="lm-push-part-title" checked>
@@ -1737,7 +1765,7 @@
                 <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
                     <div>
                         <div class="lc-section-title mb-0">Marketplaces</div>
-                        <p class="lc-help mb-0">Only marketplaces where this SKU already exists (active or inactive) can be selected. The existing product is updated in place; nothing new is created.</p>
+                        <p class="lc-help mb-0">Listed rows update the live product. Not-listed rows are sent to the draft section.</p>
                     </div>
                     <div class="form-check mb-0">
                         <input class="form-check-input" type="checkbox" id="lm-push-select-all">
@@ -4765,7 +4793,53 @@
             return flags.updatable.get(String(c.channel || '').toLowerCase()) || flags.updatable.get('#' + Number(c.id)) || null;
         }
 
-        // Update-only: channels where the SKU is not listed are shown but cannot be selected.
+        function selectedPushSelection() {
+            const updateIds = [];
+            const draftIds = [];
+            $('#lm-prod-push-channels .lm-channel-cb:checked:not(:disabled)').each(function () {
+                const id = parseInt(this.value, 10);
+                if (!(id > 0)) return;
+                if (this.dataset.mode === 'draft') draftIds.push(id);
+                else updateIds.push(id);
+            });
+            return { updateIds, draftIds };
+        }
+
+        function updatePushActionLabel() {
+            const $btn = $('#lm-push-now-btn');
+            if ($btn.data('loading')) return;
+            const picked = selectedPushSelection();
+            let html = '<i class="fas fa-cloud-upload-alt me-1"></i>Push Updates';
+            if (picked.draftIds.length && !picked.updateIds.length) {
+                html = '<i class="fas fa-file-alt me-1"></i>Send to Drafts';
+            } else if (picked.draftIds.length && picked.updateIds.length) {
+                html = '<i class="fas fa-cloud-upload-alt me-1"></i>Push &amp; Create Drafts';
+            }
+            $btn.html(html);
+        }
+
+        function syncListedSelectAll() {
+            const boxes = $('#lm-prod-push-channels .lm-channel-cb[data-mode="update"]:not(:disabled)');
+            $('#lm-push-select-all').prop('checked', boxes.length > 0 && boxes.filter(':checked').length === boxes.length);
+        }
+
+        function openDraftsForChannels(channelIds) {
+            const pushModal = document.getElementById('lmProductPushModal');
+            const productModal = document.getElementById('lmProductModal');
+            if (pushModal) {
+                const inst = bootstrap.Modal.getInstance(pushModal);
+                if (inst) inst.hide();
+            }
+            if (productModal) {
+                const inst = bootstrap.Modal.getInstance(productModal);
+                if (inst) inst.hide();
+            }
+            showPanel('drafts');
+            if (channelIds && channelIds[0]) $('#lm-draft-channel').val(String(channelIds[0]));
+            loadDrafts();
+        }
+
+        // Listed channels update in place. Unlisted channels can be selected to create a Channel Listings draft.
         function renderPushChannelRows(channels, prechecked, flags) {
             const checked = new Set((prechecked || []).map(Number));
             const drafted = flags && flags.drafted ? flags.drafted : new Set();
@@ -4776,31 +4850,36 @@
                 const isListed = channelIsListed(c, flags);
                 const updatable = !isListed ? channelUpdatableInfo(c, flags) : null;
                 const canPush = isListed || !!updatable;
+                const inDraft = !canPush && (drafted.has(name) || draftedIds.has(Number(c.id)));
+                const mode = canPush ? 'update' : 'draft';
                 const on = canPush && checked.has(Number(c.id));
-                let badge = '<span class="lm-push-badge skipped">Not listed · will be skipped</span>';
-                let hint = 'This SKU is not listed here yet, so there is nothing to update.';
+                let badge = '<span class="lm-push-badge create">Create draft</span>';
+                let hint = 'Not listed yet. Selecting this creates a draft in Channel Listings.';
                 if (isListed) {
                     badge = '<span class="lm-push-badge listed">Listed</span>';
-                    hint = '';
+                    hint = 'Updates the existing listing in place.';
                 } else if (updatable) {
-                    const st = updatable.state === 'inactive' ? 'inactive' : (updatable.state === 'active' ? 'active' : 'on marketplace');
-                    badge = `<span class="lm-push-badge ${updatable.state === 'inactive' ? 'draft' : 'listed'}">Exists on ${escapeHtml(c.channel)} · ${st} · can update</span>`;
+                    badge = `<span class="lm-push-badge ${updatable.state === 'inactive' ? 'draft' : 'listed'}">${updatable.state === 'inactive' ? 'Inactive · update' : 'Can update'}</span>`;
                     hint = 'This SKU already exists on ' + c.channel + (updatable.state === 'inactive' ? ' but is inactive there' : '') + '. Selected fields update that product in place.';
-                } else if (drafted.has(name) || draftedIds.has(Number(c.id))) {
-                    badge = '<span class="lm-push-badge draft">Draft only · not live</span>';
+                } else if (inDraft) {
+                    badge = '<span class="lm-push-badge draft">In drafts</span>';
+                    hint = 'A draft already exists. Selecting this updates that draft in Channel Listings.';
                 }
-                return `<label class="lm-channel-row ${on ? 'is-checked' : ''} ${canPush ? '' : 'is-disabled'}" title="${escapeHtml(hint)}">
-                    <input type="checkbox" class="form-check-input lm-channel-cb" value="${c.id}" ${on ? 'checked' : ''} ${canPush ? '' : 'disabled'}>
-                    ${src ? `<img src="${escapeHtml(src)}" alt="">` : '<span class="lm-thumb-empty"><i class="fas fa-store"></i></span>'}
-                    <span class="fw-semibold">${escapeHtml(c.channel)}</span>
+                return `<label class="lm-channel-row ${on ? 'is-checked' : ''}" title="${escapeHtml(hint)}">
+                    <span class="lm-ch-main">
+                        <input type="checkbox" class="form-check-input lm-channel-cb" data-mode="${mode}" value="${c.id}" ${on ? 'checked' : ''}>
+                        ${src ? `<img src="${escapeHtml(src)}" alt="">` : '<span class="lm-thumb-empty"><i class="fas fa-store"></i></span>'}
+                        <span class="fw-semibold">${escapeHtml(c.channel)}</span>
+                    </span>
                     ${badge}
                 </label>`;
             }).join('') || '<div class="text-muted small">No marketplaces enabled. Use Add Marketplaces first.</div>');
             $('#lm-prod-push-channels').off('change', '.lm-channel-cb').on('change', '.lm-channel-cb', function () {
                 $(this).closest('.lm-channel-row').toggleClass('is-checked', this.checked);
-                const boxes = $('#lm-prod-push-channels .lm-channel-cb:not(:disabled)');
-                $('#lm-push-select-all').prop('checked', boxes.length > 0 && boxes.filter(':checked').length === boxes.length);
+                syncListedSelectAll();
+                updatePushActionLabel();
             });
+            updatePushActionLabel();
         }
 
         function selectedPushParts() {
@@ -4999,10 +5078,7 @@
                 });
                 const pre = list.filter(canPush).map(c => c.id);
                 renderPushChannelRows(list, pre, flags);
-                $('#lm-push-select-all').prop('checked', pre.length > 0);
-                if (!pre.length) {
-                    $('#lm-prod-push-channels').prepend('<div class="text-muted small mb-2">This SKU is not listed on any connected marketplace yet, so there is nothing to update.</div>');
-                }
+                syncListedSelectAll();
             }).fail(function () {
                 toast('Could not load marketplaces.', 'error');
             }).always(function () {
@@ -5016,9 +5092,10 @@
         $('#lm-push-parts').on('change', 'input', refreshPushPreview);
         $('#lm-push-select-all').on('change', function () {
             const on = this.checked;
-            $('#lm-prod-push-channels .lm-channel-cb:not(:disabled)').prop('checked', on).each(function () {
+            $('#lm-prod-push-channels .lm-channel-cb[data-mode="update"]:not(:disabled)').prop('checked', on).each(function () {
                 $(this).closest('.lm-channel-row').toggleClass('is-checked', on);
             });
+            updatePushActionLabel();
         });
         document.getElementById('lmProductPushModal').addEventListener('hide.bs.modal', function (e) {
             if (pushInFlight) e.preventDefault();
@@ -5120,22 +5197,58 @@
             return head + bits.join('');
         }
 
+        async function createChannelDrafts(draftIds) {
+            const sku = String((currentProduct && currentProduct.sku) || currentProductSku || '').trim();
+            return $.ajax({
+                url: "{{ route('listing.manager.drafts.add') }}",
+                method: 'POST',
+                data: { skus: [sku], channel_ids: draftIds },
+                timeout: 120000,
+            });
+        }
+
         $('#lm-push-now-btn').on('click', async function () {
-            const channelIds = $('#lm-prod-push-channels .lm-channel-cb:checked:not(:disabled)').map(function () {
-                return parseInt(this.value, 10);
-            }).get().filter(n => n > 0);
-            if (!channelIds.length) { toast('Select at least one listed marketplace.', 'error'); return; }
+            const picked = selectedPushSelection();
+            const channelIds = picked.updateIds;
+            const draftIds = picked.draftIds;
+            if (!channelIds.length && !draftIds.length) { toast('Select at least one marketplace.', 'error'); return; }
             const parts = selectedPushParts();
-            if (!parts.length) { toast('Tick at least one field to update.', 'error'); return; }
+            if (channelIds.length && !parts.length) { toast('Tick at least one field to update.', 'error'); return; }
             const $btn = $(this);
             if ($btn.data('loading') || pushInFlight) return;
             const idleHtml = $btn.html();
             pushInFlight = true;
             $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Saving…');
             $('#lm-prod-push-btn').prop('disabled', true);
-            renderPushPending(channelIds);
+            renderPushPending(draftIds.concat(channelIds));
             let finalLabel = idleHtml;
+            let draftNote = '';
+            let goDrafts = null;
             try {
+                if (draftIds.length) {
+                    if (!channelIds.length) {
+                        setPushSummary('<i class="fas fa-spinner fa-spin me-1"></i>Creating drafts…', 'is-running');
+                    }
+                    draftIds.forEach(function (id) { setPushRowStatus(id, 'updating', 'Creating draft…'); });
+                    try {
+                        const draftRes = await createChannelDrafts(draftIds);
+                        draftIds.forEach(function (id) { setPushRowStatus(id, 'ok', 'Sent to Channel Listings drafts.', 'draft'); });
+                        draftNote = (draftRes && draftRes.message) || ('Sent ' + draftIds.length + ' marketplace(s) to drafts.');
+                        if (!channelIds.length) {
+                            toast(draftNote, 'success');
+                            goDrafts = draftIds.slice();
+                            return;
+                        }
+                    } catch (xhr) {
+                        const msg = ajaxErrorMessage(xhr, 'Could not create drafts.');
+                        draftIds.forEach(function (id) { setPushRowStatus(id, 'fail', msg); });
+                        if (!channelIds.length) {
+                            toast(msg, 'error');
+                            return;
+                        }
+                        draftNote = 'Drafts were not created: ' + msg + '. ';
+                    }
+                }
                 const fields = collectPushFields();
                 // Only the ticked parts travel: keeps validation surface small and never overwrites
                 // unrelated Product Master columns during a push.
@@ -5182,10 +5295,10 @@
                     onDone: (ok, fail, skipped, n) => setPushSummary(pushSummaryHtml({ ok, fail, skipped }, n, ok + fail + skipped >= n), ok + fail + skipped >= n ? (fail ? 'is-error' : '') : 'is-running'),
                 });
                 setPushSummary(pushSummaryHtml(out, total, true), out.fail ? 'is-error' : '');
-                const summary = 'Updated ' + out.ok + ' marketplace(s)'
+                const summary = (draftNote ? draftNote + ' ' : '') + 'Updated ' + out.ok + ' marketplace(s)'
                     + (out.fail ? (', ' + out.fail + ' failed') : '')
                     + (out.skipped ? (', ' + out.skipped + ' skipped') : '') + '.';
-                toast(summary, out.fail === 0 ? 'success' : 'error');
+                toast(summary, out.fail === 0 && !draftNote.startsWith('Drafts were not created') ? 'success' : 'error');
                 if (currentProduct) {
                     const patch = Object.assign({}, pushFields);
                     delete patch.bullets;
@@ -5206,6 +5319,7 @@
                 pushInFlight = false;
                 $btn.data('loading', false).prop('disabled', false).html(finalLabel);
                 $('#lm-prod-push-btn').prop('disabled', false);
+                if (goDrafts) openDraftsForChannels(goDrafts);
             }
         });
         $('#lm-prod-content').on('click', '.lm-create-listing-btn', function () {
