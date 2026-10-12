@@ -132,6 +132,26 @@
     'extended' => true,
 ])
 
+<div class="modal fade" id="ecaCbidModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0" id="ecaCbidTitle">C Bid</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-2">The 7 days before today, then today. Today is recorded from now on.</p>
+                <div id="ecaCbidLoading" class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm text-primary"></div>
+                    <p class="mt-2 text-muted small mb-0">Loading C Bid history…</p>
+                </div>
+                <div id="ecaCbidEmpty" class="text-center text-muted py-4 d-none">No C Bid recorded yet. Today is saved the next time this listing’s live bid is stored.</div>
+                <div id="ecaCbidChart" class="d-none" style="height:320px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="ecaYSpendModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
@@ -504,7 +524,7 @@ $(document).ready(function () {
             {
                 title: 'C Bid', field: 'bid_percentage', width: 110, hozAlign: 'center',
                 sorter: 'number',
-                headerTooltip: 'Live eBay bid vs S Bid. Green = they match. Yellow = still waiting to push. Red = the last push failed.',
+                headerTooltip: 'Live eBay bid vs S Bid. Click the value for C Bid history: the 7 days before today, then today. Green dot = up vs the last recorded day in that week, red = down.',
                 formatter: function(cell) {
                     const row = cell.getRow().getData();
                     const v = parseFloat(cell.getValue());
@@ -513,9 +533,31 @@ $(document).ready(function () {
                         const color = v <= 4 ? '#dc3545' : v <= 7 ? '#ffc107' : v <= 13 ? '#198754' : '#e83e8c';
                         valueHtml = '<span style="color:' + color + '; font-weight:600;">' + v.toFixed(1) + '%</span>';
                     }
+                    const prevRaw = row.cbid_prev;
+                    const hasPrev = prevRaw !== null && prevRaw !== undefined && prevRaw !== '' && isFinite(parseFloat(prevRaw));
+                    const prev = hasPrev ? parseFloat(prevRaw) : null;
+                    const prevWhen = row.cbid_prev_date ? String(row.cbid_prev_date) : 'a day in the last 7';
+                    let dotColor = '#6c757d';
+                    let dotTip = hasPrev ? ('Same as ' + prevWhen + ' (' + prev.toFixed(1) + '%)') : 'No C Bid in the last 7 days — recording from today';
+                    if (hasPrev && isFinite(v) && v > prev) {
+                        dotColor = '#28a745';
+                        dotTip = 'Up vs ' + prevWhen + ' (' + prev.toFixed(1) + '%)';
+                    } else if (hasPrev && isFinite(v) && v < prev) {
+                        dotColor = '#a00211';
+                        dotTip = 'Down vs ' + prevWhen + ' (' + prev.toFixed(1) + '%)';
+                    }
                     const sync = ebayBidSync(row);
-                    if (!sync) return valueHtml;
-                    return '<span class="eca-sync-cell"><span class="eca-sync-dot is-' + sync.color + '" title="' + ebayEsc(sync.tip) + '"></span>' + valueHtml + '</span>';
+                    const syncDot = sync
+                        ? '<span class="eca-sync-dot is-' + sync.color + '" title="' + ebayEsc(sync.tip) + '"></span>'
+                        : '';
+                    return '<span class="eca-cbid-hist" style="white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="' + ebayEsc(dotTip) + ' — click for C Bid history">'
+                        + syncDot + valueHtml
+                        + '<span class="eca-y-spend-dot" style="background:' + dotColor + ';"></span></span>';
+                },
+                cellClick: function(e, cell) {
+                    if (!e.target.closest('.eca-cbid-hist')) return;
+                    e.stopPropagation();
+                    openEcaCbidChart(cell.getRow().getData());
                 }
             },
             {
@@ -1118,5 +1160,87 @@ function renderEcaYSpendChart(rows) {
 }
 
 document.getElementById('eca-y-spend-days')?.addEventListener('change', loadEcaYSpendChart);
+
+let ecaCbidRow = null;
+let ecaCbidChart = null;
+
+function openEcaCbidChart(row) {
+    ecaCbidRow = row || null;
+    const sku = (row && (row.resolved_sku || row.sku)) || '';
+    const titleEl = document.getElementById('ecaCbidTitle');
+    if (titleEl) titleEl.textContent = 'C Bid — ' + (sku || (row && row.listing_id) || '');
+    const modalEl = document.getElementById('ecaCbidModal');
+    if (modalEl && window.bootstrap && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+    const loading = document.getElementById('ecaCbidLoading');
+    const empty = document.getElementById('ecaCbidEmpty');
+    const chartEl = document.getElementById('ecaCbidChart');
+    if (loading) loading.classList.remove('d-none');
+    if (empty) empty.classList.add('d-none');
+    if (chartEl) chartEl.classList.add('d-none');
+    const params = new URLSearchParams({ listing_id: (row && row.listing_id) || '' });
+    fetch(@json(url('/ebay/cbid-history')) + '?' + params.toString(), { headers: { Accept: 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(rows) { renderEcaCbidChart(Array.isArray(rows) ? rows : []); })
+        .catch(function() { renderEcaCbidChart([]); });
+}
+
+function renderEcaCbidChart(rows) {
+    const loading = document.getElementById('ecaCbidLoading');
+    const empty = document.getElementById('ecaCbidEmpty');
+    const chartEl = document.getElementById('ecaCbidChart');
+    if (loading) loading.classList.add('d-none');
+    const points = rows || [];
+    const hasBid = points.some(function(d) { return d && d.bid !== null && isFinite(parseFloat(d.bid)); });
+    if (!hasBid || typeof Highcharts === 'undefined') {
+        if (chartEl) chartEl.classList.add('d-none');
+        if (empty) empty.classList.remove('d-none');
+        return;
+    }
+    if (empty) empty.classList.add('d-none');
+    if (chartEl) chartEl.classList.remove('d-none');
+    if (ecaCbidChart) {
+        ecaCbidChart.destroy();
+        ecaCbidChart = null;
+    }
+    const values = points.map(function(d) {
+        const n = parseFloat(d.bid);
+        return isFinite(n) ? n : null;
+    });
+    ecaCbidChart = Highcharts.chart('ecaCbidChart', {
+        chart: { type: 'line', height: 320 },
+        title: { text: null },
+        credits: { enabled: false },
+        legend: { enabled: false },
+        xAxis: {
+            categories: points.map(function(d) { return d.date_formatted || d.date; }),
+            labels: { style: { fontSize: '11px', fontWeight: '600' } }
+        },
+        yAxis: {
+            title: { text: null },
+            labels: { formatter: function() { return Highcharts.numberFormat(this.value, 1) + '%'; } }
+        },
+        tooltip: {
+            pointFormatter: function() {
+                if (this.y === null || !isFinite(this.y)) return 'No C Bid recorded';
+                return '<b>' + Highcharts.numberFormat(this.y, 1) + '%</b>';
+            }
+        },
+        plotOptions: { series: { connectNulls: false, marker: { radius: 4, lineWidth: 1, lineColor: '#fff' } } },
+        series: [{
+            name: 'C Bid',
+            color: '#0d6efd',
+            data: values.map(function(v, i) {
+                if (v === null) return null;
+                let color = '#0d6efd';
+                const prev = values.slice(0, i).reverse().find(function(n) { return n !== null; });
+                if (prev !== undefined && v > prev) color = '#28a745';
+                else if (prev !== undefined && v < prev) color = '#a00211';
+                return { y: v, color: color };
+            })
+        }]
+    });
+}
 </script>
 @endsection

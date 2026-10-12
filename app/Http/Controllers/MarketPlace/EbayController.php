@@ -21,6 +21,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
+use App\Support\EbayCbidHistory;
 use App\Support\EbayYesterdaySpend;
 use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\DB;

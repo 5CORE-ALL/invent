@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ProductMaster\InvDaysController;
 use App\Models\AlibabaMetric;
 use App\Models\AlibabaPricingPrice;
 use App\Models\AlibabaSheetPrice;
@@ -182,7 +183,7 @@ class AlibabaAnalyticsController extends Controller
             return strcasecmp((string) $a['product_id'], (string) $b['product_id']);
         });
 
-        $rows = collect($this->insertAlibabaParentRows($children));
+        $rows = collect(app(InvDaysController::class)->attachAgeDays($this->insertAlibabaParentRows($children)));
         $childRows = $rows->where(fn ($r) => empty($r['is_parent_summary']));
 
         $active = $childRows->where(fn ($r) => strcasecmp((string) ($r['status'] ?? ''), 'Active') === 0)->count();

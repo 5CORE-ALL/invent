@@ -206,6 +206,10 @@
 @endif
 
 @if($channelStdPrcPart === 'script' || $channelStdPrcPart === 'all')
+@php
+    $chStdPageMaps = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)
+        ->stdPrcPageMaps(! in_array($channelPromoChannel ?? '', ['ebay1', 'ebay2', 'ebay3'], true));
+@endphp
         const CH_STD_DIL_DEFAULTS = [
             { min: 0, max: 0, disc: 0 }, { min: 0.1, max: 10, disc: 0 }, { min: 10, max: 25, disc: 0 },
             { min: 25, max: 50, disc: 0 }, { min: 50, max: 100, disc: 0 }, { min: 100, max: 9999, disc: 0 },
@@ -301,21 +305,10 @@
             }
             return 0;
         }
-        let chStdAmzBySku = null;
-        let chStdAmzMapReq = null;
+        // Same Amazon A L30 / Sess30 / L60 / OV L30 / INV map the cron pricer reads.
+        let chStdAmzBySku = @json((object) ($chStdPageMaps['amazon'] ?? []));
         function chStdLoadAmzMap() {
-            if (chStdAmzBySku) return $.Deferred().resolve(chStdAmzBySku).promise();
-            if (chStdAmzMapReq) return chStdAmzMapReq;
-            chStdAmzMapReq = $.ajax({
-                url: '/inv-days/amazon-std-map',
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-            }).done(function(res) {
-                chStdAmzBySku = (res && res.metrics && typeof res.metrics === 'object') ? res.metrics : {};
-            }).fail(function() {
-                chStdAmzBySku = {};
-            });
-            return chStdAmzMapReq;
+            return $.Deferred().resolve(chStdAmzBySku).promise();
         }
         /** eBay 1 / 2 / 3 price from their own row (INV, OV L30, CVR 30 / 45, eBay L30), never the Amazon map. */
         function chStdIsEbay() {
@@ -395,9 +388,8 @@
             }
             return null;
         }
-        // Cache read only (never builds the map during page render); null → fetched from /inv-days/age-map.
-        let chStdAgeBySku = @json(\Illuminate\Support\Facades\Cache::get(\App\Http\Controllers\ProductMaster\InvDaysController::AGE_MAP_CACHE_KEY) ?: null);
-        let chStdAgeMapReq = null;
+        // Same Shopify age clock the cron pricer reads (kept warm by inv-days:warm-age-map).
+        let chStdAgeBySku = @json((object) ($chStdPageMaps['age_days'] ?? []));
         function chStdSkuKey(sku) {
             return String(sku == null ? '' : sku).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
         }
@@ -423,18 +415,7 @@
             return 0;
         }
         function chStdLoadAgeMap() {
-            if (chStdAgeBySku) return $.Deferred().resolve(chStdAgeBySku).promise();
-            if (chStdAgeMapReq) return chStdAgeMapReq;
-            chStdAgeMapReq = $.ajax({
-                url: '/inv-days/age-map',
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-            }).done(function(res) {
-                chStdAgeBySku = (res && res.age_days && typeof res.age_days === 'object') ? res.age_days : {};
-            }).fail(function() {
-                chStdAgeBySku = {};
-            });
-            return chStdAgeMapReq;
+            return $.Deferred().resolve(chStdAgeBySku).promise();
         }
         function chStdAgeDays(d) {
             let raw = d && (d.age_days != null && d.age_days !== '' ? d.age_days : d.age);

@@ -744,14 +744,10 @@
                 vpStdRules = { age: (res && res.age) || [], dil: (res && res.dil) || [] };
                 vpRefreshGrid();
             }).catch(function() {});
-        fetch('/inv-days/age-map', { headers: { 'Accept': 'application/json' } })
-            .then(function(r) { return r.json(); })
-            .then(function(res) { vpAgeMap = (res && res.age_days) || {}; vpRefreshGrid(); })
-            .catch(function() {});
-        fetch('/inv-days/amazon-std-map', { headers: { 'Accept': 'application/json' } })
-            .then(function(r) { return r.json(); })
-            .then(function(res) { vpAmzMap = (res && res.metrics) || {}; vpRefreshGrid(); })
-            .catch(function() {});
+        @php $vpStdMaps = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->stdPrcPageMaps(); @endphp
+        vpAgeMap = @json((object) $vpStdMaps['age_days']);
+        vpAmzMap = @json((object) $vpStdMaps['amazon']);
+        vpRefreshGrid();
 
         function vpParseJson(text) {
             const raw = String(text == null ? '' : text).replace(/^\uFEFF/, '');
