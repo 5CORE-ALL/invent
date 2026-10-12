@@ -61,6 +61,7 @@ class MissingListingController extends Controller
             if (is_array($cached) && ! empty($cached['data'])) {
                 try {
                     $cached['data'] = $this->overlayListingModes($cached['data']);
+                    $cached['data'] = $this->overlayListingUrls($cached['data']);
                     $cached['data'] = $this->appendFbMarketplaceRow($cached['data']);
                     $cached['data'] = $this->overlayCsvListedCounts($cached['data']);
                     $cached['total_missing_l'] = $this->sumMissingL($cached['data']);
@@ -449,6 +450,29 @@ class MissingListingController extends Controller
             'computed_at' => now()->toIso8601String(),
             'partial' => false,
         ];
+    }
+
+    /**
+     * Listing page links come from code, so a cached payload built before a
+     * channel had a page still opens it.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function overlayListingUrls(array $rows): array
+    {
+        foreach ($rows as $i => $row) {
+            $channel = trim((string) ($row['channel'] ?? ''));
+            if ($channel === '') {
+                continue;
+            }
+            $url = ListingChannelCounts::listingUrl($channel);
+            if ($url !== null) {
+                $rows[$i]['listing_url'] = $url;
+            }
+        }
+
+        return $rows;
     }
 
     /**
