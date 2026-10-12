@@ -221,8 +221,8 @@ class AlibabaAnalyticsController extends Controller
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'Parent', 'SKU', 'Link', 'INV', 'AL INV', 'OV L30', 'Dil%', 'AB L30',
-                'Price', 'S PRC', 'GROI%', 'GPFT%', 'Profit', 'Sales',
-                'SGROI%', 'SGPFT%', 'SNROI%', 'SNGPFT%', 'Product Id', 'Status',
+                'Price', 'GPFT%', 'GROI%', 'S PRC', 'SGROI%', 'SGPFT%',
+                'Profit', 'Sales', 'SNROI%', 'SNGPFT%', 'Product Id', 'Status',
             ]);
 
             foreach ($rows as $row) {
@@ -237,13 +237,13 @@ class AlibabaAnalyticsController extends Controller
                     number_format((float) ($row['dil_percent'] ?? 0), 2, '.', ''),
                     (int) ($row['al30'] ?? 0),
                     number_format((float) ($row['price'] ?? 0), 2, '.', ''),
-                    $sprice > 0 ? number_format($sprice, 2, '.', '') : '',
-                    number_format((float) ($row['groi'] ?? 0), 2, '.', ''),
                     number_format((float) ($row['gpft'] ?? 0), 2, '.', ''),
-                    number_format((float) ($row['profit'] ?? 0), 2, '.', ''),
-                    number_format((float) ($row['sales'] ?? 0), 2, '.', ''),
+                    number_format((float) ($row['groi'] ?? 0), 2, '.', ''),
+                    $sprice > 0 ? number_format($sprice, 2, '.', '') : '',
                     $sprice > 0 ? number_format((float) ($row['sgroi'] ?? 0), 2, '.', '') : '',
                     $sprice > 0 ? number_format((float) ($row['sgpft'] ?? 0), 2, '.', '') : '',
+                    number_format((float) ($row['profit'] ?? 0), 2, '.', ''),
+                    number_format((float) ($row['sales'] ?? 0), 2, '.', ''),
                     $sprice > 0 ? number_format((float) ($row['snroi'] ?? 0), 2, '.', '') : '',
                     $sprice > 0 ? number_format((float) ($row['sngpft'] ?? 0), 2, '.', '') : '',
                     $row['product_id'] ?? '',

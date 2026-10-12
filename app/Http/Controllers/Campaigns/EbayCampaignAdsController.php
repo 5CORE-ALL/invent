@@ -721,6 +721,7 @@ class EbayCampaignAdsController extends Controller
         $data  = $query->orderBy('ca.id', 'desc')->get();
         CpMasterDil::hydrate($data);
         EbayYesterdaySpend::attachToCampaignRows($data);
+        EbayListingReportHistory::attachToRows($data);
         $this->attachStdNpft($data);
         return response()->json([
             'total' => $total,

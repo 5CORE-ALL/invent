@@ -35,36 +35,119 @@ class CustomerFollowup extends Model
      *
      * `action` is free-form but the controller currently writes one of:
      *   - 'created'        : initial save in store()
-     *   - 'updated'        : full-form save via update()
-     *   - 'status_changed' : inline status edit via patchInlineStatus()
+     *   - 'updated'        : full-form save via update() that did not change status
+     *   - 'status_changed' : status moved to something other than Resolved
+     *   - 'resolved'       : status moved to Resolved ("marked done")
+     *
+     * Optional `$extra['status']` stores the status that was set, so the
+     * history tooltip can say who marked the ticket done.
      *
      * Caller is responsible for persisting the model (->save()) afterwards.
      */
-    public function appendExecutiveHistoryEntry(string $name, string $action, ?Carbon $at = null): void
+    public function appendExecutiveHistoryEntry(string $name, string $action, ?Carbon $at = null, array $extra = []): void
     {
         $name = trim($name);
         if ($name === '') {
             return;
         }
 
+        $status = trim((string) ($extra['status'] ?? ''));
         $history = is_array($this->executive_history) ? $this->executive_history : [];
         $atIso = ($at ?? Carbon::now())->toIso8601String();
 
         $lastIdx = count($history) - 1;
+        $lastStatus = $lastIdx >= 0 ? trim((string) ($history[$lastIdx]['status'] ?? '')) : '';
         if ($lastIdx >= 0
             && (string) ($history[$lastIdx]['name'] ?? '') === $name
             && (string) ($history[$lastIdx]['action'] ?? '') === $action
+            && $lastStatus === $status
         ) {
             $history[$lastIdx]['at'] = $atIso;
+            if ($status !== '') {
+                $history[$lastIdx]['status'] = $status;
+            }
         } else {
-            $history[] = [
+            $entry = [
                 'name'   => $name,
                 'at'     => $atIso,
                 'action' => $action,
             ];
+            if ($status !== '') {
+                $entry['status'] = $status;
+            }
+            $history[] = $entry;
         }
 
         $this->executive_history = $history;
+    }
+
+    /**
+     * Which history row is the "marked done" event for a Resolved ticket.
+     *
+     * Prefers an explicit `resolved` action (or a stored status of Resolved).
+     * Older rows only stored `status_changed` / `updated`, so when nothing
+     * explicit exists we use the entry written in the same moment as
+     * `resolved_at` (within 10 minutes).
+     */
+    public static function markedDoneHistoryIndex(array $history, ?Carbon $resolvedAt, ?string $currentStatus): ?int
+    {
+        if ($currentStatus !== 'Resolved' || $history === []) {
+            return null;
+        }
+
+        $lastExplicit = null;
+        foreach ($history as $i => $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $action = strtolower(trim((string) ($entry['action'] ?? '')));
+            $status = trim((string) ($entry['status'] ?? ''));
+            if ($action === 'resolved' || strcasecmp($status, 'Resolved') === 0) {
+                $lastExplicit = $i;
+            }
+        }
+        if ($lastExplicit !== null) {
+            return $lastExplicit;
+        }
+
+        if ($resolvedAt === null) {
+            for ($i = count($history) - 1; $i >= 0; $i--) {
+                $entry = $history[$i] ?? null;
+                if (! is_array($entry)) {
+                    continue;
+                }
+                if (strtolower(trim((string) ($entry['action'] ?? ''))) === 'status_changed') {
+                    return $i;
+                }
+            }
+
+            return null;
+        }
+
+        $target = $resolvedAt->getTimestamp();
+        $bestIdx = null;
+        $bestDelta = PHP_INT_MAX;
+        foreach ($history as $i => $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $at = trim((string) ($entry['at'] ?? ''));
+            if ($at === '') {
+                continue;
+            }
+            try {
+                $ts = Carbon::parse($at)->getTimestamp();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            $delta = abs($ts - $target);
+            if ($delta <= 600 && $delta < $bestDelta) {
+                $bestDelta = $delta;
+                $bestIdx = $i;
+            }
+        }
+
+        return $bestIdx;
     }
 
     /** Same rows as /all-marketplace-master (channel_master, status = active) */

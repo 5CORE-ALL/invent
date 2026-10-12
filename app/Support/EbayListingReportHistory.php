@@ -18,9 +18,10 @@ final class EbayListingReportHistory
      *
      * @return array<string, array{clicks: int, clicks_prev: int|null, clicks_prev_date: string|null, spend: float, spend_prev: float|null, spend_prev_date: string|null, sales: int, sales_prev: int|null, sales_prev_date: string|null, range: string}>
      */
-    public static function latestByListing(): array
+    public static function latestByListing(string $table = 'ebay_general_reports'): array
     {
-        if (! Schema::hasTable('ebay_general_reports')) {
+        $table = self::table($table);
+        if (! Schema::hasTable($table)) {
             return [];
         }
 
@@ -32,8 +33,8 @@ final class EbayListingReportHistory
         $prevLabel = $prevStart->format('M d').' – '.$prevEnd->format('M d');
 
         try {
-            $daily = self::dailyTotals($prevStart->toDateString(), $end->toDateString());
-            $l7 = self::rangeTotals('L7');
+            $daily = self::dailyTotals($table, $prevStart->toDateString(), $end->toDateString());
+            $l7 = self::rangeTotals($table, 'L7');
         } catch (\Throwable $e) {
             Log::warning('Listing report history lookup failed', ['error' => $e->getMessage()]);
 
@@ -73,10 +74,11 @@ final class EbayListingReportHistory
     /**
      * @return array<int, array{date: string, date_formatted: string, clicks: int, spend: float, sales: int}>
      */
-    public static function series(string $listingId, int $days): array
+    public static function series(string $listingId, int $days, string $table = 'ebay_general_reports'): array
     {
         $listingId = trim($listingId);
-        if ($listingId === '' || ! Schema::hasTable('ebay_general_reports')) {
+        $table = self::table($table);
+        if ($listingId === '' || ! Schema::hasTable($table)) {
             return [];
         }
 
@@ -84,7 +86,7 @@ final class EbayListingReportHistory
         $start = $days > 0 ? $end->copy()->subDays($days - 1)->toDateString() : null;
         $byDay = [];
         try {
-            $query = DB::table('ebay_general_reports')
+            $query = DB::table($table)
                 ->where('listing_id', $listingId)
                 ->whereRaw('CHAR_LENGTH(report_range) = 10')
                 ->where('report_range', '<=', $end->toDateString());
@@ -124,10 +126,39 @@ final class EbayListingReportHistory
     /**
      * @return array<string, array<string, array{clicks: int, spend: float, sales: int}>>
      */
-    private static function dailyTotals(string $start, string $end): array
+    /**
+     * @param  iterable<int, object>  $rows
+     */
+    public static function attachToRows(iterable $rows, string $table = 'ebay_general_reports'): void
+    {
+        $map = self::latestByListing($table);
+        foreach ($rows as $row) {
+            if (! is_object($row)) {
+                continue;
+            }
+            $hit = $map[trim((string) ($row->listing_id ?? ''))] ?? null;
+            $row->rpt_clicks = $hit['clicks'] ?? null;
+            $row->rpt_clicks_prev = $hit['clicks_prev'] ?? null;
+            $row->rpt_clicks_prev_date = $hit['clicks_prev_date'] ?? null;
+            $row->rpt_spend = $hit['spend'] ?? null;
+            $row->rpt_spend_prev = $hit['spend_prev'] ?? null;
+            $row->rpt_spend_prev_date = $hit['spend_prev_date'] ?? null;
+            $row->rpt_sales = $hit['sales'] ?? null;
+            $row->rpt_sales_prev = $hit['sales_prev'] ?? null;
+            $row->rpt_sales_prev_date = $hit['sales_prev_date'] ?? null;
+            $row->rpt_range = $hit['range'] ?? null;
+        }
+    }
+
+    private static function table(string $table): string
+    {
+        return $table === 'ebay_2_general_reports' ? 'ebay_2_general_reports' : 'ebay_general_reports';
+    }
+
+    private static function dailyTotals(string $table, string $start, string $end): array
     {
         $byListing = [];
-        $rows = DB::table('ebay_general_reports')
+        $rows = DB::table($table)
             ->whereRaw('CHAR_LENGTH(report_range) = 10')
             ->whereBetween('report_range', [$start, $end])
             ->get(['listing_id', 'report_range', 'clicks', 'ad_fees', 'sales']);
@@ -151,10 +182,10 @@ final class EbayListingReportHistory
     /**
      * @return array<string, array{clicks: int, spend: float, sales: int}>
      */
-    private static function rangeTotals(string $range): array
+    private static function rangeTotals(string $table, string $range): array
     {
         $out = [];
-        $rows = DB::table('ebay_general_reports')
+        $rows = DB::table($table)
             ->where('report_range', $range)
             ->get(['listing_id', 'clicks', 'ad_fees', 'sales']);
         foreach ($rows as $row) {

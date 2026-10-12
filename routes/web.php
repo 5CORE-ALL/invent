@@ -6988,6 +6988,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay2/campaign-ads', 'index')->name('ebay2.campaign.ads');
         Route::get('/ebay2/campaign-ads/badges', 'getBadgeSummary')->name('ebay2.campaign.ads.badges');
         Route::get('/ebay2/campaign-ads/data', 'getData')->name('ebay2.campaign.ads.data');
+        Route::get('/ebay2/listing-report-history', 'listingReportHistory')->name('ebay2.listing.report.history');
         Route::get('/ebay2/campaign-ads/rule', 'getRule')->name('ebay2.campaign.ads.rule');
         Route::post('/ebay2/campaign-ads/rule', 'saveRule')->name('ebay2.campaign.ads.rule.save');
         Route::get('/ebay2/campaign-ads/dil-rule', 'getDilRule')->name('ebay2.campaign.ads.dil.rule');
@@ -7659,6 +7660,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::put('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'update'])->name('tasks.update');
     Route::delete('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'destroy'])->name('tasks.destroy');
     Route::get('/tasks/{id}/done-checklist', [\App\Http\Controllers\TaskController::class, 'doneChecklist'])->name('tasks.doneChecklist');
+    Route::get('/tasks/{id}/done-checklist-review', [\App\Http\Controllers\TaskController::class, 'doneChecklistReview'])->name('tasks.doneChecklistReview');
     Route::post('/tasks/{id}/complete', [\App\Http\Controllers\TaskController::class, 'complete'])->name('tasks.complete');
     Route::post('/tasks/{id}/chat', [\App\Http\Controllers\TaskController::class, 'openChat'])->whereNumber('id')->name('tasks.chat');
     Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');

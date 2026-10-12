@@ -62,6 +62,13 @@
             box-shadow: none;
         }
 
+        .tabulator .action-select.form-select option {
+            font-size: 14px;
+            line-height: normal;
+            color: #212529;
+            background-color: #fff;
+        }
+
         /* DIL% colors */
         .dil-red { color: #a00211; font-weight: 600; }
         .dil-yellow { color: #ffc107; font-weight: 600; }
@@ -2119,7 +2126,9 @@
                         return false;
                     }
 
-                    if (rowSubmitBlocked(data)) return false;
+                    // NRB means do not transfer. Keep those rows visible in the NRB list
+                    // even when FROM inventory or DIL would block a transfer.
+                    if (data.ACTION !== 'NRB' && rowSubmitBlocked(data)) return false;
 
                     return true;
                 });

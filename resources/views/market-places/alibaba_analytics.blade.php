@@ -754,15 +754,19 @@
                             }
                         },
                         {
-                            title: 'Sprc Dil', field: 'SPRC_DIL', hozAlign: 'center', width: 70, headerSort: false,
-                            headerTooltip: 'S PRC from Dil → Target SGROI. Dil = OV L30 ÷ INV, including when AB L30 = 0. Dil = 0 uses the 0–0 slab.',
+                            title: 'GPFT', field: 'gpft', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'GPFT = ((Price × margin) − LP) ÷ Price. Ship is not subtracted.',
                             formatter: function (cell) {
-                                const row = cell.getRow().getData();
-                                if (isAbParentRow(row) || typeof ebayDilGroiMetaForRow !== 'function') return '';
-                                const meta = ebayDilGroiMetaForRow(row);
-                                if (!meta || !(meta.sprc > 0)) return '<span style="color:#adb5bd;">–</span>';
-                                const tip = (typeof ebayDilGroiTipText === 'function') ? ebayDilGroiTipText(meta) : '';
-                                return '<span style="font-weight:600;color:#6f42c1;" title="' + tip.replace(/"/g, '&quot;') + '">$' + meta.sprc.toFixed(2) + '</span>';
+                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                return abPct(cell.getValue(), 'gpft');
+                            }
+                        },
+                        {
+                            title: 'GROI', field: 'groi', hozAlign: 'center', width: 55, sorter: 'number',
+                            headerTooltip: 'GROI = ((Price × margin) − LP) ÷ LP. Ship is not subtracted.',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                return abPct(cell.getValue(), 'roi');
                             }
                         },
                         {
@@ -780,46 +784,6 @@
                                     : '';
                                 return '<span style="font-weight:600;">$' + value.toFixed(2) + '</span>' + tri;
                             }
-                        },
-                        (function () {
-                            if (typeof channelPromoPushPrcColumn !== 'function') return { title: 'Push Prc', field: 'push_prc', visible: false };
-                            const col = channelPromoPushPrcColumn();
-                            delete col.titleFormatter;
-                            delete col.headerClick;
-                            col.width = 96;
-                            col.headerTooltip = 'Push S PRC to the Alibaba listing. Upload = not on the listing yet. Green check = Price already matches S PRC.';
-                            return col;
-                        })(),
-                        {
-                            title: 'GROI', field: 'groi', hozAlign: 'center', width: 55, sorter: 'number',
-                            headerTooltip: 'GROI = ((Price × margin) − LP) ÷ LP. Ship is not subtracted.',
-                            formatter: function (cell) {
-                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
-                                return abPct(cell.getValue(), 'roi');
-                            }
-                        },
-                        {
-                            title: 'GPFT', field: 'gpft', hozAlign: 'center', width: 55, sorter: 'number',
-                            headerTooltip: 'GPFT = ((Price × margin) − LP) ÷ Price. Ship is not subtracted.',
-                            formatter: function (cell) {
-                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
-                                return abPct(cell.getValue(), 'gpft');
-                            }
-                        },
-                        {
-                            title: 'Profit', field: 'profit', hozAlign: 'center', width: 70, sorter: 'number',
-                            headerTooltip: 'Unit profit = (Price × margin) − LP. Ship is not subtracted.',
-                            formatter: function (cell) {
-                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
-                                const v = parseFloat(cell.getValue()) || 0;
-                                const color = v >= 0 ? '#28a745' : '#dc3545';
-                                return '<span style="color:' + color + ';font-weight:600;">$' + v.toFixed(2) + '</span>';
-                            }
-                        },
-                        {
-                            title: 'Sales', field: 'sales', hozAlign: 'center', width: 80, sorter: 'number',
-                            headerTooltip: 'Line sales from /alibaba/daily-sales (unit price × qty), last 30 Pacific days',
-                            formatter: function (cell) { return abMoney(cell.getValue()); }
                         },
                         {
                             title: 'SGROI', field: 'sgroi', hozAlign: 'center', width: 55, sorter: 'number',
@@ -846,6 +810,42 @@
                                 const profit = (sprice * AB_MARGIN) - lp;
                                 return abPct((profit / sprice) * 100, 'gpft');
                             }
+                        },
+                        {
+                            title: 'Sprc Dil', field: 'SPRC_DIL', hozAlign: 'center', width: 70, headerSort: false,
+                            headerTooltip: 'S PRC from Dil → Target SGROI. Dil = OV L30 ÷ INV, including when AB L30 = 0. Dil = 0 uses the 0–0 slab.',
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row) || typeof ebayDilGroiMetaForRow !== 'function') return '';
+                                const meta = ebayDilGroiMetaForRow(row);
+                                if (!meta || !(meta.sprc > 0)) return '<span style="color:#adb5bd;">–</span>';
+                                const tip = (typeof ebayDilGroiTipText === 'function') ? ebayDilGroiTipText(meta) : '';
+                                return '<span style="font-weight:600;color:#6f42c1;" title="' + tip.replace(/"/g, '&quot;') + '">$' + meta.sprc.toFixed(2) + '</span>';
+                            }
+                        },
+                        (function () {
+                            if (typeof channelPromoPushPrcColumn !== 'function') return { title: 'Push Prc', field: 'push_prc', visible: false };
+                            const col = channelPromoPushPrcColumn();
+                            delete col.titleFormatter;
+                            delete col.headerClick;
+                            col.width = 96;
+                            col.headerTooltip = 'Push S PRC to the Alibaba listing. Upload = not on the listing yet. Green check = Price already matches S PRC.';
+                            return col;
+                        })(),
+                        {
+                            title: 'Profit', field: 'profit', hozAlign: 'center', width: 70, sorter: 'number',
+                            headerTooltip: 'Unit profit = (Price × margin) − LP. Ship is not subtracted.',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                const v = parseFloat(cell.getValue()) || 0;
+                                const color = v >= 0 ? '#28a745' : '#dc3545';
+                                return '<span style="color:' + color + ';font-weight:600;">$' + v.toFixed(2) + '</span>';
+                            }
+                        },
+                        {
+                            title: 'Sales', field: 'sales', hozAlign: 'center', width: 80, sorter: 'number',
+                            headerTooltip: 'Line sales from /alibaba/daily-sales (unit price × qty), last 30 Pacific days',
+                            formatter: function (cell) { return abMoney(cell.getValue()); }
                         },
                         {
                             title: 'SNROI', field: 'snroi', hozAlign: 'center', width: 55, sorter: 'number',

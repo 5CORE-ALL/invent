@@ -12,6 +12,7 @@ class AutomateTaskChecklistSubmission extends Model
     protected $fillable = [
         'form_id',
         'automate_task_id',
+        'task_id',
         'submitted_by',
         'answers',
         'submitted_at',

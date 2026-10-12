@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\ApiController;
 use App\Models\ChannelMaster;
 use App\Models\Ebay2GeneralReport;
+use App\Support\EbayListingReportHistory;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay2PriorityReport;
 use App\Models\EbayTwoListingStatus;
@@ -694,6 +695,20 @@ class EbayTwoController extends Controller
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('ebay2_campaign_ads unavailable: ' . $e->getMessage());
         }
+        $ebay2ReportByListing = EbayListingReportHistory::latestByListing('ebay_2_general_reports');
+        $applyEbay2Report = static function (array &$row, $itemId) use ($ebay2ReportByListing): void {
+            $hit = $ebay2ReportByListing[trim((string) ($itemId ?? ''))] ?? null;
+            $row['rpt_clicks'] = $hit['clicks'] ?? null;
+            $row['rpt_clicks_prev'] = $hit['clicks_prev'] ?? null;
+            $row['rpt_clicks_prev_date'] = $hit['clicks_prev_date'] ?? null;
+            $row['rpt_spend'] = $hit['spend'] ?? null;
+            $row['rpt_spend_prev'] = $hit['spend_prev'] ?? null;
+            $row['rpt_spend_prev_date'] = $hit['spend_prev_date'] ?? null;
+            $row['rpt_sales'] = $hit['sales'] ?? null;
+            $row['rpt_sales_prev'] = $hit['sales_prev'] ?? null;
+            $row['rpt_sales_prev_date'] = $hit['sales_prev_date'] ?? null;
+            $row['rpt_range'] = $hit['range'] ?? null;
+        };
 
         // 4. Fetch General Reports (listing_id → sku)
         $generalReports = Ebay2GeneralReport::whereIn('listing_id', array_keys($itemIdToSku))
@@ -855,6 +870,7 @@ class EbayTwoController extends Controller
             $row['l7_views'] = $ebayMetric->l7_views ?? 0;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['listing_id'] = $ebayMetric->item_id ?? null;
+            $applyEbay2Report($row, $ebayMetric->item_id ?? null);
             $row['E Stock'] = $ebayMetric->ebay_stock ?? 0;
             
             // Amazon Price for comparison
@@ -1181,6 +1197,7 @@ class EbayTwoController extends Controller
                 $row['l7_views'] = $metric->l7_views ?? 0;
                 $row['eBay_item_id'] = $metric->item_id ?? null;
                 $row['listing_id'] = $metric->item_id ?? null;
+                $applyEbay2Report($row, $metric->item_id ?? null);
                 $row['E Stock'] = $metric->ebay_stock ?? 0;
 
                 EbaySkuCompetitor::applyLinkedGroupToRow(

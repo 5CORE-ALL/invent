@@ -132,6 +132,8 @@
     'extended' => true,
 ])
 
+@include('campaign.partials.ebay-report-history', ['historyUrl' => url('/ebay/listing-report-history')])
+
 <div class="modal fade" id="ecaYSpendModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
@@ -499,6 +501,42 @@ $(document).ready(function () {
                 formatter: function(cell) {
                     const v = parseFloat(cell.getValue());
                     return isNaN(v) ? '—' : `<span class="text-info fw-semibold">${v.toFixed(1)}%</span>`;
+                }
+            },
+            {
+                title: 'Clicks', field: 'rpt_clicks', width: 100, hozAlign: 'center', sorter: 'number',
+                headerTooltip: 'Clicks over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.',
+                formatter: function(cell) {
+                    return ebayRptCellHtml(cell.getRow().getData(), 'rpt_clicks', 'rpt_clicks_prev', 'rpt_clicks_prev_date', 'rpt_clicks', false);
+                },
+                cellClick: function(e, cell) {
+                    if (!e.target.closest('.eca-rpt-hist')) return;
+                    e.stopPropagation();
+                    openEcaReportChart(cell.getRow().getData(), 'rpt_clicks');
+                }
+            },
+            {
+                title: 'Spend', field: 'rpt_spend', width: 110, hozAlign: 'center', sorter: 'number',
+                headerTooltip: 'Ad spend over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.',
+                formatter: function(cell) {
+                    return ebayRptCellHtml(cell.getRow().getData(), 'rpt_spend', 'rpt_spend_prev', 'rpt_spend_prev_date', 'rpt_spend', true);
+                },
+                cellClick: function(e, cell) {
+                    if (!e.target.closest('.eca-rpt-hist')) return;
+                    e.stopPropagation();
+                    openEcaReportChart(cell.getRow().getData(), 'rpt_spend');
+                }
+            },
+            {
+                title: 'Sales', field: 'rpt_sales', width: 100, hozAlign: 'center', sorter: 'number',
+                headerTooltip: 'Sales count over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.',
+                formatter: function(cell) {
+                    return ebayRptCellHtml(cell.getRow().getData(), 'rpt_sales', 'rpt_sales_prev', 'rpt_sales_prev_date', 'rpt_sales', false);
+                },
+                cellClick: function(e, cell) {
+                    if (!e.target.closest('.eca-rpt-hist')) return;
+                    e.stopPropagation();
+                    openEcaReportChart(cell.getRow().getData(), 'rpt_sales');
                 }
             },
             {
