@@ -280,11 +280,23 @@ class ChannelPushSpriceRunner
             $live = null;
             $alreadyLive = false;
             $negSnroi = false;
+            $dupSkip = false;
             try {
                 if ($sku === '' || ! ($price > 0)) {
                     throw new \RuntimeException('SKU and S PRC > 0 required');
                 }
-                if (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
+                $dupReason = ChannelLivePriceSync::duplicateEbayPushReason($this->channel, $sku, $price);
+                if ($dupReason !== null) {
+                    // Same price was already pushed and the stored live price is only a stale snapshot.
+                    $ok = true;
+                    $dupSkip = true;
+                    $logger->info('S PRC background push skipped — '.$dupReason, [
+                        'channel' => $this->channel,
+                        'sku' => $sku,
+                        'price' => $price,
+                    ]);
+                    $store->appendMessage('Skip '.$sku.': '.$dupReason);
+                } elseif (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
                     $ok = true;
                     $negSnroi = true;
                     $logger->info('S PRC background push skipped — negative SNROI', [
@@ -387,14 +399,16 @@ class ChannelPushSpriceRunner
                 $this->markListingEndedIfNeeded($sku, $error);
             }
 
-            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi) {
+            $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi, $dupSkip) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;
                 }
                 if ($ok) {
                     $state['tasks'][$index]['status'] = 'ok';
                     $state['tasks'][$index]['error'] = null;
-                    $state['tasks'][$index]['message'] = $negSnroi ? 'negative SNROI' : ($alreadyLive ? 'already live' : 'pushed');
+                    $state['tasks'][$index]['message'] = $negSnroi
+                        ? 'negative SNROI'
+                        : ($dupSkip ? 'already pushed' : ($alreadyLive ? 'already live' : 'pushed'));
                     if ($live !== null) {
                         $state['tasks'][$index]['ebay_price'] = $live;
                     }
@@ -419,11 +433,13 @@ class ChannelPushSpriceRunner
                 return $state;
             });
 
-            $store->appendMessage(
-                ($ok ? (($negSnroi || $alreadyLive) ? 'Skip ' : 'OK ') : 'Fail ').$sku
-                    .($negSnroi ? ': negative SNROI' : ($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : ''))),
-                $ok
-            );
+            if (! $dupSkip) { // the duplicate-push skip already appended its own message above
+                $store->appendMessage(
+                    ($ok ? (($negSnroi || $alreadyLive) ? 'Skip ' : 'OK ') : 'Fail ').$sku
+                        .($negSnroi ? ': negative SNROI' : ($alreadyLive ? ': Price already = S PRC' : ($error ? (': '.$error) : ''))),
+                    $ok
+                );
+            }
             usleep($this->pauseAfterPushMicros());
         }
     }

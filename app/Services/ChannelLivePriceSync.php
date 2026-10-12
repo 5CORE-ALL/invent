@@ -124,6 +124,119 @@ class ChannelLivePriceSync
         return in_array(self::normalize($channel), ['ebay1', 'ebay2', 'ebay3'], true);
     }
 
+    /**
+     * eBay "Price" (ebay_metrics.ebay_price) is only refreshed by the report/GetItem fetch, never by
+     * a push. Until that fetch runs again, "live != S PRC" is just a stale snapshot of a listing we
+     * already revised, so every hourly / page / catch-up run re-queued the same price (11 Oct:
+     * 642 of 1,209 eBay1 pushes repeated the SKU's previous price).
+     *
+     * Skip a push only when the exact same price was already pushed successfully AND we have no
+     * fresher live reading than that push. If a fetch after the push still shows another price the
+     * listing really was changed back, so it is pushed again, but not more often than the cooldown.
+     */
+    public const EBAY_STALE_SNAPSHOT_SKIP_HOURS = 24;
+
+    public const EBAY_REPUSH_COOLDOWN_MINUTES = 180;
+
+    /**
+     * @return string|null Reason to skip, or null when the push should go ahead.
+     */
+    public static function duplicateEbayPushReason(string $channel, string $sku, float $price): ?string
+    {
+        $channel = self::normalize($channel);
+        if (! self::isEbayChannel($channel) || ! ($price > 0)) {
+            return null;
+        }
+
+        try {
+            $sku = strtoupper(trim(str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', $sku)));
+            $viewClass = self::viewClass($channel);
+            $target = self::writeTargets($channel)[0] ?? null;
+            if ($viewClass === null || $target === null || $sku === '') {
+                return null;
+            }
+
+            $view = $viewClass::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])->first(['sku', 'value']);
+            if (! $view) {
+                return null;
+            }
+            $value = is_array($view->value)
+                ? $view->value
+                : (json_decode((string) ($view->value ?? ''), true) ?: []);
+            if (! is_array($value)) {
+                return null;
+            }
+            $pushedAtRaw = $value['SPRICE_PUSHED_AT'] ?? null;
+            $pushedAt = is_string($pushedAtRaw) && $pushedAtRaw !== ''
+                ? \Illuminate\Support\Carbon::parse($pushedAtRaw, config('app.timezone'))
+                : null;
+
+            $metric = $target['model']::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                ->first(['sku', $target['column'], 'updated_at']);
+
+            return self::decideDuplicateEbayPush(
+                PushedListingPrice::fromValue($value),
+                $pushedAt,
+                $metric && $metric->updated_at ? \Illuminate\Support\Carbon::parse($metric->updated_at) : null,
+                $metric ? (float) ($metric->{$target['column']} ?? 0) : null,
+                $price,
+                now()
+            );
+        } catch (Throwable $e) {
+            // Never block a legitimate push because the guard itself failed.
+            Log::warning('ChannelLivePriceSync duplicate-push guard failed', [
+                'channel' => $channel,
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Pure decision used by {@see self::duplicateEbayPushReason()} (unit-tested, no DB).
+     */
+    public static function decideDuplicateEbayPush(
+        ?float $pushedValue,
+        ?\Illuminate\Support\Carbon $pushedAt,
+        ?\Illuminate\Support\Carbon $liveSeenAt,
+        ?float $livePrice,
+        float $price,
+        \Illuminate\Support\Carbon $now
+    ): ?string {
+        if ($pushedValue === null || $pushedAt === null || ! PushedListingPrice::same($pushedValue, $price)) {
+            return null; // first push of this price
+        }
+        if ($livePrice !== null && PushedListingPrice::same($livePrice, $price)) {
+            return null; // already live; callers handle that case themselves
+        }
+
+        $ageMinutes = $pushedAt->diffInMinutes($now, false);
+        if ($ageMinutes < 0) {
+            return null; // clock skew: do not trust the stamp
+        }
+
+        $liveIsOlderThanPush = $liveSeenAt === null || $liveSeenAt->lessThanOrEqualTo($pushedAt);
+        if ($liveIsOlderThanPush) {
+            if ($ageMinutes < self::EBAY_STALE_SNAPSHOT_SKIP_HOURS * 60) {
+                return 'already pushed '.number_format($price, 2, '.', '').' at '.$pushedAt->toDateTimeString()
+                    .'; live price not refreshed since';
+            }
+
+            return null; // nothing refreshed for a day: let the push verify it
+        }
+
+        // A reading taken after our push still differs: the listing was changed back. Re-push,
+        // but never in a tight loop.
+        if ($ageMinutes < self::EBAY_REPUSH_COOLDOWN_MINUTES) {
+            return 'same price pushed '.(int) $ageMinutes.' min ago; re-push cooldown';
+        }
+
+        return null;
+    }
+
     public static function stamp(string $channel, string $sku, float $sprice): void
     {
         $viewClass = self::viewClass($channel);

@@ -133,7 +133,8 @@ class EbayRuleSpriceApplyService
                         $stats['applied']++;
                         $applied++;
                     }
-                    if ($live > 0 && ! self::sameCents($live, $next)) {
+                    if ($live > 0 && ! self::sameCents($live, $next)
+                        && ChannelLivePriceSync::duplicateEbayPushReason($this->channel, (string) $row['sku'], $next) === null) {
                         $pushTasks[] = ['sku' => $row['sku'], 'price' => $next];
                     } else {
                         $stats['skipped_unchanged']++;
@@ -193,6 +194,9 @@ class EbayRuleSpriceApplyService
             $saved = round((float) ($row['saved_sprice'] ?? 0), 2);
             $live = round((float) ($row['live'] ?? 0), 2);
             if ($saved <= 0 || $live <= 0 || self::sameCents($saved, $live)) {
+                continue;
+            }
+            if (ChannelLivePriceSync::duplicateEbayPushReason($this->channel, (string) $row['sku'], $saved) !== null) {
                 continue;
             }
             $out[] = [
