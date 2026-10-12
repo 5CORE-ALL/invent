@@ -366,6 +366,30 @@
         .lm-push-preview .cell .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .lm-push-preview .cell.is-empty .v { color: #b91c1c; }
         #lmProductPushModal { z-index: 1065; }
+        #lmProductPushModal .modal-dialog { max-width: min(1180px, 96vw); }
+        #lm-prod-push-channels.lm-channel-list {
+            max-height: none;
+            overflow: visible;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: .5rem;
+        }
+        #lm-prod-push-channels > .text-muted { grid-column: 1 / -1; }
+        #lm-prod-push-channels .lm-channel-row {
+            margin-bottom: 0;
+            padding: .5rem .65rem;
+            gap: .45rem;
+            min-width: 0;
+        }
+        #lm-prod-push-channels .lm-channel-row .fw-semibold {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        @media (max-width: 900px) {
+            #lm-prod-push-channels.lm-channel-list { grid-template-columns: 1fr; }
+        }
         .lm-img-edit-bar { border: 1px solid #bfdbfe; background: #f8fbff; border-radius: 10px; padding: .75rem .9rem; margin-bottom: .9rem; }
         .lm-prod-thumbs .lm-thumb { position: relative; }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools {
@@ -1675,7 +1699,7 @@
 
 {{-- Push to Marketplaces: choose channels + fields, then update the existing listings in place --}}
 <div class="modal fade" id="lmProductPushModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <div class="flex-grow-1">
