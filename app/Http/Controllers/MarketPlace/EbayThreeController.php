@@ -1422,9 +1422,35 @@ class EbayThreeController extends Controller
             );
 
             if (isset($result['success']) && $result['success']) {
-                $live = $this->ebay3PullLivePrice($sku, $priceFloat);
-                $ebayMetric->ebay_price = $live;
-                $ebayMetric->save();
+                // eBay accepting the revise is not proof the listing changed. Read the real price back and
+                // only ever store a price eBay reported (never the price we asked for).
+                $check = \App\Support\EbayPushVerification::confirm(
+                    $priceFloat,
+                    fn () => $this->ebay3PullLivePriceOrNull($sku)
+                );
+                if ($check['live'] !== null) {
+                    $ebayMetric->ebay_price = $check['live'];
+                    $ebayMetric->save();
+                }
+                if ($check['state'] !== \App\Support\EbayPushVerification::VERIFIED) {
+                    $this->saveSpriceStatus($sku, 'error');
+                    Log::warning('[EbayThreeController] eBay3 price push not confirmed on eBay', [
+                        'sku' => $sku,
+                        'price' => $priceFloat,
+                        'ebay_price' => $check['live'],
+                        'state' => $check['state'],
+                        'item_id' => $ebayMetric->item_id,
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $check['message'],
+                        'verification' => $check['state'],
+                        'ebay_price' => $check['live'],
+                        'errors' => [['code' => 'PushNotConfirmed', 'message' => $check['message']]],
+                    ], 409);
+                }
+                $live = (float) $check['live'];
                 $this->saveSpriceStatus($sku, 'pushed');
                 Log::info('[EbayThreeController] eBay3 price push successful and live price pulled', [
                     'sku'     => $sku,
@@ -1542,6 +1568,12 @@ class EbayThreeController extends Controller
 
     private function ebay3PullLivePrice(string $sku, float $fallback): float
     {
+        return $this->ebay3PullLivePriceOrNull($sku) ?? round($fallback, 2);
+    }
+
+    /** Price eBay reports for the listing right now (GetItem), or null when it could not be read. */
+    private function ebay3PullLivePriceOrNull(string $sku): ?float
+    {
         try {
             $pulled = app(PefEbayPricePullService::class)->pullOne($sku, 'ebay3');
             $live = isset($pulled['price']) ? (float) $pulled['price'] : 0;
@@ -1559,7 +1591,7 @@ class EbayThreeController extends Controller
             ]);
         }
 
-        return round($fallback, 2);
+        return null;
     }
 
     private function saveSpriceStatus($sku, $status)
@@ -2362,6 +2394,12 @@ class EbayThreeController extends Controller
                 'message' => 'SPRICE cleared for Ebay3',
                 'data' => ['sku' => $sku, 'sprice' => 0, 'spft' => null, 'sroi' => null, 'sgroi' => null, 'sgpft' => null]
             ]);
+        }
+
+        // Saved S PRC is what the badge, blue catch-up and runner read: store the Std-vs-Dil rule price,
+        // not whatever the browser calculated.
+        if (($ruleSprice = \App\Services\Support\EbayRuleOnlyPushGuard::ruleOverride('ebay3', $sku, $spriceFloat)) !== null) {
+            $spriceFloat = $ruleSprice;
         }
 
         // Get current marketplace percentage for Ebay3

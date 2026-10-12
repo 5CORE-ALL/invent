@@ -2105,6 +2105,11 @@ class EbayTwoController extends Controller
         $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
         $spriceFloat = floatval($sprice);
+        // Saved S PRC is what the badge, blue catch-up and runner read: store the Std-vs-Dil rule price,
+        // not whatever the browser calculated.
+        if (($ruleSprice = \App\Services\Support\EbayRuleOnlyPushGuard::ruleOverride('ebay2', $sku, $spriceFloat)) !== null) {
+            $spriceFloat = $ruleSprice;
+        }
         $sgpft = $spriceFloat > 0 ? round((($spriceFloat * $percentage - $ship - $lp) / $spriceFloat) * 100, 2) : 0;
 
         // Ads stay eBay 2 (not eBay 1).
@@ -2798,9 +2803,35 @@ class EbayTwoController extends Controller
             );
 
             if (isset($result['success']) && $result['success']) {
-                $live = $this->ebay2PullLivePrice($sku, $priceFloat);
-                $ebayMetric->ebay_price = $live;
-                $ebayMetric->save();
+                // eBay accepting the revise is not proof the listing changed. Read the real price back and
+                // only ever store a price eBay reported (never the price we asked for).
+                $check = \App\Support\EbayPushVerification::confirm(
+                    $priceFloat,
+                    fn () => $this->ebay2PullLivePriceOrNull($sku)
+                );
+                if ($check['live'] !== null) {
+                    $ebayMetric->ebay_price = $check['live'];
+                    $ebayMetric->save();
+                }
+                if ($check['state'] !== \App\Support\EbayPushVerification::VERIFIED) {
+                    $this->saveSpriceStatus($sku, 'failed');
+                    Log::warning('[EbayTwoController] eBay2 price push not confirmed on eBay', [
+                        'sku' => $sku,
+                        'price' => $priceFloat,
+                        'ebay_price' => $check['live'],
+                        'state' => $check['state'],
+                        'item_id' => $ebayMetric->item_id,
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $check['message'],
+                        'verification' => $check['state'],
+                        'ebay_price' => $check['live'],
+                        'errors' => [['code' => 'PushNotConfirmed', 'message' => $check['message']]],
+                    ], 409);
+                }
+                $live = (float) $check['live'];
 
                 $this->saveSpriceStatus($sku, 'pushed');
                 Log::info('[EbayTwoController] eBay2 price push successful and live price pulled', [
@@ -2873,6 +2904,12 @@ class EbayTwoController extends Controller
 
     private function ebay2PullLivePrice(string $sku, float $fallback): float
     {
+        return $this->ebay2PullLivePriceOrNull($sku) ?? round($fallback, 2);
+    }
+
+    /** Price eBay reports for the listing right now (GetItem), or null when it could not be read. */
+    private function ebay2PullLivePriceOrNull(string $sku): ?float
+    {
         try {
             $pulled = app(PefEbayPricePullService::class)->pullOne($sku, 'ebay2');
             $live = isset($pulled['price']) ? (float) $pulled['price'] : 0;
@@ -2890,7 +2927,7 @@ class EbayTwoController extends Controller
             ]);
         }
 
-        return round($fallback, 2);
+        return null;
     }
 
     private function saveSpriceStatus($sku, $status)

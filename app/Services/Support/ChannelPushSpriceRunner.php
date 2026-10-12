@@ -359,6 +359,15 @@ class ChannelPushSpriceRunner
                             : 'S PRC push failed';
                         throw new \RuntimeException($error);
                     }
+                    // eBay: success means "eBay reported this price on the listing", not "eBay accepted the call".
+                    // Never stamp pushed / clear the badge on the price we asked for.
+                    if (in_array($this->channel, ['ebay1', 'ebay2', 'ebay2op', 'ebay3'], true)
+                        && ! \App\Services\EbayRuleSpriceApplyService::sameCents(
+                            (float) (is_array($payload) && is_numeric($payload['ebay_price'] ?? null) ? $payload['ebay_price'] : -1),
+                            round($price, 2)
+                        )) {
+                        throw new \RuntimeException('eBay price not confirmed after push (listing did not report $'.number_format($price, 2).')');
+                    }
                     $live = is_array($payload)
                         ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
                         : $price;

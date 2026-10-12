@@ -16,6 +16,7 @@ use App\Models\ShopifySku;
 use App\Support\AmazonDilGroiRule;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\PushedListingPrice;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -109,6 +110,7 @@ class EbayRuleSpriceApplyService
             'errors' => [],
         ];
         $pushTasks = [];
+        $ruleMap = [];
 
         try {
             $rows = $this->hydrateAll($onlySkus);
@@ -126,6 +128,7 @@ class EbayRuleSpriceApplyService
                         continue;
                     }
                     $next = round((float) $computed['sprice'], 2);
+                    $ruleMap[strtoupper(trim((string) $row['sku']))] = $next;
                     $saved = round((float) ($row['saved_sprice'] ?? 0), 2);
                     $live = round((float) ($row['live'] ?? 0), 2);
                     if (! $dryRun && ($saved <= 0 || ! self::sameCents($saved, $next))) {
@@ -158,6 +161,17 @@ class EbayRuleSpriceApplyService
             $this->log($logger, $this->channel.' FAILED: '.$e->getMessage());
 
             return ['channel' => $this->channel, 'dry_run' => $dryRun, 'stats' => $stats, 'push_tasks' => []];
+        }
+
+        // The prices this run is about to push are the rule prices; keep the push guard's map in step
+        // (a full run replaces it, a partial run only updates its SKUs).
+        if ($limit === null) {
+            try {
+                $existing = $onlySkus === null ? [] : (Cache::get($this->ruleMapCacheKey()) ?: []);
+                Cache::put($this->ruleMapCacheKey(), array_merge(is_array($existing) ? $existing : [], $ruleMap), self::RULE_MAP_TTL);
+            } catch (Throwable $e) {
+                // guard recomputes on demand
+            }
         }
 
         $this->log($logger, sprintf(
@@ -224,17 +238,57 @@ class EbayRuleSpriceApplyService
      */
     public function ruleSpriceForSku(string $sku): ?float
     {
+        $map = $this->ruleSpriceMap();
+        $price = $map[strtoupper(trim($sku))] ?? null;
+
+        return ($price !== null && $price > 0) ? round((float) $price, 2) : null;
+    }
+
+    /** How long the per-channel rule price map is reused (seconds). */
+    public const RULE_MAP_TTL = 120;
+
+    private function ruleMapCacheKey(): string
+    {
+        return 'ebay-rule-sprice-map:'.$this->channel;
+    }
+
+    /**
+     * Rule price for every priceable SKU, keyed by upper-case SKU. Cached briefly so the push guard and
+     * the save endpoints do not recompute the whole rule per request; {@see self::run()} refreshes it.
+     *
+     * @return array<string, float>
+     */
+    public function ruleSpriceMap(bool $fresh = false): array
+    {
+        if (! $fresh) {
+            try {
+                $cached = Cache::get($this->ruleMapCacheKey());
+            } catch (Throwable $e) {
+                $cached = null; // cache store down: compute below
+            }
+            if (is_array($cached)) {
+                return $cached;
+            }
+        }
+
         $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc($this->channel);
         $store = $this->loadDilGroiStore();
         $margin = $this->takeHome();
         $adsPct = $this->channelAdsPercent();
-        foreach ($this->hydrateAll([$sku]) as $row) {
+        $map = [];
+        foreach ($this->hydrateAll() as $row) {
             $computed = $this->computeTarget($row, $store['rules'], $store['cvr_adj'], $margin, $adsPct);
-
-            return $computed === null ? null : round((float) $computed['sprice'], 2);
+            if ($computed !== null && (float) $computed['sprice'] > 0) {
+                $map[strtoupper(trim((string) $row['sku']))] = round((float) $computed['sprice'], 2);
+            }
+        }
+        try {
+            Cache::put($this->ruleMapCacheKey(), $map, self::RULE_MAP_TTL);
+        } catch (Throwable $e) {
+            // not cached: next call recomputes
         }
 
-        return null;
+        return $map;
     }
 
     public static function sameCents(float $a, float $b): bool

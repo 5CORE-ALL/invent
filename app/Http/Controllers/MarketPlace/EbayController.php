@@ -1867,6 +1867,12 @@ class EbayController extends Controller
             ]);
         }
 
+        // Saved S PRC is what the badge, blue catch-up and runner read: store the Std-vs-Dil rule price,
+        // not whatever the browser calculated.
+        if (($ruleSprice = \App\Services\Support\EbayRuleOnlyPushGuard::ruleOverride('ebay1', $sku, $spriceFloat)) !== null) {
+            $spriceFloat = $ruleSprice;
+        }
+
         // Get current marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Ebay')->first();
         $percentage = MarketplacePercentage::takeHomeDecimal('Ebay');
@@ -3977,13 +3983,31 @@ class EbayController extends Controller
             ];
         }
 
-        $live = $this->ebay1PullLivePriceAndUpdateMetric($ebayMetric, $sku, $ebayService);
-        if ($live === null) {
-            $live = $priceFloat;
-            $ebayMetric->ebay_price = $live;
-            $ebayMetric->save();
-            $this->ebay1SyncDailyPrice($sku, $live);
+        // eBay accepting the revise is not proof the listing changed. Read the real price back; the
+        // metric is only ever written with a price eBay reported (never with the price we asked for).
+        $check = \App\Support\EbayPushVerification::confirm(
+            $priceFloat,
+            fn () => $this->ebay1PullLivePriceAndUpdateMetric($ebayMetric, $sku, $ebayService)
+        );
+        if ($check['state'] !== \App\Support\EbayPushVerification::VERIFIED) {
+            Log::warning('[EbayController] S PRC push not confirmed on eBay', [
+                'sku' => $sku,
+                'pushed' => $priceFloat,
+                'ebay_price' => $check['live'],
+                'state' => $check['state'],
+                'item_id' => $ebayMetric->item_id,
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 'error', // shown as a failed push; 'verification' says why
+                'verification' => $check['state'],
+                'message' => $check['message'],
+                'ebay_price' => $check['live'],
+                'errors' => [['code' => 'PushNotConfirmed', 'message' => $check['message']]],
+            ];
         }
+        $live = (float) $check['live'];
 
         Log::info('[EbayController] S PRC auto-pushed and live price pulled', [
             'sku' => $sku,

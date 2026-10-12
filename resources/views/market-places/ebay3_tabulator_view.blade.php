@@ -1943,7 +1943,11 @@
             if (ebay3IsAlertParentRow(data)) return false;
             if (!(parseFloat(data && data.INV) > 0)) return false;
             if (ebay3IsEndedListing(data)) return false;
-            const sprice = ebay3RowSpriceForAlert(data);
+            // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
+            // the page's own recalculation, so the badge and the pushes cannot disagree.
+            const sprice = (data.SPRICE_SERVER !== undefined)
+                ? (Number(data.SPRICE_SERVER) || 0)
+                : ebay3RowSpriceForAlert(data);
             const price = parseFloat(data['eBay Price']) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
@@ -2321,6 +2325,7 @@
                 } else {
                     rows = Array.isArray(response) ? response : [];
                 }
+                if (typeof window.chPromoCaptureServerSprice === 'function') window.chPromoCaptureServerSprice(rows || []);
                 allTableData = rows || [];
                 if (window.LmpIgnore) LmpIgnore.applyDataset(allTableData);
                 window.allTableData = allTableData;

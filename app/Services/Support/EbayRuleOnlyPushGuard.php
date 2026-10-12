@@ -22,6 +22,40 @@ final class EbayRuleOnlyPushGuard
     }
 
     /**
+     * The tabulator posts its own calculated S PRC when it saves. Saved S PRC is what the badge, the blue
+     * catch-up and the runner read, so it must be the rule price. Returns the rule price when the posted
+     * price differs from it, null when the posted price should be saved as is (guard off, no rule price,
+     * or already equal).
+     */
+    public static function ruleOverride(string $channel, string $sku, float $posted, string $caller = 'saveSprice'): ?float
+    {
+        if (! self::enabled() || ! ($posted > 0)) {
+            return null;
+        }
+
+        $channel = EbayRuleSpriceApplyService::normalizeChannel($channel);
+        try {
+            $rule = EbayRuleSpriceApplyService::for($channel)->ruleSpriceForSku($sku);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if ($rule === null || $rule <= 0 || EbayRuleSpriceApplyService::sameCents($rule, round($posted, 2))) {
+            return null;
+        }
+
+        Log::info('[EbayRuleOnlyPush] page S PRC replaced by rule price on save', [
+            'channel' => $channel,
+            'sku' => strtoupper(trim($sku)),
+            'posted' => round($posted, 2),
+            'rule_price' => $rule,
+            'caller' => $caller,
+            'user' => optional(auth()->user())->name,
+        ]);
+
+        return $rule;
+    }
+
+    /**
      * @return string|null reason the push must be rejected, null when allowed
      */
     public static function rejectReason(string $channel, string $sku, float $price, string $caller = 'page'): ?string

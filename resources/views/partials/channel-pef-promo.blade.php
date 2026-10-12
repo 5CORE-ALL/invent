@@ -3967,6 +3967,22 @@
             if (isFinite(s) && s > 0) return s;
             return 0;
         }
+        /**
+         * eBay 1/2/3 badge: remember the S PRC the SERVER saved when the rows were loaded. The page
+         * overwrites row.SPRICE with its own calculation, but the server (runner / blue push) only ever
+         * pushes the saved rule price, so the blue badge has to be judged on that saved price.
+         */
+        function chPromoCaptureServerSprice(rows) {
+            (function walk(list) {
+                (list || []).forEach(function(d) {
+                    if (!d) return;
+                    const n = Number(d.SPRICE);
+                    d.SPRICE_SERVER = (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
+                    if (Array.isArray(d._children)) walk(d._children);
+                });
+            })(rows);
+        }
+        window.chPromoCaptureServerSprice = chPromoCaptureServerSprice;
         /** Keep in-memory SPRICE / sprice equal to the visible rule price. */
         function chPromoWriteStoredSprice(d, live) {
             if (!d || !(live > 0)) return;

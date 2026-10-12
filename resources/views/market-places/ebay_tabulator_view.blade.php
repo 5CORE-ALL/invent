@@ -3342,7 +3342,11 @@
                 if (!data || ebay1IsAlertParentRow(data)) return false;
                 if (!(parseFloat(data.INV) > 0)) return false;
                 if (ebay1IsEndedListing(data)) return false;
-                const sprice = ebay1RowSpriceForAlert(data);
+                // Judge on the S PRC the server saved (what the runner / blue push actually sends), not on
+                // the page's own recalculation, so the badge and the pushes cannot disagree.
+                const sprice = (data.SPRICE_SERVER !== undefined)
+                    ? (Number(data.SPRICE_SERVER) || 0)
+                    : ebay1RowSpriceForAlert(data);
                 const price = parseFloat(data['eBay Price']) || 0;
                 return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
             }
@@ -3989,6 +3993,7 @@
                 ajaxResponse: function(url, params, response) {
                     var payload = (response && response.data) ? response.data : response;
                     if (Array.isArray(payload)) {
+                        if (typeof window.chPromoCaptureServerSprice === 'function') window.chPromoCaptureServerSprice(payload);
                         payload.forEach(function(row) {
                             if (typeof ebayApplyL1FromEntries === 'function') ebayApplyL1FromEntries(row);
                         });
