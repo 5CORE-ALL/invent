@@ -95,7 +95,7 @@ class AmazonAdsController extends Controller
         'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt',
         'U7%', 'U2%', 'U1%', 'CPC3', 'CPCAvg', 'CPC2', 'ltCvr',
         'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks',
-        'projectedSpend', 'projectedSales', 'ySpend', 'ySales',
+        'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos',
         'pageCvr', 'viewsL30', 'viewsL7',
         'ACOS', 'ltAcos',
     ];
@@ -439,24 +439,28 @@ class AmazonAdsController extends Controller
         if ($supportLSpend && ($table === 'amazon_sp_campaign_reports' || $table === 'amazon_sb_campaign_reports')) {
             $ordered = array_values(array_filter(
                 $ordered,
-                static fn (string $c): bool => ! in_array($c, ['projectedSpend', 'projectedSales', 'ySpend', 'ySales'], true)
+                static fn (string $c): bool => ! in_array($c, ['projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos'], true)
             ));
             $idxAfterSl = array_search('sales30d', $ordered, true);
             if ($idxAfterSl === false) {
                 $idxAfterSl = array_search('cost', $ordered, true);
             }
             if ($idxAfterSl !== false) {
-                array_splice($ordered, $idxAfterSl + 1, 0, ['projectedSpend', 'projectedSales', 'ySpend', 'ySales']);
+                array_splice($ordered, $idxAfterSl + 1, 0, ['projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos']);
             }
         }
 
         // ACOS (%) = cost / sales * 100 — spend + Ads Sold 0 is saved as 100% for BGT / SBGT.
         // LT ACOS is lifetime cost ÷ lifetime sales on daily API rows, immediately after ACOS%.
+        // Y ACOS sits just before ACOS% so yesterday's spend ÷ sales stays next to Y Sales.
         $canAcos = in_array('cost', $baseCols, true)
             && (in_array('sales30d', $baseCols, true) || in_array('sales', $baseCols, true));
         if ($canAcos) {
             $ordered = array_values(array_filter($ordered, static fn (string $c): bool => $c !== 'ACOS' && $c !== 'ltAcos'));
-            $idxSales30 = array_search('ySales', $ordered, true);
+            $idxSales30 = array_search('yAcos', $ordered, true);
+            if ($idxSales30 === false) {
+                $idxSales30 = array_search('ySales', $ordered, true);
+            }
             if ($idxSales30 === false) {
                 $idxSales30 = array_search('sales30d', $ordered, true);
             }
@@ -1482,6 +1486,25 @@ class AmazonAdsController extends Controller
         }
 
         return 0.0;
+    }
+
+    /**
+     * Per-campaign yesterday ACOS %, same edge cases as the Yesterday badge:
+     * spend ÷ ads sales, 100% when spend exists and sales do not, 0% when both are zero.
+     * Null when yesterday spend and sales are both missing.
+     */
+    private static function yesterdayAcosPercent(mixed $spend, mixed $sales): ?float
+    {
+        $hasSpend = is_numeric($spend);
+        $hasSales = is_numeric($sales);
+        if (! $hasSpend && ! $hasSales) {
+            return null;
+        }
+
+        return self::overallAcosPercentFromAggregatedSums(
+            $hasSpend ? (float) $spend : 0.0,
+            $hasSales ? (float) $sales : 0.0
+        );
     }
 
     /**
@@ -5927,7 +5950,8 @@ class AmazonAdsController extends Controller
         $needProjYCols = in_array('projectedSpend', $columns, true)
             || in_array('projectedSales', $columns, true)
             || in_array('ySpend', $columns, true)
-            || in_array('ySales', $columns, true);
+            || in_array('ySales', $columns, true)
+            || in_array('yAcos', $columns, true);
         $needLSpendMap = $hasLSpendCols || $hasUtilCols || $needProjYCols;
         $lSpendMap = $needLSpendMap ? self::fetchL7L2L1SpendMap($table, $dbColumns, $rows) : [];
         $needL30ForAcosSbgt = in_array('cost', $columns, true)
@@ -6362,6 +6386,9 @@ class AmazonAdsController extends Controller
                         $arr['ySales'] = $l1Sales;
                         $arr['ySales_prev'] = $slice['L2sales'] ?? null;
                         $arr['ySales_trend'] = self::moneyHistoryTrend($l1Sales, is_numeric($slice['L2sales'] ?? null) ? (float) $slice['L2sales'] : null);
+                    }
+                    if (in_array('yAcos', $columns, true)) {
+                        $arr['yAcos'] = self::yesterdayAcosPercent($l1, $l1Sales);
                     }
                     if (in_array('projectedSpend', $columns, true)) {
                         $arr['projectedSpend'] = is_numeric($l7) ? self::projectMonthFromLast7((float) $l7) : null;
@@ -6842,7 +6869,7 @@ class AmazonAdsController extends Controller
         return in_array($column, [
             'ACOS', 'cost', 'clicks', 'sales30d', 'Prchase', 'Cvr',
             'L7spend', 'L2spend', 'L1spend', 'U7%', 'U2%', 'U1%',
-            'projectedSpend', 'projectedSales', 'ySpend', 'ySales',
+            'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos',
         ], true);
     }
 
@@ -6864,10 +6891,27 @@ class AmazonAdsController extends Controller
             return [];
         }
 
+        $hasAd = in_array('ad_type', $dbColumns, true);
+
+        if ($column === 'yAcos') {
+            $map = self::fetchL7L2L1SpendMap($table, $dbColumns, $list);
+            $keys = [];
+            foreach ($list as $row) {
+                $r = (array) $row;
+                $cid = trim((string) ($r['campaign_id'] ?? ''));
+                $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
+                $slice = ($cid !== '' && isset($map[$cid."\0".$ad]))
+                    ? $map[$cid."\0".$ad]
+                    : ['L1' => null, 'L1sales' => null];
+                $keys[] = self::yesterdayAcosPercent($slice['L1'] ?? null, $slice['L1sales'] ?? null);
+            }
+
+            return $keys;
+        }
+
         $spendCols = ['L7spend' => 'L7', 'L2spend' => 'L2', 'L1spend' => 'L1'];
         $utilCols = ['U7%' => 'U7', 'U2%' => 'U2', 'U1%' => 'U1'];
         $projYCols = ['projectedSpend' => 'L7', 'ySpend' => 'L1', 'projectedSales' => 'L7sales', 'ySales' => 'L1sales'];
-        $hasAd = in_array('ad_type', $dbColumns, true);
 
         if (isset($spendCols[$column]) || isset($utilCols[$column]) || isset($projYCols[$column])) {
             $map = self::fetchL7L2L1SpendMap($table, $dbColumns, $list);

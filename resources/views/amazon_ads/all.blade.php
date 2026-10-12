@@ -2022,7 +2022,7 @@
 
             var HIDDEN_COLUMNS = ['id', 'profile_id', 'campaign_id', 'report_date_range', 'ad_type', 'date', 'startDate', 'endDate', 'bgt_views_color', 'bgt_views_label', 'bgt_cvr_color', 'bgt_cvr_label', 'bgt_cvr_page_cvr', 'bgt_prc_color', 'bgt_prc_label', 'bgt_prc_price', 'bgt_dil_color', 'bgt_dil_label', 'bgt_dil_value', 'bgt_inv_color', 'bgt_inv_label', 'bgt_inv_value'];
             var NON_ORDERABLE_COLUMNS = ['pushAlert', 'sbgtAlert', 'sbidHistory', 'sbgtHistory'];
-            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
+            var NUMERIC_SORT_DESC = ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgt', 'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt', 'cost', 'L7spend', 'L2spend', 'L1spend', 'L1cost', 'L1clicks', 'projectedSpend', 'projectedSales', 'ySpend', 'ySales', 'yAcos', 'Prchase', 'purchases30d', 'Cvr', 'ltCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'CPC3', 'CPCAvg', 'CPC2', 'costPerClick', 'sales30d', 'sales', 'ACOS', 'ltAcos', 'U7%', 'U2%', 'U1%', 'last_sbid', 'sbid', 'clicks', 'impressions'];
             var PIE_SOURCES = ['sp_reports', 'sb_reports', 'sd_reports'];
 
             // ---- number helpers ----
@@ -3137,6 +3137,14 @@
                     col.width = 128;
                     return;
                 }
+                if (c === 'yAcos') {
+                    col.title = 'Y ACOS';
+                    col.headerTooltip = 'Yesterday ACOS% = yesterday spend ÷ yesterday ads sales. Spend with no sales is 100%.';
+                    col.formatter = fmtAcos;
+                    col.minWidth = 72;
+                    col.width = 80;
+                    return;
+                }
                 if (c === 'clicks') { col.title = 'Clicks'; col.headerTooltip = 'Amazon Ads clicks (L30).'; col.formatter = fmtDashInt; return; }
             }
 
@@ -3677,7 +3685,7 @@
             function amzClassifyColumn(field, title) {
                 var f = String(field || '');
                 var t = String(title || field || '').toLowerCase();
-                if (/^(cost|ACOS|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|projectedSpend|projectedSales|ySpend|ySales|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
+                if (/^(cost|ACOS|yAcos|Cvr|clicks|impressions|Prchase|purchases30d|sales|sales30d|L7spend|L2spend|L1spend|L1cost|L1clicks|projectedSpend|projectedSales|ySpend|ySales|U7%|U2%|U1%|CPC3|CPCAvg|CPC2|costPerClick|sbidHistory|sbgtHistory)$/i.test(f)
                     || /\b(acos|cvr|click|impr|sold|spend|spl30|cpc|sales|u7|u2|u1)\b/i.test(t)) {
                     return 'ads';
                 }
