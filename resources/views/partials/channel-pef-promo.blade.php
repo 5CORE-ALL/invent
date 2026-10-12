@@ -5504,6 +5504,9 @@
             if (window._chPushSpriceLiveAllowed === false && fill > 0 && updates['eBay Price'] == null) {
                 updates['eBay Price'] = fill;
             }
+            if (saveRes && chPromoIsEbayChannel()) {
+                updates.SPRICE_SERVER = fill > 0 ? chPromoRound2(fill) : 0;
+            }
             if (saveRes && saveRes.SPRICE_STATUS) {
                 updates.SPRICE_STATUS = saveRes.SPRICE_STATUS;
             } else if (saveRes && saveRes.price_push_success) {

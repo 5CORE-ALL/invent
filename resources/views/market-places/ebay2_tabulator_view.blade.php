@@ -1111,39 +1111,19 @@
             }
             return out;
         }
+        /** Saved SPRICE only: the server value from load, or a successful save. Rule auto-fills write
+         *  row.SPRICE in memory without saving, so they must not show here. */
         function ebay2RawRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return 0;
-            if (typeof chPromoTableSprice === 'function') {
-                const saved = Number(chPromoTableSprice(rowData)) || 0;
-                if (saved > 0) return saved;
-            }
-            if (typeof chPromoSavedOrLiveSprice === 'function') {
-                const saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
-                if (saved > 0) return saved;
-            }
-            const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
-            return stored > 0 ? stored : 0;
+            const raw = rowData.SPRICE_SERVER !== undefined ? rowData.SPRICE_SERVER : rowData.SPRICE;
+            const n = Number(raw);
+            return (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
         }
         function ebay2DisplayedSprice(rowData) {
-            if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return 0;
-            if (typeof ebayTiktokRuleDiscount === 'function') {
-                const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
-                if (live > 0) return live;
-            }
             return ebay2RawRuleSprice(rowData);
         }
         function ebay2SpriceAmount(rowData) {
-            if (typeof ebay2DisplayedSprice === 'function') {
-                const shown = ebay2DisplayedSprice(rowData);
-                if (shown > 0) return shown;
-            }
-            if (typeof chPromoSavedOrLiveSprice === 'function') {
-                const saved = Number(chPromoSavedOrLiveSprice(rowData));
-                if (isFinite(saved) && saved > 0) return saved;
-            }
-            const stored = Number(rowData && (rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice));
-            if (isFinite(stored) && stored > 0) return stored;
-            return 0;
+            return ebay2DisplayedSprice(rowData) || 0;
         }
         function ebay2ComputeNetRoi(rowData, priceKey) {
             if (!rowData) return null;
@@ -2587,6 +2567,7 @@
                             if (row) {
                                 ebay2SafeRowUpdate(row, {
                                     SPRICE: sprice,
+                                    SPRICE_SERVER: Number(sprice) > 0 ? Number(sprice) : 0,
                                     SPFT: response.spft_percent,
                                     SROI: response.sroi_percent,
                                     SGPFT: response.sgpft_percent,

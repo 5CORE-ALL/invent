@@ -1342,17 +1342,7 @@
          * @param {string} priceKey  'eBay Price' for NROI, 'SPRICE' for SNROI
          */
         function ebaySpriceAmount(rowData) {
-            if (typeof ebayDisplayedSprice === 'function') {
-                const shown = ebayDisplayedSprice(rowData);
-                if (shown > 0) return shown;
-            }
-            if (typeof chPromoSavedOrLiveSprice === 'function') {
-                const saved = Number(chPromoSavedOrLiveSprice(rowData));
-                if (isFinite(saved) && saved > 0) return saved;
-            }
-            const stored = Number(rowData && (rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice));
-            if (isFinite(stored) && stored > 0) return stored;
-            return 0;
+            return ebayDisplayedSprice(rowData) || 0;
         }
         function ebayComputeNetRoi(rowData, priceKey) {
             if (!rowData) return null;
@@ -1510,26 +1500,15 @@
             }
             return out;
         }
+        /** Saved SPRICE only: the server value from load, or a successful save. Rule auto-fills write
+         *  row.SPRICE in memory without saving, so they must not show here. */
         function ebayRawRuleSprice(rowData) {
             if (!rowData || rowData.is_parent_summary) return 0;
-            if (typeof chPromoTableSprice === 'function') {
-                const saved = Number(chPromoTableSprice(rowData)) || 0;
-                if (saved > 0) return saved;
-            }
-            if (typeof chPromoSavedOrLiveSprice === 'function') {
-                const saved = Number(chPromoSavedOrLiveSprice(rowData)) || 0;
-                if (saved > 0) return saved;
-            }
-            const stored = parseFloat(rowData.SPRICE != null ? rowData.SPRICE : rowData.sprice) || 0;
-            return stored > 0 ? stored : 0;
+            const raw = rowData.SPRICE_SERVER !== undefined ? rowData.SPRICE_SERVER : rowData.SPRICE;
+            const n = Number(raw);
+            return (isFinite(n) && n > 0) ? Math.round(n * 100) / 100 : 0;
         }
-        /** Visible S PRC = live Dil (same $ Amazon paints), then saved SPRICE. */
         function ebayDisplayedSprice(rowData) {
-            if (!rowData || rowData.is_parent_summary) return 0;
-            if (typeof ebayTiktokRuleDiscount === 'function') {
-                const live = Number(ebayTiktokRuleDiscount(rowData)) || 0;
-                if (live > 0) return live;
-            }
             return ebayRawRuleSprice(rowData);
         }
         window.ebaySgroiAtPrice = ebaySgroiAtPrice;
@@ -3472,6 +3451,7 @@
                     : ((response && response.price_push_success) ? 'pushed' : (numSprice > 0 ? 'saved' : null));
                 const patch = {
                     SPRICE: numSprice,
+                    SPRICE_SERVER: numSprice > 0 ? numSprice : 0,
                     SPFT: response && response.spft_percent != null ? response.spft_percent : 0,
                     SROI: response && response.sroi_percent != null ? response.sroi_percent : 0,
                     SGROI: response && response.sgroi_percent != null ? response.sgroi_percent : 0,
