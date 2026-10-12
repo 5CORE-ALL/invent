@@ -967,10 +967,29 @@ class TopDawgApiService
 
     public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
     {
+        $description = $this->topDawgPlainText($description);
+        if ($description === '') {
+            return ['success' => false, 'message' => 'Description is required.'];
+        }
+
+        // product_description is the field TopDawg's create API requires; unknown keys are
+        // accepted with "submitted for review" and never applied.
         return $this->pushSupplierProductFields($identifier, [
+            'product_description' => $description,
             'description' => $description,
             'long_description' => $description,
         ]);
+    }
+
+    protected function topDawgPlainText(string $text): string
+    {
+        $text = (string) preg_replace('~<\s*/?\s*br\s*/?\s*>|<\s*/\s*(p|div|li|h[1-6]|ul|ol)\s*>~i', "\n", $text);
+        $text = (string) preg_replace('~<\s*li\b[^>]*>~i', '• ', $text);
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = (string) preg_replace('/[ \t\x{00A0}]+/u', ' ', $text);
+        $text = (string) preg_replace("/ *\n */", "\n", $text);
+
+        return trim((string) preg_replace("/\n{3,}/", "\n\n", $text));
     }
 
     /**
@@ -983,15 +1002,21 @@ class TopDawgApiService
             return ['success' => false, 'message' => 'At least one image URL is required.'];
         }
 
-        return $this->pushSupplierProductFields($identifier, [
+        // Same picture_url_N fields the create API requires (at least 4); other image keys are ignored.
+        $images = array_slice(array_values(array_unique($images)), 0, 10);
+        while (count($images) < 4) {
+            $images[] = $images[count($images) - 1];
+        }
+        $fields = [
+            'picture_url' => implode(',', array_slice($images, 0, 8)),
             'image_url' => $images[0],
             'main_image' => $images[0],
-            'image_urls' => $images,
-            'images' => $images,
-            'extra_images' => array_slice($images, 1),
-            'gallery_images' => $images,
-            'additional_images' => array_slice($images, 1),
-        ]);
+        ];
+        foreach ($images as $i => $url) {
+            $fields['picture_url_'.($i + 1)] = $url;
+        }
+
+        return $this->pushSupplierProductFields($identifier, $fields);
     }
 
     /**
