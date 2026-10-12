@@ -4,8 +4,8 @@
             <div class="modal-header bg-info text-white py-1 px-3">
                 <h6 class="modal-title mb-0" style="font-size: 13px;">
                     <i class="fas fa-chart-area me-1"></i>
-                    <span id="ebayCbidTitle">C Bid</span>
-                    <span>(7 Days · PT)</span>
+                    <span id="ebayCbidTitle">Ad Spend</span>
+                    <span>(ebay_general_reports · 7 Days)</span>
                 </h6>
                 <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
             </div>
@@ -35,7 +35,7 @@
                 </div>
                 <div id="ebayCbidEmpty" class="text-center py-3" style="display: none;">
                     <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
-                    <p class="text-muted small mb-0">No saved C Bid for this listing on those days. The chart shows only the days stored from ebay_campaign_ads.</p>
+                    <p class="text-muted small mb-0">No daily rows in ebay_general_reports for this listing.</p>
                 </div>
             </div>
         </div>
@@ -48,7 +48,7 @@
 
     function cbidFmt(v) {
         const n = Number(v);
-        return isFinite(n) ? n.toFixed(1) + '%' : '—';
+        return isFinite(n) ? '$' + n.toFixed(2) : '—';
     }
 
     function setCbidBox(id, show) {
@@ -202,8 +202,11 @@
                         callbacks: {
                             label: function(context) {
                                 const y = context.parsed.y;
-                                if (y == null || !isFinite(y)) return 'C Bid: —';
-                                const parts = ['C Bid: ' + cbidFmt(y)];
+                                const row = points[context.dataIndex] || {};
+                                if (y == null || !isFinite(y)) return 'No row in ebay_general_reports';
+                                const parts = ['Ad Spend: ' + cbidFmt(y)];
+                                if (row.impressions != null) parts.push('Impressions: ' + Number(row.impressions).toLocaleString('en-US'));
+                                if (row.clicks != null) parts.push('Clicks: ' + Number(row.clicks).toLocaleString('en-US'));
                                 const prev = values.slice(0, context.dataIndex).reverse().find(function(n) { return n !== null; });
                                 if (prev !== undefined) {
                                     const diff = y - prev;
@@ -240,7 +243,7 @@
     window.openStandardCbidChart = function(opts) {
         opts = opts || {};
         const titleEl = document.getElementById('ebayCbidTitle');
-        if (titleEl) titleEl.textContent = 'C Bid — ' + (opts.title || opts.listingId || '');
+        if (titleEl) titleEl.textContent = 'Ad Spend — ' + (opts.title || opts.listingId || '');
         setCbidBox('ebayCbidChartWrap', false);
         setCbidBox('ebayCbidEmpty', false);
         setCbidBox('ebayCbidLoading', true);
