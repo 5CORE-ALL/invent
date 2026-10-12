@@ -1024,10 +1024,11 @@ class Ebay2CampaignAdsController extends Controller
             $this->backfillMissingEligibleForSearch($request->input('search'));
         }
 
-        // One preferred metric per listing, then a plain join. A per-row subquery
-        // here re-ran for every ad and made this page much slower than eBay 1 raw.
+        // One real SKU metric per listing, then a plain join. Parent metric rows
+        // have no Shopify inventory, so preferring them left Dil and the other
+        // metric columns blank.
         $preferredMetrics = DB::table('ebay_2_metrics')
-            ->selectRaw('item_id, CAST(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY CASE WHEN UPPER(TRIM(sku)) LIKE "PARENT%" THEN 0 ELSE 1 END, id SEPARATOR ","), ",", 1) AS UNSIGNED) as pick_id')
+            ->selectRaw('item_id, CAST(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY CASE WHEN UPPER(TRIM(sku)) LIKE "PARENT%" THEN 1 ELSE 0 END, id SEPARATOR ","), ",", 1) AS UNSIGNED) as pick_id')
             ->whereNotNull('item_id')
             ->where('item_id', '!=', '')
             ->groupBy('item_id');
