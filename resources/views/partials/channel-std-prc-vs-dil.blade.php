@@ -317,8 +317,17 @@
             });
             return chStdAmzMapReq;
         }
+        /** eBay 1 / 2 / 3 price from their own row (INV, OV L30, CVR 30 / 45, eBay L30), never the Amazon map. */
+        function chStdIsEbay() {
+            const ch = (typeof CHANNEL_PROMO_CHANNEL === 'string') ? CHANNEL_PROMO_CHANNEL : '';
+            return ch === 'ebay1' || ch === 'ebay2' || ch === 'ebay3';
+        }
+        function chStdEbayCvr45(d) {
+            if (d && d.CVR_45 != null && d.CVR_45 !== '' && isFinite(Number(d.CVR_45))) return Number(d.CVR_45);
+            return (chStdNum(d, ['SCVR']) + chStdNum(d, ['CVR_60'])) / 2;
+        }
         function chStdAmzMetric(d) {
-            if (!chStdAmzBySku || !d) return null;
+            if (chStdIsEbay() || !chStdAmzBySku || !d) return null;
             const hit = chStdAmzBySku[chStdSkuKey(chStdRowSku(d))];
             if (!hit || !hit.length) return null;
             return {
@@ -341,10 +350,18 @@
             };
         }
         function chStdCvrLive(d) {
+            if (chStdIsEbay()) return chStdNum(d, ['SCVR']);
             const inp = chStdCvrInputs(d);
             return inp.s30 > 0 ? (inp.a30 / inp.s30) * 100 : 0;
         }
         function chStdCvrTrend(d) {
+            if (chStdIsEbay()) {
+                const cvr30 = chStdNum(d, ['SCVR']);
+                const cvr45 = chStdEbayCvr45(d);
+                if (!(cvr30 > 0) || cvr30 < cvr45 - 0.1) return 'down';
+                if (cvr30 > cvr45 + 0.1) return 'up';
+                return 'flat';
+            }
             const inp = chStdCvrInputs(d);
             const cvr = inp.s30 > 0 ? (inp.a30 / inp.s30) * 100 : 0;
             const sess45 = (inp.s30 + inp.s60) / 2;
@@ -1109,9 +1126,26 @@
             const minNpft = (draft && draft.minNpft != null) ? draft.minNpft : chStdMinNpft;
             raw = chStdRaiseToMinNpft(raw, d, minNpft);
             if (!(raw > 0)) return 0;
+            if (chStdIsEbay()) raw = chStdEbayCap(d, raw);
+            if (!(raw > 0)) return 0;
             return (typeof chPromoRoundChannelSprice === 'function')
                 ? chPromoRoundChannelSprice(raw)
                 : Math.round(raw * 100) / 100;
+        }
+        /**
+         * Amazon order after Min NPFT: LMP cap (S PRC ≥ LMP and SGROI at LMP ≥ 20% → LMP, eBay take-home %),
+         * then Std Prc is the maximum. Uses the page's own eBay LMP (L1 without ignored competitors).
+         */
+        function chStdEbayCap(d, price) {
+            let cap = null;
+            if (CHANNEL_PROMO_CHANNEL === 'ebay1' && typeof ebayCapSpriceToLmp === 'function') cap = ebayCapSpriceToLmp;
+            else if (CHANNEL_PROMO_CHANNEL === 'ebay2' && typeof ebay2CapSpriceToLmp === 'function') cap = ebay2CapSpriceToLmp;
+            else if (CHANNEL_PROMO_CHANNEL === 'ebay3' && typeof ebay3CapSpriceToLmp === 'function') cap = ebay3CapSpriceToLmp;
+            let out = cap ? Number(cap(d, price)) : price;
+            if (!isFinite(out) || !(out > 0)) out = price;
+            const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
+            if (std > 0 && out > std + 0.0001) out = std;
+            return Math.round(out * 100) / 100;
         }
         window.chStdPriceForRow = chStdPriceForRow;
         if (typeof channelPromoPricingColumns === 'function' && !channelPromoPricingColumns._chStd) {
@@ -1373,9 +1407,14 @@
         }
         function chStdWritePrices(draft) {
             const updates = [];
+            const ebay = chStdIsEbay();
             chStdCatalog().forEach(function(item) {
                 const price = chStdPriceForRow(item.d, draft);
                 if (!(price > 0)) return;
+                if (ebay) {
+                    const saved = Number(item.d && item.d.SPRICE_SERVER);
+                    if (isFinite(saved) && Math.abs(saved - price) < 0.005) return;
+                }
                 const patch = (typeof chPromoSpricePatch === 'function')
                     ? chPromoSpricePatch(price)
                     : { SPRICE: price, sprice: price, has_custom_sprice: true };
@@ -1385,7 +1424,51 @@
             });
             return updates;
         }
+        function chStdMarkEbaySaved(chunk) {
+            const bySku = {};
+            chunk.forEach(function(u) { bySku[chStdSkuKey(u.sku)] = u.sprice; });
+            if (typeof chPromoEachTableRow === 'function') {
+                chPromoEachTableRow(function(row, d) {
+                    const key = chStdSkuKey(chStdRowSku(d));
+                    if (Object.prototype.hasOwnProperty.call(bySku, key) && d) d.SPRICE_SERVER = bySku[key];
+                });
+            }
+            if (typeof chPromoPatchDatasetSprice === 'function') {
+                chunk.forEach(function(u) { chPromoPatchDatasetSprice(u.sku, { SPRICE_SERVER: u.sprice }); });
+            }
+        }
+        /**
+         * eBay: S PRC is saved through the channel's own save endpoint ({ updates }) and never pushed to eBay.
+         * Only SKUs whose S PRC differs from the saved value are sent.
+         */
+        function chStdSaveEbayPrices(updates) {
+            const url = (typeof chPromoCfg === 'object' && chPromoCfg) ? chPromoCfg.saveSpriceUrl : '';
+            if (!url || !updates.length) return $.Deferred().resolve().promise();
+            const csrf = (typeof chPromoCsrf === 'function') ? chPromoCsrf() : '';
+            const size = 200;
+            let chain = $.Deferred().resolve().promise();
+            for (let i = 0; i < updates.length; i += size) {
+                const chunk = updates.slice(i, i + size);
+                chain = chain.then(function() {
+                    const done = $.Deferred();
+                    $.ajax({
+                        url: url,
+                        method: 'POST',
+                        contentType: 'application/json',
+                        headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                        data: JSON.stringify({ _token: csrf, updates: chunk, skip_push: 1 }),
+                    }).done(function() {
+                        chStdMarkEbaySaved(chunk);
+                    }).always(function() {
+                        done.resolve();
+                    });
+                    return done.promise();
+                });
+            }
+            return chain;
+        }
         function chStdSavePrices(updates) {
+            if (chStdIsEbay()) return chStdSaveEbayPrices(updates);
             if (typeof saveChannelSpriceBatch !== 'function' || !updates.length) {
                 return $.Deferred().resolve().promise();
             }
@@ -1432,7 +1515,7 @@
                 if (chStdAutoWaits++ < 120) setTimeout(chStdScheduleAutoApply, 500);
                 return;
             }
-            $.when(chStdLoad(), chStdLoadAgeMap(), chStdLoadAmzMap(), chStdLoadClearance()).always(function() {
+            $.when(chStdLoad(), chStdLoadAgeMap(), chStdIsEbay() ? null : chStdLoadAmzMap(), chStdLoadClearance()).always(function() {
                 chStdWhenRuleSettled(function() {
                     if (chStdAutoApplied) return;
                     chStdAutoApplied = true;

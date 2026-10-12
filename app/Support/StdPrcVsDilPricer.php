@@ -58,7 +58,7 @@ class StdPrcVsDilPricer
      */
     public function priceFromRow(array $row): ?float
     {
-        $metric = $this->lookupAmazonMetric($row);
+        $metric = self::usesOwnChannelMetrics($this->channel) ? null : $this->lookupAmazonMetric($row);
         $inv = $metric !== null ? $metric['inv'] : (float) ($row['inv'] ?? $row['INV'] ?? 0);
         if (! ($inv > 0)) {
             return null;
@@ -74,7 +74,8 @@ class StdPrcVsDilPricer
         $reviews = (float) ($row['review_count'] ?? $row['reviews'] ?? $row['Reviews'] ?? 0);
         $ageDisc = self::scaleRuleDisc($this->ageDisc($age), $std);
         $dilDisc = self::scaleRuleDisc($this->rangeDisc($dil, $this->rules['dil']), $std);
-        $cvrDisc = self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60), $std);
+        $trend = in_array($row['cvr_trend'] ?? null, ['down', 'up', 'flat'], true) ? $row['cvr_trend'] : null;
+        $cvrDisc = self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60, $trend), $std);
         $reviewDisc = self::scaleRuleDisc($this->reviewDisc($reviews), $std);
         $bussDisc = $this->rangeDisc($std, $this->rules['buss'] ?? []);
         $zeroSoldDisc = $this->isZeroSold($row)
@@ -397,15 +398,25 @@ class StdPrcVsDilPricer
         return 0.0;
     }
 
-    private function cvrDisc(float $cvr, float $cvr60): float
+    /**
+     * eBay 1 / 2 / 3 price from their own row (INV, Dil, CVR, sold qty), never from Amazon sessions or A L30.
+     */
+    public static function usesOwnChannelMetrics(string $channel): bool
+    {
+        return in_array($channel, ['ebay1', 'ebay2', 'ebay3'], true);
+    }
+
+    private function cvrDisc(float $cvr, float $cvr60, ?string $trend = null): float
     {
         $cfg = $this->rules['cvr'];
-        $trend = 'flat';
-        // Same as Amazon: CVR 0 (no sessions) is Down, then the down slabs.
-        if ($cvr <= 0.0 || ($cvr60 > 0 && $cvr < $cvr60 - 0.1)) {
-            $trend = 'down';
-        } elseif ($cvr60 > 0 && $cvr > $cvr60 + 0.1) {
-            $trend = 'up';
+        if ($trend === null) {
+            $trend = 'flat';
+            // Same as Amazon: CVR 0 (no sessions) is Down, then the down slabs.
+            if ($cvr <= 0.0 || ($cvr60 > 0 && $cvr < $cvr60 - 0.1)) {
+                $trend = 'down';
+            } elseif ($cvr60 > 0 && $cvr > $cvr60 + 0.1) {
+                $trend = 'up';
+            }
         }
         if ($trend === 'down') {
             $slabs = [];
