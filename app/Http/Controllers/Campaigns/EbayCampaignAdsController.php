@@ -9,7 +9,7 @@ use App\Services\EbayChannelMetricsService;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\Marketplace\EbayListingEnded;
 use App\Support\CpMasterDil;
-use App\Support\EbayCbidHistory;
+use App\Support\EbayListingReportHistory;
 use App\Support\EbayStdNpftLookup;
 use App\Support\EbayYesterdaySpend;
 use Illuminate\Http\Request;
@@ -722,9 +722,6 @@ class EbayCampaignAdsController extends Controller
         CpMasterDil::hydrate($data);
         EbayYesterdaySpend::attachToCampaignRows($data);
         $this->attachStdNpft($data);
-        EbayCbidHistory::recordToday('ebay1', $data);
-        EbayCbidHistory::attachPrior($data);
-
         return response()->json([
             'total' => $total,
             'data'  => $data,
@@ -757,13 +754,18 @@ class EbayCampaignAdsController extends Controller
     }
 
     /**
-     * C Bid for the 7 days before today, then today.
+     * Daily clicks, ad spend, and sales from ebay_general_reports for one listing.
      */
-    public function cbidHistory(Request $request)
+    public function listingReportHistory(Request $request)
     {
-        return response()->json(EbayCbidHistory::series(
-            'ebay1',
-            (string) $request->input('listing_id', '')
+        $days = (int) $request->input('days', 30);
+        if ($days < 0) {
+            $days = 30;
+        }
+
+        return response()->json(EbayListingReportHistory::series(
+            (string) $request->input('listing_id', ''),
+            $days
         ));
     }
 

@@ -6970,7 +6970,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/campaign-ads/badges', 'getBadgeSummary')->name('ebay.campaign.ads.badges');
         Route::get('/ebay/campaign-ads/data', 'getData')->name('ebay.campaign.ads.data');
         Route::get('/ebay/y-spend-history', 'ySpendHistory')->name('ebay.y.spend.history');
-        Route::get('/ebay/cbid-history', 'cbidHistory')->name('ebay.cbid.history');
+        Route::get('/ebay/listing-report-history', 'listingReportHistory')->name('ebay.listing.report.history');
         Route::get('/ebay/campaign-ads/rule', 'getRule')->name('ebay.campaign.ads.rule');
         Route::post('/ebay/campaign-ads/rule', 'saveRule')->name('ebay.campaign.ads.rule.save');
         Route::get('/ebay/campaign-ads/dil-rule', 'getDilRule')->name('ebay.campaign.ads.dil.rule');
