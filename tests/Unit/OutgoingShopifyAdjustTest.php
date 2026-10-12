@@ -61,7 +61,7 @@ class OutgoingShopifyAdjustTest extends TestCase
         });
     }
 
-    public function test_outgoing_connects_the_sku_when_it_is_not_stocked_at_ohio(): void
+    public function test_outgoing_connects_the_sku_when_it_is_not_stocked_at_main_warehouse(): void
     {
         $graphqlCalls = 0;
         Http::fake(function ($request) use (&$graphqlCalls) {

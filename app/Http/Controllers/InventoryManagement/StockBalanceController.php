@@ -2163,7 +2163,7 @@ class StockBalanceController extends Controller
     {
         $request->validate([
             'to_sku' => 'required|string',
-            'from_sku' => 'required|string',
+            'from_sku' => 'nullable|string|required_unless:action,NRB',
             'ratio' => 'nullable|string|max:20',
             'from_qty' => 'nullable|integer|min:1',
             'action' => 'nullable|string|in:NRB,RB',
@@ -2178,7 +2178,7 @@ class StockBalanceController extends Controller
         }
 
         $toSku = trim($request->to_sku);
-        $fromSku = trim($request->from_sku);
+        $fromSku = trim((string) $request->input('from_sku', ''));
         $ratio = $request->input('ratio', '1:1') ?: '1:1';
         $fromQty = $request->filled('from_qty') ? (int) $request->from_qty : null;
         $action = $request->filled('action') ? $request->action : null;
@@ -2199,6 +2199,10 @@ class StockBalanceController extends Controller
             ->unique(fn ($item) => strtoupper($item['sku']))
             ->values()
             ->all();
+
+        if ($fromSku === '') {
+            $fromSku = null;
+        }
 
         if (strcasecmp($ratio, 'combo') === 0 && $action !== 'NRB') {
             if (count($fromItems) !== 1) {

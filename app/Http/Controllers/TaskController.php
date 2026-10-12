@@ -46,6 +46,7 @@ use App\Support\DarL30Metrics;
 use App\Support\MissedPeriodMetrics;
 use App\Support\OpenAiRequest;
 use App\Support\TaskBusinessTime;
+use App\Support\TaskDoneChecklistReview;
 use App\Support\TaskSelfAssign;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\View\View;
@@ -3419,6 +3420,52 @@ class TaskController extends Controller
     }
 
     /**
+     * Saved checklist ticks for a task that was already marked Done.
+     * Visible to the assignor (view), so the boxes do not open blank.
+     */
+    public function doneChecklistReview($id): JsonResponse
+    {
+        $task = Task::findOrFail($id);
+        $this->authorize('view', $task);
+
+        $form = $this->checklistFormForTask($task);
+        $questions = ($form && is_array($form->questions)) ? $form->questions : [];
+        $hasChecklist = $form && count($questions) > 0;
+
+        $answers = null;
+        $source = null;
+        if ($hasChecklist) {
+            $linked = $this->linkedChecklistSubmission($task);
+            if ($linked && is_array($linked->answers) && $linked->answers !== []) {
+                $answers = $linked->answers;
+                $source = 'submission';
+            } else {
+                $parsed = TaskDoneChecklistReview::answersFromReport($questions, (string) ($task->report ?? ''));
+                if ($parsed !== []) {
+                    $answers = $parsed;
+                    $source = 'report';
+                }
+            }
+        }
+
+        return response()->json([
+            'task_id' => (int) $task->id,
+            'status' => $task->status,
+            'has_checklist' => $hasChecklist,
+            'has_saved_answers' => is_array($answers) && $answers !== [],
+            'readonly' => in_array((string) $task->status, ['Done', 'Archived'], true),
+            'source' => $source,
+            'answers' => $answers ?: (object) [],
+            'form' => $hasChecklist ? [
+                'id' => $form->id,
+                'cl_id' => $form->cl_id ?: AutomatedTaskChecklistIds::format((int) $form->id),
+                'title' => $form->title,
+                'questions' => $questions,
+            ] : null,
+        ]);
+    }
+
+    /**
      * Mark a task Done with checklist (if linked) or normal completion report.
      */
     public function complete(Request $request, $id): JsonResponse
@@ -3609,6 +3656,21 @@ class TaskController extends Controller
         ]);
     }
 
+    protected function linkedChecklistSubmission(Task $task): ?AutomateTaskChecklistSubmission
+    {
+        if (! Schema::hasTable('automate_task_checklist_submissions')) {
+            return null;
+        }
+        if (! Schema::hasColumn('automate_task_checklist_submissions', 'task_id')) {
+            return null;
+        }
+
+        return AutomateTaskChecklistSubmission::query()
+            ->where('task_id', $task->id)
+            ->orderByDesc('id')
+            ->first();
+    }
+
     protected function checklistFormForTask(Task $task): ?AutomateTaskChecklistForm
     {
         if (! $task->automate_task_id || ! Schema::hasTable('automate_task_checklist_forms')) {
@@ -3658,13 +3720,17 @@ class TaskController extends Controller
                 return ['ok' => false, 'used_checklist' => true, 'skip' => 'checklist does not match'];
             }
 
-            AutomateTaskChecklistSubmission::create([
+            $submission = [
                 'form_id' => $form->id,
                 'automate_task_id' => (int) $task->automate_task_id,
                 'submitted_by' => Auth::id(),
                 'answers' => $normalized,
                 'submitted_at' => now(),
-            ]);
+            ];
+            if (Schema::hasColumn('automate_task_checklist_submissions', 'task_id')) {
+                $submission['task_id'] = (int) $task->id;
+            }
+            AutomateTaskChecklistSubmission::create($submission);
 
             $task->report = $this->formatChecklistReport($form, $questions, $normalized);
             $task->reference_link = $payload['reference_link'] ?? null;

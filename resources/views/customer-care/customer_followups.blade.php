@@ -149,6 +149,15 @@
             vertical-align: middle;
         }
 
+        .followup-resolved-by {
+            display: block;
+            margin-top: 1px;
+            font-size: 0.68rem;
+            line-height: 1.2;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
         .followup-table-scroll table.table .followup-inline-dt {
             font-size: var(--followup-table-fs);
             line-height: 1.4;
@@ -615,14 +624,21 @@
                 return '<td class="followup-readonly-date">' + escapeHtml(t) + '</td>';
             }
 
-            /** Resolved/closing date column. Shows the timestamp the row was marked Resolved, or — when not closed. */
+            /** Resolved/closing date column. Shows when it was marked done, and who did it. */
             function resolvedDateCellHtml(row) {
                 const raw = row.resolved_display;
                 if (row.status !== 'Resolved' || raw == null || String(raw).trim() === '') {
                     return '<td class="followup-readonly-date text-muted">—</td>';
                 }
-                return '<td class="followup-readonly-date text-success" title="Closed on ' +
-                    escapeAttr(raw) + '"><i class="bi bi-check2-circle"></i> ' + escapeHtml(raw) + '</td>';
+                const by = row.resolved_by != null ? String(row.resolved_by).trim() : '';
+                const title = by !== ''
+                    ? ('Marked done by ' + by + ' on ' + raw)
+                    : ('Closed on ' + raw);
+                const byHtml = by !== ''
+                    ? '<span class="followup-resolved-by">by ' + escapeHtml(by) + '</span>'
+                    : '';
+                return '<td class="followup-readonly-date text-success" title="' + escapeAttr(title) +
+                    '"><i class="bi bi-check2-circle"></i> ' + escapeHtml(raw) + byHtml + '</td>';
             }
 
             function nextFollowupAtCellHtml(row) {
@@ -744,15 +760,20 @@
              *
              * The tooltip is HTML so we can format the rows; we therefore
              * have to escape every untrusted string ourselves. Action
-             * labels are friendly copy ("Created", "Edited", "Status
-             * changed"); unknown actions fall through unchanged.
+             * labels are friendly copy ("Created", "Edited", "Marked done");
+             * unknown actions fall through unchanged.
              */
-            function executiveActionLabel(action) {
-                switch (String(action || '').toLowerCase()) {
+            function executiveActionLabel(entry) {
+                const action = String(entry?.action || '').toLowerCase();
+                const status = entry?.status != null ? String(entry.status).trim() : '';
+                if (entry?.marked_done || action === 'resolved') {
+                    return 'Marked done';
+                }
+                switch (action) {
                     case 'created':        return 'Created';
                     case 'updated':        return 'Edited';
-                    case 'status_changed': return 'Status changed';
-                    default:               return action ? String(action) : '';
+                    case 'status_changed': return status !== '' ? ('Marked ' + status) : 'Status changed';
+                    default:               return action || '';
                 }
             }
 
@@ -768,7 +789,7 @@
 
                 const rows = history.map(function (h) {
                     const who   = escapeHtml(h?.name || '');
-                    const what  = escapeHtml(executiveActionLabel(h?.action));
+                    const what  = escapeHtml(executiveActionLabel(h));
                     const when  = h?.at_label ? escapeHtml(h.at_label) : '';
                     return '<span class="followup-executive-history-row">' +
                         '<span class="followup-executive-history-action">' + (what || 'Edit') + '</span>' +
@@ -777,7 +798,7 @@
                         '</span>';
                 }).join('');
 
-                const tooltipHtml = '<span class="followup-executive-history-title">Edit history</span>' + rows;
+                const tooltipHtml = '<span class="followup-executive-history-title">History</span>' + rows;
                 const titleAttr = escapeAttr(tooltipHtml);
 
                 return '<td class="followup-executive-cell">' +

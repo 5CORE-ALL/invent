@@ -728,8 +728,9 @@ class OutgoingController extends Controller
      *
      * Custom apps reject Basic auth. The previous outgoing path sent the API
      * key and password, so Shopify never applied the deduction. This uses the
-     * Admin access token and the configured Ohio location, the same way
-     * verification and incoming already do.
+     * Admin access token and the Shopify location named Main Warehouse.
+     * SHOPIFY_INVENTORY_LOCATION_ID is the Ohio id, and stock sent there does
+     * not show when Shopify is filtered to Main Warehouse.
      *
      * @return array{ok: bool, error: ?string, status: int, available: ?int}
      */
@@ -751,9 +752,9 @@ class OutgoingController extends Controller
             return ['ok' => false, 'error' => 'SKU not found in Shopify: '.$sku, 'status' => 404, 'available' => null];
         }
 
-        $locationId = ShopifyOhioLocationResolver::preferredLocationId();
+        $locationId = ShopifyOhioLocationResolver::mainWarehouseLocationId();
         if (! is_string($locationId) || $locationId === '') {
-            return ['ok' => false, 'error' => 'Shopify Ohio location is not configured for SKU: '.$sku, 'status' => 404, 'available' => null];
+            return ['ok' => false, 'error' => 'Shopify location "Main Warehouse" was not found for SKU: '.$sku, 'status' => 404, 'available' => null];
         }
 
         try {

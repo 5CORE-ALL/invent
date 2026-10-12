@@ -21,7 +21,7 @@ use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
-use App\Support\EbayCbidHistory;
+use App\Support\EbayListingReportHistory;
 use App\Support\EbayYesterdaySpend;
 use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\DB;
@@ -799,9 +799,7 @@ class EbayController extends Controller
         } catch (\Throwable $e) {
             Log::warning('eBay getViewEbayData: ebay_campaign_ads unavailable: ' . $e->getMessage());
         }
-        EbayCbidHistory::recordToday('ebay1', $ebayCampaignAdsByListing);
-        $ebayCbidPriorByListing = EbayCbidHistory::priorByListing('ebay1');
-
+        $ebayReportByListing = EbayListingReportHistory::latestByListing();
         // Latest NR/REQ + links from Listing eBay page (source of truth).
         // Key by a normalized SKU (UPPER + trim) so saved rows — which saveSpriceToDatabase
         // stores uppercased/trimmed — are still matched on read regardless of the SKU's
@@ -1123,6 +1121,17 @@ class EbayController extends Controller
             $row['eBay Stock'] = $ebayMetric?->ebay_stock ?? 0;
             $row['price_lmpa'] = $ebayMetric?->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric?->item_id ?? null;
+            $rpt = $ebayReportByListing[(string) ($ebayMetric?->item_id ?? '')] ?? null;
+            $row['rpt_clicks'] = $rpt['clicks'] ?? null;
+            $row['rpt_clicks_prev'] = $rpt['clicks_prev'] ?? null;
+            $row['rpt_clicks_prev_date'] = $rpt['clicks_prev_date'] ?? null;
+            $row['rpt_spend'] = $rpt['spend'] ?? null;
+            $row['rpt_spend_prev'] = $rpt['spend_prev'] ?? null;
+            $row['rpt_spend_prev_date'] = $rpt['spend_prev_date'] ?? null;
+            $row['rpt_sales'] = $rpt['sales'] ?? null;
+            $row['rpt_sales_prev'] = $rpt['sales_prev'] ?? null;
+            $row['rpt_sales_prev_date'] = $rpt['sales_prev_date'] ?? null;
+            $row['rpt_range'] = $rpt['range'] ?? null;
             $row['views'] = $ebayMetric?->views ?? 0;
 
             if ($ebayMetric && isset($ebayCampaignAdsByListing[$ebayMetric->item_id])) {
@@ -1140,10 +1149,6 @@ class EbayController extends Controller
                 ? $ebayCampaignAdsByListing[$ebayMetric->item_id]
                 : null;
             $row['ca_bid_percentage'] = $caRow->bid_percentage ?? null;
-            $cbidItemId = $ebayMetric ? (string) $ebayMetric->item_id : '';
-            $cbidPrior = $ebayCbidPriorByListing[$cbidItemId] ?? null;
-            $row['cbid_prev'] = $cbidPrior['bid'] ?? null;
-            $row['cbid_prev_date'] = $cbidPrior['date'] ?? null;
             $row['ca_suggested_bid']  = $caRow->suggested_bid  ?? null;
             $row['ca_promote_with_ad'] = $caRow->promote_with_ad ?? null;
             $row['ca_funding_strategy'] = $caRow->funding_strategy ?? null;

@@ -619,25 +619,21 @@
 
         /* Metric history modals — full width (theme uses --tz-modal-width / --tz-modal-margin) */
         #skuMetricsModal.modal,
-        #ebay1MetricChartModal.modal,
-        #ebayCbidModal.modal {
+        #ebay1MetricChartModal.modal {
             --tz-modal-width: 100%;
             --tz-modal-margin: 0.5rem 0;
             padding-left: 0 !important;
             padding-right: 0 !important;
         }
-        #ebay1MetricChartModal.modal,
-        #ebayCbidModal.modal { z-index: 10800; }
+        #ebay1MetricChartModal.modal { z-index: 10800; }
         #skuMetricsModal .modal-dialog,
-        #ebay1MetricChartModal .modal-dialog,
-        #ebayCbidModal .modal-dialog {
+        #ebay1MetricChartModal .modal-dialog {
             width: 100% !important;
             max-width: none !important;
             margin: 0.5rem 0 0 0 !important;
         }
         #skuMetricsModal .modal-content,
-        #ebay1MetricChartModal .modal-content,
-        #ebayCbidModal .modal-content {
+        #ebay1MetricChartModal .modal-content {
             border-radius: 0;
             width: 100%;
             max-width: 100%;
@@ -1196,8 +1192,6 @@
         </div>
     </div>
 
-    @include('campaign.partials.ebay-cbid-history')
-
     <!-- Export Column Selection Modal -->
     <div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -1417,6 +1411,7 @@
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, valueFmt } for ref panel & plugins
         let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views' | 'prmt' | 'cpn' | 'push_prc'
         let currentSku = null;
+        let currentReportListingId = '';
         let table = null; // Global table reference
         let allTableData = []; // Full dataset for ParentExpand
 
@@ -2273,15 +2268,6 @@
             return escapeHtml(text).replace(/"/g, '&quot;');
         }
 
-        function openEbayCbidChart(row) {
-            const sku = (row && (row['(Child) sku'] || row.sku)) || '';
-            const listingId = (row && (row.eBay_item_id || row.listing_id)) || '';
-            if (typeof openStandardCbidChart === 'function') {
-                openStandardCbidChart({ title: sku || listingId, listingId: listingId });
-            }
-        }
-        window.openEbayCbidChart = openEbayCbidChart;
-
         function linkedLmpSkuFormatter(cell) {
             const row = cell.getRow().getData();
             if (row.is_parent_summary || (row.Parent && String(row.Parent).toUpperCase().startsWith('PARENT'))) return '';
@@ -2889,15 +2875,57 @@
             return null;
         }
 
-        function openEbaySkuHistoryChart(sku, metric) {
+        function ebayRptHistCell(rowData, field, prevField, dateField, metric, money) {
+            if (!rowData || rowData.is_parent_summary) return '';
+            const sku = rowData['(Child) sku'] || '';
+            if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1) return '';
+            const raw = rowData[field];
+            const has = raw !== null && raw !== undefined && raw !== '' && isFinite(parseFloat(raw));
+            if (!has) return '<span class="text-muted">—</span>';
+            const amount = parseFloat(raw);
+            const prevRaw = rowData[prevField];
+            const hasPrev = prevRaw !== null && prevRaw !== undefined && prevRaw !== '' && isFinite(parseFloat(prevRaw));
+            const prev = hasPrev ? parseFloat(prevRaw) : null;
+            const prevDate = String(rowData[dateField] || '');
+            const prevWhen = (/^\d{4}-\d{2}-\d{2}$/.test(prevDate) && typeof ebay1ChartDateLabel === 'function')
+                ? ebay1ChartDateLabel(prevDate)
+                : (prevDate || 'the prior 7 days');
+            const fmt = function(n) {
+                return money ? ('$' + Number(n).toFixed(2)) : Math.round(Number(n)).toLocaleString('en-US');
+            };
+            let dotColor = '#6c757d';
+            let dotTip = hasPrev ? ('Same as ' + prevWhen + ' (' + fmt(prev) + ')') : 'No prior 7 days yet';
+            if (hasPrev && amount > prev) {
+                dotColor = '#28a745';
+                dotTip = 'Up vs ' + prevWhen + ' (' + fmt(prev) + ')';
+            } else if (hasPrev && amount < prev) {
+                dotColor = '#a00211';
+                dotTip = 'Down vs ' + prevWhen + ' (' + fmt(prev) + ')';
+            }
+            const skuAttr = String(sku).replace(/"/g, '&quot;');
+            const listingAttr = String(rowData.eBay_item_id || '').replace(/"/g, '&quot;');
+            const tipAttr = String(dotTip).replace(/"/g, '&quot;');
+            const label = metric === 'rpt_spend' ? 'Spend' : (metric === 'rpt_sales' ? 'Sales' : 'Clicks');
+            const range = rowData.rpt_range ? ('Last 7 days ' + rowData.rpt_range) : 'Last 7 days';
+            const dotBtn = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${skuAttr}" data-listing="${listingAttr}" data-metric="${metric}" title="${tipAttr} — click for ${label} history" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`;
+            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${skuAttr}" data-listing="${listingAttr}" data-metric="${metric}" title="${range}. Click for daily history." style="font-weight: 600; cursor: pointer;">${fmt(amount)}</span>${dotBtn}</span>`;
+        }
+
+        function openEbaySkuHistoryChart(sku, metric, listingId) {
             if (!sku) return;
             currentSkuChartMetric = metric || 'price';
+            if (String(currentSkuChartMetric).indexOf('rpt_') === 0) {
+                currentReportListingId = listingId || '';
+            } else {
+                currentReportListingId = '';
+            }
             currentSku = sku;
             $('#modalSkuName').text(sku);
             $('#sku-chart-days-filter').val('30');
-            const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC', y_spend: 'Y Spend' };
+            const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC', y_spend: 'Y Spend', rpt_clicks: 'Clicks', rpt_spend: 'Spend', rpt_sales: 'Sales' };
             const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
-            $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30 · PT)');
+            const rangeLabel = String(currentSkuChartMetric).indexOf('rpt_') === 0 ? ' (daily report · PT)' : ' (Rolling L30 · PT)';
+            $('#skuChartModalSuffix').text(metricLabel + rangeLabel);
             $('#skuChartLoading').show();
             $('#skuChartContainer').hide();
             $('#chart-no-data-message').hide();
@@ -2919,9 +2947,12 @@
             $('#skuChartContainer').hide();
             $('#chart-no-data-message').hide();
             const daysNum = days === 0 || days === '0' ? 0 : (parseInt(days, 10) || 30);
-            const historyUrl = currentSkuChartMetric === 'y_spend'
-                ? `/ebay/y-spend-history?days=${daysNum}&mode=sku&sku=${encodeURIComponent(sku)}`
-                : `/ebay-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`;
+            const isRptMetric = String(currentSkuChartMetric).indexOf('rpt_') === 0;
+            const historyUrl = isRptMetric
+                ? `/ebay/listing-report-history?days=${daysNum}&listing_id=${encodeURIComponent(currentReportListingId)}`
+                : (currentSkuChartMetric === 'y_spend'
+                    ? `/ebay/y-spend-history?days=${daysNum}&mode=sku&sku=${encodeURIComponent(sku)}`
+                    : `/ebay-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`);
             fetch(historyUrl)
                 .then(response => {
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -2975,6 +3006,9 @@
                     const isPushPrc = currentSkuChartMetric === 'push_prc';
                     const isSprice = currentSkuChartMetric === 'sprice';
                     const isYSpend = currentSkuChartMetric === 'y_spend';
+                    const isRptClicks = currentSkuChartMetric === 'rpt_clicks';
+                    const isRptSpend = currentSkuChartMetric === 'rpt_spend';
+                    const isRptSales = currentSkuChartMetric === 'rpt_sales';
                     const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
                     const cvrFmt = v => (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
                     const pctIntFmt = v => Math.round(Number(v) || 0) + '%';
@@ -2986,6 +3020,9 @@
                         : isPushPrc ? 'push_prc'
                         : isSprice ? 'sprice'
                         : isYSpend ? 'y_spend'
+                        : isRptClicks ? 'clicks'
+                        : isRptSpend ? 'spend'
+                        : isRptSales ? 'sales'
                         : 'price';
                     const mapped = data.map(function(d) {
                         const raw = d[valueField];
@@ -3022,10 +3059,10 @@
                     const labels = filled.map(function(d) { return d.date; });
                     const values = filled.map(function(d) { return d.value; });
 
-                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC', y_spend: 'Y Spend' };
+                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', prmt: 'PRMT %', cpn: 'cvr %', push_prc: 'Push Prc', sprice: 'S PRC', y_spend: 'Y Spend', rpt_clicks: 'Clicks', rpt_spend: 'Spend', rpt_sales: 'Sales' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
-                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900', sprice: '#0d6efd', y_spend: '#ef4444' };
-                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)', push_prc: 'rgba(255,153,0,0.12)', sprice: 'rgba(13,110,253,0.1)', y_spend: 'rgba(239,68,68,0.12)' };
+                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0', prmt: '#0d6efd', cpn: '#20c997', push_prc: '#FF9900', sprice: '#0d6efd', y_spend: '#ef4444', rpt_clicks: '#0d6efd', rpt_spend: '#ef4444', rpt_sales: '#198754' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)', prmt: 'rgba(13,110,253,0.1)', cpn: 'rgba(32,201,151,0.1)', push_prc: 'rgba(255,153,0,0.12)', sprice: 'rgba(13,110,253,0.1)', y_spend: 'rgba(239,68,68,0.12)', rpt_clicks: 'rgba(13,110,253,0.12)', rpt_spend: 'rgba(239,68,68,0.12)', rpt_sales: 'rgba(25,135,84,0.12)' };
                     const refDotEl = document.getElementById('skuChartRefDot');
                     const refLabelEl = document.getElementById('skuChartRefLabel');
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
@@ -3037,14 +3074,14 @@
                     }
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
-                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isPushPrc || isSprice || isYSpend) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
+                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isPushPrc || isSprice || isYSpend || isRptSpend) ? ' (USD)' : ((isPrmt || isCpn || isCvr) ? ' (%)' : ''));
                     skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
                     skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
 
-                    const refFmt = isCvr ? cvrFmt : (isPrmt || isCpn) ? pctIntFmt : (isViews || isL7) ? intFmt : skuChartFmtVal;
+                    const refFmt = isCvr ? cvrFmt : (isPrmt || isCpn) ? pctIntFmt : (isViews || isL7 || isRptClicks || isRptSales) ? intFmt : skuChartFmtVal;
                     if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
                         if (isCvr || isPrmt || isCpn) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Number(v).toFixed(0) + '%'; };
-                        else if (isViews || isL7) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
+                        else if (isViews || isL7 || isRptClicks || isRptSales) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
                         else skuMetricsChart.options.scales.y.ticks.callback = function(v) { return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')); };
                     }
                     if (skuMetricsChart.options.plugins && skuMetricsChart.options.plugins.tooltip && skuMetricsChart.options.plugins.tooltip.callbacks) {
@@ -3054,6 +3091,9 @@
                         else if (isPushPrc) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Push Prc: ' + skuChartFmtVal(context.parsed.y || 0); };
                         else if (isSprice) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'S PRC: ' + skuChartFmtVal(context.parsed.y || 0); };
                         else if (isYSpend) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Y Spend: ' + skuChartFmtVal(context.parsed.y || 0); };
+                        else if (isRptClicks) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Clicks: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
+                        else if (isRptSpend) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Spend: ' + skuChartFmtVal(context.parsed.y || 0); };
+                        else if (isRptSales) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Sales: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L30 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isL7) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L7 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Price: ' + skuChartFmtVal(context.parsed.y || 0); };
@@ -5182,15 +5222,47 @@
                         }
                     },
                     {
+                        title: "Clicks",
+                        field: "rpt_clicks",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "Clicks over the last 7 report days. A single quiet day is not the whole column. Green = up vs the 7 days before, red = down. Click the dot for each day.",
+                        formatter: function(cell) {
+                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_clicks', 'rpt_clicks_prev', 'rpt_clicks_prev_date', 'rpt_clicks', false);
+                        }
+                    },
+                    {
+                        title: "Spend",
+                        field: "rpt_spend",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "Ad spend over the last 7 report days. A single quiet day is not the whole column. Green = up vs the 7 days before, red = down. Click the dot for each day.",
+                        formatter: function(cell) {
+                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_spend', 'rpt_spend_prev', 'rpt_spend_prev_date', 'rpt_spend', true);
+                        }
+                    },
+                    {
+                        title: "Sales",
+                        field: "rpt_sales",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "Sales count over the last 7 report days. A single quiet day is not the whole column. Green = up vs the 7 days before, red = down. Click the dot for each day.",
+                        formatter: function(cell) {
+                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_sales', 'rpt_sales_prev', 'rpt_sales_prev_date', 'rpt_sales', false);
+                        }
+                    },
+                    {
                         title: "C BID",
                         field: "ca_bid_percentage",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 110,
-                        headerTooltip: "Live eBay bid. Click for C Bid history: the 7 days before today, then today. Green dot = up vs the last recorded day in that week, red = down. The sync dot stays green when C Bid matches S Bid and yellow while a push is waiting.",
+                        width: 90,
+                        headerTooltip: "Live eBay bid, shown just before Alert. Green = C Bid matches S Bid. Yellow = still waiting to push.",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
-                            const isParent = row.is_parent_summary || (row.Parent && String(row.Parent).toUpperCase().startsWith('PARENT'));
                             const v = parseFloat(cell.getValue());
                             let valueHtml = '<span class="text-muted">—</span>';
                             if (!isNaN(v)) {
@@ -5198,38 +5270,9 @@
                                 valueHtml = '<span style="color:' + color + '; font-weight:600;">' + Math.round(v) + '%</span>';
                             }
                             const sync = ebayTabBidSync(row);
-                            const syncTip = sync ? ((typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(sync.tip) : sync.tip) : '';
-                            const syncDot = sync
-                                ? '<span class="eca-sync-dot is-' + sync.color + '" title="' + syncTip + '"></span>'
-                                : '';
-                            if (isParent) {
-                                return sync ? ('<span class="eca-sync-cell">' + syncDot + valueHtml + '</span>') : valueHtml;
-                            }
-                            const prevRaw = row.cbid_prev;
-                            const hasPrev = prevRaw !== null && prevRaw !== undefined && prevRaw !== '' && isFinite(parseFloat(prevRaw));
-                            const prev = hasPrev ? parseFloat(prevRaw) : null;
-                            const prevWhen = row.cbid_prev_date && typeof ebay1ChartDateLabel === 'function'
-                                ? ebay1ChartDateLabel(row.cbid_prev_date)
-                                : (row.cbid_prev_date ? String(row.cbid_prev_date) : 'a day in the last 7');
-                            let dotColor = '#6c757d';
-                            let dotTip = hasPrev ? ('Same as ' + prevWhen + ' (' + prev.toFixed(1) + '%)') : 'No C Bid in the last 7 days — recording from today';
-                            if (hasPrev && isFinite(v) && v > prev) {
-                                dotColor = '#28a745';
-                                dotTip = 'Up vs ' + prevWhen + ' (' + prev.toFixed(1) + '%)';
-                            } else if (hasPrev && isFinite(v) && v < prev) {
-                                dotColor = '#a00211';
-                                dotTip = 'Down vs ' + prevWhen + ' (' + prev.toFixed(1) + '%)';
-                            }
-                            const tip = (typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(dotTip + ' — click for C Bid history') : dotTip;
-                            return '<span class="eca-cbid-hist" style="white-space:nowrap;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="' + tip + '">'
-                                + syncDot + valueHtml
-                                + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span></span>';
-                        },
-                        cellClick: function(e, cell) {
-                            if (!e.target.closest('.eca-cbid-hist')) return;
-                            const row = cell.getRow().getData();
-                            if (!row.eBay_item_id && !row.listing_id) return;
-                            openEbayCbidChart(row);
+                            if (!sync) return valueHtml;
+                            const safe = (typeof escapeHtmlAttr === 'function') ? escapeHtmlAttr(sync.tip) : sync.tip;
+                            return '<span class="eca-sync-cell"><span class="eca-sync-dot is-' + sync.color + '" title="' + safe + '"></span>' + valueHtml + '</span>';
                         }
                     },
                     {
@@ -6196,7 +6239,7 @@
 
                 // Advertisement first (views / bids / ads / promote)
                 if (
-                    /^(views|l7_views|l7_views_prev|_ads_pct|y_spend|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad|_bid_alert|sbid_diff_.+|sbid_total_discount)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_prev|_ads_pct|y_spend|rpt_clicks|rpt_spend|rpt_sales|ca_bid_percentage|ca_suggested_bid|ca_promote_with_ad|_bid_alert|sbid_diff_.+|sbid_total_discount)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view|y\s*spend)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
@@ -6878,7 +6921,7 @@
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
                     $('#sku-chart-days-filter').val('30');
-                    openEbaySkuHistoryChart(sku, currentSkuChartMetric);
+                    openEbaySkuHistoryChart(sku, currentSkuChartMetric, el.getAttribute('data-listing') || '');
                 }
             });
 
@@ -6897,6 +6940,9 @@
                 'eBay Stock': 'eBay Stock',
                 'eBay Price': 'eBay Price',
                 'y_spend': 'Y Spend',
+                'rpt_clicks': 'Clicks',
+                'rpt_spend': 'Spend',
+                'rpt_sales': 'Sales',
                 'lmp_price': 'LMP',
                 'T_Sale_l30': 'Total Sales L30',
                 'Total_pft': 'Total Profit',

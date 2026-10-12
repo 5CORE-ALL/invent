@@ -1193,8 +1193,9 @@
             return EBAY2_DATA_JSON_URL + (String(EBAY2_DATA_JSON_URL).indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now();
         }
         let skuMetricsChart = null;
-        let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views'
+        let currentSkuChartMetric = 'price'; // 'price' | 'cvr' | 'views' | 'l7_views' | 'rpt_clicks' | 'rpt_spend' | 'rpt_sales'
         let currentSku = null;
+        let currentReportListingId = '';
         let skuChartFirstSeriesStats = null; // { values, median, dataMin, dataMax, valueFmt } for ref panel & plugins
         let table = null; // Global table reference
 
@@ -2012,6 +2013,40 @@
             });
         }
 
+        function ebayRptHistCell(rowData, field, prevField, dateField, metric, money) {
+            if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return '';
+            const sku = rowData['(Child) sku'] || '';
+            if (!sku || String(sku).toUpperCase().indexOf('PARENT') !== -1) return '';
+            const raw = rowData[field];
+            const has = raw !== null && raw !== undefined && raw !== '' && isFinite(parseFloat(raw));
+            if (!has) return '<span class="text-muted">—</span>';
+            const amount = parseFloat(raw);
+            const prevRaw = rowData[prevField];
+            const hasPrev = prevRaw !== null && prevRaw !== undefined && prevRaw !== '' && isFinite(parseFloat(prevRaw));
+            const prev = hasPrev ? parseFloat(prevRaw) : null;
+            const prevDate = String(rowData[dateField] || '');
+            const prevWhen = prevDate || 'the prior 7 days';
+            const fmt = function(n) {
+                return money ? ('$' + Number(n).toFixed(2)) : Math.round(Number(n)).toLocaleString('en-US');
+            };
+            let dotColor = '#6c757d';
+            let dotTip = hasPrev ? ('Same as ' + prevWhen + ' (' + fmt(prev) + ')') : 'No prior 7 days yet';
+            if (hasPrev && amount > prev) {
+                dotColor = '#28a745';
+                dotTip = 'Up vs ' + prevWhen + ' (' + fmt(prev) + ')';
+            } else if (hasPrev && amount < prev) {
+                dotColor = '#a00211';
+                dotTip = 'Down vs ' + prevWhen + ' (' + fmt(prev) + ')';
+            }
+            const skuAttr = String(sku).replace(/"/g, '&quot;');
+            const listingAttr = String(rowData.eBay_item_id || rowData.listing_id || '').replace(/"/g, '&quot;');
+            const tipAttr = String(dotTip).replace(/"/g, '&quot;');
+            const label = metric === 'rpt_spend' ? 'Spend' : (metric === 'rpt_sales' ? 'Sales' : 'Clicks');
+            const range = rowData.rpt_range ? ('Last 7 days ' + rowData.rpt_range) : 'Last 7 days';
+            const dotBtn = `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${skuAttr}" data-listing="${listingAttr}" data-metric="${metric}" title="${tipAttr} — click for ${label} history" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor};"></span></button>`;
+            return `<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;"><span class="view-sku-chart" data-sku="${skuAttr}" data-listing="${listingAttr}" data-metric="${metric}" title="${range}. Click for daily history." style="font-weight: 600; cursor: pointer;">${fmt(amount)}</span>${dotBtn}</span>`;
+        }
+
         function loadSkuMetricsData(sku, days = 30) {
             if (typeof Chart === 'undefined') {
                 if (typeof loadChartJs === 'function') {
@@ -2025,7 +2060,11 @@
             $('#skuChartContainer').hide();
             $('#chart-no-data-message').hide();
             const daysNum = days === 0 || days === '0' ? 0 : (parseInt(days, 10) || 30);
-            fetch(`/ebay2-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`)
+            const isRptMetric = String(currentSkuChartMetric).indexOf('rpt_') === 0;
+            const historyUrl = isRptMetric
+                ? `/ebay2/listing-report-history?days=${daysNum}&listing_id=${encodeURIComponent(currentReportListingId)}`
+                : `/ebay2-metrics-history?days=${daysNum}&sku=${encodeURIComponent(sku)}`;
+            fetch(historyUrl)
                 .then(response => {
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     return response.json();
@@ -2070,24 +2109,45 @@
                         return;
                     }
 
-                    const labels = data.map(d => d.date_formatted || d.date || '');
                     const isCvr = currentSkuChartMetric === 'cvr';
                     const isViews = currentSkuChartMetric === 'views';
                     const isL7 = currentSkuChartMetric === 'l7_views';
+                    const isRptClicks = currentSkuChartMetric === 'rpt_clicks';
+                    const isRptSpend = currentSkuChartMetric === 'rpt_spend';
+                    const isRptSales = currentSkuChartMetric === 'rpt_sales';
                     const intFmt = v => Math.round(Number(v) || 0).toLocaleString('en-US');
                     const cvrFmt = v => (Number(v) === v ? Number(v).toFixed(1) : v) + '%';
-                    const values = isCvr
-                        ? data.map(d => Number(d.cvr_percent) || 0)
-                        : isViews
-                            ? data.map(d => Number(d.views) || 0)
-                            : isL7
-                                ? data.map(d => Number(d.l7_views) || 0)
-                                : data.map(d => Number(d.price) || 0);
+                    let labels;
+                    let values;
+                    if (isRptClicks || isRptSpend || isRptSales) {
+                        const valueField = isRptClicks ? 'clicks' : (isRptSpend ? 'spend' : 'sales');
+                        const mapped = data.map(function(d) {
+                            const raw = d[valueField];
+                            const has = raw !== null && raw !== undefined && raw !== '';
+                            return {
+                                date: d.date_formatted || d.date || '',
+                                value: has ? Number(raw) : null
+                            };
+                        }).filter(function(d) {
+                            return d.date && d.value != null && isFinite(d.value);
+                        });
+                        labels = mapped.map(function(d) { return d.date; });
+                        values = mapped.map(function(d) { return d.value; });
+                    } else {
+                        labels = data.map(d => d.date_formatted || d.date || '');
+                        values = isCvr
+                            ? data.map(d => Number(d.cvr_percent) || 0)
+                            : isViews
+                                ? data.map(d => Number(d.views) || 0)
+                                : isL7
+                                    ? data.map(d => Number(d.l7_views) || 0)
+                                    : data.map(d => Number(d.price) || 0);
+                    }
 
-                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
+                    const refLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', rpt_clicks: 'Clicks', rpt_spend: 'Spend', rpt_sales: 'Sales' };
                     const refLabelText = refLabels[currentSkuChartMetric] || 'Price';
-                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0' };
-                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)' };
+                    const refColors = { cvr: '#008000', views: '#0000FF', l7_views: '#0dcaf0', rpt_clicks: '#0d6efd', rpt_spend: '#ef4444', rpt_sales: '#198754' };
+                    const bgColors = { cvr: 'rgba(0, 128, 0, 0.1)', views: 'rgba(0, 0, 255, 0.1)', l7_views: 'rgba(13, 202, 240, 0.1)', rpt_clicks: 'rgba(13,110,253,0.12)', rpt_spend: 'rgba(239,68,68,0.12)', rpt_sales: 'rgba(25,135,84,0.12)' };
                     const refDotEl = document.getElementById('skuChartRefDot');
                     const refLabelEl = document.getElementById('skuChartRefLabel');
                     if (refLabelEl) refLabelEl.textContent = refLabelText;
@@ -2095,18 +2155,21 @@
 
                     skuMetricsChart.data.labels = labels;
                     skuMetricsChart.data.datasets[0].data = values;
-                    skuMetricsChart.data.datasets[0].label = refLabelText + (currentSkuChartMetric === 'price' ? ' (USD)' : '');
+                    skuMetricsChart.data.datasets[0].label = refLabelText + ((currentSkuChartMetric === 'price' || isRptSpend) ? ' (USD)' : '');
                     skuMetricsChart.data.datasets[0].borderColor = refColors[currentSkuChartMetric] || '#adb5bd';
                     skuMetricsChart.data.datasets[0].backgroundColor = bgColors[currentSkuChartMetric] || 'rgba(108,117,125,0.08)';
 
-                    const refFmt = isCvr ? cvrFmt : (isViews || isL7) ? intFmt : skuChartFmtVal;
+                    const refFmt = isCvr ? cvrFmt : (isViews || isL7 || isRptClicks || isRptSales) ? intFmt : skuChartFmtVal;
                     if (skuMetricsChart.options.scales && skuMetricsChart.options.scales.y) {
                         if (isCvr) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Number(v).toFixed(0) + '%'; };
-                        else if (isViews || isL7) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
+                        else if (isViews || isL7 || isRptClicks || isRptSales) skuMetricsChart.options.scales.y.ticks.callback = function(v) { return Math.round(v).toLocaleString('en-US'); };
                         else skuMetricsChart.options.scales.y.ticks.callback = function(v) { return '$' + (Number(v) === v && v % 1 !== 0 ? v.toFixed(2) : Math.round(v).toLocaleString('en-US')); };
                     }
                     if (skuMetricsChart.options.plugins && skuMetricsChart.options.plugins.tooltip && skuMetricsChart.options.plugins.tooltip.callbacks) {
                         if (isCvr) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'CVR%: ' + (context.parsed.y != null ? (Number(context.parsed.y).toFixed(1) + '%') : '-'); };
+                        else if (isRptClicks) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Clicks: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
+                        else if (isRptSpend) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Spend: ' + skuChartFmtVal(context.parsed.y || 0); };
+                        else if (isRptSales) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Sales: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isViews) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L30 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else if (isL7) skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'L7 View: ' + (context.parsed.y != null ? intFmt(context.parsed.y) : '-'); };
                         else skuMetricsChart.options.plugins.tooltip.callbacks.label = function(context) { return 'Price: ' + skuChartFmtVal(context.parsed.y || 0); };
@@ -2494,9 +2557,10 @@
                 const days = $(this).val();
                 const daysNum = parseInt(days, 10);
                 const rangeLabel = daysNum === 0 ? 'Lifetime' : 'L' + daysNum;
-                const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
+                const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', rpt_clicks: 'Clicks', rpt_spend: 'Spend', rpt_sales: 'Sales' };
                 const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
-                $('#skuChartModalSuffix').text(metricLabel + ' (Rolling ' + rangeLabel + ' · PT)');
+                const rangeSuffix = String(currentSkuChartMetric).indexOf('rpt_') === 0 ? ' (daily report · PT)' : (' (Rolling ' + rangeLabel + ' · PT)');
+                $('#skuChartModalSuffix').text(metricLabel + rangeSuffix);
                 if (currentSku) loadSkuMetricsData(currentSku, daysNum || 0);
             });
 
@@ -3885,6 +3949,39 @@
                         }
                     },
                     {
+                        title: "Clicks",
+                        field: "rpt_clicks",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "Clicks over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.",
+                        formatter: function(cell) {
+                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_clicks', 'rpt_clicks_prev', 'rpt_clicks_prev_date', 'rpt_clicks', false);
+                        }
+                    },
+                    {
+                        title: "Spend",
+                        field: "rpt_spend",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        headerTooltip: "Ad spend over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.",
+                        formatter: function(cell) {
+                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_spend', 'rpt_spend_prev', 'rpt_spend_prev_date', 'rpt_spend', true);
+                        }
+                    },
+                    {
+                        title: "Sales",
+                        field: "rpt_sales",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        headerTooltip: "Sales count over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.",
+                        formatter: function(cell) {
+                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_sales', 'rpt_sales_prev', 'rpt_sales_prev_date', 'rpt_sales', false);
+                        }
+                    },
+                    {
                         title: "C BID",
                         field: "ca_bid_percentage",
                         hozAlign: "center",
@@ -4702,7 +4799,7 @@
                 const blob = fl + ' ' + tl;
 
                 if (
-                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|rpt_clicks|rpt_spend|rpt_sales|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
@@ -4866,7 +4963,7 @@
                         table.getColumns().forEach(col => {
                             const def = col.getDefinition();
                             if (!def.field || def.field === '_parent_expand' || def.field === '_select' || def.field === '_ebay2_all_ord') return;
-                            if (def.field === 'ca_bid_percentage' || def.field === '_bid_alert') {
+                            if (def.field === 'ca_bid_percentage' || def.field === '_bid_alert' || def.field === 'rpt_clicks' || def.field === 'rpt_spend' || def.field === 'rpt_sales') {
                                 col.show();
                                 return;
                             }
@@ -5032,9 +5129,11 @@
                     currentSku = sku;
                     $('#modalSkuName').text(sku);
                     $('#sku-chart-days-filter').val('30');
-                    const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View' };
+                    currentReportListingId = el.getAttribute('data-listing') || '';
+                    const metricLabels = { cvr: 'CVR%', views: 'L30 View', l7_views: 'L7 View', rpt_clicks: 'Clicks', rpt_spend: 'Spend', rpt_sales: 'Sales' };
                     const metricLabel = metricLabels[currentSkuChartMetric] || 'Price';
-                    $('#skuChartModalSuffix').text(metricLabel + ' (Rolling L30 · PT)');
+                    const rangeSuffix = String(currentSkuChartMetric).indexOf('rpt_') === 0 ? ' (daily report · PT)' : ' (Rolling L30 · PT)';
+                    $('#skuChartModalSuffix').text(metricLabel + rangeSuffix);
                     $('#skuChartLoading').show();
                     $('#skuChartContainer').hide();
                     $('#chart-no-data-message').hide();
@@ -5091,6 +5190,9 @@
                 'SCVR': 'SCVR',
                 'ebay2_ship': 'eBay2 Ship',
                 'LP_productmaster': 'LP',
+                'rpt_clicks': 'Clicks',
+                'rpt_spend': 'Spend',
+                'rpt_sales': 'Sales',
                 'ca_suggested_bid': 'ES BID',
                 's_bid': 'S BID',
                 'ca_bid_percentage': 'C BID',

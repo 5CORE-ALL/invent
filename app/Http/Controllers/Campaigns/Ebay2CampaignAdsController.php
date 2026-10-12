@@ -10,6 +10,7 @@ use App\Services\EbayChannelMetricsService;
 use App\Support\EbayCampaignReportRollup;
 use App\Support\Marketplace\EbayCampaignEndedListingRemap;
 use App\Support\CpMasterDil;
+use App\Support\EbayListingReportHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -991,6 +992,20 @@ class Ebay2CampaignAdsController extends Controller
         );
     }
 
+    public function listingReportHistory(Request $request)
+    {
+        $days = (int) $request->input('days', 30);
+        if ($days < 0) {
+            $days = 30;
+        }
+
+        return response()->json(EbayListingReportHistory::series(
+            (string) $request->input('listing_id', ''),
+            $days,
+            'ebay_2_general_reports'
+        ));
+    }
+
     public function getData(Request $request)
     {
         EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
@@ -1099,6 +1114,7 @@ class Ebay2CampaignAdsController extends Controller
         $total = (clone $query)->count();
         $data  = $query->orderBy('ca.id', 'desc')->get();
         CpMasterDil::hydrate($data);
+        EbayListingReportHistory::attachToRows($data, 'ebay_2_general_reports');
 
         return response()->json([
             'total' => $total,

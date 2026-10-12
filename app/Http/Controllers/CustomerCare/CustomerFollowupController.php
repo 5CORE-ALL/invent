@@ -332,8 +332,17 @@ class CustomerFollowupController extends Controller
             // Pre-format history entries server-side so the timezone matches
             // every other date in the grid. The view just renders these.
             $rawHistory = is_array($f->executive_history) ? $f->executive_history : [];
+            $doneIndex = CustomerFollowup::markedDoneHistoryIndex(
+                $rawHistory,
+                $f->status === 'Resolved' ? ($f->resolved_at ? Carbon::parse($f->resolved_at) : null) : null,
+                (string) $f->status
+            );
             $historyDisplay = [];
-            foreach ($rawHistory as $entry) {
+            $resolvedBy = null;
+            foreach ($rawHistory as $i => $entry) {
+                if (! is_array($entry)) {
+                    continue;
+                }
                 $name = trim((string) ($entry['name'] ?? ''));
                 if ($name === '') {
                     continue;
@@ -347,10 +356,17 @@ class CustomerFollowupController extends Controller
                         $atLabel = '';
                     }
                 }
+                $markedDone = $doneIndex !== null && $i === $doneIndex;
+                if ($markedDone) {
+                    $resolvedBy = $name;
+                }
+                $statusLabel = trim((string) ($entry['status'] ?? ''));
                 $historyDisplay[] = [
-                    'name'      => $name,
-                    'action'    => (string) ($entry['action'] ?? ''),
-                    'at_label'  => $atLabel,
+                    'name'        => $name,
+                    'action'      => (string) ($entry['action'] ?? ''),
+                    'status'      => $statusLabel,
+                    'at_label'    => $atLabel,
+                    'marked_done' => $markedDone,
                 ];
             }
 
@@ -366,6 +382,7 @@ class CustomerFollowupController extends Controller
                 'followup_display' => $followupDt,
                 'followup_sort' => $f->followup_date ? $f->followup_date->format('Y-m-d') . ' ' . ($time ?: '00:00') : '',
                 'resolved_display' => $resolvedDisplay,
+                'resolved_by' => $resolvedBy,
                 'resolved_sort' => $f->resolved_at ? Carbon::parse($f->resolved_at)->timezone($tz)->format('Y-m-d H:i') : '',
                 'next_followup' => $next,
                 'next_followup_at' => self::toDatetimeLocalString($f->next_followup_at, $tz),
@@ -547,6 +564,9 @@ class CustomerFollowupController extends Controller
 
         if ($executiveName !== '') {
             $followup->appendExecutiveHistoryEntry($executiveName, 'created');
+            if (($validated['status'] ?? '') === 'Resolved') {
+                $followup->appendExecutiveHistoryEntry($executiveName, 'resolved', null, ['status' => 'Resolved']);
+            }
             $followup->saveQuietly();
         }
         $ticketId = CustomerFollowup::assignTicketIdFromPrimaryKey($followup);
@@ -628,6 +648,7 @@ class CustomerFollowupController extends Controller
                 ?? Carbon::today(config('app.timezone'))->toDateString();
         }
 
+        $previousStatus = (string) $customer_followup->status;
         $executiveName = $this->executiveNameFromAuth();
         $validated['assigned_executive'] = $executiveName;
         // Don't touch original_executive / created_by_user_id on edit — those
@@ -676,7 +697,14 @@ class CustomerFollowupController extends Controller
                     $customer_followup->created_by_user_id = $candidateId;
                 }
             }
-            $customer_followup->appendExecutiveHistoryEntry($executiveName, 'updated');
+            $newStatus = (string) ($validated['status'] ?? '');
+            if ($previousStatus !== $newStatus && $newStatus === 'Resolved') {
+                $customer_followup->appendExecutiveHistoryEntry($executiveName, 'resolved', null, ['status' => 'Resolved']);
+            } elseif ($previousStatus !== $newStatus) {
+                $customer_followup->appendExecutiveHistoryEntry($executiveName, 'status_changed', null, ['status' => $newStatus]);
+            } else {
+                $customer_followup->appendExecutiveHistoryEntry($executiveName, 'updated');
+            }
             $customer_followup->saveQuietly();
         }
 
@@ -757,7 +785,8 @@ class CustomerFollowupController extends Controller
                     $customer_followup->created_by_user_id = $candidateId;
                 }
             }
-            $customer_followup->appendExecutiveHistoryEntry($executiveName, 'status_changed');
+            $historyAction = $newStatus === 'Resolved' ? 'resolved' : 'status_changed';
+            $customer_followup->appendExecutiveHistoryEntry($executiveName, $historyAction, null, ['status' => $newStatus]);
         }
         $customer_followup->save();
 
