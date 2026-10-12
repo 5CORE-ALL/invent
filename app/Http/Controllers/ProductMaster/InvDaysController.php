@@ -689,7 +689,8 @@ class InvDaysController extends Controller
      */
     public function ageDayMap(): array
     {
-        return Cache::remember('inv_days_age_map_v1', 120, function () {
+        // Building the sources takes ~16s on production; age is whole days, so 15 min is fresh enough.
+        return Cache::remember('inv_days_age_map_v1', 900, function () {
             $sources = $this->cachedAgeSources();
             $out = [];
             ShopifySku::query()
@@ -713,6 +714,43 @@ class InvDaysController extends Controller
 
             return $out;
         });
+    }
+
+    /**
+     * Same as /amazon-tabulator-view: stamp age_days on every SKU row (and tree _children).
+     *
+     * @param  array<int, mixed>  $rows
+     * @return array<int, mixed>
+     */
+    public function attachAgeDays(array $rows): array
+    {
+        try {
+            $ageMap = $this->ageDayMap();
+        } catch (\Throwable $e) {
+            Log::warning('attachAgeDays: age map failed: '.$e->getMessage());
+
+            return $rows;
+        }
+        $walk = function (array $rows) use (&$walk, $ageMap): array {
+            foreach ($rows as $i => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                if (! empty($row['_children']) && is_array($row['_children'])) {
+                    $row['_children'] = $walk($row['_children']);
+                }
+                $sku = trim((string) ($row['(Child) sku'] ?? $row['sku'] ?? ''));
+                if ($sku !== '' && stripos($sku, 'PARENT') === false
+                    && empty($row['is_parent_summary']) && empty($row['is_parent'])) {
+                    $row['age_days'] = $ageMap[$this->skuKey($sku)] ?? null;
+                }
+                $rows[$i] = $row;
+            }
+
+            return $rows;
+        };
+
+        return $walk($rows);
     }
 
     public function ageMap()

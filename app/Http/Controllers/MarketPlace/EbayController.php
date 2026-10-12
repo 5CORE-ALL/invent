@@ -446,6 +446,7 @@ class EbayController extends Controller
             if (!is_array($rows)) {
                 $rows = [];
             }
+            $rows = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($rows);
 
             array_walk_recursive($rows, static function (&$value) {
                 if (is_float($value) && !is_finite($value)) {

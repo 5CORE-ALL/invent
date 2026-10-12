@@ -119,6 +119,9 @@ class EbayThreeController extends Controller
             $response = $this->getViewEbay3DataTabulator($request);
             $data = json_decode($response->getContent(), true);
             $tree = $data['data'] ?? [];
+            if (is_array($tree)) {
+                $tree = app(\App\Http\Controllers\ProductMaster\InvDaysController::class)->attachAgeDays($tree);
+            }
 
             // Auto-save daily summary in background (non-blocking)
             $this->saveDailySummaryIfNeeded($tree);
