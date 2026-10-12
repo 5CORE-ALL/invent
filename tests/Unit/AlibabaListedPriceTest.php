@@ -151,4 +151,85 @@ class AlibabaListedPriceTest extends TestCase
             'productType' => 'wholesale',
         ], 12);
     }
+
+    public function test_sku_price_push_matches_a_piece_count_suffix_and_keeps_the_sibling(): void
+    {
+        $xml = app(AlibabaApiService::class)->listedPriceUpdateXml([
+            'priceType' => 'sku_price',
+            'productType' => 'wholesale',
+            'productSku' => [
+                'skus' => [
+                    [
+                        'skuCode' => 'MS 080 YLW',
+                        'skuId' => 11,
+                        'bulkDiscountPrices' => [
+                            ['startQuantity' => 1, 'price' => '20.99'],
+                        ],
+                    ],
+                    [
+                        'skuCode' => 'MS 080 RED',
+                        'skuId' => 22,
+                        'skuPrice' => '18.40',
+                    ],
+                ],
+            ],
+        ], 22.5, 'MS 080 YLW 2PCS');
+
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>11</value></field><field id="price" type="input"><value>22.50</value></field>', $xml);
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>22</value></field><field id="price" type="input"><value>18.40</value></field>', $xml);
+    }
+
+    public function test_sku_price_push_matches_spacing_in_the_piece_count(): void
+    {
+        $xml = app(AlibabaApiService::class)->listedPriceUpdateXml([
+            'priceType' => 'skuPrice',
+            'productType' => 'wholesale',
+            'productSku' => [
+                'skus' => [
+                    [
+                        'skuCode' => 'CAPO RED 4 PCS',
+                        'skuId' => 31,
+                        'bulkDiscountPrices' => [
+                            ['startQuantity' => -1, 'price' => '3.62'],
+                        ],
+                    ],
+                    [
+                        'skuCode' => 'CAPO BLK 4PCS',
+                        'skuId' => 32,
+                        'bulkDiscountPrices' => [
+                            ['startQuantity' => -1, 'price' => '3.10'],
+                        ],
+                    ],
+                ],
+            ],
+        ], 4.25, 'CAPO RED 4PCS');
+
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>31</value></field><field id="price" type="input"><value>4.25</value></field>', $xml);
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>32</value></field><field id="price" type="input"><value>3.10</value></field>', $xml);
+    }
+
+    public function test_sku_price_push_skips_a_sibling_that_has_no_sku_id(): void
+    {
+        $xml = app(AlibabaApiService::class)->listedPriceUpdateXml([
+            'priceType' => 'sku_price',
+            'productType' => 'wholesale',
+            'productSku' => [
+                'skus' => [
+                    [
+                        'skuCode' => 'CS 06 2W',
+                        'skuId' => 11,
+                        'bulkDiscountPrices' => [
+                            ['startQuantity' => -1, 'price' => '11.86'],
+                        ],
+                    ],
+                    [
+                        'skuCode' => 'PLACEHOLDER',
+                    ],
+                ],
+            ],
+        ], 13.09, 'CS 06 2W');
+
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>11</value></field><field id="price" type="input"><value>13.09</value></field>', $xml);
+        $this->assertStringNotContainsString('PLACEHOLDER', $xml);
+    }
 }

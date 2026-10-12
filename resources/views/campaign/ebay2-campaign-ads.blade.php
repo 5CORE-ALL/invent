@@ -621,6 +621,7 @@ $(document).ready(function () {
                     return `<span style="color:${res.color}; font-weight:700;" title="${title}">${res.bid.toFixed(1)}%</span>`;
                 }
             },
+            ...ebaySbidDiffColumns(),
             {
                 title: 'CVR', field: 'ebay_l30', width: 80, hozAlign: 'center',
                 sorter: function(a, b, aRow, bRow) {

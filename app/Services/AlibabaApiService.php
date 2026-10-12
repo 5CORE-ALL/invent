@@ -587,17 +587,101 @@ class AlibabaApiService extends AliExpressApiService
         $want = strtoupper(trim($sku));
         $only = count($nodes) === 1;
         foreach ($nodes as $node) {
-            $code = strtoupper(trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? '')));
             $skuId = $this->icbuNumericId($node['skuId'] ?? $node['sku_id'] ?? null);
             if ($skuId === null) {
                 continue;
             }
-            if ($only || ($want !== '' && $code === $want)) {
+            if ($only || $this->alibabaSkuIsTarget($want, (string) ($node['skuCode'] ?? $node['sku_code'] ?? ''), $nodes)) {
                 return $skuId;
             }
         }
 
         return null;
+    }
+
+    /**
+     * A listing SKU matches the analytics SKU when the codes are the same once spaces
+     * are ignored, or when one side only adds a trailing piece count (2PCS) and that
+     * lines up with exactly one variation.
+     *
+     * @param  list<array<string, mixed>>  $nodes
+     */
+    protected function alibabaSkuIsTarget(string $want, string $code, array $nodes): bool
+    {
+        $list = [];
+        foreach ($nodes as $node) {
+            if (is_array($node)) {
+                $list[] = $node;
+            }
+        }
+        if (count($list) <= 1) {
+            return true;
+        }
+
+        $want = strtoupper(trim($want));
+        $code = strtoupper(trim($code));
+        if ($want === '' || $code === '') {
+            return false;
+        }
+        if ($this->alibabaSkuCompact($want) === $this->alibabaSkuCompact($code)) {
+            return true;
+        }
+
+        $exactExists = false;
+        $looseCodes = [];
+        foreach ($list as $node) {
+            $nodeCode = strtoupper(trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? '')));
+            if ($nodeCode === '') {
+                continue;
+            }
+            if ($this->alibabaSkuCompact($want) === $this->alibabaSkuCompact($nodeCode)) {
+                $exactExists = true;
+                break;
+            }
+            if ($this->alibabaSkuPieceLoose($want, $nodeCode)) {
+                $looseCodes[$this->alibabaSkuCompact($nodeCode)] = true;
+            }
+        }
+        if ($exactExists || count($looseCodes) !== 1) {
+            return false;
+        }
+
+        return $this->alibabaSkuPieceLoose($want, $code);
+    }
+
+    protected function alibabaSkuCompact(string $sku): string
+    {
+        return preg_replace('/\s+/', '', strtoupper(trim($sku))) ?? '';
+    }
+
+    protected function alibabaSkuPieceLoose(string $want, string $code): bool
+    {
+        $wantCompact = $this->alibabaSkuCompact($want);
+        $codeCompact = $this->alibabaSkuCompact($code);
+        $wantBase = preg_replace('/\d+PCS$/', '', $wantCompact) ?? $wantCompact;
+        $codeBase = preg_replace('/\d+PCS$/', '', $codeCompact) ?? $codeCompact;
+        if ($wantBase === '' || $wantBase !== $codeBase) {
+            return false;
+        }
+
+        return $wantCompact === $wantBase || $codeCompact === $codeBase;
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     */
+    protected function listedPriceType(array $product): string
+    {
+        $raw = strtolower(trim((string) ($product['priceType'] ?? $product['price_type'] ?? '')));
+        $type = preg_replace('/[^a-z0-9]/', '', $raw) ?? '';
+        if ($type === '3' || $type === 'sku' || str_contains($type, 'skuprice')) {
+            return 'sku';
+        }
+        if ($type === '1' || str_contains($type, 'ladder')) {
+            return 'ladder';
+        }
+
+        return 'fob';
     }
 
     /**
@@ -1249,7 +1333,7 @@ class AlibabaApiService extends AliExpressApiService
      */
     protected function icbuPrice(array $node): float
     {
-        foreach (['price', 'sku_price', 'bulk_price', 'unit_price', 'fob_price', 'fob_min_price'] as $key) {
+        foreach (['price', 'skuPrice', 'sku_price', 'bulkPrice', 'bulk_price', 'unitPrice', 'unit_price', 'fobPrice', 'fob_price', 'fobMinPrice', 'fob_min_price'] as $key) {
             $amount = $this->icbuMoney($node[$key] ?? null);
             if ($amount > 0) {
                 return $amount;
@@ -1609,14 +1693,14 @@ class AlibabaApiService extends AliExpressApiService
             throw new \InvalidArgumentException('Alibaba price must be between 0.01 and 9999999.00.');
         }
 
-        $type = strtolower(trim((string) ($product['priceType'] ?? $product['price_type'] ?? '')));
+        $type = $this->listedPriceType($product);
         $amount = number_format($price, 2, '.', '');
 
-        if ($type === 'sku_price' || $type === 'sku') {
+        if ($type === 'sku') {
             return $this->skuPriceXml($product, $amount, $sku);
         }
 
-        if ($type === 'ladder_price' || $type === 'ladder') {
+        if ($type === 'ladder') {
             return $this->ladderPriceXml($product, $amount, $sku);
         }
 
@@ -1731,16 +1815,20 @@ class AlibabaApiService extends AliExpressApiService
         }
 
         $want = strtoupper(trim((string) $sku));
-        $only = count($nodes) === 1;
         $values = '';
         $changed = false;
+        $sawTargetWithoutId = false;
         foreach ($nodes as $node) {
-            $code = strtoupper(trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? '')));
+            $code = (string) ($node['skuCode'] ?? $node['sku_code'] ?? '');
             $skuId = trim((string) ($node['skuId'] ?? $node['sku_id'] ?? ''));
-            if ($skuId === '' || preg_match('/^\d+$/', $skuId) !== 1) {
-                throw new \InvalidArgumentException('Alibaba SKU id is missing, so this SKU price was not pushed.');
+            $isTarget = $this->alibabaSkuIsTarget($want, $code, $nodes);
+            $hasId = $skuId !== '' && preg_match('/^\d+$/', $skuId) === 1;
+            if (! $hasId) {
+                if ($isTarget) {
+                    $sawTargetWithoutId = true;
+                }
+                continue;
             }
-            $isTarget = $only || ($want !== '' && $code === $want);
             if ($isTarget) {
                 $nodePrice = $amount;
                 $changed = true;
@@ -1757,7 +1845,9 @@ class AlibabaApiService extends AliExpressApiService
                 .'</complex-values>';
         }
         if (! $changed) {
-            throw new \InvalidArgumentException('This SKU was not found on the Alibaba listing, so its price was not pushed.');
+            throw new \InvalidArgumentException($sawTargetWithoutId
+                ? 'Alibaba SKU id is missing, so this SKU price was not pushed.'
+                : 'This SKU was not found on the Alibaba listing, so its price was not pushed.');
         }
 
         $productType = strtolower(trim((string) ($product['productType'] ?? $product['product_type'] ?? '')));
@@ -1874,8 +1964,8 @@ class AlibabaApiService extends AliExpressApiService
                 if (! is_array($discounts)) {
                     continue;
                 }
-                $code = strtoupper(trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? '')));
-                if ($want !== '' && $code === $want) {
+                $code = (string) ($node['skuCode'] ?? $node['sku_code'] ?? '');
+                if ($want !== '' && $this->alibabaSkuIsTarget($want, $code, is_array($skuBag) ? $skuBag : [])) {
                     $matched[] = $discounts;
                 } else {
                     $fallback[] = $discounts;

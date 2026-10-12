@@ -1009,19 +1009,21 @@ class Ebay2CampaignAdsController extends Controller
     public function getData(Request $request)
     {
         EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
-        $this->remapStaleEligibleToLiveListings();
         $this->backfillMissingEligibleForSearch($request->input('search'));
 
+        // One preferred metric per listing, then a plain join. A per-row subquery
+        // here re-ran for every ad and made this page much slower than eBay 1 raw.
+        $preferredMetrics = DB::table('ebay_2_metrics')
+            ->selectRaw('item_id, CAST(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY CASE WHEN UPPER(TRIM(sku)) LIKE "PARENT%" THEN 0 ELSE 1 END, id SEPARATOR ","), ",", 1) AS UNSIGNED) as pick_id')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->groupBy('item_id');
+
         $query = DB::table('ebay2_campaign_ads as ca')
-            ->leftJoin('ebay_2_metrics as em', function ($join) {
-                $join->on('em.item_id', '=', 'ca.listing_id')
-                    ->whereRaw("em.id = (
-                        SELECT em2.id FROM ebay_2_metrics em2
-                        WHERE em2.item_id = ca.listing_id
-                        ORDER BY CASE WHEN UPPER(TRIM(em2.sku)) LIKE 'PARENT%' THEN 0 ELSE 1 END, em2.id
-                        LIMIT 1
-                    )");
+            ->leftJoinSub($preferredMetrics, 'emp', function ($join) {
+                $join->on('emp.item_id', '=', 'ca.listing_id');
             })
+            ->leftJoin('ebay_2_metrics as em', 'em.id', '=', 'emp.pick_id')
             ->select(
                 'ca.*',
                 // Use SKU from ebay_2_metrics if matched, fallback to listing_id
@@ -1111,8 +1113,8 @@ class Ebay2CampaignAdsController extends Controller
             });
         }
 
-        $total = (clone $query)->count();
         $data  = $query->orderBy('ca.id', 'desc')->get();
+        $total = $data->count();
         CpMasterDil::hydrate($data);
         EbayListingReportHistory::attachToRows($data, 'ebay_2_general_reports');
 

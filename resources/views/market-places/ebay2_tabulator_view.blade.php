@@ -4016,6 +4016,7 @@
                             return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
                         }
                     },
+                    ...(typeof ebaySbidDiffColumns === 'function' ? ebaySbidDiffColumns() : []),
                     {
                         title: "S BID",
                         field: "s_bid",
@@ -4799,7 +4800,7 @@
                 const blob = fl + ' ' + tl;
 
                 if (
-                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|rpt_clicks|rpt_spend|rpt_sales|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|rpt_clicks|rpt_spend|rpt_sales|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad|_bid_alert|sbid_diff_.+|sbid_total_discount)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
@@ -5194,6 +5195,14 @@
                 'rpt_spend': 'Spend',
                 'rpt_sales': 'Sales',
                 'ca_suggested_bid': 'ES BID',
+                'sbid_diff_dil': 'Dil',
+                'sbid_diff_views': 'Views',
+                'sbid_diff_cvr': 'CVR %',
+                'sbid_diff_sold': 'eBay Sold',
+                'sbid_diff_npft': 'Std NPFT %',
+                'sbid_diff_cvrAdj': 'CVR up / down',
+                'sbid_diff_viewAdj': 'L30 View up / down',
+                'sbid_total_discount': 'Sum S Bid',
                 's_bid': 'S BID',
                 'ca_bid_percentage': 'C BID',
                 'ca_promote_with_ad': 'PROMOTE'
