@@ -63,19 +63,36 @@ class AlibabaListedPriceTest extends TestCase
                 'minOrderQuantity' => '1.0',
             ],
             'productSku' => [
+                'skuAttributes' => [[
+                    'attributeId' => -10001,
+                    'attributeName' => 'Color',
+                    'values' => [[
+                        'valueId' => -101,
+                        'systemValueName' => 'Black',
+                    ]],
+                ]],
                 'skus' => [[
-                    'skuCode' => 'CS 06 2W',
-                    'skuId' => 10001889397471,
+                    'skuCode' => 'WF 10140 4OHM 2PCS',
+                    'skuId' => 10002038751958,
+                    'attr2Value' => ['-10001' => -101],
+                    'inventoryDTOList' => [[
+                        'inventory' => 99,
+                        'storeCode' => 'US_LOCAL_01',
+                    ]],
                     'bulkDiscountPrices' => [
-                        ['startQuantity' => -1, 'price' => '8.23'],
+                        ['startQuantity' => -1, 'price' => '23.49'],
                     ],
                 ]],
             ],
-        ], 9.5, 'CS 06 2W');
+        ], 21.85, 'WF 10140 4OHM 2PCS');
 
         $this->assertStringContainsString('<field id="scPrice" type="singleCheck"><value>3</value></field>', $xml);
-        $this->assertStringContainsString('<field id="skuId" type="input"><value>10001889397471</value></field>', $xml);
-        $this->assertStringContainsString('<field id="price" type="input"><value>9.50</value></field>', $xml);
+        $this->assertStringContainsString('<field id="p-191288010" name="Color" type="multiCheck"><values><value inputValue="Black">-101</value></values></field>', $xml);
+        $this->assertStringContainsString('<field id="skuId" type="input"><value>10002038751958</value></field>', $xml);
+        $this->assertStringContainsString('<field id="price" type="input"><value>21.85</value></field>', $xml);
+        $this->assertStringContainsString('<field id="skuOuterId" type="input"><value>WF 10140 4OHM 2PCS</value></field>', $xml);
+        $this->assertStringContainsString('propId="191288010"', $xml);
+        $this->assertStringContainsString('warehouseCode="US_LOCAL_01"', $xml);
         $this->assertStringNotContainsString('range_min', $xml);
         $this->assertStringNotContainsString('range_max', $xml);
     }

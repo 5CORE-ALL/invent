@@ -1864,9 +1864,11 @@ class AlibabaApiService extends AliExpressApiService
         }
 
         $want = strtoupper(trim((string) $sku));
+        $catalog = $this->skuAttributeCatalog($product);
         $values = '';
         $changed = false;
         $sawTargetWithoutId = false;
+        $saleProps = [];
         foreach ($nodes as $node) {
             $code = (string) ($node['skuCode'] ?? $node['sku_code'] ?? '');
             $skuId = trim((string) ($node['skuId'] ?? $node['sku_id'] ?? ''));
@@ -1888,10 +1890,18 @@ class AlibabaApiService extends AliExpressApiService
                 }
                 $nodePrice = number_format($kept, 2, '.', '');
             }
+            $props = $this->skuPropFields($node, $catalog);
             $values .= '<complex-values>'
                 .'<field id="skuId" type="input"><value>'.$skuId.'</value></field>'
                 .'<field id="price" type="input"><value>'.$nodePrice.'</value></field>'
+                .$this->skuOuterIdField($node)
+                .$this->skuStockField($node)
+                .$props['xml']
                 .'</complex-values>';
+            foreach ($props['pairs'] as $pair) {
+                $saleKey = $pair['id']."\0".$pair['value_id'];
+                $saleProps[$saleKey] = $pair;
+            }
         }
         if (! $changed) {
             throw new \InvalidArgumentException($sawTargetWithoutId
@@ -1904,8 +1914,195 @@ class AlibabaApiService extends AliExpressApiService
 
         return '<itemSchema>'
             .'<field id="'.$typeField.'" type="singleCheck"><value>3</value></field>'
+            .$this->salePropField($saleProps)
             .'<field id="sku" type="multiComplex">'.$values.'</field>'
             .'</itemSchema>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $product
+     * @return array<string, array{id: string, name: string, values: array<string, string>}>
+     */
+    protected function skuAttributeCatalog(array $product): array
+    {
+        $bag = $product['productSku']['skuAttributes']
+            ?? $product['productSku']['sku_attributes']
+            ?? $product['product_sku']['skuAttributes']
+            ?? $product['product_sku']['sku_attributes']
+            ?? [];
+        if (is_array($bag) && $bag !== [] && ! array_is_list($bag)) {
+            $bag = [$bag];
+        }
+        if (! is_array($bag)) {
+            return [];
+        }
+
+        $catalog = [];
+        foreach ($bag as $attr) {
+            if (! is_array($attr)) {
+                continue;
+            }
+            $id = trim((string) ($attr['attributeId'] ?? $attr['attribute_id'] ?? ''));
+            $name = trim((string) ($attr['attributeName'] ?? $attr['attribute_name'] ?? ''));
+            if ($id === '') {
+                continue;
+            }
+            $values = $attr['values'] ?? [];
+            if (is_array($values) && $values !== [] && ! array_is_list($values)) {
+                $values = [$values];
+            }
+            $valueMap = [];
+            foreach (is_array($values) ? $values : [] as $value) {
+                if (! is_array($value)) {
+                    continue;
+                }
+                $valueId = trim((string) ($value['valueId'] ?? $value['value_id'] ?? ''));
+                if ($valueId === '') {
+                    continue;
+                }
+                $valueName = trim((string) (
+                    $value['systemValueName']
+                    ?? $value['system_value_name']
+                    ?? $value['valueName']
+                    ?? $value['value_name']
+                    ?? $value['customValueName']
+                    ?? ''
+                ));
+                $valueMap[$valueId] = $valueName;
+            }
+            $catalog[$id] = ['id' => $id, 'name' => $name, 'values' => $valueMap];
+        }
+
+        return $catalog;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @param  array<string, array{id: string, name: string, values: array<string, string>}>  $catalog
+     * @return array{xml: string, pairs: list<array{id: string, name: string, value_id: string, value_name: string}>}
+     */
+    protected function skuPropFields(array $node, array $catalog): array
+    {
+        $pairs = [];
+        foreach ($node as $key => $value) {
+            if (! is_string($key) || preg_match('/^attr\d+Value$/', $key) !== 1 || ! is_array($value)) {
+                continue;
+            }
+            foreach ($value as $attrId => $valueId) {
+                $attrId = trim((string) $attrId);
+                $valueId = trim((string) $valueId);
+                if ($attrId === '' || $valueId === '') {
+                    continue;
+                }
+                $known = $catalog[$attrId] ?? null;
+                $name = is_array($known) ? (string) $known['name'] : '';
+                $valueName = is_array($known) ? (string) ($known['values'][$valueId] ?? '') : '';
+                if ((int) $attrId < 0 && strcasecmp($name, 'Color') === 0) {
+                    $attrId = '191288010';
+                }
+                $pairs[] = [
+                    'id' => $attrId,
+                    'name' => $name,
+                    'value_id' => $valueId,
+                    'value_name' => $valueName,
+                ];
+            }
+        }
+        if ($pairs === []) {
+            return ['xml' => '', 'pairs' => []];
+        }
+
+        $values = '';
+        foreach ($pairs as $pair) {
+            $values .= '<value propId="'.$this->xmlText($pair['id']).'"'
+                .' propName="p-'.$this->xmlText($pair['id']).'"'
+                .' propValueId="'.$this->xmlText($pair['value_id']).'"'
+                .' propValueName="'.$this->xmlText($pair['value_name']).'">'
+                .$this->xmlText($pair['id'].':'.$pair['value_id'])
+                .'</value>';
+        }
+
+        return [
+            'xml' => '<field id="props" type="multiInput"><values>'.$values.'</values></field>',
+            'pairs' => $pairs,
+        ];
+    }
+
+    /**
+     * @param  array<string, array{id: string, name: string, value_id: string, value_name: string}>  $pairs
+     */
+    protected function salePropField(array $pairs): string
+    {
+        if ($pairs === []) {
+            return '';
+        }
+        $grouped = [];
+        foreach ($pairs as $pair) {
+            $grouped[$pair['id']]['name'] = $pair['name'];
+            $grouped[$pair['id']]['values'][$pair['value_id']] = $pair['value_name'];
+        }
+        $fields = '';
+        foreach ($grouped as $id => $group) {
+            $values = '';
+            foreach ($group['values'] as $valueId => $valueName) {
+                $input = $valueName !== '' ? ' inputValue="'.$this->xmlText($valueName).'"' : '';
+                $values .= '<value'.$input.'>'.$this->xmlText((string) $valueId).'</value>';
+            }
+            $name = $group['name'] !== '' ? ' name="'.$this->xmlText($group['name']).'"' : '';
+            $fields .= '<field id="p-'.$this->xmlText((string) $id).'"'.$name.' type="multiCheck"><values>'.$values.'</values></field>';
+        }
+
+        return '<field id="saleProp" type="complex"><complex-value>'.$fields.'</complex-value></field>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    protected function skuOuterIdField(array $node): string
+    {
+        $code = trim((string) ($node['skuCode'] ?? $node['sku_code'] ?? ''));
+        if ($code === '') {
+            return '';
+        }
+
+        return '<field id="skuOuterId" type="input"><value>'.$this->xmlText($code).'</value></field>';
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    protected function skuStockField(array $node): string
+    {
+        $list = $node['inventoryDTOList'] ?? $node['inventory_dto_list'] ?? [];
+        if (is_array($list) && $list !== [] && ! array_is_list($list)) {
+            $list = [$list];
+        }
+        if (! is_array($list) || $list === []) {
+            return '';
+        }
+        $values = '';
+        foreach ($list as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $qty = $entry['inventory'] ?? $entry['amount'] ?? null;
+            $warehouse = trim((string) ($entry['storeCode'] ?? $entry['store_code'] ?? $entry['warehouseCode'] ?? ''));
+            if (! is_numeric($qty) || $warehouse === '') {
+                continue;
+            }
+            $amount = (string) max(0, (int) $qty);
+            $values .= '<value srcValue="'.$this->xmlText($amount).'" warehouseCode="'.$this->xmlText($warehouse).'">'.$this->xmlText($amount).'</value>';
+        }
+        if ($values === '') {
+            return '';
+        }
+
+        return '<field id="skuStock" type="multiInput"><values>'.$values.'</values></field>';
+    }
+
+    protected function xmlText(string $value): string
+    {
+        return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
     }
 
     /**
