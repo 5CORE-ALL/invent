@@ -39,6 +39,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSWGearExchangeCon
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemu2Controller;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemu3Controller;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingWalmartController;
@@ -79,6 +80,8 @@ class ListingChannelCounts
         'temu' => ListingTemuController::class,
         'temu2' => ListingTemu2Controller::class,
         'temutwo' => ListingTemu2Controller::class,
+        'temu3' => ListingTemu3Controller::class,
+        'temuthree' => ListingTemu3Controller::class,
         'doba' => ListingDobaController::class,
         'macys' => ListingMacysController::class,
         'walmart' => ListingWalmartController::class,
@@ -145,6 +148,8 @@ class ListingChannelCounts
         'temu' => '/listing-temu',
         'temu2' => '/listing-temu2',
         'temutwo' => '/listing-temu2',
+        'temu3' => '/listing-temu3',
+        'temuthree' => '/listing-temu3',
         'doba' => '/listing-doba',
         'macys' => '/listing-macys',
         'walmart' => '/listing-walmart',

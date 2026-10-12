@@ -182,6 +182,7 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSWGearExchangeCon
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingSynceeController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemuController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemu2Controller;
+use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTemu3Controller;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingPublishCommonController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopController;
 use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingTiktokShopTwoController;
@@ -5299,6 +5300,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/listing_temu2/publish-preview', [ListingTemu2Controller::class, 'publishPreview'])->name('listing_temu2.publish.preview');
     Route::get('/listing_temu2/export', [ListingTemu2Controller::class, 'export'])->name('listing_temu2.export');
 
+    // listing temu 3
+    Route::get('/listing-temu3', [ListingTemu3Controller::class, 'listingTemu3'])->name('listing.temu3');
+    Route::get('/listing_temu3/view-data', [ListingTemu3Controller::class, 'getViewListingTemu3Data']);
+    Route::post('/listing_temu3/save-status', [ListingTemu3Controller::class, 'saveStatus']);
+    Route::post('/listing_temu3/import', [ListingTemu3Controller::class, 'import'])->name('listing_temu3.import');
+    Route::post('/listing_temu3/publish', [ListingTemu3Controller::class, 'publish'])->name('listing_temu3.publish');
+    Route::post('/listing_temu3/publish-preview', [ListingTemu3Controller::class, 'publishPreview'])->name('listing_temu3.publish.preview');
+    Route::get('/listing_temu3/export', [ListingTemu3Controller::class, 'export'])->name('listing_temu3.export');
+
     Route::get('/listing-faire', [ListingFaireController::class, 'listingFaire'])->name('listing.faire');
     Route::get('/listing_faire/view-data', [ListingFaireController::class, 'getViewListingFaireData']);
     Route::post('/listing_faire/save-status', [ListingFaireController::class, 'saveStatus']);
@@ -8089,7 +8099,7 @@ Route::get('/css/{path}', function (string $path) {
 // STEP 7: SHOPIFY WILDCARD – MUST BE ABSOLUTELY LAST (catches /{first}/{second} only)
 // =============================================================================
 Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView'])
-    ->where('first', '^(?!\.well-known$)(?!listing_temu2$)(?!listing-temu2$)(?!listing-common$)(?!listing_faire$)(?!listing-faire$).+');
+    ->where('first', '^(?!\.well-known$)(?!listing_temu2$)(?!listing-temu2$)(?!listing_temu3$)(?!listing-temu3$)(?!listing-common$)(?!listing_faire$)(?!listing-faire$).+');
 
 // Temporary test route to debug On Sea Transit
 Route::get('/test-on-sea', function() {
