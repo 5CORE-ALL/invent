@@ -1710,8 +1710,20 @@ class ChannelMasterController extends Controller
                 $row['cogs'] = (int) $badge['cogs'];
                 $row['Gprofit%'] = $badge['gpft'].'%';
                 $row['G Roi'] = (int) $badge['groi'];
-                $row['N PFT'] = $badge['gpft'].'%';
-                $row['N ROI'] = (int) $badge['groi'];
+
+                // N PFT / N ROI are AFTER ads: the badge only carries gross profit, so copying
+                // gpft/groi here made N PFT identical to G PFT. Use the row's own ad spend
+                // (eBay 2 is refined afterwards by overlayLiveEbayTwoAdsOnChannelRows).
+                $totalAdSpend = (float) preg_replace('/[^0-9.-]/', '', (string) ($row['Total Ad Spend'] ?? 0));
+                $adsPct = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0.0;
+                $badgeCogs = (float) $badge['cogs'];
+                $row['Ads%'] = round($adsPct, 2).'%';
+                $row['TACOS %'] = $row['Ads%'];
+                $row['TACOS'] = round($adsPct, 2);
+                $row['N PFT'] = round((float) $badge['gpft'] - $adsPct, 2).'%';
+                $row['N ROI'] = $badgeCogs > 0
+                    ? round((((float) $badge['pft'] - $totalAdSpend) / $badgeCogs) * 100, 2)
+                    : 0.0;
                 $row['sales_page_link'] = match ($which) {
                     2 => '/ebay2/daily-sales',
                     3 => '/ebay3/daily-sales',
