@@ -461,11 +461,139 @@ let dilSbidRollupMemo = {};
 let dilSbidListingKeyFn = null;
 let dilSbidListingKeySrc = null;
 let dilSbidKidsByListing = null;
+let dilSbidParentByName = null;
+let dilSbidParentCount = 0;
+let dilSbidKidsByParent = null;
+let dilSbidParentSourceMemo = {};
 function dilSbidClearListingCache() {
     dilSbidRollupMemo = {};
     dilSbidListingKeyFn = null;
     dilSbidListingKeySrc = null;
     dilSbidKidsByListing = null;
+    dilSbidParentByName = null;
+    dilSbidParentCount = 0;
+    dilSbidKidsByParent = null;
+    dilSbidParentSourceMemo = {};
+}
+function dilSbidIsParentRow(row) {
+    if (!row) return false;
+    if (row.is_parent_summary || row.is_parent_row || row.is_parent) return true;
+    if (typeof isEbay2TabulatorParentRow === 'function') return isEbay2TabulatorParentRow(row);
+    const sku = String(row['(Child) sku'] || row.SKU || row.sku || row.resolved_sku || '').toUpperCase();
+    return sku.indexOf('PARENT') !== -1;
+}
+function dilSbidParentName(row) {
+    if (!row) return '';
+    const sku = String(row['(Child) sku'] || row.SKU || row.sku || row.resolved_sku || '').trim();
+    if (sku.toUpperCase().indexOf('PARENT') !== -1) {
+        const fromSku = sku.replace(/^PARENT\s+/i, '').trim();
+        if (fromSku) return fromSku.toUpperCase();
+    }
+    const parent = String(row.Parent || row.parent || '').replace(/^PARENT\s+/i, '').trim();
+    return parent ? parent.toUpperCase() : '';
+}
+function dilSbidParentIndex() {
+    if (dilSbidParentByName) return dilSbidParentByName;
+    const map = {};
+    dilSbidRows().forEach(function(d) {
+        if (!dilSbidIsParentRow(d)) return;
+        const name = dilSbidParentName(d);
+        if (name && !map[name]) map[name] = d;
+    });
+    dilSbidParentByName = map;
+    dilSbidParentCount = 0;
+    for (const k in map) {
+        if (Object.prototype.hasOwnProperty.call(map, k)) dilSbidParentCount++;
+    }
+    return map;
+}
+function dilSbidParentFor(row) {
+    if (!DIL_SBID_LISTING_WISE || !row || row._dilSbidRolled) return null;
+    const map = dilSbidParentIndex();
+    if (!dilSbidParentCount) return null;
+    if (dilSbidIsParentRow(row)) return row;
+    const name = dilSbidParentName(row);
+    return name ? (map[name] || null) : null;
+}
+function dilSbidNum(v) {
+    const n = parseFloat(v);
+    return isFinite(n) ? n : 0;
+}
+function dilSbidKidsOfParent(name) {
+    if (!name) return [];
+    if (!dilSbidKidsByParent) {
+        const map = {};
+        dilSbidRows().forEach(function(d) {
+            if (!d || dilSbidIsParentRow(d)) return;
+            const key = dilSbidParentName(d);
+            if (!key) return;
+            if (!map[key]) map[key] = [];
+            map[key].push(d);
+        });
+        dilSbidKidsByParent = map;
+    }
+    return dilSbidKidsByParent[name] || [];
+}
+function dilSbidAsParentSource(parent) {
+    const name = dilSbidParentName(parent);
+    if (name && dilSbidParentSourceMemo[name]) return dilSbidParentSourceMemo[name];
+    const kids = dilSbidKidsOfParent(name);
+    const list = kids.length ? kids : (parent ? [parent] : []);
+    let inv = 0, qty = 0, views = 0, l30 = 0, l60 = 0, l7 = 0, stock = 0;
+    let clicks = 0, spend = 0, sales = 0;
+    let stdSum = 0, stdN = 0, lpSum = 0, shipSum = 0, costN = 0;
+    list.forEach(function(d) {
+        inv += dilSbidNum(d.INV != null && d.INV !== '' ? d.INV : d.shopify_inv);
+        qty += dilSbidNum(d.L30 != null && d.L30 !== '' ? d.L30 : d.shopify_qty);
+        views += dilSbidNum(d.views);
+        l7 += dilSbidNum(d.l7_views);
+        stock += dilSbidNum(d['E Stock']);
+        clicks += dilSbidNum(d.rpt_clicks);
+        spend += dilSbidNum(d.rpt_spend);
+        sales += dilSbidNum(d.rpt_sales);
+        l30 += dilSbidNum(d['eBay L30'] != null && d['eBay L30'] !== '' ? d['eBay L30'] : d.ebay_l30);
+        l60 += dilSbidNum(d['eBay L60'] != null && d['eBay L60'] !== '' ? d['eBay L60'] : d.ebay_l60);
+        const std = parseFloat(d.STANDARD_PRICE);
+        if (std > 0) {
+            stdSum += std;
+            stdN++;
+            const lp = parseFloat(d.LP_productmaster);
+            const ship = parseFloat(d.Ship_productmaster) || 0;
+            if (isFinite(lp) && lp > 0) {
+                lpSum += lp;
+                shipSum += ship;
+                costN++;
+            }
+        }
+    });
+    const cvr = views > 0 ? (l30 / views) * 100 : 0;
+    const cvr60 = views > 0 ? (l60 / views) * 100 : 0;
+    const source = Object.assign({}, parent, {
+        _dilSbidRolled: true,
+        INV: inv,
+        L30: qty,
+        ov_l30: qty,
+        shopify_inv: inv,
+        shopify_qty: qty,
+        views: views,
+        l7_views: l7,
+        'E Stock': stock,
+        'eBay L30': l30,
+        'eBay L60': l60,
+        metric_ebay_l30: l30,
+        metric_ebay_l60: l60,
+        SCVR: cvr,
+        CVR_60: cvr60,
+        rpt_clicks: clicks,
+        rpt_spend: spend,
+        rpt_sales: sales,
+        STANDARD_PRICE: stdN ? (stdSum / stdN) : parent.STANDARD_PRICE,
+        LP_productmaster: costN ? (lpSum / costN) : parent.LP_productmaster,
+        Ship_productmaster: costN ? (shipSum / costN) : parent.Ship_productmaster
+    });
+    delete source.std_npft;
+    if (name) dilSbidParentSourceMemo[name] = source;
+    return source;
 }
 function dilSbidIsChildRow(row) {
     if (typeof chPromoIsChildRow === 'function') return chPromoIsChildRow(row);
@@ -494,6 +622,11 @@ function dilSbidListingKey(row) {
     return String(dilSbidListingKeyer()(row) || '');
 }
 function dilSbidUnitKey(row) {
+    const parent = dilSbidParentFor(row);
+    if (parent) {
+        const name = dilSbidParentName(parent);
+        if (name) return 'parent:' + name;
+    }
     return DIL_SBID_LISTING_WISE ? dilSbidListingKey(row) : dilSbidSkuKey(row);
 }
 function dilSbidKidsFor(listingKey) {
@@ -578,7 +711,10 @@ function dilSbidRollupRow(listingKey) {
     return rolled;
 }
 function dilSbidUnitRow(row) {
-    if (!DIL_SBID_LISTING_WISE || (row && row._dilSbidRolled)) return row;
+    if (row && row._dilSbidRolled) return row;
+    const parent = dilSbidParentFor(row);
+    if (parent) return dilSbidAsParentSource(parent);
+    if (!DIL_SBID_LISTING_WISE) return row;
     const key = dilSbidListingKey(row);
     return key ? (dilSbidRollupRow(key) || row) : row;
 }
@@ -594,7 +730,9 @@ function dilSbidPaintMode() {
         note.textContent = on
             ? (DIL_SBID_EXT
                 ? (DIL_SBID_LISTING_WISE
-                    ? 'On. One S Bid per eBay listing: family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Variation SKUs that share an item_id get the same bid. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.'
+                    ? ((dilSbidParentIndex(), dilSbidParentCount)
+                        ? 'On. One S Bid per parent. Dil, Views, CVR, eBay Sold and Std NPFT % come from the parent row, then CVR up / down, then L30 View up / down, then the Min / Max cap. Every SKU under that parent shows the same bid.'
+                        : 'On. One S Bid per eBay listing: family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Variation SKUs that share an item_id get the same bid. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
                     : 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
                 : 'On. S Bid uses these Dil slabs, then the CVR overlay, then the L30 View overlay, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
             : 'Off. S Bid is not changed.';
@@ -1108,6 +1246,10 @@ function dilSbidExtBids(row) {
     return out;
 }
 function dilSbidOfRow(row) {
+    if (row && !row._dilSbidRolled) {
+        const parent = dilSbidParentFor(row);
+        if (parent) return dilSbidOfRow(dilSbidAsParentSource(parent));
+    }
     if (DIL_SBID_LISTING_WISE && row && !row._dilSbidRolled) {
         const key = dilSbidListingKey(row);
         if (!key) {
@@ -1121,12 +1263,13 @@ function dilSbidOfRow(row) {
     }
     const dil = dilSbidMetric(row);
     if (dil === null || !isFinite(dil)) {
+        const invRaw = (row && row.shopify_inv != null && row.shopify_inv !== '') ? row.shopify_inv : (row && row.INV);
+        const inv = Number(invRaw);
+        if (invRaw != null && invRaw !== '' && isFinite(inv) && inv <= 0) {
+            return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'Inv 0', title: 'No S Bid: inventory is 0, so Dil (OV L30 ÷ Inventory) cannot be worked out.' };
+        }
         if (!dilSbidSkuKey(row)) {
             return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'No SKU', title: 'No S Bid: this row is a parent or has no matched child SKU.' };
-        }
-        const inv = Number(row && row.shopify_inv);
-        if (row && row.shopify_inv !== undefined && row.shopify_inv !== null && row.shopify_inv !== '' && isFinite(inv) && inv <= 0) {
-            return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'Inv 0', title: 'No S Bid: Shopify inventory is 0, so Dil (OV L30 ÷ Inventory) cannot be worked out.' };
         }
         return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'No Dil', title: 'No S Bid: CP Master Dil is missing for this SKU (no inventory or OV L30 data).' };
     }
@@ -1176,6 +1319,10 @@ function dilSbidOfRow(row) {
 }
 /** S Bid from each Dil vs SBid table. Total is Dil + Views + CVR % + eBay Sold + Std NPFT % + both up/down overlays. */
 function dilSbidBreakdown(row) {
+    if (row && !row._dilSbidRolled) {
+        const parent = dilSbidParentFor(row);
+        if (parent) return dilSbidBreakdown(dilSbidAsParentSource(parent));
+    }
     if (DIL_SBID_LISTING_WISE && row && !row._dilSbidRolled) {
         const key = dilSbidListingKey(row);
         const rolled = key ? dilSbidRollupRow(key) : null;
@@ -1280,8 +1427,11 @@ function ebaySbidDiffColumns() {
 window.ebaySbidDiffColumns = ebaySbidDiffColumns;
 function dilSbidEachUnit(fn) {
     const seen = {};
-    const rows = DIL_SBID_LISTING_WISE ? dilSbidChildRows() : dilSbidRows();
+    if (DIL_SBID_LISTING_WISE) dilSbidParentIndex();
+    const parentsOn = DIL_SBID_LISTING_WISE && dilSbidParentCount > 0;
+    const rows = (DIL_SBID_LISTING_WISE && !parentsOn) ? dilSbidChildRows() : dilSbidRows();
     rows.forEach(function(d) {
+        if (parentsOn && !dilSbidIsParentRow(d)) return;
         const key = dilSbidUnitKey(d);
         if (!key || seen[key]) return;
         const unit = dilSbidUnitRow(d);

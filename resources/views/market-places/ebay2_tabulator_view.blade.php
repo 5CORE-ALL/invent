@@ -4022,7 +4022,7 @@
                         field: "s_bid",
                         hozAlign: "center",
                         width: 108,
-                        headerTooltip: "eBay 2 Dil vs SBid is one bid per listing (item_id). Family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR / L30 View overlays, then the Min / Max cap. Parent and variation SKUs that share the item show the same S Bid. Orange dil means this S BID is from Dil and the listing has no ad running.",
+                        headerTooltip: "eBay 2 Dil vs SBid is one bid per parent. Dil, Views, CVR, eBay Sold and Std NPFT % come from the parent row, then CVR / L30 View overlays, then the Min / Max cap. Every SKU under that parent shows the same S Bid. Orange dil means this S BID is from Dil and the listing has no ad running.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },

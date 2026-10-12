@@ -1519,6 +1519,8 @@ class EbayTwoController extends Controller
                 'SCVR' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0,
                 'CVR_45' => $views > 0 ? round(($ebayL45 / $views) * 100, 2) : 0,
                 'CVR_60' => $views > 0 ? round(($ebayL60 / $views) * 100, 2) : 0,
+                'metric_ebay_l30' => $ebayL30,
+                'metric_ebay_l60' => $ebayL60,
                 'E Dil%' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0,
                 'T_Sale_l30' => $salesL30,
                 'Sales L30' => $salesL30,
