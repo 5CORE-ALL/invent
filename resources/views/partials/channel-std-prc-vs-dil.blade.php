@@ -942,7 +942,78 @@
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
             if (!(n > 0)) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
-            return '<span style="font-weight:700;color:#0f172a;">' + n + '</span>';
+            const shown = Math.round(n * 10) / 10;
+            return '<span style="font-weight:700;color:#0f172a;">' + shown + '</span>';
+        }
+        let chStdFamilyMap = null;
+        let chStdFamilyLen = -1;
+        function chStdIsParentRow(d) {
+            if (!d) return false;
+            if (d.is_parent_summary || d.is_parent_row || d.is_parent) return true;
+            if (typeof isEbay2TabulatorParentRow === 'function' && isEbay2TabulatorParentRow(d)) return true;
+            const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').toUpperCase();
+            return sku.indexOf('PARENT') !== -1;
+        }
+        function chStdFamilyName(d) {
+            if (!d) return '';
+            const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
+            if (sku.toUpperCase().indexOf('PARENT') !== -1) {
+                const fromSku = sku.replace(/^PARENT\s+/i, '').trim();
+                if (fromSku) return fromSku.toUpperCase();
+            }
+            if (typeof chPromoParentName === 'function') {
+                const n = String(chPromoParentName(d) || '').trim();
+                if (n) return n.toUpperCase();
+            }
+            return String(d.Parent || d.parent || '').replace(/^PARENT\s+/i, '').trim().toUpperCase();
+        }
+        function chStdFamilyKids(parentRow) {
+            const name = chStdFamilyName(parentRow);
+            if (!name) return [];
+            const src = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
+                ? allTableData
+                : [];
+            if (!chStdFamilyMap || chStdFamilyLen !== src.length) {
+                const map = {};
+                src.forEach(function(d) {
+                    if (!d || chStdIsParentRow(d)) return;
+                    const key = chStdFamilyName(d);
+                    if (!key) return;
+                    if (!map[key]) map[key] = [];
+                    map[key].push(d);
+                });
+                chStdFamilyMap = map;
+                chStdFamilyLen = src.length;
+            }
+            return chStdFamilyMap[name] || [];
+        }
+        function chStdFamilyAvg(parentRow, read) {
+            const kids = chStdFamilyKids(parentRow);
+            let sum = 0, n = 0;
+            kids.forEach(function(d) {
+                const v = Number(read(d));
+                if (!isFinite(v)) return;
+                sum += v;
+                n++;
+            });
+            return n ? (sum / n) : null;
+        }
+        function chStdFamilySum(parentRow, read) {
+            const kids = chStdFamilyKids(parentRow);
+            let sum = 0, n = 0;
+            kids.forEach(function(d) {
+                const v = Number(read(d));
+                if (!isFinite(v)) return;
+                sum += v;
+                n++;
+            });
+            return n ? sum : null;
+        }
+        function chStdParentDiscHtml(d, read) {
+            const avg = chStdFamilyAvg(d, read);
+            if (avg === null) return '';
+            const n = chStdFamilyKids(d).length;
+            return '<span title="' + chStdEsc('Average of ' + n + ' SKUs') + '">' + chStdDiscBadge(avg) + '</span>';
         }
         function chStdAgeDisc(d, rules) {
             // Same as Amazon analytics: INV = 0 → 0%. Age days come from the Shopify push clock.
@@ -1029,7 +1100,7 @@
                 },
                 formatter: function(cell) {
                     const d = cell.getRow().getData() || {};
-                    if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                    if (chStdIsParentRow(d)) return chStdParentDiscHtml(d, read);
                     return chStdDiscBadge(read(d));
                 },
             };
@@ -1039,7 +1110,7 @@
                 Object.assign(chStdDiscCol('Age Disc', 'age_discount', 'Age Disc — promotional % from Age Days slabs in Std prc vs dil. Same Shopify age clock as Amazon. INV = 0 → 0%. Read-only.', chStdAgeDisc), {
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                        if (chStdIsParentRow(d)) return chStdParentDiscHtml(d, chStdAgeDisc);
                         const pct = chStdAgeDisc(d);
                         const days = chStdAgeDays(d);
                         const tip = (days == null ? 'No age' : (days + ' age days'))
@@ -1050,7 +1121,7 @@
                 Object.assign(chStdDiscCol('Dil Disc', 'dil_discount', 'Dil Disc — same as Amazon: Shopify OV L30 ÷ Shopify INV. INV = 0 → 0%.', chStdDilDisc), {
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                        if (chStdIsParentRow(d)) return chStdParentDiscHtml(d, chStdDilDisc);
                         const pct = chStdDilDisc(d);
                         const dil = chStdDilPct(d);
                         const tip = 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% → discount ' + (pct || 0) + '%';
@@ -1062,7 +1133,7 @@
                     minWidth: 64,
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                        if (chStdIsParentRow(d)) return chStdParentDiscHtml(d, function(row) { return chStdBussDiscPct(row) || 0; });
                         const pct = chStdBussDiscPct(d) || 0;
                         const std = chStdRowStd(d);
                         const tip = (std > 0 ? ('Std Prc $' + std.toFixed(2) + ' → ') : '') + 'B Disc ' + pct + '%';
@@ -1073,7 +1144,11 @@
                 Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
-                        if (d.is_parent_summary || (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d))) return '';
+                        if (chStdIsParentRow(d)) {
+                            return chStdParentDiscHtml(d, function(row) {
+                                return chStdScaleDisc(chStdRowStd(row), chStdCvrDiscPct(row));
+                            });
+                        }
                         const pct = chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d));
                         const cvr = chStdCvrLive(d);
                         const tip = 'CVR ' + (isFinite(cvr) ? cvr.toFixed(1) : '0') + '% ' + chStdCvrTrend(d) + ' → discount ' + (pct || 0) + '%';

@@ -435,26 +435,43 @@ class AlibabaAnalyticsController extends Controller
 
     protected function storePushedPrice(?AlibabaSheetPrice $sheet, string $productId, string $sku, float $price): void
     {
-        if ($sheet) {
-            $sheet->sku_price = $price;
-            $sheet->save();
-        } elseif ($productId !== '') {
-            AlibabaSheetPrice::query()->where('product_id', $productId)->update(['sku_price' => $price]);
-        }
-
-        if (Schema::hasTable('alibaba_metrics')) {
-            AlibabaMetric::query()->where('product_id', $productId)->update(['price' => $price]);
-        }
-
-        if (! Schema::hasTable('alibaba_pricing_prices')) {
-            return;
-        }
-
         $keys = array_values(array_unique(array_filter([
             strtoupper(trim($sku)),
             strtoupper(trim((string) preg_replace('/\s+\d+\s*PCS$/i', '', $sku))),
             $sheet ? strtoupper(trim((string) $sheet->sku)) : '',
         ])));
+
+        if ($sheet) {
+            $sheet->sku_price = $price;
+            $sheet->save();
+        } elseif ($productId !== '') {
+            $matched = AlibabaSheetPrice::query()
+                ->where('product_id', $productId)
+                ->where(function ($query) use ($keys): void {
+                    foreach ($keys as $key) {
+                        $query->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
+                    }
+                })
+                ->update(['sku_price' => $price]);
+            if ($matched === 0 && AlibabaSheetPrice::query()->where('product_id', $productId)->count() === 1) {
+                AlibabaSheetPrice::query()->where('product_id', $productId)->update(['sku_price' => $price]);
+            }
+        }
+
+        if (Schema::hasTable('alibaba_metrics') && $keys !== []) {
+            AlibabaMetric::query()
+                ->where('product_id', $productId)
+                ->where(function ($query) use ($keys): void {
+                    foreach ($keys as $key) {
+                        $query->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
+                    }
+                })
+                ->update(['price' => $price]);
+        }
+
+        if (! Schema::hasTable('alibaba_pricing_prices')) {
+            return;
+        }
         foreach ($keys as $key) {
             AlibabaPricingPrice::query()
                 ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
@@ -505,7 +522,7 @@ class AlibabaAnalyticsController extends Controller
         $page = max(1, $page);
         $pageSize = 8;
         if ($reset || $page === 1) {
-            Cache::put(self::SYNC_CACHE, ['ids' => []], now()->addHours(6));
+            Cache::put(self::SYNC_CACHE, ['ids' => [], 'skus' => []], now()->addHours(6));
         }
 
         $list = $api->listIcbuProducts($page, $pageSize);
@@ -518,8 +535,9 @@ class AlibabaAnalyticsController extends Controller
             ];
         }
 
-        $state = Cache::get(self::SYNC_CACHE, ['ids' => []]);
+        $state = Cache::get(self::SYNC_CACHE, ['ids' => [], 'skus' => []]);
         $ids = is_array($state['ids'] ?? null) ? $state['ids'] : [];
+        $skusByProduct = is_array($state['skus'] ?? null) ? $state['skus'] : [];
         $saved = 0;
 
         foreach ($list['products'] as $brief) {
@@ -527,55 +545,71 @@ class AlibabaAnalyticsController extends Controller
                 continue;
             }
             $productId = trim((string) ($brief['id'] ?? $brief['product_id'] ?? ''));
-            $row = $api->icbuAnalyticsRow($productId);
-            if ($row === null) {
+            $rows = $api->icbuAnalyticsRows($productId);
+            if ($rows === []) {
                 continue;
             }
 
-            AlibabaSheetPrice::updateOrCreate(
-                ['product_id' => $row['product_id']],
-                [
-                    'sku' => $row['sku'],
-                    'status' => $row['status'],
-                    'sku_price' => $row['sku_price'],
-                    'soh' => $row['soh'],
-                    'inv_update' => null,
-                ]
-            );
-
-            if (Schema::hasTable('alibaba_metrics')) {
-                AlibabaMetric::updateOrCreate(
-                    ['sku' => $row['sku']],
-                    array_filter([
+            foreach ($rows as $row) {
+                AlibabaSheetPrice::updateOrCreate(
+                    [
                         'product_id' => $row['product_id'],
-                        'price' => $row['sku_price'],
-                    ], static fn ($value) => $value !== null)
+                        'sku' => $row['sku'],
+                    ],
+                    [
+                        'status' => $row['status'],
+                        'sku_price' => $row['sku_price'],
+                        'soh' => $row['soh'],
+                        'inv_update' => null,
+                    ]
                 );
-            }
-            if (Schema::hasTable('alibaba_pricing_prices') && $row['sku_price'] !== null) {
-                AlibabaPricingPrice::updateOrCreate(
-                    ['sku' => $row['sku']],
-                    array_filter([
-                        'price' => $row['sku_price'],
-                        'ab_stock' => $row['soh'],
-                    ], static fn ($value) => $value !== null)
-                );
+
+                if (Schema::hasTable('alibaba_metrics')) {
+                    AlibabaMetric::updateOrCreate(
+                        ['sku' => $row['sku']],
+                        array_filter([
+                            'product_id' => $row['product_id'],
+                            'price' => $row['sku_price'],
+                        ], static fn ($value) => $value !== null)
+                    );
+                }
+                if (Schema::hasTable('alibaba_pricing_prices') && $row['sku_price'] !== null) {
+                    AlibabaPricingPrice::updateOrCreate(
+                        ['sku' => $row['sku']],
+                        array_filter([
+                            'price' => $row['sku_price'],
+                            'ab_stock' => $row['soh'],
+                        ], static fn ($value) => $value !== null)
+                    );
+                }
+
+                $skusByProduct[$row['product_id']][$row['sku']] = true;
+                $saved++;
             }
 
-            $ids[] = $row['product_id'];
-            $saved++;
+            $ids[] = $productId;
         }
 
-        $ids = array_values(array_unique($ids));
+        $ids = array_values(array_unique(array_filter($ids)));
         $total = $list['total_item'];
         $fetched = count($list['products']);
         $done = $fetched === 0 || $fetched < $pageSize || ($total !== null && ($page * $pageSize) >= $total);
 
         if ($done && $ids !== []) {
             AlibabaSheetPrice::query()->whereNotIn('product_id', $ids)->delete();
+            foreach ($skusByProduct as $seenProductId => $seenSkus) {
+                $keep = array_keys(is_array($seenSkus) ? $seenSkus : []);
+                if ($keep === []) {
+                    continue;
+                }
+                AlibabaSheetPrice::query()
+                    ->where('product_id', $seenProductId)
+                    ->whereNotIn('sku', $keep)
+                    ->delete();
+            }
         }
 
-        Cache::put(self::SYNC_CACHE, ['ids' => $ids], now()->addHours(6));
+        Cache::put(self::SYNC_CACHE, ['ids' => $ids, 'skus' => $skusByProduct], now()->addHours(6));
 
         return [
             'success' => true,
@@ -915,9 +949,11 @@ class AlibabaAnalyticsController extends Controller
             }
 
             AlibabaSheetPrice::updateOrCreate(
-                ['product_id' => $productId],
                 [
+                    'product_id' => $productId,
                     'sku' => $sku,
+                ],
+                [
                     'status' => $row['status'] ?? null,
                     'sku_price' => $row['sku_price'] ?? null,
                     'soh' => $row['soh'] ?? null,

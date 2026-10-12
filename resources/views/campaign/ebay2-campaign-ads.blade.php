@@ -33,7 +33,7 @@
                 <i class="fas fa-percent me-1"></i>Dil vs SBid
             </button>
             @include('campaign.partials.ebay-dil-sbid-rule', ['part' => 'button', 'account' => 'eBay 2'])
-            <button class="btn btn-sm btn-outline-secondary" onclick="table.download('csv','ebay2_campaign_ads.csv')">
+            <button class="btn btn-sm btn-outline-secondary" title="Download the rows on this page" onclick="table.download('csv','ebay2_campaign_ads.csv')">
                 <i class="fas fa-download me-1"></i>CSV
             </button>
         </div>
@@ -191,6 +191,8 @@
     'listingWise' => true,
 ])
 
+@include('campaign.partials.ebay-report-history', ['historyUrl' => url('/ebay2/listing-report-history')])
+
 @endsection
 
 @section('css')
@@ -225,7 +227,6 @@
         cursor: help;
     }
 </style>
-@include('campaign.partials.ebay-report-history', ['historyUrl' => url('/ebay2/listing-report-history')])
 @endsection
 
 @section('script-after-vite')
@@ -234,13 +235,29 @@
 let table;
 let allLoadedListingIds = [];
 const selectedIds = new Set();
+const selectedRows = new Map();
+
+function rememberSelected(row) {
+    const lid = String((row && row.listing_id) || '');
+    if (!lid || lid === 'undefined' || lid === 'null') return;
+    selectedIds.add(lid);
+    selectedRows.set(lid, row);
+}
+
+function forgetSelected(lid) {
+    const key = String(lid);
+    selectedIds.delete(key);
+    selectedRows.delete(key);
+}
 
 function selectAllListings(checked) {
-    if (checked) {
-        allLoadedListingIds.forEach(lid => selectedIds.add(lid));
-    } else {
-        allLoadedListingIds.forEach(lid => selectedIds.delete(lid));
-    }
+    const rows = (typeof table !== 'undefined' && table) ? (table.getData() || []) : [];
+    rows.forEach(function (row) {
+        const lid = String((row && row.listing_id) || '');
+        if (!lid || lid === 'undefined' || lid === 'null') return;
+        if (checked) rememberSelected(row);
+        else forgetSelected(lid);
+    });
     document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = !!checked; });
     const headerCb = document.getElementById('select-all-cb');
     if (headerCb) headerCb.checked = !!checked;
@@ -254,41 +271,33 @@ function syncSelectAllHeader() {
         && allLoadedListingIds.every(lid => selectedIds.has(lid));
 }
 
-function loadData() {
-    const search  = $('#search-input').val();
-    const funding = $('#funding-filter').val();
-    const status  = $('#status-filter').val();
-    const promote = $('#promote-filter').val();
+function ebay2AdsQuery(params) {
+    const q = new URLSearchParams();
+    const search = $('#search-input').val() || '';
+    const funding = $('#funding-filter').val() || '';
+    const status = $('#status-filter').val() || '';
+    const promote = $('#promote-filter').val() || '';
+    if (search) q.set('search', search);
+    if (funding) q.set('funding_strategy', funding);
+    if (status) q.set('campaign_status', status);
+    if (promote) q.set('promote_with_ad', promote);
+    if (cbidNullFilterOn) q.set('missing', '1');
+    q.set('page', String((params && params.page) || 1));
+    q.set('size', String((params && params.size) || 100));
+    return q.toString();
+}
 
-    $.get('/ebay2/campaign-ads/data', { search, funding_strategy: funding, campaign_status: status, promote_with_ad: promote })
-        .done(function(resp) {
-            if (resp && resp.data) {
-                $('#total-count').text(resp.total.toLocaleString() + ' rows');
-                $('#last-updated').text('Updated: ' + new Date().toLocaleTimeString());
-                allLoadedListingIds = (resp.data || [])
-                    .map(d => d && d.listing_id)
-                    .filter(lid => lid != null)
-                    .map(String);
-                Array.from(selectedIds).forEach(lid => {
-                    if (!allLoadedListingIds.includes(lid)) selectedIds.delete(lid);
-                });
-                table.replaceData(resp.data);
-                if (typeof renderDilSbidTable === 'function' && document.getElementById('dilSbidRuleModal')?.classList.contains('show')) {
-                    renderDilSbidTable();
-                }
-                applyCbidNullFilter();
-                updateSelectedCount();
-                syncSelectAllHeader();
-            } else {
-                $('#total-count').text('Error');
-                console.error('Unexpected response:', resp);
-            }
-        })
-        .fail(function(xhr) {
-            $('#total-count').text('Error ' + xhr.status);
-            console.error('API Error:', xhr.status, xhr.responseText);
-            alert('API Error ' + xhr.status + ': ' + xhr.responseText.substring(0, 200));
-        });
+function loadData() {
+    selectedIds.clear();
+    selectedRows.clear();
+    updateSelectedCount();
+    if (!table) return;
+    if (typeof dilSbidClearListingCache === 'function') dilSbidClearListingCache();
+    if (table.getPage() === 1) {
+        table.replaceData();
+    } else {
+        table.setPage(1);
+    }
 }
 
 function listingHasCampaign(listingId) {
@@ -297,8 +306,10 @@ function listingHasCampaign(listingId) {
 }
 
 function rowByListingId(listingId) {
-    if (listingId == null || listingId === '' || typeof table === 'undefined' || !table) return null;
+    if (listingId == null || listingId === '') return null;
     const lid = String(listingId);
+    if (selectedRows.has(lid)) return selectedRows.get(lid);
+    if (typeof table === 'undefined' || !table) return null;
     return (table.getData() || []).find(function (r) {
         return String(r && r.listing_id) === lid;
     }) || null;
@@ -348,12 +359,6 @@ function isMissingAd(row) {
 let cbidNullFilterOn = false;
 
 function applyCbidNullFilter() {
-    if (!table) return;
-    if (cbidNullFilterOn) {
-        table.setFilter(function (data) { return isMissingAd(data); });
-    } else {
-        table.clearFilter();
-    }
     const wrap = document.getElementById('eca2-badge-cbidnull-wrap');
     if (wrap) {
         wrap.classList.toggle('is-on', cbidNullFilterOn);
@@ -375,11 +380,45 @@ $(document).ready(function () {
     loadEbayCampaignAdsStatBadges(@json(route('ebay2.campaign.ads.badges')), 'eca2');
 
     table = new Tabulator('#ebay2-campaign-ads-table', {
-        data: [],
+        ajaxURL: '/ebay2/campaign-ads/data',
+        ajaxURLGenerator: function (url, config, params) {
+            const qs = ebay2AdsQuery(params);
+            return qs ? (url + '?' + qs) : url;
+        },
+        ajaxResponse: function (url, params, resp) {
+            const rows = (resp && Array.isArray(resp.data)) ? resp.data : [];
+            const total = Number(resp && resp.total) || 0;
+            const size = Number(params && params.size) || 100;
+            $('#total-count').text(total.toLocaleString() + ' rows');
+            $('#last-updated').text('Updated: ' + new Date().toLocaleTimeString());
+            allLoadedListingIds = rows
+                .map(function (d) { return d && d.listing_id; })
+                .filter(function (lid) { return lid != null; })
+                .map(String);
+            if (typeof dilSbidClearListingCache === 'function') dilSbidClearListingCache();
+            if (typeof renderDilSbidTable === 'function' && document.getElementById('dilSbidRuleModal')?.classList.contains('show')) {
+                renderDilSbidTable();
+            }
+            applyCbidNullFilter();
+            updateSelectedCount();
+            syncSelectAllHeader();
+            return {
+                last_page: Math.max(1, Number(resp && resp.last_page) || Math.ceil(total / size) || 1),
+                last_row: total,
+                data: rows,
+            };
+        },
+        ajaxError: function (xhr) {
+            $('#total-count').text('Error ' + (xhr && xhr.status ? xhr.status : ''));
+            console.error('API Error:', xhr && xhr.status, xhr && xhr.responseText);
+        },
         layout: 'fitDataFill',
         height: 'calc(100vh - 260px)',
         columnDefaults: { hozAlign: 'center', headerHozAlign: 'center' },
         pagination: true,
+        paginationMode: 'remote',
+        sortMode: 'local',
+        filterMode: 'local',
         paginationSize: 100,
         paginationSizeSelector: [50, 100, 200, 500],
         movableColumns: true,
@@ -394,7 +433,7 @@ $(document).ready(function () {
                     cb.type = 'checkbox';
                     cb.id = 'select-all-cb';
                     cb.style.cursor = 'pointer';
-                    cb.title = 'Select all rows across every page';
+                    cb.title = 'Select all rows on this page';
                     cb.checked = allLoadedListingIds.length > 0
                         && allLoadedListingIds.every(lid => selectedIds.has(lid));
                     cb.addEventListener('click', function(e) { e.stopPropagation(); });
@@ -414,8 +453,8 @@ $(document).ready(function () {
                     const lid = String(cell.getRow().getData().listing_id);
                     const cb  = cell.getElement().querySelector('.row-cb');
                     if (!cb || !lid || lid === 'undefined' || lid === 'null') return;
-                    if (selectedIds.has(lid)) { selectedIds.delete(lid); cb.checked = false; }
-                    else                       { selectedIds.add(lid);    cb.checked = true;  }
+                    if (selectedIds.has(lid)) { forgetSelected(lid); cb.checked = false; }
+                    else                       { rememberSelected(cell.getRow().getData()); cb.checked = true; }
                     updateSelectedCount();
                     syncSelectAllHeader();
                 }
@@ -621,6 +660,7 @@ $(document).ready(function () {
                     return `<span style="color:${res.color}; font-weight:700;" title="${title}">${res.bid.toFixed(1)}%</span>`;
                 }
             },
+            ...ebaySbidDiffColumns(),
             {
                 title: 'CVR', field: 'ebay_l30', width: 80, hozAlign: 'center',
                 sorter: function(a, b, aRow, bRow) {
@@ -702,8 +742,6 @@ $(document).ready(function () {
             }
         });
     }
-
-    loadData();
 });
 
 function ebayEsc(s) {
@@ -776,13 +814,13 @@ function ebayBidAlertText(row) {
 }
 
 function ebayForcePushTargets() {
-    const all = (typeof table !== 'undefined' && table) ? (table.getData() || []) : [];
     if (selectedIds.size > 0) {
-        return all.filter(function (r) {
-            return r && selectedIds.has(String(r.listing_id)) && !ebayBidMatches(r);
+        return Array.from(selectedRows.values()).filter(function (r) {
+            return r && !ebayBidMatches(r);
         });
     }
-    return all.filter(function (r) { return !ebayBidMatches(r); });
+    const pageRows = (typeof table !== 'undefined' && table) ? (table.getData() || []) : [];
+    return pageRows.filter(function (r) { return !ebayBidMatches(r); });
 }
 
 let ebayForcePushBusy = false;
@@ -796,7 +834,9 @@ function ebayPaintForcePush() {
     countEl.textContent = String(n);
     btn.disabled = !ruleOn || n === 0;
     btn.title = ruleOn
-        ? 'Pull live C Bid and push S Bid until they match for ' + n + ' listing(s). Checked rows are used when any row is selected.'
+        ? (selectedIds.size > 0
+            ? 'Pull live C Bid and push S Bid until they match for ' + n + ' selected listing(s).'
+            : 'Pull live C Bid and push S Bid until they match for ' + n + ' listing(s) on this page.')
         : 'Dil vs SBid is off. Turn it on to force push.';
 }
 

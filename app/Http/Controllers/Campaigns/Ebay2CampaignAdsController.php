@@ -1008,20 +1008,36 @@ class Ebay2CampaignAdsController extends Controller
 
     public function getData(Request $request)
     {
-        EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
-        $this->remapStaleEligibleToLiveListings();
-        $this->backfillMissingEligibleForSearch($request->input('search'));
+        $page = max(1, (int) $request->input('page', 1));
+        $size = (int) $request->input('size', 100);
+        if ($size < 1) {
+            $size = 100;
+        }
+        if ($size > 500) {
+            $size = 500;
+        }
+
+        // Remap and the eBay search backfill rewrite rows. Run them on the
+        // first page only so flipping pages is a read of one slice.
+        if ($page === 1) {
+            EbayCampaignEndedListingRemap::remapEndedRows('ebay2_campaign_ads', Ebay2Metric::class);
+            $this->backfillMissingEligibleForSearch($request->input('search'));
+        }
+
+        // One real SKU metric per listing, then a plain join. Parent metric rows
+        // have no Shopify inventory, so preferring them left Dil and the other
+        // metric columns blank.
+        $preferredMetrics = DB::table('ebay_2_metrics')
+            ->selectRaw('item_id, CAST(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY CASE WHEN UPPER(TRIM(sku)) LIKE "PARENT%" THEN 1 ELSE 0 END, id SEPARATOR ","), ",", 1) AS UNSIGNED) as pick_id')
+            ->whereNotNull('item_id')
+            ->where('item_id', '!=', '')
+            ->groupBy('item_id');
 
         $query = DB::table('ebay2_campaign_ads as ca')
-            ->leftJoin('ebay_2_metrics as em', function ($join) {
-                $join->on('em.item_id', '=', 'ca.listing_id')
-                    ->whereRaw("em.id = (
-                        SELECT em2.id FROM ebay_2_metrics em2
-                        WHERE em2.item_id = ca.listing_id
-                        ORDER BY CASE WHEN UPPER(TRIM(em2.sku)) LIKE 'PARENT%' THEN 0 ELSE 1 END, em2.id
-                        LIMIT 1
-                    )");
+            ->leftJoinSub($preferredMetrics, 'emp', function ($join) {
+                $join->on('emp.item_id', '=', 'ca.listing_id');
             })
+            ->leftJoin('ebay_2_metrics as em', 'em.id', '=', 'emp.pick_id')
             ->select(
                 'ca.*',
                 // Use SKU from ebay_2_metrics if matched, fallback to listing_id
@@ -1110,15 +1126,33 @@ class Ebay2CampaignAdsController extends Controller
                   });
             });
         }
+        if ($request->boolean('missing')) {
+            $query->where(function ($q) {
+                $q->whereNull('ca.campaign_id')->orWhere('ca.campaign_id', '');
+            })
+            ->whereRaw("COALESCE(em.sku, ca.sku) IS NOT NULL")
+            ->whereRaw("COALESCE(em.sku, ca.sku) != ''")
+            ->whereRaw("COALESCE(em.ebay_price, ca.price) > 0")
+            ->whereRaw("(SELECT ss.inv FROM shopify_skus ss WHERE ss.sku = COALESCE(em.sku, ca.sku) LIMIT 1) > 0")
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('ebay2_campaign_ads as enrolled')
+                    ->whereColumn('enrolled.listing_id', 'ca.listing_id')
+                    ->whereNotNull('enrolled.campaign_id')
+                    ->where('enrolled.campaign_id', '!=', '');
+            });
+        }
 
-        $total = (clone $query)->count();
-        $data  = $query->orderBy('ca.id', 'desc')->get();
+        $total = (int) (clone $query)->count();
+        $data = $query->orderBy('ca.id', 'desc')->forPage($page, $size)->get();
         CpMasterDil::hydrate($data);
         EbayListingReportHistory::attachToRows($data, 'ebay_2_general_reports');
 
         return response()->json([
             'total' => $total,
-            'data'  => $data,
+            'last_row' => $total,
+            'last_page' => max(1, (int) ceil($total / $size)),
+            'data' => $data,
         ]);
     }
 

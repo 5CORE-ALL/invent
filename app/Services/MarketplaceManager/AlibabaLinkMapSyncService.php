@@ -256,20 +256,23 @@ class AlibabaLinkMapSyncService
         $statusText = is_string($status) && trim($status) !== '' ? trim($status) : null;
 
         if (Schema::hasTable('alibaba_sheet_prices')) {
-            $existing = AlibabaSheetPrice::query()->where('product_id', $productId)->first();
-            if ($existing === null || strcasecmp((string) $existing->sku, $sku) === 0) {
-                $sheet = [
-                    'sku' => $sku,
-                    'sku_price' => $price,
-                ];
-                if ($soh !== null) {
-                    $sheet['soh'] = $soh;
-                }
-                if ($existing === null && $statusText !== null) {
-                    $sheet['status'] = $statusText;
-                }
-                AlibabaSheetPrice::updateOrCreate(['product_id' => $productId], $sheet);
+            $existing = AlibabaSheetPrice::query()
+                ->where('product_id', $productId)
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+                ->first();
+            $sheet = [
+                'sku_price' => $price,
+            ];
+            if ($soh !== null) {
+                $sheet['soh'] = $soh;
             }
+            if ($existing === null && $statusText !== null) {
+                $sheet['status'] = $statusText;
+            }
+            AlibabaSheetPrice::updateOrCreate(
+                ['product_id' => $productId, 'sku' => $existing ? $existing->sku : $sku],
+                $sheet
+            );
         }
 
         if (Schema::hasTable('alibaba_pricing_prices')) {

@@ -2013,6 +2013,24 @@
             });
         }
 
+        function ebay2ParentAvgHtml(row, read, money) {
+            if (typeof chStdIsParentRow !== 'function' || !chStdIsParentRow(row)) return null;
+            if (typeof chStdFamilyAvg !== 'function') return '';
+            const avg = chStdFamilyAvg(row, read);
+            if (avg === null || !isFinite(avg)) return '';
+            const n = (typeof chStdFamilyKids === 'function') ? chStdFamilyKids(row).length : 0;
+            const text = money ? ('$' + Number(avg).toFixed(2)) : (Math.round(avg) + '%');
+            return '<span style="font-weight:600;" title="Average of ' + n + ' SKUs">' + text + '</span>';
+        }
+        function ebay2ParentSumHtml(row, field, money) {
+            if (typeof chStdIsParentRow !== 'function' || !chStdIsParentRow(row)) return null;
+            if (typeof chStdFamilySum !== 'function') return '';
+            const sum = chStdFamilySum(row, function(d) { return parseFloat(d[field]); });
+            if (sum === null || !isFinite(sum)) return '';
+            const n = (typeof chStdFamilyKids === 'function') ? chStdFamilyKids(row).length : 0;
+            const text = money ? ('$' + Number(sum).toFixed(2)) : Math.round(sum).toLocaleString('en-US');
+            return '<span style="font-weight:600;" title="Sum of ' + n + ' SKUs">' + text + '</span>';
+        }
         function ebayRptHistCell(rowData, field, prevField, dateField, metric, money) {
             if (!rowData || rowData.is_parent_summary || rowData.is_parent_row) return '';
             const sku = rowData['(Child) sku'] || '';
@@ -3733,6 +3751,10 @@
                         headerTooltip: "Read-only. Same as Amazon: Dil below LMP stays Dil. Dil at/above LMP becomes LMP only when SGROI at that LMP is ≥ 20%; if SGROI at LMP is < 20%, Dil is kept. When LMP is missing, Std Prc is the maximum. Red triangle stays when S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
+                            const parentHtml = ebay2ParentAvgHtml(rowData, function(d) {
+                                return (typeof ebay2DisplayedSprice === 'function') ? (ebay2DisplayedSprice(d) || 0) : 0;
+                            }, true);
+                            if (parentHtml !== null) return parentHtml;
                             if (rowData.is_parent_summary || rowData.is_parent_row) return '';
                             const raw = (typeof ebay2DisplayedSprice === 'function')
                                 ? ebay2DisplayedSprice(rowData)
@@ -3788,7 +3810,13 @@
                         sorter: "number",
                         headerTooltip: "SGROI from the visible S PRC. LMP cap (when SGROI at LMP ≥ 20%) can lower the shown %.",
                         formatter: function(cell) {
-                            const percent = ebay2ComputeSgroiFromSprice(cell.getRow().getData());
+                            const row = cell.getRow().getData();
+                            const parentHtml = ebay2ParentAvgHtml(row, function(d) {
+                                const n = ebay2ComputeSgroiFromSprice(d);
+                                return (n === null || !isFinite(n)) ? NaN : n;
+                            }, false);
+                            if (parentHtml !== null) return parentHtml;
+                            const percent = ebay2ComputeSgroiFromSprice(row);
                             if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
@@ -3808,7 +3836,13 @@
                                  - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
                         },
                         formatter: function(cell) {
-                            const percent = ebay2ComputeNetRoi(cell.getRow().getData(), 'SPRICE');
+                            const row = cell.getRow().getData();
+                            const parentHtml = ebay2ParentAvgHtml(row, function(d) {
+                                const n = ebay2ComputeNetRoi(d, 'SPRICE');
+                                return (n === null || !isFinite(n)) ? NaN : n;
+                            }, false);
+                            if (parentHtml !== null) return parentHtml;
+                            const percent = ebay2ComputeNetRoi(row, 'SPRICE');
                             if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'NROI', percent)) || '';
@@ -3822,7 +3856,13 @@
                         hozAlign: "center",
                         headerTooltip: "S GPFT from S PRC (SPRICE), eBay 1 take-home formula.",
                         formatter: function(cell) {
-                            const percent = ebay2ComputeSgpftFromSprice(cell.getRow().getData());
+                            const row = cell.getRow().getData();
+                            const parentHtml = ebay2ParentAvgHtml(row, function(d) {
+                                const n = ebay2ComputeSgpftFromSprice(d);
+                                return (n === null || !isFinite(n)) ? NaN : n;
+                            }, false);
+                            if (parentHtml !== null) return parentHtml;
+                            const percent = ebay2ComputeSgpftFromSprice(row);
                             if (percent === null || !isFinite(percent)) return '';
 
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField((typeof cell !== 'undefined' && cell.getField) ? cell.getField() : 'GPFT%', percent)) || '';
@@ -3956,7 +3996,10 @@
                         width: 100,
                         headerTooltip: "Clicks over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.",
                         formatter: function(cell) {
-                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_clicks', 'rpt_clicks_prev', 'rpt_clicks_prev_date', 'rpt_clicks', false);
+                            const row = cell.getRow().getData();
+                            const parentHtml = ebay2ParentSumHtml(row, 'rpt_clicks', false);
+                            if (parentHtml !== null) return parentHtml;
+                            return ebayRptHistCell(row, 'rpt_clicks', 'rpt_clicks_prev', 'rpt_clicks_prev_date', 'rpt_clicks', false);
                         }
                     },
                     {
@@ -3967,7 +4010,10 @@
                         width: 110,
                         headerTooltip: "Ad spend over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.",
                         formatter: function(cell) {
-                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_spend', 'rpt_spend_prev', 'rpt_spend_prev_date', 'rpt_spend', true);
+                            const row = cell.getRow().getData();
+                            const parentHtml = ebay2ParentSumHtml(row, 'rpt_spend', true);
+                            if (parentHtml !== null) return parentHtml;
+                            return ebayRptHistCell(row, 'rpt_spend', 'rpt_spend_prev', 'rpt_spend_prev_date', 'rpt_spend', true);
                         }
                     },
                     {
@@ -3978,7 +4024,10 @@
                         width: 100,
                         headerTooltip: "Sales count over the last 7 report days. Green = up vs the 7 days before, red = down. Click the dot for each day.",
                         formatter: function(cell) {
-                            return ebayRptHistCell(cell.getRow().getData(), 'rpt_sales', 'rpt_sales_prev', 'rpt_sales_prev_date', 'rpt_sales', false);
+                            const row = cell.getRow().getData();
+                            const parentHtml = ebay2ParentSumHtml(row, 'rpt_sales', false);
+                            if (parentHtml !== null) return parentHtml;
+                            return ebayRptHistCell(row, 'rpt_sales', 'rpt_sales_prev', 'rpt_sales_prev_date', 'rpt_sales', false);
                         }
                     },
                     {
@@ -4016,12 +4065,13 @@
                             return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
                         }
                     },
+                    ...(typeof ebaySbidDiffColumns === 'function' ? ebaySbidDiffColumns() : []),
                     {
                         title: "S BID",
                         field: "s_bid",
                         hozAlign: "center",
                         width: 108,
-                        headerTooltip: "eBay 2 Dil vs SBid is one bid per listing (item_id). Family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR / L30 View overlays, then the Min / Max cap. Parent and variation SKUs that share the item show the same S Bid. Orange dil means this S BID is from Dil and the listing has no ad running.",
+                        headerTooltip: "eBay 2 Dil vs SBid is one bid per parent. Dil, Views, CVR, eBay Sold and Std NPFT % come from the parent row, then CVR / L30 View overlays, then the Min / Max cap. Every SKU under that parent shows the same S Bid. Orange dil means this S BID is from Dil and the listing has no ad running.",
                         sorter: function(a, b, aRow, bRow) {
                             return getCombinedSbid(aRow.getData()).bid - getCombinedSbid(bRow.getData()).bid;
                         },
@@ -4799,7 +4849,7 @@
                 const blob = fl + ' ' + tl;
 
                 if (
-                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|rpt_clicks|rpt_spend|rpt_sales|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad|_bid_alert)$/i.test(f) ||
+                    /^(views|l7_views|l7_views_chg_pct|l7_views_prev|_ads_pct|rpt_clicks|rpt_spend|rpt_sales|ca_bid_percentage|ca_suggested_bid|s_bid|ca_promote_with_ad|_bid_alert|sbid_diff_.+|sbid_total_discount)$/i.test(f) ||
                     /\b(ads\s*%|es\s*bid|c\s*bid|s\s*bid|promote|l30\s*view|l7\s*view)\b/i.test(t) ||
                     /\b(bid|promote|ads)\b/i.test(blob)
                 ) {
@@ -5194,6 +5244,14 @@
                 'rpt_spend': 'Spend',
                 'rpt_sales': 'Sales',
                 'ca_suggested_bid': 'ES BID',
+                'sbid_diff_dil': 'Dil',
+                'sbid_diff_views': 'Views',
+                'sbid_diff_cvr': 'CVR %',
+                'sbid_diff_sold': 'eBay Sold',
+                'sbid_diff_npft': 'Std NPFT %',
+                'sbid_diff_cvrAdj': 'CVR up / down',
+                'sbid_diff_viewAdj': 'L30 View up / down',
+                'sbid_total_discount': 'Sum S Bid',
                 's_bid': 'S BID',
                 'ca_bid_percentage': 'C BID',
                 'ca_promote_with_ad': 'PROMOTE'

@@ -10891,6 +10891,14 @@
                 },
                 formatter: function(cell) {
                     const d = cell.getRow().getData() || {};
+                    if (typeof chStdIsParentRow === 'function' && chStdIsParentRow(d)) {
+                        const avg = (typeof chStdFamilyAvg === 'function')
+                            ? chStdFamilyAvg(d, function(kid) { return chPromoPushSpriceAmount(kid); })
+                            : null;
+                        if (avg === null || !(avg > 0)) return '';
+                        const n = (typeof chStdFamilyKids === 'function') ? chStdFamilyKids(d).length : 0;
+                        return '<span style="font-weight:600;" title="Average of ' + n + ' SKUs">$' + avg.toFixed(2) + '</span>';
+                    }
                     if (!chPromoIsChildRow(d)) return '';
                     const sku = chPromoSku(d);
                     const price = chPromoPushSpriceAmount(d);
