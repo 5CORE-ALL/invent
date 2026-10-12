@@ -918,7 +918,7 @@
                         @include('partials.analytics-dil-badge', ['dilChannel' => 'ebay'])
                         <span class="badge fs-6 p-2" id="ebay1-blue-triangle-badge"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: S PRC ≠ eBay Price, same scope as auto-push (current INV + REQ filters). Click to show those rows. Click again to clear.">
+                            title="Blue triangle: INV > 0, listing not ended, S PRC ≠ eBay Price. Counts ALL loaded SKUs, ignoring the filters above, so it can be higher than the Rows count. Click to show those rows. Click again to clear.">
                             <i class="fas fa-exclamation-triangle"></i> 0</span>
                         <span class="badge fs-6 p-2" id="ebay1-ended-listing-badge"
                             style="background-color:#ffc107;color:#212529;font-weight:700;cursor:pointer;"

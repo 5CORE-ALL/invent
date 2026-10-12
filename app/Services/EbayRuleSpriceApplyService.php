@@ -218,6 +218,11 @@ class EbayRuleSpriceApplyService
     public function computeTarget(array $row, array $dilRules, ?array $cvrAdj, float $margin, float $adsPct = 0.0): ?array
     {
         if ($this->applyStdPrcVsDil) {
+            // Same as Amazon (AmazonSprcDilAutoPushService): hand the Min NPFT floor the channel
+            // take-home margin and Ads%. Without them the pricer fell back to 0.80 / 0% Ads, so the
+            // server floor was lower than the page's and S PRC never matched the live price after a push.
+            $row['margin'] = $margin;
+            $row['ads'] = $adsPct > 0 ? ($adsPct / 100) : 0.0;
             $priced = \App\Support\StdPrcVsDilPricer::forChannel($this->channel)->priceFromRow($row);
 
             return $priced !== null ? ['sprice' => $priced, 'groi' => 0.0, 'nroi' => 0.0] : null;
@@ -517,7 +522,9 @@ class EbayRuleSpriceApplyService
                 'std_price' => (float) ($stdBySku[$sku] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
                 'pushed_sprice' => $pushedBySku[$sku] ?? 0.0,
-                'dil' => $inv > 0 ? round(($ov / $inv) * 100, 2) : 0.0,
+                // Raw (OV L30 ÷ INV) × 100, like the page's chPromoSkuDil and Amazon. Rounding first
+                // moved SKUs sitting on a slab edge into the wrong slab.
+                'dil' => $inv > 0 ? ($ov / $inv) * 100 : 0.0,
             ];
         }
 

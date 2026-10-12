@@ -1010,6 +1010,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Headless "Push on reload": blue-triangle SKUs (INV > 0, Price ≠ S PRC) keep getting
+        // pushed + pulled all day with the page closed. The two daily runs above skip a SKU whose
+        // last pushed offer already equals the target, so a drifted Price stayed stale until the
+        // page was opened. Always on, every 10 minutes, 24/7 on purpose (no $ist()).
+        $schedule->command('amazon:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('amazon-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // New Temu One's own command still prices Dil→SNROI. Leave it off.
         // Temu 1 is priced by dil:rule-sprice-apply temu in the loop below.
         if (false) {
@@ -1315,6 +1326,39 @@ class Kernel extends ConsoleKernel
             ->dailyAt('17:25')
             ->timezone('Asia/Kolkata')
             ->name('channel-push-sprice-daily-ist-catchup')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Blue-triangle catch-up for the other channels. The daily slots above queue S PRC ≠ live Price
+        // once; a Price that drifts or a push that failed afterwards stayed blue until someone opened the
+        // page. The enqueue only picks SKUs where saved S PRC ≠ live Price, merges into a running job
+        // without duplicating pending SKUs, and the runner still applies the negative-SNROI guard and the
+        // "already live" check. Staggered, 24/7 on purpose (no $ist()).
+        foreach ([
+            ['all', 0, 'ebay'],
+            ['dil', 5, 'dil'],
+            ['shopify_b2c', 10, 'shopify-b2c'],
+            ['macys', 15, 'macys'],
+            ['newtemuone', 20, 'newtemuone'],
+        ] as [$blueArg, $blueOffset, $blueName]) {
+            $schedule->command('channel:push-sprice-daily '.$blueArg)
+                ->cron(sprintf('%d,%d * * * *', $blueOffset, $blueOffset + 30))
+                ->timezone('Asia/Kolkata')
+                ->name('channel-push-sprice-blue-catchup-'.$blueName)
+                ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
+        // eBay 1/2/3: the page's blue S PRC is the live rule result, but the push above only sees the
+        // SAVED S PRC, which was refreshed twice a day. Recompute + save every hour, then queue what
+        // still differs from the live eBay price, so a changed rule/discount/age input is pushed
+        // without opening the page. Shares the ebay-rule-sprice-apply lock; no $ist().
+        $schedule->command('ebay:rule-sprice-apply all --push')
+            ->cron('40 * * * *')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay-rule-sprice-apply-hourly-blue')
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
