@@ -687,33 +687,54 @@ class InvDaysController extends Controller
      *
      * @return array<string, int>
      */
+    public const AGE_MAP_CACHE_KEY = 'inv_days_age_map_v1';
+
+    /** Kept warm by inv-days:warm-age-map every 10 min; building it takes ~16s on production. */
+    private const AGE_MAP_TTL = 1800;
+
     public function ageDayMap(): array
     {
-        // Building the sources takes ~16s on production; age is whole days, so 15 min is fresh enough.
-        return Cache::remember('inv_days_age_map_v1', 900, function () {
-            $sources = $this->cachedAgeSources();
-            $out = [];
-            ShopifySku::query()
-                ->whereNotNull('sku')
-                ->where('sku', '!=', '')
-                ->select(['id', 'sku', 'inv'])
-                ->chunkById(2000, function ($rows) use (&$out, $sources) {
-                    foreach ($rows as $row) {
-                        $days = $this->ageDays(
-                            (string) $row->sku,
-                            (float) ($row->inv ?? 0),
-                            $sources['push'],
-                            $sources['last_sale']
-                        );
-                        if ($days === null) {
-                            continue;
-                        }
-                        $out[$this->skuKey((string) $row->sku)] = $days;
-                    }
-                });
+        return Cache::remember(self::AGE_MAP_CACHE_KEY, self::AGE_MAP_TTL, fn () => $this->buildAgeDayMap());
+    }
 
-            return $out;
-        });
+    /**
+     * Rebuild the age map and store it, so analytics pages never wait on a cold build.
+     */
+    public function warmAgeDayMap(): int
+    {
+        $map = $this->buildAgeDayMap();
+        Cache::put(self::AGE_MAP_CACHE_KEY, $map, self::AGE_MAP_TTL);
+
+        return count($map);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function buildAgeDayMap(): array
+    {
+        $sources = $this->cachedAgeSources();
+        $out = [];
+        ShopifySku::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->select(['id', 'sku', 'inv'])
+            ->chunkById(2000, function ($rows) use (&$out, $sources) {
+                foreach ($rows as $row) {
+                    $days = $this->ageDays(
+                        (string) $row->sku,
+                        (float) ($row->inv ?? 0),
+                        $sources['push'],
+                        $sources['last_sale']
+                    );
+                    if ($days === null) {
+                        continue;
+                    }
+                    $out[$this->skuKey((string) $row->sku)] = $days;
+                }
+            });
+
+        return $out;
     }
 
     /**

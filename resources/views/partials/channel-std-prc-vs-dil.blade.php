@@ -395,7 +395,8 @@
             }
             return null;
         }
-        let chStdAgeBySku = null;
+        // Cache read only (never builds the map during page render); null → fetched from /inv-days/age-map.
+        let chStdAgeBySku = @json(\Illuminate\Support\Facades\Cache::get(\App\Http\Controllers\ProductMaster\InvDaysController::AGE_MAP_CACHE_KEY) ?: null);
         let chStdAgeMapReq = null;
         function chStdSkuKey(sku) {
             return String(sku == null ? '' : sku).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();

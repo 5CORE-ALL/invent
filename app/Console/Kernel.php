@@ -1021,6 +1021,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Age Disc on every analytics page reads this cached map; keep it warm so pages never wait ~16s.
+        $schedule->command('inv-days:warm-age-map')
+            ->everyTenMinutes()
+            ->name('inv-days-warm-age-map')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // New Temu One's own command still prices Dil→SNROI. Leave it off.
         // Temu 1 is priced by dil:rule-sprice-apply temu in the loop below.
         if (false) {
