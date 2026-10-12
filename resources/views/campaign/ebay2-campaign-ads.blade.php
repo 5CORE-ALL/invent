@@ -191,6 +191,8 @@
     'listingWise' => true,
 ])
 
+@include('campaign.partials.ebay-report-history', ['historyUrl' => url('/ebay2/listing-report-history')])
+
 @endsection
 
 @section('css')
@@ -225,7 +227,6 @@
         cursor: help;
     }
 </style>
-@include('campaign.partials.ebay-report-history', ['historyUrl' => url('/ebay2/listing-report-history')])
 @endsection
 
 @section('script-after-vite')
