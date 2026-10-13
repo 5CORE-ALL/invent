@@ -169,6 +169,19 @@ class AttendanceLiveWatchService
                 'mime' => $mime,
                 'at' => now()->toIso8601String(),
             ], 40);
+
+            // Only on init. Chunks arrive a couple of times a second, and the
+            // viewer's own ping already keeps the session from expiring, so
+            // touching the row per chunk would be a query for nothing.
+            $open = AttendanceLiveSession::query()
+                ->where('user_id', $employee->id)
+                ->whereIn('status', ['requested', 'streaming'])
+                ->get();
+
+            foreach ($open as $session) {
+                $this->markStreaming($session, $session->window_title, $session->app_name);
+            }
+
             $this->touchWatch($employee->id);
 
             return true;
@@ -194,15 +207,6 @@ class AttendanceLiveWatchService
             'mime' => $mime,
             'at' => now()->toIso8601String(),
         ], 40);
-
-        $open = AttendanceLiveSession::query()
-            ->where('user_id', $employee->id)
-            ->whereIn('status', ['requested', 'streaming'])
-            ->get();
-
-        foreach ($open as $session) {
-            $this->markStreaming($session, $session->window_title, $session->app_name);
-        }
 
         $this->touchWatch($employee->id);
 

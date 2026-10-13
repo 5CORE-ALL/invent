@@ -85,7 +85,7 @@ return [
     | written by `php artisan attendance:agent-publish`, so the portal can never offer
     | a build that the download link is unable to serve.
     */
-    'agent_version' => '1.4.9',
+    'agent_version' => '1.5.0',
 
     /*
     | First agent build that can stream live screen video. Older installs can never
