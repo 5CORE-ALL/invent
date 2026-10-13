@@ -1651,11 +1651,24 @@ class TopDawgApiService
      * @param  array<string, mixed>  $body
      * @return array{status: int, body: string}
      */
-    public function rawSupplierPost(string $path, array $body): array
+    public function rawSupplierPost(string $path, array $body, string $method = 'POST', bool $asForm = false): array
     {
         $this->assertConfigured();
         try {
-            $response = Http::withHeaders($this->headers())->timeout(45)->post($this->baseUrl.'/'.ltrim($path, '/'), $body);
+            $headers = $this->headers();
+            if ($asForm) {
+                unset($headers['Content-Type']);
+            }
+            $request = Http::withHeaders($headers)->timeout(45);
+            if ($asForm) {
+                $request = $request->asForm();
+            }
+            $url = $this->baseUrl.'/'.ltrim($path, '/');
+            $response = match (strtoupper($method)) {
+                'PUT' => $request->put($url, $body),
+                'PATCH' => $request->patch($url, $body),
+                default => $request->post($url, $body),
+            };
 
             return ['status' => $response->status(), 'body' => (string) $response->body()];
         } catch (\Throwable $e) {
