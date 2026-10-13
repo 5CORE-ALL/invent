@@ -616,7 +616,16 @@ class ChannelListingRegistry
      */
     public static function listedMacy(array $skus): array
     {
-        if ($skus === [] || ! \Illuminate\Support\Facades\Schema::hasTable('macy_products')) {
+        if ($skus === []) {
+            return [];
+        }
+
+        $index = app(\App\Services\MarketplaceManager\MacyMcmOfferIndex::class)->get(false);
+        if (is_array($index) && ($index['offers'] ?? []) !== []) {
+            return self::listedMacyFromOfferIndex($skus, $index);
+        }
+
+        if (! \Illuminate\Support\Facades\Schema::hasTable('macy_products')) {
             return [];
         }
 
@@ -650,6 +659,72 @@ class ChannelListingRegistry
             });
 
         return self::listedMapFromByNorm($skus, $byKey);
+    }
+
+    /**
+     * Listed = any live MCM offer (active or inactive) whose shop SKU, Mirakl
+     * product SKU or UPC matches the Product Master SKU.
+     *
+     * @param  list<string>  $skus
+     * @param  array{offers: list<array<string, mixed>>}  $index
+     * @return array<string, string>
+     */
+    public static function listedMacyFromOfferIndex(array $skus, array $index): array
+    {
+        $keyMap = \App\Services\MarketplaceManager\MacyMcmOfferIndex::skuKeyMap($index);
+        $upcMap = \App\Services\MarketplaceManager\MacyMcmOfferIndex::upcMap($index);
+        $upcBySku = $upcMap === [] ? [] : self::productMasterUpcs($skus);
+
+        $map = [];
+        foreach ($skus as $raw) {
+            $sku = trim((string) $raw);
+            if ($sku === '') {
+                continue;
+            }
+            $hit = '';
+            foreach (ListingCountsEngine::skuLookupKeys($sku) as $key) {
+                if (isset($keyMap[$key])) {
+                    $hit = $keyMap[$key];
+                    break;
+                }
+            }
+            if ($hit === '') {
+                $upc = $upcBySku[strtoupper($sku)] ?? '';
+                if ($upc !== '' && isset($upcMap[$upc])) {
+                    $hit = $upcMap[$upc];
+                }
+            }
+            if ($hit !== '') {
+                $map[strtolower($sku)] = $hit;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, string>  upper SKU => digits-only UPC without leading zeros
+     */
+    private static function productMasterUpcs(array $skus): array
+    {
+        $out = [];
+        try {
+            ProductMaster::query()
+                ->whereIn('sku', array_values(array_unique(array_map(static fn ($s) => trim((string) $s), $skus))))
+                ->get(['sku', 'Values'])
+                ->each(function ($pm) use (&$out) {
+                    $values = is_array($pm->Values) ? $pm->Values : [];
+                    $upc = ltrim(preg_replace('/\D/', '', (string) ($values['upc'] ?? $values['gtin'] ?? '')) ?? '', '0');
+                    if ($upc !== '') {
+                        $out[strtoupper(trim((string) $pm->sku))] = $upc;
+                    }
+                });
+        } catch (\Throwable $e) {
+            // UPC is a secondary match only
+        }
+
+        return $out;
     }
 
     /**
