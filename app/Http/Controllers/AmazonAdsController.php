@@ -25,6 +25,7 @@ use App\Support\AmazonAdsCampaignSkuMetrics;
 use App\Support\AmazonAdsCampaignSkuSync;
 use App\Support\AmazonAdsLbidDaily;
 use App\Support\AmazonAdsLRangeMetrics;
+use App\Support\AmazonAdsYesterdayBadgeHistory;
 use App\Support\AmazonAdsPauseRule;
 use App\Support\AmazonAdsSbAdEditor;
 use App\Support\AmazonAdsSbidRule;
@@ -4768,6 +4769,216 @@ class AmazonAdsController extends Controller
     public function ySalesHistory(Request $request): JsonResponse
     {
         return $this->dailyAdsMetricHistory($request, 'sales', 'ysales');
+    }
+
+    /**
+     * Rolling history for the Yesterday Spend / Ads Sales / ACOS badges.
+     * Same campaign universe as those badges. Daily rows, one value per calendar day.
+     */
+    public function yesterdayBadgeHistory(Request $request): JsonResponse
+    {
+        $metric = strtolower(trim((string) $request->query('metric', 'yspend')));
+        if (! in_array($metric, ['yspend', 'ysales', 'yacos', 'tones'], true)) {
+            $metric = 'yspend';
+        }
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 2, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+        $emptyTones = ['yspend' => 'gray', 'ysales' => 'gray', 'yacos' => 'gray'];
+        $tables = self::yesterdayBadgeHistoryTables($request->query('source'));
+        if ($tables === []) {
+            return response()->json([
+                'ok' => true,
+                'points' => [],
+                'tones' => $emptyTones,
+                'message' => 'Yesterday history is available for SP and SB.',
+            ]);
+        }
+
+        $end = null;
+        foreach ($tables as $table) {
+            $latest = self::latestDailyReportYmdInTable($table);
+            if (is_string($latest) && $latest !== '' && ($end === null || $latest > $end)) {
+                $end = $latest;
+            }
+        }
+        if ($end === null) {
+            return response()->json(['ok' => true, 'points' => [], 'tones' => $emptyTones]);
+        }
+
+        $span = $days === 0 ? 364 : max(0, $days - 1);
+        $start = Carbon::parse($end)->subDays($span)->toDateString();
+        $byDate = [];
+        foreach ($tables as $table) {
+            $byDate = AmazonAdsYesterdayBadgeHistory::mergeDaily(
+                $byDate,
+                self::dailySpendSalesForFilteredCampaigns($request, $table, $start, $end)
+            );
+        }
+        if ($byDate === []) {
+            return response()->json(['ok' => true, 'points' => [], 'tones' => $emptyTones]);
+        }
+        ksort($byDate);
+        $first = (string) array_key_first($byDate);
+        if ($first > $start) {
+            $start = $first;
+        }
+        $series = AmazonAdsYesterdayBadgeHistory::series($byDate, $start, $end);
+        $tones = AmazonAdsYesterdayBadgeHistory::tones($series);
+        $chartMetric = $metric === 'tones' ? 'yspend' : $metric;
+
+        return response()->json([
+            'ok' => true,
+            'metric' => $chartMetric,
+            'tone' => $tones[$chartMetric] ?? 'gray',
+            'tones' => $tones,
+            'points' => $metric === 'tones' ? [] : AmazonAdsYesterdayBadgeHistory::chartPoints($series, $chartMetric),
+        ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function yesterdayBadgeHistoryTables(mixed $source): array
+    {
+        return match (trim((string) $source)) {
+            'sb_reports' => ['amazon_sb_campaign_reports'],
+            'sp_reports' => ['amazon_sp_campaign_reports'],
+            '', 'all_reports' => ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'],
+            default => [],
+        };
+    }
+
+    /**
+     * Same filters as the Yesterday badges, then one latest daily row per campaign (+ ad type).
+     *
+     * @return array<string, array{spend: float, sales: float}>
+     */
+    private static function dailySpendSalesForFilteredCampaigns(Request $request, string $table, string $from, string $to): array
+    {
+        if (! Schema::hasTable($table)) {
+            return [];
+        }
+        $dbColumns = self::orderedColumnsForTable($table);
+        if (! in_array('campaign_id', $dbColumns, true)
+            || ! in_array('report_date_range', $dbColumns, true)
+            || ! in_array('id', $dbColumns, true)) {
+            return [];
+        }
+        $costExpr = self::costPreferCoalesceExprForTableAlias('t', $dbColumns);
+        if ($costExpr === null) {
+            return [];
+        }
+        $universe = self::badgeUniverseQuery($request, $table, $dbColumns);
+        if ($universe === null) {
+            return [];
+        }
+        $hasAd = in_array('ad_type', $dbColumns, true);
+        $pairs = $universe->clone()->reorder()->select($table.'.campaign_id');
+        if ($hasAd) {
+            $pairs->addSelect($table.'.ad_type');
+        }
+        $pairs->whereNotNull($table.'.campaign_id')->distinct();
+
+        $latest = DB::table($table.' as src')
+            ->whereRaw('CHAR_LENGTH(TRIM(src.report_date_range)) = 10')
+            ->whereBetween('src.report_date_range', [$from, $to]);
+        $latest->joinSub($pairs, 'flt', function ($join) use ($hasAd) {
+            $join->on('flt.campaign_id', '=', 'src.campaign_id');
+            if ($hasAd) {
+                $join->whereRaw('flt.ad_type <=> src.ad_type');
+            }
+        });
+        $latest->selectRaw('MAX(src.id) AS max_id');
+        if ($hasAd) {
+            $latest->groupBy('src.report_date_range', 'src.campaign_id', 'src.ad_type');
+        } else {
+            $latest->groupBy('src.report_date_range', 'src.campaign_id');
+        }
+
+        $salesExpr = self::dailySalesPreferExpr('t', $dbColumns);
+        $rows = DB::query()
+            ->fromSub($latest, 'm')
+            ->join($table.' as t', 't.id', '=', 'm.max_id')
+            ->selectRaw('t.report_date_range AS day')
+            ->selectRaw('COALESCE(SUM('.$costExpr.'), 0) AS cost_sum')
+            ->selectRaw('COALESCE(SUM('.$salesExpr.'), 0) AS sales_sum')
+            ->groupBy('t.report_date_range')
+            ->orderBy('t.report_date_range')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $day = trim((string) ($row->day ?? ''));
+            if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+                continue;
+            }
+            $out[$day] = [
+                'spend' => (float) ($row->cost_sum ?? 0),
+                'sales' => (float) ($row->sales_sum ?? 0),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Daily sales: first positive of sales1d, sales, sales30d, sales7d (same as the Y Sales row).
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function dailySalesPreferExpr(string $alias, array $dbColumns): string
+    {
+        $parts = [];
+        foreach (['sales1d', 'sales', 'sales30d', 'sales7d'] as $col) {
+            if (in_array($col, $dbColumns, true)) {
+                $parts[] = 'NULLIF('.$alias.'.`'.$col.'`, 0)';
+            }
+        }
+        if ($parts === []) {
+            return '0';
+        }
+
+        return 'COALESCE('.implode(', ', $parts).', 0)';
+    }
+
+    /**
+     * Campaign set behind the Yesterday badges (L30 summary universe in calendar mode).
+     *
+     * @param  array<int, string>  $dbColumns
+     */
+    private static function badgeUniverseQuery(Request $request, string $table, array $dbColumns): ?Builder
+    {
+        $search = $request->input('search');
+        if (is_array($search)) {
+            $search = (string) ($search['value'] ?? '');
+        }
+        $search = trim((string) $search);
+
+        if (self::shouldUseL30SummaryUniverseForBadges($table, $request)) {
+            return self::l30SummaryUniverseQuery($table, $request, $search, $dbColumns);
+        }
+
+        $query = DB::table($table);
+        $usedCalendarSearchFallback = self::applyCalendarSearchWithL30Fallback($query, $table, $dbColumns, $request, $search);
+        if (! $usedCalendarSearchFallback) {
+            self::applyDateFilters($query, $table, $request);
+            if ($search !== '' && in_array('campaignName', $dbColumns, true)) {
+                $query->where('campaignName', 'LIKE', '%'.addcslashes($search, '%_\\').'%');
+            }
+        }
+        self::applyUtilizationPercentRangeFilters($query, $table, $request, true);
+        self::applyCampaignStatusFilter($query, $table, $request);
+        self::applyAcosColorFilter($query, $table, $request);
+        self::applyAdsCvrColorFilter($query, $table, $request);
+        self::applyInventoryFilter($query, $table, $request, $dbColumns);
+        self::applyTargetsFilter($query, $table, $request);
+        if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
+            self::applyLiveSyncStatusFilters($query, $table, $request);
+        }
+
+        return $query;
     }
 
     /**

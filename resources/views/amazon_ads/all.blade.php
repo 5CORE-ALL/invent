@@ -487,6 +487,18 @@
         .amz-stat-badge--sales    { background: #16a34a; }
         .amz-stat-badge--budget   { background: #0f766e; }
         .amz-stat-badge--month    { background: #0e7490; }
+        .amz-badge-history-dot {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 14px; height: 14px; margin-right: 6px; padding: 0; border: 0; border-radius: 50%;
+            background: #fff; box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.15); cursor: pointer; flex: 0 0 auto;
+        }
+        .amz-badge-history-dot > span {
+            width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; margin: 0 !important;
+        }
+        .amz-badge-history-dot.is-up > span { background: #22c55e; }
+        .amz-badge-history-dot.is-down > span { background: #ef4444; }
+        .amz-badge-history-dot.is-flat > span { background: #9ca3af; }
+        .amz-badge-history-dot:hover { transform: scale(1.15); }
         .amz-metric-blocks {
             display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 720px; min-width: 0;
         }
@@ -1118,9 +1130,9 @@
                             </div>
                             <div class="amz-metric-block">
                                 <span class="amz-metric-block-label">Yesterday</span>
-                                <span id="amazonAdsYesterdaySpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Yesterday spend (Amazon L1) for the current filters.">SPEND:<span id="amazonAdsYesterdaySpendBadgeValue">$0</span></span>
-                                <span id="amazonAdsYesterdaySalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Yesterday ads sales (Amazon L1) for the current filters.">ADS SALES:<span id="amazonAdsYesterdaySalesBadgeValue">$0</span></span>
-                                <span id="amazonAdsYesterdayAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Yesterday ACOS% = yesterday spend ÷ yesterday ads sales.">ACOS%:<span id="amazonAdsYesterdayAcosBadgeValue">—</span></span>
+                                <span id="amazonAdsYesterdaySpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Yesterday spend (Amazon L1) for the current filters. Green = up vs the prior day, red = down, gray = unchanged. Click the dot for history."><button type="button" class="amz-badge-history-dot is-flat" id="amazonAdsYesterdaySpendBadgeDot" data-history="yspend" data-label="Spend" title="Yesterday spend history. Green = up, red = down, gray = unchanged."><span></span></button>SPEND:<span id="amazonAdsYesterdaySpendBadgeValue">$0</span></span>
+                                <span id="amazonAdsYesterdaySalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Yesterday ads sales (Amazon L1) for the current filters. Green = up vs the prior day, red = down, gray = unchanged. Click the dot for history."><button type="button" class="amz-badge-history-dot is-flat" id="amazonAdsYesterdaySalesBadgeDot" data-history="ysales" data-label="Ads Sales" title="Yesterday ads sales history. Green = up, red = down, gray = unchanged."><span></span></button>ADS SALES:<span id="amazonAdsYesterdaySalesBadgeValue">$0</span></span>
+                                <span id="amazonAdsYesterdayAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Yesterday ACOS% = yesterday spend ÷ yesterday ads sales. Green = ACOS down, red = ACOS up, gray = unchanged. Click the dot for history."><button type="button" class="amz-badge-history-dot is-flat" id="amazonAdsYesterdayAcosBadgeDot" data-history="yacos" data-label="ACOS" title="Yesterday ACOS history. Green = down, red = up, gray = unchanged."><span></span></button>ACOS%:<span id="amazonAdsYesterdayAcosBadgeValue">—</span></span>
                             </div>
                             <div class="amz-metric-block">
                                 <span class="amz-metric-block-label">Projected</span>
@@ -1994,6 +2006,7 @@
             var lRangeHistoryUrl = @json(route('amazon.ads.l-range-history'));
             var ySpendHistoryUrl = @json(route('amazon.ads.y-spend-history'));
             var ySalesHistoryUrl = @json(route('amazon.ads.y-sales-history'));
+            var yesterdayBadgeHistoryUrl = @json(route('amazon.ads.yesterday-badge-history'));
             var ltCvrHistoryUrl = @json(route('amazon.ads.lt-cvr-history'));
             var ltAcosHistoryUrl = @json(route('amazon.ads.lt-acos-history'));
             var sbidHistoryUrl = @json(route('amazon.ads.sbid-history'));
@@ -3536,6 +3549,45 @@
                 amzSetText('amazonAdsProjectedSpendBadgeValue', amzMoneyBadge(pSpend));
                 amzSetText('amazonAdsProjectedSalesBadgeValue', amzMoneyBadge(pSales));
                 amzAcosBadge('amazonAdsProjectedAcosBadgeValue', 'amazonAdsProjectedAcosBadgeWrap', pAcos);
+                amzRefreshYesterdayBadgeTones();
+            }
+            var amzYesterdayToneReq = 0;
+            function amzPaintYesterdayBadgeTone(id, tone) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.classList.remove('is-up', 'is-down', 'is-flat');
+                el.classList.add(tone === 'green' ? 'is-up' : (tone === 'red' ? 'is-down' : 'is-flat'));
+            }
+            function amzRefreshYesterdayBadgeTones() {
+                var req = ++amzYesterdayToneReq;
+                var src = activeRawSourceKey || 'all_reports';
+                if (src !== 'all_reports' && src !== 'sp_reports' && src !== 'sb_reports') {
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdaySpendBadgeDot', 'gray');
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdaySalesBadgeDot', 'gray');
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdayAcosBadgeDot', 'gray');
+                    return;
+                }
+                var params = new URLSearchParams();
+                var filters = {};
+                try { filters = amzFilterPayload(); } catch (e) { filters = {}; }
+                Object.keys(filters).forEach(function (k) {
+                    if (filters[k] != null) params.set(k, String(filters[k]));
+                });
+                try { params.set('search', amzSearchQueryVal() || ''); } catch (e2) {}
+                params.set('metric', 'tones');
+                params.set('days', '2');
+                params.set('source', src);
+                fetch(yesterdayBadgeHistoryUrl + '?' + params.toString(), {
+                    method: 'GET',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                }).then(function (r) { return r.json(); }).then(function (body) {
+                    if (req !== amzYesterdayToneReq) return;
+                    var tones = (body && body.tones) || {};
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdaySpendBadgeDot', tones.yspend);
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdaySalesBadgeDot', tones.ysales);
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdayAcosBadgeDot', tones.yacos);
+                }).catch(function () {});
             }
             function amzClearBadges() { amzUpdateBadges({}); }
 
@@ -4527,6 +4579,18 @@
                     amzOpenLRangePop(lrangeBtn);
                     return;
                 }
+                var badgeDot = e.target.closest ? e.target.closest('.amz-badge-history-dot') : null;
+                if (badgeDot) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    amzOpenCpcAvgHistory({
+                        badgeHistory: true,
+                        campaignName: 'Yesterday',
+                        historyKind: badgeDot.getAttribute('data-history') || 'yspend',
+                        metricLabel: badgeDot.getAttribute('data-label') || 'Spend'
+                    });
+                    return;
+                }
                 var cpcDot = e.target.closest ? e.target.closest('.amz-cpc-avg-history-dot') : null;
                 if (cpcDot) {
                     e.stopPropagation();
@@ -4631,9 +4695,10 @@
                 return days === 0 ? 'Lifetime' : (days + ' Days');
             }
             function amzHistoryIsCvr() { return amzHistoryKind === 'cvr'; }
-            function amzHistoryIsPercent() { return amzHistoryKind === 'cvr' || amzHistoryKind === 'acos'; }
-            function amzHistoryLowerIsBetter() { return amzHistoryKind === 'cpc' || amzHistoryKind === 'acos'; }
+            function amzHistoryIsPercent() { return amzHistoryKind === 'cvr' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos'; }
+            function amzHistoryLowerIsBetter() { return amzHistoryKind === 'cpc' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos'; }
             function amzHistoryMetricLabel() {
+                if (amzCpcAvgRow && amzCpcAvgRow.metricLabel) return String(amzCpcAvgRow.metricLabel);
                 if (amzHistoryKind === 'cvr') return 'CVR';
                 if (amzHistoryKind === 'acos') return 'ACOS';
                 if (amzHistoryKind === 'lbid') return 'Lbid';
@@ -4641,6 +4706,7 @@
                 if (amzHistoryKind === 'sbgt') return 'SBGT';
                 if (amzHistoryKind === 'yspend') return 'Y Spend';
                 if (amzHistoryKind === 'ysales') return 'Y Sales';
+                if (amzHistoryKind === 'yacos') return 'ACOS';
                 return 'CPC';
             }
             function amzHistoryFmt(v) {
@@ -4673,6 +4739,7 @@
                     if (amzHistoryKind === 'sbgt') return Number(p.sbgt);
                     if (amzHistoryKind === 'yspend') return Number(p.yspend);
                     if (amzHistoryKind === 'ysales') return Number(p.ysales);
+                    if (amzHistoryKind === 'yacos') return Number(p.yacos);
                     return Number(p.cpc);
                 });
                 var dataMin = Math.min.apply(null, values);
@@ -4833,6 +4900,44 @@
                 if (empty) empty.style.display = 'none';
                 if (load) load.style.display = 'block';
                 if (amzCpcAvgChart) { amzCpcAvgChart.destroy(); amzCpcAvgChart = null; }
+                if (row.badgeHistory) {
+                    var params = new URLSearchParams();
+                    var filters = {};
+                    try { filters = amzFilterPayload(); } catch (e) { filters = {}; }
+                    Object.keys(filters).forEach(function (k) {
+                        if (filters[k] != null) params.set(k, String(filters[k]));
+                    });
+                    try { params.set('search', amzSearchQueryVal() || ''); } catch (e2) {}
+                    params.set('metric', amzHistoryKind);
+                    params.set('days', String(amzCpcAvgDays));
+                    params.set('source', activeRawSourceKey || 'all_reports');
+                    fetch(yesterdayBadgeHistoryUrl + '?' + params.toString(), {
+                        method: 'GET',
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin'
+                    }).then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+                        .then(function (out) {
+                            if (load) load.style.display = 'none';
+                            var points = (out.body && Array.isArray(out.body.points)) ? out.body.points : [];
+                            var tones = (out.body && out.body.tones) || {};
+                            if (tones.yspend) amzPaintYesterdayBadgeTone('amazonAdsYesterdaySpendBadgeDot', tones.yspend);
+                            if (tones.ysales) amzPaintYesterdayBadgeTone('amazonAdsYesterdaySalesBadgeDot', tones.ysales);
+                            if (tones.yacos) amzPaintYesterdayBadgeTone('amazonAdsYesterdayAcosBadgeDot', tones.yacos);
+                            if (!out.ok || !out.body || out.body.ok === false || !points.length) {
+                                if (emptyText) emptyText.textContent = (out.body && out.body.message) ? out.body.message : ('Daily ' + amzHistoryMetricLabel() + ' is not available for the current filters.');
+                                if (empty) empty.style.display = 'block';
+                                return;
+                            }
+                            if (box) box.style.display = 'flex';
+                            amzRenderCpcAvgChart(points);
+                        })
+                        .catch(function () {
+                            if (load) load.style.display = 'none';
+                            if (emptyText) emptyText.textContent = 'Network or server error.';
+                            if (empty) empty.style.display = 'block';
+                        });
+                    return;
+                }
                 if (!cid) {
                     if (load) load.style.display = 'none';
                     if (emptyText) emptyText.textContent = 'This row has no campaign id.';
@@ -4876,7 +4981,7 @@
             }
             function amzOpenCpcAvgHistory(row) {
                 amzCpcAvgRow = row || {};
-                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt', 'yspend', 'ysales'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
+                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt', 'yspend', 'ysales', 'yacos'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
                 amzCpcAvgDays = 30;
                 var range = document.getElementById('amazonAdsCpcAvgRange');
                 if (range) range.value = '30';
