@@ -738,6 +738,10 @@
                     });
                     if (!active) {
                         stopChannelPushSpricePoll();
+                        const finishedTasks = resp.tasks || [];
+                        setTimeout(function() {
+                            applyChannelPushSpriceTasks(finishedTasks);
+                        }, 700);
                         const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : '';
                         const toastKey = jobStatus + '|' + resp.ok_count + '|' + resp.fail_count + '|' + resp.total;
                         if (toastKey !== chPushSpriceLastToastKey && (Number(resp.total) || 0) > 0) {

@@ -9370,12 +9370,20 @@
                 const sku = chPromoSku(d);
                 const price = r.price > 0 ? chPromoRound2(r.price) : chPromoPushSpriceAmount(d);
                 if (!sku || !(price > 0)) return;
-                r.row.update({
+                const patch = {
                     PUSH_PRC_STATUS: 'processing',
                     SPRICE_STATUS: 'queued',
                     push_prc: 'processing',
                     PUSH_PRC_VALUE: price,
-                });
+                };
+                if (typeof window.chPushSafeRowUpdate === 'function') {
+                    window.chPushSafeRowUpdate(r.row, patch);
+                } else {
+                    try {
+                        const d = r.row.getData();
+                        if (d) Object.assign(d, patch);
+                    } catch (e) { /* ignore */ }
+                }
                 chPromoRefreshPushCell(r.row, 'push_prc', '.ch-promo-push-prc-btn', 'PUSH_PRC_STATUS', 'Pushing S PRC…');
                 items.push({ sku: sku, price: price, row: r.row });
             });
