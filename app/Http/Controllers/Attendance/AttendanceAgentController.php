@@ -680,7 +680,15 @@ class AttendanceAgentController extends Controller
         $base = rtrim((string) config('app.url'), '/');
         $user ??= request()->user();
         $interval = (int) config('attendance.screenshot_interval_seconds', 120);
-        if ($user && $this->liveWatchService->isWatchRequested($user->id)) {
+
+        // One-second screenshots are a crude live fallback for agents too old to stream.
+        // A streaming agent would instead composite and upload a full-resolution screen
+        // every second on top of its live frames, stalling the main process and eating
+        // the upstream the video needs — which is what made the stream look frozen.
+        if ($user
+            && $this->liveWatchService->isWatchRequested($user->id)
+            && ! AttendanceAgentRelease::supportsLiveVideo($device?->agent_version)
+        ) {
             $interval = 1;
         }
 

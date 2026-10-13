@@ -92,6 +92,7 @@
         let startedAt = Date.now();
         let firstFrameAt = 0;
         let lastObjectUrl = null;
+        let lastEtag = null;
         let shuttingDown = false;
         let recorder = null;
         let recChunks = [];
@@ -187,23 +188,28 @@
         }
 
         async function pullFrame() {
-            if (!urls || shuttingDown) return;
+            if (!urls || shuttingDown) return false;
             try {
+                const h = headers(false);
+                if (lastEtag) h['If-None-Match'] = lastEtag;
                 const r = await fetch(urls.frame, {
-                    headers: headers(false),
+                    headers: h,
                     cache: 'no-store',
                     credentials: 'same-origin',
                 });
+                // Same frame already painted on the canvas.
+                if (r.status === 304) return false;
                 if (r.status === 204 || !r.ok) {
                     if (!firstFrameAt && Date.now() - startedAt > 8000) {
                         setWait(waitTitleCopy, waitTextCopy, true);
                     }
-                    return;
+                    return false;
                 }
                 const type = (r.headers.get('Content-Type') || '').toLowerCase();
-                if (type && type.indexOf('image/') !== 0) return;
+                if (type && type.indexOf('image/') !== 0) return false;
                 const blob = await r.blob();
-                if (!blob.size) return;
+                if (!blob.size) return false;
+                lastEtag = r.headers.get('ETag') || null;
                 if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
                 lastObjectUrl = URL.createObjectURL(blob);
                 const source = (r.headers.get('X-Live-Source') || 'live').toLowerCase();
@@ -218,7 +224,21 @@
                 const title = r.headers.get('X-Live-Window-Title') || '';
                 const app = r.headers.get('X-Live-App-Name') || '';
                 metaEl.textContent = [isLive ? 'Live video' : 'Last screen (waiting for live)', app, title].filter(Boolean).join(' — ');
-            } catch (_) {}
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        // Chained rather than setInterval, so requests cannot overlap and the next
+        // fetch starts as soon as the previous frame is on screen.
+        async function pollLoop() {
+            if (shuttingDown) return;
+            const tickStartedAt = Date.now();
+            const painted = await pullFrame();
+            if (shuttingDown) return;
+            const target = painted ? 120 : 320;
+            pollTimer = setTimeout(pollLoop, Math.max(50, target - (Date.now() - tickStartedAt)));
         }
 
         async function ping() {
@@ -265,7 +285,7 @@
         async function shutdown() {
             if (shuttingDown) return;
             shuttingDown = true;
-            if (pollTimer) clearInterval(pollTimer);
+            if (pollTimer) clearTimeout(pollTimer);
             if (pingTimer) clearInterval(pingTimer);
             beaconStop();
             const blob = await stopRecorder();
@@ -291,9 +311,8 @@
             if (data.wait_text) waitTextCopy = data.wait_text;
             startedAt = Date.now();
             setWait('Connecting live video', 'Asking the desktop app to stream this screen now. Recording starts when video appears.', true);
-            pollTimer = setInterval(pullFrame, 200);
             pingTimer = setInterval(ping, 4000);
-            pullFrame();
+            pollLoop();
             ping();
         }
 

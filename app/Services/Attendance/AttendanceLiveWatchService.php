@@ -111,6 +111,8 @@ class AttendanceLiveWatchService
         Cache::put($this->frameKey($employee->id), $bytes, 30);
         Cache::put($this->frameMetaKey($employee->id), [
             'at' => now()->toIso8601String(),
+            // Lets a viewer revalidate instead of re-downloading a frame it already shows.
+            'seq' => (string) (int) round(microtime(true) * 1000),
             'window_title' => $title,
             'app_name' => $app,
             'source' => 'live',
@@ -262,6 +264,7 @@ class AttendanceLiveWatchService
             'bytes' => $bytes,
             'meta' => [
                 'at' => $shot->captured_at?->toIso8601String(),
+                'seq' => 'shot-'.$shot->id,
                 'window_title' => $shot->window_title,
                 'app_name' => $shot->app_name,
                 'source' => 'screenshot',

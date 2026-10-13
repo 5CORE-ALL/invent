@@ -227,6 +227,7 @@
                 minimized: false,
                 pollTimer: null,
                 objectUrl: null,
+                etag: null,
             };
 
             async function startSession() {
@@ -248,17 +249,22 @@
             }
 
             async function pullFrame() {
-                if (!tile.playing || tile.minimized || !tile.urls) return;
+                if (!tile.playing || tile.minimized || !tile.urls) return false;
                 try {
-                    const r = await fetch(tile.urls.frame, { headers: headers(false), cache: 'no-store' });
+                    const h = headers(false);
+                    if (tile.etag) h['If-None-Match'] = tile.etag;
+                    const r = await fetch(tile.urls.frame, { headers: h, cache: 'no-store' });
                     if (r.status === 204) {
                         wait.classList.remove('is-off');
                         wait.querySelector('p').textContent = 'Waiting for desktop agent…';
-                        return;
+                        return false;
                     }
-                    if (!r.ok) return;
+                    // Same frame we are already showing.
+                    if (r.status === 304) return false;
+                    if (!r.ok) return false;
                     const blob = await r.blob();
-                    if (!blob.size) return;
+                    if (!blob.size) return false;
+                    tile.etag = r.headers.get('ETag') || null;
                     if (tile.objectUrl) URL.revokeObjectURL(tile.objectUrl);
                     tile.objectUrl = URL.createObjectURL(blob);
                     img.onload = function () {
@@ -269,11 +275,27 @@
                     const title = r.headers.get('X-Live-Window-Title') || '';
                     const app = r.headers.get('X-Live-App-Name') || '';
                     meta.textContent = [app, title].filter(Boolean).join(' — ') || 'Live';
-                } catch (_) {}
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            }
+
+            // Chained rather than setInterval: a fixed interval against a variable frame
+            // rate double-fetches some frames and misses others, which reads as stutter.
+            // Requests also cannot pile up on top of each other this way.
+            async function pollLoop() {
+                if (!tile.playing || tile.minimized) return;
+                const startedAt = Date.now();
+                const painted = await pullFrame();
+                if (!tile.playing || tile.minimized) return;
+                const target = painted ? 160 : 420;
+                const wait = Math.max(60, target - (Date.now() - startedAt));
+                tile.pollTimer = setTimeout(pollLoop, wait);
             }
 
             function stopPoll() {
-                if (tile.pollTimer) { clearInterval(tile.pollTimer); tile.pollTimer = null; }
+                if (tile.pollTimer) { clearTimeout(tile.pollTimer); tile.pollTimer = null; }
             }
 
             async function stopSession() {
@@ -302,8 +324,10 @@
                 try {
                     if (!tile.urls) await startSession();
                     stopPoll();
-                    tile.pollTimer = setInterval(pullFrame, 400);
-                    pullFrame();
+                    // Force a full frame so the overlay is cleared even if the screen
+                    // has not changed since this tile was paused.
+                    tile.etag = null;
+                    pollLoop();
                 } catch (err) {
                     tile.playing = false;
                     playBtn.classList.remove('is-on');

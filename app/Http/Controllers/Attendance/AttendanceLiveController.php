@@ -208,7 +208,7 @@ class AttendanceLiveController extends Controller
         return response()->json($this->sessionPayload($session, $user));
     }
 
-    public function frame(AttendanceLiveSession $liveSession): Response
+    public function frame(Request $request, AttendanceLiveSession $liveSession): Response
     {
         $this->authorizeViewer($liveSession);
         $this->liveWatchService->ping($liveSession);
@@ -221,14 +221,25 @@ class AttendanceLiveController extends Controller
         $meta = $latest['meta'];
         $headerSafe = static fn (?string $value): string => preg_replace('/[^\x20-\x7E]/', ' ', (string) $value) ?? '';
 
+        // Viewers poll faster than the agent produces frames. Revalidating keeps the
+        // repeats to an empty 304 instead of resending a JPEG already on screen.
+        $etag = '"'.($meta['seq'] ?? md5($latest['bytes'])).'"';
+        if (trim((string) $request->header('If-None-Match')) === $etag) {
+            return response('', 304, [
+                'ETag' => $etag,
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            ]);
+        }
+
         return response($latest['bytes'], 200, [
+            'ETag' => $etag,
             'Content-Type' => 'image/jpeg',
             'Cache-Control' => 'no-store, no-cache, must-revalidate',
             'X-Live-Window-Title' => $headerSafe($meta['window_title'] ?? $liveSession->window_title ?? ''),
             'X-Live-App-Name' => $headerSafe($meta['app_name'] ?? $liveSession->app_name ?? ''),
             'X-Live-Captured-At' => $headerSafe($meta['at'] ?? ''),
             'X-Live-Source' => $headerSafe($latest['source'] ?? 'live'),
-            'Access-Control-Expose-Headers' => 'X-Live-Source, X-Live-Window-Title, X-Live-App-Name, X-Live-Captured-At',
+            'Access-Control-Expose-Headers' => 'ETag, X-Live-Source, X-Live-Window-Title, X-Live-App-Name, X-Live-Captured-At',
         ]);
     }
 

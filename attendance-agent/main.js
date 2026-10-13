@@ -94,6 +94,7 @@ let liveWatchTimer = null;
 let liveStreaming = false;
 let liveStreamBusy = false;
 let liveFrameDelayMs = 200;
+let lastLiveWatchAt = 0;
 let lastLive = { title: '', process: '', app: '' };
 let lastKnownWindow = { title: '', process: '' };
 let lastSessionStats = { active_seconds: 0, idle_seconds: 0, break_seconds: 0 };
@@ -422,6 +423,7 @@ function applyLiveWatch(liveWatch) {
         return;
     }
     if (!liveWatch) return;
+    lastLiveWatchAt = Date.now();
     const fps = Math.max(1, Math.min(8, Number(liveWatch.fps || config.live_fps) || 5));
     liveFrameDelayMs = Math.round(1000 / fps);
     if (liveWatch.quality) {
@@ -433,8 +435,9 @@ function applyLiveWatch(liveWatch) {
     if (requested && !liveStreaming) {
         liveStreaming = true;
         sendLiveFrame().catch(() => {});
-        sendScreenshot().catch(() => {});
-        restartScreenshotTimer(1000);
+        // Follow the interval the server asked for. Forcing a 1s full-resolution
+        // screenshot here used to run a second capture pipeline alongside the video.
+        restartScreenshotTimer();
     } else if (!requested && liveStreaming) {
         liveStreaming = false;
         restartScreenshotTimer();
@@ -445,6 +448,9 @@ function applyLiveWatch(liveWatch) {
 
 async function pollLiveCommand() {
     if (!store.get('token')) return;
+    // Every live-frame response already carries the watch state, so polling it again
+    // each second while streaming just competes with the video on the same connection.
+    if (liveStreaming && Date.now() - lastLiveWatchAt < 4000) return;
     try {
         const { data } = await jsonApi(8000).get('/live-command', {
             params: { agent_version: AGENT_VERSION },
@@ -473,6 +479,7 @@ async function sendLiveFrame() {
         return;
     }
     liveStreamBusy = true;
+    const frameStartedAt = Date.now();
     try {
         const buf = await captureLiveFrame();
         if (buf) {
@@ -488,7 +495,12 @@ async function sendLiveFrame() {
     } finally {
         liveStreamBusy = false;
         if (liveStreaming) {
-            setTimeout(() => { sendLiveFrame().catch(() => {}); }, liveFrameDelayMs);
+            // Pace against when the frame started, not when its upload finished.
+            // Sleeping a full interval after every round trip turned a 5 fps target
+            // into roughly 1-2 fps and made the motion lurch.
+            const spent = Date.now() - frameStartedAt;
+            const wait = Math.max(0, liveFrameDelayMs - spent);
+            setTimeout(() => { sendLiveFrame().catch(() => {}); }, wait);
         }
     }
 }
