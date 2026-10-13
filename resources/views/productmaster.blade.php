@@ -4314,27 +4314,10 @@
                         paintCpLpOnRow(row.sku, row.current_cp, row.current_lp);
                     });
 
-                    const sourceSaved = savedRows.find(row => row.sku === sku) || savedRows[0];
-                    if (sourceSaved) {
-                        document.getElementById('cpModalCurrent').value = sourceSaved.current_cp ?? '';
-                        document.getElementById('cpModalCurrentDisplay').textContent = cpFmt(sourceSaved.current_cp);
-                        if (sourceSaved.current_cp !== null && sourceSaved.current_cp !== undefined) {
-                            input.value = parseFloat(sourceSaved.current_cp).toFixed(2);
-                        }
-                        if (lpInput && sourceSaved.current_lp !== null && sourceSaved.current_lp !== undefined) {
-                            lpInput.value = parseFloat(sourceSaved.current_lp).toFixed(2);
-                        }
-                        if (sourceSaved.frght !== null && sourceSaved.frght !== undefined) {
-                            document.getElementById('cpModalFreight').value = sourceSaved.frght;
-                        }
-                    }
-                    toggleCpReason();
-
-                    showToast('success', data.message || 'CP and LP updated.');
-
-                    if (document.getElementById('cpHistorySection').style.display === 'block') {
-                        loadCpHistory(sku);
-                    }
+                    const modalEl = document.getElementById('cpModal');
+                    const modalInstance = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+                    if (modalInstance) modalInstance.hide();
+                    showToast('success', 'Saved.');
                 } catch (err) {
                     restoreCpLpSnapshot(snapshot);
                     showToast('danger', 'Error: ' + err.message);
