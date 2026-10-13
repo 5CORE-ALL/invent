@@ -1085,6 +1085,8 @@
         #amazonAdsSbidRuleModal .amz-sbid-leg-head span:nth-child(4) { text-align: right; }
         #amazonAdsSbidRuleModal .amz-sbid-leg-row strong { font-variant-numeric: tabular-nums; }
         #amazonAdsSbidRuleModal .amz-sbid-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
+        #amazonAdsSbidRuleModal .amz-sbid-leg-total { margin-top: 4px; padding-top: 6px; border-top: 1px solid #e2e8f0; font-weight: 700; color: #0f172a; }
+        #amazonAdsSbidRuleModal .amz-sbid-sum-all { margin-left: auto; font-weight: 700; color: #0f172a; }
         #amazonAdsSbidRuleModal .amz-sbid-swatch { width: 8px; height: 8px; border-radius: 50%; }
         #amazonAdsSbidRuleModal .amz-sbid-fields { margin-top: 10px; }
         #amazonAdsSbidRuleModal .amz-sbid-field {
@@ -1801,7 +1803,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amazonAdsSbidRuleModalLabel">SBID rule</h5>
-                        <div class="amz-sbid-sub">Both U7% and U1% below the low threshold use the CPC multipliers. If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + 0.10; otherwise the fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
+                        <div class="amz-sbid-sub">Both U7% and U1% below the low threshold use the CPC multipliers. If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + <span id="amazonAdsSbidAvgAddText">0.10</span>; otherwise the fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1812,6 +1814,7 @@
                         <label for="amazonAdsSbidRuleUtilHigh">High %</label>
                         <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required title="Both U7% and U1% must be above this">
                         <span class="text-muted">Counts are every campaign in the current filters, the same set as the CAMPAIGN badge.</span>
+                        <span class="amz-sbid-sum-all">Sum of counts: <span id="amazonAdsSbidSumAll">0</span></span>
                     </div>
                     <div class="amz-sbid-cols">
                         <div class="amz-sbid-col" data-amz-sbid-panel="below">
@@ -1833,6 +1836,10 @@
                                 <div class="amz-sbid-field">
                                     <label class="mb-0" for="amazonAdsSbidRuleLowMultL7">× L7 CPC</label>
                                     <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL7" name="both_low_mult_l7" required>
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleAvgCpcAdd">Avg CPC +</label>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="amazonAdsSbidRuleAvgCpcAdd" name="avg_cpc_add" required title="Added to Avg CPC when L1, L2, and L7 CPC are missing">
                                 </div>
                                 <div class="amz-sbid-field">
                                     <label class="mb-0" for="amazonAdsSbidRuleBothLowFallback">Fallback</label>
@@ -7832,6 +7839,7 @@
                 ['amazonAdsSbidRuleUtilLow', 'util_low'],
                 ['amazonAdsSbidRuleUtilHigh', 'util_high'],
                 ['amazonAdsSbidRuleBothLowFallback', 'both_low_fallback'],
+                ['amazonAdsSbidRuleAvgCpcAdd', 'avg_cpc_add'],
                 ['amazonAdsSbidRuleLowMultL1', 'both_low_mult_l1'],
                 ['amazonAdsSbidRuleLowMultL2', 'both_low_mult_l2'],
                 ['amazonAdsSbidRuleLowMultL7', 'both_low_mult_l7'],
@@ -7846,9 +7854,79 @@
                 amzSbidPaint();
             }
             var amzSbidCharts = {};
+            var amzSbidUniverse = { key: '', rows: null, promise: null, seq: 0, failed: false };
             function amzSbidPos(row, key) {
                 var n = parseFloat(row && row[key]);
                 return isFinite(n) && n > 0 ? n : 0;
+            }
+            function amzSbidUtil(row, key) {
+                var n = parseFloat(row && row[key]);
+                if (isFinite(n)) return n;
+                var bgt = parseFloat(row && (row.bgt != null && row.bgt !== '' ? row.bgt : row.campaignBudgetAmount));
+                if (isFinite(bgt) && bgt > 0) return 0;
+                return NaN;
+            }
+            function amzSbidEnsureUniverse() {
+                var key = amzBgtFilterKey();
+                if (amzSbidUniverse.key === key && Array.isArray(amzSbidUniverse.rows)) {
+                    return Promise.resolve(amzSbidUniverse.rows);
+                }
+                if (amzSbidUniverse.key === key && amzSbidUniverse.promise) return amzSbidUniverse.promise;
+                var seq = ++amzSbidUniverse.seq;
+                amzSbidUniverse.key = key;
+                amzSbidUniverse.rows = null;
+                amzSbidUniverse.failed = false;
+                var source = activeRawSourceKey || 'all_reports';
+                var body = new URLSearchParams();
+                body.set('draw', '1');
+                body.set('start', '0');
+                body.set('length', '20000');
+                body.set('sbid_universe', '1');
+                body.set('search[value]', (function () { try { return amzSearchQueryVal(); } catch (e) { return ''; } })());
+                body.set('search[regex]', 'false');
+                var f = {};
+                try { f = amzFilterPayload(); } catch (e2) { f = {}; }
+                Object.keys(f).forEach(function (k) { body.set(k, f[k]); });
+                body.set('_token', csrfToken);
+                amzSbidUniverse.promise = fetch(dataUrlTemplate + encodeURIComponent(source), {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                    },
+                    credentials: 'same-origin',
+                    body: body.toString()
+                }).then(function (res) { return res.json(); }).then(function (json) {
+                    if (seq !== amzSbidUniverse.seq) return [];
+                    amzSbidUniverse.promise = null;
+                    if (!json || json.ok !== true || !Array.isArray(json.campaigns)) {
+                        amzSbidUniverse.failed = true;
+                        amzSbidPaint();
+                        return [];
+                    }
+                    amzSbidUniverse.rows = json.campaigns;
+                    amzSbidUniverse.failed = false;
+                    amzSbidPaint();
+                    return json.campaigns;
+                }).catch(function () {
+                    if (seq === amzSbidUniverse.seq) {
+                        amzSbidUniverse.promise = null;
+                        amzSbidUniverse.failed = true;
+                        amzSbidPaint();
+                    }
+                    return [];
+                });
+                return amzSbidUniverse.promise;
+            }
+            function amzSbidCountRows() {
+                var key = amzBgtFilterKey();
+                var full = (amzSbidUniverse.key === key && Array.isArray(amzSbidUniverse.rows)) ? amzSbidUniverse.rows : null;
+                if (full && full.length) return full;
+                var page = amzBgtGridRows();
+                if (page.length) return page;
+                return full;
             }
             function amzSbidGroups() {
                 var low = parseFloat((document.getElementById('amazonAdsSbidRuleUtilLow') || {}).value);
@@ -7856,11 +7934,11 @@
                 var below = { l1: 0, l2: 0, l7: 0, avg: 0, fb: 0 };
                 var above = { l1: 0, none: 0 };
                 var mid = 0;
-                var sbidRows = amzBgtCountRows();
-                if (!sbidRows) return { below: below, above: above, mid: mid };
+                var sbidRows = amzSbidCountRows();
+                if (!sbidRows) return null;
                 sbidRows.forEach(function (row) {
-                    var u7 = parseFloat(row && row['U7%']);
-                    var u1 = parseFloat(row && row['U1%']);
+                    var u7 = amzSbidUtil(row, 'U7%');
+                    var u1 = amzSbidUtil(row, 'U1%');
                     if (!isFinite(u7) || !isFinite(u1) || !isFinite(low) || !isFinite(high)) { mid++; return; }
                     var l1 = amzSbidPos(row, 'costPerClick');
                     var l2 = amzSbidPos(row, 'CPC2');
@@ -7890,7 +7968,7 @@
                     legend.innerHTML = head + rows.map(function (r) {
                         var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
                         return '<div class="amz-sbid-leg-row"><span class="amz-sbid-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-sbid-leg-pct">' + pct + '%</span></div>';
-                    }).join('');
+                    }).join('') + '<div class="amz-sbid-leg-row amz-sbid-leg-total"><span></span><span>Sum</span><strong>' + total.toLocaleString('en-US') + '</strong><span class="amz-sbid-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>';
                 }
                 if (!canvas || typeof Chart === 'undefined') return;
                 if (amzSbidCharts[key]) { try { amzSbidCharts[key].destroy(); } catch (e) {} amzSbidCharts[key] = null; }
@@ -7917,13 +7995,34 @@
                     }
                 });
             }
+            function amzSbidAvgAddLabel() {
+                var el = document.getElementById('amazonAdsSbidRuleAvgCpcAdd');
+                var n = parseFloat(el && el.value !== '' ? el.value : (window.amazonAdsSbidRule || {}).avg_cpc_add);
+                if (!isFinite(n)) n = 0.10;
+                var txt = n.toFixed(2);
+                var sub = document.getElementById('amazonAdsSbidAvgAddText');
+                if (sub) sub.textContent = txt;
+                return txt;
+            }
+            function amzSbidPaintWaiting() {
+                ['below', 'mid', 'above'].forEach(function (key) {
+                    var legend = document.getElementById('amz-sbid-leg-' + key);
+                    if (legend) {
+                        legend.innerHTML = '<div class="amz-sbid-leg-row"><span class="spinner-border spinner-border-sm text-primary" role="status"></span><span>Counting campaigns…</span></div>';
+                    }
+                    if (amzSbidCharts[key]) { try { amzSbidCharts[key].destroy(); } catch (e) {} amzSbidCharts[key] = null; }
+                });
+            }
             function amzSbidPaint() {
                 var g = amzSbidGroups();
+                if (!g) { amzSbidPaintWaiting(); amzSetText('amazonAdsSbidSumAll', '…'); return; }
+                var sumAll = g.below.l1 + g.below.l2 + g.below.l7 + g.below.avg + g.below.fb + g.mid + g.above.l1 + g.above.none;
+                amzSetText('amazonAdsSbidSumAll', sumAll.toLocaleString('en-US'));
                 amzSbidPaintColumn('below', [
                     { label: '× L1', n: g.below.l1, color: '#7c3aed' },
                     { label: '× L2', n: g.below.l2, color: '#2563eb' },
                     { label: '× L7', n: g.below.l7, color: '#16a34a' },
-                    { label: 'Avg + 0.10', n: g.below.avg, color: '#f59e0b' },
+                    { label: 'Avg + ' + amzSbidAvgAddLabel(), n: g.below.avg, color: '#f59e0b' },
                     { label: 'Fallback', n: g.below.fb, color: '#94a3b8' }
                 ]);
                 amzSbidPaintColumn('mid', [
@@ -7948,16 +8047,18 @@
                     amzRefreshSbidRuleFromServer(function () { amzFillSbidForm(window.amazonAdsSbidRule || {}); });
                 });
                 sbidModalEl.addEventListener('shown.bs.modal', function () {
-                    amzBgtEnsureUniverse().then(function () { amzSbidPaint(); });
                     amzSbidPaint();
-                    setTimeout(function () {
-                        Object.keys(amzSbidCharts).forEach(function (k) {
-                            if (amzSbidCharts[k]) { try { amzSbidCharts[k].resize(); } catch (e) {} }
-                        });
-                    }, 60);
+                    amzSbidEnsureUniverse().then(function () {
+                        amzSbidPaint();
+                        setTimeout(function () {
+                            Object.keys(amzSbidCharts).forEach(function (k) {
+                                if (amzSbidCharts[k]) { try { amzSbidCharts[k].resize(); } catch (e) {} }
+                            });
+                        }, 60);
+                    });
                 });
             }
-            ['amazonAdsSbidRuleUtilLow', 'amazonAdsSbidRuleUtilHigh'].forEach(function (id) {
+            ['amazonAdsSbidRuleUtilLow', 'amazonAdsSbidRuleUtilHigh', 'amazonAdsSbidRuleAvgCpcAdd'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.addEventListener('input', amzSbidPaint);
             });

@@ -23,6 +23,7 @@ final class AmazonAdsSbidRule
      *     both_low_mult_l2: float,
      *     both_low_mult_l7: float,
      *     both_low_fallback: float,
+     *     avg_cpc_add: float,
      *     both_high_mult_l1: float
      * }
      */
@@ -35,6 +36,7 @@ final class AmazonAdsSbidRule
             'both_low_mult_l2' => 1.1,
             'both_low_mult_l7' => 1.1,
             'both_low_fallback' => 0.75,
+            'avg_cpc_add' => 0.10,
             'both_high_mult_l1' => 0.9,
         ];
     }
@@ -47,6 +49,7 @@ final class AmazonAdsSbidRule
      *     both_low_mult_l2: float,
      *     both_low_mult_l7: float,
      *     both_low_fallback: float,
+     *     avg_cpc_add: float,
      *     both_high_mult_l1: float
      * }
      */
@@ -103,6 +106,7 @@ final class AmazonAdsSbidRule
      *     both_low_mult_l2: float,
      *     both_low_mult_l7: float,
      *     both_low_fallback: float,
+     *     avg_cpc_add: float,
      *     both_high_mult_l1: float
      * }
      */
@@ -135,6 +139,11 @@ final class AmazonAdsSbidRule
             throw new \InvalidArgumentException('Fallback SBID (no CPC) must be between 0.01 and 25.');
         }
 
+        $avgAdd = (float) ($input['avg_cpc_add'] ?? $d['avg_cpc_add']);
+        if (! is_finite($avgAdd) || $avgAdd < 0 || $avgAdd > 5.0) {
+            throw new \InvalidArgumentException('Avg CPC add-on must be between 0 and 5.');
+        }
+
         return [
             'util_low' => $utilLow,
             'util_high' => $utilHigh,
@@ -142,6 +151,7 @@ final class AmazonAdsSbidRule
             'both_low_mult_l2' => $mults['both_low_mult_l2'],
             'both_low_mult_l7' => $mults['both_low_mult_l7'],
             'both_low_fallback' => $fb,
+            'avg_cpc_add' => $avgAdd,
             'both_high_mult_l1' => $mults['both_high_mult_l1'],
         ];
     }
@@ -154,6 +164,7 @@ final class AmazonAdsSbidRule
      *     both_low_mult_l2: float,
      *     both_low_mult_l7: float,
      *     both_low_fallback: float,
+     *     avg_cpc_add: float,
      *     both_high_mult_l1: float
      * }  $rule
      */
