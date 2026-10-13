@@ -558,6 +558,56 @@ class AttendanceAgentController extends Controller
         ]);
     }
 
+    /**
+     * One slice of the agent's encoded screen stream.
+     *
+     * Same duty rules as liveFrame: off the clock the body is dropped unread and
+     * the agent is told to stop.
+     */
+    public function liveChunk(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $device = $this->resolveDevice($request);
+        $maxKb = max(512, (int) config('attendance.screenshot_max_kb', 5120));
+
+        if (! $this->attendanceService->onDutySession($user, $device)) {
+            return response()->json([
+                'ok' => false,
+                'accepted' => false,
+                'message' => 'Not clocked in on this device; live video is only available during working hours.',
+                'live_watch' => $this->liveWatchService->commandForUser($user, false),
+            ]);
+        }
+
+        $request->validate([
+            'chunk' => 'required|file|max:'.$maxKb,
+            'gen' => 'required|string|max:64',
+            'seq' => 'required|integer|min:0',
+            'init' => 'nullable|boolean',
+            'mime' => 'nullable|string|max:100',
+        ]);
+
+        $bytes = (string) file_get_contents($request->file('chunk')->getRealPath());
+
+        $accepted = $this->liveWatchService->storeVideoChunk(
+            $user,
+            $bytes,
+            (string) $request->input('gen'),
+            (int) $request->input('seq'),
+            $request->boolean('init'),
+            (string) ($request->input('mime') ?: 'video/webm'),
+        );
+
+        return response()->json([
+            'ok' => true,
+            'accepted' => $accepted,
+            // A rejected non-init chunk means the server lost the header, so the
+            // agent has to restart its recorder rather than keep pushing.
+            'resend_init' => ! $accepted && ! $request->boolean('init'),
+            'live_watch' => $this->liveWatchService->commandForUser($user, true),
+        ]);
+    }
+
     public function screenshot(Request $request): JsonResponse
     {
         $user = $request->user();

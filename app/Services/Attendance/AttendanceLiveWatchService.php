@@ -31,6 +31,13 @@ class AttendanceLiveWatchService
             'quality' => max(30, min(80, (int) config('attendance.live_quality', 55))),
             'force_logout' => AttendanceForceLogout::isFlagged($employee)
                 || UserAccountStatus::for($employee) === UserAccountStatus::INACTIVE,
+            'stream' => [
+                'enabled' => (bool) config('attendance.live_stream_enabled', true),
+                'fps' => max(5, min(30, (int) config('attendance.live_stream_fps', 20))),
+                'width' => max(640, min(1920, (int) config('attendance.live_stream_width', 1280))),
+                'bitrate' => max(200000, (int) config('attendance.live_stream_bitrate', 1200000)),
+                'chunk_ms' => max(200, min(2000, (int) config('attendance.live_stream_chunk_ms', 600))),
+            ],
         ];
     }
 
@@ -131,6 +138,136 @@ class AttendanceLiveWatchService
         $this->touchWatch($employee->id);
 
         return true;
+    }
+
+    /**
+     * Accept one slice of the agent's encoded screen stream.
+     *
+     * MediaRecorder emits a single continuous WebM: the first blob carries the
+     * header and track definitions, every later blob is a raw continuation that
+     * only decodes when appended after the ones before it. So the init blob is
+     * kept apart (a late viewer still needs it) and the rest live in a ring.
+     *
+     * @param  string  $gen  Identifies one recorder run, so a restarted encoder
+     *                       cannot have its output spliced onto the previous stream.
+     */
+    public function storeVideoChunk(User $employee, string $bytes, string $gen, int $seq, bool $isInit, string $mime = 'video/webm'): bool
+    {
+        if ($bytes === '' || $gen === '' || ! $this->isWatchRequested($employee->id)) {
+            return false;
+        }
+
+        $keep = max(10, (int) config('attendance.live_stream_keep_chunks', 60));
+        $ttl = 120;
+
+        if ($isInit) {
+            Cache::put($this->videoInitKey($employee->id, $gen), $bytes, $ttl);
+            Cache::put($this->videoStateKey($employee->id), [
+                'gen' => $gen,
+                'head' => 0,
+                'tail' => 1,
+                'mime' => $mime,
+                'at' => now()->toIso8601String(),
+            ], 40);
+            $this->touchWatch($employee->id);
+
+            return true;
+        }
+
+        $state = $this->videoState($employee->id);
+        // A chunk from a run we never saw the header for can never be decoded.
+        if ($state === null || $state['gen'] !== $gen) {
+            return false;
+        }
+
+        Cache::put($this->videoChunkKey($employee->id, $gen, $seq), $bytes, $ttl);
+
+        $tail = max((int) $state['tail'], $seq - $keep + 1, 1);
+        for ($old = (int) $state['tail']; $old < $tail; $old++) {
+            Cache::forget($this->videoChunkKey($employee->id, $gen, $old));
+        }
+
+        Cache::put($this->videoStateKey($employee->id), [
+            'gen' => $gen,
+            'head' => max((int) $state['head'], $seq),
+            'tail' => $tail,
+            'mime' => $mime,
+            'at' => now()->toIso8601String(),
+        ], 40);
+
+        $open = AttendanceLiveSession::query()
+            ->where('user_id', $employee->id)
+            ->whereIn('status', ['requested', 'streaming'])
+            ->get();
+
+        foreach ($open as $session) {
+            $this->markStreaming($session, $session->window_title, $session->app_name);
+        }
+
+        $this->touchWatch($employee->id);
+
+        return true;
+    }
+
+    /**
+     * Next slice a viewer should append, or null when it is already at the live edge.
+     *
+     * @param  string|null  $gen  Recorder run the viewer is currently decoding.
+     * @param  int  $after  Last sequence the viewer appended.
+     * @return array{bytes: string, gen: string, seq: int, init: bool, gap: bool, mime: string}|null
+     */
+    public function nextVideoChunk(int $userId, ?string $gen, int $after): ?array
+    {
+        $state = $this->videoState($userId);
+        if ($state === null) {
+            return null;
+        }
+
+        $current = (string) $state['gen'];
+        $mime = (string) ($state['mime'] ?? 'video/webm');
+
+        // Either a fresh viewer or the agent restarted its encoder. Both have to
+        // begin again from the header before anything else will decode.
+        if ($gen !== $current) {
+            $init = Cache::get($this->videoInitKey($userId, $current));
+            if (! is_string($init) || $init === '') {
+                return null;
+            }
+
+            return ['bytes' => $init, 'gen' => $current, 'seq' => 0, 'init' => true, 'gap' => false, 'mime' => $mime];
+        }
+
+        $want = $after + 1;
+        $gap = false;
+        if ($want < (int) $state['tail']) {
+            $want = (int) $state['tail'];
+            $gap = true;
+        }
+        if ($want > (int) $state['head']) {
+            return null;
+        }
+
+        $bytes = Cache::get($this->videoChunkKey($userId, $current, $want));
+        if (! is_string($bytes) || $bytes === '') {
+            return null;
+        }
+
+        return ['bytes' => $bytes, 'gen' => $current, 'seq' => $want, 'init' => false, 'gap' => $gap, 'mime' => $mime];
+    }
+
+    public function hasVideoStream(int $userId): bool
+    {
+        return $this->videoState($userId) !== null;
+    }
+
+    /**
+     * @return array{gen: string, head: int, tail: int, mime: string, at: string}|null
+     */
+    private function videoState(int $userId): ?array
+    {
+        $state = Cache::get($this->videoStateKey($userId));
+
+        return is_array($state) && isset($state['gen']) ? $state : null;
     }
 
     /**
@@ -412,6 +549,9 @@ class AttendanceLiveWatchService
         Cache::forget($this->watchKey($userId));
         Cache::forget($this->frameKey($userId));
         Cache::forget($this->frameMetaKey($userId));
+        // Chunk bodies are left to expire on their own TTL; dropping the state is
+        // enough to stop a later viewer decoding a stream that has gone away.
+        Cache::forget($this->videoStateKey($userId));
     }
 
     private function watchKey(int $userId): string
@@ -427,5 +567,20 @@ class AttendanceLiveWatchService
     private function frameMetaKey(int $userId): string
     {
         return 'attendance:live:frame-meta:'.$userId;
+    }
+
+    private function videoStateKey(int $userId): string
+    {
+        return 'attendance:live:video-state:'.$userId;
+    }
+
+    private function videoInitKey(int $userId, string $gen): string
+    {
+        return 'attendance:live:video-init:'.$userId.':'.$gen;
+    }
+
+    private function videoChunkKey(int $userId, string $gen, int $seq): string
+    {
+        return 'attendance:live:video-chunk:'.$userId.':'.$gen.':'.$seq;
     }
 }

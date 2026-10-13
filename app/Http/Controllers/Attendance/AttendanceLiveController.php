@@ -243,6 +243,43 @@ class AttendanceLiveController extends Controller
         ]);
     }
 
+    /**
+     * Feeds the viewer's MediaSource one slice at a time.
+     *
+     * The viewer reports which recorder run and sequence it last appended; the
+     * reply is the next slice, or 204 while it is already at the live edge.
+     */
+    public function videoChunk(Request $request, AttendanceLiveSession $liveSession): Response
+    {
+        $this->authorizeViewer($liveSession);
+        $this->liveWatchService->ping($liveSession);
+
+        $next = $this->liveWatchService->nextVideoChunk(
+            $liveSession->user_id,
+            $request->query('gen') !== null ? (string) $request->query('gen') : null,
+            (int) $request->query('after', -1),
+        );
+
+        if ($next === null) {
+            return response('', 204, [
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
+                'Access-Control-Expose-Headers' => 'X-Live-Gen, X-Live-Seq, X-Live-Init, X-Live-Gap',
+            ]);
+        }
+
+        return response($next['bytes'], 200, [
+            'Content-Type' => $next['mime'],
+            'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            'X-Live-Gen' => $next['gen'],
+            'X-Live-Seq' => (string) $next['seq'],
+            'X-Live-Init' => $next['init'] ? '1' : '0',
+            // Tells the viewer the stream is no longer contiguous, so it should
+            // rebuild its MediaSource instead of appending onto a broken buffer.
+            'X-Live-Gap' => $next['gap'] ? '1' : '0',
+            'Access-Control-Expose-Headers' => 'X-Live-Gen, X-Live-Seq, X-Live-Init, X-Live-Gap',
+        ]);
+    }
+
     public function ping(AttendanceLiveSession $liveSession): JsonResponse
     {
         $this->authorizeViewer($liveSession);
@@ -329,6 +366,7 @@ class AttendanceLiveController extends Controller
             ],
             'urls' => [
                 'frame' => '/attendance/live/session/'.$session->id.'/frame',
+                'video' => '/attendance/live/session/'.$session->id.'/video',
                 'ping' => '/attendance/live/session/'.$session->id.'/ping',
                 'stop' => '/attendance/live/session/'.$session->id.'/stop',
                 'recording' => '/attendance/live/session/'.$session->id.'/recording',

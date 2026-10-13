@@ -6220,17 +6220,7 @@ class AmazonAdsController extends Controller
                         'lmp_price' => null,
                     ];
                 $cidInvEarly = preg_replace('/\D+/', '', $cid) ?: '';
-                $skuInvHit = $skuInvByCid[$cidInvEarly] ?? null;
-                $nameInv = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
-                $campaignInv = (is_array($skuInvHit) && isset($skuInvHit['sum']) && is_numeric($skuInvHit['sum']))
-                    ? (float) $skuInvHit['sum']
-                    : null;
-                if ($campaignInv !== null && $campaignInv > 0 && ($nameInv === null || $nameInv <= 0)) {
-                    $mSku['inv'] = (float) $skuInvHit['sum'];
-                    if (isset($skuInvHit['ovl30']) && is_numeric($skuInvHit['ovl30'])) {
-                        $mSku['ovl30'] = (float) $skuInvHit['ovl30'];
-                    }
-                }
+                $mSku = self::withCampaignInventory($mSku, $skuInvByCid[$cidInvEarly] ?? null);
                 if (in_array('Inv', $columns, true)) {
                     $arr['Inv'] = $mSku['inv'];
                 }
@@ -6507,13 +6497,6 @@ class AmazonAdsController extends Controller
             $data[] = $arr;
         }
 
-        if (! $forBgtUniverse && ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== [])) {
-            AmazonBidUtilizationService::persistSuggestedSbidByRowId($table, $suggestedSbidByRowId, $suggestedSbidByCampaign);
-        }
-        if (! $forBgtUniverse && ($suggestedSbgtByRowId !== [] || $suggestedSbgtByCampaign !== [])) {
-            AmazonAdsSbgt::persistByRowId($table, $suggestedSbgtByRowId, $suggestedSbgtByCampaign);
-        }
-
         if ($usePhpSort && ! $phpSortPaged) {
             usort($data, static function ($a, $b) use ($requestedOrderCol, $orderDir) {
                 $cmp = self::compareAmazonAdsRowValues(
@@ -6524,6 +6507,25 @@ class AmazonAdsController extends Controller
                 return $orderDir === 'asc' ? $cmp : -$cmp;
             });
             $data = array_values(array_slice($data, $start, $length));
+        }
+
+        // Header sort used to rewrite SBID/SBGT for every filtered campaign before
+        // slicing the page. Keep writes on the rows actually returned.
+        [$suggestedSbidByRowId, $suggestedSbidByCampaign] = self::filterSuggestedMapsToPage(
+            $suggestedSbidByRowId,
+            $suggestedSbidByCampaign,
+            $data
+        );
+        [$suggestedSbgtByRowId, $suggestedSbgtByCampaign] = self::filterSuggestedMapsToPage(
+            $suggestedSbgtByRowId,
+            $suggestedSbgtByCampaign,
+            $data
+        );
+        if (! $forBgtUniverse && ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== [])) {
+            AmazonBidUtilizationService::persistSuggestedSbidByRowId($table, $suggestedSbidByRowId, $suggestedSbidByCampaign);
+        }
+        if (! $forBgtUniverse && ($suggestedSbgtByRowId !== [] || $suggestedSbgtByCampaign !== [])) {
+            AmazonAdsSbgt::persistByRowId($table, $suggestedSbgtByRowId, $suggestedSbgtByCampaign);
         }
 
         if (! $forBgtUniverse && self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
@@ -6990,7 +6992,287 @@ class AmazonAdsController extends Controller
             return $keys;
         }
 
-        return null;
+        return self::heavyDisplaySortKeys($list, $table, $dbColumns, $column);
+    }
+
+    /**
+     * Use campaign-SKU inventory when the name-derived Inv is missing or zero.
+     * Same replacement the grid applies before Inv / Dil / BGT columns.
+     *
+     * @param  array<string, mixed>  $mSku
+     * @param  array<string, mixed>|null  $skuInvHit
+     * @return array<string, mixed>
+     */
+    private static function withCampaignInventory(array $mSku, ?array $skuInvHit): array
+    {
+        $nameInv = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
+        $campaignInv = (is_array($skuInvHit) && isset($skuInvHit['sum']) && is_numeric($skuInvHit['sum']))
+            ? (float) $skuInvHit['sum']
+            : null;
+        if ($campaignInv !== null && $campaignInv > 0 && ($nameInv === null || $nameInv <= 0)) {
+            $mSku['inv'] = (float) $skuInvHit['sum'];
+            if (isset($skuInvHit['ovl30']) && is_numeric($skuInvHit['ovl30'])) {
+                $mSku['ovl30'] = (float) $skuInvHit['ovl30'];
+            }
+        }
+
+        return $mSku;
+    }
+
+    /**
+     * @param  array<int|string, mixed>  $byRowId
+     * @param  array<int|string, mixed>  $byCampaign
+     * @param  list<array<string, mixed>>  $pageRows
+     * @return array{0: array<int|string, mixed>, 1: array<int|string, mixed>}
+     */
+    private static function filterSuggestedMapsToPage(array $byRowId, array $byCampaign, array $pageRows): array
+    {
+        $keepRow = [];
+        $keepCid = [];
+        foreach ($pageRows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $rid = $row['id'] ?? null;
+            if ($rid !== null && $rid !== '') {
+                $keepRow[(string) $rid] = true;
+            }
+            $cid = trim((string) ($row['campaign_id'] ?? ''));
+            if ($cid !== '') {
+                $keepCid[$cid] = true;
+            }
+        }
+        $byRowId = array_filter(
+            $byRowId,
+            static fn ($id): bool => isset($keepRow[(string) $id]),
+            ARRAY_FILTER_USE_KEY
+        );
+        $byCampaign = array_filter(
+            $byCampaign,
+            static fn ($cid): bool => isset($keepCid[(string) $cid]),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        return [$byRowId, $byCampaign];
+    }
+
+    /**
+     * Sort keys for columns that are filled in PHP (Inv, SBGT, BGT parts, CPC, Rule).
+     * One lookup for the sorted column, then only that page is enriched.
+     *
+     * @param  list<object|array<string, mixed>>  $list
+     * @param  array<int, string>  $dbColumns
+     * @return list<mixed>|null
+     */
+    private static function heavyDisplaySortKeys(array $list, string $table, array $dbColumns, string $column): ?array
+    {
+        $handled = [
+            'Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'ruleStatus', 'activeAgain',
+            'bgtAcos', 'bgtViews', 'bgtCvr', 'bgtPrc', 'bgtReviews', 'bgtDil', 'bgtInv', 'sbgt',
+            'CPC3', 'CPCAvg', 'CPC2', 'ltCvr', 'L1cost', 'L1clicks',
+            'pageCvr', 'viewsL30', 'viewsL7', 'ltAcos',
+        ];
+        if (! in_array($column, $handled, true)) {
+            return null;
+        }
+
+        $hasAd = in_array('ad_type', $dbColumns, true);
+        $needsSku = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'price', 'reviews', 'bgtDil', 'bgtInv', 'bgtPrc', 'bgtReviews', 'sbgt', 'ruleStatus'], true);
+        $needsViews = in_array($column, ['bgtViews', 'bgtCvr', 'pageCvr', 'viewsL30', 'viewsL7', 'sbgt'], true);
+        $needsLtAcos = in_array($column, ['ltAcos', 'bgtAcos', 'sbgt'], true);
+        $needsRatings = in_array($column, ['reviews', 'bgtReviews', 'sbgt'], true);
+        $needsShopifyInv = in_array($column, ['Inv', 'INV', 'ovl30', 'dil', 'bgtDil', 'bgtInv', 'sbgt'], true);
+        $needsCpcDay = $column === 'CPC2' || $column === 'CPC3';
+        $needsCpcAvg = $column === 'CPCAvg';
+        $needsLtCvr = $column === 'ltCvr';
+        $needsL1 = $column === 'L1cost' || $column === 'L1clicks';
+
+        $names = [];
+        $cids = [];
+        foreach ($list as $row) {
+            $r = (array) $row;
+            $cn = trim((string) ($r['campaignName'] ?? ''));
+            if ($cn !== '') {
+                $names[] = $cn;
+            }
+            $cid = preg_replace('/\D+/', '', trim((string) ($r['campaign_id'] ?? ''))) ?: '';
+            if ($cid !== '') {
+                $cids[] = $cid;
+            }
+        }
+
+        $skuByName = ($needsSku && $column !== 'ruleStatus')
+            ? AmazonAdsCampaignSkuMetrics::mapForCampaignNames($names)
+            : [];
+        $skuInvByCid = $needsShopifyInv ? AmazonAdsCampaignSkuMetrics::shopifyInvForCampaignIds($cids) : [];
+        $ratingsByCid = $needsRatings ? AmazonAdsCampaignSkuMetrics::minRatingForCampaignIds($cids) : [];
+        $pageCvrByName = $needsViews ? AmazonAdsCampaignSkuMetrics::parentListingCvrForCampaignNames($names) : [];
+        $ltAcosMap = $needsLtAcos ? self::prefetchLifetimeAcosForPageRows($table, $dbColumns, $list) : [];
+        $ltCvrMap = $needsLtCvr ? self::prefetchLifetimeCvrForPageRows($table, $dbColumns, $list) : [];
+        $cpcAvgMap = $needsCpcAvg ? self::prefetchLifetimeAvgCpcForPageRows($table, $dbColumns, $list) : [];
+        $cpcDayCache = $needsCpcDay
+            ? self::prefetchCostPerClickForPageRows($table, $dbColumns, $list, $column === 'CPC2', $column === 'CPC3')
+            : [];
+        $l1Map = ($needsL1 && $table === 'amazon_sb_campaign_reports')
+            ? self::fetchL1SummaryClicksCostMap($table, $dbColumns, $list)
+            : [];
+
+        $pauseRule = null;
+        $familyByName = [];
+        $parentDilByFam = [];
+        if ($column === 'ruleStatus') {
+            $pauseRule = AmazonAdsPauseRule::resolvedRule();
+            $familyByName = AmazonAdsCampaignSkuMetrics::parentFamiliesForCampaignNames($names);
+            $parentNames = $names;
+            foreach ($familyByName as $fam) {
+                $fam = trim((string) $fam);
+                if ($fam !== '') {
+                    $parentNames[] = 'PARENT '.$fam;
+                }
+            }
+            $parentMetrics = AmazonAdsCampaignSkuMetrics::mapForCampaignNames($parentNames);
+            $parentDilByFam = AmazonAdsCampaignSkuMetrics::parentDilByFamilyFromMetrics($parentMetrics);
+            $skuByName = $parentMetrics;
+        }
+
+        $statesByCid = [];
+        $statesByName = [];
+        if ($column === 'activeAgain') {
+            $statesByCid = AmazonAdsPauseRuleState::mapForCampaignIds($cids);
+            $statesByName = AmazonAdsPauseRuleState::mapForCampaignNames($names);
+        }
+
+        $emptySku = [
+            'sku' => '',
+            'price' => null,
+            'dil' => null,
+            'inv' => null,
+            'l30' => null,
+            'ovl30' => null,
+            'lmp_price' => null,
+        ];
+        $keys = [];
+        foreach ($list as $row) {
+            $r = (array) $row;
+            $cn = trim((string) ($r['campaignName'] ?? ''));
+            $cidRaw = trim((string) ($r['campaign_id'] ?? ''));
+            $cid = preg_replace('/\D+/', '', $cidRaw) ?: '';
+            $ad = $hasAd ? trim((string) ($r['ad_type'] ?? '')) : '';
+            $lk = $cidRaw."\0".$ad;
+            $m = ($cn !== '' && isset($skuByName[$cn])) ? $skuByName[$cn] : $emptySku;
+            if ($needsShopifyInv) {
+                $m = self::withCampaignInventory($m, $skuInvByCid[$cid] ?? null);
+            }
+            $inv = isset($m['inv']) && is_numeric($m['inv']) ? (float) $m['inv'] : null;
+            $ovl = isset($m['ovl30']) && is_numeric($m['ovl30']) ? (float) $m['ovl30'] : null;
+            $dil = AmazonAdsCampaignSkuMetrics::tabulatorDil($inv, $ovl);
+            $pc = ($cn !== '' && isset($pageCvrByName[$cn]))
+                ? $pageCvrByName[$cn]
+                : AmazonAdsCampaignSkuMetrics::emptyParentListingCvr();
+            $ltAcos = ($cidRaw !== '' && array_key_exists($lk, $ltAcosMap)) ? $ltAcosMap[$lk] : null;
+
+            if ($column === 'Inv' || $column === 'INV') {
+                $keys[] = $inv;
+            } elseif ($column === 'ovl30') {
+                $keys[] = $ovl;
+            } elseif ($column === 'dil' || $column === 'bgtDil') {
+                $keys[] = $column === 'dil'
+                    ? $dil
+                    : AmazonAdsBgtDilRule::apply($dil)['bgt'];
+            } elseif ($column === 'price') {
+                $keys[] = self::amazonAdsRowSortValue([
+                    'price' => $m['price'] ?? null,
+                    'lmp_price' => $m['lmp_price'] ?? null,
+                ], 'price');
+            } elseif ($column === 'bgtPrc') {
+                $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
+                $pricePrc = $gm['price'] ?? (isset($m['price']) && is_numeric($m['price']) ? (float) $m['price'] : null);
+                $keys[] = AmazonAdsBgtPrcRule::apply($pricePrc !== null && is_numeric($pricePrc) ? (float) $pricePrc : null)['bgt'];
+            } elseif ($column === 'reviews' || $column === 'bgtReviews') {
+                $fromAds = $cid !== '' ? ($ratingsByCid[$cid] ?? null) : null;
+                $rating = is_array($fromAds) && $fromAds['rating'] !== null
+                    ? (float) $fromAds['rating']
+                    : (isset($m['rating']) && is_numeric($m['rating']) ? (float) $m['rating'] : null);
+                $keys[] = $column === 'reviews'
+                    ? $rating
+                    : AmazonAdsBgtReviewsRule::apply($rating)['bgt'];
+            } elseif ($column === 'bgtInv') {
+                $keys[] = AmazonAdsBgtInvRule::apply($inv)['bgt'];
+            } elseif ($column === 'pageCvr') {
+                $keys[] = $pc['page_cvr'] ?? null;
+            } elseif ($column === 'viewsL30') {
+                $keys[] = isset($pc['sess30']) && is_numeric($pc['sess30']) ? (int) round((float) $pc['sess30']) : null;
+            } elseif ($column === 'viewsL7' || $column === 'bgtViews') {
+                $views = isset($pc['sess7']) && is_numeric($pc['sess7']) ? (float) $pc['sess7'] : null;
+                $keys[] = $column === 'viewsL7'
+                    ? ($views !== null ? (int) round($views) : null)
+                    : AmazonAdsBgtViewsRule::apply($views !== null ? $views : 0.0)['bgt'];
+            } elseif ($column === 'bgtCvr') {
+                $cvrIn = isset($pc['page_cvr']) && is_numeric($pc['page_cvr']) ? (float) $pc['page_cvr'] : 0.0;
+                $keys[] = AmazonAdsBgtCvrRule::apply($cvrIn)['bgt'];
+            } elseif ($column === 'ltAcos') {
+                $keys[] = $ltAcos;
+            } elseif ($column === 'bgtAcos') {
+                $keys[] = is_numeric($ltAcos) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $ltAcos) : null;
+            } elseif ($column === 'sbgt') {
+                $fromAds = $cid !== '' ? ($ratingsByCid[$cid] ?? null) : null;
+                $rating = is_array($fromAds) && $fromAds['rating'] !== null
+                    ? (float) $fromAds['rating']
+                    : (isset($m['rating']) && is_numeric($m['rating']) ? (float) $m['rating'] : null);
+                $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
+                $pricePrc = $gm['price'] ?? (isset($m['price']) && is_numeric($m['price']) ? (float) $m['price'] : null);
+                $sess7 = isset($pc['sess7']) && is_numeric($pc['sess7']) ? (float) $pc['sess7'] : 0.0;
+                $cvrIn = isset($pc['page_cvr']) && is_numeric($pc['page_cvr']) ? (float) $pc['page_cvr'] : 0.0;
+                $keys[] = self::summedSbgtFromParts(
+                    AmazonAdsBgtViewsRule::apply($sess7)['bgt'],
+                    AmazonAdsBgtCvrRule::apply($cvrIn)['bgt'],
+                    is_numeric($ltAcos) ? AmazonAcosSbgtRule::bgtAcosDecimal((float) $ltAcos) : null,
+                    AmazonAdsBgtPrcRule::apply($pricePrc !== null && is_numeric($pricePrc) ? (float) $pricePrc : null)['bgt'],
+                    AmazonAdsBgtReviewsRule::apply($rating)['bgt'],
+                    AmazonAdsBgtDilRule::apply($dil)['bgt'],
+                    AmazonAdsBgtInvRule::apply($inv)['bgt']
+                );
+            } elseif ($column === 'ruleStatus') {
+                $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($m);
+                $decision = AmazonAdsPauseRule::decide($pauseRule, [
+                    'dil' => $gm['dil'],
+                    'parent_dil' => AmazonAdsCampaignSkuMetrics::parentDilForCampaign($cn, $familyByName, $parentDilByFam),
+                ], $cn);
+                $keys[] = $decision['status'];
+            } elseif ($column === 'activeAgain') {
+                $nameAgain = AmazonAdsPauseRule::normalizeCampaignName((string) ($r['campaignName'] ?? ''));
+                $stateAgain = $statesByCid[$cid]
+                    ?? $statesByCid['id:'.$cid]
+                    ?? $statesByName[$nameAgain]
+                    ?? null;
+                $keys[] = AmazonAdsPauseRule::activeAgainDisplay($stateAgain)['label'];
+            } elseif ($column === 'CPCAvg') {
+                $keys[] = ($cidRaw !== '' && array_key_exists($lk, $cpcAvgMap)) ? $cpcAvgMap[$lk] : null;
+            } elseif ($column === 'ltCvr') {
+                $keys[] = ($cidRaw !== '' && array_key_exists($lk, $ltCvrMap)) ? $ltCvrMap[$lk] : null;
+            } elseif ($column === 'CPC2' || $column === 'CPC3') {
+                $adTypeStr = $hasAd ? (isset($r['ad_type']) && is_string($r['ad_type']) ? $r['ad_type'] : null) : null;
+                $day = self::calendarDayOffsetFromCpc1Anchor($r, $dbColumns, $table, $column === 'CPC2' ? 1 : 2);
+                $keys[] = ($day !== null && $cidRaw !== '')
+                    ? self::fetchCostPerClickOnReportDay($table, $dbColumns, $cidRaw, $adTypeStr, $day, $cpcDayCache)
+                    : null;
+            } elseif ($column === 'L1cost' || $column === 'L1clicks') {
+                $l1 = $l1Map[$lk] ?? null;
+                if ($column === 'L1cost') {
+                    $keys[] = (is_array($l1) && isset($l1['cost']) && is_numeric($l1['cost']) && is_finite((float) $l1['cost']))
+                        ? round((float) $l1['cost'], 2)
+                        : null;
+                } else {
+                    $keys[] = (is_array($l1) && isset($l1['clicks']) && is_numeric($l1['clicks']) && is_finite((float) $l1['clicks']))
+                        ? (int) round((float) $l1['clicks'])
+                        : null;
+                }
+            } else {
+                $keys[] = null;
+            }
+        }
+
+        return $keys;
     }
 
     /**

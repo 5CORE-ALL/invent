@@ -50,5 +50,6 @@ Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(
         Route::post('/resume', [AttendanceAgentController::class, 'resume'])->name('resume');
         Route::post('/screenshot', [AttendanceAgentController::class, 'screenshot'])->name('screenshot');
         Route::post('/live-frame', [AttendanceAgentController::class, 'liveFrame'])->name('live-frame');
+        Route::post('/live-chunk', [AttendanceAgentController::class, 'liveChunk'])->name('live-chunk');
     });
 });

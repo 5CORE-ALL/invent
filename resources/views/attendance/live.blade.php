@@ -99,6 +99,8 @@
         let recMime = '';
         let recPromise = null;
         let videoBound = false;
+        let player = null;
+        let streaming = false;
 
         function headers(json) {
             const h = { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' };
@@ -123,7 +125,7 @@
         }, 1000);
 
         function bindVideo() {
-            if (videoBound) return;
+            if (videoBound || streaming) return;
             try {
                 const stream = canvas.captureStream(8);
                 video.srcObject = stream;
@@ -188,7 +190,7 @@
         }
 
         async function pullFrame() {
-            if (!urls || shuttingDown) return false;
+            if (!urls || shuttingDown || streaming) return false;
             try {
                 const h = headers(false);
                 if (lastEtag) h['If-None-Match'] = lastEtag;
@@ -241,6 +243,50 @@
             pollTimer = setTimeout(pollLoop, Math.max(50, target - (Date.now() - tickStartedAt)));
         }
 
+        // Encoded video when the agent can produce it. The canvas path stays wired
+        // up underneath and takes back over if the stream never arrives or drops.
+        function startVideoPlayer() {
+            if (!window.AttendanceLivePlayer || !window.AttendanceLivePlayer.canPlay()) return;
+            if (!urls || !urls.video) return;
+
+            player = new window.AttendanceLivePlayer({
+                url: urls.video,
+                video: video,
+                headers: headers(false),
+                onActive: function () {
+                    streaming = true;
+                    firstFrameAt = firstFrameAt || Date.now();
+                    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+                    canvas.classList.remove('is-on');
+                    video.classList.add('is-on');
+                    setWait('', '', false);
+                    metaEl.textContent = 'Live video';
+                    recordFromVideo();
+                },
+                onInactive: function () {
+                    player = null;
+                    streaming = false;
+                    video.classList.remove('is-on');
+                    if (!shuttingDown && !pollTimer) pollLoop();
+                },
+            });
+            player.start();
+        }
+
+        // The recorder was fed by canvas.captureStream; with MSE the frames land
+        // in the video element instead, so the saved recording comes from there.
+        function recordFromVideo() {
+            if (recorder) return;
+            try {
+                const grab = video.captureStream || video.mozCaptureStream;
+                if (!grab) return;
+                const stream = grab.call(video);
+                if (stream) startRecorder(stream);
+            } catch (_) {
+                /* recording is best effort; live view still works */
+            }
+        }
+
         async function ping() {
             if (!urls || shuttingDown) return;
             try {
@@ -288,6 +334,9 @@
             if (pollTimer) clearTimeout(pollTimer);
             if (pingTimer) clearInterval(pingTimer);
             beaconStop();
+            // Stop fetching slices, but leave the recorder alone until it has
+            // flushed what it already captured.
+            if (player) { player.stop(); player = null; }
             const blob = await stopRecorder();
             await uploadRecording(blob);
         }
@@ -313,6 +362,7 @@
             setWait('Connecting live video', 'Asking the desktop app to stream this screen now. Recording starts when video appears.', true);
             pingTimer = setInterval(ping, 4000);
             pollLoop();
+            startVideoPlayer();
             ping();
         }
 

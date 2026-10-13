@@ -29,6 +29,19 @@ try {
 let autoUpdateWired = false;
 let autoUpdateState = { state: 'idle', percent: 0, version: '' };
 
+// Encoded screen stream. captureWin is an offscreen renderer because
+// getUserMedia and MediaRecorder do not exist in the main process.
+let captureWin = null;
+let videoStreaming = false;
+let videoGen = '';
+let videoChunkBusy = false;
+let lastVideoChunkAt = 0;
+let videoWatchdog = null;
+// Latches once this machine proves it cannot encode, so the agent stops
+// retrying video every time a viewer opens and stays on still frames.
+let videoUnsupported = false;
+let streamConfig = { enabled: true, fps: 20, width: 1280, bitrate: 1200000, chunk_ms: 600 };
+
 function argvWantsQuit(argv) {
     return (argv || []).some((arg) => arg === '--quit' || arg === '--quit-for-update');
 }
@@ -413,6 +426,182 @@ async function captureLiveFrame() {
     return source.thumbnail.toJPEG(quality);
 }
 
+function ensureCaptureWindow() {
+    if (captureWin && !captureWin.isDestroyed()) return captureWin;
+
+    captureWin = new BrowserWindow({
+        show: false,
+        width: 320,
+        height: 240,
+        webPreferences: {
+            preload: path.join(__dirname, 'capture', 'capture-preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            // Keep encoding running at full rate while the window is hidden.
+            backgroundThrottling: false,
+        },
+    });
+
+    // Answers the picker getDisplayMedia would otherwise raise, so the fallback
+    // path in capture.js stays silent for the employee.
+    try {
+        captureWin.webContents.session.setDisplayMediaRequestHandler((_request, callback) => {
+            desktopCapturer.getSources({ types: ['screen'] })
+                .then((sources) => callback(sources[0] ? { video: sources[0] } : {}))
+                .catch(() => callback({}));
+        });
+    } catch (_) {
+        /* older Electron: capture.js falls back to the constraint form */
+    }
+
+    captureWin.on('closed', () => { captureWin = null; });
+    captureWin.loadFile(path.join(__dirname, 'capture', 'capture.html'));
+
+    return captureWin;
+}
+
+/**
+ * Begin encoded capture. Returns false when this machine has to stay on the
+ * still-image path, so the caller can start the JPEG loop instead.
+ */
+function startVideoStream() {
+    if (videoUnsupported || streamConfig.enabled === false) return false;
+    if (!store.get('token') || !isOnDuty()) return false;
+    if (videoStreaming) return true;
+
+    let sourceId = null;
+    const primary = screen.getPrimaryDisplay();
+
+    videoStreaming = true;
+    videoGen = crypto.randomBytes(8).toString('hex');
+    lastVideoChunkAt = Date.now();
+
+    const win = ensureCaptureWindow();
+    const send = () => {
+        if (!videoStreaming || !win || win.isDestroyed()) return;
+        const aspect = primary ? primary.size.height / Math.max(1, primary.size.width) : 0.5625;
+        const width = Math.max(640, Number(streamConfig.width) || 1280);
+        win.webContents.send('capture-start', {
+            gen: videoGen,
+            sourceId,
+            width,
+            height: Math.round(width * aspect),
+            fps: streamConfig.fps,
+            bitrate: streamConfig.bitrate,
+            chunkMs: streamConfig.chunk_ms,
+        });
+    };
+
+    // A zero-size thumbnail keeps this cheap; only the source id is wanted, and
+    // unlike the old path it is fetched once per stream rather than per frame.
+    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+        .then((sources) => {
+            const match = primary && sources.find((s) => s.display_id === String(primary.id));
+            sourceId = (match || sources[0])?.id || null;
+        })
+        .catch(() => { sourceId = null; })
+        .finally(() => {
+            if (win.webContents.isLoading()) {
+                win.webContents.once('did-finish-load', send);
+            } else {
+                send();
+            }
+        });
+
+    if (videoWatchdog) clearInterval(videoWatchdog);
+    videoWatchdog = setInterval(watchVideoStream, 3000);
+
+    return true;
+}
+
+function stopVideoStream() {
+    if (videoWatchdog) { clearInterval(videoWatchdog); videoWatchdog = null; }
+    if (!videoStreaming) return;
+    videoStreaming = false;
+    videoGen = '';
+    if (captureWin && !captureWin.isDestroyed()) {
+        captureWin.webContents.send('capture-stop');
+    }
+}
+
+/**
+ * Drop to still frames if the encoder goes quiet. Without this a renderer that
+ * dies silently would leave the viewer staring at a frozen screen forever.
+ */
+function watchVideoStream() {
+    if (!videoStreaming) return;
+    if (Date.now() - lastVideoChunkAt < 8000) return;
+    fallBackToFrames('encoder produced no chunks');
+}
+
+function fallBackToFrames(reason) {
+    if (reason) console.error('live video unavailable:', reason);
+    videoUnsupported = true;
+    stopVideoStream();
+    if (liveStreaming) {
+        sendLiveFrame().catch(() => {});
+    }
+}
+
+async function uploadVideoChunk(payload) {
+    // One request at a time: overlapping uploads can reach the server out of
+    // order, and a continuation appended before its predecessor will not decode.
+    if (videoChunkBusy || !videoStreaming || payload.gen !== videoGen) return;
+    videoChunkBusy = true;
+    try {
+        const form = new FormData();
+        form.append('chunk', Buffer.from(payload.bytes), {
+            filename: 'live.webm',
+            contentType: payload.mime || 'video/webm',
+        });
+        form.append('gen', payload.gen);
+        form.append('seq', String(payload.seq));
+        form.append('init', payload.init ? '1' : '0');
+        form.append('mime', payload.mime || 'video/webm');
+
+        const { data } = await uploadApi(20000).post('/live-chunk', form, { headers: form.getHeaders() });
+        if (data?.resend_init) {
+            // Server lost our header, so nothing we send now can be decoded.
+            restartVideoStream();
+            return;
+        }
+        applyLiveWatch(data?.live_watch);
+    } catch (e) {
+        console.error('live chunk failed', e.message);
+    } finally {
+        videoChunkBusy = false;
+    }
+}
+
+function restartVideoStream() {
+    if (!videoStreaming) return;
+    stopVideoStream();
+    if (liveStreaming) startVideoStream();
+}
+
+ipcMain.on('capture-chunk', (_e, payload) => {
+    if (!payload?.bytes) return;
+    lastVideoChunkAt = Date.now();
+    uploadVideoChunk(payload).catch(() => {});
+});
+
+ipcMain.on('capture-status', (_e, payload) => {
+    const state = payload?.state;
+    if (state === 'streaming') {
+        lastVideoChunkAt = Date.now();
+        return;
+    }
+    if (state === 'unsupported') {
+        fallBackToFrames(payload?.detail);
+        return;
+    }
+    if (state === 'ended' && videoStreaming) {
+        // The share was revoked rather than the machine being incapable, so
+        // rebuild the stream once before giving up on video.
+        restartVideoStream();
+    }
+});
+
 function applyLiveWatch(liveWatch) {
     if (liveWatch?.force_logout) {
         forceRemoteSignOut(liveWatch.message);
@@ -420,6 +609,7 @@ function applyLiveWatch(liveWatch) {
     }
     if (config.live_watch_enabled === false) {
         liveStreaming = false;
+        stopVideoStream();
         return;
     }
     if (!liveWatch) return;
@@ -429,20 +619,29 @@ function applyLiveWatch(liveWatch) {
     if (liveWatch.quality) {
         config.live_quality = liveWatch.quality;
     }
+    if (liveWatch.stream) {
+        streamConfig = { ...streamConfig, ...liveWatch.stream };
+    }
     // Monitoring only runs on the clock: never stream (or capture) while there is no active
     // session on this machine, even if a viewer is asking for live video.
     const requested = !!liveWatch.requested && isOnDuty();
     if (requested && !liveStreaming) {
         liveStreaming = true;
-        sendLiveFrame().catch(() => {});
+        // Encoded video is the smooth path; the JPEG loop only runs if it is
+        // unavailable or fails, so the two never capture the screen at once.
+        if (!startVideoStream()) {
+            sendLiveFrame().catch(() => {});
+        }
         // Follow the interval the server asked for. Forcing a 1s full-resolution
         // screenshot here used to run a second capture pipeline alongside the video.
         restartScreenshotTimer();
     } else if (!requested && liveStreaming) {
         liveStreaming = false;
+        stopVideoStream();
         restartScreenshotTimer();
     } else if (!requested) {
         liveStreaming = false;
+        stopVideoStream();
     }
 }
 
@@ -476,6 +675,7 @@ async function sendLiveFrame() {
     if (!liveStreaming || liveStreamBusy || !store.get('token')) return;
     if (!isOnDuty()) {
         liveStreaming = false;
+        stopVideoStream();
         return;
     }
     liveStreamBusy = true;
@@ -521,6 +721,7 @@ function startLiveWatchPoll() {
 function stopLiveWatchPoll() {
     if (liveWatchTimer) { clearInterval(liveWatchTimer); liveWatchTimer = null; }
     liveStreaming = false;
+    stopVideoStream();
 }
 
 function blitBitmap(dst, dstW, dstH, src, srcW, srcH, dx, dy, targetW, targetH) {
@@ -1064,6 +1265,7 @@ function resetLocalStats(session, today) {
     }
     if (!isOnDuty()) {
         liveStreaming = false;
+        stopVideoStream();
     }
     lastHeartbeatSentAt = Date.now();
 }

@@ -40,10 +40,15 @@
             background: #020617; border: 1px solid #1f2937; border-radius: 10px;
         }
         .tmv-tile.is-min { display: none; }
-        .tmv-tile img {
+        .tmv-tile img, .tmv-tile video {
             width: 100%; height: 100%; object-fit: contain; display: block; background: #020617;
         }
         .tmv-tile img.is-poster { opacity: .45; filter: grayscale(.2); }
+        /* Video sits on top of the still image and only shows once it decodes,
+           so a tile falling back to frames never flashes an empty player. */
+        .tmv-tile video { position: absolute; inset: 0; display: none; }
+        .tmv-tile.is-video video { display: block; }
+        .tmv-tile.is-video img { visibility: hidden; }
         .tmv-wait {
             position: absolute; inset: 0; display: flex; flex-direction: column;
             align-items: center; justify-content: center; text-align: center; padding: 1rem;
@@ -122,6 +127,7 @@
             @forelse($tiles as $tile)
             <article class="tmv-tile" data-user-id="{{ $tile['user_id'] }}" data-start-url="{{ $tile['start_url'] }}" data-name="{{ $tile['name'] }}">
                 <img alt="" @if($tile['poster']) src="{{ $tile['poster'] }}" class="is-poster" @endif>
+                <video muted playsinline autoplay></video>
                 <div class="tmv-wait">
                     <div class="tmv-spin"></div>
                     <p>Connecting…</p>
@@ -155,6 +161,7 @@
     </div>
     <div class="tmv-dock" id="tmvDock"></div>
 
+    <script src="{{ asset('js/attendance-live-player.js') }}"></script>
     <script>
     (function () {
         const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -212,6 +219,7 @@
 
         function createTile(el) {
             const img = el.querySelector('img');
+            const video = el.querySelector('video');
             const wait = el.querySelector('.tmv-wait');
             const meta = el.querySelector('.tmv-meta');
             const playBtn = el.querySelector('.js-play');
@@ -228,6 +236,7 @@
                 pollTimer: null,
                 objectUrl: null,
                 etag: null,
+                player: null,
             };
 
             async function startSession() {
@@ -298,6 +307,43 @@
                 if (tile.pollTimer) { clearTimeout(tile.pollTimer); tile.pollTimer = null; }
             }
 
+            // Encoded video when the employee's agent can produce it, still frames
+            // otherwise. Only one of the two ever runs for a given tile.
+            function startVideo() {
+                if (!window.AttendanceLivePlayer || !window.AttendanceLivePlayer.canPlay()) return false;
+                if (!tile.urls || !tile.urls.video) return false;
+
+                tile.player = new window.AttendanceLivePlayer({
+                    url: tile.urls.video,
+                    video: video,
+                    headers: headers(false),
+                    onActive: function () {
+                        // Video has taken over, so stop pulling stills for this tile.
+                        stopPoll();
+                        el.classList.add('is-video');
+                        wait.classList.add('is-off');
+                        meta.textContent = 'Live video';
+                    },
+                    onInactive: function () {
+                        tile.player = null;
+                        el.classList.remove('is-video');
+                        if (tile.playing && !tile.minimized) {
+                            stopPoll();
+                            pollLoop();
+                        }
+                    },
+                });
+                tile.player.start();
+                return true;
+            }
+
+            function stopVideo() {
+                if (tile.player) { tile.player.stop(); tile.player = null; }
+                el.classList.remove('is-video');
+                video.removeAttribute('src');
+                try { video.load(); } catch (_) {}
+            }
+
             async function stopSession() {
                 if (!tile.urls) return;
                 const body = new URLSearchParams();
@@ -327,7 +373,10 @@
                     // Force a full frame so the overlay is cleared even if the screen
                     // has not changed since this tile was paused.
                     tile.etag = null;
+                    // Frames run underneath until video proves it can decode, so a
+                    // tile is never blank while the stream is being established.
                     pollLoop();
+                    startVideo();
                 } catch (err) {
                     tile.playing = false;
                     playBtn.classList.remove('is-on');
@@ -343,6 +392,7 @@
                 playBtn.classList.remove('is-on');
                 pauseBtn.classList.add('is-on');
                 stopPoll();
+                stopVideo();
                 await stopSession();
                 wait.classList.remove('is-off');
                 wait.querySelector('p').textContent = 'Paused';
@@ -374,6 +424,7 @@
             tile.restore = restore;
             tile.shutdown = function () {
                 stopPoll();
+                stopVideo();
                 if (tile.urls) {
                     const body = new URLSearchParams();
                     body.set('_token', csrf);

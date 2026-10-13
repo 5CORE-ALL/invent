@@ -92,6 +92,27 @@ return [
     | show video on the team wall no matter how long the viewer waits.
     */
     'live_min_version' => '1.4.0',
+
+    /*
+    | Encoded video stream (WebM over MSE). Older builds only know how to post
+    | single JPEG frames, so the viewer keeps the still-image path for them.
+    */
+    'live_stream_enabled' => env('ATTENDANCE_LIVE_STREAM', true),
+    'live_stream_min_version' => '1.5.0',
+    'live_stream_fps' => (int) env('ATTENDANCE_LIVE_STREAM_FPS', 20),
+    'live_stream_width' => (int) env('ATTENDANCE_LIVE_STREAM_WIDTH', 1280),
+    'live_stream_bitrate' => (int) env('ATTENDANCE_LIVE_STREAM_BITRATE', 1200000),
+    /*
+    | Milliseconds of video per uploaded chunk. Smaller means lower latency but
+    | more requests; the viewer is always at least one chunk behind.
+    */
+    'live_stream_chunk_ms' => (int) env('ATTENDANCE_LIVE_STREAM_CHUNK_MS', 600),
+    /*
+    | How many chunks stay replayable. MediaRecorder output is a single continuous
+    | stream, so a viewer that falls past this window cannot be fed contiguously
+    | and has to resync.
+    */
+    'live_stream_keep_chunks' => (int) env('ATTENDANCE_LIVE_STREAM_KEEP', 60),
     'agent_installer_path' => env('ATTENDANCE_AGENT_INSTALLER_PATH'),
     'agent_download_filename' => env('ATTENDANCE_AGENT_DOWNLOAD_FILENAME', '5Core-Attendance-Setup.exe'),
     'agent_mac_installer_path' => env('ATTENDANCE_AGENT_MAC_INSTALLER_PATH'),
