@@ -109,7 +109,11 @@ class AutomatedListingPage
             }
 
             $listingId = ListingCountsEngine::listingIdFromMap($listedMap, $childSku);
-            if ($listingId === '') {
+            $item->page_created = ListingCountsEngine::isPageCreatedId($listingId);
+            if ($item->page_created) {
+                $listingId = '';
+            }
+            if ($listingId === '' && ! $item->page_created) {
                 $listingId = ListingCountsEngine::listingIdFromLinks(
                     $item->buyer_link,
                     $item->seller_link,
@@ -124,7 +128,7 @@ class AutomatedListingPage
             $item->listing_id = $idOrNull;
             // EbayTwo-style blades historically read eBay_item_id for Missing L / links
             $item->eBay_item_id = $idOrNull;
-            $item->listed = $listingId !== '' ? 'Listed' : 'Pending';
+            $item->listed = $item->page_created ? 'Created' : ($listingId !== '' ? 'Listed' : 'Pending');
             if (! $item->buyer_link && $idOrNull && str_starts_with($idOrNull, 'http')) {
                 $item->buyer_link = $idOrNull;
             }

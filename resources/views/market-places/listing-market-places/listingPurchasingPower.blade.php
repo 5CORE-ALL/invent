@@ -661,7 +661,7 @@
                 const itemId = String(item.eBay_item_id || '').trim();
                 // Automated: NRL from PurchasingPowerDataView; Listed from purchasing_power_products.sku
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = itemId ? 'Listed' : 'Pending';
+                const listed = item.page_created ? 'Created' : (itemId ? 'Listed' : 'Pending');
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -839,6 +839,9 @@
         function formatListed(cell) {
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
+            if (data.page_created) {
+                return '';
+            }
 
             // Missing Listing: channel listing id / price signal = Listed
             const itemId = String(data.eBay_item_id || '').trim();
