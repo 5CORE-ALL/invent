@@ -29,7 +29,11 @@ class WarmTopDawgLiveListingsCache implements ShouldQueue
 
     public function handle(TopDawgLiveListingsService $service): void
     {
+        $live = $service->refreshFromTopDawg();
         $rows = $service->all(true);
-        Log::info('WarmTopDawgLiveListingsCache: warmed', ['count' => count($rows)]);
+        Log::info('WarmTopDawgLiveListingsCache: warmed', [
+            'count' => count($rows),
+            'live_qty_refreshed' => $live === null ? 'failed' : count($live),
+        ]);
     }
 }

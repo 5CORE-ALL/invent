@@ -2,9 +2,12 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\ShopifySku;
 use App\Models\TopDawgProduct;
 use App\Services\TopDawgApiService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -17,6 +20,54 @@ class TopDawgLiveListingsService
     public function clearCache(): void
     {
         Cache::forget(self::CACHE_KEY);
+    }
+
+    /**
+     * Pull qty_available and status for every product from TopDawg SupplierProduct/list into
+     * topdawg_products. The listings page reads that table, so without this it only shows
+     * whatever the app last wrote there.
+     *
+     * @return array<string, int>|null  upper-cased SKU => live qty, or null when TopDawg could not be read
+     */
+    public function refreshFromTopDawg(): ?array
+    {
+        if (! Schema::hasTable('topdawg_products')) {
+            return null;
+        }
+
+        try {
+            $items = app(TopDawgApiService::class)->fetchProducts()['data'] ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('TopDawgLiveListingsService: live refresh failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+        if (! is_array($items) || $items === []) {
+            return null;
+        }
+
+        $live = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $sku = ShopifySku::normalizeSkuForShopifyLookup((string) ($item['product_code'] ?? $item['sku'] ?? ''));
+            $qty = TopDawgApiService::qtyFromLiveProductRow($item);
+            if ($sku === '' || $qty === null) {
+                continue;
+            }
+            $update = ['remaining_inventory' => $qty, 'updated_at' => now()];
+            $state = TopDawgApiService::listingStateFromItem($item);
+            if ($state !== null && $state !== '') {
+                $update['listing_state'] = $state;
+            }
+            DB::table('topdawg_products')->where('sku', $sku)->update($update);
+            $live[strtoupper($sku)] = $qty;
+        }
+
+        $this->clearCache();
+
+        return $live;
     }
 
     /**

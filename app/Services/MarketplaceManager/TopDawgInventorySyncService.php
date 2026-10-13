@@ -125,19 +125,55 @@ class TopDawgInventorySyncService
         $failed = (int) ($invResult['failed'] ?? 0);
         $updatedSkus = $invResult['updated_skus'] ?? [];
 
+        // TopDawg answers "submitted for review" to every SupplierProduct/update, so a push is only
+        // counted (and written to topdawg_products) once SupplierProduct/list shows the new qty.
+        $confirmed = $pushed;
+        $pending = [];
         if ($pushed > 0) {
-            $this->persistLocalStock($inventoryRows, $updatedSkus);
+            sleep(2);
+            $live = app(TopDawgLiveListingsService::class)->refreshFromTopDawg();
+            if ($live !== null) {
+                $confirmedSkus = [];
+                $updatedUpper = array_flip(array_map(static fn ($s) => strtoupper(trim((string) $s)), $updatedSkus));
+                foreach ($inventoryRows as $row) {
+                    $sku = (string) $row['sku_code'];
+                    if (! isset($updatedUpper[strtoupper(trim($sku))])) {
+                        continue;
+                    }
+                    $key = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
+                    if (($live[$key] ?? null) === (int) $row['inventory']) {
+                        $confirmedSkus[] = $sku;
+                    } else {
+                        $pending[] = $sku;
+                    }
+                }
+                $confirmed = count($confirmedSkus);
+                if ($confirmedSkus !== []) {
+                    $this->persistLocalStock($inventoryRows, $confirmedSkus);
+                }
+            }
             $this->clearListingCaches();
         }
 
+        $message = $invResult['message'] ?? null;
+        if ($message === null) {
+            if ($pushed === 0) {
+                $message = 'TopDawg inventory update failed.';
+            } elseif ($pending === []) {
+                $message = 'Synced '.$confirmed.' SKU(s) to TopDawg from live Shopify.';
+            } else {
+                $message = 'TopDawg accepted '.$pushed.' SKU(s); '.$confirmed.' show the new qty live, '
+                    .count($pending).' still show the old qty (TopDawg review pending): '
+                    .implode(', ', array_slice($pending, 0, 10)).(count($pending) > 10 ? ', …' : '').'.';
+            }
+        }
+
         return [
-            'updated' => $pushed,
+            'updated' => $confirmed,
             'failed' => $failed,
             'skipped' => $skipped,
-            'message' => $invResult['message']
-                ?? ($pushed > 0
-                    ? 'Synced '.$pushed.' SKU(s) to TopDawg from live Shopify.'
-                    : 'TopDawg inventory update failed.'),
+            'pending_review' => count($pending),
+            'message' => $message,
         ];
     }
 
