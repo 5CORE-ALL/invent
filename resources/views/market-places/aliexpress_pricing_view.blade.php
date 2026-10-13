@@ -1045,13 +1045,6 @@
                     aeReformatPushRow(row);
                 }
             });
-            if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
-                ParentExpand.captureDataset(
-                    (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
-                        ? aeFullTableData
-                        : allTableData
-                );
-            }
             if (typeof updateSummary === 'function') {
                 try { updateSummary(); } catch (e) { /* ignore */ }
             }
@@ -1816,11 +1809,6 @@
 
         function applyFilters() {
             if (aeApplyingFilters) return;
-            if (window.ParentExpand && ParentExpand.isExpanded()) {
-                aeDbgLog('A', 'aliexpress_pricing_view.blade.php:applyFilters', 'early return ParentExpand expanded', {});
-                ParentExpand.beforeFilters(function(){ applyFilters(); });
-                return;
-            }
             if (!table) {
                 aeDbgLog('A', 'aliexpress_pricing_view.blade.php:applyFilters', 'early return table missing', {});
                 return;
@@ -2132,7 +2120,6 @@
                     aeFullTableData = rows;
                     allTableData = rows;
                     aeSyncPushDatasets();
-                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     const rowType = $('#ae-row-type-filter').val() || 'skus';
                     const visibleRows = aeRowsForType(rowType, rows).filter(function(r) {
                         return aeRowMatchesFilters(r);
@@ -2202,11 +2189,6 @@
                             return `<span style="color:#0d6efd;font-size:11px;font-weight:600;">${v}</span>`;
                         }
                     },
-                    (function() {
-                        const pe = ParentExpand.columnDef();
-                        if (pe && pe.headerSort === undefined) pe.headerSort = true;
-                        return pe;
-                    })(),
                     {
                         title: "Image",
                         field: "image",
@@ -2422,22 +2404,6 @@
                         headerSort: true,
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
-                            if (window.ParentExpand) {
-                                const avgHtml = ParentExpand.parentAvgLmpHtml(row, {
-                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined,
-                                    field: 'lmp',
-                                    getValue: function(r) {
-                                        const entries = r.lmp_entries || [];
-                                        if (entries.length) {
-                                            const extra = aeLmpLowestFromEntries(entries);
-                                            return extra.lmp > 0 ? extra.lmp : null;
-                                        }
-                                        const v = parseFloat(r.lmp_price || r.lmp);
-                                        return isFinite(v) && v > 0 ? v : null;
-                                    }
-                                });
-                                if (avgHtml !== null) return avgHtml;
-                            }
                             if (row.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const entries = row.lmp_entries || [];
                             const extra = aeLmpLowestFromEntries(entries);
@@ -2779,7 +2745,6 @@
                         allTableData = Array.isArray(data) ? data : [];
                     }
                     aeSyncPushDatasets();
-                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     if (!$('#ae-row-type-filter').val()) {
                         $('#ae-row-type-filter').val('skus');
                     }
@@ -2844,19 +2809,6 @@
                     // #endregion
                 }
             });
-
-            if (window.ParentExpand) {
-                ParentExpand.configure({
-                    parentField: 'parent',
-                    skuField: 'sku',
-                    isParentRow: aeIsParentRow,
-                    getTable: () => table,
-                    getDataset: () => allTableData,
-                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
-                    onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
-                });
-                ParentExpand.bind();
-            }
 
             $('#pricing-sku-search').on('input', function() { applyFilters(); });
             $('#ae-row-type-filter').on('change', function() { applyFilters(); });
