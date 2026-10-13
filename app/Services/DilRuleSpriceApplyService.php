@@ -2,9 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\AliexpressDataView;
-use App\Models\AliexpressLmpDataSheet;
-use App\Models\AliexpressMetric;
 use App\Models\AmazonDataView;
 use App\Models\AmazonDatasheet;
 use App\Models\BestbuyUsaProduct;
@@ -47,7 +44,6 @@ use App\Models\WalmartDataView;
 use App\Models\WalmartMetrics;
 use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
-use App\Support\AliexpressPushGuard;
 use App\Support\AmazonDilGroiRule;
 use App\Support\ProductMasterShipBb;
 use App\Support\ProductMasterTemuShip;
@@ -65,7 +61,6 @@ use Throwable;
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
  * Wayfair / Faire / TopDawg / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
- * AliExpress: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab, else Std then LMP if Std > LMP; Stop < N% skips.
  * Shein: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab or nearest slab. Dil is Shopify OV L30 ÷ INV.
  * Level-only CVR overlay when views > 0.
  */
@@ -75,7 +70,6 @@ class DilRuleSpriceApplyService
 
     public const CHANNELS = [
         'bestbuy',
-        'aliexpress',
         'newegg',
         'temu',
         'temu2',
@@ -96,7 +90,6 @@ class DilRuleSpriceApplyService
     /** Channels the shared push runner can actually send. FB and Doba are save-only (no auto push). */
     public const PUSH_CHANNELS = [
         'bestbuy',
-        'aliexpress',
         'newegg',
         'temu',
         'temu2',
@@ -132,7 +125,6 @@ class DilRuleSpriceApplyService
 
         return match ($channel) {
             'bb', 'best_buy', 'bestbuyusa' => 'bestbuy',
-            'ae', 'ali' => 'aliexpress',
             'tt', 'tiktokshop' => 'tiktok',
             'tiktok_2', 'tiktoktwo' => 'tiktok2',
             'td', 'top_dawg' => 'topdawg',
@@ -187,7 +179,6 @@ class DilRuleSpriceApplyService
             'applied' => 0,
             'skipped_unchanged' => 0,
             'skipped' => 0,
-            'cleared' => 0,
             'errors' => [],
         ];
         $pushTasks = [];
@@ -205,12 +196,6 @@ class DilRuleSpriceApplyService
                     $computed = $this->computeTarget($row, $dilRules, $cvrAdj, $margin);
                     if ($computed === null) {
                         $stats['skipped']++;
-                        if ($this->channel === 'aliexpress'
-                            && (float) ($row['saved_sprice'] ?? 0) > 0
-                            && ! $dryRun
-                            && $this->clearSprice((string) ($row['sku'] ?? ''))) {
-                            $stats['cleared']++;
-                        }
                         continue;
                     }
                     $next = $computed['sprice'];
@@ -315,10 +300,6 @@ class DilRuleSpriceApplyService
 
             return $priced !== null ? ['sprice' => $priced] : null;
         }
-        if ($this->channel === 'aliexpress') {
-            return $this->computeAliexpressTarget($row, $dilRules, $margin);
-        }
-
         $cfg = $this->channelConfig();
         $inv = (float) ($row['inv'] ?? 0);
         if (! ($inv > 0) || ! ($margin > 0)) {
@@ -417,100 +398,6 @@ class DilRuleSpriceApplyService
         $price = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
 
         return $price !== null ? $price : round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
-    }
-
-    /**
-     * /aliexpress-pricing Sprc Dil: AL30 = 0 uses min Target NROI (same as other
-     * 0 Sold pages). AL30 > 0 uses Dil slab, else Std then LMP if Std > LMP.
-     * Stop < N% (when ON) skips the save — same cutoff as the pricing-page button.
-     *
-     * @param  list<array{key:string,label:string,min:float,max:float,groi:float}>  $dilRules
-     * @return array{sprice: float, groi: float}|null
-     */
-    public function computeAliexpressTarget(array $row, array $dilRules, float $margin): ?array
-    {
-        $inv = (float) ($row['inv'] ?? 0);
-        if (! ($inv > 0) || ! ($margin > 0)) {
-            return null;
-        }
-        $lp = (float) ($row['lp'] ?? 0);
-        if (! ($lp > 0)) {
-            return null;
-        }
-        $ship = (float) ($row['ship'] ?? 0);
-        $dil = (float) ($row['dil'] ?? 0);
-        $al30 = (float) ($row['al30'] ?? 0);
-        $lmp = (float) ($row['lmp'] ?? 0);
-
-        if ($al30 <= 0) {
-            $groi = AmazonDilGroiRule::minTarget($dilRules);
-            if ($groi === null) {
-                return null;
-            }
-            $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
-            $raw = $raw !== null ? $raw : round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
-            if (! is_finite($raw) || $raw < 0.01) {
-                return null;
-            }
-            $raw = AmazonDilGroiRule::capToStdWhenNoLmp($raw, $lmp, (float) ($row['std_price'] ?? 0));
-            if ($this->aliexpressStopBlocks($raw, $lp, $ship, $margin)) {
-                return null;
-            }
-
-            return ['sprice' => $raw, 'groi' => $groi];
-        }
-
-        $rule = AmazonDilGroiRule::match($dil, $dilRules);
-
-        if ($rule !== null) {
-            $groi = (float) $rule['groi'];
-            $raw = AmazonDilGroiRule::suggestedPrice($lp, $ship, $groi, 0.0, $margin);
-            $raw = $raw !== null ? $raw : round(($lp * (1 + $groi / 100) + $ship) / $margin, 2);
-            if (! is_finite($raw) || $raw < 0.01) {
-                return null;
-            }
-            $sprice = AmazonDilGroiRule::capSpriceToLmp(
-                $raw,
-                $lmp,
-                $lp,
-                $ship,
-                $margin,
-                (float) ($row['std_price'] ?? 0)
-            );
-            if ($this->aliexpressStopBlocks($sprice, $lp, $ship, $margin)) {
-                return null;
-            }
-
-            return ['sprice' => $sprice, 'groi' => $groi];
-        }
-
-        $std = (float) ($row['std_price'] ?? 0);
-        if (! ($std > 0)) {
-            return null;
-        }
-        $sprice = round($std, 2);
-        if ($lmp > 0 && $std + 0.0001 > $lmp) {
-            $sprice = round($lmp, 2);
-        }
-        if ($this->aliexpressStopBlocks($sprice, $lp, $ship, $margin)) {
-            return null;
-        }
-        $groi = AmazonDilGroiRule::sgroiAtPrice($sprice, $lp, $ship, $margin);
-
-        return [
-            'sprice' => $sprice,
-            'groi' => is_finite((float) $groi) ? (float) $groi : 0.0,
-        ];
-    }
-
-    protected function aliexpressStopBlocks(float $sprice, float $lp, float $ship, float $margin): bool
-    {
-        if (! AliexpressPushGuard::stopLowSgroiEnabled()) {
-            return false;
-        }
-        $sgroi = AmazonDilGroiRule::sgroiAtPrice($sprice, $lp, $ship, $margin);
-
-        return AliexpressPushGuard::shouldSkipSgroi($sgroi);
     }
 
     public function capToLmp(float $sprice, float $lmp, float $lp, float $ship, float $margin): float
@@ -614,8 +501,6 @@ class DilRuleSpriceApplyService
             $amzBySku = $this->amazonBySku($skus);
         }
         $stdBySku = self::amazonStdBySku($skus);
-        $aeLmpBySku = $this->channel === 'aliexpress' ? $this->aliexpressLmpBySku($skus) : [];
-
         $l30Overlay = [];
         if ($this->channel === 'temu3') {
             $l30Overlay = $this->temu3L30BySku($skus);
@@ -640,10 +525,7 @@ class DilRuleSpriceApplyService
 
             $ov = 0.0;
             $al30 = 0.0;
-            if ($this->channel === 'aliexpress') {
-                $ov = (float) ($shopify->quantity ?? 0);
-                $al30 = (float) ($metric->l30 ?? 0);
-            } elseif ($this->channel === 'shein') {
+            if ($this->channel === 'shein') {
                 $ov = (float) ($shopify->quantity ?? 0);
                 $al30 = (float) ($l30Overlay[$sku] ?? 0);
             } elseif ($this->channel === 'faire') {
@@ -696,7 +578,7 @@ class DilRuleSpriceApplyService
                         ? (float) ($l30Overlay[$sku] ?? 0)
                         : (($this->channel === 'shein' || $this->channel === 'faire') ? $al30 : $ov)) / $views) * 100, 2)
                     : 0.0,
-                'lmp' => $aeLmpBySku[$sku] ?? ($lmpBySku[$sku] ?? 0.0),
+                'lmp' => $lmpBySku[$sku] ?? 0.0,
                 'std_price' => $stdBySku[$sku] ?? 0.0,
                 'amz_price' => (float) ($amzBySku[$sku]['price'] ?? 0),
                 'saved_sprice' => $savedBySku[$sku] ?? 0.0,
@@ -783,67 +665,6 @@ class DilRuleSpriceApplyService
         }
 
         return $out;
-    }
-
-    /**
-     * @param  list<string>  $skus
-     * @return array<string, float>
-     */
-    protected function aliexpressLmpBySku(array $skus): array
-    {
-        if ($skus === [] || ! Schema::hasTable('aliexpress_lmp_data_sheet')) {
-            return [];
-        }
-        $wanted = [];
-        foreach ($skus as $sku) {
-            $wanted[strtoupper(trim((string) $sku))] = true;
-        }
-        $out = [];
-        foreach (AliexpressLmpDataSheet::query()->whereIn('sku', $skus)->get() as $row) {
-            $sku = strtoupper(trim((string) $row->sku));
-            if ($sku === '' || ! isset($wanted[$sku]) || isset($out[$sku])) {
-                continue;
-            }
-            $min = $this->aliexpressMinLandedLmp($row);
-            if ($min > 0) {
-                $out[$sku] = $min;
-            }
-        }
-
-        return $out;
-    }
-
-    protected function aliexpressMinLandedLmp(object $row): float
-    {
-        $entries = is_array($row->lmp_entries ?? null) ? $row->lmp_entries : [];
-        if ($entries === [] && ! is_array($row->lmp_entries ?? null)) {
-            if ($row->lmp !== null) {
-                $entries[] = ['price' => $row->lmp];
-            }
-            if (($row->lmp_2 ?? null) !== null) {
-                $entries[] = ['price' => $row->lmp_2];
-            }
-        }
-        $min = 0.0;
-        foreach ($entries as $e) {
-            if (! is_array($e) || ! empty($e['ignored'])) {
-                continue;
-            }
-            $p = isset($e['price']) && $e['price'] !== '' && $e['price'] !== null
-                ? (float) $e['price']
-                : 0.0;
-            if ($p <= 0) {
-                continue;
-            }
-            $shipRaw = $e['ship'] ?? $e['delivery'] ?? $e['shipping_cost'] ?? 0;
-            $s = ($shipRaw !== '' && $shipRaw !== null) ? max(0, (float) $shipRaw) : 0.0;
-            $landed = round($p + $s, 2);
-            if ($min <= 0 || $landed < $min) {
-                $min = $landed;
-            }
-        }
-
-        return $min;
     }
 
     /**
@@ -1147,41 +968,6 @@ class DilRuleSpriceApplyService
         $view->save();
     }
 
-    /** AliExpress only: drop leftover S PRC when Dil/Std/Stop produces no new price. */
-    protected function clearSprice(string $sku): bool
-    {
-        if ($this->channel !== 'aliexpress') {
-            return false;
-        }
-        $sku = strtoupper(trim($sku));
-        if ($sku === '') {
-            return false;
-        }
-        $view = AliexpressDataView::query()
-            ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
-            ->first();
-        if (! $view) {
-            return false;
-        }
-        $existing = is_array($view->value) ? $view->value : [];
-        $had = isset($existing['SPRICE']) && is_numeric($existing['SPRICE']) && (float) $existing['SPRICE'] > 0;
-        if (! $had && isset($existing['sprice']) && is_numeric($existing['sprice']) && (float) $existing['sprice'] > 0) {
-            $had = true;
-        }
-        if (! $had) {
-            return false;
-        }
-        unset($existing['SPRICE'], $existing['sprice'], $existing['SGPFT'], $existing['SGROI']);
-        $existing['has_custom_sprice'] = false;
-        $existing['SPRICE_CLEARED'] = true;
-        $existing['SPRICE_STATUS'] = 'cleared';
-        $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
-        $view->value = $existing;
-        $view->save();
-
-        return true;
-    }
-
     /**
      * Copy another channel's Dil store once, only when this channel has no row yet.
      * Later saves stay on $channel and do not write $source.
@@ -1312,13 +1098,6 @@ class DilRuleSpriceApplyService
                 'price' => 'price',
                 'l30' => 'm_l30',
                 'amz_floor' => true,
-            ],
-            'aliexpress' => [
-                'metric' => AliexpressMetric::class,
-                'view' => AliexpressDataView::class,
-                'price' => 'price',
-                'views' => 'views',
-                'zero_sold_min_groi' => true,
             ],
             'newegg' => [
                 'metric' => NeweggMetric::class,

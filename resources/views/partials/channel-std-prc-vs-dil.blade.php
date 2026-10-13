@@ -1590,6 +1590,8 @@
             return chain;
         }
         function chStdOwnsSprice() {
+            // Server-owned channels (AliExpress): a cron saves + pushes S PRC. The page never writes it on open.
+            if (window.CH_STD_SERVER_OWNED === true) return false;
             if (document.getElementById('sprice-rule-switch')) {
                 return typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() !== 'dil';
             }
@@ -1669,7 +1671,9 @@
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdOwnsSprice()) {
-                    $('#ch-sp-status').text('Saved. S PRC follows the ON rule.');
+                    $('#ch-sp-status').text(window.CH_STD_SERVER_OWNED === true
+                        ? 'Saved. The server job applies S PRC from these rules at its next run (04:15 / 20:15 IST).'
+                        : 'Saved. S PRC follows the ON rule.');
                     chStdRefresh();
                     chStdSaveHistory();
                     return;

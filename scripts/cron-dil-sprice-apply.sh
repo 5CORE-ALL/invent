@@ -6,7 +6,7 @@
 #   0 4,20 * * *  ... cron-dil-sprice-apply.sh amazon
 #   10 4,20 * * * ... cron-dil-sprice-apply.sh newtemuone
 #   5 5,21 * * *  ... cron-dil-sprice-apply.sh bestbuy
-#   15 5,21 * * * ... cron-dil-sprice-apply.sh aliexpress
+#   15 4,20 * * * ... cron-dil-sprice-apply.sh aliexpress
 #   25 5,21 * * * ... cron-dil-sprice-apply.sh newegg
 #   35 5,21 * * * ... cron-dil-sprice-apply.sh temu
 #   45 5,21 * * * ... cron-dil-sprice-apply.sh temu2
@@ -67,8 +67,12 @@ case "$MODE" in
     CMD=(purchasing-power:rule-sprice-apply)
     MODE=purchasing_power
     ;;
-  bestbuy|aliexpress|newegg|temu|temu2|temu3|reverb|tiktok|tiktok2|faire|shein|wayfair|topdawg|walmart|pls)
+  bestbuy|newegg|temu|temu2|temu3|reverb|tiktok|tiktok2|faire|shein|wayfair|topdawg|walmart|pls)
     CMD=(dil:rule-sprice-apply "$MODE" --push)
+    ;;
+  aliexpress|ae)
+    CMD=(aliexpress:sprc-dil-auto-push)
+    MODE=aliexpress
     ;;
   doba)
     # Save-only: no auto price push to Doba.

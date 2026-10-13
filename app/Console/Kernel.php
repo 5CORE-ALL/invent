@@ -1010,6 +1010,25 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // AliExpress Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → SPRICE → AliExpress.
+        // Same twice-daily idea as Amazon, offset 15 min. /aliexpress-pricing does not need to be open.
+        // Do NOT wrap 20:15 in $ist() — IST window ends at 20:00.
+        $schedule->command('aliexpress:sprc-dil-auto-push')
+            ->dailyAt('04:15')
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('aliexpress:sprc-dil-auto-push')
+            ->dailyAt('20:15')
+            ->timezone('Asia/Kolkata')
+            ->name('aliexpress-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload": blue-triangle SKUs (INV > 0, Price ≠ S PRC) keep getting
         // pushed + pulled all day with the page closed. The two daily runs above skip a SKU whose
         // last pushed offer already equals the target, so a drifted Price stayed stale until the
@@ -1055,7 +1074,6 @@ class Kernel extends ConsoleKernel
         // Std prc vs dil → S PRC, then push. The analytics page does not need to be open.
         foreach ([
             ['05:05', '21:05', 'dil:rule-sprice-apply bestbuy --push', 'bestbuy-sprc-dil'],
-            ['05:15', '21:15', 'dil:rule-sprice-apply aliexpress --push', 'aliexpress-sprc-dil'],
             ['05:25', '21:25', 'dil:rule-sprice-apply newegg --push', 'newegg-sprc-dil'],
             ['05:35', '21:35', 'dil:rule-sprice-apply temu --push', 'temu-sprc-dil'],
             ['05:45', '21:45', 'dil:rule-sprice-apply temu2 --push', 'temu2-sprc-dil'],
@@ -1321,14 +1339,6 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
-        // AliExpress Sprice → live listing. Skips SGROI below the pricing-page Stop cutoff (default 30%).
-        $schedule->command('aliexpress:push-sprice-daily')
-            ->dailyAt('17:15')
-            ->timezone('Asia/Kolkata')
-            ->name('aliexpress-push-sprice-daily-ist')
-            ->withoutOverlapping(60)
-            ->runInBackground()
-            ->appendOutputTo($log);
     }
 
     /**
