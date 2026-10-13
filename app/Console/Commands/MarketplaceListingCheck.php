@@ -68,6 +68,14 @@ class MarketplaceListingCheck extends Command
         $active = count(array_filter($offers, static fn ($o) => ! empty($o['active'])));
         $this->line(sprintf('Offers on %s: %d (active %d, inactive %d)', $label, count($offers), $active, count($offers) - $active));
 
+        $connectService = app(\App\Services\MarketplaceManager\MiraklConnectProductIndex::class);
+        $connectIndex = $connectService->refresh($cfgKey);
+        if ($connectIndex === null) {
+            $this->warn('Could not read Mirakl Connect products: '.($connectService->lastError ?? 'unknown error'));
+        } else {
+            $this->line('Mirakl Connect products: '.$connectIndex['count'].' (created on '.$label.', not Missing L)');
+        }
+
         $counts = ListingChannelCounts::refreshChannelOnMissingListingPage($listingKey);
         $this->line(sprintf('REQ %d | NRL %d | Listed %d | Missing L %d', $counts['REQ'], $counts['NRL'], $counts['Listed'], $counts['Pending']));
 

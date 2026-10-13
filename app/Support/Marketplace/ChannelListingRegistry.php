@@ -622,11 +622,11 @@ class ChannelListingRegistry
 
         $index = app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('macy', false);
         if (is_array($index) && ($index['offers'] ?? []) !== []) {
-            return self::listedFromMiraklOfferIndex($skus, $index);
+            return self::overlayConnectCreated('macy', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
         if (! \Illuminate\Support\Facades\Schema::hasTable('macy_products')) {
-            return [];
+            return self::overlayConnectCreated('macy', $skus, []);
         }
 
         $wanted = self::wantedNormalizedSkus($skus);
@@ -655,7 +655,7 @@ class ChannelListingRegistry
                 }
             });
 
-        return self::listedMapFromByNorm($skus, $byKey);
+        return self::overlayConnectCreated('macy', $skus, self::listedMapFromByNorm($skus, $byKey));
     }
 
     /**
@@ -668,10 +668,10 @@ class ChannelListingRegistry
     {
         $index = $skus === [] ? null : app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('bestbuy', false);
         if (is_array($index) && ($index['offers'] ?? []) !== []) {
-            return self::listedFromMiraklOfferIndex($skus, $index);
+            return self::overlayConnectCreated('bestbuy', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
-        return ListingCountsEngine::listedIdsFromPrice(BestbuyUsaProduct::class, $skus, 'price');
+        return self::overlayConnectCreated('bestbuy', $skus, ListingCountsEngine::listedIdsFromPrice(BestbuyUsaProduct::class, $skus, 'price'));
     }
 
     /**
@@ -685,10 +685,10 @@ class ChannelListingRegistry
     {
         $index = $skus === [] ? null : app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('purchasingpower', false);
         if (is_array($index) && ($index['offers'] ?? []) !== []) {
-            return self::listedFromMiraklOfferIndex($skus, $index);
+            return self::overlayConnectCreated('purchasingpower', $skus, self::listedFromMiraklOfferIndex($skus, $index));
         }
 
-        return ListingCountsEngine::listedIdsFromColumn(PurchasingPowerProduct::class, $skus, 'sku', false);
+        return self::overlayConnectCreated('purchasingpower', $skus, ListingCountsEngine::listedIdsFromColumn(PurchasingPowerProduct::class, $skus, 'sku', false));
     }
 
     /**
@@ -1317,6 +1317,42 @@ class ChannelListingRegistry
      * @param  array<string, string>  $byNorm
      * @param  array<string, true>  $wantedNorm
      */
+    /**
+     * SKUs present in Mirakl Connect but not an active offer are pages created.
+     * They count as neither Listed nor Missing L.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, string>  $map
+     * @return array<string, string>
+     */
+    private static function overlayConnectCreated(string $channel, array $skus, array $map): array
+    {
+        if ($skus === []) {
+            return $map;
+        }
+
+        $index = app(\App\Services\MarketplaceManager\MiraklConnectProductIndex::class)->get($channel, true);
+        if (! is_array($index)) {
+            return $map;
+        }
+
+        foreach ($skus as $raw) {
+            $sku = trim((string) $raw);
+            if ($sku === '' || ! \App\Services\MarketplaceManager\MiraklConnectProductIndex::contains($index, $sku)) {
+                continue;
+            }
+            $existing = ListingCountsEngine::listingIdFromMap($map, $sku);
+            if ($existing !== '' && ! ListingCountsEngine::isPageCreatedId($existing)) {
+                continue;
+            }
+            if ($existing === '') {
+                $map[strtolower($sku)] = ListingCountsEngine::pageCreatedId($sku);
+            }
+        }
+
+        return $map;
+    }
+
     private static function putListedId(array &$byNorm, array $wantedNorm, string $sku, string $id): void
     {
         ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, $id);

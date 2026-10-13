@@ -212,6 +212,7 @@ class MissingListingCatalogRefresh
     protected function refreshMirakl(string $channel): string
     {
         $index = app(MiraklMcmOfferIndex::class)->refresh($channel);
+        app(MiraklConnectProductIndex::class)->refresh($channel);
         if ($channel === 'purchasingpower') {
             return $index !== null ? 'ok' : 'failed';
         }
