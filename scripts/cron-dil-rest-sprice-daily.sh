@@ -51,7 +51,8 @@ set +e
 if [[ "$MODE" == "apply" ]]; then
   code=0
   for ch in bestbuy aliexpress newegg temu temu2 temu3 reverb tiktok tiktok2 doba faire shein wayfair topdawg fb_marketplace walmart pls; do
-    if [[ "$ch" == "fb_marketplace" ]]; then
+    if [[ "$ch" == "fb_marketplace" || "$ch" == "doba" ]]; then
+      # Save-only: FB has no push, Doba auto push is disabled.
       cmd=(dil:rule-sprice-apply "$ch")
     else
       cmd=(dil:rule-sprice-apply "$ch" --push)

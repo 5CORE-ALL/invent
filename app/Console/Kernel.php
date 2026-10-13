@@ -1063,7 +1063,7 @@ class Kernel extends ConsoleKernel
             ['06:05', '22:05', 'dil:rule-sprice-apply reverb --push', 'reverb-sprc-dil'],
             ['06:15', '22:15', 'dil:rule-sprice-apply tiktok --push', 'tiktok-sprc-dil'],
             ['06:25', '22:25', 'dil:rule-sprice-apply tiktok2 --push', 'tiktok2-sprc-dil'],
-            ['06:35', '22:35', 'dil:rule-sprice-apply doba --push', 'doba-sprc-dil'],
+            ['06:35', '22:35', 'dil:rule-sprice-apply doba', 'doba-sprc-dil'],
             ['06:45', '22:45', 'dil:rule-sprice-apply faire --push', 'faire-sprc-dil'],
             ['06:55', '22:55', 'dil:rule-sprice-apply shein --push', 'shein-sprc-dil'],
             ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],

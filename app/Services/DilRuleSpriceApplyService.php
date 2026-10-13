@@ -93,7 +93,7 @@ class DilRuleSpriceApplyService
         'pls',
     ];
 
-    /** Channels the shared push runner can actually send. FB is save-only. */
+    /** Channels the shared push runner can actually send. FB and Doba are save-only (no auto push). */
     public const PUSH_CHANNELS = [
         'bestbuy',
         'aliexpress',
@@ -104,7 +104,6 @@ class DilRuleSpriceApplyService
         'reverb',
         'tiktok',
         'tiktok2',
-        'doba',
         'faire',
         'shein',
         'wayfair',

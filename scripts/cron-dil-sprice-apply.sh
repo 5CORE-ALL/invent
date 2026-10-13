@@ -67,8 +67,12 @@ case "$MODE" in
     CMD=(purchasing-power:rule-sprice-apply)
     MODE=purchasing_power
     ;;
-  bestbuy|aliexpress|newegg|temu|temu2|temu3|reverb|tiktok|tiktok2|doba|faire|shein|wayfair|topdawg|walmart|pls)
+  bestbuy|aliexpress|newegg|temu|temu2|temu3|reverb|tiktok|tiktok2|faire|shein|wayfair|topdawg|walmart|pls)
     CMD=(dil:rule-sprice-apply "$MODE" --push)
+    ;;
+  doba)
+    # Save-only: no auto price push to Doba.
+    CMD=(dil:rule-sprice-apply doba)
     ;;
   fb|fb_marketplace)
     CMD=(dil:rule-sprice-apply fb_marketplace)
