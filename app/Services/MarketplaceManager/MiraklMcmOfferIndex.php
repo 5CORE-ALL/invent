@@ -8,21 +8,48 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Every offer on Macy's MCM (OF21 with inactive offers), keyed by shop_sku,
- * product_sku and UPC. Used as the source of truth for Macy's Listed / Missing L.
+ * Every offer on a Mirakl MCM shop (OF21 with inactive offers), keyed by shop_sku,
+ * product_sku and UPC. Source of truth for Listed / Missing L on Macy's, Best Buy
+ * and Purchasing Power.
  */
-class MacyMcmOfferIndex
+class MiraklMcmOfferIndex
 {
-    public const CACHE_KEY = 'macy.mcm.offer_index.v1';
+    /** config('services.<key>') per channel */
+    public const CHANNELS = [
+        'macy' => 'macy',
+        'bestbuy' => 'bestbuy',
+        'purchasingpower' => 'purchasingpower',
+    ];
 
     private const FRESH_MINUTES = 30;
+
+    public static function configKey(string $channel): ?string
+    {
+        $c = strtolower(str_replace([' ', '-', '_', "'"], '', trim($channel)));
+
+        return match ($c) {
+            'macy', 'macys' => 'macy',
+            'bestbuy', 'bestbuyusa' => 'bestbuy',
+            'purchasingpower' => 'purchasingpower',
+            default => null,
+        };
+    }
+
+    public static function cacheKey(string $configKey): string
+    {
+        return 'mirakl.mcm.offer_index.v1.'.$configKey;
+    }
 
     /**
      * @return array{fetched_at: string, offers: list<array{shop_sku: string, product_sku: string, upc: string, active: bool, state: string}>}|null
      */
-    public function get(bool $refreshIfStale = true): ?array
+    public function get(string $channel, bool $refreshIfStale = true): ?array
     {
-        $cached = Cache::get(self::CACHE_KEY);
+        $key = self::configKey($channel);
+        if ($key === null) {
+            return null;
+        }
+        $cached = Cache::get(self::cacheKey($key));
         $fresh = is_array($cached)
             && isset($cached['fetched_at'])
             && now()->diffInMinutes(\Illuminate\Support\Carbon::parse($cached['fetched_at'])) < self::FRESH_MINUTES;
@@ -30,21 +57,25 @@ class MacyMcmOfferIndex
             return is_array($cached) ? $cached : null;
         }
 
-        return $this->refresh() ?? (is_array($cached) ? $cached : null);
+        return $this->refresh($channel) ?? (is_array($cached) ? $cached : null);
     }
 
     /**
      * @return array{fetched_at: string, offers: list<array<string, mixed>>}|null  null when MCM could not be read completely
      */
-    public function refresh(): ?array
+    public function refresh(string $channel): ?array
     {
-        $apiKey = trim((string) config('services.macy.mcm_api_key', ''));
-        $baseUrl = rtrim((string) config('services.macy.mcm_base_url', 'https://macysus-prod.mirakl.net'), '/');
+        $key = self::configKey($channel);
+        if ($key === null) {
+            return null;
+        }
+        $apiKey = trim((string) config('services.'.$key.'.mcm_api_key', ''));
+        $baseUrl = rtrim((string) config('services.'.$key.'.mcm_base_url', ''), '/');
         if ($apiKey === '' || $baseUrl === '') {
             return null;
         }
 
-        $shopId = config('services.macy.shop_id');
+        $shopId = config('services.'.$key.'.shop_id');
         $offers = [];
         $offset = 0;
         $max = 100;
@@ -68,7 +99,7 @@ class MacyMcmOfferIndex
                     sleep(min(30, 3 * $attempt));
                 }
                 if (! $response || ! $response->successful()) {
-                    Log::warning('MacyMcmOfferIndex: OF21 failed', ['status' => $response?->status(), 'offset' => $offset]);
+                    Log::warning('MiraklMcmOfferIndex: OF21 failed', ['channel' => $key, 'status' => $response?->status(), 'offset' => $offset]);
 
                     return null;
                 }
@@ -103,7 +134,7 @@ class MacyMcmOfferIndex
                 }
             } while ($hasMore);
         } catch (\Throwable $e) {
-            Log::warning('MacyMcmOfferIndex: exception', ['error' => $e->getMessage()]);
+            Log::warning('MiraklMcmOfferIndex: exception', ['channel' => $key, 'error' => $e->getMessage()]);
 
             return null;
         }
@@ -113,7 +144,7 @@ class MacyMcmOfferIndex
         }
 
         $index = ['fetched_at' => now()->toIso8601String(), 'offers' => $offers];
-        Cache::put(self::CACHE_KEY, $index, now()->addDays(7));
+        Cache::put(self::cacheKey($key), $index, now()->addDays(7));
 
         return $index;
     }

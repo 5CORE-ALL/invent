@@ -2,40 +2,73 @@
 
 namespace App\Console\Commands;
 
-use App\Services\MarketplaceManager\MacyMcmOfferIndex;
+use App\Services\MarketplaceManager\MiraklMcmOfferIndex;
+use App\Services\MarketplaceManager\MissingListingCatalogRefresh;
 use App\Support\Marketplace\AutomatedListingPage;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 /**
- * Pull every Macy's MCM offer (active + inactive), recount Listed / Missing L
- * from it, and print the SKUs that are really not on Macy's.
+ * Re-read a marketplace's live catalog (Mirakl MCM offers, or TopDawg
+ * SupplierProduct/list), recount Listed / Missing L from it, and print the
+ * SKUs that are really not on the marketplace.
  */
-class MacyListingCheck extends Command
+class MarketplaceListingCheck extends Command
 {
-    protected $signature = 'macy:listing-check {--limit=200 : Max missing SKUs to print}';
+    protected $signature = 'marketplace:listing-check
+        {channel=macy : macy | bestbuy | purchasingpower | topdawg}
+        {--limit=200 : Max missing SKUs to print}
+        {--dump= : Comma-separated SKUs: print their raw Mirakl Connect product JSON}';
 
-    protected $description = "Recount Macy's Missing L from the live MCM offer list and print the missing SKUs.";
+    protected $aliases = ['macy:listing-check'];
 
-    public function handle(MacyMcmOfferIndex $offerIndex): int
+    /** @var array<string, array<string, mixed>> */
+    private array $dumpRows = [];
+
+    private string $cfgKey = 'macy';
+
+    private string $connectCode = 'macys';
+
+    protected $description = 'Recount Missing L from the live marketplace catalog and print the missing SKUs.';
+
+    public function handle(MiraklMcmOfferIndex $offerIndex): int
     {
-        $this->info("Reading all Macy's MCM offers (OF21, inactive included)...");
-        $index = $offerIndex->refresh();
+        $channel = strtolower(trim((string) $this->argument('channel')));
+        if ($channel === 'topdawg') {
+            return $this->checkTopDawg();
+        }
+
+        $cfgKey = MiraklMcmOfferIndex::configKey($channel);
+        if ($cfgKey === null) {
+            $this->error('Unknown channel. Use macy, bestbuy, purchasingpower or topdawg.');
+
+            return self::FAILURE;
+        }
+        $this->cfgKey = $cfgKey;
+        [$listingKey, $this->connectCode, $label] = match ($cfgKey) {
+            'bestbuy' => ['bestbuyusa', 'bestbuyusa', 'Best Buy'],
+            'purchasingpower' => ['purchasingpower', 'purchasingpower', 'Purchasing Power'],
+            default => ['macys', 'macys', "Macy's"],
+        };
+
+        $this->info("Reading all {$label} MCM offers (OF21, inactive included)...");
+        $index = $offerIndex->refresh($cfgKey);
         if ($index === null) {
-            $this->error("Could not read Macy's MCM offers (check MACY_MCM_API_KEY / MACY_SHOP_ID and the log).");
+            $this->error("Could not read {$label} MCM offers (check the {$cfgKey} MCM API key / shop id and the log).");
 
             return self::FAILURE;
         }
 
         $offers = $index['offers'];
         $active = count(array_filter($offers, static fn ($o) => ! empty($o['active'])));
-        $this->line(sprintf('Offers on Macy\'s: %d (active %d, inactive %d)', count($offers), $active, count($offers) - $active));
+        $this->line(sprintf('Offers on %s: %d (active %d, inactive %d)', $label, count($offers), $active, count($offers) - $active));
 
-        $counts = ListingChannelCounts::refreshChannelOnMissingListingPage('macys');
+        $counts = ListingChannelCounts::refreshChannelOnMissingListingPage($listingKey);
         $this->line(sprintf('REQ %d | NRL %d | Listed %d | Missing L %d', $counts['REQ'], $counts['NRL'], $counts['Listed'], $counts['Pending']));
 
-        $missing = AutomatedListingPage::rows('macys')
+        $missing = AutomatedListingPage::rows($listingKey)
             ->filter(fn ($r) => (int) ($r->INV ?? 0) > 0 && ($r->nr_req ?? '') === 'REQ' && ($r->listed ?? '') !== 'Listed')
             ->values();
 
@@ -56,13 +89,22 @@ class MacyListingCheck extends Command
 
         $this->line('');
         $this->line(sprintf(
-            'Catalog checks: Macy MCM catalog by UPC (P31) %s | Mirakl Connect macys products %s',
+            'Catalog checks: MCM catalog by UPC (P31) %s | Mirakl Connect %s products %s',
             $catalogByUpc === null ? 'FAILED' : 'ok',
+            $this->connectCode,
             $connect === null ? 'FAILED' : count($connect).' read'
         ));
 
+        foreach ($this->dumpSkus() as $dumpSku) {
+            $this->line('');
+            $this->info('Connect product JSON for '.$dumpSku.':');
+            $this->line(isset($this->dumpRows[$dumpSku])
+                ? (string) json_encode($this->dumpRows[$dumpSku], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+                : '  not found in Connect');
+        }
+
         $this->line('');
-        $this->info('Not an offer on Macy\'s ('.$missing->count().'):');
+        $this->info('Not an offer on '.$label.' ('.$missing->count().'):');
         foreach ($missing->take((int) $this->option('limit')) as $row) {
             $sku = (string) $row->sku;
             $upc = $upcs[strtoupper($sku)] ?? '';
@@ -75,7 +117,7 @@ class MacyListingCheck extends Command
                 $where[] = 'Connect: '.$connectHit;
             }
             if ($where === []) {
-                $where[] = $upc === '' ? 'no UPC in Product Master' : 'not in Macy catalog';
+                $where[] = $upc === '' ? 'no UPC in Product Master' : 'not in '.$label.' catalog';
             }
             $keys = ListingCountsEngine::skuLookupKeys($sku);
             $mine = (string) end($keys);
@@ -92,6 +134,51 @@ class MacyListingCheck extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function checkTopDawg(): int
+    {
+        $this->info('Reading the full TopDawg catalog (SupplierProduct/list)...');
+        Cache::forget('ml.listed_catalog.fresh.topdawg');
+        $status = app(MissingListingCatalogRefresh::class)->refreshChannel('topdawg');
+        if ($status !== 'ok') {
+            $this->error('TopDawg catalog refresh: '.$status);
+
+            return self::FAILURE;
+        }
+
+        $states = \App\Models\TopDawgProduct::query()
+            ->selectRaw("COALESCE(NULLIF(listing_state, ''), '(none)') AS s, COUNT(*) AS n")
+            ->groupBy('s')->pluck('n', 's')->all();
+        $this->line('Products on TopDawg: '.array_sum($states).' — '.implode(', ', array_map(
+            static fn ($s, $n) => $s.' '.$n, array_keys($states), $states
+        )));
+
+        $counts = ListingChannelCounts::refreshChannelOnMissingListingPage('topdawg');
+        $this->line(sprintf('REQ %d | NRL %d | Listed %d | Missing L %d', $counts['REQ'], $counts['NRL'], $counts['Listed'], $counts['Pending']));
+
+        $missing = AutomatedListingPage::rows('topdawg')
+            ->filter(fn ($r) => (int) ($r->INV ?? 0) > 0 && ($r->nr_req ?? '') === 'REQ' && ($r->listed ?? '') !== 'Listed')
+            ->values();
+
+        $this->line('');
+        $this->info('Not on TopDawg ('.$missing->count().'):');
+        foreach ($missing->take((int) $this->option('limit')) as $row) {
+            $this->line(sprintf('  %-28s INV %d', (string) $row->sku, (int) $row->INV));
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function dumpSkus(): array
+    {
+        return array_values(array_filter(array_map(
+            static fn ($s) => strtoupper(trim($s)),
+            explode(',', (string) $this->option('dump'))
+        )));
     }
 
     /**
@@ -118,14 +205,15 @@ class MacyListingCheck extends Command
      */
     private function mcmCatalogByUpc(array $upcs): ?array
     {
-        $apiKey = trim((string) config('services.macy.mcm_api_key', ''));
-        $baseUrl = rtrim((string) config('services.macy.mcm_base_url', 'https://macysus-prod.mirakl.net'), '/');
-        if ($apiKey === '' || $upcs === []) {
+        $apiKey = trim((string) config('services.'.$this->cfgKey.'.mcm_api_key', ''));
+        $baseUrl = rtrim((string) config('services.'.$this->cfgKey.'.mcm_base_url', ''), '/');
+        if ($apiKey === '' || $baseUrl === '' || $upcs === []) {
             return $apiKey === '' ? null : [];
         }
 
         $out = [];
-        foreach (array_chunk($upcs, 50) as $chunk) {
+        // P31 allows at most 100 product_references; each UPC is sent in 4 paddings.
+        foreach (array_chunk($upcs, 25) as $chunk) {
             $refs = [];
             foreach ($chunk as $upc) {
                 foreach (array_unique([$upc, str_pad($upc, 12, '0', STR_PAD_LEFT), str_pad($upc, 13, '0', STR_PAD_LEFT), str_pad($upc, 14, '0', STR_PAD_LEFT)]) as $v) {
@@ -164,8 +252,8 @@ class MacyListingCheck extends Command
     {
         $token = \Illuminate\Support\Facades\Cache::get('macy_access_token');
         if (! is_string($token) || $token === '') {
-            $id = config('services.macy.client_id');
-            $secret = config('services.macy.client_secret');
+            $id = config('services.'.$this->cfgKey.'.client_id') ?: config('services.macy.client_id');
+            $secret = config('services.'.$this->cfgKey.'.client_secret') ?: config('services.macy.client_secret');
             if (! $id || ! $secret) {
                 return null;
             }
@@ -181,7 +269,7 @@ class MacyListingCheck extends Command
         $pageToken = null;
         $pages = 0;
         do {
-            $url = 'https://miraklconnect.com/api/products?limit=1000&channel_code=macys'.($pageToken ? '&page_token='.urlencode($pageToken) : '');
+            $url = 'https://miraklconnect.com/api/products?limit=1000&channel_code='.$this->connectCode.($pageToken ? '&page_token='.urlencode($pageToken) : '');
             $res = \Illuminate\Support\Facades\Http::withoutVerifying()->withToken($token)->timeout(60)->get($url);
             if (! $res->successful()) {
                 $this->warn('  Connect HTTP '.$res->status().': '.substr((string) $res->body(), 0, 200));
@@ -192,6 +280,9 @@ class MacyListingCheck extends Command
                 $sku = strtoupper(trim((string) ($p['id'] ?? $p['sku'] ?? '')));
                 if ($sku === '') {
                     continue;
+                }
+                if (in_array($sku, $this->dumpSkus(), true)) {
+                    $this->dumpRows[$sku] = $p;
                 }
                 $bits = [];
                 foreach (['status', 'state', 'channel_status', 'offer_status'] as $k) {
