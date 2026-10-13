@@ -1917,8 +1917,8 @@ class AliexpressController extends Controller
                         : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
                 }
 
-                $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($productMaster->lp) ? (float) $productMaster->lp : 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($productMaster->ship) ? (float) $productMaster->ship : 0);
+                $lp = $this->aePmNumber($values, ['lp'], $productMaster->lp ?? null);
+                $ship = $this->aePmNumber($values, ['ship'], $productMaster->ship ?? null);
 
                 $al30  = (float) ($sale->al30  ?? 0);
                 $sales = (float) ($sale->sales ?? 0);
@@ -2230,9 +2230,8 @@ class AliexpressController extends Controller
                     $values = is_array($productMaster->Values)
                         ? $productMaster->Values
                         : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
-                    $lp   = isset($values['lp'])   ? (float) $values['lp']   : 0;
-                    $ship = isset($values['ae_ship']) ? (float) $values['ae_ship']
-                          : (isset($values['ship']) ? (float) $values['ship'] : 0);
+                    $lp   = $this->aePmNumber($values, ['lp'], $productMaster->lp ?? null);
+                    $ship = $this->aePmNumber($values, ['ae_ship', 'ship'], $productMaster->ship ?? null);
                 }
 
                 // Calculate derived values (same formulas as TikTok)
@@ -3080,6 +3079,40 @@ class AliexpressController extends Controller
         }
 
         return $max;
+    }
+
+    /**
+     * LP / Ship from Product Master Values. Key case does not matter (lp, LP, Lp) and a blank or 0
+     * value falls through to the next key, then to the Product Master column.
+     *
+     * @param  mixed  $values
+     * @param  list<string>  $keys  Lowercase keys, first hit wins
+     */
+    private function aePmNumber($values, array $keys, $column = null): float
+    {
+        if (is_string($values)) {
+            $values = json_decode($values, true);
+        }
+        if (is_array($values)) {
+            $lower = [];
+            foreach ($values as $k => $v) {
+                $lk = strtolower(trim((string) $k));
+                if (! isset($lower[$lk])) {
+                    $lower[$lk] = $v;
+                }
+            }
+            foreach ($keys as $key) {
+                $v = $lower[$key] ?? null;
+                if (is_string($v)) {
+                    $v = str_replace(['$', ',', ' '], '', $v);
+                }
+                if (is_numeric($v) && (float) $v > 0) {
+                    return (float) $v;
+                }
+            }
+        }
+
+        return (is_numeric($column) && (float) $column > 0) ? (float) $column : 0.0;
     }
 
     /**
