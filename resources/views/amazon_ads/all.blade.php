@@ -1801,7 +1801,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="amazonAdsSbidRuleModalLabel">SBID rule</h5>
-                        <div class="amz-sbid-sub">Both U7% and U1% below the low threshold use the CPC multipliers. If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + 0.10; otherwise the fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
+                        <div class="amz-sbid-sub">Both U7% and U1% below the low threshold use the CPC multipliers. If L1, L2, and L7 CPC are missing and Avg CPC exists, SBID = Avg CPC + <span id="amazonAdsSbidAvgAddText">0.10</span>; otherwise the fallback is used. Both above the high threshold use × L1 CPC. Everything else shows —.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -1833,6 +1833,10 @@
                                 <div class="amz-sbid-field">
                                     <label class="mb-0" for="amazonAdsSbidRuleLowMultL7">× L7 CPC</label>
                                     <input type="number" step="0.01" class="form-control form-control-sm" id="amazonAdsSbidRuleLowMultL7" name="both_low_mult_l7" required>
+                                </div>
+                                <div class="amz-sbid-field">
+                                    <label class="mb-0" for="amazonAdsSbidRuleAvgCpcAdd">Avg CPC +</label>
+                                    <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="amazonAdsSbidRuleAvgCpcAdd" name="avg_cpc_add" required title="Added to Avg CPC when L1, L2, and L7 CPC are missing">
                                 </div>
                                 <div class="amz-sbid-field">
                                     <label class="mb-0" for="amazonAdsSbidRuleBothLowFallback">Fallback</label>
@@ -7832,6 +7836,7 @@
                 ['amazonAdsSbidRuleUtilLow', 'util_low'],
                 ['amazonAdsSbidRuleUtilHigh', 'util_high'],
                 ['amazonAdsSbidRuleBothLowFallback', 'both_low_fallback'],
+                ['amazonAdsSbidRuleAvgCpcAdd', 'avg_cpc_add'],
                 ['amazonAdsSbidRuleLowMultL1', 'both_low_mult_l1'],
                 ['amazonAdsSbidRuleLowMultL2', 'both_low_mult_l2'],
                 ['amazonAdsSbidRuleLowMultL7', 'both_low_mult_l7'],
@@ -7987,6 +7992,15 @@
                     }
                 });
             }
+            function amzSbidAvgAddLabel() {
+                var el = document.getElementById('amazonAdsSbidRuleAvgCpcAdd');
+                var n = parseFloat(el && el.value !== '' ? el.value : (window.amazonAdsSbidRule || {}).avg_cpc_add);
+                if (!isFinite(n)) n = 0.10;
+                var txt = n.toFixed(2);
+                var sub = document.getElementById('amazonAdsSbidAvgAddText');
+                if (sub) sub.textContent = txt;
+                return txt;
+            }
             function amzSbidPaintWaiting() {
                 ['below', 'mid', 'above'].forEach(function (key) {
                     var legend = document.getElementById('amz-sbid-leg-' + key);
@@ -8003,7 +8017,7 @@
                     { label: '× L1', n: g.below.l1, color: '#7c3aed' },
                     { label: '× L2', n: g.below.l2, color: '#2563eb' },
                     { label: '× L7', n: g.below.l7, color: '#16a34a' },
-                    { label: 'Avg + 0.10', n: g.below.avg, color: '#f59e0b' },
+                    { label: 'Avg + ' + amzSbidAvgAddLabel(), n: g.below.avg, color: '#f59e0b' },
                     { label: 'Fallback', n: g.below.fb, color: '#94a3b8' }
                 ]);
                 amzSbidPaintColumn('mid', [
@@ -8039,7 +8053,7 @@
                     });
                 });
             }
-            ['amazonAdsSbidRuleUtilLow', 'amazonAdsSbidRuleUtilHigh'].forEach(function (id) {
+            ['amazonAdsSbidRuleUtilLow', 'amazonAdsSbidRuleUtilHigh', 'amazonAdsSbidRuleAvgCpcAdd'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.addEventListener('input', amzSbidPaint);
             });

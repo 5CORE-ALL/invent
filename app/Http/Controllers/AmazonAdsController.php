@@ -2622,7 +2622,7 @@ class AmazonAdsController extends Controller
 
     /**
      * Grid SBID from U7%/U1% + CPC1/CPC2/CPC3 (`costPerClick`, `CPC2`, `CPC3`).
-     * When all three are missing and Avg CPC is available, SBID is Avg CPC + 0.10.
+     * When all three are missing and Avg CPC is available, SBID is Avg CPC + the rule's avg_cpc_add.
      * Outside red+red / pink+pink bands, sbid is forced to null so the UI shows "--".
      */
     private static function applyGridSbidFromUb2Ub1AndCpc(array &$arr, array $u, array $rowArr, array $dbColumns, string $table): void

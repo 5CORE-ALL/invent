@@ -339,7 +339,7 @@ class AmazonBidUtilizationService
     /**
      * Suggested SBID from U2%/U1% bands using {@see AmazonAdsSbidRule::resolvedRule()} (thresholds and multipliers).
      *
-     * - Both below util_low: CPC1×m1, else CPC2×m2, else CPC3×m7, else Avg CPC + 0.10 when Avg CPC is available, else both_low_fallback when all CPCs are zero.
+     * - Both below util_low: CPC1×m1, else CPC2×m2, else CPC3×m7, else Avg CPC + avg_cpc_add when Avg CPC is available, else both_low_fallback when all CPCs are zero.
      * - Both above util_high: L1×both_high_mult_l1 (or null when L1 CPC missing, same as legacy).
      * - Otherwise: sbid null (display "--" in Amazon Ads All).
      *
@@ -361,6 +361,7 @@ class AmazonBidUtilizationService
         $m2 = (float) $r['both_low_mult_l2'];
         $m7 = (float) $r['both_low_mult_l7'];
         $fallback = (float) $r['both_low_fallback'];
+        $avgAdd = (float) ($r['avg_cpc_add'] ?? 0.10);
         $highM1 = (float) $r['both_high_mult_l1'];
 
         $fb = ($costPerClickFallback !== null && $costPerClickFallback > 0) ? $costPerClickFallback : null;
@@ -384,7 +385,7 @@ class AmazonBidUtilizationService
                 return ['sbid' => round($l7 * $m7, 2), 'band' => 'under'];
             }
             if ($avgCpc !== null && $avgCpc > 0) {
-                return ['sbid' => round($avgCpc + 0.10, 2), 'band' => 'under'];
+                return ['sbid' => round($avgCpc + $avgAdd, 2), 'band' => 'under'];
             }
 
             return ['sbid' => round($fallback, 2), 'band' => 'under'];
