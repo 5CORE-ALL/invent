@@ -4377,6 +4377,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // LMP Overall — parent/SKU inventory with Amz, eBay, Temu, and Google LMP
     Route::get('/lmp-overall', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'index'])->name('lmp.overall');
     Route::get('/lmp-overall/data', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'data'])->name('lmp.overall.data');
+    Route::get('/lmp-overall/sku-metrics', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'skuMetrics'])->name('lmp.overall.sku-metrics');
     Route::post('/lmp-overall/save', [\App\Http\Controllers\MarketPlace\LmpOverallController::class, 'save'])->name('lmp.overall.save');
 
     // Std pricing — parent/SKU inventory, ovl30, dil, and Amazon Std Price
@@ -6166,7 +6167,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/aliexpress/pricing-data', [AliexpressController::class, 'getPricingData'])->name('aliexpress.pricing.data');
     Route::post('/aliexpress/pricing-sync-api', [AliexpressController::class, 'syncPricingFromApi'])->name('aliexpress.pricing.sync.api');
     Route::post('/aliexpress/pricing-push-price', [AliexpressController::class, 'pushPricingPrice'])->name('aliexpress.pricing.push');
-    Route::post('/aliexpress/push-sgroi-guard', [AliexpressController::class, 'savePushSgroiGuard'])->name('aliexpress.pricing.push.guard');
     Route::post('/aliexpress/save-sprice', [AliexpressController::class, 'saveSpriceUpdates'])->name('aliexpress.pricing.save.sprice');
     Route::post('/aliexpress/save-links', [AliexpressController::class, 'saveLinks'])->name('aliexpress.pricing.save.links');
     Route::get('/aliexpress/badge-chart-data', [AliexpressController::class, 'badgeChartData'])->name('aliexpress.badge.chart');

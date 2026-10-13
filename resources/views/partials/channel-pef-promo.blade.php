@@ -9787,6 +9787,7 @@
         /** Fill / correct S PRC from Std − PRMT% − CPN%. AliExpress with both % 0 keeps live Price. */
         function autopopulateEbaySpriceFromStdPrmtCpn(opts) {
             opts = opts || {};
+            if (window.CH_STD_SERVER_OWNED === true) return;
             if (!chPromoEbayStdMinusPrmtCpnEnabled()) return;
             if (typeof table === 'undefined' || !table) return;
             if (chPromoEbaySpriceAutoBusy) return;

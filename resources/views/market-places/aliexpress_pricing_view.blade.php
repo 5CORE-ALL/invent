@@ -94,37 +94,6 @@
             outline: 3px solid #ffc107;
             outline-offset: 2px;
         }
-        #ae-stop-low-sgroi-btn.is-on {
-            background: #dc3545;
-            color: #fff;
-            border-color: #dc3545;
-        }
-        #ae-stop-low-sgroi-btn .ae-low-sgroi-count {
-            background: #fff;
-            color: #dc3545;
-            font-weight: 700;
-        }
-        #ae-stop-low-sgroi-btn.is-on .ae-low-sgroi-count {
-            background: rgba(255,255,255,0.2);
-            color: #fff;
-        }
-        #ae-stop-low-sgroi-btn #ae-min-sgroi-input {
-            width: 44px;
-            height: 22px;
-            padding: 0 2px;
-            margin: 0 2px;
-            border: 1px solid rgba(0,0,0,0.15);
-            border-radius: 4px;
-            background: #fff;
-            color: #212529;
-            font-size: 12px;
-            font-weight: 700;
-            text-align: center;
-            line-height: 20px;
-        }
-        #ae-stop-low-sgroi-btn.is-on #ae-min-sgroi-input {
-            border-color: rgba(255,255,255,0.55);
-        }
 
         /* Metric history modal — full width (theme uses --tz-modal-width / --tz-modal-margin) */
         #aeBadgeChartModal.modal {
@@ -144,7 +113,6 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'aliexpress'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'aliexpress'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#aeLmpModal'])
     </style>
 @endsection
@@ -338,21 +306,9 @@
                             title="Push each selected SKU's SPRICE (or Price if no SPRICE) live to AliExpress">
                             <i class="fas fa-cloud-upload-alt"></i> Ali
                         </button>
-                        <button type="button" id="ae-stop-low-sgroi-btn"
-                            class="btn btn-sm btn-outline-danger {{ !empty($aeStopLowSgroi) ? 'is-on' : '' }}"
-                            data-on="{{ !empty($aeStopLowSgroi) ? '1' : '0' }}"
-                            title="Change the %. Count = current filters with SGROI below that. Ali button, row push, and the 17:15 IST cron all skip those SKUs.">
-                            <i class="fas fa-ban"></i> Stop &lt;
-                            <input type="number" id="ae-min-sgroi-input" min="1" max="300" step="1"
-                                value="{{ (int) ($aeMinSgroi ?? 30) }}"
-                                title="SGROI% cutoff — do not push price when SGROI is below this %">
-                            %
-                            <span class="badge rounded-pill ae-low-sgroi-count" id="ae-low-sgroi-count">0</span>
-                        </button>
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success" title="Export CSV">
                             <i class="fas fa-file-csv"></i>
                         </button>
-                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'aliexpress'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'aliexpress'])
                         <a href="{{ route('aliexpress.lmp') }}" class="btn btn-sm btn-outline-info">
                             <i class="fas fa-table"></i> LMP sheet
@@ -538,6 +494,81 @@
         </div>
     </div>
 
+    <!-- Std Prc editor (magnifying glass) — same as /amazon-tabulator-view. Std GROI% / Std GPFT% follow the typed price. -->
+    <div class="modal fade" id="stdPrcEditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 720px;">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title mb-0">Std Price — <span id="stdPrcEditSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-4">
+                            <label class="form-label mb-1 small fw-bold" for="stdPrcEditInput">Std Prc</label>
+                            <input type="number" class="form-control form-control-sm text-end fw-bold" id="stdPrcEditInput"
+                                step="0.01" min="0.01" placeholder="0.00" autocomplete="off">
+                        </div>
+                        <div class="col-4">
+                            <div class="form-label mb-1 small fw-bold">Std NROI%</div>
+                            <div id="stdPrcEditNroi" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × margin − ship − LP) / LP) × 100 (no Ads% on AliExpress)">—</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="form-label mb-1 small fw-bold">Std NPFT%</div>
+                            <div id="stdPrcEditNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × margin − ship − LP) / Std Prc) × 100 (no Ads% on AliExpress)">—</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg GPFT%</div>
+                            <div id="stdPrcAvgGpft" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg GPFT% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg GROI%</div>
+                            <div id="stdPrcAvgGroi" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg GROI% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg NPFT%</div>
+                            <div id="stdPrcAvgNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg NPFT% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg NROI%</div>
+                            <div id="stdPrcAvgNroi" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg NROI% from Pricing Master CVR">—</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">OV LMP</div>
+                            <div id="stdPrcOvLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Lowest LMP across Amazon, eBay, Temu, and Google">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg LMP</div>
+                            <div id="stdPrcAvgLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Average LMP across Amazon, eBay, Temu, and Google">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">My LMP</div>
+                            <div id="stdPrcMyLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Manual My LMP">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Diff</div>
+                            <div id="stdPrcDiff" class="form-control form-control-sm fw-bold text-center" title="(Avg LMP − Avg Price) / Avg Price">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg Price</div>
+                            <div id="stdPrcAvgPrice" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg Price from Pricing Master CVR">—</div>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Saves Std Prc for this SKU and its Sku Link LMP siblings. Avg and LMP figures match LMP Overall.</div>
+                    <div class="small mt-1" id="stdPrcEditMsg"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="stdPrcEditSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Links Modal -->
     <div class="modal fade" id="aeEditLinksModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -567,7 +598,6 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'aliexpress'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'aliexpress'])
 @endsection
 
 @section('script-bottom')
@@ -575,11 +605,12 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        // S PRC is saved + pushed by the server (aliexpress:sprc-dil-auto-push). The page only shows it.
+        window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'aliexpress'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
         let allTableData = [];
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'aliexpress'])
         let summaryDataCache = [];
         let aeLmpModalSku = '';
         let aeL30OrderBadges = null;
@@ -638,49 +669,7 @@
         let lmpMissingFilterActive = false;
         let blueTriangleFilterActive = false;
         let aePushCrossFilterActive = false;
-        let aeStopLowSgroi = {{ !empty($aeStopLowSgroi) ? 'true' : 'false' }};
-        let AE_MIN_SGROI = {{ (int) ($aeMinSgroi ?? 30) }};
         let aeBadgeHoverTimer = null;
-
-        function aeReadMinSgroi() {
-            const n = parseInt($('#ae-min-sgroi-input').val(), 10);
-            if (!isFinite(n) || n < 1) return 30;
-            return Math.min(300, n);
-        }
-        function aePushSgroiForPrice(data, price) {
-            return aeSpriceMetrics(data, price).sroi;
-        }
-        function aePushBlockedBySgroi(data, price) {
-            return aePushSgroiForPrice(data, price) < AE_MIN_SGROI;
-        }
-        function aeSyncStopSgroiUi() {
-            const n = AE_MIN_SGROI;
-            const $input = $('#ae-min-sgroi-input');
-            if ($input.length && String($input.val()) !== String(n)) $input.val(n);
-            $('#ae-stop-low-sgroi-btn').attr('title',
-                'Do not push price when SGROI < ' + n
-                + '%. Count = current filters below that. Applies to Ali button, row X, and 17:15 IST cron.');
-        }
-        function aeSaveStopSgroiGuard(opts) {
-            opts = opts || {};
-            return $.ajax({
-                url: '{{ route("aliexpress.pricing.push.guard") }}',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: {
-                    stop_sgroi_lt_40: aeStopLowSgroi ? 1 : 0,
-                    min_sgroi: AE_MIN_SGROI
-                }
-            }).done(function(res) {
-                if (res && res.min_sgroi != null) AE_MIN_SGROI = parseInt(res.min_sgroi, 10) || AE_MIN_SGROI;
-                aeSyncStopSgroiUi();
-                if (typeof applyFilters === 'function') applyFilters();
-                if (typeof updateSummary === 'function') updateSummary();
-                if (opts.notify) {
-                    aeNotify('Push blocked when SGROI < ' + AE_MIN_SGROI + '%', 'success');
-                }
-            });
-        }
 
         function aeEntryIsIgnored(e) {
             if (window.LmpIgnore && typeof LmpIgnore.isIgnored === 'function') {
@@ -743,20 +732,21 @@
             }
             return 'color:' + color + ';font-weight:600;';
         }
+        /** Same GROI / GPFT bands as /amazon-tabulator-view (MetricPctColors). */
         function aeRoiColor(v) {
-            if (v < 40) return '#a00211';
-            if (v < 75) return '#ffc107';
-            if (v < 125) return '#28a745';
-            return '#d63384';
+            if (window.MetricPctColors) return MetricPctColors.groiColor(v);
+            return v < 60 ? '#dc3545' : v < 90 ? '#ffc107' : v < 150 ? '#28a745' : '#e83e8c';
         }
         function aeGpftColor(v) {
-            return v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+            if (window.MetricPctColors) return MetricPctColors.gpftColor(v);
+            return v <= 20 ? '#dc3545' : v < 30 ? '#ffc107' : v < 43 ? '#28a745' : '#4e0dab';
         }
         function aePctHtml(v, kind, extra) {
             extra = extra || {};
-            const color = kind === 'gpft' ? aeGpftColor(v) : aeRoiColor(v);
             const tip = extra.title ? (' title="' + String(extra.title).replace(/"/g, '&quot;') + '"') : '';
-            return '<span' + tip + ' style="' + aePctStyle(color) + '">' + Math.round(v) + '%</span>';
+            const style = (window.MetricPctColors && MetricPctColors.styleFor(kind === 'gpft' ? 'gpft' : 'groi', v))
+                || aePctStyle(kind === 'gpft' ? aeGpftColor(v) : aeRoiColor(v));
+            return '<span' + tip + ' style="' + style + '">' + Math.round(v) + '%</span>';
         }
 
         function aeRuleSpriceRaw(data) {
@@ -780,7 +770,7 @@
         }
         function aeSpriceMetrics(data, spriceOpt) {
             const sprice = spriceOpt != null ? Number(spriceOpt) : aeVisibleSprice(data);
-            if (!(sprice > 0)) return { sgpft: 0, sroi: 0 };
+            if (!(sprice > 0)) return { sgpft: 0, sroi: 0, sgpftRaw: null, sroiRaw: null };
             const zeroSold = typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(data);
             const margin = zeroSold && typeof chPromoZeroSoldTakehomeMargin === 'function'
                 ? chPromoZeroSoldTakehomeMargin(data)
@@ -793,9 +783,28 @@
             const ship = (typeof chPromoShipCost === 'function')
                 ? chPromoShipCost(data)
                 : (parseFloat(data && data.ship) || 0);
-            const sgpft = Math.round(((sprice * margin - ship - lp) / sprice) * 100);
-            const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 100) : 0;
-            return { sgpft: sgpft, sroi: sroi };
+            // Same formulas as /amazon-tabulator-view (margin = AliExpress channel margin).
+            // *Raw values are unrounded so colour bands match Amazon (it colours the raw %).
+            const sgpftRaw = ((sprice * margin - ship - lp) / sprice) * 100;
+            const sroiRaw = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : null;
+            return {
+                sgpft: Math.round(sgpftRaw),
+                sroi: sroiRaw === null ? 0 : Math.round(sroiRaw),
+                sgpftRaw: sgpftRaw,
+                sroiRaw: sroiRaw
+            };
+        }
+        /** Live GROI / GPFT at a price — same formula as amazonComputeGroiAt / amazonComputeGpftAt. */
+        function aeComputeAt(price, data) {
+            const p = parseFloat(price);
+            if (!data || !(p > 0)) return { groi: null, gpft: null };
+            const lp = parseFloat(data.lp) || 0;
+            const ship = parseFloat(data.ship) || 0;
+            const mRaw = parseFloat(data._margin);
+            const margin = (isFinite(mRaw) && mRaw > 0) ? mRaw : 0.80;
+            const gpft = ((p * margin - ship - (lp > 0 ? lp : 0)) / p) * 100;
+            const groi = lp > 0 ? ((p * margin - ship - lp) / lp) * 100 : null;
+            return { groi: groi, gpft: gpft };
         }
         function aePrepareSpriceToSave(data, sprice) {
             let shown = Number(sprice) || 0;
@@ -816,61 +825,10 @@
             const stored = parseFloat(data && data.dil_percent);
             return Number.isFinite(stored) ? stored : 0;
         }
-        /** Why SGROI / Target GROI is this number — Dil slab vs leftover saved S PRC. */
-        function aeTargetGroiWhy(data) {
-            if (!data || data.is_parent) return '';
-            const dil = aeSkuDilPct(data);
-            const shown = aeSpriceMetrics(data).sroi;
-            const meta = (typeof ebayDilGroiMetaForRow === 'function')
-                ? ebayDilGroiMetaForRow(data)
-                : null;
-            if (meta && meta.sprc > 0) {
-                if (meta.outOfSlabStd) {
-                    return 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% is outside slabs. '
-                        + meta.label + ' → S PRC $' + Number(meta.sprc).toFixed(2)
-                        + ' → SGROI ' + shown + '%';
-                }
-                return 'Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% is in '
-                    + (meta.label || 'slab')
-                    + ' → Target NROI ' + meta.groi + '%'
-                    + ' → S PRC $' + Number(meta.sprc).toFixed(2)
-                    + ' → SGROI ' + shown + '%';
-            }
-            return 'Dil ' + Math.round(dil) + '% is outside slabs, or Std/LMP SGROI is below Stop < '
-                + ((typeof AE_MIN_SGROI === 'number') ? AE_MIN_SGROI : 30)
-                + '%. SGROI ' + shown + '% is from the saved S PRC.';
-        }
         function aeRowSpriceForAlert(data) {
             const visible = aeVisibleSprice(data);
             if (visible > 0) return visible;
             return aeStoredSprice(data);
-        }
-        function aePersistVisibleSprices() {
-            if (typeof chPromoOverwriteStoredSpriceFromRules === 'function') {
-                chPromoOverwriteStoredSpriceFromRules({ silent: true, skip_push: true });
-            }
-            if (!table || typeof table.getRows !== 'function') return;
-            const updates = [];
-            table.getRows().forEach(function(row) {
-                const d = row.getData() || {};
-                if (d.is_parent || !d.sku) return;
-                const shown = aeVisibleSprice(d);
-                if (!(shown > 0)) return;
-                const stored = Math.round((parseFloat(d.sprice || d.SPRICE) || 0) * 100) / 100;
-                if (stored === shown) return;
-                const st = String(d.SPRICE_STATUS || '').toLowerCase();
-                if (st === 'processing') return;
-                const pv = Math.round((parseFloat(d.SPRICE_PUSHED_VALUE) || 0) * 100) / 100;
-                if ((st === 'pushed' || st === 'applied') && pv > 0 && pv === shown) return;
-                const m = aeSpriceMetrics(d, shown);
-                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
-                row.update({ sprice: shown, sgpft: m.sgpft, sroi: m.sroi, SPRICE_STATUS: null, SPRICE_PUSHED_VALUE: null });
-                updates.push({ sku: d.sku, sprice: shown });
-            });
-            if (updates.length) saveSpriceUpdates(updates, { clearFirst: false });
-            if (typeof updateSummary === 'function') {
-                try { updateSummary(); } catch (e) { /* ignore */ }
-            }
         }
         function aeStoredSprice(data) {
             return Math.round((parseFloat(data && (data.sprice || data.SPRICE)) || 0) * 100) / 100;
@@ -950,13 +908,6 @@
                     aeReformatPushRow(row);
                 }
             });
-            if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
-                ParentExpand.captureDataset(
-                    (typeof aeFullTableData !== 'undefined' && aeFullTableData.length)
-                        ? aeFullTableData
-                        : allTableData
-                );
-            }
             if (typeof updateSummary === 'function') {
                 try { updateSummary(); } catch (e) { /* ignore */ }
             }
@@ -972,7 +923,6 @@
             if (aeSpricePushed(data)) return false;
             const price = aePushablePrice(data);
             if (!(price > 0)) return false;
-            if (aePushBlockedBySgroi(data, price)) return false;
             return true;
         }
         function aeRowSgroi(data) {
@@ -1257,6 +1207,244 @@
             applyAeStandardPriceToLinkedRows(sku, saved, detail.applied_skus);
         });
 
+        // ── Std Prc editor modal (magnifying glass) — same as /amazon-tabulator-view ──
+        let stdPrcEditState = { sku: '', rowData: null, lastSaved: null };
+        const stdPrcLmpMetricIds = ['stdPrcAvgGpft', 'stdPrcAvgGroi', 'stdPrcAvgNpft', 'stdPrcAvgNroi', 'stdPrcOvLmp', 'stdPrcAvgLmp', 'stdPrcMyLmp', 'stdPrcDiff', 'stdPrcAvgPrice'];
+        const stdPrcLmpCache = {};
+        let stdPrcLmpXhr = null;
+
+        function aeEscAttr(s) {
+            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function aeRowDataBySku(sku) {
+            const target = String(sku || '').trim().toUpperCase();
+            if (!target || typeof table === 'undefined' || !table) return null;
+            const rows = table.getRows('all') || table.getRows() || [];
+            for (let i = 0; i < rows.length; i++) {
+                const d = rows[i].getData();
+                if (!d || d.is_parent) continue;
+                if (String(d.sku || d['(Child) sku'] || d.SKU || '').trim().toUpperCase() === target) return d;
+            }
+            return null;
+        }
+
+        /** Std NROI% / NPFT% at a typed Std Prc. AliExpress has no Ads%, so net = gross on the channel margin. */
+        function aeStdMetricsAt(sp, row) {
+            const price = parseFloat(sp);
+            if (!row || !isFinite(price) || price <= 0) return { nroi: null, npft: null };
+            const lp = parseFloat(row.lp) || 0;
+            const ship = parseFloat(row.ship) || 0;
+            const mRaw = parseFloat(row._margin);
+            const margin = (isFinite(mRaw) && mRaw > 0) ? mRaw : 0.80;
+            const profit = price * margin - ship - lp;
+            return {
+                nroi: lp > 0 ? (profit / lp) * 100 : null,
+                npft: (profit / price) * 100
+            };
+        }
+
+        function stdPrcColoredHtml(kind, v) {
+            if (v === null || !isFinite(v)) return '<span class="text-muted">—</span>';
+            if (window.MetricPctColors) {
+                const html = MetricPctColors.htmlFor(kind, v, { decimals: 0, empty: '' });
+                if (html) return html;
+            }
+            return '<span style="font-weight:600;">' + Math.round(v) + '%</span>';
+        }
+
+        function refreshStdPrcEditMetrics() {
+            const m = aeStdMetricsAt($('#stdPrcEditInput').val(), stdPrcEditState.rowData);
+            $('#stdPrcEditNroi').html(stdPrcColoredHtml('nroi', m.nroi));
+            $('#stdPrcEditNpft').html(stdPrcColoredHtml('npft', m.npft));
+        }
+
+        function stdPrcMetricDash(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            el.innerHTML = '<span class="text-muted">—</span>';
+        }
+
+        function stdPrcPaintPct(id, kind, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            const n = Number(value);
+            if (value == null || value === '' || !isFinite(n)) {
+                el.innerHTML = '<span class="text-muted">—</span>';
+                return;
+            }
+            el.innerHTML = stdPrcColoredHtml(kind, n);
+        }
+
+        function stdPrcPaintMoney(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            const n = Number(value);
+            el.innerHTML = (isFinite(n) && n > 0) ? ('$' + n.toFixed(2)) : '<span class="text-muted">—</span>';
+        }
+
+        function paintStdPrcLmpMetrics(data) {
+            if (!data) {
+                stdPrcLmpMetricIds.forEach(stdPrcMetricDash);
+                return;
+            }
+            stdPrcPaintPct('stdPrcAvgGpft', 'gpft', data.gpft);
+            stdPrcPaintPct('stdPrcAvgGroi', 'groi', data.groi);
+            stdPrcPaintPct('stdPrcAvgNpft', 'npft', data.npft);
+            stdPrcPaintPct('stdPrcAvgNroi', 'nroi', data.nroi);
+            stdPrcPaintMoney('stdPrcOvLmp', data.ov_lmp);
+            stdPrcPaintMoney('stdPrcAvgLmp', data.avg_lmp);
+            stdPrcPaintMoney('stdPrcMyLmp', data.my_lmp);
+            stdPrcPaintMoney('stdPrcAvgPrice', data.avg_price);
+            const diffEl = document.getElementById('stdPrcDiff');
+            const pct = Number(data.diff);
+            if (!diffEl) return;
+            if (data.diff == null || data.diff === '' || !isFinite(pct)) {
+                stdPrcMetricDash('stdPrcDiff');
+                return;
+            }
+            let bg = '#ff00ff';
+            if (pct < 0) bg = '#dc3545';
+            else if (pct < 10) bg = '#28a745';
+            else if (pct <= 20) bg = '#ffc107';
+            diffEl.style.background = bg;
+            diffEl.style.color = '#000';
+            diffEl.textContent = Math.round(pct) + '%';
+        }
+
+        function loadStdPrcLmpMetrics(sku) {
+            const key = String(sku || '').trim().toUpperCase();
+            if (!key) {
+                paintStdPrcLmpMetrics(null);
+                return;
+            }
+            if (stdPrcLmpCache[key]) {
+                paintStdPrcLmpMetrics(stdPrcLmpCache[key]);
+                return;
+            }
+            stdPrcLmpMetricIds.forEach(function(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.style.background = '';
+                el.style.color = '';
+                el.textContent = '…';
+            });
+            if (stdPrcLmpXhr && typeof stdPrcLmpXhr.abort === 'function') stdPrcLmpXhr.abort();
+            stdPrcLmpXhr = $.ajax({
+                url: '/lmp-overall/sku-metrics',
+                method: 'GET',
+                data: { sku: sku },
+                headers: { 'Accept': 'application/json' }
+            }).done(function(res) {
+                if (String(stdPrcEditState.sku || '').trim().toUpperCase() !== key) return;
+                if (!res || !res.success) {
+                    paintStdPrcLmpMetrics(null);
+                    return;
+                }
+                stdPrcLmpCache[key] = res;
+                paintStdPrcLmpMetrics(res);
+            }).fail(function(xhr) {
+                if (xhr && xhr.statusText === 'abort') return;
+                if (String(stdPrcEditState.sku || '').trim().toUpperCase() !== key) return;
+                paintStdPrcLmpMetrics(null);
+            });
+        }
+
+        function openStdPrcEditModal(sku) {
+            const key = String(sku || '').trim();
+            if (!key) return;
+            const row = aeRowDataBySku(key);
+            stdPrcEditState.sku = key;
+            stdPrcEditState.rowData = row || null;
+            let sp = null;
+            if (row) {
+                const std = parseFloat(row.STANDARD_PRICE);
+                if (isFinite(std) && std > 0) sp = std;
+            }
+            stdPrcEditState.lastSaved = sp;
+            $('#stdPrcEditSku').text(key);
+            $('#stdPrcEditMsg').text('');
+            $('#stdPrcEditInput').val(sp != null ? sp.toFixed(2) : '');
+            refreshStdPrcEditMetrics();
+            loadStdPrcLmpMetrics(key);
+            const el = document.getElementById('stdPrcEditModal');
+            if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+            bootstrap.Modal.getOrCreateInstance(el).show();
+            setTimeout(function() {
+                const input = document.getElementById('stdPrcEditInput');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }, 200);
+        }
+
+        function stdPrcHideModal() {
+            const el = document.getElementById('stdPrcEditModal');
+            if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).hide();
+            }
+        }
+
+        function saveStdPrcEditModal(closeAfter) {
+            const sku = stdPrcEditState.sku;
+            const sp = parseFloat($('#stdPrcEditInput').val());
+            if (!sku || !isFinite(sp) || sp <= 0) return;
+            if (stdPrcEditState.lastSaved != null && Math.abs(stdPrcEditState.lastSaved - sp) < 0.0001) {
+                if (closeAfter) stdPrcHideModal();
+                return;
+            }
+            stdPrcEditState.lastSaved = sp;
+            $('#stdPrcEditMsg').text('Saving…');
+            $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, sprice: sp, is_standard_price: 1 },
+                success: function(response) {
+                    const std = parseFloat(response.data);
+                    const saved = (isFinite(std) && std > 0) ? std : sp;
+                    stdPrcEditState.lastSaved = saved;
+                    const primary = applyAeStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                    if (primary) stdPrcEditState.rowData = primary.getData();
+                    refreshStdPrcEditMetrics();
+                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                    const msg = n > 1 ? ('Std Prc saved for ' + n + ' linked SKUs') : 'Std Prc saved';
+                    $('#stdPrcEditMsg').text(n > 1 ? ('Saved for ' + n + ' linked SKUs') : 'Saved');
+                    aeNotify(msg, 'success');
+                    if (closeAfter) stdPrcHideModal();
+                },
+                error: function() {
+                    stdPrcEditState.lastSaved = null;
+                    $('#stdPrcEditMsg').text('Failed to save');
+                    aeNotify('Failed to save Std Prc', 'error');
+                }
+            });
+        }
+
+        $(document).on('click', '.open-std-prc-modal', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).attr('data-sku') || $(this).data('sku');
+            if (sku) openStdPrcEditModal(sku);
+        });
+        $(document).on('input', '#stdPrcEditInput', refreshStdPrcEditMetrics);
+        $(document).on('keydown', '#stdPrcEditInput', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveStdPrcEditModal(true);
+            }
+        });
+        $(document).on('click', '#stdPrcEditSave', function() {
+            saveStdPrcEditModal(true);
+        });
+
         function money(value) {
             return `$${(parseFloat(value) || 0).toFixed(2)}`;
         }
@@ -1435,8 +1623,8 @@
 
             if (sgroiFilter !== 'all') {
                 const sgroi = aeRowSgroi(d);
-                if (sgroiFilter === 'lt40' && !(sgroi < AE_MIN_SGROI)) return false;
-                if (sgroiFilter === '40-75' && !(sgroi >= AE_MIN_SGROI && sgroi < 75)) return false;
+                if (sgroiFilter === 'lt40' && !(sgroi < 40)) return false;
+                if (sgroiFilter === '40-75' && !(sgroi >= 40 && sgroi < 75)) return false;
                 if (sgroiFilter === '75-125' && !(sgroi >= 75 && sgroi < 125)) return false;
                 if (sgroiFilter === 'gt125' && !(sgroi >= 125)) return false;
             }
@@ -1483,11 +1671,6 @@
 
         function applyFilters() {
             if (aeApplyingFilters) return;
-            if (window.ParentExpand && ParentExpand.isExpanded()) {
-                aeDbgLog('A', 'aliexpress_pricing_view.blade.php:applyFilters', 'early return ParentExpand expanded', {});
-                ParentExpand.beforeFilters(function(){ applyFilters(); });
-                return;
-            }
             if (!table) {
                 aeDbgLog('A', 'aliexpress_pricing_view.blade.php:applyFilters', 'early return table missing', {});
                 return;
@@ -1698,18 +1881,13 @@
             );
             if (typeof syncAeTriangleBadgeState === 'function') syncAeTriangleBadgeState();
             let pushCrossCount = 0;
-            let lowSgroiCount = 0;
             badgeRows.forEach(function(row) {
                 if (aeHasPushCross(row)) pushCrossCount++;
-                if (aeRowMatchesFilters(row, { sgroiOverride: 'lt40', skipBadges: true })) lowSgroiCount++;
             });
             $('#aliexpress-push-cross-badge').html(
                 '<i class="fa-solid fa-xmark"></i> ' + pushCrossCount.toLocaleString()
             );
             $('#aliexpress-push-cross-badge').toggleClass('active-filter', aePushCrossFilterActive);
-            $('#ae-low-sgroi-count').text(lowSgroiCount.toLocaleString());
-            $('#ae-stop-low-sgroi-btn').toggleClass('is-on', !!aeStopLowSgroi)
-                .attr('data-on', aeStopLowSgroi ? '1' : '0');
             $('#ae-total-views-badge').text('Views: ' + totalViews.toLocaleString());
             const cvrPct = totalViews > 0 ? (totalOutputOrder / totalViews) * 100 : 0;
             $('#ae-avg-cvr-badge').text('CVR: ' + Math.round(cvrPct) + '%');
@@ -1799,7 +1977,6 @@
                     aeFullTableData = rows;
                     allTableData = rows;
                     aeSyncPushDatasets();
-                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     const rowType = $('#ae-row-type-filter').val() || 'skus';
                     const visibleRows = aeRowsForType(rowType, rows).filter(function(r) {
                         return aeRowMatchesFilters(r);
@@ -1869,11 +2046,6 @@
                             return `<span style="color:#0d6efd;font-size:11px;font-weight:600;">${v}</span>`;
                         }
                     },
-                    (function() {
-                        const pe = ParentExpand.columnDef();
-                        if (pe && pe.headerSort === undefined) pe.headerSort = true;
-                        return pe;
-                    })(),
                     {
                         title: "Image",
                         field: "image",
@@ -2006,7 +2178,9 @@
                             const ovL30 = parseFloat(row.ov_l30) || 0;
                             if (inv === 0) return `<span style="color:#6c757d;">0%</span>`;
                             const dil = (ovL30 / inv) * 100;
-                            let color = dil < 25 ? '#dc3545' : dil < 50 ? '#28a745' : '#e83e8c';
+                            if (!(dil > 0)) return `<span style="color:#6c757d;">0%</span>`;
+                            // Same Dil bands as /amazon-tabulator-view: red <25 · green 25–50 · pink 50%+.
+                            let color = dil < 25 ? '#a00211' : dil < 50 ? '#28a745' : '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                         }
                     },
@@ -2027,26 +2201,36 @@
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
-                        headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view. Editable; saves to all Sku Link LMP siblings. Dot vs channel price.",
-                        editor: "input",
-                        width: 70,
+                        headerSort: true,
+                        headerTooltip: "Standard Price — same shared value as /amazon-tabulator-view. Not editable in the cell. Magnifying glass opens Std Prc, Std NROI%, Std NPFT% and LMP metrics; saves to all Sku Link LMP siblings. Dot vs channel price. Orange triangle = LMP is above Std Prc.",
+                        width: 108,
                         sorter: "number",
-                        editable: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return false;
-                            const sku = String(d.sku || d['(Child) sku'] || d.SKU || '');
-                            return !!sku;
-                        },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
+                            const sku = String(d.sku || d['(Child) sku'] || d.SKU || '').trim();
+                            const searchBtn = sku
+                                ? '<button type="button" class="btn btn-sm p-0 open-std-prc-modal" data-sku="' + aeEscAttr(sku) + '" title="Std Prc plus Avg GPFT, GROI, NPFT, NROI, OV LMP, Avg LMP, My LMP, Diff, and Avg Price" style="border:none;background:none;color:#0d6efd;line-height:1;"><i class="fa fa-search"></i></button>'
+                                : '';
                             const value = cell.getValue();
                             const std = parseFloat(value) || 0;
-                            if (!value || std <= 0) return '';
+                            if (!value || std <= 0) return searchBtn;
                             const comparePrice = parseFloat(d.price || 0) || 0;
                             const dot = aeStdPrcChangeDotHtml(std, comparePrice);
+                            const reviewTri = (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function') ? SpriceLmpCap.reviewStdTriangleHtml(d) : '';
 
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + reviewTri + searchBtn + '</span>';
+                        },
+                        cellClick: function(e, cell) {
+                            const btn = e.target && e.target.closest ? e.target.closest('.open-std-prc-modal') : null;
+                            if (btn) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const d = cell.getRow().getData() || {};
+                                const sku = btn.getAttribute('data-sku') || d.sku || d['(Child) sku'] || '';
+                                if (sku) openStdPrcEditModal(sku);
+                                return false;
+                            }
                         }
                     },
                     {
@@ -2060,7 +2244,13 @@
                             const lmpForTri = aeEffectiveLmp(d);
                             const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(cell.getValue(), lmpForTri) : '');
                             const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(cell.getValue(), lmpForTri) : '');
-                            return money(cell.getValue()) + lmpTri + purpleTri;
+                            // Same as /amazon-tabulator-view: bold; red when Price > LMP.
+                            const priceNum = parseFloat(cell.getValue()) || 0;
+                            if (priceNum <= 0) return money(cell.getValue()) + lmpTri + purpleTri;
+                            if (lmpForTri > 0 && priceNum > lmpForTri) {
+                                return '<span style="color:#dc3545;font-weight:700;">' + money(cell.getValue()) + '</span>' + lmpTri;
+                            }
+                            return '<span style="font-weight:700;">' + money(cell.getValue()) + '</span>' + purpleTri;
                         }
                     },
                     {
@@ -2071,22 +2261,6 @@
                         headerSort: true,
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
-                            if (window.ParentExpand) {
-                                const avgHtml = ParentExpand.parentAvgLmpHtml(row, {
-                                    dataset: typeof allTableData !== 'undefined' ? allTableData : undefined,
-                                    field: 'lmp',
-                                    getValue: function(r) {
-                                        const entries = r.lmp_entries || [];
-                                        if (entries.length) {
-                                            const extra = aeLmpLowestFromEntries(entries);
-                                            return extra.lmp > 0 ? extra.lmp : null;
-                                        }
-                                        const v = parseFloat(r.lmp_price || r.lmp);
-                                        return isFinite(v) && v > 0 ? v : null;
-                                    }
-                                });
-                                if (avgHtml !== null) return avgHtml;
-                            }
                             if (row.is_parent) return '<span style="color:#6c757d;">–</span>';
                             const entries = row.lmp_entries || [];
                             const extra = aeLmpLowestFromEntries(entries);
@@ -2107,7 +2281,10 @@
                                     title = base.toFixed(2) + ' + ' + shipPart.toFixed(2) + ' ship = ' + displayNum
                                         + ' (' + activeCount + ' active) — click to edit';
                                 }
-                                return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1" title="' + title.replace(/"/g, '&quot;') + '">' + displayNum + '</span> ' +
+                                // Same as /amazon-tabulator-view: red when LMP < Price, else green.
+                                const curPrice = parseFloat(row.price) || 0;
+                                const lmpColor = (lowest < curPrice) ? '#dc3545' : '#28a745';
+                                return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1" style="color:' + lmpColor + ';font-weight:600;" title="' + title.replace(/"/g, '&quot;') + '">' + displayNum + '</span> ' +
                                     '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn" data-sku="' + skuEsc + '" title="' + title.replace(/"/g, '&quot;') + '"><i class="fas fa-info-circle text-info"></i></button>';
                             }
                             if (extra.ignored_price > 0) {
@@ -2133,6 +2310,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const live = aeComputeAt(d.price, d).groi;
+                            if (live !== null && isFinite(live)) return aePctHtml(live, 'groi');
                             const v = parseFloat(cell.getValue()) || 0;
                             return aePctHtml(v, 'groi');
                         }
@@ -2144,6 +2323,10 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
+                            if (!d.is_parent) {
+                                const live = aeComputeAt(d.price, d).gpft;
+                                if (live !== null && isFinite(live)) return aePctHtml(live, 'gpft');
+                            }
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
                             if (v === 0 && !d.is_parent) return '0%';
@@ -2218,42 +2401,12 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
-                        title: "Sprc Dil",
-                        field: "SPRC_DIL",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof ebaySprcDilForRow === 'function')
-                                    ? (ebaySprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
-                        headerTooltip: "S PRC from Dil → Target NROI slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab. Dil above last To uses Std, then LMP if Std > LMP. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (typeof aeIsParentRow === 'function' && aeIsParentRow(rowData)) return '';
-                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                            const meta = ebayDilGroiMetaForRow(rowData);
-                            const tip = aeTargetGroiWhy(rowData);
-                            if (!meta || !(meta.sprc > 0)) {
-                                return tip
-                                    ? '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="color:#adb5bd;">–</span>'
-                                    : '';
-                            }
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
-                        },
-                        width: 78
-                    },
-                    {
                         title: "Sprice",
                         field: "sprice",
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab. Dil above last To uses Std, then LMP if Std > LMP. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC saved by the server job (aliexpress:sprc-dil-auto-push, 04:15 and 20:15 IST): Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, raised to Min NPFT, LMP cap. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2306,10 +2459,6 @@
                                 return '<i class="fa-solid fa-check-double" style="color:#28a745;font-size:16px;" title="Price pushed — live Price matches Sprice"></i>';
                             }
                             const shown = aePushablePrice(d);
-                            if (shown > 0 && aePushBlockedBySgroi(d, shown)) {
-                                return '<i class="fas fa-ban" style="color:#adb5bd;font-size:14px;" title="Not pushed — SGROI '
-                                    + aePushSgroiForPrice(d, shown) + '% is below Stop < ' + AE_MIN_SGROI + '%"></i>';
-                            }
                             if (!(shown > 0)) {
                                 return '<span style="color:#adb5bd;" title="Not pushed — set Sprice first">-</span>';
                             }
@@ -2331,11 +2480,6 @@
                                 aeNotify('Set Sprice first', 'warning');
                                 return;
                             }
-                            if (aePushBlockedBySgroi(d, price)) {
-                                aeNotify('Not pushed — SGROI ' + aePushSgroiForPrice(d, price)
-                                    + '% is below Stop < ' + AE_MIN_SGROI + '%', 'warning');
-                                return;
-                            }
                             aeApplyPushPatchToSku(sku, { SPRICE_STATUS: 'processing' });
                             aePushUpdatesInChunks([{ sku: sku, price: price, row: cell.getRow() }], $t.closest('.ae-push-row-btn'));
                         }
@@ -2343,7 +2487,7 @@
                     {
                         title: "SGROI%",
                         field: "sroi",
-                        headerTooltip: "SGROI from Sprc Dil S PRC. AL30 = 0 still uses the Dil slab. LMP cap can lower the shown %.",
+                        headerTooltip: "SGROI at the saved S PRC (Std Prc rule, Min NPFT, LMP cap).",
                         sorter: function(a, b, aRow, bRow) {
                             const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2353,9 +2497,9 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = aeSpriceMetrics(d).sroi;
-                            if (isNaN(v)) return '0%';
-                            return aePctHtml(v, 'groi', { title: aeTargetGroiWhy(d) });
+                            const v = aeSpriceMetrics(d).sroiRaw;
+                            if (v === null || !isFinite(v)) return '';
+                            return aePctHtml(v, 'groi');
                         }
                     },
                     {
@@ -2370,8 +2514,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = aeSpriceMetrics(d).sgpft;
-                            if (isNaN(v)) return '0%';
+                            const v = aeSpriceMetrics(d).sgpftRaw;
+                            if (v === null || !isFinite(v)) return '';
                             return aePctHtml(v, 'gpft');
                         }
                     },
@@ -2388,8 +2532,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = aeSpriceMetrics(d).sroi;
-                            if (isNaN(v)) return '0%';
+                            const v = aeSpriceMetrics(d).sroiRaw;
+                            if (v === null || !isFinite(v)) return '';
                             return aePctHtml(v, 'groi', { title: 'SNROI = SGROI (no Ads%)' });
                         }
                     },
@@ -2406,8 +2550,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = aeSpriceMetrics(d).sgpft;
-                            if (isNaN(v)) return '0%';
+                            const v = aeSpriceMetrics(d).sgpftRaw;
+                            if (v === null || !isFinite(v)) return '';
                             return aePctHtml(v, 'gpft', { title: 'SNPFT = SGPFT (no Ads%)' });
                         }
                     },
@@ -2419,7 +2563,6 @@
                         allTableData = Array.isArray(data) ? data : [];
                     }
                     aeSyncPushDatasets();
-                    if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
                     if (!$('#ae-row-type-filter').val()) {
                         $('#ae-row-type-filter').val('skus');
                     }
@@ -2430,9 +2573,6 @@
                         }
                         return;
                     }
-                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                        ebayScheduleSprcDilAutoApply();
-                    }
                     setTimeout(function() {
                         try {
                             if (typeof applyFilters === 'function') applyFilters();
@@ -2442,15 +2582,6 @@
                             window.chPromoAutofitColumns(table);
                         }
                     }, 0);
-                    setTimeout(function() {
-                        try { aePersistVisibleSprices(); } catch (e) { console.error(e); }
-                    }, 400);
-                    setTimeout(function() {
-                        try { aePersistVisibleSprices(); } catch (e) { console.error(e); }
-                    }, 2000);
-                    setTimeout(function() {
-                        try { aePersistVisibleSprices(); } catch (e) { console.error(e); }
-                    }, 5000);
                 },
                 tableBuilt: function() {
                     if (!$('#ae-row-type-filter').val()) {
@@ -2484,19 +2615,6 @@
                     // #endregion
                 }
             });
-
-            if (window.ParentExpand) {
-                ParentExpand.configure({
-                    parentField: 'parent',
-                    skuField: 'sku',
-                    isParentRow: aeIsParentRow,
-                    getTable: () => table,
-                    getDataset: () => allTableData,
-                    onAfterExpand: () => { if (typeof updateSummary === 'function') updateSummary(); },
-                    onCollapse: () => { if (typeof applyFilters === 'function') applyFilters(); },
-                });
-                ParentExpand.bind();
-            }
 
             $('#pricing-sku-search').on('input', function() { applyFilters(); });
             $('#ae-row-type-filter').on('change', function() { applyFilters(); });
@@ -2965,7 +3083,6 @@
 
                 const updates = [];
                 const skipped = [];
-                const skippedLow = [];
                 selectedSkus.forEach(sku => {
                     const rows = table.searchRows('sku', '=', sku);
                     if (!rows.length) return;
@@ -2976,25 +3093,16 @@
                         skipped.push(sku);
                         return;
                     }
-                    if (aePushBlockedBySgroi(d, price)) {
-                        skippedLow.push(sku);
-                        return;
-                    }
                     updates.push({ sku: sku, price: +price.toFixed(2) });
                 });
 
                 if (updates.length === 0) {
-                    if (skippedLow.length) {
-                        aeNotify('Not pushed — ' + skippedLow.length + ' SKU(s) have SGROI < ' + AE_MIN_SGROI + '%', 'warning');
-                        return;
-                    }
                     aeNotify('No selected SKU has a positive SPRICE or Price to push', 'error');
                     return;
                 }
 
                 const extra = [];
                 if (skipped.length) extra.push(skipped.length + ' skipped — no SPRICE/Price');
-                if (skippedLow.length) extra.push(skippedLow.length + ' skipped — SGROI < ' + AE_MIN_SGROI + '%');
                 const summary = 'Push ' + updates.length + ' price' + (updates.length !== 1 ? 's' : '') + ' live to AliExpress?'
                     + (extra.length ? '\n(' + extra.join('; ') + ')' : '');
                 if (!confirm(summary)) return;
@@ -3002,34 +3110,6 @@
             }
 
             $('#ae-push-price-btn').on('click', aePushSelectedPrices);
-
-            $('#ae-stop-low-sgroi-btn').on('click', function(e) {
-                if ($(e.target).is('#ae-min-sgroi-input')) return;
-                const next = !aeStopLowSgroi;
-                const $btn = $(this);
-                $btn.prop('disabled', true);
-                aeStopLowSgroi = next;
-                aeSaveStopSgroiGuard({ notify: true }).fail(function() {
-                    aeStopLowSgroi = !next;
-                    aeNotify('Could not save stop-push setting', 'error');
-                }).always(function() {
-                    $btn.prop('disabled', false);
-                });
-            });
-            $('#ae-min-sgroi-input').on('click', function(e) {
-                e.stopPropagation();
-            }).on('change input', function() {
-                AE_MIN_SGROI = aeReadMinSgroi();
-                aeSyncStopSgroiUi();
-                if (typeof applyFilters === 'function') applyFilters();
-                if (typeof updateSummary === 'function') updateSummary();
-            }).on('change', function() {
-                AE_MIN_SGROI = aeReadMinSgroi();
-                aeSaveStopSgroiGuard({ notify: true }).fail(function() {
-                    aeNotify('Could not save SGROI cutoff', 'error');
-                });
-            });
-            aeSyncStopSgroiUi();
 
             function aeSyncPricingApi(mode, $btn) {
                 const originalHtml = $btn.html();
