@@ -56,9 +56,12 @@ class MarketplaceListingCheck extends Command
         $this->info("Reading all {$label} MCM offers (OF21, inactive included)...");
         $index = $offerIndex->refresh($cfgKey);
         if ($index === null) {
-            $this->error("Could not read {$label} MCM offers (check the {$cfgKey} MCM API key / shop id and the log).");
-
-            return self::FAILURE;
+            $this->warn("Could not read {$label} MCM offers: ".($offerIndex->lastError ?? 'unknown error'));
+            $index = $offerIndex->get($cfgKey, false);
+            if ($index === null) {
+                return self::FAILURE;
+            }
+            $this->warn('Using the last saved offer list from '.$index['fetched_at'].'.');
         }
 
         $offers = $index['offers'];

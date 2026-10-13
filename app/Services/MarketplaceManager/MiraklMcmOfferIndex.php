@@ -23,6 +23,8 @@ class MiraklMcmOfferIndex
 
     private const FRESH_MINUTES = 30;
 
+    public ?string $lastError = null;
+
     public static function configKey(string $channel): ?string
     {
         $c = strtolower(str_replace([' ', '-', '_', "'"], '', trim($channel)));
@@ -69,9 +71,12 @@ class MiraklMcmOfferIndex
         if ($key === null) {
             return null;
         }
+        $this->lastError = null;
         $apiKey = trim((string) config('services.'.$key.'.mcm_api_key', ''));
         $baseUrl = rtrim((string) config('services.'.$key.'.mcm_base_url', ''), '/');
         if ($apiKey === '' || $baseUrl === '') {
+            $this->lastError = 'services.'.$key.'.mcm_api_key or mcm_base_url is empty';
+
             return null;
         }
 
@@ -99,6 +104,7 @@ class MiraklMcmOfferIndex
                     sleep(min(30, 3 * $attempt));
                 }
                 if (! $response || ! $response->successful()) {
+                    $this->lastError = 'OF21 HTTP '.($response?->status() ?? 0).' at offset '.$offset.': '.substr((string) $response?->body(), 0, 200);
                     Log::warning('MiraklMcmOfferIndex: OF21 failed', ['channel' => $key, 'status' => $response?->status(), 'offset' => $offset]);
 
                     return null;
@@ -134,12 +140,15 @@ class MiraklMcmOfferIndex
                 }
             } while ($hasMore);
         } catch (\Throwable $e) {
+            $this->lastError = $e->getMessage();
             Log::warning('MiraklMcmOfferIndex: exception', ['channel' => $key, 'error' => $e->getMessage()]);
 
             return null;
         }
 
         if ($offers === []) {
+            $this->lastError = 'OF21 returned no offers';
+
             return null;
         }
 
