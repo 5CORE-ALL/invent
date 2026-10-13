@@ -503,6 +503,8 @@ class DilRuleSpriceApplyService
             $l30Overlay = $this->faireL30BySku();
         }
         $faireViewsBySku = $this->channel === 'faire' ? $this->faireViewsBySku() : [];
+        // TikTok 0 Sold uses TT L30 = the page's sold qty (tiktok_orders L30), not tiktok_products.sold.
+        $ttL30BySku = in_array($this->channel, ['tiktok', 'tiktok2'], true) ? $this->tiktokL30BySku() : null;
 
         $draft = [];
         foreach ($skus as $sku) {
@@ -560,6 +562,7 @@ class DilRuleSpriceApplyService
                     ? (float) ($l30Overlay[$sku] ?? 0)
                     : $ov,
                 'al30' => $al30,
+                'tt_l30' => $ttL30BySku === null ? null : (float) ($ttL30BySku[$sku] ?? 0),
                 'live' => round((float) ($metric->{$priceCol} ?? 0), 2),
                 'lp' => $lpShip['lp'],
                 'ship' => $lpShip['ship'],
@@ -747,6 +750,30 @@ class DilRuleSpriceApplyService
 
             return [];
         }
+    }
+
+    /**
+     * TikTok / TikTok 2 L30 sold by UPPER(sku), NBSP-safe. Same source as /tiktok-pricing "TT L30".
+     * Returns null when the orders table is not ready, so a missing source is never read as 0 sold.
+     *
+     * @return array<string, float>|null
+     */
+    protected function tiktokL30BySku(): ?array
+    {
+        $two = $this->channel === 'tiktok2';
+        $model = $two ? \App\Models\Tiktok2Order::class : \App\Models\TiktokOrder::class;
+        if (! $model::tableReady()) {
+            return null;
+        }
+        $out = [];
+        foreach ($model::soldQtyL30(null, 30) as $sku => $qty) {
+            $key = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
+            if ($key !== '') {
+                $out[$key] = ($out[$key] ?? 0) + (float) $qty;
+            }
+        }
+
+        return $out;
     }
 
     /**
