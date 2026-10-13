@@ -151,7 +151,11 @@ class SheinListingPublishService
         $currency = trim((string) config('services.shein.currency', 'USD')) ?: 'USD';
 
         $template = $this->api->listingAttributeTemplate((int) $category['product_type_id']);
-        $productAttrs = $this->productAttributePayload($template['product'] ?? [], $primarySku);
+        $productAttrs = $this->productAttributePayload(
+            $template['product'] ?? [],
+            $primarySku,
+            $this->knownConditionalTriggers((int) $category['product_type_id'])
+        );
         $skcList = $this->buildSkcList(
             $skuRows,
             $hostedImages,
@@ -462,10 +466,6 @@ class SheinListingPublishService
             ]],
             'skc_list' => [$skc],
         ];
-        $productAttrs = $this->productAttributePayload($template['product'] ?? [], $supplierSku !== '' ? $supplierSku : $sku);
-        if ($productAttrs !== []) {
-            $payload['product_attribute_list'] = $productAttrs;
-        }
 
         Log::info('Shein listing edit: publishOrEdit', [
             'sku' => $sku,
@@ -476,9 +476,23 @@ class SheinListingPublishService
             'image_count' => count($hostedImages),
         ]);
 
-        $result = $this->api->publishOrEditProduct($payload);
+        [$result, $attributeNotes] = $this->submitEdit(
+            $payload,
+            $raw,
+            $template['product'] ?? [],
+            $supplierSku !== '' ? $supplierSku : $sku,
+            $productTypeId
+        );
         if (empty($result['success'])) {
-            return ['success' => false, 'message' => $result['message'] ?? 'Shein rejected the edit.'];
+            $message = (string) ($result['message'] ?? 'Shein rejected the edit.');
+            if ($attributeNotes !== []) {
+                $message .= ' Attribute changes tried: '.implode('; ', $attributeNotes).'.';
+            }
+            if (self::conditionalTriggers((array) ($result['validation'] ?? [])) !== []) {
+                $message .= ' Fix the listed attribute in Seller Hub (Product List → Edit → Product Attributes), then push again.';
+            }
+
+            return ['success' => false, 'message' => $message];
         }
 
         if ($metric) {
@@ -514,7 +528,9 @@ class SheinListingPublishService
         return [
             'success' => true,
             'message' => 'Shein accepted the '.($what !== [] ? implode(', ', $what) : 'content').' update for SPU '.$spu
-                .'. Shein reviews edits before they show on the listing.',
+                .'. Shein reviews edits before they show on the listing.'
+                .($attributeNotes !== [] ? ' To pass Shein validation the edit also changed product attributes: '.implode('; ', $attributeNotes).'.' : '')
+                .(! empty($result['notices']) ? ' Shein note: '.implode(' | ', (array) $result['notices']) : ''),
             'spu_name' => $spu,
             'sku_code' => $skuCode,
         ];
@@ -697,6 +713,331 @@ class SheinListingPublishService
         }
 
         return null;
+    }
+
+    /**
+     * Shein re-validates the whole attribute list on every publishOrEdit. The live attributes are
+     * re-sent as they are; when Shein answers "Because X selected Y, Z is required", value Y is
+     * swapped for another allowed value of X (or dropped when X is optional) and the edit retried.
+     * Without readable live attributes the first try omits the list, then falls back to the
+     * category template.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $raw
+     * @param  list<array<string, mixed>>  $templateAttrs
+     * @return array{0: array<string, mixed>, 1: list<string>}
+     */
+    private function submitEdit(array $payload, array $raw, array $templateAttrs, string $extraFallback, int $productTypeId): array
+    {
+        $names = [];
+        $live = $this->liveProductAttributes($raw, $names);
+        $avoid = $this->knownConditionalTriggers($productTypeId);
+        $useTemplate = false;
+        $result = [];
+        $notes = [];
+        for ($attempt = 0; $attempt < 4; $attempt++) {
+            $notes = [];
+            $attrs = [];
+            if ($live !== []) {
+                [$attrs, $notes] = $this->editAttributeList($live, $templateAttrs, $avoid, $names, $extraFallback);
+            } elseif ($useTemplate) {
+                $attrs = $this->productAttributePayload($templateAttrs, $extraFallback, $avoid);
+                if ($attrs !== []) {
+                    $notes[] = 'required attributes re-sent with default values from Shein\'s category template (check them in Seller Hub)';
+                }
+            }
+            $body = $payload;
+            if ($attrs !== []) {
+                $body['product_attribute_list'] = $attrs;
+            }
+
+            $result = $this->api->publishOrEditProduct($body);
+            if (! empty($result['success'])) {
+                break;
+            }
+
+            $validation = array_map('strval', (array) ($result['validation'] ?? []));
+            $retry = false;
+            foreach (self::conditionalTriggers($validation) as $t) {
+                $names[$t['attribute_id']] = $t['attribute_name'];
+                $names[$t['attribute_id'].':'.$t['value_id']] = $t['value_name'];
+                if (! in_array($t['value_id'], $avoid[$t['attribute_id']] ?? [], true)) {
+                    $avoid[$t['attribute_id']][] = $t['value_id'];
+                    $retry = true;
+                }
+            }
+            if ($retry) {
+                $this->rememberConditionalTriggers($productTypeId, $avoid);
+            }
+            if ($live === [] && ! $useTemplate && self::mentionsAttributes($validation)) {
+                $useTemplate = true;
+                $retry = true;
+            }
+            if (! $retry) {
+                break;
+            }
+            Log::info('Shein listing edit: retrying with adjusted attributes', [
+                'spu' => $payload['spu_name'] ?? null,
+                'attempt' => $attempt + 1,
+                'avoid' => $avoid,
+                'validation' => $validation,
+            ]);
+        }
+
+        return [$result, $notes];
+    }
+
+    /**
+     * Product attributes currently on the Shein listing (full-detail), in publishOrEdit shape.
+     * Sale attributes (SKC/SKU level) are skipped.
+     *
+     * @param  array<string, mixed>  $raw
+     * @param  array<int|string, string>  $names  filled with attribute / value names when Shein returns them
+     * @return list<array{attribute_id: int, attribute_value_id?: int, attribute_extra_value?: string}>
+     */
+    private function liveProductAttributes(array $raw, array &$names): array
+    {
+        $nodes = [$raw];
+        foreach (['spuInfo', 'spu_info', 'productInfo', 'product_info'] as $key) {
+            if (is_array($raw[$key] ?? null)) {
+                $nodes[] = $raw[$key];
+            }
+        }
+        $out = [];
+        foreach ($nodes as $node) {
+            foreach ($node as $key => $list) {
+                if (! is_string($key) || ! is_array($list) || ! preg_match('/attr/i', $key) || preg_match('/sale|skc|sku/i', $key)) {
+                    continue;
+                }
+                foreach ($list as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $aid = (int) ($row['attributeId'] ?? $row['attribute_id'] ?? 0);
+                    $vid = (int) ($row['attributeValueId'] ?? $row['attribute_value_id'] ?? 0);
+                    $extra = trim((string) ($row['attributeExtraValue'] ?? $row['attribute_extra_value'] ?? ''));
+                    if ($aid <= 0 || ($vid <= 0 && $extra === '')) {
+                        continue;
+                    }
+                    $entry = ['attribute_id' => $aid];
+                    if ($vid > 0) {
+                        $entry['attribute_value_id'] = $vid;
+                    }
+                    if ($extra !== '') {
+                        $entry['attribute_extra_value'] = $extra;
+                    }
+                    $out[$aid.':'.$vid.':'.$extra] = $entry;
+
+                    $attrName = trim((string) ($row['attributeName'] ?? $row['attribute_name'] ?? $row['attributeNameEn'] ?? ''));
+                    $valueName = trim((string) ($row['attributeValueName'] ?? $row['attribute_value_name'] ?? $row['attributeValue'] ?? $row['attribute_value'] ?? ''));
+                    if ($attrName !== '') {
+                        $names[$aid] = $attrName;
+                    }
+                    if ($vid > 0 && $valueName !== '') {
+                        $names[$aid.':'.$vid] = $valueName;
+                    }
+                }
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * Live attributes minus values known to trigger extra required attributes. A removed value
+     * is replaced by another allowed one only when the template marks the attribute required.
+     *
+     * @param  list<array{attribute_id: int, attribute_value_id?: int, attribute_extra_value?: string}>  $live
+     * @param  list<array<string, mixed>>  $templateAttrs
+     * @param  array<int, list<int>>  $avoid
+     * @param  array<int|string, string>  $names
+     * @return array{0: list<array<string, mixed>>, 1: list<string>}
+     */
+    private function editAttributeList(array $live, array $templateAttrs, array $avoid, array $names, string $extraFallback): array
+    {
+        $tplById = [];
+        foreach ($templateAttrs as $attr) {
+            if (is_array($attr)) {
+                $id = (int) ($attr['attribute_id'] ?? $attr['attributeId'] ?? 0);
+                if ($id > 0) {
+                    $tplById[$id] = $attr;
+                }
+            }
+        }
+
+        $out = [];
+        $removed = [];
+        foreach ($live as $row) {
+            $aid = (int) $row['attribute_id'];
+            $vid = (int) ($row['attribute_value_id'] ?? 0);
+            if ($vid > 0 && in_array($vid, $avoid[$aid] ?? [], true)) {
+                $removed[$aid][] = $vid;
+                continue;
+            }
+            $out[] = $row;
+        }
+        $present = array_fill_keys(array_map(static fn ($r) => (int) $r['attribute_id'], $out), true);
+
+        $notes = [];
+        foreach ($removed as $aid => $vids) {
+            $tpl = $tplById[$aid] ?? null;
+            $attrName = $names[$aid] ?? $this->attributeLabel($tpl) ?: 'attribute '.$aid;
+            $old = implode(', ', array_map(
+                fn ($v) => ($names[$aid.':'.$v] ?? $this->templateValueName($tpl, $v)) ?: (string) $v,
+                $vids
+            ));
+            if (isset($present[$aid])) {
+                $notes[] = $attrName.': removed '.$old;
+                continue;
+            }
+            $required = $tpl !== null && (int) ($tpl['attribute_status'] ?? $tpl['attributeStatus'] ?? 0) === 3;
+            $pick = $required ? $this->pickAttributeValue($tpl, $avoid[$aid] ?? []) : null;
+            if ($pick !== null) {
+                $out[] = ['attribute_id' => $aid, 'attribute_value_id' => $pick['id']];
+                $present[$aid] = true;
+                $notes[] = $attrName.': '.$old.' → '.($pick['name'] !== '' ? $pick['name'] : (string) $pick['id']);
+            } else {
+                $notes[] = $attrName.': removed '.$old;
+            }
+        }
+
+        foreach ($tplById as $aid => $tpl) {
+            if (isset($present[$aid]) || (int) ($tpl['attribute_status'] ?? $tpl['attributeStatus'] ?? 0) !== 3) {
+                continue;
+            }
+            foreach ($this->productAttributePayload([$tpl], $extraFallback, $avoid) as $row) {
+                $out[] = $row;
+                $value = isset($row['attribute_value_id'])
+                    ? $this->templateValueName($tpl, (int) $row['attribute_value_id'])
+                    : (string) ($row['attribute_extra_value'] ?? '');
+                $notes[] = ($this->attributeLabel($tpl) ?: 'attribute '.$aid).' (required, was empty): set to '.$value;
+            }
+        }
+
+        return [$out, $notes];
+    }
+
+    /**
+     * "Because Product Features(1000616) selected WiFi Function(1006919), Maximum Rated Power(W)(1002330) is required"
+     *
+     * @param  list<string>  $validation
+     * @return list<array{attribute_id: int, attribute_name: string, value_id: int, value_name: string}>
+     */
+    public static function conditionalTriggers(array $validation): array
+    {
+        $out = [];
+        foreach ($validation as $line) {
+            if (! preg_match_all('/Because\s+(.+?)\((\d+)\)\s+selected\s+(.+?)\((\d+)\)\s*[,，]/iu', (string) $line, $m, PREG_SET_ORDER)) {
+                continue;
+            }
+            foreach ($m as $hit) {
+                $aid = (int) $hit[2];
+                $vid = (int) $hit[4];
+                $out[$aid.':'.$vid] = [
+                    'attribute_id' => $aid,
+                    'attribute_name' => trim($hit[1]),
+                    'value_id' => $vid,
+                    'value_name' => trim($hit[3]),
+                ];
+            }
+        }
+
+        return array_values($out);
+    }
+
+    /** @param  list<string>  $validation */
+    private static function mentionsAttributes(array $validation): bool
+    {
+        foreach ($validation as $line) {
+            if (stripos((string) $line, 'attribute') !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array<int, list<int>> */
+    private function knownConditionalTriggers(int $productTypeId): array
+    {
+        if ($productTypeId <= 0) {
+            return [];
+        }
+        try {
+            $cached = Cache::get('shein_attr_triggers:'.$productTypeId);
+        } catch (\Throwable) {
+            return [];
+        }
+        $out = [];
+        foreach (is_array($cached) ? $cached : [] as $aid => $vids) {
+            if ((int) $aid > 0 && is_array($vids)) {
+                $out[(int) $aid] = array_values(array_unique(array_map('intval', $vids)));
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param  array<int, list<int>>  $avoid */
+    private function rememberConditionalTriggers(int $productTypeId, array $avoid): void
+    {
+        if ($productTypeId <= 0) {
+            return;
+        }
+        try {
+            Cache::put('shein_attr_triggers:'.$productTypeId, $avoid, now()->addDays(30));
+        } catch (\Throwable) {
+        }
+    }
+
+    /**
+     * An allowed value that is not known to trigger extra required attributes, preferring
+     * neutral answers ("None", "Not Applicable", "No", "Other") over the first option.
+     *
+     * @param  array<string, mixed>  $attr
+     * @param  list<int>  $avoidIds
+     * @return array{id: int, name: string}|null
+     */
+    private function pickAttributeValue(array $attr, array $avoidIds = []): ?array
+    {
+        $values = array_values(array_filter(
+            $this->attributeValues($attr),
+            static fn ($v) => ! in_array($v['id'], $avoidIds, true)
+        ));
+        if ($values === []) {
+            return null;
+        }
+        foreach (['none', 'not applicable', 'n/a', 'no', 'other', 'others'] as $want) {
+            foreach ($values as $v) {
+                if (mb_strtolower(trim($v['name'])) === $want) {
+                    return $v;
+                }
+            }
+        }
+
+        return $values[0];
+    }
+
+    /** @param  array<string, mixed>|null  $attr */
+    private function attributeLabel(?array $attr): string
+    {
+        if (! is_array($attr)) {
+            return '';
+        }
+
+        return trim((string) ($attr['attribute_name_en'] ?? $attr['attribute_name'] ?? $attr['attributeName'] ?? ''));
+    }
+
+    /** @param  array<string, mixed>|null  $attr */
+    private function templateValueName(?array $attr, int $valueId): string
+    {
+        foreach ($this->attributeValues($attr) as $v) {
+            if ($v['id'] === $valueId) {
+                return $v['name'];
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -1072,13 +1413,15 @@ class SheinListingPublishService
     }
 
     /**
-     * Required template attributes. Dropdowns send the first allowed value. Manual fields
+     * Required template attributes. Dropdowns send a neutral allowed value (see pickAttributeValue),
+     * skipping values Shein reported as triggering extra required attributes. Manual fields
      * such as Product Model have no value id, so they go out as attribute_extra_value.
      *
      * @param  list<array<string, mixed>>  $attrs
+     * @param  array<int, list<int>>  $avoid
      * @return list<array{attribute_id: int, attribute_value_id?: int, attribute_extra_value?: string}>
      */
-    private function productAttributePayload(array $attrs, string $extraFallback = ''): array
+    private function productAttributePayload(array $attrs, string $extraFallback = '', array $avoid = []): array
     {
         $extraFallback = trim($extraFallback);
         if ($extraFallback === '') {
@@ -1095,7 +1438,10 @@ class SheinListingPublishService
             }
             $name = mb_strtolower(trim((string) ($attr['attribute_name'] ?? $attr['attributeName'] ?? $attr['attribute_name_en'] ?? '')));
             $values = $this->attributeValues($attr);
-            $valueId = (int) ($values[0]['id'] ?? 0);
+            $valueId = (int) ($this->pickAttributeValue($attr, $avoid[$attrId] ?? [])['id'] ?? 0);
+            if ($values !== [] && $valueId <= 0) {
+                continue;
+            }
             if ($valueId > 0) {
                 $out[] = [
                     'attribute_id' => $attrId,

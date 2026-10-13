@@ -225,7 +225,7 @@ class SheinApiService
 
     private static function sheinRawReason(string $message): string
     {
-        $reason = trim((string) preg_replace('/^Shein did not create the product:\s*/i', '', $message));
+        $reason = trim((string) preg_replace('/^Shein did not (create the product|accept the edit):\s*/i', '', $message));
 
         return mb_strlen($reason) > 600 ? mb_substr($reason, 0, 600).'…' : ($reason !== '' ? $reason : 'no reason given');
     }
@@ -4330,25 +4330,45 @@ class SheinApiService
         ]);
 
         // Shein returns code 0 / "OK" even when validation failed; the real verdict is info.success
-        // and the field-level messages in pre_valid_result / mcc_valid_result.
-        $validation = self::publishValidationMessages($info);
+        // and the field-level messages in pre_valid_result / mcc_valid_result. Notices such as
+        // "Sensitive words have been automatically removed" ride along without failing the call.
+        $notices = [];
+        $validation = [];
+        foreach (self::publishValidationMessages($info) as $line) {
+            if (self::isPublishNotice($line)) {
+                $notices[] = $line;
+            } else {
+                $validation[] = $line;
+            }
+        }
+        $isEdit = (int) ($payload['edit_type'] ?? 0) === 1;
         $declaredSuccess = $info['success'] ?? null;
         $failed = $declaredSuccess === false || $declaredSuccess === 'false' || $declaredSuccess === 0 || $declaredSuccess === '0'
             || ($declaredSuccess === null && $spu === '' && $skuCode === '' && $validation !== []);
         if ($failed) {
+            $reason = $validation !== [] ? implode(' | ', $validation) : trim((string) ($json['msg'] ?? 'validation failed'));
+            if ($notices !== []) {
+                $reason .= ' (Shein also noted: '.implode(' | ', $notices).')';
+            }
+
             return [
                 'success' => false,
-                'message' => 'Shein did not create the product: '.($validation !== [] ? implode(' | ', $validation) : trim((string) ($json['msg'] ?? 'validation failed'))),
+                'message' => ($isEdit ? 'Shein did not accept the edit: ' : 'Shein did not create the product: ').$reason,
                 'validation' => $validation,
+                'notices' => $notices,
                 'info' => $info,
             ];
+        }
+        if ($spu === '' && $skuCode === '' && $isEdit && $validation === []) {
+            $spu = trim((string) ($payload['spu_name'] ?? ''));
         }
         if ($spu === '' && $skuCode === '') {
             return [
                 'success' => false,
-                'message' => 'Shein answered OK but returned no SPU/SKU code, so the product was not created.'
+                'message' => 'Shein answered OK but returned no SPU/SKU code, so the product was not '.($isEdit ? 'updated.' : 'created.')
                     .($validation !== [] ? ' '.implode(' | ', $validation) : ''),
                 'validation' => $validation,
+                'notices' => $notices,
                 'info' => $info,
             ];
         }
@@ -4365,11 +4385,25 @@ class SheinApiService
         return [
             'success' => true,
             'message' => 'Shein accepted the product ('.implode(', ', array_keys($ids)).'). '
-                .'New products go through Shein\'s review before they show in Seller Hub; search Product List by that SPU code.',
+                .'New products go through Shein\'s review before they show in Seller Hub; search Product List by that SPU code.'
+                .($notices !== [] ? ' Shein note: '.implode(' | ', $notices) : ''),
             'spu_name' => $spu !== '' ? $spu : null,
             'sku_code' => $skuCode !== '' ? $skuCode : null,
+            'notices' => $notices,
             'info' => $info,
         ];
+    }
+
+    /** Informational publishOrEdit lines (Shein already fixed the content itself), not rejections. */
+    public static function isPublishNotice(string $line): bool
+    {
+        $m = mb_strtolower($line);
+
+        return str_contains($m, 'automatically removed')
+            || str_contains($m, 'auto removed')
+            || str_contains($m, 'automatically deleted')
+            || str_contains($m, '已自动')
+            || (str_contains($m, 'sensitive word') && str_contains($m, 'removed'));
     }
 
     /**
