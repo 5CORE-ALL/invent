@@ -377,7 +377,7 @@
         }
 
         /* Action-column icons: dark color, no box outline */
-        .cp-btn, .cp-history-btn, .sync-web-price-btn, .edit-btn, .duplicate-btn, .delete-btn {
+        .cp-btn, .lp-btn, .cp-history-btn, .sync-web-price-btn, .edit-btn, .duplicate-btn, .delete-btn {
             border: none !important;
             background: transparent !important;
             box-shadow: none !important;
@@ -385,7 +385,7 @@
             padding: 4px 6px !important;
         }
 
-        .cp-btn:hover, .cp-history-btn:hover, .sync-web-price-btn:hover, .edit-btn:hover, .duplicate-btn:hover, .delete-btn:hover {
+        .cp-btn:hover, .lp-btn:hover, .cp-history-btn:hover, .sync-web-price-btn:hover, .edit-btn:hover, .duplicate-btn:hover, .delete-btn:hover {
             color: #000 !important;
             background: transparent !important;
             border: none !important;
@@ -1368,6 +1368,8 @@
                                         </div>
                                     </div>
 
+                                    <input type="hidden" id="cpModalFreight">
+                                    <div id="cpBulkNote" class="alert alert-info py-2 mb-3" style="display:none; font-size:0.9rem;"></div>
                                     <div class="row mb-3">
                                         <div class="col-md-5">
                                             <label for="cpModalInput" class="form-label fw-bold" style="color:#4A5568;">New CP <span class="text-danger">*</span></label>
@@ -1376,13 +1378,20 @@
                                                 style="border:2px solid #E2E8F0; border-radius:6px; padding:0.75rem; background-color:white;">
                                             <div class="invalid-feedback" id="cpModalInputFeedback"></div>
                                         </div>
+                                        <div class="col-md-5">
+                                            <label for="cpModalLpInput" class="form-label fw-bold" style="color:#4A5568;">New LP</label>
+                                            <input type="number" step="0.01" min="0" class="form-control" id="cpModalLpInput"
+                                                placeholder="Enter LP"
+                                                style="border:2px solid #E2E8F0; border-radius:6px; padding:0.75rem; background-color:white;">
+                                            <div class="form-text">Editing either value updates the other. LP = CP + freight.</div>
+                                        </div>
                                     </div>
 
                                     <div class="row mb-3" id="cpReasonWrapper" style="display:none;">
                                         <div class="col-12">
                                             <div class="alert py-2 mb-2" style="font-size:0.9rem; color:#dc3545; background-color:#f8d7da; border:1px solid #f5c2c7;">
                                                 <i class="fas fa-exclamation-triangle me-1"></i>
-                                                The new CP is <strong>higher</strong> than the current CP. A reason for the increase is mandatory.
+                                                The new CP is <strong>higher</strong> than the current CP on a product being updated. A reason for the increase is mandatory.
                                             </div>
                                             <label for="cpReasonInput" class="form-label fw-bold" style="color:#4A5568;">Reason for increase <span class="text-danger">*</span></label>
                                             <textarea class="form-control" id="cpReasonInput" rows="2"
@@ -1394,7 +1403,7 @@
 
                                     <div class="d-flex gap-2 mb-3">
                                         <button type="button" class="btn btn-primary" id="cpSaveBtn">
-                                            <i class="fas fa-save me-1"></i>Save CP
+                                            <i class="fas fa-save me-1"></i>Save CP & LP
                                         </button>
                                         <button type="button" class="btn btn-outline-secondary" id="cpHistoryBtn">
                                             <i class="fas fa-clock-rotate-left me-1"></i>History
@@ -2389,8 +2398,8 @@
                                 cell.innerHTML = addMissingIndicator(cellContent, isMissing, item.SKU || '', 'unit', 'Unit');
                                 break;
                             }
-                            case "LP":
-                                cell.className = 'text-center';
+                            case "LP": {
+                                cell.className = 'text-center pm-lp-cell';
                                 let displayLp = item.lp;
                                 if (resolvedFreight && resolvedFreight.fromCombo) {
                                     const cpNum = parseFloat(item.cp);
@@ -2399,18 +2408,16 @@
                                         displayLp = (cpNum + resolvedFreight.frght).toFixed(2);
                                     }
                                 }
+                                const isParentLp = item.SKU && String(item.SKU).toUpperCase().includes('PARENT');
+                                const lpPen = isParentLp ? '' : `<button type="button" class="btn btn-sm lp-btn ms-1" data-sku="${escapeHtml(item.SKU)}" title="Edit Landed Price (LP)"><i class="bi bi-pencil-square"></i></button>`;
                                 isMissing = isDataMissing(displayLp, true);
-                                if (isMissing) {
-                                    cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
-                                } else {
-                                    const formatted = formatNumber(displayLp, 2);
-                                    if (formatted === '-') {
-                                        cell.innerHTML = '<span class="missing-data-indicator" title="Missing Data">M</span>';
-                                    } else {
-                                        cell.textContent = formatted;
-                                    }
-                                }
+                                const lpFormatted = formatNumber(displayLp, 2);
+                                const lpShown = (isMissing || lpFormatted === '-')
+                                    ? '<span class="missing-data-indicator" title="Missing Data">M</span>'
+                                    : lpFormatted;
+                                cell.innerHTML = `<span class="lp-value">${lpShown}</span>${lpPen}`;
                                 break;
+                            }
                             case "CP$": {
                                 cell.className = 'text-center pm-freeze-cp';
                                 isMissing = isDataMissing(item.cp, true);
@@ -3798,7 +3805,14 @@
                     const btn = e.target.closest('.cp-btn');
                     if (!btn) return;
                     e.preventDefault();
-                    openCpModal(btn.getAttribute('data-sku'));
+                    openCpModal(btn.getAttribute('data-sku'), 'cp');
+                });
+
+                document.addEventListener('click', function(e) {
+                    const btn = e.target.closest('.lp-btn');
+                    if (!btn) return;
+                    e.preventDefault();
+                    openCpModal(btn.getAttribute('data-sku'), 'lp');
                 });
 
                 document.addEventListener('click', function(e) {
@@ -3836,7 +3850,11 @@
 
                 const inputEl = document.getElementById('cpModalInput');
                 if (inputEl) {
-                    inputEl.addEventListener('input', toggleCpReason);
+                    inputEl.addEventListener('input', syncLpFromCp);
+                }
+                const lpInputEl = document.getElementById('cpModalLpInput');
+                if (lpInputEl) {
+                    lpInputEl.addEventListener('input', syncCpFromLp);
                 }
 
                 const saveBtn = document.getElementById('cpSaveBtn');
@@ -4013,18 +4031,195 @@
                         </tr>`;
             }
 
-            function openCpModal(sku) {
+            let cpLpSyncLock = false;
+
+            function productCpValue(product) {
+                if (!product) return null;
+                const raw = product.cp ?? (product.Values ? product.Values.cp : null);
+                const n = parseFloat(raw);
+                return Number.isFinite(n) ? n : null;
+            }
+
+            function productLpValue(product) {
+                if (!product) return null;
+                const raw = product.lp ?? (product.Values ? product.Values.lp : null);
+                const n = parseFloat(raw);
+                return Number.isFinite(n) ? n : null;
+            }
+
+            function rowFreightForProduct(product) {
+                if (!product) return 0;
+                const resolved = resolveItemDimFreight(product);
+                if (resolved && Number.isFinite(parseFloat(resolved.frght))) {
+                    return parseFloat(resolved.frght);
+                }
+                const stored = parseFloat(product.frght);
+                return Number.isFinite(stored) ? stored : 0;
+            }
+
+            // Checked rows, excluding parent placeholders. When the row being edited
+            // is part of the selection, every selected row is a target. Otherwise
+            // only that row is updated so unchecked rows stay as they are.
+            function cpUpdateTargets(sourceSku) {
+                const selected = Object.keys(selectedItems || {}).filter(s =>
+                    s && !String(s).toUpperCase().includes('PARENT'));
+                if (sourceSku && selected.indexOf(sourceSku) !== -1) {
+                    return selected;
+                }
+                return sourceSku ? [sourceSku] : [];
+            }
+
+            function cpIncreaseForTargets(nextCp, targets) {
+                const next = parseFloat(nextCp);
+                if (!Number.isFinite(next)) return false;
+                return (targets || []).some(sku => {
+                    const current = productCpValue(productMap.get(sku));
+                    return current !== null && next > current + 0.0001;
+                });
+            }
+
+            function syncLpFromCp() {
+                if (cpLpSyncLock) return;
+                cpLpSyncLock = true;
+                const cp = parseFloat(document.getElementById('cpModalInput').value);
+                const frg = parseFloat(document.getElementById('cpModalFreight').value) || 0;
+                const lpEl = document.getElementById('cpModalLpInput');
+                if (lpEl && Number.isFinite(cp)) {
+                    lpEl.value = (cp + frg).toFixed(2);
+                }
+                cpLpSyncLock = false;
+                toggleCpReason();
+            }
+
+            function syncCpFromLp() {
+                if (cpLpSyncLock) return;
+                cpLpSyncLock = true;
+                const lp = parseFloat(document.getElementById('cpModalLpInput').value);
+                const frg = parseFloat(document.getElementById('cpModalFreight').value) || 0;
+                const cpEl = document.getElementById('cpModalInput');
+                if (cpEl && Number.isFinite(lp)) {
+                    cpEl.value = Math.max(0, lp - frg).toFixed(2);
+                }
+                cpLpSyncLock = false;
+                toggleCpReason();
+            }
+
+            function updateCpBulkNote(sourceSku) {
+                const note = document.getElementById('cpBulkNote');
+                if (!note) return;
+                const targets = cpUpdateTargets(sourceSku);
+                if (targets.length > 1) {
+                    note.style.display = 'block';
+                    note.textContent = 'CP and LP will be saved for all ' + targets.length + ' selected products. Unselected rows stay unchanged.';
+                } else {
+                    note.style.display = 'none';
+                    note.textContent = '';
+                }
+            }
+
+            function findProductRowBySku(sku) {
+                const rows = document.querySelectorAll('#table-body tr');
+                for (const row of rows) {
+                    const el = row.querySelector('.sku-hover');
+                    if (el && el.getAttribute('data-sku') === sku) return row;
+                }
+                return null;
+            }
+
+            function cpCellInnerHtml(sku, cp) {
+                const formatted = cpFmt(cp);
+                const shown = formatted === '—'
+                    ? '<span class="missing-data-indicator" title="Missing Data">M</span>'
+                    : formatted;
+                const pen = `<button type="button" class="btn btn-sm cp-btn ms-1" data-sku="${escapeHtml(sku)}" title="Edit Cost Price (CP)"><i class="bi bi-pencil-square"></i></button>`;
+                return `<span class="cp-value">${shown}</span>${cpMasterHistoryDotHtml(sku, cp)}${pen}`;
+            }
+
+            function lpCellInnerHtml(sku, lp) {
+                const formatted = formatNumber(lp, 2);
+                const shown = (formatted === '-' || formatted === '')
+                    ? '<span class="missing-data-indicator" title="Missing Data">M</span>'
+                    : formatted;
+                const pen = `<button type="button" class="btn btn-sm lp-btn ms-1" data-sku="${escapeHtml(sku)}" title="Edit Landed Price (LP)"><i class="bi bi-pencil-square"></i></button>`;
+                return `<span class="lp-value">${shown}</span>${pen}`;
+            }
+
+            function paintCpLpOnRow(sku, cp, lp) {
+                const row = findProductRowBySku(sku);
+                if (!row) return;
+                const cpCell = row.querySelector('td.pm-freeze-cp');
+                if (cpCell && cp !== null && cp !== undefined) {
+                    cpCell.innerHTML = cpCellInnerHtml(sku, cp);
+                }
+                const lpCell = row.querySelector('td.pm-lp-cell');
+                if (lpCell && lp !== null && lp !== undefined && lp !== '') {
+                    lpCell.innerHTML = lpCellInnerHtml(sku, lp);
+                }
+            }
+
+            function patchProductCpLp(sku, cp, lp, frght) {
+                const apply = (product) => {
+                    if (!product) return;
+                    if (cp !== null && cp !== undefined) product.cp = cp;
+                    if (lp !== null && lp !== undefined) product.lp = lp;
+                    if (frght !== null && frght !== undefined) product.frght = frght;
+                    if (!product.Values || typeof product.Values === 'string') {
+                        try { product.Values = product.Values ? JSON.parse(product.Values) : {}; } catch (e) { product.Values = {}; }
+                    }
+                    if (cp !== null && cp !== undefined) product.Values.cp = cp;
+                    if (lp !== null && lp !== undefined) product.Values.lp = lp;
+                    if (frght !== null && frght !== undefined) product.Values.frght = frght;
+                };
+                apply(productMap.get(sku));
+                const idx = tableData.findIndex(p => (p.SKU || p.sku) === sku);
+                if (idx !== -1) apply(tableData[idx]);
+            }
+
+            function snapshotCpLp(skus) {
+                return (skus || []).map(sku => {
+                    const product = productMap.get(sku);
+                    return {
+                        sku: sku,
+                        cp: productCpValue(product),
+                        lp: productLpValue(product),
+                        frght: product ? product.frght : null
+                    };
+                });
+            }
+
+            function restoreCpLpSnapshot(snapshot) {
+                (snapshot || []).forEach(row => {
+                    patchProductCpLp(row.sku, row.cp, row.lp, row.frght);
+                    paintCpLpOnRow(row.sku, row.cp, row.lp);
+                });
+            }
+
+            function openCpModal(sku, focusField) {
                 const product = productMap.get(sku);
-                const currentCp = product ? (product.cp ?? (product.Values ? product.Values.cp : null)) : null;
+                const currentCp = productCpValue(product);
+                const currentLp = productLpValue(product);
+                const freight = rowFreightForProduct(product);
 
                 document.getElementById('cpModalSku').value = sku || '';
                 document.getElementById('cpModalCurrent').value = (currentCp ?? '');
+                document.getElementById('cpModalFreight').value = freight;
                 document.getElementById('cpModalSkuDisplay').textContent = sku || '—';
                 document.getElementById('cpModalCurrentDisplay').textContent = cpFmt(currentCp);
 
                 const input = document.getElementById('cpModalInput');
-                input.value = (currentCp !== null && currentCp !== undefined && currentCp !== '') ? parseFloat(currentCp).toFixed(2) : '';
+                input.value = currentCp !== null ? currentCp.toFixed(2) : '';
                 input.classList.remove('is-invalid');
+
+                const lpInput = document.getElementById('cpModalLpInput');
+                if (lpInput) {
+                    if (currentLp !== null) {
+                        lpInput.value = currentLp.toFixed(2);
+                    } else if (currentCp !== null) {
+                        lpInput.value = (currentCp + freight).toFixed(2);
+                    } else {
+                        lpInput.value = '';
+                    }
+                }
 
                 document.getElementById('cpReasonInput').value = '';
                 document.getElementById('cpReasonInput').classList.remove('is-invalid');
@@ -4032,24 +4227,34 @@
 
                 document.getElementById('cpHistorySection').style.display = 'none';
                 document.getElementById('cpEditSection').style.display = 'block';
+                updateCpBulkNote(sku);
 
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('cpModal')).show();
                 toggleCpReason();
+                setTimeout(() => {
+                    const focusEl = document.getElementById(focusField === 'lp' ? 'cpModalLpInput' : 'cpModalInput');
+                    if (focusEl) focusEl.focus();
+                }, 250);
             }
 
             function toggleCpReason() {
-                const current = parseFloat(document.getElementById('cpModalCurrent').value);
-                const next = parseFloat(document.getElementById('cpModalInput').value);
+                const sku = document.getElementById('cpModalSku').value;
+                const next = document.getElementById('cpModalInput').value;
                 const wrapper = document.getElementById('cpReasonWrapper');
-                // Reason only required when there is an existing CP and the new one is higher.
-                const isIncrease = !isNaN(current) && !isNaN(next) && next > current;
+                const isIncrease = cpIncreaseForTargets(next, cpUpdateTargets(sku));
                 wrapper.style.display = isIncrease ? 'block' : 'none';
             }
 
             async function saveCp() {
                 const sku = document.getElementById('cpModalSku').value;
                 const input = document.getElementById('cpModalInput');
+                const lpInput = document.getElementById('cpModalLpInput');
                 const reasonEl = document.getElementById('cpReasonInput');
+
+                if ((input.value.trim() === '' || isNaN(parseFloat(input.value))) && lpInput && lpInput.value.trim() !== '') {
+                    syncCpFromLp();
+                }
+
                 const newCp = input.value.trim();
 
                 input.classList.remove('is-invalid');
@@ -4061,16 +4266,17 @@
                     return;
                 }
 
-                const current = parseFloat(document.getElementById('cpModalCurrent').value);
-                const isIncrease = !isNaN(current) && parseFloat(newCp) > current;
+                const targets = cpUpdateTargets(sku);
                 const reason = reasonEl.value.trim();
 
-                if (isIncrease && reason === '') {
+                if (cpIncreaseForTargets(newCp, targets) && reason === '') {
+                    document.getElementById('cpReasonWrapper').style.display = 'block';
                     document.getElementById('cpReasonFeedback').textContent = 'A reason is required when the CP increases.';
                     reasonEl.classList.add('is-invalid');
                     return;
                 }
 
+                const snapshot = snapshotCpLp(targets);
                 const saveBtn = document.getElementById('cpSaveBtn');
                 const originalHtml = saveBtn.innerHTML;
                 saveBtn.disabled = true;
@@ -4084,11 +4290,12 @@
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                             'Accept': 'application/json'
                         },
-                        body: JSON.stringify({ sku: sku, cp: newCp, reason: reason })
+                        body: JSON.stringify({ sku: sku, skus: targets, cp: newCp, reason: reason })
                     });
-                    const data = await res.json();
+                    const data = await res.json().catch(() => ({}));
 
                     if (!res.ok || !data.success) {
+                        restoreCpLpSnapshot(snapshot);
                         if (data.requires_reason) {
                             document.getElementById('cpReasonWrapper').style.display = 'block';
                             document.getElementById('cpReasonFeedback').textContent = data.message || 'Reason required.';
@@ -4099,24 +4306,20 @@
                         return;
                     }
 
-                    showToast('success', data.message || 'CP updated.');
+                    const savedRows = Array.isArray(data.rows) && data.rows.length
+                        ? data.rows
+                        : [{ sku: sku, current_cp: data.current_cp, current_lp: data.current_lp }];
+                    savedRows.forEach(row => {
+                        patchProductCpLp(row.sku, row.current_cp, row.current_lp, row.frght);
+                        paintCpLpOnRow(row.sku, row.current_cp, row.current_lp);
+                    });
 
-                    // Reflect the new value locally and in the modal.
-                    const product = productMap.get(sku);
-                    if (product) {
-                        product.cp = data.current_cp;
-                        if (product.Values) product.Values.cp = data.current_cp;
-                    }
-                    document.getElementById('cpModalCurrent').value = data.current_cp ?? '';
-                    document.getElementById('cpModalCurrentDisplay').textContent = cpFmt(data.current_cp);
-                    toggleCpReason();
-
-                    if (document.getElementById('cpHistorySection').style.display === 'block') {
-                        loadCpHistory(sku);
-                    }
-
-                    if (typeof loadData === 'function') loadData();
+                    const modalEl = document.getElementById('cpModal');
+                    const modalInstance = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+                    if (modalInstance) modalInstance.hide();
+                    showToast('success', 'Saved.');
                 } catch (err) {
+                    restoreCpLpSnapshot(snapshot);
                     showToast('danger', 'Error: ' + err.message);
                 } finally {
                     saveBtn.disabled = false;
