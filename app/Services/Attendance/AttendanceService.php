@@ -9,7 +9,6 @@ use App\Models\AttendancePolicy;
 use App\Models\AttendanceSession;
 use App\Models\User;
 use App\Support\AttendanceAccess;
-use App\Support\AttendanceAgentRelease;
 use App\Support\AttendanceForceLogout;
 use App\Support\UserAccountStatus;
 use Carbon\Carbon;
@@ -319,11 +318,11 @@ class AttendanceService
     /**
      * @return array{available: bool, current_version: string|null, latest_version: string, download_page_url: string, download_url: string, message: string}
      */
-    public function agentUpdatePayload(?string $installedVersion, ?string $osName = null): array
+    public function agentUpdatePayload(?string $installedVersion): array
     {
         $base = rtrim((string) config('app.url'), '/');
+        $latest = (string) config('attendance.agent_version', '1.0.0');
         $current = $installedVersion !== null && $installedVersion !== '' ? (string) $installedVersion : null;
-        $latest = AttendanceAgentRelease::latestFor($osName, $current);
         $available = $current !== null && version_compare($latest, $current, '>');
 
         return [
@@ -351,6 +350,8 @@ class AttendanceService
      */
     public function desktopAgentStatusForUser(User $user): array
     {
+        $latest = (string) config('attendance.agent_version', '1.0.0');
+
         // Only treat as installed if the desktop agent was seen recently and not
         // marked uninstalled. Stale DB rows after uninstall must not keep showing Update.
         $device = AttendanceDevice::query()
@@ -365,11 +366,6 @@ class AttendanceService
         $hasInstalled = $device !== null;
         $installed = $device?->agent_version ? (string) $device->agent_version : null;
 
-        // Advertise this platform's published build. Comparing a Mac install against a
-        // newer Windows release (or against a version nobody can download) is what kept
-        // employees in an endless "update the app" loop.
-        $latest = AttendanceAgentRelease::latestFor($device?->os_name, $installed);
-
         $updateAvailable = $hasInstalled && (
             $installed === null || version_compare($latest, $installed, '>')
         );
@@ -381,7 +377,6 @@ class AttendanceService
             'latest_version' => $latest,
             'update_available' => $updateAvailable,
             'up_to_date' => $upToDate,
-            'supports_live_video' => AttendanceAgentRelease::supportsLiveVideo($installed),
             'device_name' => $device?->device_name,
             'os_name' => $device?->os_name,
         ];

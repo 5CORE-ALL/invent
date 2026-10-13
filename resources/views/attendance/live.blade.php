@@ -69,7 +69,6 @@
     </div>
     <div class="lv-foot">Live video and recording run only while this window is open. Close the window to stop.</div>
 
-    <script src="{{ asset('js/attendance-live-player.js') }}"></script>
     <script>
     (function () {
         const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -93,15 +92,12 @@
         let startedAt = Date.now();
         let firstFrameAt = 0;
         let lastObjectUrl = null;
-        let lastEtag = null;
         let shuttingDown = false;
         let recorder = null;
         let recChunks = [];
         let recMime = '';
         let recPromise = null;
         let videoBound = false;
-        let player = null;
-        let streaming = false;
 
         function headers(json) {
             const h = { 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' };
@@ -126,7 +122,7 @@
         }, 1000);
 
         function bindVideo() {
-            if (videoBound || streaming) return;
+            if (videoBound) return;
             try {
                 const stream = canvas.captureStream(8);
                 video.srcObject = stream;
@@ -191,28 +187,23 @@
         }
 
         async function pullFrame() {
-            if (!urls || shuttingDown || streaming) return false;
+            if (!urls || shuttingDown) return;
             try {
-                const h = headers(false);
-                if (lastEtag) h['If-None-Match'] = lastEtag;
                 const r = await fetch(urls.frame, {
-                    headers: h,
+                    headers: headers(false),
                     cache: 'no-store',
                     credentials: 'same-origin',
                 });
-                // Same frame already painted on the canvas.
-                if (r.status === 304) return false;
                 if (r.status === 204 || !r.ok) {
                     if (!firstFrameAt && Date.now() - startedAt > 8000) {
                         setWait(waitTitleCopy, waitTextCopy, true);
                     }
-                    return false;
+                    return;
                 }
                 const type = (r.headers.get('Content-Type') || '').toLowerCase();
-                if (type && type.indexOf('image/') !== 0) return false;
+                if (type && type.indexOf('image/') !== 0) return;
                 const blob = await r.blob();
-                if (!blob.size) return false;
-                lastEtag = r.headers.get('ETag') || null;
+                if (!blob.size) return;
                 if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
                 lastObjectUrl = URL.createObjectURL(blob);
                 const source = (r.headers.get('X-Live-Source') || 'live').toLowerCase();
@@ -227,65 +218,7 @@
                 const title = r.headers.get('X-Live-Window-Title') || '';
                 const app = r.headers.get('X-Live-App-Name') || '';
                 metaEl.textContent = [isLive ? 'Live video' : 'Last screen (waiting for live)', app, title].filter(Boolean).join(' — ');
-                return true;
-            } catch (_) {
-                return false;
-            }
-        }
-
-        // Chained rather than setInterval, so requests cannot overlap and the next
-        // fetch starts as soon as the previous frame is on screen.
-        async function pollLoop() {
-            if (shuttingDown) return;
-            const tickStartedAt = Date.now();
-            const painted = await pullFrame();
-            if (shuttingDown) return;
-            const target = painted ? 120 : 320;
-            pollTimer = setTimeout(pollLoop, Math.max(50, target - (Date.now() - tickStartedAt)));
-        }
-
-        // Encoded video when the agent can produce it. The canvas path stays wired
-        // up underneath and takes back over if the stream never arrives or drops.
-        function startVideoPlayer() {
-            if (!window.AttendanceLivePlayer || !window.AttendanceLivePlayer.canPlay()) return;
-            if (!urls || !urls.video) return;
-
-            player = new window.AttendanceLivePlayer({
-                url: urls.video,
-                video: video,
-                headers: headers(false),
-                onActive: function () {
-                    streaming = true;
-                    firstFrameAt = firstFrameAt || Date.now();
-                    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-                    canvas.classList.remove('is-on');
-                    video.classList.add('is-on');
-                    setWait('', '', false);
-                    metaEl.textContent = 'Live video';
-                    recordFromVideo();
-                },
-                onInactive: function () {
-                    player = null;
-                    streaming = false;
-                    video.classList.remove('is-on');
-                    if (!shuttingDown && !pollTimer) pollLoop();
-                },
-            });
-            player.start();
-        }
-
-        // The recorder was fed by canvas.captureStream; with MSE the frames land
-        // in the video element instead, so the saved recording comes from there.
-        function recordFromVideo() {
-            if (recorder) return;
-            try {
-                const grab = video.captureStream || video.mozCaptureStream;
-                if (!grab) return;
-                const stream = grab.call(video);
-                if (stream) startRecorder(stream);
-            } catch (_) {
-                /* recording is best effort; live view still works */
-            }
+            } catch (_) {}
         }
 
         async function ping() {
@@ -332,12 +265,9 @@
         async function shutdown() {
             if (shuttingDown) return;
             shuttingDown = true;
-            if (pollTimer) clearTimeout(pollTimer);
+            if (pollTimer) clearInterval(pollTimer);
             if (pingTimer) clearInterval(pingTimer);
             beaconStop();
-            // Stop fetching slices, but leave the recorder alone until it has
-            // flushed what it already captured.
-            if (player) { player.stop(); player = null; }
             const blob = await stopRecorder();
             await uploadRecording(blob);
         }
@@ -361,9 +291,9 @@
             if (data.wait_text) waitTextCopy = data.wait_text;
             startedAt = Date.now();
             setWait('Connecting live video', 'Asking the desktop app to stream this screen now. Recording starts when video appears.', true);
+            pollTimer = setInterval(pullFrame, 200);
             pingTimer = setInterval(ping, 4000);
-            pollLoop();
-            startVideoPlayer();
+            pullFrame();
             ping();
         }
 

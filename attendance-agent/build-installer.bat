@@ -19,13 +19,6 @@ echo.
 echo Done! Installer is in the dist folder:
 dir /b dist\*.exe
 echo.
-echo NEXT STEP - publish it, or the portal keeps serving the previous build and
-echo employees are asked to update forever:
-echo.
-echo   1. Copy dist\5Core-Attendance-Setup.exe and dist\latest.yml to the server's
-echo      attendance-agent\dist folder.
-echo   2. On the server run:  php artisan attendance:agent-publish
-echo.
-echo That copies the installer into public/downloads, publishes the auto-update feed,
-echo and records the version the portal is allowed to advertise.
+echo Give employees: dist\5Core-Attendance-Setup.exe
+echo Run it over the existing install. Do not uninstall first.
 pause

@@ -10,7 +10,6 @@ use App\Services\Attendance\AttendanceService;
 use App\Services\Attendance\AttendanceSummaryService;
 use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -65,100 +64,6 @@ class AttendanceLiveController extends Controller
         ]);
     }
 
-    /**
-     * Library of saved live recordings. Without this the files written by storeRecording()
-     * are only reachable by guessing a session id.
-     */
-    public function recordings(Request $request)
-    {
-        abort_unless(AttendanceAccess::canMonitor(), 403);
-        abort_unless((bool) config('attendance.live_watch_enabled', true), 404);
-
-        $request->validate([
-            'from' => 'nullable|date_format:Y-m-d',
-            'to' => 'nullable|date_format:Y-m-d',
-            'timezone' => 'nullable|timezone',
-            'employee' => 'nullable|integer|min:0',
-        ]);
-
-        $timezone = (string) ($request->input('timezone') ?: AttendanceTimelineService::defaultTimezone());
-        $viewableIds = AttendanceAccess::viewableUserIds();
-        $employees = $this->attendanceService->monitorableEmployees($viewableIds);
-
-        $from = (string) ($request->input('from') ?: now()->timezone($timezone)->subDays(7)->toDateString());
-        $to = (string) ($request->input('to') ?: now()->timezone($timezone)->toDateString());
-        $fromAt = Carbon::parse($from, $timezone)->startOfDay();
-        $toAt = Carbon::parse($to, $timezone)->endOfDay();
-
-        $employeeId = (int) $request->input('employee', 0);
-        abort_if($employeeId > 0 && ! AttendanceAccess::canViewUser($employeeId), 403);
-
-        $query = AttendanceLiveSession::query()
-            ->with(['user:id,name,email,avatar', 'viewer:id,name'])
-            ->whereNotNull('recording_path')
-            ->where('started_at', '>=', $fromAt)
-            ->where('started_at', '<=', $toAt)
-            ->orderByDesc('started_at');
-
-        if ($viewableIds !== null) {
-            $query->whereIn('user_id', $viewableIds);
-        }
-
-        if ($employeeId > 0) {
-            $query->where('user_id', $employeeId);
-        }
-
-        $recordings = $query->paginate(24)->withQueryString();
-
-        $rows = collect($recordings->items())->map(fn (AttendanceLiveSession $session) => [
-            'id' => $session->id,
-            'name' => $session->user?->name ?? 'Unknown',
-            'email' => $session->user?->email,
-            'viewer' => $session->viewer?->name,
-            'started_label' => $session->started_at?->timezone($timezone)->format('M j, Y g:i A'),
-            'day_label' => $session->started_at?->timezone($timezone)->format('D, M j'),
-            'duration_label' => self::durationLabel((int) $session->recording_seconds),
-            'size_label' => self::sizeLabel((int) $session->recording_size),
-            'app_name' => $session->app_name,
-            'window_title' => $session->window_title,
-            'play_url' => route('attendance.live.recording.show', $session),
-        ])->values();
-
-        return view('attendance.recordings', [
-            'title' => 'Live Recordings',
-            'rows' => $rows,
-            'recordings' => $recordings,
-            'employees' => $employees,
-            'employee' => $employeeId,
-            'from' => $from,
-            'to' => $to,
-            'timezone' => $timezone,
-            'timezones' => AttendanceTimelineService::timezoneOptions(),
-            'total_seconds_label' => self::durationLabel((int) $recordings->getCollection()->sum('recording_seconds')),
-        ]);
-    }
-
-    private static function durationLabel(int $seconds): string
-    {
-        $seconds = max(0, $seconds);
-        $h = intdiv($seconds, 3600);
-        $m = intdiv($seconds % 3600, 60);
-        $s = $seconds % 60;
-
-        return $h > 0
-            ? sprintf('%d:%02d:%02d', $h, $m, $s)
-            : sprintf('%d:%02d', $m, $s);
-    }
-
-    private static function sizeLabel(int $bytes): string
-    {
-        if ($bytes >= 1048576) {
-            return number_format($bytes / 1048576, 1).' MB';
-        }
-
-        return number_format(max(0, $bytes) / 1024, 0).' KB';
-    }
-
     public function show(User $user)
     {
         abort_unless(AttendanceAccess::canMonitor() && AttendanceAccess::canViewUser($user->id), 403);
@@ -208,7 +113,7 @@ class AttendanceLiveController extends Controller
         return response()->json($this->sessionPayload($session, $user));
     }
 
-    public function frame(Request $request, AttendanceLiveSession $liveSession): Response
+    public function frame(AttendanceLiveSession $liveSession): Response
     {
         $this->authorizeViewer($liveSession);
         $this->liveWatchService->ping($liveSession);
@@ -221,62 +126,14 @@ class AttendanceLiveController extends Controller
         $meta = $latest['meta'];
         $headerSafe = static fn (?string $value): string => preg_replace('/[^\x20-\x7E]/', ' ', (string) $value) ?? '';
 
-        // Viewers poll faster than the agent produces frames. Revalidating keeps the
-        // repeats to an empty 304 instead of resending a JPEG already on screen.
-        $etag = '"'.($meta['seq'] ?? md5($latest['bytes'])).'"';
-        if (trim((string) $request->header('If-None-Match')) === $etag) {
-            return response('', 304, [
-                'ETag' => $etag,
-                'Cache-Control' => 'no-store, no-cache, must-revalidate',
-            ]);
-        }
-
         return response($latest['bytes'], 200, [
-            'ETag' => $etag,
             'Content-Type' => 'image/jpeg',
             'Cache-Control' => 'no-store, no-cache, must-revalidate',
             'X-Live-Window-Title' => $headerSafe($meta['window_title'] ?? $liveSession->window_title ?? ''),
             'X-Live-App-Name' => $headerSafe($meta['app_name'] ?? $liveSession->app_name ?? ''),
             'X-Live-Captured-At' => $headerSafe($meta['at'] ?? ''),
             'X-Live-Source' => $headerSafe($latest['source'] ?? 'live'),
-            'Access-Control-Expose-Headers' => 'ETag, X-Live-Source, X-Live-Window-Title, X-Live-App-Name, X-Live-Captured-At',
-        ]);
-    }
-
-    /**
-     * Feeds the viewer's MediaSource one slice at a time.
-     *
-     * The viewer reports which recorder run and sequence it last appended; the
-     * reply is the next slice, or 204 while it is already at the live edge.
-     */
-    public function videoChunk(Request $request, AttendanceLiveSession $liveSession): Response
-    {
-        $this->authorizeViewer($liveSession);
-        $this->liveWatchService->ping($liveSession);
-
-        $next = $this->liveWatchService->nextVideoChunk(
-            $liveSession->user_id,
-            $request->query('gen') !== null ? (string) $request->query('gen') : null,
-            (int) $request->query('after', -1),
-        );
-
-        if ($next === null) {
-            return response('', 204, [
-                'Cache-Control' => 'no-store, no-cache, must-revalidate',
-                'Access-Control-Expose-Headers' => 'X-Live-Gen, X-Live-Seq, X-Live-Init, X-Live-Gap',
-            ]);
-        }
-
-        return response($next['bytes'], 200, [
-            'Content-Type' => $next['mime'],
-            'Cache-Control' => 'no-store, no-cache, must-revalidate',
-            'X-Live-Gen' => $next['gen'],
-            'X-Live-Seq' => (string) $next['seq'],
-            'X-Live-Init' => $next['init'] ? '1' : '0',
-            // Tells the viewer the stream is no longer contiguous, so it should
-            // rebuild its MediaSource instead of appending onto a broken buffer.
-            'X-Live-Gap' => $next['gap'] ? '1' : '0',
-            'Access-Control-Expose-Headers' => 'X-Live-Gen, X-Live-Seq, X-Live-Init, X-Live-Gap',
+            'Access-Control-Expose-Headers' => 'X-Live-Source, X-Live-Window-Title, X-Live-App-Name, X-Live-Captured-At',
         ]);
     }
 
@@ -366,7 +223,6 @@ class AttendanceLiveController extends Controller
             ],
             'urls' => [
                 'frame' => '/attendance/live/session/'.$session->id.'/frame',
-                'video' => '/attendance/live/session/'.$session->id.'/video',
                 'ping' => '/attendance/live/session/'.$session->id.'/ping',
                 'stop' => '/attendance/live/session/'.$session->id.'/stop',
                 'recording' => '/attendance/live/session/'.$session->id.'/recording',
@@ -388,7 +244,6 @@ class AttendanceLiveController extends Controller
             $latest,
             (bool) ($status['has_installed'] ?? false),
             (bool) ($status['up_to_date'] ?? false),
-            (bool) ($status['supports_live_video'] ?? true),
         );
 
         return [

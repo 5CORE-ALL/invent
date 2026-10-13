@@ -3337,7 +3337,6 @@
                     || request()->routeIs('attendance.employee')
                     || request()->routeIs('attendance.summary*')
                     || request()->routeIs('attendance.payroll*')
-                    || request()->routeIs('attendance.live.recordings')
                     || request()->routeIs('attendance.agent')
                     || request()->routeIs('indeed');
             @endphp
@@ -3376,11 +3375,6 @@
                         <li>
                             <a href="{{ route('attendance.live.team') }}" class="{{ request()->routeIs('attendance.live.team') ? 'active' : '' }}">
                                 <i class="ri-vidicon-line me-2"></i>Team Monitor Video
-                            </a>
-                        </li>
-                        <li>
-                            <a href="{{ route('attendance.live.recordings') }}" class="{{ request()->routeIs('attendance.live.recordings') ? 'active' : '' }}">
-                                <i class="ri-film-line me-2"></i>Live Recordings
                             </a>
                         </li>
                         <li>

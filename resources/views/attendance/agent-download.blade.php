@@ -225,18 +225,6 @@
     @if(session('success'))
         <div class="alert alert-success border-0 shadow-sm">{{ session('success') }}</div>
     @endif
-    @if(!empty($can_admin) && !empty($release_warning_platforms))
-        <div class="alert alert-warning border-0 shadow-sm">
-            <strong>v{{ $configured_version }} is not published for {{ implode(' or ', $release_warning_platforms) }}.</strong>
-            Those employees are not being asked to update, because the download link cannot give them a newer build than they already have.
-            Build the agent, then run <code>php artisan attendance:agent-publish</code> on the server.
-        </div>
-    @elseif(!empty($can_admin) && !empty($release_unpublished))
-        <div class="alert alert-info border-0 shadow-sm">
-            No release manifest yet, so the portal is advertising the configured v{{ $configured_version }} without checking the installer.
-            Run <code>php artisan attendance:agent-publish</code> after a build to tie the advertised version to the real file.
-        </div>
-    @endif
     <div class="da-hero mb-4 {{ $needsUpdate ? 'update' : '' }}">
         @if($needsUpdate)
             <span class="da-badge warn"><i class="ri-error-warning-line"></i> Update required · Latest v{{ $agent_latest_version }}</span>
@@ -322,7 +310,7 @@
     </div>
 
     <div class="da-card mb-4" style="height:auto;border-color:#fecaca;background:linear-gradient(135deg,#fef2f2 0%,#fff 60%)">
-        <span class="da-badge" style="color:#b91c1c;background:#fee2e2"><i class="ri-global-line"></i> China edition · v{{ $windows_version ?: $configured_version }}</span>
+        <span class="da-badge" style="color:#b91c1c;background:#fee2e2"><i class="ri-global-line"></i> China edition · v{{ $agent_version }}</span>
         <h3 class="mb-2">Working from China? Download this version</h3>
         <p class="da-step-desc mb-1">
             For computers where the Windows computer name or user name is in Chinese.
@@ -348,7 +336,7 @@
     </div>
 
     <div class="da-card da-mac-card mb-4" style="height:auto">
-        <span class="da-badge"><i class="ri-apple-fill"></i> Mac · v{{ $mac_version ?: $configured_version }}</span>
+        <span class="da-badge"><i class="ri-apple-fill"></i> Mac · v{{ $agent_version }}</span>
         <h3 class="mb-2">Install on a Mac</h3>
         @if(!empty($mac_downloads))
             <p class="da-step-desc mb-0">

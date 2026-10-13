@@ -11,7 +11,6 @@ use App\Services\Attendance\AttendanceLiveWatchService;
 use App\Services\Attendance\AttendanceScreenshotService;
 use App\Services\Attendance\AttendanceService;
 use App\Support\AttendanceAccess;
-use App\Support\AttendanceAgentRelease;
 use App\Support\AttendanceForceLogout;
 use App\Support\UserAccountStatus;
 use Illuminate\Http\JsonResponse;
@@ -280,7 +279,7 @@ class AttendanceAgentController extends Controller
                 'id' => $device->id,
                 'machine_id' => $device->machine_id,
             ],
-            'config' => $this->agentConfig($user, $device),
+            'config' => $this->agentConfig(),
         ]);
     }
 
@@ -292,10 +291,9 @@ class AttendanceAgentController extends Controller
 
         return response()->json($this->withLiveWatch([
             'ok' => true,
-            'config' => $this->agentConfig($user, $device),
+            'config' => $this->agentConfig(),
             'agent_update' => $this->attendanceService->agentUpdatePayload(
-                is_string($installedVersion) ? $installedVersion : null,
-                $device?->os_name,
+                is_string($installedVersion) ? $installedVersion : null
             ),
         ], $user, $device));
     }
@@ -334,10 +332,9 @@ class AttendanceAgentController extends Controller
                 'activity_state' => $session->last_activity_state ?? ($session->status === 'paused' ? 'break' : 'working'),
             ] : null,
             'today' => $this->attendanceService->todayStats($user),
-            'config' => $this->agentConfig($user, $device),
+            'config' => $this->agentConfig(),
             'agent_update' => $this->attendanceService->agentUpdatePayload(
-                is_string($installedVersion) ? $installedVersion : null,
-                $device?->os_name,
+                is_string($installedVersion) ? $installedVersion : null
             ),
         ], $user, $device));
     }
@@ -484,7 +481,7 @@ class AttendanceAgentController extends Controller
             'agent_version' => $validated['agent_version'] ?? $device?->agent_version,
         ]));
 
-        $result['config'] = $this->agentConfig($request->user(), $device);
+        $result['config'] = $this->agentConfig($request->user());
         $payload = $this->withLiveWatch($result, $request->user(), $device);
         $forcedOut = ! empty($payload['force_logout']);
         $this->forgetAgentTokensAfterForceLogout($request->user(), $payload);
@@ -504,7 +501,7 @@ class AttendanceAgentController extends Controller
 
         $payload = $this->withLiveWatch([
             'ok' => true,
-            'config' => $this->agentConfig($request->user(), $device),
+            'config' => $this->agentConfig(),
         ], $request->user(), $device);
 
         $this->forgetAgentTokensAfterForceLogout($request->user(), $payload);
@@ -554,56 +551,6 @@ class AttendanceAgentController extends Controller
         return response()->json([
             'ok' => true,
             'accepted' => $accepted,
-            'live_watch' => $this->liveWatchService->commandForUser($user, true),
-        ]);
-    }
-
-    /**
-     * One slice of the agent's encoded screen stream.
-     *
-     * Same duty rules as liveFrame: off the clock the body is dropped unread and
-     * the agent is told to stop.
-     */
-    public function liveChunk(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        $device = $this->resolveDevice($request);
-        $maxKb = max(512, (int) config('attendance.screenshot_max_kb', 5120));
-
-        if (! $this->attendanceService->onDutySession($user, $device)) {
-            return response()->json([
-                'ok' => false,
-                'accepted' => false,
-                'message' => 'Not clocked in on this device; live video is only available during working hours.',
-                'live_watch' => $this->liveWatchService->commandForUser($user, false),
-            ]);
-        }
-
-        $request->validate([
-            'chunk' => 'required|file|max:'.$maxKb,
-            'gen' => 'required|string|max:64',
-            'seq' => 'required|integer|min:0',
-            'init' => 'nullable|boolean',
-            'mime' => 'nullable|string|max:100',
-        ]);
-
-        $bytes = (string) file_get_contents($request->file('chunk')->getRealPath());
-
-        $accepted = $this->liveWatchService->storeVideoChunk(
-            $user,
-            $bytes,
-            (string) $request->input('gen'),
-            (int) $request->input('seq'),
-            $request->boolean('init'),
-            (string) ($request->input('mime') ?: 'video/webm'),
-        );
-
-        return response()->json([
-            'ok' => true,
-            'accepted' => $accepted,
-            // A rejected non-init chunk means the server lost the header, so the
-            // agent has to restart its recorder rather than keep pushing.
-            'resend_init' => ! $accepted && ! $request->boolean('init'),
             'live_watch' => $this->liveWatchService->commandForUser($user, true),
         ]);
     }
@@ -725,20 +672,12 @@ class AttendanceAgentController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function agentConfig(?User $user = null, ?AttendanceDevice $device = null): array
+    private function agentConfig(?User $user = null): array
     {
         $base = rtrim((string) config('app.url'), '/');
         $user ??= request()->user();
         $interval = (int) config('attendance.screenshot_interval_seconds', 120);
-
-        // One-second screenshots are a crude live fallback for agents too old to stream.
-        // A streaming agent would instead composite and upload a full-resolution screen
-        // every second on top of its live frames, stalling the main process and eating
-        // the upstream the video needs — which is what made the stream look frozen.
-        if ($user
-            && $this->liveWatchService->isWatchRequested($user->id)
-            && ! AttendanceAgentRelease::supportsLiveVideo($device?->agent_version)
-        ) {
+        if ($user && $this->liveWatchService->isWatchRequested($user->id)) {
             $interval = 1;
         }
 
@@ -753,8 +692,7 @@ class AttendanceAgentController extends Controller
             'live_watch_enabled' => (bool) config('attendance.live_watch_enabled', true),
             'live_fps' => max(1, (int) config('attendance.live_fps', 5)),
             'live_quality' => max(30, min(80, (int) config('attendance.live_quality', 55))),
-            'agent_version' => AttendanceAgentRelease::latestFor($device?->os_name, $device?->agent_version),
-            'update_feed_url' => $base.'/downloads',
+            'agent_version' => (string) config('attendance.agent_version', '1.0.0'),
             'download_page_url' => $base.'/attendance/agent',
             'download_url' => $base.'/attendance/agent/download',
             'update_message' => 'A required 5Core Attendance update is available. Download and run the installer — it closes the old app and updates the same install. You do not need to quit first.',

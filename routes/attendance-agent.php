@@ -12,18 +12,13 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(function () {
-    Route::get('/ping', function (\Illuminate\Http\Request $request) {
+    Route::get('/ping', function () {
         $base = rtrim((string) config('app.url'), '/');
 
         return response()->json([
             'ok' => true,
             'service' => '5core-attendance-agent',
-            // Signed-out agents report their platform so they are not offered the other OS's build.
-            'version' => \App\Support\AttendanceAgentRelease::latestFor(
-                $request->query('os'),
-                $request->query('agent_version'),
-            ),
-            'update_feed_url' => $base.'/downloads',
+            'version' => config('attendance.agent_version', '1.0.0'),
             'download_page_url' => $base.'/attendance/agent',
             'download_url' => $base.'/attendance/agent/download',
             'update_message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',
@@ -50,6 +45,5 @@ Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(
         Route::post('/resume', [AttendanceAgentController::class, 'resume'])->name('resume');
         Route::post('/screenshot', [AttendanceAgentController::class, 'screenshot'])->name('screenshot');
         Route::post('/live-frame', [AttendanceAgentController::class, 'liveFrame'])->name('live-frame');
-        Route::post('/live-chunk', [AttendanceAgentController::class, 'liveChunk'])->name('live-chunk');
     });
 });

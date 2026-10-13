@@ -33,9 +33,6 @@ id_ed25519
 /public/downloads/*.dmg
 /public/downloads/*.zip
 /public/downloads/*.blockmap
-# Written per server by `php artisan attendance:agent-publish`.
-/public/downloads/agent-release.json
-/public/downloads/latest*.yml
 /public/storage
 /public/images/products
 /public/uploads/tasks/*

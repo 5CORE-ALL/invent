@@ -29,7 +29,17 @@ hdiutil create -volname "5Core Attendance" -srcfolder "$STAGE" -ov -format UDZO 
 rm -rf "$STAGE"
 ditto -c -k --keepParent "$APP" "dist/5Core-Attendance-Mac.zip"
 
-# Publishing through artisan records which version was actually shipped. Copying the
-# files by hand is what let the portal advertise a build nobody could download.
-echo "Publishing to public/downloads and recording the release..."
-php ../artisan attendance:agent-publish
+DMG="dist/5Core-Attendance-Mac.dmg"
+ZIP="dist/5Core-Attendance-Mac.zip"
+
+mkdir -p ../public/downloads
+if [[ -f "$DMG" ]]; then
+    cp -f "$DMG" ../public/downloads/5core-attendance-mac.dmg
+    chmod 644 ../public/downloads/5core-attendance-mac.dmg
+    echo "Published public/downloads/5core-attendance-mac.dmg"
+fi
+if [[ -f "$ZIP" ]]; then
+    cp -f "$ZIP" ../public/downloads/5core-attendance-mac.zip
+    chmod 644 ../public/downloads/5core-attendance-mac.zip
+    echo "Published public/downloads/5core-attendance-mac.zip"
+fi

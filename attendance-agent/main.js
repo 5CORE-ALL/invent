@@ -14,33 +14,10 @@ const Store = require('electron-store');
 
 const execFileAsync = promisify(execFile);
 const store = new Store();
-const AGENT_VERSION = '1.5.0';
+const AGENT_VERSION = '1.4.8';
 const UPDATE_SNOOZE_MS = 4 * 60 * 60 * 1000;
 let updateCheckTimer = null;
 let lastUpdatePayload = null;
-
-// Optional so a dev checkout without the dependency installed still starts.
-let autoUpdater = null;
-try {
-    ({ autoUpdater } = require('electron-updater'));
-} catch (_) {
-    autoUpdater = null;
-}
-let autoUpdateWired = false;
-let autoUpdateState = { state: 'idle', percent: 0, version: '' };
-
-// Encoded screen stream. captureWin is an offscreen renderer because
-// getUserMedia and MediaRecorder do not exist in the main process.
-let captureWin = null;
-let videoStreaming = false;
-let videoGen = '';
-let videoChunkBusy = false;
-let lastVideoChunkAt = 0;
-let videoWatchdog = null;
-// Latches once this machine proves it cannot encode, so the agent stops
-// retrying video every time a viewer opens and stays on still frames.
-let videoUnsupported = false;
-let streamConfig = { enabled: true, fps: 20, width: 1280, bitrate: 1200000, chunk_ms: 600 };
 
 function argvWantsQuit(argv) {
     return (argv || []).some((arg) => arg === '--quit' || arg === '--quit-for-update');
@@ -107,7 +84,6 @@ let liveWatchTimer = null;
 let liveStreaming = false;
 let liveStreamBusy = false;
 let liveFrameDelayMs = 200;
-let lastLiveWatchAt = 0;
 let lastLive = { title: '', process: '', app: '' };
 let lastKnownWindow = { title: '', process: '' };
 let lastSessionStats = { active_seconds: 0, idle_seconds: 0, break_seconds: 0 };
@@ -228,7 +204,6 @@ let config = {
     live_fps: 5,
     live_quality: 55,
     agent_version: AGENT_VERSION,
-    update_feed_url: '',
     download_page_url: '',
     download_url: '',
     update_message: '',
@@ -426,182 +401,6 @@ async function captureLiveFrame() {
     return source.thumbnail.toJPEG(quality);
 }
 
-function ensureCaptureWindow() {
-    if (captureWin && !captureWin.isDestroyed()) return captureWin;
-
-    captureWin = new BrowserWindow({
-        show: false,
-        width: 320,
-        height: 240,
-        webPreferences: {
-            preload: path.join(__dirname, 'capture', 'capture-preload.js'),
-            contextIsolation: true,
-            nodeIntegration: false,
-            // Keep encoding running at full rate while the window is hidden.
-            backgroundThrottling: false,
-        },
-    });
-
-    // Answers the picker getDisplayMedia would otherwise raise, so the fallback
-    // path in capture.js stays silent for the employee.
-    try {
-        captureWin.webContents.session.setDisplayMediaRequestHandler((_request, callback) => {
-            desktopCapturer.getSources({ types: ['screen'] })
-                .then((sources) => callback(sources[0] ? { video: sources[0] } : {}))
-                .catch(() => callback({}));
-        });
-    } catch (_) {
-        /* older Electron: capture.js falls back to the constraint form */
-    }
-
-    captureWin.on('closed', () => { captureWin = null; });
-    captureWin.loadFile(path.join(__dirname, 'capture', 'capture.html'));
-
-    return captureWin;
-}
-
-/**
- * Begin encoded capture. Returns false when this machine has to stay on the
- * still-image path, so the caller can start the JPEG loop instead.
- */
-function startVideoStream() {
-    if (videoUnsupported || streamConfig.enabled === false) return false;
-    if (!store.get('token') || !isOnDuty()) return false;
-    if (videoStreaming) return true;
-
-    let sourceId = null;
-    const primary = screen.getPrimaryDisplay();
-
-    videoStreaming = true;
-    videoGen = crypto.randomBytes(8).toString('hex');
-    lastVideoChunkAt = Date.now();
-
-    const win = ensureCaptureWindow();
-    const send = () => {
-        if (!videoStreaming || !win || win.isDestroyed()) return;
-        const aspect = primary ? primary.size.height / Math.max(1, primary.size.width) : 0.5625;
-        const width = Math.max(640, Number(streamConfig.width) || 1280);
-        win.webContents.send('capture-start', {
-            gen: videoGen,
-            sourceId,
-            width,
-            height: Math.round(width * aspect),
-            fps: streamConfig.fps,
-            bitrate: streamConfig.bitrate,
-            chunkMs: streamConfig.chunk_ms,
-        });
-    };
-
-    // A zero-size thumbnail keeps this cheap; only the source id is wanted, and
-    // unlike the old path it is fetched once per stream rather than per frame.
-    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
-        .then((sources) => {
-            const match = primary && sources.find((s) => s.display_id === String(primary.id));
-            sourceId = (match || sources[0])?.id || null;
-        })
-        .catch(() => { sourceId = null; })
-        .finally(() => {
-            if (win.webContents.isLoading()) {
-                win.webContents.once('did-finish-load', send);
-            } else {
-                send();
-            }
-        });
-
-    if (videoWatchdog) clearInterval(videoWatchdog);
-    videoWatchdog = setInterval(watchVideoStream, 3000);
-
-    return true;
-}
-
-function stopVideoStream() {
-    if (videoWatchdog) { clearInterval(videoWatchdog); videoWatchdog = null; }
-    if (!videoStreaming) return;
-    videoStreaming = false;
-    videoGen = '';
-    if (captureWin && !captureWin.isDestroyed()) {
-        captureWin.webContents.send('capture-stop');
-    }
-}
-
-/**
- * Drop to still frames if the encoder goes quiet. Without this a renderer that
- * dies silently would leave the viewer staring at a frozen screen forever.
- */
-function watchVideoStream() {
-    if (!videoStreaming) return;
-    if (Date.now() - lastVideoChunkAt < 8000) return;
-    fallBackToFrames('encoder produced no chunks');
-}
-
-function fallBackToFrames(reason) {
-    if (reason) console.error('live video unavailable:', reason);
-    videoUnsupported = true;
-    stopVideoStream();
-    if (liveStreaming) {
-        sendLiveFrame().catch(() => {});
-    }
-}
-
-async function uploadVideoChunk(payload) {
-    // One request at a time: overlapping uploads can reach the server out of
-    // order, and a continuation appended before its predecessor will not decode.
-    if (videoChunkBusy || !videoStreaming || payload.gen !== videoGen) return;
-    videoChunkBusy = true;
-    try {
-        const form = new FormData();
-        form.append('chunk', Buffer.from(payload.bytes), {
-            filename: 'live.webm',
-            contentType: payload.mime || 'video/webm',
-        });
-        form.append('gen', payload.gen);
-        form.append('seq', String(payload.seq));
-        form.append('init', payload.init ? '1' : '0');
-        form.append('mime', payload.mime || 'video/webm');
-
-        const { data } = await uploadApi(20000).post('/live-chunk', form, { headers: form.getHeaders() });
-        if (data?.resend_init) {
-            // Server lost our header, so nothing we send now can be decoded.
-            restartVideoStream();
-            return;
-        }
-        applyLiveWatch(data?.live_watch);
-    } catch (e) {
-        console.error('live chunk failed', e.message);
-    } finally {
-        videoChunkBusy = false;
-    }
-}
-
-function restartVideoStream() {
-    if (!videoStreaming) return;
-    stopVideoStream();
-    if (liveStreaming) startVideoStream();
-}
-
-ipcMain.on('capture-chunk', (_e, payload) => {
-    if (!payload?.bytes) return;
-    lastVideoChunkAt = Date.now();
-    uploadVideoChunk(payload).catch(() => {});
-});
-
-ipcMain.on('capture-status', (_e, payload) => {
-    const state = payload?.state;
-    if (state === 'streaming') {
-        lastVideoChunkAt = Date.now();
-        return;
-    }
-    if (state === 'unsupported') {
-        fallBackToFrames(payload?.detail);
-        return;
-    }
-    if (state === 'ended' && videoStreaming) {
-        // The share was revoked rather than the machine being incapable, so
-        // rebuild the stream once before giving up on video.
-        restartVideoStream();
-    }
-});
-
 function applyLiveWatch(liveWatch) {
     if (liveWatch?.force_logout) {
         forceRemoteSignOut(liveWatch.message);
@@ -609,47 +408,32 @@ function applyLiveWatch(liveWatch) {
     }
     if (config.live_watch_enabled === false) {
         liveStreaming = false;
-        stopVideoStream();
         return;
     }
     if (!liveWatch) return;
-    lastLiveWatchAt = Date.now();
     const fps = Math.max(1, Math.min(8, Number(liveWatch.fps || config.live_fps) || 5));
     liveFrameDelayMs = Math.round(1000 / fps);
     if (liveWatch.quality) {
         config.live_quality = liveWatch.quality;
-    }
-    if (liveWatch.stream) {
-        streamConfig = { ...streamConfig, ...liveWatch.stream };
     }
     // Monitoring only runs on the clock: never stream (or capture) while there is no active
     // session on this machine, even if a viewer is asking for live video.
     const requested = !!liveWatch.requested && isOnDuty();
     if (requested && !liveStreaming) {
         liveStreaming = true;
-        // Encoded video is the smooth path; the JPEG loop only runs if it is
-        // unavailable or fails, so the two never capture the screen at once.
-        if (!startVideoStream()) {
-            sendLiveFrame().catch(() => {});
-        }
-        // Follow the interval the server asked for. Forcing a 1s full-resolution
-        // screenshot here used to run a second capture pipeline alongside the video.
-        restartScreenshotTimer();
+        sendLiveFrame().catch(() => {});
+        sendScreenshot().catch(() => {});
+        restartScreenshotTimer(1000);
     } else if (!requested && liveStreaming) {
         liveStreaming = false;
-        stopVideoStream();
         restartScreenshotTimer();
     } else if (!requested) {
         liveStreaming = false;
-        stopVideoStream();
     }
 }
 
 async function pollLiveCommand() {
     if (!store.get('token')) return;
-    // Every live-frame response already carries the watch state, so polling it again
-    // each second while streaming just competes with the video on the same connection.
-    if (liveStreaming && Date.now() - lastLiveWatchAt < 4000) return;
     try {
         const { data } = await jsonApi(8000).get('/live-command', {
             params: { agent_version: AGENT_VERSION },
@@ -675,11 +459,9 @@ async function sendLiveFrame() {
     if (!liveStreaming || liveStreamBusy || !store.get('token')) return;
     if (!isOnDuty()) {
         liveStreaming = false;
-        stopVideoStream();
         return;
     }
     liveStreamBusy = true;
-    const frameStartedAt = Date.now();
     try {
         const buf = await captureLiveFrame();
         if (buf) {
@@ -695,12 +477,7 @@ async function sendLiveFrame() {
     } finally {
         liveStreamBusy = false;
         if (liveStreaming) {
-            // Pace against when the frame started, not when its upload finished.
-            // Sleeping a full interval after every round trip turned a 5 fps target
-            // into roughly 1-2 fps and made the motion lurch.
-            const spent = Date.now() - frameStartedAt;
-            const wait = Math.max(0, liveFrameDelayMs - spent);
-            setTimeout(() => { sendLiveFrame().catch(() => {}); }, wait);
+            setTimeout(() => { sendLiveFrame().catch(() => {}); }, liveFrameDelayMs);
         }
     }
 }
@@ -721,7 +498,6 @@ function startLiveWatchPoll() {
 function stopLiveWatchPoll() {
     if (liveWatchTimer) { clearInterval(liveWatchTimer); liveWatchTimer = null; }
     liveStreaming = false;
-    stopVideoStream();
 }
 
 function blitBitmap(dst, dstW, dstH, src, srcW, srcH, dx, dy, targetW, targetH) {
@@ -931,9 +707,6 @@ function pushUpdateToUi(payload, { forceShow = false } = {}) {
     // Always send — renderer shows a small banner even when the modal is snoozed.
     win.webContents.send('update-available', {
         ...(payload || { available: false }),
-        auto_update: autoUpdateSupported(),
-        download_state: autoUpdateState.state,
-        download_percent: autoUpdateState.percent,
         force_show: !!forceShow,
         snoozed: !forceShow && !!payload && Date.now() < Number(store.get('updateSnoozeUntil') || 0),
     });
@@ -977,15 +750,7 @@ function applyAgentUpdateInfo(update, { forceShow = false } = {}) {
     return payload;
 }
 
-async function checkForUpdate(options = {}) {
-    const result = await checkServerForUpdate(options);
-    // Runs after the server refresh so the feed URL it just handed us is used.
-    runAutoUpdate().catch(() => {});
-
-    return result;
-}
-
-async function checkServerForUpdate({ forceShow = false } = {}) {
+async function checkForUpdate({ forceShow = false } = {}) {
     try {
         if (store.get('token')) {
             await refreshConfig();
@@ -1024,80 +789,6 @@ function scheduleUpdateChecks() {
     updateCheckTimer = setInterval(() => {
         checkForUpdate().catch(() => {});
     }, 6 * 60 * 60 * 1000);
-}
-
-/*
- * Silent auto-update.
- *
- * Windows only: Squirrel.Mac refuses to apply an update to an app without a valid
- * Developer ID signature, and the Mac build is ad-hoc signed, so Macs keep using the
- * assisted download flow. Any failure here falls back to that same flow rather than
- * blocking the employee.
- */
-function autoUpdateSupported() {
-    return !!autoUpdater && process.platform === 'win32' && app.isPackaged;
-}
-
-function autoUpdateFeedUrl() {
-    if (config.update_feed_url) return String(config.update_feed_url).replace(/\/+$/, '');
-    const base = getApiBase();
-    return base ? `${base}/downloads` : '';
-}
-
-function setAutoUpdateState(state, extra) {
-    autoUpdateState = { ...autoUpdateState, state, ...(extra || {}) };
-
-    // The server may not know about this build yet, so "ready" has to be announceable
-    // on its own rather than only as a decoration on a server-driven payload.
-    const payload = lastUpdatePayload || (state === 'ready' ? {
-        available: true,
-        current_version: AGENT_VERSION,
-        latest_version: autoUpdateState.version || config.agent_version || '',
-        download_page_url: config.download_page_url || `${getApiBase()}/attendance/agent`,
-        download_url: config.download_url || `${getApiBase()}/attendance/agent/download`,
-        message: 'The update downloaded in the background. Restart 5Core Attendance to finish it.',
-    } : null);
-
-    if (!payload) return;
-    if (state === 'ready') showWindow();
-    pushUpdateToUi(payload, { forceShow: state === 'ready' });
-}
-
-function wireAutoUpdater() {
-    if (autoUpdateWired || !autoUpdateSupported()) return;
-    autoUpdateWired = true;
-
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
-    autoUpdater.allowDowngrade = false;
-
-    autoUpdater.on('checking-for-update', () => setAutoUpdateState('checking'));
-    autoUpdater.on('update-not-available', () => setAutoUpdateState('idle'));
-    autoUpdater.on('download-progress', (p) => {
-        setAutoUpdateState('downloading', { percent: Math.round((p && p.percent) || 0) });
-    });
-    autoUpdater.on('update-downloaded', (info) => {
-        setAutoUpdateState('ready', { percent: 100, version: (info && info.version) || '' });
-        updateTrayTooltip('Update ready — restart to finish');
-    });
-    autoUpdater.on('error', () => setAutoUpdateState('failed'));
-}
-
-async function runAutoUpdate() {
-    if (!autoUpdateSupported()) return false;
-    const url = autoUpdateFeedUrl();
-    if (!url) return false;
-    if (autoUpdateState.state === 'downloading' || autoUpdateState.state === 'ready') return true;
-
-    wireAutoUpdater();
-    try {
-        autoUpdater.setFeedURL({ provider: 'generic', url });
-        await autoUpdater.checkForUpdates();
-        return true;
-    } catch (_) {
-        setAutoUpdateState('failed');
-        return false;
-    }
 }
 
 function stopMonitoring() {
@@ -1265,7 +956,6 @@ function resetLocalStats(session, today) {
     }
     if (!isOnDuty()) {
         liveStreaming = false;
-        stopVideoStream();
     }
     lastHeartbeatSentAt = Date.now();
 }
@@ -1948,24 +1638,6 @@ ipcMain.handle('openPortal', () => {
 ipcMain.handle('openUpdateDownload', async () => {
     const page = config.download_page_url || `${getApiBase()}/attendance/agent`;
     await shell.openExternal(page);
-    return { ok: true };
-});
-
-ipcMain.handle('installUpdateNow', () => {
-    if (!autoUpdateSupported() || autoUpdateState.state !== 'ready') {
-        return { ok: false, message: 'No downloaded update is waiting.' };
-    }
-
-    // Bypass the tray/close guards, and let this IPC call return before the app exits.
-    app.isQuitting = true;
-    setImmediate(() => {
-        try {
-            autoUpdater.quitAndInstall(false, true);
-        } catch (_) {
-            app.isQuitting = false;
-        }
-    });
-
     return { ok: true };
 });
 
