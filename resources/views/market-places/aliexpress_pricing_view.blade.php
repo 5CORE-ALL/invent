@@ -743,20 +743,21 @@
             }
             return 'color:' + color + ';font-weight:600;';
         }
+        /** Same GROI / GPFT bands as /amazon-tabulator-view (MetricPctColors). */
         function aeRoiColor(v) {
-            if (v < 40) return '#a00211';
-            if (v < 75) return '#ffc107';
-            if (v < 125) return '#28a745';
-            return '#d63384';
+            if (window.MetricPctColors) return MetricPctColors.groiColor(v);
+            return v < 60 ? '#dc3545' : v < 90 ? '#ffc107' : v < 150 ? '#28a745' : '#e83e8c';
         }
         function aeGpftColor(v) {
-            return v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+            if (window.MetricPctColors) return MetricPctColors.gpftColor(v);
+            return v <= 20 ? '#dc3545' : v < 30 ? '#ffc107' : v < 43 ? '#28a745' : '#4e0dab';
         }
         function aePctHtml(v, kind, extra) {
             extra = extra || {};
-            const color = kind === 'gpft' ? aeGpftColor(v) : aeRoiColor(v);
             const tip = extra.title ? (' title="' + String(extra.title).replace(/"/g, '&quot;') + '"') : '';
-            return '<span' + tip + ' style="' + aePctStyle(color) + '">' + Math.round(v) + '%</span>';
+            const style = (window.MetricPctColors && MetricPctColors.styleFor(kind === 'gpft' ? 'gpft' : 'groi', v))
+                || aePctStyle(kind === 'gpft' ? aeGpftColor(v) : aeRoiColor(v));
+            return '<span' + tip + ' style="' + style + '">' + Math.round(v) + '%</span>';
         }
 
         function aeRuleSpriceRaw(data) {
@@ -780,7 +781,7 @@
         }
         function aeSpriceMetrics(data, spriceOpt) {
             const sprice = spriceOpt != null ? Number(spriceOpt) : aeVisibleSprice(data);
-            if (!(sprice > 0)) return { sgpft: 0, sroi: 0 };
+            if (!(sprice > 0)) return { sgpft: 0, sroi: 0, sgpftRaw: null, sroiRaw: null };
             const zeroSold = typeof chPromoIsZeroSoldRow === 'function' && chPromoIsZeroSoldRow(data);
             const margin = zeroSold && typeof chPromoZeroSoldTakehomeMargin === 'function'
                 ? chPromoZeroSoldTakehomeMargin(data)
@@ -793,9 +794,28 @@
             const ship = (typeof chPromoShipCost === 'function')
                 ? chPromoShipCost(data)
                 : (parseFloat(data && data.ship) || 0);
-            const sgpft = Math.round(((sprice * margin - ship - lp) / sprice) * 100);
-            const sroi = lp > 0 ? Math.round(((sprice * margin - lp - ship) / lp) * 100) : 0;
-            return { sgpft: sgpft, sroi: sroi };
+            // Same formulas as /amazon-tabulator-view (margin = AliExpress channel margin).
+            // *Raw values are unrounded so colour bands match Amazon (it colours the raw %).
+            const sgpftRaw = ((sprice * margin - ship - lp) / sprice) * 100;
+            const sroiRaw = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : null;
+            return {
+                sgpft: Math.round(sgpftRaw),
+                sroi: sroiRaw === null ? 0 : Math.round(sroiRaw),
+                sgpftRaw: sgpftRaw,
+                sroiRaw: sroiRaw
+            };
+        }
+        /** Live GROI / GPFT at a price — same formula as amazonComputeGroiAt / amazonComputeGpftAt. */
+        function aeComputeAt(price, data) {
+            const p = parseFloat(price);
+            if (!data || !(p > 0)) return { groi: null, gpft: null };
+            const lp = parseFloat(data.lp) || 0;
+            const ship = parseFloat(data.ship) || 0;
+            const mRaw = parseFloat(data._margin);
+            const margin = (isFinite(mRaw) && mRaw > 0) ? mRaw : 0.80;
+            const gpft = ((p * margin - ship - (lp > 0 ? lp : 0)) / p) * 100;
+            const groi = lp > 0 ? ((p * margin - ship - lp) / lp) * 100 : null;
+            return { groi: groi, gpft: gpft };
         }
         function aePrepareSpriceToSave(data, sprice) {
             let shown = Number(sprice) || 0;
@@ -2006,7 +2026,9 @@
                             const ovL30 = parseFloat(row.ov_l30) || 0;
                             if (inv === 0) return `<span style="color:#6c757d;">0%</span>`;
                             const dil = (ovL30 / inv) * 100;
-                            let color = dil < 25 ? '#dc3545' : dil < 50 ? '#28a745' : '#e83e8c';
+                            if (!(dil > 0)) return `<span style="color:#6c757d;">0%</span>`;
+                            // Same Dil bands as /amazon-tabulator-view: red <25 · green 25–50 · pink 50%+.
+                            let color = dil < 25 ? '#a00211' : dil < 50 ? '#28a745' : '#e83e8c';
                             return `<span style="color:${color};font-weight:600;">${Math.round(dil)}%</span>`;
                         }
                     },
@@ -2060,7 +2082,13 @@
                             const lmpForTri = aeEffectiveLmp(d);
                             const lmpTri = (window.PriceGtLmpBadge ? PriceGtLmpBadge.triangleHtml(cell.getValue(), lmpForTri) : '');
                             const purpleTri = (window.PriceLt80LmpBadge ? PriceLt80LmpBadge.triangleHtml(cell.getValue(), lmpForTri) : '');
-                            return money(cell.getValue()) + lmpTri + purpleTri;
+                            // Same as /amazon-tabulator-view: bold; red when Price > LMP.
+                            const priceNum = parseFloat(cell.getValue()) || 0;
+                            if (priceNum <= 0) return money(cell.getValue()) + lmpTri + purpleTri;
+                            if (lmpForTri > 0 && priceNum > lmpForTri) {
+                                return '<span style="color:#dc3545;font-weight:700;">' + money(cell.getValue()) + '</span>' + lmpTri;
+                            }
+                            return '<span style="font-weight:700;">' + money(cell.getValue()) + '</span>' + purpleTri;
                         }
                     },
                     {
@@ -2107,7 +2135,10 @@
                                     title = base.toFixed(2) + ' + ' + shipPart.toFixed(2) + ' ship = ' + displayNum
                                         + ' (' + activeCount + ' active) — click to edit';
                                 }
-                                return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1" title="' + title.replace(/"/g, '&quot;') + '">' + displayNum + '</span> ' +
+                                // Same as /amazon-tabulator-view: red when LMP < Price, else green.
+                                const curPrice = parseFloat(row.price) || 0;
+                                const lmpColor = (lowest < curPrice) ? '#dc3545' : '#28a745';
+                                return '<span class="ae-lmp-display d-inline-flex align-items-center gap-1" style="color:' + lmpColor + ';font-weight:600;" title="' + title.replace(/"/g, '&quot;') + '">' + displayNum + '</span> ' +
                                     '<button type="button" class="btn btn-sm btn-link p-0 ae-lmp-eye-btn" data-sku="' + skuEsc + '" title="' + title.replace(/"/g, '&quot;') + '"><i class="fas fa-info-circle text-info"></i></button>';
                             }
                             if (extra.ignored_price > 0) {
@@ -2133,6 +2164,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const live = aeComputeAt(d.price, d).groi;
+                            if (live !== null && isFinite(live)) return aePctHtml(live, 'groi');
                             const v = parseFloat(cell.getValue()) || 0;
                             return aePctHtml(v, 'groi');
                         }
@@ -2144,6 +2177,10 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
+                            if (!d.is_parent) {
+                                const live = aeComputeAt(d.price, d).gpft;
+                                if (live !== null && isFinite(live)) return aePctHtml(live, 'gpft');
+                            }
                             const v = parseFloat(cell.getValue());
                             if (isNaN(v)) return '<span style="color:#6c757d;">–</span>';
                             if (v === 0 && !d.is_parent) return '0%';
@@ -2353,8 +2390,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = aeSpriceMetrics(d).sroi;
-                            if (isNaN(v)) return '0%';
+                            const v = aeSpriceMetrics(d).sroiRaw;
+                            if (v === null || !isFinite(v)) return '';
                             return aePctHtml(v, 'groi', { title: aeTargetGroiWhy(d) });
                         }
                     },
@@ -2370,8 +2407,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = aeSpriceMetrics(d).sgpft;
-                            if (isNaN(v)) return '0%';
+                            const v = aeSpriceMetrics(d).sgpftRaw;
+                            if (v === null || !isFinite(v)) return '';
                             return aePctHtml(v, 'gpft');
                         }
                     },
@@ -2388,8 +2425,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = aeSpriceMetrics(d).sroi;
-                            if (isNaN(v)) return '0%';
+                            const v = aeSpriceMetrics(d).sroiRaw;
+                            if (v === null || !isFinite(v)) return '';
                             return aePctHtml(v, 'groi', { title: 'SNROI = SGROI (no Ads%)' });
                         }
                     },
@@ -2406,8 +2443,8 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const v = aeSpriceMetrics(d).sgpft;
-                            if (isNaN(v)) return '0%';
+                            const v = aeSpriceMetrics(d).sgpftRaw;
+                            if (v === null || !isFinite(v)) return '';
                             return aePctHtml(v, 'gpft', { title: 'SNPFT = SGPFT (no Ads%)' });
                         }
                     },
