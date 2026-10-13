@@ -30,7 +30,7 @@ class MissingListingCatalogRefresh
 
         $results = [];
         foreach ([
-            'pls', 'topdawg', 'faire', 'macy', 'bestbuy', 'b5cb2b',
+            'pls', 'topdawg', 'faire', 'macy', 'bestbuy', 'purchasingpower', 'b5cb2b',
         ] as $channel) {
             $results[$channel] = $this->refreshChannel($channel);
         }
@@ -70,6 +70,7 @@ class MissingListingCatalogRefresh
                 'faire' => $this->refreshFaire(),
                 'macy', 'macys' => $this->refreshMirakl('macy'),
                 'bestbuy', 'bestbuyusa' => $this->refreshMirakl('bestbuy'),
+                'purchasingpower' => $this->refreshMirakl('purchasingpower'),
                 'shopify', 'shopifyb2c' => $this->refreshShopifyMain(),
                 'b5cb2b', 'business5coreb2b', 'business5core(b2b)' => $this->refreshB5cB2b(),
                 default => 'skipped',
@@ -210,8 +211,9 @@ class MissingListingCatalogRefresh
 
     protected function refreshMirakl(string $channel): string
     {
-        if ($channel === 'macy') {
-            app(MacyMcmOfferIndex::class)->refresh();
+        $index = app(MiraklMcmOfferIndex::class)->refresh($channel);
+        if ($channel === 'purchasingpower') {
+            return $index !== null ? 'ok' : 'failed';
         }
         $result = app(MiraklMcmOfferStatusSync::class)->sync($channel, 180);
 

@@ -211,7 +211,7 @@ class ChannelListingRegistry
             'bestbuyusa' => [
                 'dataView' => \App\Models\BestbuyUSADataView::class,
                 'status' => \App\Models\BestbuyUSAListingStatus::class,
-                'listed' => ['type' => 'price', 'model' => BestbuyUsaProduct::class, 'column' => 'price'],
+                'listed' => ['type' => 'custom', 'method' => 'listedBestBuy'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -374,7 +374,7 @@ class ChannelListingRegistry
             'purchasingpower' => [
                 'dataView' => \App\Models\PurchasingPowerDataView::class,
                 'status' => \App\Models\PurchasingPowerListingStatus::class,
-                'listed' => ['type' => 'column', 'model' => PurchasingPowerProduct::class, 'column' => 'sku'],
+                'listed' => ['type' => 'custom', 'method' => 'listedPurchasingPower'],
                 'id_field' => 'sku',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -620,9 +620,9 @@ class ChannelListingRegistry
             return [];
         }
 
-        $index = app(\App\Services\MarketplaceManager\MacyMcmOfferIndex::class)->get(false);
+        $index = app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('macy', false);
         if (is_array($index) && ($index['offers'] ?? []) !== []) {
-            return self::listedMacyFromOfferIndex($skus, $index);
+            return self::listedFromMiraklOfferIndex($skus, $index);
         }
 
         if (! \Illuminate\Support\Facades\Schema::hasTable('macy_products')) {
@@ -662,6 +662,39 @@ class ChannelListingRegistry
     }
 
     /**
+     * Best Buy Listed = offer on Best Buy MCM (active or inactive); price > 0 when MCM was never read.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedBestBuy(array $skus): array
+    {
+        $index = $skus === [] ? null : app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('bestbuy', false);
+        if (is_array($index) && ($index['offers'] ?? []) !== []) {
+            return self::listedFromMiraklOfferIndex($skus, $index);
+        }
+
+        return ListingCountsEngine::listedIdsFromPrice(BestbuyUsaProduct::class, $skus, 'price');
+    }
+
+    /**
+     * Purchasing Power Listed = offer on Purchasing Power MCM (active or inactive);
+     * purchasing_power_products rows when MCM was never read.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedPurchasingPower(array $skus): array
+    {
+        $index = $skus === [] ? null : app(\App\Services\MarketplaceManager\MiraklMcmOfferIndex::class)->get('purchasingpower', false);
+        if (is_array($index) && ($index['offers'] ?? []) !== []) {
+            return self::listedFromMiraklOfferIndex($skus, $index);
+        }
+
+        return ListingCountsEngine::listedIdsFromColumn(PurchasingPowerProduct::class, $skus, 'sku', false);
+    }
+
+    /**
      * Listed = any live MCM offer (active or inactive) whose shop SKU, Mirakl
      * product SKU or UPC matches the Product Master SKU.
      *
@@ -669,10 +702,10 @@ class ChannelListingRegistry
      * @param  array{offers: list<array<string, mixed>>}  $index
      * @return array<string, string>
      */
-    public static function listedMacyFromOfferIndex(array $skus, array $index): array
+    public static function listedFromMiraklOfferIndex(array $skus, array $index): array
     {
-        $keyMap = \App\Services\MarketplaceManager\MacyMcmOfferIndex::skuKeyMap($index);
-        $upcMap = \App\Services\MarketplaceManager\MacyMcmOfferIndex::upcMap($index);
+        $keyMap = \App\Services\MarketplaceManager\MiraklMcmOfferIndex::skuKeyMap($index);
+        $upcMap = \App\Services\MarketplaceManager\MiraklMcmOfferIndex::upcMap($index);
         $upcBySku = $upcMap === [] ? [] : self::productMasterUpcs($skus);
 
         $map = [];
@@ -1163,9 +1196,9 @@ class ChannelListingRegistry
     }
 
     /**
-     * TopDawg Listed = live/Yes catalog row in topdawg_products.
+     * TopDawg Listed = row from the live SupplierProduct/list catalog in topdawg_products,
+     * in any state (pending / review / rejected are on TopDawg, so not Missing L).
      * Pack / GTR / parent product_code aliases count as listed.
-     * Uploaded / review / unable-to-list stay in Missing L.
      *
      * @param  list<string>  $skus
      * @return array<string, string>
@@ -1186,10 +1219,6 @@ class ChannelListingRegistry
                 ->orderBy('id')
                 ->chunkById(500, function ($rows) use (&$byNorm, $wantedNorm) {
                     foreach ($rows as $row) {
-                        // Uploaded / review / unable-to-list stay in Missing L.
-                        if (ListingCountsEngine::isPendingOrReviewListingState($row->listing_state ?? null)) {
-                            continue;
-                        }
                         $sku = trim((string) $row->sku);
                         $listingId = trim((string) ($row->topdawg_listing_id ?? ''));
                         $tdid = trim((string) ($row->tdid ?? ''));
@@ -1212,9 +1241,6 @@ class ChannelListingRegistry
                         continue;
                     }
                     $sku = trim((string) ($row['sku'] ?? ''));
-                    if (ListingCountsEngine::isPendingOrReviewListingState($row['state'] ?? null)) {
-                        continue;
-                    }
                     $id = trim((string) ($row['product_id'] ?? ''));
                     if (! self::isLiveTopDawgListingId($id, $sku)) {
                         continue;
