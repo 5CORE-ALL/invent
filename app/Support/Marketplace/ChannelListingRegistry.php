@@ -184,7 +184,8 @@ class ChannelListingRegistry
             'macys' => [
                 'dataView' => \App\Models\MacyDataView::class,
                 'status' => \App\Models\MacysListingStatus::class,
-                'listed' => ['type' => 'price', 'model' => MacyProduct::class, 'column' => 'price'],
+                // Listed = MCM offer exists (active with price, or inactive per OF51), not price > 0 only.
+                'listed' => ['type' => 'custom', 'method' => 'listedMacy'],
                 'id_field' => 'listing_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -603,6 +604,52 @@ class ChannelListingRegistry
         }
 
         return ListingCountsEngine::listedIdsFromPrice(WalmartMetrics::class, $skus, 'price');
+    }
+
+    /**
+     * Macy's Listed = offer on Macy's MCM. The OF21 price sync stores price 0 for
+     * inactive offers, so those count via listing_status from the OF51 status sync
+     * (recently seen only, so offers deleted on Macy's drop off).
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedMacy(array $skus): array
+    {
+        if ($skus === [] || ! \Illuminate\Support\Facades\Schema::hasTable('macy_products')) {
+            return [];
+        }
+
+        $wanted = self::wantedNormalizedSkus($skus);
+        if ($wanted === []) {
+            return [];
+        }
+
+        $hasStatus = \Illuminate\Support\Facades\Schema::hasColumn('macy_products', 'listing_status');
+        $freshSince = now()->subDays(3);
+        $byKey = [];
+        MacyProduct::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get($hasStatus ? ['sku', 'price', 'listing_status', 'updated_at'] : ['sku', 'price'])
+            ->each(function ($row) use (&$byKey, $wanted, $hasStatus, $freshSince) {
+                $sku = trim((string) $row->sku);
+                if ($sku === '') {
+                    return;
+                }
+                $listed = (float) ($row->price ?? 0) > 0;
+                if (! $listed && $hasStatus) {
+                    $status = strtolower(trim((string) ($row->listing_status ?? '')));
+                    $listed = in_array($status, ['active', 'inactive'], true)
+                        && $row->updated_at !== null
+                        && $row->updated_at >= $freshSince;
+                }
+                if ($listed) {
+                    self::putListedId($byKey, $wanted, $sku, $sku);
+                }
+            });
+
+        return self::listedMapFromByNorm($skus, $byKey);
     }
 
     /**
