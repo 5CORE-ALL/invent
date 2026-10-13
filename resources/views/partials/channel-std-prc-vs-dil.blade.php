@@ -84,6 +84,17 @@
         #chStdPrcModal .ch-sp-metric { display: contents; }
         #chStdPrcModal .ch-sp-add { margin-top: auto; width: 100%; border-radius: 8px; border-style: dashed; font-weight: 600; }
         #chStdPrcModal .ch-sp-del { width: 22px; height: 22px; padding: 0; border-radius: 6px; color: #94a3b8; }
+        #ch-std-prc-btn {
+            background: #FD5E00;
+            border-color: #FD5E00;
+            color: #000;
+            font-weight: 600;
+        }
+        #ch-std-prc-btn:hover, #ch-std-prc-btn:focus, #ch-std-prc-btn:active {
+            background: #e45500;
+            border-color: #e45500;
+            color: #000;
+        }
 @endif
 
 @if($channelStdPrcPart === 'buttons' || $channelStdPrcPart === 'all')
@@ -512,7 +523,7 @@
         function chStdPriceBeforeMinNpft(d, draft) {
             if (!d) return 0;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
-            if (!(chStdStockForAge(d) > 0)) return 0;
+            if (!(chStdStockForAge(d) > 0) && !chStdRowIsZeroSold(d)) return 0;
             const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
             if (!(std > 0)) return 0;
             const sum = chStdSumDisc(d, draft || chStdDraftNow());
@@ -549,7 +560,13 @@
         }
         function chStdSumDisc(d, draft) {
             draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), zeroSoldDisc: chStdZeroSoldDisc };
-            if (!(chStdStockForAge(d) > 0)) return 0;
+            // Amazon INV = 0 still allows the page 0 Sold discount (AB L30 = 0, page INV > 0).
+            if (!(chStdStockForAge(d) > 0)) {
+                if (!chStdRowIsZeroSold(d)) return 0;
+                const stdOnly = chStdRowStd(d);
+                const zsOnly = Number(draft.zeroSoldDisc != null ? draft.zeroSoldDisc : chStdZeroSoldDisc) || 0;
+                return Math.min(99.99, Math.max(0, chStdScaleDisc(stdOnly, zsOnly)));
+            }
             const std = chStdRowStd(d);
             const dil = chStdDilPct(d);
             const ageDisc = chStdAgeDisc(d, draft.age);
@@ -570,15 +587,22 @@
             const zsDisc = chStdScaleDisc(std, zsRaw);
             return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc));
         }
+        function chStdFullDataset() {
+            if (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length) return window.allTableData;
+            if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) return allTableData;
+            if (typeof abAllRows !== 'undefined' && Array.isArray(abAllRows) && abAllRows.length) return abAllRows;
+            return null;
+        }
         function chStdRows() {
             const out = [];
             const take = function(d) {
                 if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return;
-                if (!(chStdStockForAge(d) > 0)) return;
+                if (!(chStdStockForAge(d) > 0) && !chStdRowIsZeroSold(d)) return;
                 out.push(d);
             };
-            if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) {
-                allTableData.forEach(take);
+            const full = chStdFullDataset();
+            if (full) {
+                full.forEach(take);
                 if (out.length) return out;
             }
             if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { take(d); });
@@ -1073,17 +1097,40 @@
                 });
             });
         }
+        function chStdAlibabaSoldQty(d) {
+            if (!d) return null;
+            const raw = d.al30 != null && d.al30 !== '' ? d.al30
+                : (d['AB L30'] != null && d['AB L30'] !== '' ? d['AB L30'] : d.AL30);
+            const n = Number(raw);
+            return isFinite(n) ? n : null;
+        }
         function chStdRowIsZeroSold(d) {
             if (!d || d.is_parent_summary) return false;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return false;
+            // Alibaba 0 Sold is AB L30 = 0. OV L30 (field L30) and Amazon A L30 are not Alibaba sales.
+            // Use the same stock gate as Age / Dil so a row that already shows those discs also gets 0 Sold.
+            if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'alibaba') {
+                const pageInv = (typeof chPromoInv === 'function') ? (Number(chPromoInv(d)) || 0) : (Number(d.INV) || Number(d.inv) || 0);
+                if (!(chStdStockForAge(d) > 0) && !(pageInv > 0)) return false;
+                const sold = chStdAlibabaSoldQty(d);
+                return sold != null && !(sold > 0);
+            }
             if (!(chStdStockForAge(d) > 0)) return false;
             if (typeof chPromoIsZeroSoldRow === 'function') return !!chPromoIsZeroSoldRow(d);
-            return !(chStdNum(d, ['L30', 'l30', 'AL30', 'al30', 'A_L30', 'sold', 'E L30', 'RV L30']) > 0);
+            return !(chStdNum(d, ['sold', 'al30', 'AL30', 'AB L30', 'A_L30', 'E L30', 'RV L30', 'L30', 'l30']) > 0);
+        }
+        function chStdZeroSoldDiscNow() {
+            const modal = document.getElementById('chStdPrcModal');
+            if (modal && modal.classList.contains('show')) {
+                const n = Number($('#ch-sp-zs-disc').val());
+                if (isFinite(n)) return Math.min(100, Math.max(0, n));
+            }
+            return Number(chStdZeroSoldDisc) || 0;
         }
         function chStdZeroSoldDiscPct(d) {
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return null;
             if (!chStdRowIsZeroSold(d)) return 0;
-            return chStdScaleDisc(chStdRowStd(d), Number(chStdZeroSoldDisc) || 0);
+            return chStdScaleDisc(chStdRowStd(d), chStdZeroSoldDiscNow());
         }
         window.chStdZeroSoldDiscPct = chStdZeroSoldDiscPct;
         function chStdDiscCol(title, field, tip, read) {
@@ -1171,7 +1218,7 @@
         function chStdPriceForRow(d, draft) {
             if (!d) return 0;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
-            if (!(chStdStockForAge(d) > 0)) return 0;
+            if (!(chStdStockForAge(d) > 0) && !chStdRowIsZeroSold(d)) return 0;
             const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
             if (!(std > 0)) return 0;
             const sum = chStdSumDisc(d, draft || chStdDraftNow());
@@ -1455,9 +1502,7 @@
                 bySku[sku] = item;
                 order.push(item);
             };
-            const extra = (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length)
-                ? window.allTableData
-                : ((typeof allTableData !== 'undefined' && Array.isArray(allTableData)) ? allTableData : []);
+            const extra = chStdFullDataset() || [];
             extra.forEach(function(d) { take(d, null); });
             if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { take(d, row); });
             return order;

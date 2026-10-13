@@ -670,6 +670,7 @@
             .then(r => r.json())
             .then(json => {
                 abAllRows = json.data || [];
+                window.allTableData = abAllRows;
                 if (abTable) {
                     applyFilters();
                     return;

@@ -311,6 +311,17 @@
         }
         #amzStdPrcModal .amz-sp-del:hover { color: #dc3545; background: #fef2f2; }
         #amzStdPrcModal #amz-sp-apply { border-radius: 8px; font-weight: 600; padding: 6px 14px; }
+        #amz-std-prc-btn {
+            background: #FD5E00;
+            border-color: #FD5E00;
+            color: #000;
+            font-weight: 600;
+        }
+        #amz-std-prc-btn:hover, #amz-std-prc-btn:focus, #amz-std-prc-btn:active {
+            background: #e45500;
+            border-color: #e45500;
+            color: #000;
+        }
 @endif
 
 @if($amazonStdPrcPart === 'buttons' || $amazonStdPrcPart === 'all')

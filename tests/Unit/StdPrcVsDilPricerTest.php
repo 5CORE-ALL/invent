@@ -139,6 +139,36 @@ class StdPrcVsDilPricerTest extends TestCase
         ]));
     }
 
+    public function test_alibaba_zero_sold_discount_uses_ab_l30_not_ov_l30(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'zero_sold_disc' => 10,
+        ], 'alibaba');
+
+        $this->assertSame(90.0, $pricer->priceFromRow([
+            'INV' => 4,
+            'std' => 100,
+            'al30' => 0,
+            'L30' => 12,
+        ]));
+        $this->assertSame(100.0, $pricer->priceFromRow([
+            'INV' => 4,
+            'std' => 100,
+            'al30' => 2,
+            'L30' => 0,
+        ]));
+        $this->assertSame(100.0, $pricer->priceFromRow([
+            'INV' => 4,
+            'std' => 100,
+            'L30' => 0,
+        ]));
+    }
+
     public function test_zero_cvr_is_down_like_amazon(): void
     {
         $pricer = new StdPrcVsDilPricer([

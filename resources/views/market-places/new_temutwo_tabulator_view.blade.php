@@ -232,16 +232,6 @@
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
         @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css'])
-        #ch-std-prc-btn {
-            background: #0f766e;
-            border-color: #0f766e;
-            color: #fff;
-        }
-        #ch-std-prc-btn:hover, #ch-std-prc-btn:focus {
-            background: #115e59;
-            border-color: #115e59;
-            color: #fff;
-        }
         @include('partials.ebay-sprc-dil', [
             'ebaySprcDilPart' => 'css',
             'ebaySprcDilChannel' => 'newtemutwo',
