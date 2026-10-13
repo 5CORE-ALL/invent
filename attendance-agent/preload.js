@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('agent', {
     minimizeToTray: () => ipcRenderer.invoke('minimizeToTray'),
     openPortal: () => ipcRenderer.invoke('openPortal'),
     openUpdateDownload: () => ipcRenderer.invoke('openUpdateDownload'),
+    installUpdateNow: () => ipcRenderer.invoke('installUpdateNow'),
     snoozeUpdate: () => ipcRenderer.invoke('snoozeUpdate'),
     getAgentVersion: () => ipcRenderer.invoke('getAgentVersion'),
     onStats: (cb) => {

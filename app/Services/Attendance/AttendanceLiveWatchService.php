@@ -139,9 +139,23 @@ class AttendanceLiveWatchService
         string $latestVersion,
         bool $seenRecently,
         bool $upToDate,
+        bool $supportsLiveVideo = true,
     ): array {
         $latest = $latestVersion !== '' ? $latestVersion : 'latest';
         $installed = $installedVersion !== null && $installedVersion !== '' ? $installedVersion : null;
+
+        // Screen streaming did not exist in older builds, so "restart the app" would never
+        // work — the install has to be replaced before any video can appear.
+        if ($installed !== null && ! $supportsLiveVideo) {
+            $sameVersion = version_compare($latest, $installed, '<=');
+
+            return [
+                'title' => 'Desktop app is too old for live video',
+                'text' => $sameVersion
+                    ? 'This employee is on v'.$installed.', which cannot stream the screen, and that is also the newest build published for their computer. Publish a newer agent before live video can work.'
+                    : 'This employee is on v'.$installed.', which cannot stream the screen. Ask them to install v'.$latest.' from /attendance/agent, then keep this window open.',
+            ];
+        }
 
         if ($upToDate || ($installed !== null && version_compare($latest, $installed, '<='))) {
             return [

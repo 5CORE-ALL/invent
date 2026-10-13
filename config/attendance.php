@@ -80,7 +80,18 @@ return [
     /*
     | Desktop agent
     */
+    /*
+    | Fallback only. The version actually advertised comes from the release manifest
+    | written by `php artisan attendance:agent-publish`, so the portal can never offer
+    | a build that the download link is unable to serve.
+    */
     'agent_version' => '1.4.8',
+
+    /*
+    | First agent build that can stream live screen video. Older installs can never
+    | show video on the team wall no matter how long the viewer waits.
+    */
+    'live_min_version' => '1.4.0',
     'agent_installer_path' => env('ATTENDANCE_AGENT_INSTALLER_PATH'),
     'agent_download_filename' => env('ATTENDANCE_AGENT_DOWNLOAD_FILENAME', '5Core-Attendance-Setup.exe'),
     'agent_mac_installer_path' => env('ATTENDANCE_AGENT_MAC_INSTALLER_PATH'),

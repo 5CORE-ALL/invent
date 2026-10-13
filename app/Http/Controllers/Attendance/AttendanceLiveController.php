@@ -10,6 +10,7 @@ use App\Services\Attendance\AttendanceService;
 use App\Services\Attendance\AttendanceSummaryService;
 use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -62,6 +63,100 @@ class AttendanceLiveController extends Controller
                 'timezone' => $timezone,
             ])),
         ]);
+    }
+
+    /**
+     * Library of saved live recordings. Without this the files written by storeRecording()
+     * are only reachable by guessing a session id.
+     */
+    public function recordings(Request $request)
+    {
+        abort_unless(AttendanceAccess::canMonitor(), 403);
+        abort_unless((bool) config('attendance.live_watch_enabled', true), 404);
+
+        $request->validate([
+            'from' => 'nullable|date_format:Y-m-d',
+            'to' => 'nullable|date_format:Y-m-d',
+            'timezone' => 'nullable|timezone',
+            'employee' => 'nullable|integer|min:0',
+        ]);
+
+        $timezone = (string) ($request->input('timezone') ?: AttendanceTimelineService::defaultTimezone());
+        $viewableIds = AttendanceAccess::viewableUserIds();
+        $employees = $this->attendanceService->monitorableEmployees($viewableIds);
+
+        $from = (string) ($request->input('from') ?: now()->timezone($timezone)->subDays(7)->toDateString());
+        $to = (string) ($request->input('to') ?: now()->timezone($timezone)->toDateString());
+        $fromAt = Carbon::parse($from, $timezone)->startOfDay();
+        $toAt = Carbon::parse($to, $timezone)->endOfDay();
+
+        $employeeId = (int) $request->input('employee', 0);
+        abort_if($employeeId > 0 && ! AttendanceAccess::canViewUser($employeeId), 403);
+
+        $query = AttendanceLiveSession::query()
+            ->with(['user:id,name,email,avatar', 'viewer:id,name'])
+            ->whereNotNull('recording_path')
+            ->where('started_at', '>=', $fromAt)
+            ->where('started_at', '<=', $toAt)
+            ->orderByDesc('started_at');
+
+        if ($viewableIds !== null) {
+            $query->whereIn('user_id', $viewableIds);
+        }
+
+        if ($employeeId > 0) {
+            $query->where('user_id', $employeeId);
+        }
+
+        $recordings = $query->paginate(24)->withQueryString();
+
+        $rows = collect($recordings->items())->map(fn (AttendanceLiveSession $session) => [
+            'id' => $session->id,
+            'name' => $session->user?->name ?? 'Unknown',
+            'email' => $session->user?->email,
+            'viewer' => $session->viewer?->name,
+            'started_label' => $session->started_at?->timezone($timezone)->format('M j, Y g:i A'),
+            'day_label' => $session->started_at?->timezone($timezone)->format('D, M j'),
+            'duration_label' => self::durationLabel((int) $session->recording_seconds),
+            'size_label' => self::sizeLabel((int) $session->recording_size),
+            'app_name' => $session->app_name,
+            'window_title' => $session->window_title,
+            'play_url' => route('attendance.live.recording.show', $session),
+        ])->values();
+
+        return view('attendance.recordings', [
+            'title' => 'Live Recordings',
+            'rows' => $rows,
+            'recordings' => $recordings,
+            'employees' => $employees,
+            'employee' => $employeeId,
+            'from' => $from,
+            'to' => $to,
+            'timezone' => $timezone,
+            'timezones' => AttendanceTimelineService::timezoneOptions(),
+            'total_seconds_label' => self::durationLabel((int) $recordings->getCollection()->sum('recording_seconds')),
+        ]);
+    }
+
+    private static function durationLabel(int $seconds): string
+    {
+        $seconds = max(0, $seconds);
+        $h = intdiv($seconds, 3600);
+        $m = intdiv($seconds % 3600, 60);
+        $s = $seconds % 60;
+
+        return $h > 0
+            ? sprintf('%d:%02d:%02d', $h, $m, $s)
+            : sprintf('%d:%02d', $m, $s);
+    }
+
+    private static function sizeLabel(int $bytes): string
+    {
+        if ($bytes >= 1048576) {
+            return number_format($bytes / 1048576, 1).' MB';
+        }
+
+        return number_format(max(0, $bytes) / 1024, 0).' KB';
     }
 
     public function show(User $user)
@@ -244,6 +339,7 @@ class AttendanceLiveController extends Controller
             $latest,
             (bool) ($status['has_installed'] ?? false),
             (bool) ($status['up_to_date'] ?? false),
+            (bool) ($status['supports_live_video'] ?? true),
         );
 
         return [

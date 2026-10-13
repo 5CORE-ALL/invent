@@ -12,13 +12,18 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('attendance/desktop-api')->name('attendance.desktop-api.')->group(function () {
-    Route::get('/ping', function () {
+    Route::get('/ping', function (\Illuminate\Http\Request $request) {
         $base = rtrim((string) config('app.url'), '/');
 
         return response()->json([
             'ok' => true,
             'service' => '5core-attendance-agent',
-            'version' => config('attendance.agent_version', '1.0.0'),
+            // Signed-out agents report their platform so they are not offered the other OS's build.
+            'version' => \App\Support\AttendanceAgentRelease::latestFor(
+                $request->query('os'),
+                $request->query('agent_version'),
+            ),
+            'update_feed_url' => $base.'/downloads',
             'download_page_url' => $base.'/attendance/agent',
             'download_url' => $base.'/attendance/agent/download',
             'update_message' => 'A new version of 5Core Attendance is available. Run the installer to update — no uninstall needed.',

@@ -112,6 +112,7 @@
             </form>
             <button type="button" id="btnPlayAll">Play all</button>
             <button type="button" id="btnPauseAll">Pause all</button>
+            <a href="{{ route('attendance.live.recordings') }}">Recordings</a>
             <a href="{{ $summary_url }}">← Team Monitoring</a>
         </div>
     </div>

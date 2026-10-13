@@ -7,15 +7,16 @@
     "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-icons.ps1",
     "prestart": "npm run icons",
     "start": "electron .",
-    "build": "electron-builder --win nsis",
-    "build:portable": "electron-builder --win portable",
-    "build:mac": "node scripts/prepare-mac-icon.js && electron-builder --mac dmg zip --universal"
+    "build": "electron-builder --win nsis --publish never",
+    "build:portable": "electron-builder --win portable --publish never",
+    "build:mac": "node scripts/prepare-mac-icon.js && electron-builder --mac dmg zip --universal --publish never"
   },
   "author": "5Core",
   "license": "UNLICENSED",
   "dependencies": {
     "axios": "^1.7.9",
     "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9",
     "form-data": "^4.0.1"
   },
   "devDependencies": {
@@ -28,6 +29,13 @@
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://inventory.5coremanagement.com/downloads",
+        "channel": "latest"
+      }
+    ],
     "files": [
       "**/*",
       "!dist/**",

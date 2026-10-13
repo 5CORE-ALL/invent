@@ -273,6 +273,45 @@ async function refresh(opts = {}) {
     showError($('loginError'), '');
 }
 
+// Set when the app downloads the update itself, so the buttons restart instead of
+// sending the employee to the download page for an installer they already have.
+let updateIsReadyToInstall = false;
+
+function paintUpdateProgress(payload) {
+    const main = $('btnUpdateNow');
+    const mini = $('btnUpdateBanner');
+    const state = payload.download_state || 'idle';
+    updateIsReadyToInstall = payload.auto_update === true && state === 'ready';
+
+    if (payload.auto_update !== true) {
+        if (main) { main.textContent = 'Download & update'; main.disabled = false; }
+        if (mini) { mini.textContent = 'Update'; mini.disabled = false; }
+        return;
+    }
+
+    if (state === 'downloading') {
+        const pct = Number(payload.download_percent || 0);
+        if (main) { main.textContent = `Downloading ${pct}%`; main.disabled = true; }
+        if (mini) { mini.textContent = `${pct}%`; mini.disabled = true; }
+        if ($('updateHint')) {
+            $('updateHint').textContent = 'The update is downloading in the background. Keep working — you will be asked to restart when it is ready.';
+        }
+        return;
+    }
+
+    if (state === 'ready') {
+        if (main) { main.textContent = 'Restart & update'; main.disabled = false; }
+        if (mini) { mini.textContent = 'Restart'; mini.disabled = false; }
+        if ($('updateHint')) {
+            $('updateHint').textContent = 'The update is downloaded. Restarting takes a few seconds, and your login and settings stay saved.';
+        }
+        return;
+    }
+
+    if (main) { main.textContent = state === 'checking' ? 'Checking…' : 'Download & update'; main.disabled = state === 'checking'; }
+    if (mini) { mini.textContent = 'Update'; mini.disabled = false; }
+}
+
 function showUpdateOverlay(payload) {
     const overlay = $('updateOverlay');
     const banner = $('updateBanner');
@@ -296,6 +335,8 @@ function showUpdateOverlay(payload) {
     if ($('updateBannerVersions')) {
         $('updateBannerVersions').textContent = `v${payload.current_version || '—'} → v${payload.latest_version}`;
     }
+
+    paintUpdateProgress(payload);
 
     // Small banner always stays visible while an update exists.
     banner?.classList.remove('hidden');
@@ -362,6 +403,10 @@ async function init() {
     const openUpdate = async (btn) => {
         if (btn) btn.disabled = true;
         try {
+            if (updateIsReadyToInstall && typeof window.agent.installUpdateNow === 'function') {
+                const r = await window.agent.installUpdateNow();
+                if (r && r.ok) return;
+            }
             await window.agent.openUpdateDownload();
         } finally {
             if (btn) btn.disabled = false;

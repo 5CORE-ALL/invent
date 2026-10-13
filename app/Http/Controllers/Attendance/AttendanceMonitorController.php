@@ -12,6 +12,7 @@ use App\Services\Attendance\AttendanceAnalysisService;
 use App\Services\Attendance\AttendanceService;
 use App\Services\Attendance\AttendanceTimelineService;
 use App\Support\AttendanceAccess;
+use App\Support\AttendanceAgentRelease;
 use App\Support\AttendanceMacBuilds;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -294,6 +295,19 @@ class AttendanceMonitorController extends Controller
             'agent_up_to_date' => $agentStatus['up_to_date'],
             'agent_installed_version' => $agentStatus['installed_version'],
             'agent_latest_version' => $agentStatus['latest_version'],
+            'windows_version' => AttendanceAgentRelease::availableFor('windows'),
+            'mac_version' => AttendanceAgentRelease::availableFor('darwin'),
+            // Platforms not serving the configured build: either never published, or
+            // left behind when config/attendance.php was bumped without a publish. That
+            // silent drift is what had employees downloading an older installer forever.
+            'release_warning_platforms' => AttendanceAgentRelease::manifest() === [] ? [] : array_values(array_filter(
+                AttendanceAgentRelease::PLATFORMS,
+                fn (string $platform) => AttendanceAgentRelease::availableFor($platform) === null
+                    || AttendanceAgentRelease::isStale($platform),
+            )),
+            'release_unpublished' => AttendanceAgentRelease::manifest() === [],
+            'configured_version' => AttendanceAgentRelease::configuredVersion(),
+            'can_admin' => AttendanceAccess::canAdmin(),
         ]);
     }
 

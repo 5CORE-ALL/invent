@@ -11,6 +11,7 @@ use App\Services\Attendance\AttendanceLiveWatchService;
 use App\Services\Attendance\AttendanceScreenshotService;
 use App\Services\Attendance\AttendanceService;
 use App\Support\AttendanceAccess;
+use App\Support\AttendanceAgentRelease;
 use App\Support\AttendanceForceLogout;
 use App\Support\UserAccountStatus;
 use Illuminate\Http\JsonResponse;
@@ -279,7 +280,7 @@ class AttendanceAgentController extends Controller
                 'id' => $device->id,
                 'machine_id' => $device->machine_id,
             ],
-            'config' => $this->agentConfig(),
+            'config' => $this->agentConfig($user, $device),
         ]);
     }
 
@@ -291,9 +292,10 @@ class AttendanceAgentController extends Controller
 
         return response()->json($this->withLiveWatch([
             'ok' => true,
-            'config' => $this->agentConfig(),
+            'config' => $this->agentConfig($user, $device),
             'agent_update' => $this->attendanceService->agentUpdatePayload(
-                is_string($installedVersion) ? $installedVersion : null
+                is_string($installedVersion) ? $installedVersion : null,
+                $device?->os_name,
             ),
         ], $user, $device));
     }
@@ -332,9 +334,10 @@ class AttendanceAgentController extends Controller
                 'activity_state' => $session->last_activity_state ?? ($session->status === 'paused' ? 'break' : 'working'),
             ] : null,
             'today' => $this->attendanceService->todayStats($user),
-            'config' => $this->agentConfig(),
+            'config' => $this->agentConfig($user, $device),
             'agent_update' => $this->attendanceService->agentUpdatePayload(
-                is_string($installedVersion) ? $installedVersion : null
+                is_string($installedVersion) ? $installedVersion : null,
+                $device?->os_name,
             ),
         ], $user, $device));
     }
@@ -481,7 +484,7 @@ class AttendanceAgentController extends Controller
             'agent_version' => $validated['agent_version'] ?? $device?->agent_version,
         ]));
 
-        $result['config'] = $this->agentConfig($request->user());
+        $result['config'] = $this->agentConfig($request->user(), $device);
         $payload = $this->withLiveWatch($result, $request->user(), $device);
         $forcedOut = ! empty($payload['force_logout']);
         $this->forgetAgentTokensAfterForceLogout($request->user(), $payload);
@@ -501,7 +504,7 @@ class AttendanceAgentController extends Controller
 
         $payload = $this->withLiveWatch([
             'ok' => true,
-            'config' => $this->agentConfig(),
+            'config' => $this->agentConfig($request->user(), $device),
         ], $request->user(), $device);
 
         $this->forgetAgentTokensAfterForceLogout($request->user(), $payload);
@@ -672,7 +675,7 @@ class AttendanceAgentController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function agentConfig(?User $user = null): array
+    private function agentConfig(?User $user = null, ?AttendanceDevice $device = null): array
     {
         $base = rtrim((string) config('app.url'), '/');
         $user ??= request()->user();
@@ -692,7 +695,8 @@ class AttendanceAgentController extends Controller
             'live_watch_enabled' => (bool) config('attendance.live_watch_enabled', true),
             'live_fps' => max(1, (int) config('attendance.live_fps', 5)),
             'live_quality' => max(30, min(80, (int) config('attendance.live_quality', 55))),
-            'agent_version' => (string) config('attendance.agent_version', '1.0.0'),
+            'agent_version' => AttendanceAgentRelease::latestFor($device?->os_name, $device?->agent_version),
+            'update_feed_url' => $base.'/downloads',
             'download_page_url' => $base.'/attendance/agent',
             'download_url' => $base.'/attendance/agent/download',
             'update_message' => 'A required 5Core Attendance update is available. Download and run the installer — it closes the old app and updates the same install. You do not need to quit first.',
