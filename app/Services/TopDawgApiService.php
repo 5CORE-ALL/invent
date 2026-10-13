@@ -1611,9 +1611,14 @@ class TopDawgApiService
         $codes = array_slice($this->topDawgProductCodeCandidates($sku, $resolved), 0, 2);
         $lastMessage = 'TopDawg inventory update failed.';
         foreach ($codes as $productCode) {
+            // TopDawg accepts unknown fields silently; send the qty under every name the list API uses.
             $pushed = $this->postTopDawgProductUpdate('/SupplierProduct/update', [
                 'product_code' => $productCode,
                 'qty_available' => $qty,
+                'remaining_inventory' => $qty,
+                'inventory' => $qty,
+                'quantity' => $qty,
+                'stock' => $qty,
             ]);
             if (! empty($pushed['success'])) {
                 return [
@@ -1628,6 +1633,34 @@ class TopDawgApiService
         }
 
         return ['success' => false, 'message' => $lastMessage];
+    }
+
+    /**
+     * Live SupplierProduct/list row for a SKU (exposed for the inventory probe).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function liveProductRow(string $sku): ?array
+    {
+        return $this->fetchLiveProductRow($sku, true);
+    }
+
+    /**
+     * Raw POST for probes: status + body, no success interpretation.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{status: int, body: string}
+     */
+    public function rawSupplierPost(string $path, array $body): array
+    {
+        $this->assertConfigured();
+        try {
+            $response = Http::withHeaders($this->headers())->timeout(45)->post($this->baseUrl.'/'.ltrim($path, '/'), $body);
+
+            return ['status' => $response->status(), 'body' => (string) $response->body()];
+        } catch (\Throwable $e) {
+            return ['status' => 0, 'body' => $e->getMessage()];
+        }
     }
 
     /**
