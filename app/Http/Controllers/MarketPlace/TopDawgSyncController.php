@@ -881,6 +881,7 @@ class TopDawgSyncController extends Controller
             'updated' => (int) ($result['updated'] ?? 0),
             'failed' => (int) ($result['failed'] ?? 0),
             'skipped' => (int) ($result['skipped'] ?? 0),
+            'pending_review' => (int) ($result['pending_review'] ?? 0),
             'message' => $result['message'] ?? ($done
                 ? 'Mismatch inventory sync complete.'
                 : 'Synced batch '.$nextOffset.' / '.$total.'…'),

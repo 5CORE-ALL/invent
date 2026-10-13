@@ -20,7 +20,22 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
     var url = @json($url);
     var offset = 0;
     var ready = false;
-    var totals = { updated: 0, failed: 0, skipped: 0 };
+    var totals = { updated: 0, failed: 0, skipped: 0, pending: 0 };
+    var problems = [];
+
+    function summary() {
+        var text = 'Updated: ' + totals.updated
+            + '\nFailed: ' + totals.failed
+            + '\nSkipped: ' + totals.skipped;
+        if (totals.pending) {
+            text += '\nWaiting for marketplace review: ' + totals.pending;
+        }
+        if (problems.length) {
+            text += '\n\n' + problems.slice(0, 12).join('\n')
+                + (problems.length > 12 ? '\n… and ' + (problems.length - 12) + ' more' : '');
+        }
+        return text;
+    }
     var retries = 0;
     var limit = {{ (int) ($limit ?? 1) }};
 
@@ -76,14 +91,14 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
             totals.updated += data.updated || 0;
             totals.failed += data.failed || 0;
             totals.skipped += data.skipped || 0;
+            totals.pending += data.pending_review || 0;
+            if (((data.failed || 0) > 0 || (data.pending_review || 0) > 0) && data.message
+                && problems.indexOf(data.message) === -1) {
+                problems.push(data.message);
+            }
             offset = data.offset || offset;
             if (data.done) {
-                alert(
-                    (data.message || 'Mismatch inventory sync complete.')
-                    + '\nUpdated: ' + totals.updated
-                    + '\nFailed: ' + totals.failed
-                    + '\nSkipped: ' + totals.skipped
-                );
+                alert('Mismatch inventory sync complete.\n' + summary());
                 location.reload();
                 return;
             }
@@ -98,7 +113,7 @@ document.getElementById('btn-sync-mismatch-now')?.addEventListener('click', func
                 return;
             }
             finish(((err && err.message) || ('Request failed at offset ' + offset + '.'))
-                + '\nProgress so far — Updated: ' + totals.updated + ', Failed: ' + totals.failed);
+                + '\nProgress so far —\n' + summary());
         });
     }
 
