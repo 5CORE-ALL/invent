@@ -1080,7 +1080,7 @@ XML;
                     'Accept' => 'application/json',
                     'X-SELECTED-SUPPLIER-ID' => (string) $this->liveSupplierId(),
                 ])
-                ->post($url, ['query' => $query, 'variables' => $variables]);
+                ->post($url, ['query' => $query, 'variables' => $variables === [] ? new \stdClass : $variables]);
 
             $json = $response->json();
             if (! is_array($json)) {
@@ -1915,7 +1915,8 @@ XML;
             ->withHeaders(['Content-Type' => 'application/json', 'Accept' => 'application/json'])
             ->post($url, [
                 'query' => $query,
-                'variables' => $variables,
+                // The catalog API rejects `[]` ("ArrayList cannot be cast to Map"); it needs `{}`.
+                'variables' => $variables === [] ? new \stdClass : $variables,
             ]);
 
         $json = $response->json();
@@ -1995,7 +1996,10 @@ XML;
 
         $supplierId = (int) config('services.wayfair.supplier_id', 2603);
         $feedKind = strtoupper(trim($feedKind)) === 'TRUE_UP' ? 'TRUE_UP' : 'DIFFERENTIAL';
+        // First shape is the one confirmed live by `wayfair:diagnose`; the others ask for fields
+        // (id, itemCount, errorCount, submittedAt) Wayfair may not expose, and are fallbacks only.
         $mutations = [
+            'mutation ($inventory: [inventoryInput]!) { inventory { save(inventory: $inventory, feedKind: '.$feedKind.', dryRun: false) { handle status errors { key message } } } }',
             <<<'GRAPHQL'
             mutation saveInventory($inventory: [inventoryInput]!, $feedKind: inventoryFeedKind) {
               inventory {
@@ -2067,7 +2071,7 @@ XML;
             $usedWithFeedKindVar = false;
             foreach ($mutations as $index => $mutation) {
                 $variables = ['inventory' => $inventory];
-                if ($index < 2) {
+                if ($index === 1 || $index === 2) {
                     $variables['feedKind'] = $feedKind;
                     $usedWithFeedKindVar = true;
                 }

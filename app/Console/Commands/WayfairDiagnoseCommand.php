@@ -77,7 +77,7 @@ class WayfairDiagnoseCommand extends Command
 
         try {
             $response = $wayfair->apiHttpClient()->withToken($token)->withHeaders($headers)
-                ->post($url, ['query' => $query, 'variables' => $variables]);
+                ->post($url, ['query' => $query, 'variables' => $variables === [] ? new \stdClass : $variables]);
         } catch (\Throwable $e) {
             $this->error("{$label}: FAILED - ".$e->getMessage());
 
