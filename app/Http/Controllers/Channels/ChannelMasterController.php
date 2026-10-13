@@ -6553,9 +6553,13 @@ class ChannelMasterController extends Controller
             }
         }
 
-        if (! isset($payload['dil_ov_percent']) || $payload['dil_ov_percent'] === '' || $payload['dil_ov_percent'] === null) {
+        $missingDil = ! isset($payload['dil_ov_percent']) || $payload['dil_ov_percent'] === ''
+            || (float) ($payload['total_ov_l30'] ?? 0) <= 0
+            || (float) ($payload['total_inv'] ?? 0) <= 0;
+        if ($missingDil) {
             try {
                 $payload = $this->attachDilMetricsToPayload($payload, $this->getShopifyInvLpMetrics());
+                $this->rememberChannelMasterInventorySummary($payload);
             } catch (\Throwable $e) {
                 $payload['dil_ov_percent'] = (float) ($payload['dil_ov_percent'] ?? 0);
                 $payload['total_ov_l30'] = (float) ($payload['total_ov_l30'] ?? 0);
@@ -6581,7 +6585,7 @@ class ChannelMasterController extends Controller
         if (! isset($payload['dil_ov_percent']) || $payload['dil_ov_percent'] === '' || $payload['dil_ov_percent'] === null) {
             return;
         }
-        if ($ov <= 0 && $inv <= 0) {
+        if ($ov <= 0 || $inv <= 0) {
             return;
         }
 
@@ -8836,9 +8840,9 @@ class ChannelMasterController extends Controller
                 'inv_at_sp' => $summaryData['inv_at_sp'] ?? 0,
                 'shopify_inv_sum' => $summaryData['shopify_inv_sum'] ?? 0,
                 'shopify_weighted_avg_lp' => $summaryData['shopify_weighted_avg_lp'] ?? 0,
-                'total_ov_l30' => $summaryData['total_ov_l30'] ?? 0,
-                'total_inv' => $summaryData['total_inv'] ?? ($summaryData['shopify_inv_sum'] ?? 0),
-                'dil_ov_percent' => $summaryData['dil_ov_percent'] ?? 0,
+                'total_ov_l30' => $summaryData['total_ov_l30'] ?? null,
+                'total_inv' => $summaryData['total_inv'] ?? null,
+                'dil_ov_percent' => $summaryData['dil_ov_percent'] ?? null,
                 'inventory_pies' => $summaryData['inventory_pies'] ?? [],
                 'inventory_by_color' => $summaryData['inventory_by_color'] ?? [],
                 'stock_availability' => $summaryData['stock_availability'] ?? ['zero_stock' => 0, 'in_stock' => 0],
@@ -18500,6 +18504,7 @@ class ChannelMasterController extends Controller
                 'inv_at_sp' => 'inv_at_sp',
                 'inventory' => 'inventory_value_amazon',
                 'tat' => null,  // computed: inventory_value_amazon / total l30_sales (all only)
+                'reviews' => 'total_reviews',
             ];
 
             $metricKey = $metricMap[$metric] ?? $metric;
@@ -18916,6 +18921,12 @@ class ChannelMasterController extends Controller
                             $invCarryValue = $totalVal;
                         }
                         $value = round($totalVal, 2);
+                    } elseif ($metric === 'reviews') {
+                        // Snapshots before total_reviews was saved have no review history.
+                        if (! $hasMetricData) {
+                            continue;
+                        }
+                        $value = round($totalVal);
                     } elseif ($useL7Window && $metricKey !== null && !$hasMetricData) {
                         continue;
                     } elseif ($shouldAvg && $count > 0) {
@@ -19055,7 +19066,7 @@ class ChannelMasterController extends Controller
                         $cogs = floatval($summaryData['cogs'] ?? 0);
                         $value = $cogs > 0 ? round((($pft - $spend) / $cogs) * 100, 1) : 0;
                     } else {
-                        $requireKey = in_array($metric, ['y_sales', 'l7_sales', 'p_sales'], true)
+                        $requireKey = in_array($metric, ['y_sales', 'l7_sales', 'p_sales', 'reviews'], true)
                             || ($useL7Window && $metricKey !== null && ! in_array($metric, ['cvr', 'nroi', 'pft', 'acos', 'ad_sales', 'ad_sold', 'ads_cvr'], true));
                         if ($requireKey && ! array_key_exists($metricKey, $summaryData)) {
                             continue;
@@ -19146,7 +19157,7 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            if ($isAll && in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory'], true)) {
+            if ($isAll && in_array($metric, ['inv_at_sp', 'inv_at_lp', 'inventory', 'reviews'], true)) {
                 $hasReal = false;
                 foreach ($chartData as $pt) {
                     if ((float) ($pt['value'] ?? 0) > 0.01) {
@@ -20321,6 +20332,12 @@ class ChannelMasterController extends Controller
     {
         if ($metric === 'cvr') {
             return null;
+        }
+
+        if ($metric === 'reviews') {
+            $total = array_sum(array_column($this->getChannelReviewsFromProductReviews(), 'Total Reviews'));
+
+            return $total > 0 ? (float) $total : null;
         }
 
         if ($metric === 'inv_at_sp') {
@@ -23475,6 +23492,10 @@ class ChannelMasterController extends Controller
                     'type' => $row['type'] ?? 'B2C',
                     'w_ads' => intval($row['W/Ads'] ?? 0),
                     'update' => intval($row['Update'] ?? 0),
+
+                    // Reviews badge history (amazon_product_reviews totals at capture time)
+                    'total_reviews' => intval($row['Total Reviews'] ?? $row['Reviews']['Total Reviews'] ?? 0),
+                    'avg_rating' => floatval($row['Avg Rating'] ?? $row['Reviews']['Avg Rating'] ?? 0),
                     
                     // Company-wide inventory $ — only first channel row carries the totals
                     'inv_at_lp' => floatval($row['Inv at LP'] ?? $row['inv_at_lp'] ?? 0),

@@ -5139,6 +5139,14 @@
 
                     if (isEdit) {
                         showToast('success', `Product ${formData.get('sku')} updated successfully!`);
+                        // Snapshot before the table merge. productMap is updated in place,
+                        // and the bulk apply must compare the form against the pre-save values.
+                        const skuForBulk = formData.get('sku');
+                        const liveBeforeSave = productMap.get(skuForBulk);
+                        const originalSnapshot = liveBeforeSave
+                            ? { ...liveBeforeSave, SKU: liveBeforeSave.SKU || skuForBulk }
+                            : null;
+
                         // Update existing row only (by id) — never insert a second row.
                         patchTableDataAfterStore(data, {
                             previousId: originalId,
@@ -5147,10 +5155,9 @@
                         });
 
                         const selectedSkus = Object.keys(selectedItems || {});
-                        if (selectedSkus.length > 1 && data.data) {
+                        if (originalSnapshot && selectedSkus.length > 0) {
                             try {
-                                const editedProduct = productMap.get(formData.get('sku')) || data.data;
-                                await bulkApplyChangedFieldsToSelected(editedProduct, selectedSkus);
+                                await bulkApplyChangedFieldsToSelected(originalSnapshot, selectedSkus);
                             } catch (bulkErr) {
                                 console.error('Bulk apply error:', bulkErr);
                             }
