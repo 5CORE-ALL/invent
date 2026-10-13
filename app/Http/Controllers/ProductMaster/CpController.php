@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\SuperAdminAccess;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class CpController extends Controller
@@ -297,9 +298,12 @@ class CpController extends Controller
     }
 
     /**
-     * Update the CP for a SKU.
+     * Update CP for one SKU, or for every SKU in `skus` when rows are selected.
      *
-     * Rules:
+     * LP is recalculated on save (LP = CP + freight, unless the SKU has a custom LP).
+     * The whole set is one transaction: if any row is rejected, nothing is written.
+     *
+     * Rules (applied per SKU):
      *  - First time (no existing CP): accept any value.
      *  - New value lower than or equal to current: accept.
      *  - New value higher than current: a mandatory reason is required.
@@ -309,59 +313,116 @@ class CpController extends Controller
         $request->headers->set('Accept', 'application/json');
 
         $validated = $request->validate([
-            'sku' => 'required|string',
+            'sku' => 'nullable|string',
+            'skus' => 'nullable|array',
+            'skus.*' => 'string',
             'cp' => 'required|numeric|min:0',
             'reason' => 'nullable|string|max:2000',
         ]);
 
-        try {
-            $product = ProductMaster::where('sku', $validated['sku'])->first();
+        $targets = $this->targetSkus($validated);
+        if ($targets === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product not found',
+            ], 422);
+        }
 
-            if (! $product) {
+        try {
+            $products = ProductMaster::whereIn('sku', $targets)->get()->keyBy('sku');
+            $missing = array_values(array_filter($targets, fn (string $sku) => ! $products->has($sku)));
+            if ($missing !== []) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Product not found',
                 ], 404);
             }
 
-            $values = is_array($product->Values) ? $product->Values : json_decode((string) $product->Values, true);
-            if (! is_array($values)) {
-                $values = [];
-            }
-
-            $oldCp = $this->currentCp($product);
             $newCp = round((float) $validated['cp'], 2);
             $reason = trim((string) ($validated['reason'] ?? ''));
 
-            $isIncrease = $oldCp !== null && $newCp > $oldCp;
-
-            // A reason is mandatory whenever the CP increases.
-            if ($isIncrease && $reason === '') {
-                return response()->json([
-                    'success' => false,
-                    'requires_reason' => true,
-                    'message' => 'A reason is required when the CP is increased.',
-                ], 422);
+            $pending = [];
+            foreach ($targets as $sku) {
+                $product = $products->get($sku);
+                $oldCp = $this->currentCp($product);
+                $oldRounded = $oldCp === null ? null : round($oldCp, 2);
+                $isIncrease = $oldRounded !== null && $newCp > $oldRounded;
+                if ($isIncrease && $reason === '') {
+                    return response()->json([
+                        'success' => false,
+                        'requires_reason' => true,
+                        'message' => 'A reason is required when the CP is increased.',
+                    ], 422);
+                }
+                $pending[] = [
+                    'product' => $product,
+                    'old_cp' => $oldCp,
+                    'is_increase' => $isIncrease,
+                ];
             }
 
-            $values['cp'] = $newCp;
-            $product->Values = $values;
-            $product->save();
+            DB::transaction(function () use ($pending, $newCp, $reason) {
+                foreach ($pending as $item) {
+                    /** @var ProductMaster $product */
+                    $product = $item['product'];
+                    $values = is_array($product->Values) ? $product->Values : json_decode((string) $product->Values, true);
+                    if (! is_array($values)) {
+                        $values = [];
+                    }
+                    $values['cp'] = $newCp;
+                    $product->Values = $values;
+                    $product->save();
 
-            CpHistory::create([
-                'sku' => $product->sku,
-                'old_cp' => $oldCp,
-                'new_cp' => $newCp,
-                'is_increase' => $isIncrease,
-                'reason' => $isIncrease ? $reason : ($reason !== '' ? $reason : null),
-                'changed_by' => auth()->user()->email ?? null,
-                'approved' => false,
-            ]);
+                    CpHistory::create([
+                        'sku' => $product->sku,
+                        'old_cp' => $item['old_cp'],
+                        'new_cp' => $newCp,
+                        'is_increase' => $item['is_increase'],
+                        'reason' => $item['is_increase'] ? $reason : ($reason !== '' ? $reason : null),
+                        'changed_by' => auth()->user()->email ?? null,
+                        'approved' => false,
+                    ]);
+                }
+            });
+
+            $rows = [];
+            foreach ($targets as $sku) {
+                $product = ProductMaster::where('sku', $sku)->first();
+                if (! $product) {
+                    continue;
+                }
+                $values = is_array($product->Values) ? $product->Values : [];
+                $rows[] = [
+                    'sku' => $product->sku,
+                    'current_cp' => $this->currentCp($product),
+                    'current_lp' => is_numeric($values['lp'] ?? null) ? round((float) $values['lp'], 2) : null,
+                    'frght' => is_numeric($values['frght'] ?? null) ? round((float) $values['frght'], 2) : null,
+                ];
+            }
+
+            $sourceSku = trim((string) ($validated['sku'] ?? ''));
+            $sourceRow = null;
+            foreach ($rows as $row) {
+                if ($row['sku'] === $sourceSku) {
+                    $sourceRow = $row;
+                    break;
+                }
+            }
+            if ($sourceRow === null && isset($rows[0])) {
+                $sourceRow = $rows[0];
+            }
+
+            $count = count($rows);
+            $message = $count > 1
+                ? "CP and LP updated for {$count} selected products."
+                : 'CP updated successfully.';
 
             return response()->json([
                 'success' => true,
-                'message' => 'CP updated successfully.',
-                'current_cp' => $newCp,
+                'message' => $message,
+                'current_cp' => $sourceRow['current_cp'] ?? $newCp,
+                'current_lp' => $sourceRow['current_lp'] ?? null,
+                'rows' => $rows,
             ]);
         } catch (\Exception $e) {
             Log::error('Error updating CP: '.$e->getMessage());
@@ -371,6 +432,34 @@ class CpController extends Controller
                 'message' => 'Error updating CP: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * SKUs to update. Parent placeholder rows are never included.
+     * An explicit `skus` list (checkbox selection) wins; otherwise the single `sku`.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return list<string>
+     */
+    private function targetSkus(array $validated): array
+    {
+        $raw = [];
+        if (! empty($validated['skus']) && is_array($validated['skus'])) {
+            $raw = $validated['skus'];
+        } elseif (isset($validated['sku']) && trim((string) $validated['sku']) !== '') {
+            $raw = [(string) $validated['sku']];
+        }
+
+        $targets = [];
+        foreach ($raw as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+            $targets[$sku] = $sku;
+        }
+
+        return array_values($targets);
     }
 
     /**
