@@ -195,6 +195,7 @@ class TopDawgPricingController extends Controller
             $row['SPRICE_PUSHED_VALUE'] = null;
             $row['SPRICE_STATUS_UPDATED_AT'] = null;
             $row['SPRICE_PUSHED_BY'] = null;
+            $row['SPRICE_PUSHED_AT'] = null;
             if ($dvRecord) {
                 $dvValue = is_array($dvRecord->value) ? $dvRecord->value : (json_decode($dvRecord->value, true) ?? []);
                 if (is_array($dvValue)) {
@@ -208,6 +209,7 @@ class TopDawgPricingController extends Controller
                     $row['SPRICE_PUSHED_VALUE'] = $dvValue['SPRICE_PUSHED_VALUE'] ?? null;
                     $row['SPRICE_STATUS_UPDATED_AT'] = $dvValue['SPRICE_STATUS_UPDATED_AT'] ?? $dvValue['PUSH_STATUS_UPDATED_AT'] ?? null;
                     $row['SPRICE_PUSHED_BY'] = $dvValue['SPRICE_PUSHED_BY'] ?? null;
+                    $row['SPRICE_PUSHED_AT'] = $dvValue['SPRICE_PUSHED_AT'] ?? null;
                 }
             }
 
