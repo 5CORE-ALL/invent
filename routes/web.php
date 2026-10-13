@@ -4105,12 +4105,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
     Route::post('/reverb-clear-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'clearReverbSprice'])->name('reverb.clear.sprice');
     Route::post('/reverb-update-sprice-status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbSpriceStatus'])->name('reverb.update.sprice.status');
-    Route::post('/reverb-push-std', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'queuePushStd'])->name('reverb.push-std.queue');
-    Route::get('/reverb-push-std/status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'pushStdJobStatus'])->name('reverb.push-std.status');
-    Route::post('/reverb-push-std/cancel', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'cancelPushStd'])->name('reverb.push-std.cancel');
-    Route::post('/reverb-push-prmt', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'queuePushPrmt'])->name('reverb.push-prmt.queue');
-    Route::get('/reverb-push-prmt/status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'pushPrmtJobStatus'])->name('reverb.push-prmt.status');
-    Route::post('/reverb-push-prmt/cancel', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'cancelPushPrmt'])->name('reverb.push-prmt.cancel');
     Route::post('/reverb-push-bump', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'queuePushBump'])->name('reverb.push-bump.queue');
     Route::get('/reverb-push-bump/status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'pushBumpJobStatus'])->name('reverb.push-bump.status');
     Route::post('/reverb-push-bump/cancel', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'cancelPushBump'])->name('reverb.push-bump.cancel');

@@ -6156,6 +6156,7 @@
             return out;
         }
         function chPromoScheduleDilSgroiAutoApply(opts) {
+            if (window.CH_STD_SERVER_OWNED === true) return;
             opts = opts || {};
             if (!chPromoDilSgroiEnabled()) return;
             if (!Object.keys(chPromoDilSgroiLastSlab).length) chPromoLoadDilSgroiLastSlabs();
@@ -7513,6 +7514,7 @@
             return out;
         }
         function chPromoScheduleZeroSoldDilAutoApply(opts) {
+            if (window.CH_STD_SERVER_OWNED === true) return;
             opts = opts || {};
             if (!CHANNEL_PROMO_SHOW_ZERO_SOLD_DIL_RULE) return;
             if (CHANNEL_PROMO_CHANNEL === 'aliexpress' && chPromoZeroSoldDilRun && chPromoZeroSoldDilRun.active) return;
@@ -8179,6 +8181,7 @@
             return out;
         }
         function chPromoScheduleDilPrmtAutoApply(opts) {
+            if (window.CH_STD_SERVER_OWNED === true) return;
             if (chPromoHideDilPrmt()) return;
             if (chPromoUsesSprcDilInsteadOfPrmt()) return;
             opts = opts || {};
@@ -8317,6 +8320,7 @@
             return out;
         }
         function chPromoScheduleCvrCpnAutoApply(opts) {
+            if (window.CH_STD_SERVER_OWNED === true) return;
             opts = opts || {};
             if (CHANNEL_PROMO_HIDE_CVR_CPN || chPromoUsesAmazonCvrDisc()) return;
             if (!Object.keys(chPromoCvrLastSlab).length) chPromoLoadCvrLastSlabs();
@@ -9712,6 +9716,7 @@
 
         /** Recalc S PRC from current Std / PRMT% / cvr%. AliExpress with no promo keeps live Price. */
         function applyChannelSpriceFromStdChange(row, opts) {
+            if (window.CH_STD_SERVER_OWNED === true) return;
             opts = opts || {};
             if (!chPromoEbayStdMinusPrmtCpnEnabled() || !row) return null;
             const d = row.getData();

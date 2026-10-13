@@ -280,7 +280,6 @@
             cursor: pointer;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'reverb'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'reverb'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
         .sprice-lmp-alert {
             color: #dc3545;
@@ -289,26 +288,12 @@
             margin-left: 4px;
             cursor: help;
         }
-        #reverb-apply-std-price-btn {
-            background: #0d6efd;
-            border-color: #0d6efd;
-            color: #fff;
-        }
-        #reverb-apply-std-price-btn:hover,
-        #reverb-apply-std-price-btn:focus {
-            background: #0b5ed7;
-            border-color: #0a58ca;
-            color: #fff;
-        }
-        #reverb-apply-std-price-btn:disabled { opacity: 0.65; }
         #reverb-apply-bump-btn.dropdown-item:disabled,
         #reverb-apply-bump-btn.disabled { opacity: 0.65; pointer-events: none; }
-        .reverb-push-bump-btn .fa-spinner,
-        .reverb-push-std-btn .fa-spinner {
+        .reverb-push-bump-btn .fa-spinner {
             display: inline-block !important;
             animation: ch-promo-spin 0.75s linear infinite !important;
         }
-        .tabulator-row .tabulator-cell[tabulator-field="push_std_prc"],
         .tabulator-row .tabulator-cell[tabulator-field="push_bump"] {
             padding: 2px 4px !important;
         }
@@ -354,16 +339,6 @@
             flex-wrap: nowrap !important;
             max-width: 100%;
             overflow: hidden;
-        }
-        #reverb-table .reverb-push-std-btn {
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            line-height: 1 !important;
-            padding: 0 !important;
-            height: 18px !important;
-            min-height: 0 !important;
-            max-height: 18px !important;
         }
         /* LMP Competitors – right-side drawer, full height, 40% width */
         #lmpModal {
@@ -721,8 +696,6 @@
                         <i class="fas fa-file-excel"></i>
                     </button>
 
-                    {{-- Sprc Dil (Amazon Dil-matching) + CVR vs CPN --}}
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'reverb'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'reverb'])
 
                     <div class="btn-group flex-shrink-0">
@@ -894,7 +867,6 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'reverb'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'reverb'])
 
     <div class="modal fade" id="reverbDilVsSBumpModal" tabindex="-1" aria-labelledby="reverbDilVsSBumpModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-md">
@@ -1011,8 +983,9 @@
     const REVERB_CHANNEL_ADS_PCT = {{ isset($reverbAdsPercent) ? (float) $reverbAdsPercent : 0 }};
     let reverbAdsPct = REVERB_CHANNEL_ADS_PCT;
     let selectedSkus = new Set();
+    // S PRC is saved + pushed by the server (reverb:sprc-dil-auto-push). The page only shows it.
+    window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'reverb'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'reverb'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
     function reverbPrmtPctOf(d) {
@@ -1201,30 +1174,6 @@
             nroi = ((grossPft - (p * adsPct / 100)) / lp) * 100;
         }
         return { gpft: gpft, groi: groi, npft: npft, nroi: nroi };
-    }
-
-    function reverbSpricePushSku(d) {
-        return String((d && (d['(Child) sku'] || d.sku)) || '').trim();
-    }
-    function reverbSpricePushIsChild(d) {
-        const sku = reverbSpricePushSku(d);
-        return !!(sku && String(sku).toUpperCase().indexOf('PARENT') === -1
-            && d && !d.is_parent_summary && !d.is_parent);
-    }
-    /** True when SPRICE should be sent to Reverb (not already pushed at this price). */
-    function reverbSpriceNeedsPush(d) {
-        const sprice = Number(reverbRowSpriceForAlert(d)) || parseFloat(d && d.SPRICE);
-        if (!(sprice > 0)) return false;
-        const status = String((d && d.SPRICE_STATUS) || '');
-        if (status === 'processing') return false;
-        if (status === 'error') return true;
-        const last = parseFloat(d && d.SPRICE_PUSHED_VALUE);
-        const lastOk = isFinite(last) && last > 0;
-        if (lastOk && last.toFixed(2) === sprice.toFixed(2) && (status === 'pushed' || status === 'applied')) {
-            return false;
-        }
-        if (!lastOk && status === 'pushed') return false;
-        return true;
     }
 
     function reverbSpriceMetricPatch(sprice, rowData) {
@@ -3230,41 +3179,10 @@
                 },
                 ...(typeof reverbChannelPromoColumns === 'function' ? reverbChannelPromoColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: "Sprc Dil",
-                    field: "SPRC_DIL",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: "S PRC from Dil → Target GROI% slabs (same as Amazon). RV L30 = 0 still uses the Dil-matching slab. CVR overlay (editable) adjusts Target GROI; Count updates live. Formula: (LP × (1 + GROI%/100) + Ship) / margin.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (isReverbParentRow(rowData)) return '';
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold RV L30 → min Target GROI' })
-                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2));
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
-                    },
-                    width: 78
-                },
-                {
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Sprc Dil (Amazon Dil slabs). RV L30 = 0 still uses the Dil-matching slab. CVR% still applies when there is no Dil slab match. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "Not editable. Saved by the server at 4:25 AM and 8:25 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap (same as Amazon), then pushed to Reverb. The page does not need to be open. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
@@ -3375,90 +3293,6 @@
                         return `<span style="${(window.MetricPctColors && MetricPctColors.styleForField((cell.getField&&cell.getField())||'GROI%', percent)) || ('color:'+reverbRoiColor(percent)+';font-weight:600;')}">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
-                },
-                {
-                    title: "Push",
-                    field: "push_price",
-                    hozAlign: "center",
-                    vertAlign: "middle",
-                    headerSort: false,
-                    width: 55,
-                    headerTooltip: "Push SPRICE to Reverb. Clock = queued, spinner = pushing, green double-check = pushed, red cross = failed. Click header to push all visible rows that still need it.",
-                    titleFormatter: function() {
-                        return '<button type="button" class="btn btn-sm p-0 reverb-push-sprice-header-btn" '
-                            + 'title="Push SPRICE for all visible rows that are not already pushed" '
-                            + 'style="border:none;background:none;cursor:pointer;color:#000;'
-                            + 'font-weight:700;font-size:11px;line-height:1.15;padding:0;">'
-                            + 'Push</button>';
-                    },
-                    headerClick: function(e) {
-                        if (e.target.closest('.reverb-push-sprice-header-btn')) {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            if (typeof queueReverbPushSprice === 'function') queueReverbPushSprice();
-                            return false;
-                        }
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData() || {};
-                        const sku = reverbSpricePushSku(rowData);
-                        if (!reverbSpricePushIsChild(rowData)) return '';
-                        const sprice = Number(reverbRowSpriceForAlert(rowData)) || parseFloat(rowData.SPRICE || 0);
-                        if (!(sprice > 0)) return '';
-                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
-                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
-                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT;
-                        const pushedBy = rowData.SPRICE_PUSHED_BY;
-                        let icon = '<i class="fas fa-upload"></i>';
-                        let color = '#fd7e14';
-                        let tip = 'Push $' + sprice.toFixed(2) + ' to Reverb';
-                        let disabled = false;
-                        if (status === 'processing' || status === 'pushing') {
-                            icon = '<i class="fas fa-spinner fa-spin"></i>';
-                            color = '#ffc107';
-                            tip = 'Pushing $' + sprice.toFixed(2) + ' to Reverb…';
-                            disabled = true;
-                        } else if (status === 'queued' || status === 'pending') {
-                            icon = '<i class="fas fa-clock"></i>';
-                            color = '#6c757d';
-                            tip = 'Queued — $' + sprice.toFixed(2) + ' waiting to push';
-                            disabled = true;
-                        } else if (status === 'error' || status === 'failed') {
-                            icon = '<i class="fa-solid fa-xmark"></i>';
-                            color = '#dc3545';
-                            tip = 'Last push failed — click to retry $' + sprice.toFixed(2);
-                        } else if (status === 'pushed' || status === 'applied' || !reverbSpriceNeedsPush(rowData)) {
-                            icon = '<i class="fa-solid fa-check-double"></i>';
-                            color = '#28a745';
-                            tip = 'Pushed $' + sprice.toFixed(2) + ' to Reverb';
-                        }
-                        if (pushedValue !== null && pushedValue !== undefined && parseFloat(pushedValue) > 0) {
-                            tip += ' | Last: $' + parseFloat(pushedValue).toFixed(2);
-                        }
-                        if (updatedAt) tip += ' | ' + updatedAt;
-                        if (pushedBy) tip += ' | by ' + pushedBy;
-                        return '<button type="button" class="btn btn-sm p-0 reverb-push-price-btn"'
-                            + (disabled ? ' disabled' : '')
-                            + ' data-sku="' + sku.replace(/"/g, '&quot;') + '"'
-                            + ' data-price="' + sprice + '"'
-                            + ' data-status="' + status.replace(/"/g, '&quot;') + '"'
-                            + ' title="' + tip.replace(/"/g, '&quot;') + '"'
-                            + ' style="border:none;background:none;color:' + color + ';padding:0;cursor:'
-                            + (disabled ? 'default' : 'pointer') + ';">'
-                            + icon + '</button>';
-                    },
-                    cellClick: function(e, cell) {
-                        const btn = e.target.closest('.reverb-push-price-btn');
-                        if (!btn || btn.disabled) return;
-                        e.stopPropagation();
-                        e.preventDefault();
-                        const d = cell.getRow().getData() || {};
-                        if (String(d.SPRICE_STATUS || '') === 'processing') return false;
-                        if (typeof queueReverbPushSprice === 'function') {
-                            queueReverbPushSprice(cell.getRow());
-                        }
-                        return false;
-                    }
                 }
             ]
         });
@@ -3658,125 +3492,6 @@
             loadSkuMetricsData(sku, 30, currentSkuChartMetric);
             $('#skuMetricsModal').modal('show');
         });
-
-        // Push one SKU SPRICE to Reverb (Amazon-style icon click — no confirm)
-        function pushReverbPriceForRow(row, sku, price) {
-            return new Promise(function(resolve) {
-                row.update({ SPRICE_STATUS: 'processing' })
-                    .then(function() { return row.reformat(); })
-                    .catch(function() { try { row.reformat(); } catch (e) {} });
-
-                $.ajax({
-                    url: '/cvr-master-push-price',
-                    method: 'POST',
-                    data: {
-                        sku: sku,
-                        price: price,
-                        marketplace: 'reverb',
-                        _token: csrfToken()
-                    },
-                    success: function(response) {
-                        if (response && response.success) {
-                            row.update({
-                                SPRICE_STATUS: 'pushed',
-                                SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString(),
-                                SPRICE_PUSHED_VALUE: price,
-                                'RV Price': price
-                            }).then(function() {
-                                row.reformat();
-                                if (typeof updateSummary === 'function') updateSummary();
-                            }).catch(function() { row.reformat(); });
-                            resolve({ ok: true, sku: sku, message: response.message || 'Pushed' });
-                        } else {
-                            row.update({
-                                SPRICE_STATUS: 'error',
-                                SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
-                            }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
-                            resolve({
-                                ok: false,
-                                sku: sku,
-                                message: (response && response.message) ? response.message : 'Failed'
-                            });
-                        }
-                    },
-                    error: function(xhr) {
-                        const msg = (xhr.responseJSON && xhr.responseJSON.message)
-                            ? xhr.responseJSON.message
-                            : 'Failed to push price to Reverb';
-                        row.update({
-                            SPRICE_STATUS: 'error',
-                            SPRICE_STATUS_UPDATED_AT: new Date().toLocaleString()
-                        }).then(function() { row.reformat(); }).catch(function() { row.reformat(); });
-                        resolve({ ok: false, sku: sku, message: msg });
-                    }
-                });
-            });
-        }
-
-        function collectReverbSpricePushTargets(singleRow) {
-            if (singleRow && typeof singleRow.getData === 'function') {
-                const d = singleRow.getData() || {};
-                return reverbSpricePushIsChild(d) ? [{ row: singleRow, d: d }] : [];
-            }
-            if (typeof collectChPromoVisibleRows === 'function') {
-                return collectChPromoVisibleRows();
-            }
-            if (!table) return [];
-            const out = [];
-            (table.getRows('active') || []).forEach(function(row) {
-                const d = row.getData() || {};
-                if (reverbSpricePushIsChild(d)) out.push({ row: row, d: d });
-            });
-            return out;
-        }
-
-        async function queueReverbPushSprice(singleRow) {
-            const all = collectReverbSpricePushTargets(singleRow || null);
-            const forceOne = !!singleRow;
-            const jobs = [];
-            all.forEach(function(t) {
-                const d = (t.row && t.row.getData()) || t.d || {};
-                const sku = reverbSpricePushSku(d);
-                const price = Number(reverbRowSpriceForAlert(d)) || parseFloat(d.SPRICE || 0);
-                if (!sku || !(price > 0)) return;
-                if (!forceOne && !reverbSpriceNeedsPush(d)) return;
-                if (String(d.SPRICE_STATUS || '') === 'processing') return;
-                jobs.push({ row: t.row, sku: sku, price: +price.toFixed(2) });
-            });
-            if (!jobs.length) {
-                showToast(singleRow
-                    ? 'Set a valid SPRICE (> 0) before pushing'
-                    : 'No visible rows need a price push (already pushed or no SPRICE)', 'info');
-                return;
-            }
-            if (!singleRow && !confirm('Push ' + jobs.length + ' price(s) to Reverb?')) {
-                return;
-            }
-            let okCount = 0;
-            let failCount = 0;
-            const concurrency = 5;
-            let idx = 0;
-            async function runNext() {
-                if (idx >= jobs.length) return;
-                const job = jobs[idx++];
-                const result = await pushReverbPriceForRow(job.row, job.sku, job.price);
-                if (result.ok) okCount++; else failCount++;
-                await runNext();
-            }
-            await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, function() { return runNext(); }));
-            if (singleRow) {
-                const resultOk = failCount === 0;
-                showToast(resultOk
-                    ? (jobs[0] && ('Price pushed to Reverb for ' + jobs[0].sku))
-                    : ('Failed to push ' + (jobs[0] && jobs[0].sku)), resultOk ? 'success' : 'error');
-            } else if (failCount === 0) {
-                showToast('Pushed ' + okCount + ' price(s) to Reverb', 'success');
-            } else {
-                showToast('Pushed ' + okCount + ', failed ' + failCount, failCount === jobs.length ? 'error' : 'warning');
-            }
-            if (typeof updateSummary === 'function') updateSummary();
-        }
-        window.queueReverbPushSprice = queueReverbPushSprice;
 
         // Apply filters
         function applyFilters() {
@@ -4131,35 +3846,15 @@
                 || '';
         }
 
-        // ==================== Apply Std Price / Push Std queue ====================
-        const REVERB_PUSH_STD_QUEUE_URL = '/reverb-push-std';
-        let reverbPushStdPollTimer = null;
-        let reverbPushStdLastTasks = [];
-
-        function reverbPushStdSku(d) {
+        // ==================== Row helpers (shared by Push Bump) ====================
+        function reverbRowSku(d) {
             return String((d && (d['(Child) sku'] || d.sku)) || '').trim();
         }
-        function reverbPushStdSkuKey(sku) {
+        function reverbRowSkuKey(sku) {
             return String(sku || '').trim().toUpperCase();
         }
-        function reverbPushStdCurrent(d) {
-            const n = parseFloat(d && d.STANDARD_PRICE);
-            return (isFinite(n) && n > 0) ? +n.toFixed(2) : 0;
-        }
-        function reverbPushStdLast(d) {
-            const n = parseFloat(d && d.PUSH_STD_PRC_VALUE);
-            return (isFinite(n) && n > 0) ? +n.toFixed(2) : 0;
-        }
-        function reverbPushStdNeedsPush(d) {
-            const std = reverbPushStdCurrent(d);
-            if (!(std > 0)) return false;
-            if (String((d && d.PUSH_STD_PRC_STATUS) || '') === 'error') return true;
-            const last = reverbPushStdLast(d);
-            if (!(last > 0)) return true;
-            return last.toFixed(2) !== std.toFixed(2);
-        }
-        function reverbPushStdIsChild(d) {
-            const sku = reverbPushStdSku(d);
+        function reverbRowIsChild(d) {
+            const sku = reverbRowSku(d);
             return !!(d && !d.is_parent_summary && sku && sku.toUpperCase().indexOf('PARENT') === -1);
         }
         function reverbEachTableRow(fn) {
@@ -4178,65 +3873,20 @@
             });
         }
         function reverbSyncRowInDataset(sku, patch) {
-            const key = reverbPushStdSkuKey(sku);
+            const key = reverbRowSkuKey(sku);
             if (!key || !patch) return;
             if (typeof allTableData !== 'undefined' && Array.isArray(allTableData)) {
                 allTableData.forEach(function(row) {
-                    if (reverbPushStdSkuKey(reverbPushStdSku(row)) === key) {
+                    if (reverbRowSkuKey(reverbRowSku(row)) === key) {
                         Object.assign(row, patch);
                     }
                 });
             }
         }
-        function reverbPaintPushStdIcon(row) {
-            if (!row) return;
-            try {
-                const cell = row.getCell && row.getCell('push_std_prc');
-                if (cell && typeof cell.reformat === 'function') cell.reformat();
-            } catch (e) { /* ignore */ }
-            try {
-                const d = row.getData() || {};
-                const el = (row.getElement && row.getElement()) || null;
-                const btn = el && el.querySelector && el.querySelector('.reverb-push-std-btn');
-                if (!btn) return;
-                const status = String(d.PUSH_STD_PRC_STATUS || d.push_std_prc || '');
-                const std = reverbPushStdCurrent(d);
-                const last = reverbPushStdLast(d);
-                if (status === 'processing') {
-                    btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:14px;"></i>';
-                    btn.style.color = '#ffc107';
-                    btn.title = 'Pushing Std to Reverb…';
-                } else if (status === 'error') {
-                    btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-                    btn.style.color = '#dc3545';
-                    btn.title = 'Last Push Std failed — click to retry';
-                } else if (status === 'pushed' && last > 0 && std > 0 && last.toFixed(2) === std.toFixed(2)) {
-                    btn.innerHTML = '<i class="fa-solid fa-check-double"></i>';
-                    btn.style.color = '#28a745';
-                    btn.title = 'Already pushed $' + last.toFixed(2);
-                }
-            } catch (e) { /* ignore */ }
-        }
-        function reverbPushStdUpdateRow(row, patch) {
-            if (!row || !patch) return;
-            const sku = reverbPushStdSku(row.getData() || {});
-            reverbSyncRowInDataset(sku, patch);
-            const paint = function() { reverbPaintPushStdIcon(row); };
-            try {
-                const p = row.update(patch);
-                if (p && typeof p.then === 'function') p.then(paint).catch(paint);
-                else paint();
-            } catch (e) {
-                paint();
-            }
-        }
-        function reverbPushStdRefreshCell(row) {
-            reverbPaintPushStdIcon(row);
-        }
-        function reverbPushStdCollectTargets(singleRow) {
+        function reverbCollectPushTargets(singleRow) {
             if (singleRow) {
                 const d = singleRow.getData() || {};
-                return reverbPushStdIsChild(d) ? [{ row: singleRow, d: d }] : [];
+                return reverbRowIsChild(d) ? [{ row: singleRow, d: d }] : [];
             }
             if (typeof collectChPromoSelectedRows === 'function') {
                 const selected = collectChPromoSelectedRows();
@@ -4244,192 +3894,18 @@
             }
             if (typeof selectedSkus !== 'undefined' && selectedSkus && selectedSkus.size) {
                 const keys = new Set();
-                selectedSkus.forEach(function(s) { keys.add(reverbPushStdSkuKey(s)); });
+                selectedSkus.forEach(function(s) { keys.add(reverbRowSkuKey(s)); });
                 return (table.getRows() || []).filter(function(row) {
                     const d = row.getData() || {};
-                    return reverbPushStdIsChild(d) && keys.has(reverbPushStdSkuKey(reverbPushStdSku(d)));
+                    return reverbRowIsChild(d) && keys.has(reverbRowSkuKey(reverbRowSku(d)));
                 }).map(function(row) { return { row: row, d: row.getData() }; });
             }
             if (typeof collectChPromoVisibleRows === 'function') {
                 return collectChPromoVisibleRows();
             }
             return (table.getRows('active') || []).filter(function(row) {
-                return reverbPushStdIsChild(row.getData());
+                return reverbRowIsChild(row.getData());
             }).map(function(row) { return { row: row, d: row.getData() }; });
-        }
-        function applyReverbPushStdTaskStatuses(tasks) {
-            if (!table || !Array.isArray(tasks)) return;
-            reverbPushStdLastTasks = tasks;
-            const bySku = {};
-            tasks.forEach(function(t) {
-                const k = reverbPushStdSkuKey(t && t.sku);
-                if (k) bySku[k] = t;
-            });
-            reverbEachTableRow(function(row, d) {
-                const t = bySku[reverbPushStdSkuKey(reverbPushStdSku(d))];
-                if (!t) return;
-                const st = String(t.status || '');
-                const std = parseFloat(t.std);
-                const patch = {};
-                if (st === 'pushing' || st === 'pending' || st === 'queued') {
-                    patch.PUSH_STD_PRC_STATUS = 'processing';
-                    patch.push_std_prc = 'processing';
-                } else if (st === 'ok') {
-                    patch.PUSH_STD_PRC_STATUS = 'pushed';
-                    patch.push_std_prc = 'pushed';
-                    if (isFinite(std) && std > 0) {
-                        patch.PUSH_STD_PRC_VALUE = std;
-                        patch['RV Price'] = std;
-                    }
-                } else if (st === 'failed') {
-                    patch.PUSH_STD_PRC_STATUS = 'error';
-                    patch.push_std_prc = 'error';
-                }
-                if (Object.keys(patch).length) reverbPushStdUpdateRow(row, patch);
-            });
-        }
-        function paintReverbPushStdProgress(resp) {
-            if (typeof setChPromoPushPrcProgress !== 'function') return;
-            const active = !!(resp && resp.active);
-            const total = Number(resp && resp.total) || 0;
-            const done = Number(resp && resp.done_count) || 0;
-            const ok = Number(resp && resp.ok_count) || 0;
-            const fail = Number(resp && resp.fail_count) || 0;
-            const pct = Number(resp && resp.pct) || 0;
-            const sku = resp && resp.job && resp.job.current_sku;
-            setChPromoPushPrcProgress({
-                active: active,
-                done: done,
-                total: total,
-                ok: ok,
-                fail: fail,
-                pct: pct,
-                cancelable: active,
-                title: active ? 'Pushing Std' : (fail && !ok ? 'Push Std failed' : 'Pushed Std'),
-                msg: (resp && resp.message) || (sku ? ('Std · ' + sku) : ''),
-            });
-        }
-        function stopReverbPushStdPoll() {
-            if (reverbPushStdPollTimer) {
-                clearInterval(reverbPushStdPollTimer);
-                reverbPushStdPollTimer = null;
-            }
-        }
-        function startReverbPushStdPoll() {
-            stopReverbPushStdPoll();
-            const tick = function() {
-                $.ajax({
-                    url: REVERB_PUSH_STD_QUEUE_URL + '/status',
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' },
-                    timeout: 15000,
-                }).done(function(resp) {
-                    if (resp && Array.isArray(resp.tasks)) applyReverbPushStdTaskStatuses(resp.tasks);
-                    paintReverbPushStdProgress(resp);
-                    if (!(resp && resp.active)) stopReverbPushStdPoll();
-                }).fail(function() { /* keep polling */ });
-            };
-            tick();
-            reverbPushStdPollTimer = setInterval(tick, 1500);
-        }
-        function queueReverbPushStd(singleRow) {
-            if (!table) {
-                showToast('Load data first', 'error');
-                return;
-            }
-            const all = reverbPushStdCollectTargets(singleRow || null);
-            const forceOne = !!singleRow;
-            const targets = all.filter(function(t) {
-                return reverbPushStdCurrent(t.d) > 0 && (forceOne || reverbPushStdNeedsPush(t.d));
-            });
-            const skipped = all.length - targets.length;
-            if (!targets.length) {
-                showToast(skipped
-                    ? ('No Std Prc changes since last push (' + skipped + ' unchanged)')
-                    : 'No SKUs with Std Prc to push', 'info');
-                return;
-            }
-            const scope = singleRow ? 'this SKU' : (targets.length + ' SKU(s)');
-            if (!confirm('Apply Std Price to Reverb for ' + scope
-                + (skipped && !singleRow ? (' (' + skipped + ' unchanged skipped)') : '') + '?')) {
-                return;
-            }
-            const items = targets.map(function(t) {
-                return { sku: reverbPushStdSku(t.d), std: reverbPushStdCurrent(t.d) };
-            });
-            targets.forEach(function(t) {
-                reverbPushStdUpdateRow(t.row, { PUSH_STD_PRC_STATUS: 'processing', push_std_prc: 'processing' });
-            });
-            const $btn = $('#reverb-apply-std-price-btn');
-            const html = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Queuing…');
-            $.ajax({
-                url: REVERB_PUSH_STD_QUEUE_URL,
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-                data: { items: items, _token: csrfToken() },
-            }).done(function(resp) {
-                if (resp && Array.isArray(resp.tasks)) applyReverbPushStdTaskStatuses(resp.tasks);
-                paintReverbPushStdProgress(resp);
-                showToast((resp && resp.message) || 'Push Std queued', 'success');
-                startReverbPushStdPoll();
-            }).fail(function(xhr) {
-                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Failed to queue Push Std';
-                showToast(msg, 'error');
-                targets.forEach(function(t) {
-                    reverbPushStdUpdateRow(t.row, { PUSH_STD_PRC_STATUS: 'error', push_std_prc: 'error' });
-                });
-            }).always(function() {
-                $btn.prop('disabled', false).html(html);
-            });
-        }
-        window.queueReverbPushStd = queueReverbPushStd;
-
-        $('#reverb-apply-std-price-btn').on('click', function(e) {
-            e.preventDefault();
-            queueReverbPushStd();
-        });
-        $('#ch-promo-push-prc-cancel-btn').on('click.reverbstd', function(e) {
-            if (!reverbPushStdPollTimer) return;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            $.ajax({
-                url: REVERB_PUSH_STD_QUEUE_URL + '/cancel',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' },
-                data: { _token: csrfToken() },
-            }).done(function(resp) {
-                stopReverbPushStdPoll();
-                if (resp && Array.isArray(resp.tasks)) applyReverbPushStdTaskStatuses(resp.tasks);
-                paintReverbPushStdProgress(Object.assign({}, resp, { active: false }));
-                showToast((resp && resp.message) || 'Push Std cancelled', 'info');
-            });
-        });
-        $.ajax({
-            url: REVERB_PUSH_STD_QUEUE_URL + '/status',
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            timeout: 15000,
-        }).done(function(resp) {
-            if (resp && Array.isArray(resp.tasks) && resp.tasks.length) {
-                applyReverbPushStdTaskStatuses(resp.tasks);
-            }
-            if (resp && resp.active) startReverbPushStdPoll();
-        });
-        if (table && table.on) {
-            table.on('dataLoaded', function() {
-                if (reverbPushStdLastTasks && reverbPushStdLastTasks.length) {
-                    applyReverbPushStdTaskStatuses(reverbPushStdLastTasks);
-                }
-            });
-            table.on('renderComplete', function() {
-                reverbEachTableRow(function(row, d) {
-                    const st = String(d.PUSH_STD_PRC_STATUS || d.push_std_prc || '');
-                    if (st === 'processing' || st === 'pushed' || st === 'error') {
-                        reverbPaintPushStdIcon(row);
-                    }
-                });
-            });
         }
 
         // ==================== Apply Bump / Push B% queue ====================
@@ -4456,7 +3932,7 @@
         }
         function reverbPushBumpUpdateRow(row, patch) {
             if (!row || !patch) return;
-            const sku = reverbPushStdSku(row.getData() || {});
+            const sku = reverbRowSku(row.getData() || {});
             reverbSyncRowInDataset(sku, patch);
             const paint = function() { reverbPaintPushBumpIcon(row); };
             try {
@@ -4471,11 +3947,11 @@
             if (!table || !Array.isArray(tasks)) return;
             const bySku = {};
             tasks.forEach(function(t) {
-                const k = reverbPushStdSkuKey(t && t.sku);
+                const k = reverbRowSkuKey(t && t.sku);
                 if (k) bySku[k] = t;
             });
             reverbEachTableRow(function(row, d) {
-                const t = bySku[reverbPushStdSkuKey(reverbPushStdSku(d))];
+                const t = bySku[reverbRowSkuKey(reverbRowSku(d))];
                 if (!t) return;
                 const st = String(t.status || '');
                 const bumpVal = parseFloat(t.bump);
@@ -4548,7 +4024,7 @@
                 showToast('Load data first', 'error');
                 return;
             }
-            const all = reverbPushStdCollectTargets(singleRow || null);
+            const all = reverbCollectPushTargets(singleRow || null);
             const forceOne = !!singleRow;
             const targets = all.filter(function(t) {
                 return forceOne || reverbPushBumpNeedsPush(t.d);
@@ -4567,7 +4043,7 @@
             }
             const items = targets.map(function(t) {
                 return {
-                    sku: reverbPushStdSku(t.d),
+                    sku: reverbRowSku(t.d),
                     bump: reverbSBumpPctOf(t.d)
                 };
             });
@@ -4652,7 +4128,7 @@
             STANDARD_PRICE: 1, 'RV Price': 1, 'A Price': 1, lmp_price: 1,
             linked_lmp_skus: 1, linked_lmp_sku_add: 1, 'ROI%': 1, 'GPFT%': 1, NPFT: 1, NROI: 1,
             Profit: 1, 'Sales L30': 1, LP_productmaster: 1, Ship_productmaster: 1, prmt_pct: 1,
-            cpn_pct: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1, push_price: 1
+            cpn_pct: 1, SPRICE: 1, SROI: 1, SGPFT: 1, SNPFT: 1, SNROI: 1
         };
         const COL_VIS_ADS = {
             Missing_Ad: 1, Bump: 1, API_REC_BID: 1, RE_BID: 1, push_bump: 1
@@ -4662,7 +4138,6 @@
             if (field === 'push_bump') return 'Push B%';
             if (field === 'prmt_pct') return 'PRMT %';
             if (field === 'cpn_pct') return 'cvr %';
-            if (field === 'push_price') return 'Push';
             const raw = (def && def.title != null) ? def.title : field;
             const t = String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
             return t || field;
@@ -4939,9 +4414,6 @@
                 updateSummary();
                 loadReverbDailyTotalsBadges();
             }, 100);
-            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                ebayScheduleSprcDilAutoApply();
-            }
         });
 
         // Badges only — Ads% is SSR (Amazon pattern); do not refetch Ads on every paint

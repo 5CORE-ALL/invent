@@ -1048,6 +1048,25 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Reverb Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → Reverb price API.
+        // Same twice-daily idea as Amazon, offset 25 min. /reverb-pricing does not need to be open.
+        // Do NOT wrap 20:25 in $ist() — IST window ends at 20:00.
+        $schedule->command('reverb:sprc-dil-auto-push')
+            ->dailyAt('04:25')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('reverb:sprc-dil-auto-push')
+            ->dailyAt('20:25')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload": blue-triangle SKUs (INV > 0, Price ≠ S PRC) keep getting
         // pushed + pulled all day with the page closed. The two daily runs above skip a SKU whose
         // last pushed offer already equals the target, so a drifted Price stayed stale until the
@@ -1097,7 +1116,6 @@ class Kernel extends ConsoleKernel
             ['05:35', '21:35', 'dil:rule-sprice-apply temu --push', 'temu-sprc-dil'],
             ['05:45', '21:45', 'dil:rule-sprice-apply temu2 --push', 'temu2-sprc-dil'],
             ['05:55', '21:55', 'dil:rule-sprice-apply temu3 --push', 'temu3-sprc-dil'],
-            ['06:05', '22:05', 'dil:rule-sprice-apply reverb --push', 'reverb-sprc-dil'],
             ['06:15', '22:15', 'dil:rule-sprice-apply tiktok --push', 'tiktok-sprc-dil'],
             ['06:25', '22:25', 'dil:rule-sprice-apply tiktok2 --push', 'tiktok2-sprc-dil'],
             ['06:35', '22:35', 'dil:rule-sprice-apply doba', 'doba-sprc-dil'],

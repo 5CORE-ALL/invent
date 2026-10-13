@@ -21,8 +21,6 @@ use App\Models\NeweggMetric;
 use App\Models\PLSDataView;
 use App\Models\PLSProduct;
 use App\Models\ProductMaster;
-use App\Models\ReverbDataView;
-use App\Models\ReverbMetric;
 use App\Models\SheinDataView;
 use App\Models\SheinMetric;
 use App\Models\SheinOrderMetric;
@@ -74,7 +72,6 @@ class DilRuleSpriceApplyService
         'temu',
         'temu2',
         'temu3',
-        'reverb',
         'tiktok',
         'tiktok2',
         'doba',
@@ -94,7 +91,6 @@ class DilRuleSpriceApplyService
         'temu',
         'temu2',
         'temu3',
-        'reverb',
         'tiktok',
         'tiktok2',
         'faire',
@@ -1136,12 +1132,6 @@ class DilRuleSpriceApplyService
                 'zero_sold_min_groi' => false,
                 'match_or_nearest' => true,
                 'live_is_base' => true,
-            ],
-            'reverb' => [
-                'metric' => ReverbMetric::class,
-                'view' => ReverbDataView::class,
-                'price' => 'price',
-                'cvr_adj' => true,
             ],
             'tiktok' => [
                 'metric' => TikTokProduct::class,
