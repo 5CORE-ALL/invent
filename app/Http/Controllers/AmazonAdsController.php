@@ -5909,7 +5909,7 @@ class AmazonAdsController extends Controller
      */
     public function rawData(Request $request, string $source)
     {
-        if ($request->boolean('bgt_universe')) {
+        if ($request->boolean('bgt_universe') || $request->boolean('sbid_universe')) {
             @set_time_limit(app()->runningInConsole() ? 0 : 180);
         }
 
@@ -5923,7 +5923,7 @@ class AmazonAdsController extends Controller
 
         $table = self::RAW_TABLE_SOURCES[$source];
 
-        if ($request->boolean('bgt_universe')) {
+        if ($request->boolean('bgt_universe') || $request->boolean('sbid_universe')) {
             $payload = $this->rawDataSingleSourcePayload($request, $table, 0, 20000);
 
             return response()->json($this->bgtUniverseJson(
@@ -6002,7 +6002,8 @@ class AmazonAdsController extends Controller
         self::applyInventoryFilter($query, $table, $request, $dbColumns);
         self::applyTargetsFilter($query, $table, $request);
 
-        $forBgtUniverse = $request->boolean('bgt_universe');
+        $forSbidUniverse = $request->boolean('sbid_universe');
+        $forBgtUniverse = $request->boolean('bgt_universe') || $forSbidUniverse;
         $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         if (self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
@@ -6083,7 +6084,7 @@ class AmazonAdsController extends Controller
         $projectedSpend = null;
         $projectedSales = null;
         $projectedAcosPercent = null;
-        if (! $request->boolean('bgt_universe') && $l30AggDistinct !== null) {
+        if (! $forBgtUniverse && $l30AggDistinct !== null) {
             $l1Agg = self::sumLatestSummaryMetricsForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L1');
             $l7Agg = self::sumLatestSummaryMetricsForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L7');
             $yesterdaySpend = round((float) $l1Agg['cost_sum'], 2);
@@ -6112,9 +6113,19 @@ class AmazonAdsController extends Controller
                 ->groupBy($table.'.campaign_id')
                 ->limit(20000)
                 ->pluck('pick_id');
-            $rows = $latestIds->isEmpty()
-                ? collect()
-                : DB::table($table)->whereIn('id', $latestIds->all())->get();
+            $idList = [];
+            foreach ($latestIds as $pickId) {
+                if ($pickId !== null && $pickId !== '') {
+                    $idList[] = $pickId;
+                }
+            }
+            $rows = collect();
+            foreach (array_chunk($idList, 1000) as $idChunk) {
+                if ($idChunk === []) {
+                    continue;
+                }
+                $rows = $rows->concat(DB::table($table)->whereIn('id', $idChunk)->get());
+            }
         } elseif ($usePhpSort && $recordsFiltered <= $sortCap && in_array('id', $dbColumns, true)) {
             $query->orderBy('id', 'desc');
         } else {
@@ -6178,10 +6189,13 @@ class AmazonAdsController extends Controller
             || (in_array('Cvr', $columns, true) && in_array('clicks', $dbColumns, true))
             || (in_array('sales30d', $columns, true) && (in_array('sales30d', $dbColumns, true) || in_array('sales', $dbColumns, true)))
             || (($needL30ForAcosSbgt) && in_array('sales30d', $dbColumns, true));
+        if ($forSbidUniverse) {
+            $needL30Slice = false;
+        }
         $l30SliceMap = $needL30Slice ? self::fetchL30SummarySliceMap($table, $dbColumns, $rows) : [];
         // Daily L30 sum is only a fallback when the L30 summary slice has no spend.
         $l30SpendMap = [];
-        $canDailyL30 = $needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true));
+        $canDailyL30 = ! $forSbidUniverse && $needL30ForAcosSbgt && (in_array('cost', $dbColumns, true) || in_array('spend', $dbColumns, true));
         if ($canDailyL30) {
             $needDailyFallback = $l30SliceMap === [];
             if (! $needDailyFallback) {
@@ -6204,11 +6218,11 @@ class AmazonAdsController extends Controller
             }
         }
 
-        $hasCpc2 = ! $forBgtUniverse && in_array('CPC2', $columns, true);
-        $hasCpc3 = ! $forBgtUniverse && in_array('CPC3', $columns, true);
-        $hasCpcAvg = ! $forBgtUniverse && in_array('CPCAvg', $columns, true);
+        $hasCpc2 = in_array('CPC2', $columns, true) && (! $forBgtUniverse || $forSbidUniverse);
+        $hasCpc3 = in_array('CPC3', $columns, true) && (! $forBgtUniverse || $forSbidUniverse);
+        $hasCpcAvg = in_array('CPCAvg', $columns, true) && (! $forBgtUniverse || $forSbidUniverse);
         $hasLtCvr = ! $forBgtUniverse && in_array('ltCvr', $columns, true);
-        $hasLtAcos = in_array('ltAcos', $columns, true);
+        $hasLtAcos = ! $forSbidUniverse && in_array('ltAcos', $columns, true);
         $needRuleStatus = in_array('ruleStatus', $columns, true);
         $needActiveAgain = in_array('activeAgain', $columns, true);
         $needSkuMetrics = $needRuleStatus || $needActiveAgain || in_array('sbgt', $columns, true)
@@ -6222,6 +6236,11 @@ class AmazonAdsController extends Controller
                 $needSkuMetrics = true;
                 break;
             }
+        }
+        if ($forSbidUniverse) {
+            $needSkuMetrics = false;
+            $needRuleStatus = false;
+            $needActiveAgain = false;
         }
         $pauseRule = ($needRuleStatus || $needActiveAgain) ? AmazonAdsPauseRule::resolvedRule() : null;
         $skuMetricsByCampaign = [];
@@ -6307,7 +6326,7 @@ class AmazonAdsController extends Controller
                 $skuInvCids[] = $invCid;
             }
         }
-        if ($skuInvCids !== []) {
+        if (! $forSbidUniverse && $skuInvCids !== []) {
             $skuInvByCid = AmazonAdsCampaignSkuMetrics::shopifyInvForCampaignIds($skuInvCids);
         }
         $data = [];
@@ -6712,7 +6731,7 @@ class AmazonAdsController extends Controller
             $data[] = $arr;
         }
 
-        if ($usePhpSort && ! $phpSortPaged) {
+        if ($usePhpSort && ! $phpSortPaged && ! $forBgtUniverse) {
             usort($data, static function ($a, $b) use ($requestedOrderCol, $orderDir) {
                 $cmp = self::compareAmazonAdsRowValues(
                     self::amazonAdsRowSortValue($a, $requestedOrderCol),
@@ -6863,7 +6882,7 @@ class AmazonAdsController extends Controller
             'campaign_id', 'ad_type', 'ltAcos', 'viewsL7', 'page_cvr_sess7',
             'bgt_cvr_page_cvr', 'pageCvr', 'bgt_prc_price', 'price',
             'bgt_reviews_rating', 'reviews', 'bgt_dil_value', 'dil', 'Inv', 'ovl30',
-            'cost', 'spend', 'U7%', 'U1%', 'costPerClick', 'CPC2', 'CPC3', 'CPCAvg',
+            'cost', 'spend', 'bgt', 'U7%', 'U1%', 'costPerClick', 'CPC2', 'CPC3', 'CPCAvg',
         ];
         $out = [];
         foreach ($keys as $key) {
@@ -6887,7 +6906,7 @@ class AmazonAdsController extends Controller
      */
     private function rawDataAllReportsPayload(Request $request): array
     {
-        $universe = $request->boolean('bgt_universe');
+        $universe = $request->boolean('bgt_universe') || $request->boolean('sbid_universe');
         $draw = (int) $request->input('draw', 1);
         $start = max(0, (int) $request->input('start', 0));
         $length = (int) $request->input('length', 25);
