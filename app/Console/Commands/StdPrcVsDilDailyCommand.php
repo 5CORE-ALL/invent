@@ -43,6 +43,9 @@ class StdPrcVsDilDailyCommand extends Command
             $steps = [
                 ['amazon:sprc-dil-auto-push', $save],
                 ['aliexpress:sprc-dil-auto-push', $save],
+                ['newtemutwo:sprc-dil-auto-push', $save],
+                ['reverb:sprc-dil-auto-push', $save],
+                ['topdawg:sprc-dil-auto-push', $save],
                 ['dil:rule-sprice-apply', ['channel' => 'all'] + $saveAndPush],
                 ['shopify-b2c:rule-sprice-apply', $saveAndPush],
                 ['macys:rule-sprice-apply', $saveAndPush],

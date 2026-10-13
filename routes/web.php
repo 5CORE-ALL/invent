@@ -969,7 +969,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/topdawg-data-json', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'dataJson'])->name('topdawg.data.json');
     Route::post('/topdawg-save-links', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveLinks'])->name('topdawg.save.links');
     Route::post('/topdawg-save-sprice', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'saveSprice'])->name('topdawg.save.sprice');
-    Route::post('/topdawg-push-prices', [\App\Http\Controllers\MarketPlace\TopDawgPricingController::class, 'pushPrices'])->name('topdawg.push.prices');
 
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
@@ -4105,12 +4104,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
     Route::post('/reverb-clear-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'clearReverbSprice'])->name('reverb.clear.sprice');
     Route::post('/reverb-update-sprice-status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'updateReverbSpriceStatus'])->name('reverb.update.sprice.status');
-    Route::post('/reverb-push-std', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'queuePushStd'])->name('reverb.push-std.queue');
-    Route::get('/reverb-push-std/status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'pushStdJobStatus'])->name('reverb.push-std.status');
-    Route::post('/reverb-push-std/cancel', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'cancelPushStd'])->name('reverb.push-std.cancel');
-    Route::post('/reverb-push-prmt', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'queuePushPrmt'])->name('reverb.push-prmt.queue');
-    Route::get('/reverb-push-prmt/status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'pushPrmtJobStatus'])->name('reverb.push-prmt.status');
-    Route::post('/reverb-push-prmt/cancel', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'cancelPushPrmt'])->name('reverb.push-prmt.cancel');
     Route::post('/reverb-push-bump', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'queuePushBump'])->name('reverb.push-bump.queue');
     Route::get('/reverb-push-bump/status', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'pushBumpJobStatus'])->name('reverb.push-bump.status');
     Route::post('/reverb-push-bump/cancel', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'cancelPushBump'])->name('reverb.push-bump.cancel');
@@ -5347,7 +5340,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
     Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
     Route::post('/new-temu2-save-links', [NewTemutwoController::class, 'saveLinks'])->name('newtemutwo.save.links');
-    Route::post('/new-temu2-save-sprice', [NewTemutwoController::class, 'saveSprice'])->name('newtemutwo.save.sprice');
 
     // Temu Tabulator View
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');

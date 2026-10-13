@@ -232,18 +232,13 @@
         }
         #column-dropdown-menu .col-vis-item > label:hover { background: #e9ecef; }
         @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'css'])
-        @include('partials.ebay-sprc-dil', [
-            'ebaySprcDilPart' => 'css',
-            'ebaySprcDilChannel' => 'newtemutwo',
-            'ebaySprcDilClampToNearest' => true,
-        ])
-        .nto-reload-push-switch {
+        .nto-server-push-note {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             flex: 0 0 auto;
             white-space: nowrap;
-            padding: 4px 10px 4px 12px;
+            padding: 4px 12px;
             border: 1px solid #86efac;
             border-radius: 999px;
             background: #f0fdf4;
@@ -251,64 +246,7 @@
             font-weight: 700;
             color: #15803d;
             line-height: 1.2;
-            cursor: pointer;
-            user-select: none;
             margin: 0;
-        }
-        .nto-reload-push-switch.is-off {
-            border-color: #cbd5e1;
-            background: #f8fafc;
-            color: #64748b;
-        }
-        .nto-reload-push-switch .nto-reload-push-text {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .nto-reload-push-switch .nto-reload-push-state {
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: .04em;
-            text-transform: uppercase;
-            color: #16a34a;
-        }
-        .nto-reload-push-switch.is-off .nto-reload-push-state {
-            color: #94a3b8;
-        }
-        .nto-reload-push-switch > input[type="checkbox"] {
-            appearance: none;
-            -webkit-appearance: none;
-            position: relative !important;
-            float: none !important;
-            left: auto !important;
-            margin: 0 !important;
-            flex: 0 0 36px;
-            width: 36px;
-            height: 20px;
-            border: 0;
-            border-radius: 999px;
-            background: #86efac;
-            box-shadow: inset 0 0 0 1px #4ade80;
-            cursor: pointer;
-        }
-        .nto-reload-push-switch.is-off > input[type="checkbox"] {
-            background: #cbd5e1;
-            box-shadow: inset 0 0 0 1px #94a3b8;
-        }
-        .nto-reload-push-switch > input[type="checkbox"]::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #fff;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, .25);
-            transition: left .15s ease;
-        }
-        .nto-reload-push-switch > input[type="checkbox"]:checked::after {
-            left: 18px;
         }
         .nto-reload-push-cluster {
             display: inline-flex;
@@ -433,16 +371,10 @@
     </style>
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
-            <label class="nto-reload-push-switch{{ !empty($newtemutwoPageReloadPushEnabled) ? '' : ' is-off' }}"
-                id="nto-reload-push-wrap"
-                title="When ON, this page queues S Base Prc for blue-triangle SKUs only (S PRC ≠ Temu Price) on load and when you flip the switch. When OFF, nothing auto-pushes. Progress shows in the bar.">
-                <span class="nto-reload-push-text">
-                    Push on reload
-                    <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemutwoPageReloadPushEnabled) ? 'On' : 'Off' }}</span>
-                </span>
-                <input type="checkbox" role="switch" id="nto-reload-push-switch"
-                    {{ !empty($newtemutwoPageReloadPushEnabled) ? 'checked' : '' }}>
-            </label>
+            <span class="nto-server-push-note"
+                title="S PRC (Std prc vs dil + Min NPFT + eBay / Amazon / LMP caps) is saved and pushed to Temu 2 by the server at 04:20 and 20:20 IST. This page does not need to be open. The upload button pushes S Base Prc by hand.">
+                <i class="fas fa-server"></i> Server auto-push 04:20 / 20:20 IST
+            </span>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
                 <div class="nto-reload-push-progress-track">
@@ -525,12 +457,6 @@
                         <option value="equal">CVR60 = CVR30</option>
                     </select>
                     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'buttons'])
-                    @include('partials.ebay-sprc-dil', [
-                        'ebaySprcDilPart' => 'buttons',
-                        'ebaySprcDilChannel' => 'newtemutwo',
-                        'ebaySprcDilZeroSoldUsesMinGroi' => true,
-                        'ebaySprcDilClampToNearest' => true,
-                    ])
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside"
@@ -750,12 +676,6 @@
         </div>
     </div>
     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'modals'])
-    @include('partials.ebay-sprc-dil', [
-        'ebaySprcDilPart' => 'modals',
-        'ebaySprcDilChannel' => 'newtemutwo',
-        'ebaySprcDilZeroSoldUsesMinGroi' => true,
-        'ebaySprcDilClampToNearest' => true,
-    ])
 
     <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
@@ -1111,86 +1031,18 @@
         if (!row || typeof row.update !== 'function' || !patch) return;
         try { row.update(patch); } catch (e) { /* ignore */ }
     }
-    function saveChannelSpriceBatch(updates) {
-        if (typeof ntoSaveSpriceChunks !== 'function') return $.Deferred().resolve().promise();
-        return ntoSaveSpriceChunks(updates || []);
+    // The browser never writes S PRC. The server job (newtemutwo:sprc-dil-auto-push) saves + pushes it.
+    function saveChannelSpriceBatch() {
+        return $.Deferred().resolve().promise();
     }
+    // S PRC is saved + pushed by the server (newtemutwo:sprc-dil-auto-push). The page only shows it.
+    window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script'])
-    async function ntoSaveSpriceChunks(updates) {
-        const size = 200;
-        for (let i = 0; i < updates.length; i += size) {
-            const chunk = updates.slice(i, i + size);
-            await $.ajax({
-                url: '{{ route("newtemutwo.save.sprice") }}',
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': ntoPushCsrf(),
-                    'Accept': 'application/json'
-                },
-                data: { updates: chunk, _token: ntoPushCsrf() }
-            });
-        }
-    }
-    /** Write the painted S PRC cell into NT2_SPRICE. Skip rows already on that dollar. */
-    async function ntoPersistDisplayedSprice() {
-        const updates = [];
-        const rows = [];
-        chPromoEachTableRow(function(row, d) {
-            if (!chPromoIsChildRow(d) || !(chPromoInv(d) > 0)) return;
-            const sku = chPromoSku(d);
-            if (!sku) return;
-            const price = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
-            if (!(price > 0)) return;
-            const current = ntoSavedSprice(d);
-            if (Math.abs(current - price) < 0.015) return;
-            const live = typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(d) : price;
-            const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(d) : null;
-            updates.push({
-                sku: sku,
-                sprice: price,
-                lp: parseFloat(d.lp) || 0,
-                ship: parseFloat(d.temu_ship) || 0,
-                sprc_dil: live,
-                labels: (cap && cap.labels) || []
-            });
-            rows.push({ row: row, price: price, labels: (cap && cap.labels) || [], sprcDil: live });
-        });
-        if (!updates.length) return 0;
-        await ntoSaveSpriceChunks(updates);
-        rows.forEach(function(item) {
-            if (item.row && typeof item.row.update === 'function') {
-                item.row.update(Object.assign(chPromoSpricePatch(item.price), {
-                    sprc_dil: item.sprcDil > 0 ? item.sprcDil : item.price,
-                    sprice_labels: item.labels || []
-                }));
-            }
-        });
-        if (typeof temuClearCapMemo === 'function') temuClearCapMemo();
-        return updates.length;
-    }
-    async function chPromoClearThenApplyAllRules(opts) {
-        opts = opts || {};
-        if (opts.persist !== true) return 0;
-        const n = await ntoPersistDisplayedSprice();
-        if (opts.push === true) {
-            window._ntoReloadPushQueued = false;
-            if (typeof ntoTryQueuePushOnReload === 'function') ntoTryQueuePushOnReload();
-        }
-        return n;
-    }
     window.chPromoSku = chPromoSku;
     window.chPromoGetSprice = chPromoGetSprice;
     window.chPromoSpricePatch = chPromoSpricePatch;
     window.chPromoEachTableRow = chPromoEachTableRow;
-    window.chPromoUsesClearThenApply = function() { return true; };
-    window.chPromoClearThenApplyAllRules = chPromoClearThenApplyAllRules;
 
-    @include('partials.ebay-sprc-dil', [
-        'ebaySprcDilPart' => 'script',
-        'ebaySprcDilChannel' => 'newtemutwo',
-        'ebaySprcDilZeroSoldUsesMinGroi' => true,
-        'ebaySprcDilClampToNearest' => true,
-    ])
 
     function temuParseMoney(v) {
         const n = parseFloat(v);
@@ -1234,19 +1086,9 @@
         return isFinite(n) ? n : null;
     }
 
-    /** Discounted Price = Std prc vs dil only. Sprc Dil does not write S PRC. */
-    function temuDiscountedPrice(row) {
-        if (!row) return 0;
-        if (typeof window.chStdPriceForRow === 'function') {
-            const stdRule = Number(window.chStdPriceForRow(row)) || 0;
-            if (stdRule > 0) return +stdRule.toFixed(2);
-        }
-        return 0;
-    }
-
     // The cap chain runs a GROI bisection per call, and a dozen formatters plus the badge
     // pass ask for the same row's cap. Memoize per render pass; every event that can change
-    // a cap (redraw after a Sprc Dil edit, new data, refilter) clears it first.
+    // a cap (new data, refilter, LMP edit) clears it first.
     const temuCapMemo = new Map();
 
     function temuClearCapMemo() {
@@ -1266,41 +1108,21 @@
         return cap;
     }
 
-    /** S PRC = Dil (or STD fallback), then the lowest of eBay / Amazon / LMP when cheaper. */
+    /**
+     * S PRC is set by the server (newtemutwo:sprc-dil-auto-push): Std prc vs dil + Min NPFT, then the LMP cap.
+     * The page only shows the saved dollar and the eBay / Amazon / LMP references next to it.
+     */
     function temuSpriceCapCompute(row, rawSprice, extra) {
         extra = extra || {};
-        const liveDiscounted = temuDiscountedPrice(row);
         const passed = parseFloat(rawSprice);
-        let discounted = 0;
-        if (extra.use_passed_as_discounted && passed > 0) {
-            discounted = +passed.toFixed(2);
-        } else if (liveDiscounted > 0) {
-            discounted = +liveDiscounted.toFixed(2);
-        }
+        const saved = (extra.use_passed_as_discounted && passed > 0) ? +passed.toFixed(2) : ntoSavedSprice(row);
         const ebay = +temuEbayRefPrice(row).toFixed(2);
         const amz = +temuAmzRefPrice(row).toFixed(2);
         const lmp = extra.skip_lmp_cap ? 0 : +temuLmpRefPrice(row).toFixed(2);
-        if (!(discounted > 0) && chPromoInv(row) > 0) {
-            const floor = [ebay, amz, lmp].filter(function(n) { return n > 0; });
-            if (floor.length) discounted = Math.min.apply(null, floor);
-        }
-        let sprice = discounted > 0 ? discounted : 0;
-        if (!(sprice > 0)) return { sprice: 0, labels: [], lmpAlert: false, amz: amz, ebay: ebay, lmp: lmp };
-
-        const zeroSoldOwns = typeof chPromoTemuZeroSoldOwnsSprice === 'function'
-            && chPromoTemuZeroSoldOwnsSprice(row);
-
-        if (!zeroSoldOwns) {
-            if (ebay > 0 && sprice > ebay) sprice = +ebay.toFixed(2);
-            if (amz > 0 && sprice > amz) sprice = +amz.toFixed(2);
-            if (lmp > 0 && sprice > lmp) sprice = +lmp.toFixed(2);
-        }
-
-        const labels = [];
-        if (ebay > 0 && +sprice.toFixed(2) === ebay && discounted > ebay) labels.push('EB');
-        if (amz > 0 && +sprice.toFixed(2) === amz && discounted > amz) labels.push('Amz');
-        const lmpAlert = lmp > 0 && +sprice.toFixed(2) === lmp && discounted > lmp;
-        return { sprice: +sprice.toFixed(2), labels: labels, lmpAlert: lmpAlert, amz: amz, ebay: ebay, lmp: lmp };
+        if (!(saved > 0)) return { sprice: 0, labels: [], lmpAlert: false, amz: amz, ebay: ebay, lmp: lmp };
+        const labels = Array.isArray(row && row.sprice_labels) ? row.sprice_labels.filter(function(l) { return l !== 'LMP'; }) : [];
+        const lmpAlert = (row && row.sprice_lmp_alert === true) || (lmp > 0 && +saved.toFixed(2) === lmp);
+        return { sprice: saved, labels: labels, lmpAlert: lmpAlert, amz: amz, ebay: ebay, lmp: lmp };
     }
 
     function temuSpriceCellModel(row) {
@@ -1374,7 +1196,7 @@
         return (rPrice * temuRowMargin(row)) - ship - lp;
     }
 
-    /** SPFT$ = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease. */
+    /** SPFT$ = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as /temu2-decrease. */
     function temuSpftDollars(row, spriceOverride) {
         const sprice = spriceOverride != null
             ? (parseFloat(spriceOverride) || 0)
@@ -1415,11 +1237,6 @@
         return (spft / lp) * 100;
     }
 
-    function temuSgroiFromRule(row) {
-        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
-        const rule = ebayDilGroiTargetGroi(row);
-        return (rule == null || !isFinite(rule)) ? null : rule;
-    }
     /** SGROI% = live SPFT ÷ LP at the displayed S PRC (not the Dil target). */
     function temuSgroiPercent(row) {
         return temuSroiPercent(row);
@@ -1473,21 +1290,6 @@
         return (snpft / sprice) * 100;
     }
 
-    /** Dil + CVR Target NROI when S PRC is the Dil price (not eBay / Amazon / LMP capped). */
-    function temuSnroiFromRule(row) {
-        if (typeof ebayDilGroiTargetGroi !== 'function') return null;
-        const rule = ebayDilGroiTargetGroi(row);
-        if (rule == null || !isFinite(rule)) return null;
-        const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(row) : null;
-        if (cap && ((cap.labels && cap.labels.length) || cap.lmpAlert)) return null;
-        const meta = typeof ebayDilGroiMetaForRow === 'function' ? ebayDilGroiMetaForRow(row) : null;
-        const sprice = temuDisplayedSprice(row);
-        if (meta && meta.sprc > 0 && sprice > 0
-            && Math.round(sprice * 100) !== Math.round(Number(meta.sprc) * 100)) {
-            return null;
-        }
-        return rule;
-    }
     function temuSnroiPercent(row) {
         const snpft = temuSnpftDollars(row);
         const lp = parseFloat(row && row.lp) || 0;
@@ -1496,7 +1298,7 @@
     }
 
     // CVR 30 vs CVR 60, ±0.1pp dead band. Same rule the Amazon tabulator uses for its
-    // CVR arrow, and the same trend that shifts the Sprc Dil Target GROI by ±10.
+    // CVR arrow, and the same trend the Std prc vs dil CVR Disc uses.
     const TEMU_CVR_TREND_TOL = 0.1;
 
     function temuCvrTrend(cvr, cvrPrior) {
@@ -1719,7 +1521,6 @@
     }
     window.temuDisplayedSprice = temuDisplayedSprice;
     window.temuSpriceCapResult = temuSpriceCapResult;
-    window.temuDiscountedPrice = temuDiscountedPrice;
 
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -2075,34 +1876,12 @@
     const NTO_PUSH_SPRICE_URL = '/channel-push-sprice/newtemutwo';
     const NTO_PUSH_SPRICE_LIVE = @json(!empty($newtemutwoPushSpriceLive));
     const NTO_PUSH_SPRICE_CHUNK = 200;
-    let ntoPageReloadPushEnabled = @json(!empty($newtemutwoPageReloadPushEnabled));
     let ntoPushSpricePollTimer = null;
     let ntoPushSpriceExpecting = false;
     let ntoPushSpriceLastToastKey = '';
 
     function ntoPushCsrf() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    }
-    function ntoPageReloadPushAllowed() {
-        return ntoPageReloadPushEnabled !== false;
-    }
-    function syncNtoReloadPushSwitchUi() {
-        const on = ntoPageReloadPushAllowed();
-        const $wrap = $('#nto-reload-push-wrap');
-        const $sw = $('#nto-reload-push-switch');
-        $wrap.toggleClass('is-off', !on);
-        $('#nto-reload-push-label').text(on ? 'On' : 'Off');
-        if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
-    }
-    function saveNtoPageReloadPush(enabled) {
-        ntoPageReloadPushEnabled = !!enabled;
-        syncNtoReloadPushSwitchUi();
-        return $.ajax({
-            url: '/channel-promo-pricing/newtemutwo/page-reload-push',
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
-            data: { _token: ntoPushCsrf(), enabled: enabled ? 1 : 0 },
-        });
     }
     function setNtoPushSpriceProgress(opts) {
         opts = opts || {};
@@ -2250,28 +2029,6 @@
         if (typeof table === 'undefined' || !table || typeof table.getSelectedData !== 'function') return [];
         return collectNtoPushItemsFromRows(table.getSelectedData() || []);
     }
-    function collectNtoReloadPushItems() {
-        const seen = {};
-        const items = [];
-        function consider(d) {
-            if (!d) return;
-            const sku = String(d['(Child) sku'] || d.SKU || d.sku || '').trim();
-            const key = sku.toUpperCase();
-            if (!sku || seen[key] || key.indexOf('PARENT') === 0) return;
-            if (!temuHasBlueTriangle(d)) return;
-            const sprice = temuDisplayedSprice(d);
-            const base = temuSBaseFromSprice(sprice);
-            if (!(base > 0)) return;
-            seen[key] = true;
-            items.push({ sku: sku, price: base });
-        }
-        if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
-            table.getRows().forEach(function(row) {
-                consider(row.getData());
-            });
-        }
-        return items;
-    }
     function stopNtoPushSpricePoll() {
         if (ntoPushSpricePollTimer) {
             clearInterval(ntoPushSpricePollTimer);
@@ -2313,7 +2070,6 @@
                         (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success'
                     );
                 }
-                setTimeout(ntoPushLeftoverBlues, 1500);
             }
         });
     }
@@ -2392,41 +2148,6 @@
         }
         nextChunk();
     }
-    function ntoPushLeftoverBlues() {
-        if (!ntoPageReloadPushAllowed()) return;
-        const items = collectNtoReloadPushItems();
-        if (!items.length) {
-            window._ntoLeftoverLastN = 0;
-            return;
-        }
-        if (items.length !== window._ntoLeftoverLastN) {
-            window._ntoLeftoverLastN = items.length;
-            window._ntoLeftoverPasses = 0;
-        }
-        if ((window._ntoLeftoverPasses || 0) >= 12) return;
-        window._ntoLeftoverPasses = (window._ntoLeftoverPasses || 0) + 1;
-        window._ntoReloadPushQueued = true;
-        queueNtoPushSpriceItems(items, { silent: true });
-    }
-    window.ntoPushLeftoverBlues = ntoPushLeftoverBlues;
-    function ntoTryQueuePushOnReload(opts) {
-        opts = opts || {};
-        if (!ntoPageReloadPushAllowed()) return;
-        if (window._ntoReloadPushQueued) return;
-        const retry = opts.retry || 0;
-        if (typeof table === 'undefined' || !table || typeof table.getDataCount !== 'function' || table.getDataCount() === 0) {
-            if (retry < 12) {
-                setTimeout(function() {
-                    ntoTryQueuePushOnReload({ retry: retry + 1 });
-                }, 400);
-            }
-            return;
-        }
-        const items = collectNtoReloadPushItems();
-        window._ntoReloadPushQueued = true;
-        if (!items.length) return;
-        queueNtoPushSpriceItems(items, { silent: true });
-    }
     function cancelNtoPushSpriceJob() {
         $.ajax({
             url: NTO_PUSH_SPRICE_URL + '/cancel',
@@ -2441,28 +2162,6 @@
         });
     }
     function initNtoReloadPushUi() {
-        syncNtoReloadPushSwitchUi();
-        $('#nto-reload-push-switch').off('change.ntoReload').on('change.ntoReload', function() {
-            const on = !!this.checked;
-            const prev = ntoPageReloadPushAllowed();
-            saveNtoPageReloadPush(on)
-                .done(function() {
-                    showToast(
-                        on
-                            ? 'Push on reload on — blue-triangle SKUs will queue S Base Prc (S PRC ≠ Temu Price).'
-                            : 'Push on reload off — nothing auto-pushes.',
-                        'success'
-                    );
-                    if (!on) return;
-                    window._ntoReloadPushQueued = false;
-                    ntoTryQueuePushOnReload();
-                })
-                .fail(function(xhr) {
-                    ntoPageReloadPushEnabled = prev;
-                    syncNtoReloadPushSwitchUi();
-                    showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not save reload-push switch', 'error');
-                });
-        });
         $('#nto-reload-push-progress-cancel').off('click.ntoReload').on('click.ntoReload', function(e) {
             e.preventDefault();
             cancelNtoPushSpriceJob();
@@ -2650,10 +2349,6 @@
         $('#newtemutwo-blue-triangle-badge').html(
             '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangle.toLocaleString()
         );
-        if (blueTriangle > 0 && typeof window.ntoPushLeftoverBlues === 'function') {
-            clearTimeout(window._ntoLeftoverTimer);
-            window._ntoLeftoverTimer = setTimeout(window.ntoPushLeftoverBlues, 2000);
-        }
         $('#newtemutwo-lmp-cap-badge').text('LMP cap ' + lmpCapped.toLocaleString());
         $('#temu-amz-cap-badge').text('Amz ' + amzCap.toLocaleString());
         $('#temu-eb-cap-badge').text('EB ' + ebCap.toLocaleString());
@@ -2846,7 +2541,7 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -3198,7 +2893,7 @@
                     field: 'Dil%',
                     hozAlign: 'center',
                     sorter: 'number',
-                    headerTooltip: 'Dil% = OV L30 ÷ INV. Same Dil Sprc Dil uses for the Target NROI slab.',
+                    headerTooltip: 'Dil% = OV L30 ÷ INV. Same Dil the Std prc vs dil Dil Disc uses.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const INV = parseFloat(rowData.INV) || 0;
@@ -3244,7 +2939,7 @@
                     hozAlign: 'center',
                     width: 78,
                     sorter: 'number',
-                    headerTooltip: 'CVR = (Temu L30 / Views) × 100 — same as New Temu One. Arrow compares CVR 30 against CVR 60 (prior 30 days), the same up/down rule as the Amazon tabulator. Down + CVR < 7% subtracts 10 from the Sprc Dil Target NROI; Up + CVR > 10% adds 10.',
+                    headerTooltip: 'CVR = (Temu L30 / Views) × 100 — same as New Temu One. Arrow compares CVR 30 against CVR 60 (prior 30 days), the same up/down rule as the Amazon tabulator. The server S PRC job uses the same trend for the CVR Disc.',
                     formatter: function(cell) {
                         const val = parseFloat(cell.getValue()) || 0;
                         const color = val <= 4 ? '#a00211' : (val > 4 && val <= 7 ? '#ffc107' : (val > 7 && val <= 13 ? '#28a745' : '#e83e8c'));
@@ -3437,35 +3132,6 @@
                     }
                 },
                 {
-                    title: 'Sprc Dil',
-                    field: 'SPRC_DIL',
-                    hozAlign: 'center',
-                    width: 78,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: 'Dil → Target NROI price (before eBay / Amazon / LMP caps). Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. Temu L30 = 0 still uses the Dil-matching slab. Dil below the first From or above the last To uses the nearest slab.',
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold Temu L30 → min Target NROI' })
-                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2));
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + Number(meta.sprc).toFixed(2) + '</span>';
-                    }
-                },
-                {
                     title: 'cvr%',
                     field: 'cvr_pct',
                     hozAlign: 'center',
@@ -3501,7 +3167,7 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, CVR, and Review discounts). Then the lowest of eBay, Amazon, and LMP. Sprc Dil does not set this cell.',
+                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, B, 0 Sold, CVR, and Review discounts), raised to Min NPFT, then capped at the lowest eBay and Amazon price, then at LMP when SGROI at LMP is 20%+. Saved and pushed by the server at 04:20 / 20:20 IST.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'
@@ -3623,7 +3289,7 @@
                     hozAlign: 'center',
                     width: 65,
                     sorter: 'number',
-                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease.',
+                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgpftPercent(row);
@@ -3641,22 +3307,14 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. S PRC is solved so this matches the Dil + CVR target. SGROI is the gross ROI on that same price.',
+                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. SGROI is the gross ROI on that same price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnroiPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const fromRule = temuSnroiFromRule(row);
-                        let tip;
-                        if (fromRule != null && typeof ebayDilGroiTipText === 'function') {
-                            const meta = ebayDilGroiMetaForRow(row);
-                            tip = ebayDilGroiTipText(meta) || ('Target NROI ' + fromRule + '%');
-                        } else {
-                            const snpft = temuSnpftDollars(row);
-                            tip = 'SNPFT $' + (snpft != null ? snpft.toFixed(2) : '—')
-                                + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
-                                + ' (capped S PRC)';
-                        }
+                        const snpft = temuSnpftDollars(row);
+                        const tip = 'SNPFT $' + (snpft != null ? snpft.toFixed(2) : '—')
+                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2);
                         return temuPercentCell(value, 'roi', tip);
                     }
                 },
@@ -3690,33 +3348,15 @@
         table.on('dataLoaded', function() {
             temuClearCapMemo();
             applyFilters();
-            window._ntoReloadPushQueued = false;
             setTimeout(function() {
                 temuClearCapMemo();
                 if (typeof updateSummary === 'function') updateSummary();
-                if (typeof ntoPersistDisplayedSprice === 'function') {
-                    ntoPersistDisplayedSprice().catch(function() {});
-                }
-                ntoTryQueuePushOnReload();
             }, 800);
-        });
-
-        $(document).on('ajaxComplete.ntoDilPersist', function(e, xhr, settings) {
-            const url = String((settings && settings.url) || '');
-            if (url.indexOf('/channel-promo-pricing/newtemutwo/dil-groi') === -1) return;
-            const method = String((settings && (settings.type || settings.method)) || 'GET').toUpperCase();
-            if (method !== 'POST') return;
-            setTimeout(function() {
-                if (!table || typeof table.replaceData !== 'function') return;
-                temuClearCapMemo();
-                table.replaceData();
-            }, 400);
         });
 
         initNtoReloadPushUi();
 
-        // Every render starts from a clean memo, so a Sprc Dil slab edit (which redraws
-        // the table) can never be served a stale cap.
+        // Every render starts from a clean memo, so a stale cap is never served.
         table.on('renderStarted', temuClearCapMemo);
         table.on('dataChanged', temuClearCapMemo);
 

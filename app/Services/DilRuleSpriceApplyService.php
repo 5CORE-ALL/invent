@@ -21,8 +21,6 @@ use App\Models\NeweggMetric;
 use App\Models\PLSDataView;
 use App\Models\PLSProduct;
 use App\Models\ProductMaster;
-use App\Models\ReverbDataView;
-use App\Models\ReverbMetric;
 use App\Models\SheinDataView;
 use App\Models\SheinMetric;
 use App\Models\SheinOrderMetric;
@@ -38,8 +36,6 @@ use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
-use App\Models\TopDawgDataView;
-use App\Models\TopDawgProduct;
 use App\Models\WalmartDataView;
 use App\Models\WalmartMetrics;
 use App\Models\WayfairDataView;
@@ -60,7 +56,7 @@ use Throwable;
  * Temu 2/3). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
- * Wayfair / Faire / TopDawg / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
+ * Wayfair / Faire / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
  * Shein: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab or nearest slab. Dil is Shopify OV L30 ÷ INV.
  * Level-only CVR overlay when views > 0.
  */
@@ -74,14 +70,12 @@ class DilRuleSpriceApplyService
         'temu',
         'temu2',
         'temu3',
-        'reverb',
         'tiktok',
         'tiktok2',
         'doba',
         'faire',
         'shein',
         'wayfair',
-        'topdawg',
         'fb_marketplace',
         'walmart',
         'pls',
@@ -94,13 +88,11 @@ class DilRuleSpriceApplyService
         'temu',
         'temu2',
         'temu3',
-        'reverb',
         'tiktok',
         'tiktok2',
         'faire',
         'shein',
         'wayfair',
-        'topdawg',
         'walmart',
         'pls',
     ];
@@ -127,7 +119,6 @@ class DilRuleSpriceApplyService
             'bb', 'best_buy', 'bestbuyusa' => 'bestbuy',
             'tt', 'tiktokshop' => 'tiktok',
             'tiktok_2', 'tiktoktwo' => 'tiktok2',
-            'td', 'top_dawg' => 'topdawg',
             'fb', 'facebook', 'fbmarketplace' => 'fb_marketplace',
             'wf' => 'wayfair',
             'wm', 'walmart_wfs' => 'walmart',
@@ -512,6 +503,8 @@ class DilRuleSpriceApplyService
             $l30Overlay = $this->faireL30BySku();
         }
         $faireViewsBySku = $this->channel === 'faire' ? $this->faireViewsBySku() : [];
+        // TikTok 0 Sold uses TT L30 = the page's sold qty (tiktok_orders L30), not tiktok_products.sold.
+        $ttL30BySku = in_array($this->channel, ['tiktok', 'tiktok2'], true) ? $this->tiktokL30BySku() : null;
 
         $draft = [];
         foreach ($skus as $sku) {
@@ -569,6 +562,7 @@ class DilRuleSpriceApplyService
                     ? (float) ($l30Overlay[$sku] ?? 0)
                     : $ov,
                 'al30' => $al30,
+                'tt_l30' => $ttL30BySku === null ? null : (float) ($ttL30BySku[$sku] ?? 0),
                 'live' => round((float) ($metric->{$priceCol} ?? 0), 2),
                 'lp' => $lpShip['lp'],
                 'ship' => $lpShip['ship'],
@@ -756,6 +750,30 @@ class DilRuleSpriceApplyService
 
             return [];
         }
+    }
+
+    /**
+     * TikTok / TikTok 2 L30 sold by UPPER(sku), NBSP-safe. Same source as /tiktok-pricing "TT L30".
+     * Returns null when the orders table is not ready, so a missing source is never read as 0 sold.
+     *
+     * @return array<string, float>|null
+     */
+    protected function tiktokL30BySku(): ?array
+    {
+        $two = $this->channel === 'tiktok2';
+        $model = $two ? \App\Models\Tiktok2Order::class : \App\Models\TiktokOrder::class;
+        if (! $model::tableReady()) {
+            return null;
+        }
+        $out = [];
+        foreach ($model::soldQtyL30(null, 30) as $sku => $qty) {
+            $key = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
+            if ($key !== '') {
+                $out[$key] = ($out[$key] ?? 0) + (float) $qty;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -1137,12 +1155,6 @@ class DilRuleSpriceApplyService
                 'match_or_nearest' => true,
                 'live_is_base' => true,
             ],
-            'reverb' => [
-                'metric' => ReverbMetric::class,
-                'view' => ReverbDataView::class,
-                'price' => 'price',
-                'cvr_adj' => true,
-            ],
             'tiktok' => [
                 'metric' => TikTokProduct::class,
                 'view' => TiktokShopDataView::class,
@@ -1195,14 +1207,6 @@ class DilRuleSpriceApplyService
                 'l30' => null,
                 'exclude_ship' => true,
                 'a_l30' => true,
-            ],
-            'topdawg' => [
-                'metric' => TopDawgProduct::class,
-                'view' => TopDawgDataView::class,
-                'price' => 'price',
-                'l30' => 'r_l30',
-                'views' => 'views',
-                'exclude_ship' => true,
             ],
             'walmart' => [
                 'metric' => WalmartMetrics::class,

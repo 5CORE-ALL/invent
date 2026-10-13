@@ -288,4 +288,30 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertNull($pricer->priceFromRow(['inv' => 0, 'std' => 50]));
         $this->assertNull($pricer->priceFromRow(['inv' => 3, 'std' => 0]));
     }
+
+    /** @return array<string, mixed> */
+    private function tiktokRules(): array
+    {
+        return [
+            'dil' => [], 'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [], 'review_max' => 4,
+            'zero_sold_disc' => 6,
+            'min_npft' => 0,
+        ];
+    }
+
+    public function test_tiktok_zero_sold_uses_tt_l30(): void
+    {
+        foreach (['tiktok', 'tiktok2'] as $channel) {
+            $pricer = new StdPrcVsDilPricer($this->tiktokRules(), $channel);
+            $row = ['inv' => 5, 'std_price' => 100, 'dil' => 0, 'lp' => 10, 'ship' => 0, 'margin' => 0.9];
+
+            // ov_l30 (metric sold) must not decide 0 Sold, only TT L30 does.
+            $this->assertSame(94.0, $pricer->priceFromRow($row + ['tt_l30' => 0.0, 'ov_l30' => 9.0]));
+            $this->assertSame(100.0, $pricer->priceFromRow($row + ['tt_l30' => 3.0, 'ov_l30' => 0.0]));
+            // Unknown sold source is never read as 0 sold.
+            $this->assertSame(100.0, $pricer->priceFromRow($row + ['tt_l30' => null, 'ov_l30' => 0.0]));
+        }
+    }
 }

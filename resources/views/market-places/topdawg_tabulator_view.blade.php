@@ -17,7 +17,6 @@
             box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 0 5px currentColor;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'topdawg'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'topdawg'])
     </style>
 @endsection
 
@@ -183,26 +182,6 @@
                         </button>
                         <button id="export-btn" class="btn btn-sm btn-info" title="Export CSV" aria-label="Export CSV"><i class="fas fa-download"></i></button>
 
-                        {{-- Push selected SKUs' SPRICE to TopDawg's review queue.
-                             Hidden until at least one selected SKU has a SPRICE set.
-                             The badge in the label shows how many will be sent. --}}
-                        <button id="td-push-btn" type="button" class="btn btn-sm btn-primary"
-                                style="display:none;"
-                                title="Push the SPRICE of every selected SKU to TopDawg. A 200 from TD means 'queued for review', not 'live on storefront'.">
-                            <i class="fas fa-upload"></i> Push to TD (<span id="td-push-count">0</span>)
-                        </button>
-                        {{-- Inline help bubble explaining TopDawg's review-queue behavior so
-                             users don't think the push silently failed when the storefront
-                             price doesn't change immediately. --}}
-                        <button type="button" class="btn btn-sm btn-link p-0 ms-1"
-                                style="display:none;color:#0d6efd;"
-                                id="td-push-info-btn"
-                                title="Why doesn't my price update right away?"
-                                data-bs-toggle="popover" data-bs-trigger="focus" data-bs-html="true"
-                                data-bs-content="TopDawg places every supplier price update into their <strong>internal review queue</strong>. The API responds <em>'Product submitted successfully for review.'</em> immediately, but the storefront price only changes after TD's team approves your submission (typically 1–24h). To bypass review, ask your TD account manager about auto-approval.">
-                            <i class="fas fa-info-circle fa-lg"></i>
-                        </button>
-
                         {{-- Single price-mode cycle button — same UX as /doba-tabulator and other
                              marketplace pricing pages. Click to cycle through:
                                Off → Decrease → Increase → Same Price → Off --}}
@@ -211,7 +190,6 @@
                             <i class="fas fa-exchange-alt"></i> Price %
                         </button>
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'topdawg'])
-                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'topdawg'])
                         <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
                             <i class="fas fa-eraser"></i> Clear SPRICE
                         </button>
@@ -266,14 +244,14 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'topdawg'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'topdawg'])
 @endsection
 
 @section('script-bottom')
     @include('partials.lazy-chart-js')
 <script>
+    // S PRC is saved + pushed by the server (topdawg:sprc-dil-auto-push). The page only shows it.
+    window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'topdawg'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'topdawg'])
     const TD_MAP_TOLERANCE = 3;
     const TD_PERCENTAGE    = {{ $topdawgPercentage }} / 100;
     // Pinned to /topdawg/sales-dashboard Total Revenue / PFT% / ROI%.
@@ -456,46 +434,6 @@
         const count = tdSelectedSkus.size;
         $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
         $('#discount-input-container').toggle(tdAnyModeActive() && count > 0);
-        tdUpdatePushButton();
-    }
-
-    // Show "Push to TD" when at least one selected SKU has a SPRICE that's
-    // > 0. Otherwise hide it — there's nothing to send if no row has a
-    // user-chosen price override. The info popover button mirrors the push
-    // button's visibility so the explanation is only visible when it's
-    // contextually relevant.
-    function tdUpdatePushButton() {
-        const $btn  = $('#td-push-btn');
-        const $info = $('#td-push-info-btn');
-        if (!$btn.length || !table) return;
-        const pushable = tdCollectPushableItems();
-        if (pushable.length === 0) {
-            $btn.hide();
-            $info.hide();
-            return;
-        }
-        $('#td-push-count').text(pushable.length);
-        $btn.show();
-        $info.show();
-    }
-
-    // Walks the table's active rows and returns the items eligible to push:
-    // - currently selected (`tdSelectedSkus`)
-    // - has a numeric SPRICE > 0 (we never push the live TD Price; pushing
-    //   the existing price would just resubmit it into TopDawg's review queue
-    //   for no benefit).
-    function tdCollectPushableItems() {
-        if (!table) return [];
-        const items = [];
-        table.getRows('active').forEach(row => {
-            const d = row.getData();
-            const sku = d && d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
-            if (!sku || !tdSelectedSkus.has(sku)) return;
-            const sprice = tdDisplayedSprice(d);
-            if (!isFinite(sprice) || sprice <= 0) return;
-            items.push({ sku: sku, price: +sprice.toFixed(2), row: row });
-        });
-        return items;
     }
 
     // Returns the rows on the *current* pagination page (excluding PARENT rows).
@@ -696,7 +634,6 @@
             } else {
                 tdShowToast('Cleared SPRICE for ' + items.length + ' SKU(s)', 'success');
             }
-            if (typeof tdUpdatePushButton === 'function') tdUpdatePushButton();
         });
     }
 
@@ -915,14 +852,6 @@
     $(document).ready(function() {
         applyUrlBadgeFilter();
 
-        // Initialize the "?" popover on the push-info button so users can click
-        // it for a full explanation of TopDawg's review-queue workflow.
-        // Bootstrap 5's popover plugin needs explicit init (unlike tooltips).
-        if (window.bootstrap && bootstrap.Popover) {
-            const infoBtn = document.getElementById('td-push-info-btn');
-            if (infoBtn) new bootstrap.Popover(infoBtn);
-        }
-
         table = new Tabulator('#topdawg-pricing-table', {
             ajaxURL: '/topdawg-data-json',
             layout: 'fitDataStretch',
@@ -1118,38 +1047,9 @@
                     }},
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: 'Sprc Dil',
-                    field: 'SPRC_DIL',
-                    hozAlign: 'center',
-                    width: 78,
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: 'S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. TD L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + NROI%/100)) / margin (Ship not used).',
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (tdIsParentRow(rowData)) return '';
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                            + ' → ' + meta.label
-                            + ' → GROI ' + meta.groi + '%'
-                            + ' → $' + meta.sprc.toFixed(2);
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
-                    }
-                },
-                {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92, sorter: 'number',
                     editable: false,
-                    headerTooltip: 'Not editable. Auto-saved from Sprc Dil (0–0 when Dil = 0; Dil slab when TD L30 > 0; TD L30 = 0 still uses the Dil-matching slab). S PRC = (LP × (1 + NROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
+                    headerTooltip: 'Not editable. Saved by the server at 4:30 AM and 8:30 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap (same as Amazon), then pushed to TopDawg (no ship). TopDawg queues each price for review (1–24h). The page does not need to be open. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
@@ -1180,53 +1080,6 @@
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
                         return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
-                    }
-                },
-                {
-                    title: 'Push',
-                    field: 'push_status',
-                    hozAlign: 'center',
-                    headerSort: false,
-                    width: 55,
-                    headerTooltip: 'Push saved S PRC to TopDawg review queue. Double-check = queued for review. Click to push or retry.',
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (tdIsParentRow(rowData)) return '';
-                        const sku = rowData['(Child) sku'] ? String(rowData['(Child) sku']) : '';
-                        const sprice = tdDisplayedSprice(rowData);
-                        if (!sku || !(sprice > 0)) return '';
-                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
-                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
-                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT || '';
-                        const pushedBy = rowData.SPRICE_PUSHED_BY || '';
-                        const price = +sprice.toFixed(2);
-                        let icon = '<i class="fas fa-upload"></i>';
-                        let color = '#0d6efd';
-                        let tip = 'Push $' + price.toFixed(2) + ' to TopDawg';
-                        if (status === 'pushing' || status === 'processing' || status === 'queued') {
-                            icon = '<i class="fas fa-spinner fa-spin"></i>';
-                            color = '#ffc107';
-                            tip = 'Pushing to TopDawg…';
-                        } else if (status === 'pushed') {
-                            icon = '<i class="fa-solid fa-check-double"></i>';
-                            color = '#28a745';
-                            tip = 'Pushed — queued in TopDawg review';
-                        } else if (status === 'failed' || status === 'error') {
-                            icon = '<i class="fa-solid fa-x"></i>';
-                            color = '#dc3545';
-                            tip = 'Push failed — click to retry';
-                        }
-                        if (pushedValue != null && pushedValue !== '') {
-                            tip += ' | Last $' + (parseFloat(pushedValue) || 0).toFixed(2);
-                        }
-                        if (updatedAt) tip += ' | ' + updatedAt;
-                        if (pushedBy) tip += ' | by ' + pushedBy;
-                        return '<button type="button" class="td-push-single-btn" data-sku="'
-                            + sku.replace(/"/g, '&quot;') + '" data-price="' + price
-                            + '" data-status="' + status.replace(/"/g, '&quot;')
-                            + '" title="' + String(tip).replace(/"/g, '&quot;')
-                            + '" style="border:none;background:none;color:' + color
-                            + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
                     }
                 },
                 {
@@ -1331,26 +1184,18 @@
                 // be overwritten by that subset and later filters would run against only
                 // those rows, leaving the table stuck on the expanded group.
                 if (window.ParentExpand && ParentExpand.isExpanded()) {
-                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                        ebayScheduleSprcDilAutoApply();
-                    }
                     setTimeout(function() {
                         applyTdColumnVisibilityMap(tdColumnVisibilityMap);
                         tdBuildColumnDropdown(tdColumnVisibilityMap);
-                        if (typeof tdUpdatePushButton === 'function') tdUpdatePushButton();
                     }, 800);
                     return;
                 }
                 allTableData = data;
                 if (window.ParentExpand) ParentExpand.captureDataset(data);
             }
-            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                ebayScheduleSprcDilAutoApply();
-            }
             setTimeout(function() {
                 applyTdColumnVisibilityMap(tdColumnVisibilityMap);
                 tdBuildColumnDropdown(tdColumnVisibilityMap);
-                if (typeof tdUpdatePushButton === 'function') tdUpdatePushButton();
             }, 800);
             setTimeout(function() {
                 applyFilters();
@@ -1659,120 +1504,6 @@
             if (e.which === 13) tdApplyDiscount();
         });
         $('#clear-sprice-btn, #clear-sprice-selected-btn').on('click', tdClearSpriceForSelected);
-
-        // ─── Push to TopDawg (selected rows with SPRICE > 0) ──────────────
-        // POSTs every selected SKU's SPRICE to /topdawg-push-prices, which
-        // loops through TopDawgApiService::pushPrice() server-side. We show
-        // a single confirm before sending and a single summary toast after
-        // ("X queued, Y failed") with details in console for debugging.
-        // A 200 from TopDawg = "queued for review", NOT "live price" — that
-        // wording is in the button tooltip and the toast.
-        function tdMarkPushStatus(row, status, extra) {
-            extra = extra || {};
-            if (!row || typeof row.update !== 'function') return;
-            row.update(Object.assign({
-                SPRICE_STATUS: status,
-                push_status: status,
-            }, extra));
-            try { row.reformat(); } catch (e) { /* ignore */ }
-        }
-
-        function tdPushItems(items, opts) {
-            opts = opts || {};
-            if (!items || !items.length) {
-                tdShowToast('No SKU has a SPRICE > 0. Set a SPRICE first.', 'warning');
-                return;
-            }
-            if (!opts.skipConfirm && !confirm('Push SPRICE for ' + items.length + ' SKU(s) to TopDawg\'s review queue?')) {
-                return;
-            }
-
-            const $btn = $('#td-push-btn');
-            const original = $btn.html();
-            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Pushing...');
-            items.forEach(function(it) { tdMarkPushStatus(it.row, 'pushing'); });
-
-            $.ajax({
-                url: "{{ route('topdawg.push.prices') }}",
-                method: 'POST',
-                data: {
-                    _token: '{{ csrf_token() }}',
-                    items: items.map(function(it) { return { sku: it.sku, price: it.price }; }),
-                },
-                timeout: 120000,
-                success: function(res) {
-                    const ok   = (res && res.ok_count)   || 0;
-                    const fail = (res && res.fail_count) || 0;
-                    const results = (res && Array.isArray(res.results)) ? res.results : [];
-                    const byOk   = new Set(results.filter(function(r) { return r.ok; }).map(function(r) { return String(r.sku); }));
-                    const byFail = new Set(results.filter(function(r) { return !r.ok; }).map(function(r) { return String(r.sku); }));
-                    items.forEach(function(it) {
-                        if (byOk.has(it.sku)) {
-                            const pulled = results.find(function(r) { return r && String(r.sku) === String(it.sku) && r.ok; }) || {};
-                            const patch = { SPRICE_PUSHED_VALUE: it.price };
-                            if (pulled.site_price && Number(pulled.live_price) > 0) {
-                                patch['TD Price'] = Number(pulled.live_price);
-                            }
-                            tdMarkPushStatus(it.row, 'pushed', patch);
-                        } else if (byFail.has(it.sku)) {
-                            tdMarkPushStatus(it.row, 'failed');
-                        }
-                    });
-                    const tdReply = (results.find(function(r) { return r.ok && r.message; }) || {}).message
-                        || 'Product submitted successfully for review.';
-                    const fromLive = results.filter(function(r) { return r && r.ok && r.from_live; }).length;
-                    const kind = (fail === 0) ? 'success' : (ok > 0 ? 'warning' : 'error');
-                    const msg  = (fail === 0)
-                        ? (fromLive === ok
-                            ? 'Pushed and pulled live Price for ' + ok + ' SKU(s).'
-                            : 'TopDawg accepted ' + ok + ' SKU(s). Pulled live Price for ' + fromLive + ' — others still in review. TD said: "' + tdReply + '"')
-                        : 'Pushed ' + ok + ' / ' + (ok + fail) + ' — ' + fail + ' failed. ' + (ok > 0 ? 'Accepted SKUs are in TopDawg review queue.' : '');
-                    tdShowToast(msg, kind);
-                    const retrySkus = results.filter(function(r) { return r && r.ok && !r.from_live; }).map(function(r) { return r.sku; });
-                    if (retrySkus.length && typeof chPushSpricePullAfterPush === 'function') {
-                        chPushSpricePullAfterPush(retrySkus);
-                    }
-                    if (typeof updateSummary === 'function') {
-                        try { updateSummary(); } catch (e) { /* ignore */ }
-                    }
-                    if (fail > 0 && window.console) {
-                        console.warn('TopDawg push: failures', results.filter(function(r) { return !r.ok; }));
-                    }
-                },
-                error: function(xhr) {
-                    items.forEach(function(it) { tdMarkPushStatus(it.row, 'failed'); });
-                    const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message
-                        : 'Push to TopDawg failed';
-                    tdShowToast(msg, 'error');
-                },
-                complete: function() {
-                    $btn.prop('disabled', false).html(original);
-                    tdUpdatePushButton();
-                }
-            });
-        }
-
-        $('#td-push-btn').on('click', function() {
-            tdPushItems(tdCollectPushableItems());
-        });
-
-        $(document).on('click', '.td-push-single-btn', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            const status = String($(this).attr('data-status') || '');
-            if (status === 'pushing' || status === 'processing' || status === 'queued') return;
-            const $rowEl = $(this).closest('.tabulator-row');
-            const row = table.getRow($rowEl[0]);
-            if (!row) return;
-            const d = row.getData() || {};
-            const sku = d['(Child) sku'] != null ? String(d['(Child) sku']) : '';
-            const sprice = tdDisplayedSprice(d);
-            if (!sku || !(sprice > 0)) {
-                tdShowToast('Set a valid SPRICE (> 0) before pushing', 'error');
-                return;
-            }
-            tdPushItems([{ sku: sku, price: +sprice.toFixed(2), row: row }]);
-        });
 
         table.on('renderComplete', tdUpdateSelectAllHeaderCheckbox);
 

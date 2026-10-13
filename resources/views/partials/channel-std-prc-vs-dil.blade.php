@@ -1672,7 +1672,7 @@
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdOwnsSprice()) {
                     $('#ch-sp-status').text(window.CH_STD_SERVER_OWNED === true
-                        ? 'Saved. The server job applies S PRC from these rules at its next run (04:15 / 20:15 IST).'
+                        ? 'Saved. The server job applies S PRC from these rules at its next scheduled run (twice daily, IST).'
                         : 'Saved. S PRC follows the ON rule.');
                     chStdRefresh();
                     chStdSaveHistory();

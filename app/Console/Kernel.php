@@ -1029,6 +1029,73 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // New Temu Two Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → Temu 2 base price.
+        // Same twice-daily idea as Amazon, offset 20 min. /new-temu2 does not need to be open.
+        // Do NOT wrap 20:20 in $ist() — IST window ends at 20:00.
+        $schedule->command('newtemutwo:sprc-dil-auto-push')
+            ->dailyAt('04:20')
+            ->timezone('Asia/Kolkata')
+            ->name('newtemutwo-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('newtemutwo:sprc-dil-auto-push')
+            ->dailyAt('20:20')
+            ->timezone('Asia/Kolkata')
+            ->name('newtemutwo-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Reverb Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → Reverb price API.
+        // Same twice-daily idea as Amazon, offset 25 min. /reverb-pricing does not need to be open.
+        // Do NOT wrap 20:25 in $ist() — IST window ends at 20:00.
+        $schedule->command('reverb:sprc-dil-auto-push')
+            ->dailyAt('04:25')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('reverb:sprc-dil-auto-push')
+            ->dailyAt('20:25')
+            ->timezone('Asia/Kolkata')
+            ->name('reverb-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // TopDawg Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → TopDawg price API.
+        // Same twice-daily idea as Amazon, offset 30 min. /topdawg-pricing does not need to be open.
+        // Do NOT wrap 20:30 in $ist() — IST window ends at 20:00.
+        $schedule->command('topdawg:sprc-dil-auto-push')
+            ->dailyAt('04:30')
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('topdawg:sprc-dil-auto-push')
+            ->dailyAt('20:30')
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Headless "Push on reload" for /topdawg-pricing (same as amazon:push-blue-prices): blue-triangle SKUs
+        // (INV > 0, TD Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()). TopDawg reviews a
+        // push for 1–24h, so the same price is only re-submitted after the 24h cooldown.
+        $schedule->command('topdawg:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('topdawg-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload": blue-triangle SKUs (INV > 0, Price ≠ S PRC) keep getting
         // pushed + pulled all day with the page closed. The two daily runs above skip a SKU whose
         // last pushed offer already equals the target, so a drifted Price stayed stale until the
@@ -1078,14 +1145,12 @@ class Kernel extends ConsoleKernel
             ['05:35', '21:35', 'dil:rule-sprice-apply temu --push', 'temu-sprc-dil'],
             ['05:45', '21:45', 'dil:rule-sprice-apply temu2 --push', 'temu2-sprc-dil'],
             ['05:55', '21:55', 'dil:rule-sprice-apply temu3 --push', 'temu3-sprc-dil'],
-            ['06:05', '22:05', 'dil:rule-sprice-apply reverb --push', 'reverb-sprc-dil'],
             ['06:15', '22:15', 'dil:rule-sprice-apply tiktok --push', 'tiktok-sprc-dil'],
             ['06:25', '22:25', 'dil:rule-sprice-apply tiktok2 --push', 'tiktok2-sprc-dil'],
             ['06:35', '22:35', 'dil:rule-sprice-apply doba', 'doba-sprc-dil'],
             ['06:45', '22:45', 'dil:rule-sprice-apply faire --push', 'faire-sprc-dil'],
             ['06:55', '22:55', 'dil:rule-sprice-apply shein --push', 'shein-sprc-dil'],
             ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],
-            ['07:15', '23:15', 'dil:rule-sprice-apply topdawg --push', 'topdawg-sprc-dil'],
             ['07:25', '23:25', 'dil:rule-sprice-apply fb_marketplace', 'fb-marketplace-sprc-dil'],
             ['07:35', '23:35', 'dil:rule-sprice-apply walmart --push', 'walmart-sprc-dil'],
             ['07:45', '23:45', 'dil:rule-sprice-apply pls --push', 'pls-sprc-dil'],

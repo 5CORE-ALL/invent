@@ -4,14 +4,13 @@ namespace App\Services\Support;
 
 use App\Models\Temu2DataView;
 use App\Services\TemuShopifySalesService;
-use App\Support\AmazonDilGroiRule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Persist New Temu Two suggested S PRC (Dil + CVR Target NROI) on temu2_data_view
- * without touching Temu 1/2/3 SPRICE keys. Recalculate only when Dil/CVR rules
- * or pricing inputs change (fingerprint). Saved SGROI is live SPFT ÷ LP.
+ * New Temu Two S PRC + push stamps on temu2_data_view (NT2_* keys, never Temu 1/2/3 SPRICE).
+ * Written only by the server job (newtemutwo:sprc-dil-auto-push) and the manual save endpoint.
+ * The page and dataJson only read it. Saved SGROI is live SPFT ÷ LP at that S PRC.
  */
 class NewTemutwoSuggestedPriceStore
 {
@@ -36,6 +35,8 @@ class NewTemutwoSuggestedPriceStore
     public const KEY_PUSHED_AT = 'NT2_PUSHED_AT';
 
     public const KEY_PUSH_STATUS = 'NT2_PUSH_STATUS';
+
+    public const KEY_PUSH_ERROR_AT = 'NT2_PUSH_ERROR_AT';
 
     /** @var array<string, Temu2DataView> */
     private array $views = [];
@@ -85,44 +86,17 @@ class NewTemutwoSuggestedPriceStore
     }
 
     /**
-     * @param  array{
-     *     inv: float,
-     *     lp: float,
-     *     ship: float,
-     *     dil: float,
-     *     temu_l30?: float|int,
-     *     sold?: float|int,
-     *     cvr: float,
-     *     cvr60: float,
-     *     ebay: float,
-     *     amz: float,
-     *     lmp: float|int|string|null
-     * }  $inputs
-     * @param  list<array<string, mixed>>  $dilRules
-     * @param  array<string, mixed>|null  $cvrAdj
-     * @return array{
-     *     sgroi: float|null,
-     *     sprice: float,
-     *     s_base: float,
-     *     sprc_dil: float,
-     *     labels: list<string>,
-     *     lmp_alert: bool,
-     *     capped: bool,
-     *     use_saved: bool
-     * }
+     * Read-only saved S PRC (+ push stamp) for one SKU. Never recomputes and never writes.
+     * The server job (newtemutwo:sprc-dil-auto-push) is the only writer of S PRC.
+     * Call loadForSkus() first.
+     *
+     * @return array<string, mixed>
      */
-    public function resolve(string $sku, array $inputs, array $dilRules, ?array $cvrAdj): array
+    public function readSaved(string $sku): array
     {
-        $fp = $this->fingerprint($inputs, $dilRules, $cvrAdj);
         $saved = $this->savedValue($sku);
-        if ($this->isReusable($saved, $fp)) {
-            return $this->withPushMeta($this->hydrateSaved($saved), $saved);
-        }
 
-        $computed = $this->compute($inputs, $dilRules, $cvrAdj);
-        $this->queueWrite($sku, $computed, $fp);
-
-        return $this->withPushMeta($computed, $saved);
+        return $this->withPushMeta($this->hydrateSaved($saved), $saved);
     }
 
     /**
@@ -142,6 +116,28 @@ class NewTemutwoSuggestedPriceStore
         $value[self::KEY_PUSHED_BASE] = round($base, 2);
         $value[self::KEY_PUSHED_AT] = now()->toDateTimeString();
         $value[self::KEY_PUSH_STATUS] = 'pushed';
+        unset($value[self::KEY_PUSH_ERROR_AT]);
+        $view->sku = $view->sku ?: $sku;
+        $view->value = $value;
+        $view->save();
+    }
+
+    /**
+     * Stamp a failed New Temu Two push (the server job waits out a cooldown before retrying).
+     */
+    public static function markPushError(string $sku): void
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return;
+        }
+        $view = Temu2DataView::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first()
+            ?? new Temu2DataView(['sku' => $sku]);
+        $value = is_array($view->value) ? $view->value : [];
+        $value[self::KEY_PUSH_ERROR_AT] = now()->toDateTimeString();
+        $value[self::KEY_PUSH_STATUS] = 'error';
         $view->sku = $view->sku ?: $sku;
         $view->value = $value;
         $view->save();
@@ -184,7 +180,7 @@ class NewTemutwoSuggestedPriceStore
     }
 
     /**
-     * Wipe stored New Temu Two S PRC so the next resolve() back-solves SNROI again.
+     * Wipe stored New Temu Two S PRC (the next server run writes it again).
      */
     public function clearSprice(string $sku): void
     {
@@ -205,8 +201,7 @@ class NewTemutwoSuggestedPriceStore
     }
 
     /**
-     * Persist the painted S PRC cell. Keep the current fingerprint so the next
-     * load returns this same dollar until Dil / CVR / ads inputs change.
+     * Persist the exact S PRC dollar (full Temu price). SGROI is the live SPFT ÷ LP at that price.
      *
      * @param  list<string>  $labels
      */
@@ -216,7 +211,8 @@ class NewTemutwoSuggestedPriceStore
         float $lp = 0.0,
         float $ship = 0.0,
         float $sprcDil = 0.0,
-        array $labels = []
+        array $labels = [],
+        bool $lmpAlert = false
     ): void {
         $sku = trim($sku);
         $sprice = round($sprice, 2);
@@ -245,126 +241,10 @@ class NewTemutwoSuggestedPriceStore
             's_base' => $sBase > 0 ? $sBase : 0.0,
             'sprc_dil' => $uncapped,
             'labels' => $cleanLabels,
-            'lmp_alert' => false,
+            'lmp_alert' => $lmpAlert,
             'capped' => abs($uncapped - $sprice) > 0.01,
             'use_saved' => true,
         ], $fp);
-    }
-
-    /**
-     * S PRC from Dil + CVR Target NROI (SNROI), including channel Ads%.
-     */
-    public static function priceFromExactSgroi(float $lp, float $ship, float $sgroi, float $adsPercent = 0.0): float
-    {
-        $raw = TemuShopifySalesService::spriceFromTargetSnroi($lp, $ship, $sgroi, $adsPercent, 0.0);
-        if (! is_finite($raw) || $raw < 0.01) {
-            return 0.0;
-        }
-
-        return round($raw, 2);
-    }
-
-    /**
-     * Dil slab + CVR overlay. Dil 100 + CVR +10 → 110 exactly.
-     * Temu L30 = 0 (0 Sold) uses the lowest Target NROI in the table, same as Temu 1.
-     */
-    public static function targetSgroi(
-        float $inv,
-        float $dil,
-        float $cvr,
-        float $cvrPrior,
-        array $dilRules,
-        ?array $cvrAdj,
-        bool $zeroSold = false
-    ): ?float {
-        if (! ($inv > 0)) {
-            return null;
-        }
-        if ($zeroSold) {
-            $slabGroi = AmazonDilGroiRule::minTarget($dilRules);
-            if ($slabGroi === null) {
-                return null;
-            }
-        } else {
-            $rule = AmazonDilGroiRule::matchOrNearest($dil, $dilRules);
-            if ($rule === null) {
-                return null;
-            }
-            $slabGroi = (float) $rule['groi'];
-        }
-        $groi = AmazonDilGroiRule::adjustGroiForCvrArrow($slabGroi, $cvr, $cvrPrior, $cvrAdj);
-
-        return is_finite($groi) ? (float) $groi : null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $inputs
-     * @param  list<array<string, mixed>>  $dilRules
-     * @param  array<string, mixed>|null  $cvrAdj
-     * @return array{
-     *     sgroi: float|null,
-     *     sprice: float,
-     *     s_base: float,
-     *     sprc_dil: float,
-     *     labels: list<string>,
-     *     lmp_alert: bool,
-     *     capped: bool,
-     *     use_saved: bool
-     * }
-     */
-    private function compute(array $inputs, array $dilRules, ?array $cvrAdj): array
-    {
-        $empty = [
-            'sgroi' => null,
-            'sprice' => 0.0,
-            's_base' => 0.0,
-            'sprc_dil' => 0.0,
-            'labels' => [],
-            'lmp_alert' => false,
-            'capped' => false,
-            'use_saved' => false,
-        ];
-        $inv = (float) ($inputs['inv'] ?? 0);
-        $lp = (float) ($inputs['lp'] ?? 0);
-        $ship = (float) ($inputs['ship'] ?? 0);
-        $dil = (float) ($inputs['dil'] ?? 0);
-        $cvr = (float) ($inputs['cvr'] ?? 0);
-        $cvr60 = (float) ($inputs['cvr60'] ?? 0);
-        $sold = (float) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0);
-        if (! ($inv > 0) || ! ($lp > 0)) {
-            return $empty;
-        }
-        $ruleSgroi = self::targetSgroi($inv, $dil, $cvr, $cvr60, $dilRules, $cvrAdj, $sold <= 0);
-        if ($ruleSgroi === null) {
-            return $empty;
-        }
-        $ads = (float) ($inputs['ads'] ?? 0);
-        $sprcDil = self::priceFromExactSgroi($lp, $ship, $ruleSgroi, $ads);
-        $cap = $this->capSprice(
-            $sprcDil,
-            (float) ($inputs['ebay'] ?? 0),
-            (float) ($inputs['amz'] ?? 0),
-            $inputs['lmp'] ?? 0
-        );
-        $sprice = (float) $cap['sprice'];
-        if (! ($sprice > 0)) {
-            return $empty;
-        }
-        $capped = $sprcDil > 0 && round($sprice, 2) !== round($sprcDil, 2);
-        $inverted = TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0);
-        $sgroi = $inverted !== null ? round($inverted, 2) : $ruleSgroi;
-        $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
-
-        return [
-            'sgroi' => $sgroi,
-            'sprice' => round($sprice, 2),
-            's_base' => $sBase > 0 ? $sBase : 0.0,
-            'sprc_dil' => $sprcDil > 0 ? $sprcDil : 0.0,
-            'labels' => $cap['labels'],
-            'lmp_alert' => (bool) $cap['lmpAlert'],
-            'capped' => $capped,
-            'use_saved' => true,
-        ];
     }
 
     /**
@@ -433,26 +313,13 @@ class NewTemutwoSuggestedPriceStore
         $row['pushed_base'] = $pushedBase > 0 ? $pushedBase : null;
         $row['pushed_at'] = $saved[self::KEY_PUSHED_AT] ?? $saved['SPRICE_PUSHED_AT'] ?? null;
         $row['push_status'] = $matched ? 'pushed' : null;
+        $row['push_error_at'] = null;
+        if (! $matched && ($saved[self::KEY_PUSH_STATUS] ?? null) === 'error') {
+            $row['push_status'] = 'error';
+            $row['push_error_at'] = $saved[self::KEY_PUSH_ERROR_AT] ?? null;
+        }
 
         return $row;
-    }
-
-    /**
-     * @param  array<string, mixed>  $saved
-     */
-    private function isReusable(array $saved, string $fp): bool
-    {
-        if ($fp === '' || ($saved[self::KEY_FINGERPRINT] ?? null) !== $fp) {
-            return false;
-        }
-        if (! isset($saved[self::KEY_SGROI], $saved[self::KEY_SPRICE])) {
-            return false;
-        }
-        if (! is_numeric($saved[self::KEY_SGROI]) || ! is_numeric($saved[self::KEY_SPRICE])) {
-            return false;
-        }
-
-        return true;
     }
 
     /**
@@ -509,84 +376,6 @@ class NewTemutwoSuggestedPriceStore
         }
 
         return true;
-    }
-
-    /**
-     * @param  array<string, mixed>  $inputs
-     * @param  list<array<string, mixed>>  $dilRules
-     * @param  array<string, mixed>|null  $cvrAdj
-     */
-    private function fingerprint(array $inputs, array $dilRules, ?array $cvrAdj): string
-    {
-        $normRules = [];
-        foreach (AmazonDilGroiRule::normalizeList($dilRules) as $rule) {
-            $normRules[] = [
-                'min' => round((float) $rule['min'], 2),
-                'max' => round((float) $rule['max'], 2),
-                'groi' => round((float) $rule['groi'], 2),
-            ];
-        }
-        $cvr = AmazonDilGroiRule::normalizeCvrAdj($cvrAdj);
-        $lmp = $inputs['lmp'] ?? 0;
-        $payload = [
-            'v' => 6,
-            'ads' => round((float) ($inputs['ads'] ?? 0), 2),
-            'rules' => $normRules,
-            'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),
-            'cvr_adj' => [
-                'down_lt' => round((float) $cvr['down_lt'], 2),
-                'down_adj' => round((float) $cvr['down_adj'], 2),
-                'up_gt' => round((float) $cvr['up_gt'], 2),
-                'up_adj' => round((float) $cvr['up_adj'], 2),
-            ],
-            'dil' => round((float) ($inputs['dil'] ?? 0), 2),
-            'cvr' => round((float) ($inputs['cvr'] ?? 0), 2),
-            'cvr60' => round((float) ($inputs['cvr60'] ?? 0), 2),
-            'lp' => round((float) ($inputs['lp'] ?? 0), 2),
-            'ship' => round((float) ($inputs['ship'] ?? 0), 2),
-            'inv' => round((float) ($inputs['inv'] ?? 0), 2),
-            'ebay' => round((float) ($inputs['ebay'] ?? 0), 2),
-            'amz' => round((float) ($inputs['amz'] ?? 0), 2),
-            'lmp' => (is_numeric($lmp) && (float) $lmp > 0) ? round((float) $lmp, 2) : 0.0,
-        ];
-
-        return hash('sha1', (string) json_encode($payload, JSON_PRESERVE_ZERO_FRACTION));
-    }
-
-    /**
-     * @return array{sprice: float, labels: list<string>, lmpAlert: bool}
-     */
-    private function capSprice(float $discounted, float $ebay, float $amz, $lmp): array
-    {
-        $sprice = $discounted > 0 ? $discounted : 0.0;
-        if (! ($sprice > 0)) {
-            return ['sprice' => 0.0, 'labels' => [], 'lmpAlert' => false];
-        }
-        $ebay = $ebay > 0 ? round($ebay, 2) : 0.0;
-        $amz = $amz > 0 ? round($amz, 2) : 0.0;
-        $lmp = (is_numeric($lmp) && (float) $lmp > 0) ? round((float) $lmp, 2) : 0.0;
-        if ($ebay > 0 && $sprice > $ebay) {
-            $sprice = round($ebay, 2);
-        }
-        if ($amz > 0 && $sprice > $amz) {
-            $sprice = round($amz, 2);
-        }
-        if ($lmp > 0 && $sprice > $lmp) {
-            $sprice = round($lmp, 2);
-        }
-        $labels = [];
-        if ($ebay > 0 && round($sprice, 2) === $ebay && $discounted > $ebay) {
-            $labels[] = 'EB';
-        }
-        if ($amz > 0 && round($sprice, 2) === $amz && $discounted > $amz) {
-            $labels[] = 'Amz';
-        }
-
-        return [
-            'sprice' => round($sprice, 2),
-            'labels' => $labels,
-            'lmpAlert' => $lmp > 0 && round($sprice, 2) === $lmp && $discounted > $lmp,
-        ];
     }
 
     /**
