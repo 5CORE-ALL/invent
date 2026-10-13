@@ -538,6 +538,81 @@
         </div>
     </div>
 
+    <!-- Std Prc editor (magnifying glass) — same as /amazon-tabulator-view. Std GROI% / Std GPFT% follow the typed price. -->
+    <div class="modal fade" id="stdPrcEditModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 720px;">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title mb-0">Std Price — <span id="stdPrcEditSku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-4">
+                            <label class="form-label mb-1 small fw-bold" for="stdPrcEditInput">Std Prc</label>
+                            <input type="number" class="form-control form-control-sm text-end fw-bold" id="stdPrcEditInput"
+                                step="0.01" min="0.01" placeholder="0.00" autocomplete="off">
+                        </div>
+                        <div class="col-4">
+                            <div class="form-label mb-1 small fw-bold">Std NROI%</div>
+                            <div id="stdPrcEditNroi" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × margin − ship − LP) / LP) × 100 (no Ads% on AliExpress)">—</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="form-label mb-1 small fw-bold">Std NPFT%</div>
+                            <div id="stdPrcEditNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="((Std Prc × margin − ship − LP) / Std Prc) × 100 (no Ads% on AliExpress)">—</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg GPFT%</div>
+                            <div id="stdPrcAvgGpft" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg GPFT% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg GROI%</div>
+                            <div id="stdPrcAvgGroi" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg GROI% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg NPFT%</div>
+                            <div id="stdPrcAvgNpft" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg NPFT% from Pricing Master CVR">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg NROI%</div>
+                            <div id="stdPrcAvgNroi" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg NROI% from Pricing Master CVR">—</div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">OV LMP</div>
+                            <div id="stdPrcOvLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Lowest LMP across Amazon, eBay, Temu, and Google">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg LMP</div>
+                            <div id="stdPrcAvgLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Average LMP across Amazon, eBay, Temu, and Google">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">My LMP</div>
+                            <div id="stdPrcMyLmp" class="form-control form-control-sm bg-light fw-bold text-center" title="Manual My LMP">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Diff</div>
+                            <div id="stdPrcDiff" class="form-control form-control-sm fw-bold text-center" title="(Avg LMP − Avg Price) / Avg Price">—</div>
+                        </div>
+                        <div class="col">
+                            <div class="form-label mb-1 small fw-bold">Avg Price</div>
+                            <div id="stdPrcAvgPrice" class="form-control form-control-sm bg-light fw-bold text-center" title="Avg Price from Pricing Master CVR">—</div>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">Saves Std Prc for this SKU and its Sku Link LMP siblings. Avg and LMP figures match LMP Overall.</div>
+                    <div class="small mt-1" id="stdPrcEditMsg"></div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="stdPrcEditSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Links Modal -->
     <div class="modal fade" id="aeEditLinksModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -1275,6 +1350,244 @@
             const saved = parseFloat(detail.standard_price);
             if (!sku || !isFinite(saved) || saved <= 0) return;
             applyAeStandardPriceToLinkedRows(sku, saved, detail.applied_skus);
+        });
+
+        // ── Std Prc editor modal (magnifying glass) — same as /amazon-tabulator-view ──
+        let stdPrcEditState = { sku: '', rowData: null, lastSaved: null };
+        const stdPrcLmpMetricIds = ['stdPrcAvgGpft', 'stdPrcAvgGroi', 'stdPrcAvgNpft', 'stdPrcAvgNroi', 'stdPrcOvLmp', 'stdPrcAvgLmp', 'stdPrcMyLmp', 'stdPrcDiff', 'stdPrcAvgPrice'];
+        const stdPrcLmpCache = {};
+        let stdPrcLmpXhr = null;
+
+        function aeEscAttr(s) {
+            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function aeRowDataBySku(sku) {
+            const target = String(sku || '').trim().toUpperCase();
+            if (!target || typeof table === 'undefined' || !table) return null;
+            const rows = table.getRows('all') || table.getRows() || [];
+            for (let i = 0; i < rows.length; i++) {
+                const d = rows[i].getData();
+                if (!d || d.is_parent) continue;
+                if (String(d.sku || d['(Child) sku'] || d.SKU || '').trim().toUpperCase() === target) return d;
+            }
+            return null;
+        }
+
+        /** Std NROI% / NPFT% at a typed Std Prc. AliExpress has no Ads%, so net = gross on the channel margin. */
+        function aeStdMetricsAt(sp, row) {
+            const price = parseFloat(sp);
+            if (!row || !isFinite(price) || price <= 0) return { nroi: null, npft: null };
+            const lp = parseFloat(row.lp) || 0;
+            const ship = parseFloat(row.ship) || 0;
+            const mRaw = parseFloat(row._margin);
+            const margin = (isFinite(mRaw) && mRaw > 0) ? mRaw : 0.80;
+            const profit = price * margin - ship - lp;
+            return {
+                nroi: lp > 0 ? (profit / lp) * 100 : null,
+                npft: (profit / price) * 100
+            };
+        }
+
+        function stdPrcColoredHtml(kind, v) {
+            if (v === null || !isFinite(v)) return '<span class="text-muted">—</span>';
+            if (window.MetricPctColors) {
+                const html = MetricPctColors.htmlFor(kind, v, { decimals: 0, empty: '' });
+                if (html) return html;
+            }
+            return '<span style="font-weight:600;">' + Math.round(v) + '%</span>';
+        }
+
+        function refreshStdPrcEditMetrics() {
+            const m = aeStdMetricsAt($('#stdPrcEditInput').val(), stdPrcEditState.rowData);
+            $('#stdPrcEditNroi').html(stdPrcColoredHtml('nroi', m.nroi));
+            $('#stdPrcEditNpft').html(stdPrcColoredHtml('npft', m.npft));
+        }
+
+        function stdPrcMetricDash(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            el.innerHTML = '<span class="text-muted">—</span>';
+        }
+
+        function stdPrcPaintPct(id, kind, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            const n = Number(value);
+            if (value == null || value === '' || !isFinite(n)) {
+                el.innerHTML = '<span class="text-muted">—</span>';
+                return;
+            }
+            el.innerHTML = stdPrcColoredHtml(kind, n);
+        }
+
+        function stdPrcPaintMoney(id, value) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.background = '';
+            el.style.color = '';
+            const n = Number(value);
+            el.innerHTML = (isFinite(n) && n > 0) ? ('$' + n.toFixed(2)) : '<span class="text-muted">—</span>';
+        }
+
+        function paintStdPrcLmpMetrics(data) {
+            if (!data) {
+                stdPrcLmpMetricIds.forEach(stdPrcMetricDash);
+                return;
+            }
+            stdPrcPaintPct('stdPrcAvgGpft', 'gpft', data.gpft);
+            stdPrcPaintPct('stdPrcAvgGroi', 'groi', data.groi);
+            stdPrcPaintPct('stdPrcAvgNpft', 'npft', data.npft);
+            stdPrcPaintPct('stdPrcAvgNroi', 'nroi', data.nroi);
+            stdPrcPaintMoney('stdPrcOvLmp', data.ov_lmp);
+            stdPrcPaintMoney('stdPrcAvgLmp', data.avg_lmp);
+            stdPrcPaintMoney('stdPrcMyLmp', data.my_lmp);
+            stdPrcPaintMoney('stdPrcAvgPrice', data.avg_price);
+            const diffEl = document.getElementById('stdPrcDiff');
+            const pct = Number(data.diff);
+            if (!diffEl) return;
+            if (data.diff == null || data.diff === '' || !isFinite(pct)) {
+                stdPrcMetricDash('stdPrcDiff');
+                return;
+            }
+            let bg = '#ff00ff';
+            if (pct < 0) bg = '#dc3545';
+            else if (pct < 10) bg = '#28a745';
+            else if (pct <= 20) bg = '#ffc107';
+            diffEl.style.background = bg;
+            diffEl.style.color = '#000';
+            diffEl.textContent = Math.round(pct) + '%';
+        }
+
+        function loadStdPrcLmpMetrics(sku) {
+            const key = String(sku || '').trim().toUpperCase();
+            if (!key) {
+                paintStdPrcLmpMetrics(null);
+                return;
+            }
+            if (stdPrcLmpCache[key]) {
+                paintStdPrcLmpMetrics(stdPrcLmpCache[key]);
+                return;
+            }
+            stdPrcLmpMetricIds.forEach(function(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.style.background = '';
+                el.style.color = '';
+                el.textContent = '…';
+            });
+            if (stdPrcLmpXhr && typeof stdPrcLmpXhr.abort === 'function') stdPrcLmpXhr.abort();
+            stdPrcLmpXhr = $.ajax({
+                url: '/lmp-overall/sku-metrics',
+                method: 'GET',
+                data: { sku: sku },
+                headers: { 'Accept': 'application/json' }
+            }).done(function(res) {
+                if (String(stdPrcEditState.sku || '').trim().toUpperCase() !== key) return;
+                if (!res || !res.success) {
+                    paintStdPrcLmpMetrics(null);
+                    return;
+                }
+                stdPrcLmpCache[key] = res;
+                paintStdPrcLmpMetrics(res);
+            }).fail(function(xhr) {
+                if (xhr && xhr.statusText === 'abort') return;
+                if (String(stdPrcEditState.sku || '').trim().toUpperCase() !== key) return;
+                paintStdPrcLmpMetrics(null);
+            });
+        }
+
+        function openStdPrcEditModal(sku) {
+            const key = String(sku || '').trim();
+            if (!key) return;
+            const row = aeRowDataBySku(key);
+            stdPrcEditState.sku = key;
+            stdPrcEditState.rowData = row || null;
+            let sp = null;
+            if (row) {
+                const std = parseFloat(row.STANDARD_PRICE);
+                if (isFinite(std) && std > 0) sp = std;
+            }
+            stdPrcEditState.lastSaved = sp;
+            $('#stdPrcEditSku').text(key);
+            $('#stdPrcEditMsg').text('');
+            $('#stdPrcEditInput').val(sp != null ? sp.toFixed(2) : '');
+            refreshStdPrcEditMetrics();
+            loadStdPrcLmpMetrics(key);
+            const el = document.getElementById('stdPrcEditModal');
+            if (!el || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+            bootstrap.Modal.getOrCreateInstance(el).show();
+            setTimeout(function() {
+                const input = document.getElementById('stdPrcEditInput');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }, 200);
+        }
+
+        function stdPrcHideModal() {
+            const el = document.getElementById('stdPrcEditModal');
+            if (el && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                bootstrap.Modal.getOrCreateInstance(el).hide();
+            }
+        }
+
+        function saveStdPrcEditModal(closeAfter) {
+            const sku = stdPrcEditState.sku;
+            const sp = parseFloat($('#stdPrcEditInput').val());
+            if (!sku || !isFinite(sp) || sp <= 0) return;
+            if (stdPrcEditState.lastSaved != null && Math.abs(stdPrcEditState.lastSaved - sp) < 0.0001) {
+                if (closeAfter) stdPrcHideModal();
+                return;
+            }
+            stdPrcEditState.lastSaved = sp;
+            $('#stdPrcEditMsg').text('Saving…');
+            $.ajax({
+                url: '/save-amazon-sprice',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                data: { sku: sku, sprice: sp, is_standard_price: 1 },
+                success: function(response) {
+                    const std = parseFloat(response.data);
+                    const saved = (isFinite(std) && std > 0) ? std : sp;
+                    stdPrcEditState.lastSaved = saved;
+                    const primary = applyAeStandardPriceToLinkedRows(sku, saved, response.applied_skus);
+                    if (primary) stdPrcEditState.rowData = primary.getData();
+                    refreshStdPrcEditMetrics();
+                    const n = Array.isArray(response.applied_skus) ? response.applied_skus.length : 1;
+                    const msg = n > 1 ? ('Std Prc saved for ' + n + ' linked SKUs') : 'Std Prc saved';
+                    $('#stdPrcEditMsg').text(n > 1 ? ('Saved for ' + n + ' linked SKUs') : 'Saved');
+                    aeNotify(msg, 'success');
+                    if (closeAfter) stdPrcHideModal();
+                },
+                error: function() {
+                    stdPrcEditState.lastSaved = null;
+                    $('#stdPrcEditMsg').text('Failed to save');
+                    aeNotify('Failed to save Std Prc', 'error');
+                }
+            });
+        }
+
+        $(document).on('click', '.open-std-prc-modal', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).attr('data-sku') || $(this).data('sku');
+            if (sku) openStdPrcEditModal(sku);
+        });
+        $(document).on('input', '#stdPrcEditInput', refreshStdPrcEditMetrics);
+        $(document).on('keydown', '#stdPrcEditInput', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveStdPrcEditModal(true);
+            }
+        });
+        $(document).on('click', '#stdPrcEditSave', function() {
+            saveStdPrcEditModal(true);
         });
 
         function money(value) {
@@ -2049,26 +2362,36 @@
                         title: "Std Prc",
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
-                        headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view. Editable; saves to all Sku Link LMP siblings. Dot vs channel price.",
-                        editor: "input",
-                        width: 70,
+                        headerSort: true,
+                        headerTooltip: "Standard Price — same shared value as /amazon-tabulator-view. Not editable in the cell. Magnifying glass opens Std Prc, Std NROI%, Std NPFT% and LMP metrics; saves to all Sku Link LMP siblings. Dot vs channel price. Orange triangle = LMP is above Std Prc.",
+                        width: 108,
                         sorter: "number",
-                        editable: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (d.is_parent) return false;
-                            const sku = String(d.sku || d['(Child) sku'] || d.SKU || '');
-                            return !!sku;
-                        },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
+                            const sku = String(d.sku || d['(Child) sku'] || d.SKU || '').trim();
+                            const searchBtn = sku
+                                ? '<button type="button" class="btn btn-sm p-0 open-std-prc-modal" data-sku="' + aeEscAttr(sku) + '" title="Std Prc plus Avg GPFT, GROI, NPFT, NROI, OV LMP, Avg LMP, My LMP, Diff, and Avg Price" style="border:none;background:none;color:#0d6efd;line-height:1;"><i class="fa fa-search"></i></button>'
+                                : '';
                             const value = cell.getValue();
                             const std = parseFloat(value) || 0;
-                            if (!value || std <= 0) return '';
+                            if (!value || std <= 0) return searchBtn;
                             const comparePrice = parseFloat(d.price || 0) || 0;
                             const dot = aeStdPrcChangeDotHtml(std, comparePrice);
+                            const reviewTri = (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function') ? SpriceLmpCap.reviewStdTriangleHtml(d) : '';
 
-                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + (window.SpriceLmpCap && typeof SpriceLmpCap.reviewStdTriangleHtml === 'function' ? SpriceLmpCap.reviewStdTriangleHtml(d) : '') + '</span>';
+                            return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' + dot + ('$' + std.toFixed(2)) + reviewTri + searchBtn + '</span>';
+                        },
+                        cellClick: function(e, cell) {
+                            const btn = e.target && e.target.closest ? e.target.closest('.open-std-prc-modal') : null;
+                            if (btn) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const d = cell.getRow().getData() || {};
+                                const sku = btn.getAttribute('data-sku') || d.sku || d['(Child) sku'] || '';
+                                if (sku) openStdPrcEditModal(sku);
+                                return false;
+                            }
                         }
                     },
                     {
