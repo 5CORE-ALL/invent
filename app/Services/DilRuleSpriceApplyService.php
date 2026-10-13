@@ -36,8 +36,6 @@ use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\TiktokShopDataView;
 use App\Models\TiktokTwoShopDataView;
-use App\Models\TopDawgDataView;
-use App\Models\TopDawgProduct;
 use App\Models\WalmartDataView;
 use App\Models\WalmartMetrics;
 use App\Models\WayfairDataView;
@@ -58,7 +56,7 @@ use Throwable;
  * Temu 2/3). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
- * Wayfair / Faire / TopDawg / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
+ * Wayfair / Faire / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
  * Shein: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab or nearest slab. Dil is Shopify OV L30 ÷ INV.
  * Level-only CVR overlay when views > 0.
  */
@@ -78,7 +76,6 @@ class DilRuleSpriceApplyService
         'faire',
         'shein',
         'wayfair',
-        'topdawg',
         'fb_marketplace',
         'walmart',
         'pls',
@@ -96,7 +93,6 @@ class DilRuleSpriceApplyService
         'faire',
         'shein',
         'wayfair',
-        'topdawg',
         'walmart',
         'pls',
     ];
@@ -123,7 +119,6 @@ class DilRuleSpriceApplyService
             'bb', 'best_buy', 'bestbuyusa' => 'bestbuy',
             'tt', 'tiktokshop' => 'tiktok',
             'tiktok_2', 'tiktoktwo' => 'tiktok2',
-            'td', 'top_dawg' => 'topdawg',
             'fb', 'facebook', 'fbmarketplace' => 'fb_marketplace',
             'wf' => 'wayfair',
             'wm', 'walmart_wfs' => 'walmart',
@@ -1185,14 +1180,6 @@ class DilRuleSpriceApplyService
                 'l30' => null,
                 'exclude_ship' => true,
                 'a_l30' => true,
-            ],
-            'topdawg' => [
-                'metric' => TopDawgProduct::class,
-                'view' => TopDawgDataView::class,
-                'price' => 'price',
-                'l30' => 'r_l30',
-                'views' => 'views',
-                'exclude_ship' => true,
             ],
             'walmart' => [
                 'metric' => WalmartMetrics::class,

@@ -1067,6 +1067,35 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // TopDawg Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → TopDawg price API.
+        // Same twice-daily idea as Amazon, offset 30 min. /topdawg-pricing does not need to be open.
+        // Do NOT wrap 20:30 in $ist() — IST window ends at 20:00.
+        $schedule->command('topdawg:sprc-dil-auto-push')
+            ->dailyAt('04:30')
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('topdawg:sprc-dil-auto-push')
+            ->dailyAt('20:30')
+            ->timezone('Asia/Kolkata')
+            ->name('topdawg-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Headless "Push on reload" for /topdawg-pricing (same as amazon:push-blue-prices): blue-triangle SKUs
+        // (INV > 0, TD Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()). TopDawg reviews a
+        // push for 1–24h, so the same price is only re-submitted after the 24h cooldown.
+        $schedule->command('topdawg:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('topdawg-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload": blue-triangle SKUs (INV > 0, Price ≠ S PRC) keep getting
         // pushed + pulled all day with the page closed. The two daily runs above skip a SKU whose
         // last pushed offer already equals the target, so a drifted Price stayed stale until the
@@ -1122,7 +1151,6 @@ class Kernel extends ConsoleKernel
             ['06:45', '22:45', 'dil:rule-sprice-apply faire --push', 'faire-sprc-dil'],
             ['06:55', '22:55', 'dil:rule-sprice-apply shein --push', 'shein-sprc-dil'],
             ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],
-            ['07:15', '23:15', 'dil:rule-sprice-apply topdawg --push', 'topdawg-sprc-dil'],
             ['07:25', '23:25', 'dil:rule-sprice-apply fb_marketplace', 'fb-marketplace-sprc-dil'],
             ['07:35', '23:35', 'dil:rule-sprice-apply walmart --push', 'walmart-sprc-dil'],
             ['07:45', '23:45', 'dil:rule-sprice-apply pls --push', 'pls-sprc-dil'],

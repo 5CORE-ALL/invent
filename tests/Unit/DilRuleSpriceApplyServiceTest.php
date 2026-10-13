@@ -513,6 +513,8 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertNotContains('aliexpress', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertNotContains('reverb', DilRuleSpriceApplyService::CHANNELS);
         $this->assertNotContains('reverb', DilRuleSpriceApplyService::PUSH_CHANNELS);
+        $this->assertNotContains('topdawg', DilRuleSpriceApplyService::CHANNELS);
+        $this->assertNotContains('topdawg', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertContains('walmart', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertContains('pls', DilRuleSpriceApplyService::PUSH_CHANNELS);
     }
