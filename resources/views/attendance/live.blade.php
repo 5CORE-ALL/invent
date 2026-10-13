@@ -69,6 +69,7 @@
     </div>
     <div class="lv-foot">Live video and recording run only while this window is open. Close the window to stop.</div>
 
+    <script src="{{ asset('js/attendance-live-player.js') }}"></script>
     <script>
     (function () {
         const csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
