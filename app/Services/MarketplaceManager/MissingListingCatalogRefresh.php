@@ -210,6 +210,9 @@ class MissingListingCatalogRefresh
 
     protected function refreshMirakl(string $channel): string
     {
+        if ($channel === 'macy') {
+            app(MacyMcmOfferIndex::class)->refresh();
+        }
         $result = app(MiraklMcmOfferStatusSync::class)->sync($channel, 180);
 
         return ($result['ok'] ?? false) ? 'ok' : 'failed';
