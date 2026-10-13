@@ -757,14 +757,10 @@ class MacysApiService
             }
 
             if ($connect['success'] ?? false) {
-                $suffix = ($mcm['mcm_integration_pending'] ?? false)
-                    ? ' Connect OK. MCM P41 queued (SENT) — Specifications tab will not change until Mirakl integrates and operator review clears.'
-                    : ' Connect OK. MCM P41 issue: '.($mcm['message'] ?? 'unknown error');
-                $connect['message'] = trim(($connect['message'] ?? '').$suffix);
-                $connect['mcm_integration_pending'] = $mcm['mcm_integration_pending'] ?? false;
-
-                return $connect;
+                $mcm['message'] = 'Connect catalog accepted the bullets, but the live Macy listing was not updated — MCM P41: '
+                    .($mcm['message'] ?? 'unknown error');
             }
+            $mcm['success'] = false;
 
             return $mcm;
         } catch (\Throwable $e) {
@@ -849,6 +845,38 @@ class MacysApiService
     protected function miraklMcmHierarchyTable(): ?string
     {
         return 'macys_price_data';
+    }
+
+    /**
+     * Macy's Features & Benefits columns are fnb1..fnb5 (P41 reports "fnb1 … is required").
+     *
+     * @return list<string>
+     */
+    protected function miraklMcmDefaultBulletAttributeCodes(): array
+    {
+        $fallback = $this->miraklMcmConfig('mcm_bullet_fallback_codes');
+        if (is_array($fallback) && $fallback !== []) {
+            return array_values(array_map('strval', $fallback));
+        }
+
+        return ['fnb1', 'fnb2', 'fnb3', 'fnb4', 'fnb5'];
+    }
+
+    /**
+     * Macy rejects productLongDescription over 3 500 characters (P41 2004).
+     *
+     * @return array<string, int>
+     */
+    protected function miraklMcmP41MaxLengths(): array
+    {
+        $configured = [];
+        foreach ((array) $this->miraklMcmConfig('mcm_p41_max_lengths', []) as $code => $max) {
+            if ((int) $max > 0) {
+                $configured[(string) $code] = (int) $max;
+            }
+        }
+
+        return $configured + ['productLongDescription' => 3500];
     }
 
     /**
@@ -1719,17 +1747,17 @@ class MacysApiService
                 $push = $connect;
             } else {
                 $this->waitForMacyUpsertRateLimitBeforeMcm($sku);
-                $mcm = $this->pushDescriptionViaMiraklMcm($sku, $merged);
+                // P41 gets the edited description itself (not the Connect copy with appended text /
+                // embedded images), cut to Macy's productLongDescription limit by the trait.
+                $mcm = $this->pushDescriptionViaMiraklMcm($sku, $description);
                 if ($mcm['success'] ?? false) {
                     $mcm['message'] = trim(($mcm['message'] ?? '').' Mirakl Connect upsert also accepted.');
                     $push = $mcm;
                 } else {
-                    $suffix = ($mcm['mcm_integration_pending'] ?? false)
-                        ? ' Connect OK. MCM P41 description queued (SENT) — seller portal may not update until integration completes.'
-                        : ' Connect OK. MCM P41 description issue: '.($mcm['message'] ?? 'unknown error');
-                    $connect['message'] = trim(($connect['message'] ?? '').$suffix);
-                    $connect['mcm_integration_pending'] = $mcm['mcm_integration_pending'] ?? false;
-                    $push = $connect;
+                    $push = $mcm;
+                    $push['success'] = false;
+                    $push['message'] = 'Connect catalog accepted the description, but the live Macy listing was not updated — MCM P41: '
+                        .($mcm['message'] ?? 'unknown error');
                 }
             }
 
@@ -1813,14 +1841,10 @@ class MacysApiService
             }
 
             if ($connect['success'] ?? false) {
-                $suffix = ($mcm['mcm_integration_pending'] ?? false)
-                    ? ' Connect OK. MCM P41 image import queued (SENT) — seller portal may not update until integration completes.'
-                    : ' Connect OK. MCM P41 image issue: '.($mcm['message'] ?? 'unknown error');
-                $connect['message'] = trim(($connect['message'] ?? '').$suffix);
-                $connect['mcm_integration_pending'] = $mcm['mcm_integration_pending'] ?? false;
-
-                return $connect;
+                $mcm['message'] = 'Connect catalog accepted the images, but the live Macy listing was not updated — MCM P41: '
+                    .($mcm['message'] ?? 'unknown error');
             }
+            $mcm['success'] = false;
 
             return $mcm;
         } catch (\Throwable $e) {

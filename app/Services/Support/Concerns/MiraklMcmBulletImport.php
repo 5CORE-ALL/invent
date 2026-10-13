@@ -5,6 +5,7 @@ namespace App\Services\Support\Concerns;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\ListingManagerImageStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -81,82 +82,24 @@ trait MiraklMcmBulletImport
             return ['success' => false, 'message' => 'At least one bullet point line is required.'];
         }
 
-        $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
-        $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
-        if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
-            $label = $this->miraklMcmMarketplaceLabel();
-
-            return [
-                'success' => false,
-                'message' => "{$label} MCM P41 skipped: categoryCode could not be resolved for [{$sku}] "
-                    ."(no live {$label} offer/product category, Connect mapping, or price-data row). "
-                    ."Create the {$label} listing or add its price-data row before P41.",
-            ];
-        }
-
-        $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
+        $sku = $this->resolveMiraklMcmLiveShopSku($sku);
+        $context = $this->miraklMcmP41PushContext($sku, ['bullets' => array_slice($lines, 0, 5)]);
+        $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($this->resolveMiraklMcmHierarchyForP41($sku));
 
         Log::info("{$this->miraklMcmMarketplaceLabel()} MCM bullet push (P41)", [
             'sku' => $sku,
-            'hierarchy' => $hierarchy,
             'attribute_codes' => $fbCodes,
-            'enriched_row' => filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL),
         ]);
 
-        $csv = $this->buildMiraklMcmP41BulletImportCsv($sku, $lines, $fbCodes, $hierarchy);
-        $import = $this->importMiraklMcmProductsP41($csv);
-        if (! ($import['success'] ?? false)) {
-            return $import;
+        $submit = $this->submitMiraklMcmP41ContentRow($sku, $context, 'bullets');
+        if (! ($submit['success'] ?? false)) {
+            return $submit;
         }
+        $verify = ($submit['deduped'] ?? false) || ($submit['mcm_integration_pending'] ?? false)
+            ? []
+            : $this->verifyMiraklMcmBullets($sku, $lines, $fbCodes);
 
-        $importId = (int) ($import['import_id'] ?? 0);
-        if ($importId <= 0) {
-            return ['success' => false, 'message' => "{$this->miraklMcmMarketplaceLabel()} P41 import did not return an import_id."];
-        }
-
-        $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
-        if (! ($poll['success'] ?? false)) {
-            return $this->miraklMcmAttachImportErrorReport($poll, $importId, $sku);
-        }
-
-        $verify = $this->verifyMiraklMcmBullets($sku, $lines, $fbCodes);
-        $label = $this->miraklMcmMarketplaceLabel();
-        $integrationPending = (bool) ($poll['mcm_integration_pending'] ?? false);
-        $lockedNotice = $this->miraklMcmP42LockedValuesNotice(
-            is_array($poll['response'] ?? null) ? $poll['response'] : null
-        );
-        if ($integrationPending) {
-            $message = trim((string) ($poll['message'] ?? ''));
-            if ($message === '') {
-                $message = "{$label} P41 import #{$importId} accepted (SENT) — MCM Specifications not updated in UI yet.";
-            }
-        } else {
-            $message = "{$label} bullets updated via MCM P41 (import #{$importId}).";
-            if ($verify['verified'] ?? false) {
-                $message .= ' MCM read-back verified.';
-            } else {
-                $message .= ' Warning: '.($verify['message'] ?? 'MCM read-back not verified yet.');
-                if (($verify['partial'] ?? false) && $lockedNotice !== '') {
-                    $message .= ' '.$lockedNotice;
-                }
-            }
-        }
-        if ($lockedNotice !== '' && ! str_contains($message, 'Protected value')) {
-            $message .= ' '.$lockedNotice;
-        }
-
-        return [
-            'success' => true,
-            'message' => trim($message),
-            'import_id' => $importId,
-            'import_status' => $poll['import_status'] ?? null,
-            'mcm_verified' => $verify['verified'] ?? false,
-            'mcm_integration_pending' => $integrationPending,
-            'mcm_locked_values_override' => $this->miraklMcmP42AllowsLockedOverride(
-                is_array($poll['response'] ?? null) ? $poll['response'] : null
-            ),
-            'attribute_codes' => $fbCodes,
-        ];
+        return $this->miraklMcmP41PushSuccess('bullets', $submit, $verify, 'MCM read-back verified.') + ['attribute_codes' => $fbCodes];
     }
 
     protected function miraklMcmApiKey(): ?string
@@ -205,9 +148,9 @@ trait MiraklMcmBulletImport
     }
 
     /**
-     * P41 header that carries the category. Mirakl answers transformation error 1004
-     * ("The category could not be identified") when this header does not match the operator's
-     * category attribute, so it is taken from config, else detected from PM11, else defaulted.
+     * P41 header that carries the category. In operator format it must be the code of the PM11
+     * attribute whose role is CATEGORY (Mirakl answers 1004 when that column is absent or empty,
+     * and 1001 when the value is not a known hierarchy code). Config wins, else PM11, else "category".
      */
     protected function miraklMcmCategoryColumn(): string
     {
@@ -216,84 +159,27 @@ trait MiraklMcmBulletImport
             return $configured;
         }
 
-        $cacheKey = $this->miraklMcmConfigKey().'_mcm_category_column';
-        $rejected = $this->miraklMcmRejectedCategoryColumns();
+        $cacheKey = $this->miraklMcmConfigKey().'_mcm_category_column_v2';
         $cached = Cache::get($cacheKey);
-        if (is_string($cached) && $cached !== '' && ! in_array($cached, $rejected, true)) {
+        if (is_string($cached) && $cached !== '') {
             return $cached;
         }
 
-        $detected = $this->detectMiraklMcmCategoryColumn($rejected);
-        $column = $detected;
-        if ($column === null) {
-            $candidates = array_values(array_diff($this->miraklMcmCategoryColumnCandidates(), $rejected));
-            if ($candidates === []) {
-                // Every guess was rejected by Mirakl: start the rotation over rather than give up.
-                Cache::forget($this->miraklMcmConfigKey().'_mcm_category_column_rejected');
-                $candidates = $this->miraklMcmCategoryColumnCandidates();
-            }
-            $column = $candidates[0];
-        }
+        $detected = $this->detectMiraklMcmCategoryColumn();
+        $column = $detected ?? 'category';
         Cache::put($cacheKey, $column, $detected !== null ? 43200 : 600);
         if ($detected === null) {
-            Log::info($this->miraklMcmMarketplaceLabel().' MCM category column not found in PM11, using default', ['column' => $column, 'rejected' => $rejected]);
+            Log::info($this->miraklMcmMarketplaceLabel().' MCM category attribute (role CATEGORY) not found in PM11, using "category"');
         }
 
         return $column;
     }
 
     /**
-     * Header names tried in order when PM11 does not reveal the operator's category attribute.
-     *
-     * @return list<string>
+     * PM11 attribute with role CATEGORY, else one literally named category/categoryCode.
+     * Names that merely contain "category" (e.g. navigationCategory) are not the import category.
      */
-    protected function miraklMcmCategoryColumnCandidates(): array
-    {
-        $common = ['category', 'categoryCode', 'category_code', 'category-code', 'Category', 'CATEGORY', 'hierarchy', 'hierarchyCode'];
-        if ($this->miraklMcmConfigKey() === 'macy') {
-            array_unshift($common, 'categoryCode');
-        }
-
-        return array_values(array_unique($common));
-    }
-
-    /**
-     * Columns Mirakl already answered with transformation error 1004 for; skipped on the next try.
-     *
-     * @return list<string>
-     */
-    protected function miraklMcmRejectedCategoryColumns(): array
-    {
-        $rejected = Cache::get($this->miraklMcmConfigKey().'_mcm_category_column_rejected');
-
-        return is_array($rejected) ? array_values(array_filter($rejected, 'is_string')) : [];
-    }
-
-    /**
-     * Remember a category header Mirakl rejected (1004) so the next publish tries another one, and
-     * return the header that will be used next (null when the column is pinned by config).
-     */
-    protected function rememberMiraklMcmCategoryColumnRejected(string $column): ?string
-    {
-        if (trim((string) $this->miraklMcmConfig('mcm_category_column', '')) !== '') {
-            return null;
-        }
-        $rejected = $this->miraklMcmRejectedCategoryColumns();
-        if (! in_array($column, $rejected, true)) {
-            $rejected[] = $column;
-        }
-        Cache::put($this->miraklMcmConfigKey().'_mcm_category_column_rejected', $rejected, 86400);
-        Cache::forget($this->miraklMcmConfigKey().'_mcm_category_column');
-
-        return $this->miraklMcmCategoryColumn();
-    }
-
-    /**
-     * Look through PM11 for the attribute that represents the category (role or code).
-     *
-     * @param  list<string>  $exclude  attribute codes Mirakl already rejected as the category header
-     */
-    protected function detectMiraklMcmCategoryColumn(array $exclude = []): ?string
+    protected function detectMiraklMcmCategoryColumn(): ?string
     {
         try {
             $attributes = $this->fetchMiraklMcmPm11Attributes();
@@ -303,36 +189,27 @@ trait MiraklMcmBulletImport
             return null;
         }
 
-        $best = null;
-        $bestScore = 0;
+        $byName = null;
         foreach ($attributes as $attribute) {
             if (! is_array($attribute)) {
                 continue;
             }
             $code = trim((string) ($attribute['code'] ?? ''));
-            if ($code === '' || in_array($code, $exclude, true)) {
+            if ($code === '') {
                 continue;
             }
-            $score = 0;
             foreach ((array) ($attribute['roles'] ?? []) as $role) {
-                $type = is_array($role) ? (string) ($role['type'] ?? '') : (string) $role;
-                if (stripos($type, 'CATEGORY') !== false || stripos($type, 'HIERARCHY') !== false) {
-                    $score = max($score, 100);
+                $type = strtoupper(trim(is_array($role) ? (string) ($role['type'] ?? '') : (string) $role));
+                if ($type === 'CATEGORY') {
+                    return $code;
                 }
             }
-            $lower = strtolower($code);
-            if (in_array($lower, ['category', 'categorycode', 'category-code', 'category_code', 'hierarchy', 'hierarchycode', 'hierarchy-code', 'hierarchy_code'], true)) {
-                $score = max($score, 80);
-            } elseif (str_contains($lower, 'categor') || str_contains($lower, 'hierarch')) {
-                $score = max($score, 40);
-            }
-            if ($score > $bestScore) {
-                $bestScore = $score;
-                $best = $code;
+            if ($byName === null && in_array(strtolower($code), ['category', 'categorycode', 'category-code', 'category_code'], true)) {
+                $byName = $code;
             }
         }
 
-        return $best;
+        return $byName;
     }
 
     /** @return array<string, int|string> */
@@ -831,6 +708,47 @@ trait MiraklMcmBulletImport
 
     protected function resolveMiraklMcmHierarchyForP41(string $sku): ?string
     {
+        $key = static::class.'|'.strtoupper(trim($sku)).'|'.json_encode($this->miraklMcmHierarchyOverrides);
+        if (! array_key_exists($key, $this->miraklMcmResolvedHierarchies)) {
+            $raw = $this->resolveMiraklMcmHierarchyCandidateForP41($sku);
+            $this->miraklMcmResolvedHierarchies[$key] = $raw !== null && trim($raw) !== ''
+                ? $this->miraklMcmNormalizeHierarchyCode(trim($raw))
+                : null;
+        }
+
+        return $this->miraklMcmResolvedHierarchies[$key];
+    }
+
+    /** @var array<string, string|null> */
+    private array $miraklMcmResolvedHierarchies = [];
+
+    /**
+     * Mirakl wants the H11 hierarchy *code*. When a label (or a code with different case) was
+     * resolved, swap in the matching H11 code; unknown values are kept but logged.
+     */
+    protected function miraklMcmNormalizeHierarchyCode(string $value): string
+    {
+        $tree = $this->fetchMiraklMcmHierarchies();
+        if ($tree === []) {
+            return $value;
+        }
+        foreach ($tree as $node) {
+            if ($node['code'] === $value) {
+                return $value;
+            }
+        }
+        foreach ($tree as $node) {
+            if (strcasecmp($node['code'], $value) === 0 || strcasecmp($node['label'], $value) === 0) {
+                return $node['code'];
+            }
+        }
+        Log::warning($this->miraklMcmMarketplaceLabel().' P41 hierarchy not found in H11', ['hierarchy' => $value]);
+
+        return $value;
+    }
+
+    protected function resolveMiraklMcmHierarchyCandidateForP41(string $sku): ?string
+    {
         $override = $this->miraklMcmHierarchyOverrides[strtoupper(trim($sku))] ?? '';
         if ($override === '' && count($this->miraklMcmHierarchyOverrides) === 1) {
             // Offer SKU may differ in case/spacing from the product SKU the caller registered.
@@ -1034,9 +952,13 @@ trait MiraklMcmBulletImport
         ksort($bySlot);
 
         if ($bySlot !== []) {
+            $template = (string) reset($bySlot);
+            $slot = (string) key($bySlot);
             $codes = [];
             for ($i = 1; $i <= 5; $i++) {
-                $codes[] = $bySlot[$i] ?? "features_and_benefits_bullet_{$i}";
+                $codes[] = $bySlot[$i] ?? (preg_match('/'.preg_quote($slot, '/').'$/', $template) === 1
+                    ? substr($template, 0, -strlen($slot)).$i
+                    : "features_and_benefits_bullet_{$i}");
             }
 
             return $codes;
@@ -1046,6 +968,16 @@ trait MiraklMcmBulletImport
             return [$singleBulletCode];
         }
 
+        return $this->miraklMcmDefaultBulletAttributeCodes();
+    }
+
+    /**
+     * Bullet columns used when PM11 names none (or cannot be reached).
+     *
+     * @return list<string>
+     */
+    protected function miraklMcmDefaultBulletAttributeCodes(): array
+    {
         $fallback = $this->miraklMcmConfig('mcm_bullet_fallback_codes');
         if (is_array($fallback) && $fallback !== []) {
             return array_values(array_map('strval', $fallback));
@@ -1112,34 +1044,66 @@ trait MiraklMcmBulletImport
         return $rows;
     }
 
-    /** @return list<array<string, mixed>> */
+    /**
+     * A failed PM11 call is only remembered for a minute: caching [] for an hour silently removed
+     * every required attribute (and the fnb* bullet codes) from the next P41 rows.
+     *
+     * @return list<array<string, mixed>>
+     */
     protected function fetchMiraklMcmPm11Attributes(?string $hierarchy = null): array
     {
-        $cacheKey = $this->miraklMcmConfigKey().'_mcm_pm11_'.($hierarchy ?? 'all');
+        $cacheKey = $this->miraklMcmConfigKey().'_mcm_pm11_v2_'.md5((string) ($hierarchy ?? 'all'));
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
 
-        return Cache::remember($cacheKey, 3600, function () use ($hierarchy) {
-            $query = array_merge($this->miraklMcmQueryParams(), [
-                'all_operator_attributes' => 'true',
-            ]);
-            if ($hierarchy !== null && $hierarchy !== '') {
-                $query['hierarchy'] = $hierarchy;
-            }
+        $query = array_merge($this->miraklMcmQueryParams(), [
+            'all_operator_attributes' => 'true',
+        ]);
+        if ($hierarchy !== null && $hierarchy !== '') {
+            $query['hierarchy'] = $hierarchy;
+        }
 
+        $attributes = [];
+        try {
             $response = $this->miraklMcmRequest()->get($this->miraklMcmBaseUrl().'/api/products/attributes', $query);
-            if (! $response->successful()) {
+            if ($response->successful()) {
+                $json = $response->json('attributes');
+                $attributes = is_array($json) ? array_values($json) : [];
+            } else {
                 Log::warning($this->miraklMcmMarketplaceLabel().' PM11 attribute fetch failed', [
                     'hierarchy' => $hierarchy,
                     'status' => $response->status(),
                     'response' => mb_substr($response->body(), 0, 1000),
                 ]);
-
-                return [];
             }
+        } catch (\Throwable $e) {
+            Log::warning($this->miraklMcmMarketplaceLabel().' PM11 attribute fetch error', ['hierarchy' => $hierarchy, 'error' => $e->getMessage()]);
+        }
 
-            $attributes = $response->json('attributes');
+        Cache::put($cacheKey, $attributes, $attributes !== [] ? 3600 : 60);
 
-            return is_array($attributes) ? $attributes : [];
-        });
+        return $attributes;
+    }
+
+    /**
+     * PM11 attribute definition by code: the hierarchy's list first, then the operator-wide list
+     * (codes reported by an error report may not be in the hierarchy-filtered response).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function miraklMcmPm11AttributeByCode(string $code, ?string $hierarchy): ?array
+    {
+        foreach (array_unique([(string) $hierarchy, '']) as $h) {
+            foreach ($this->fetchMiraklMcmPm11Attributes($h !== '' ? $h : null) as $attr) {
+                if (is_array($attr) && strcasecmp(trim((string) ($attr['code'] ?? '')), $code) === 0) {
+                    return $attr;
+                }
+            }
+        }
+
+        return null;
     }
 
     public function miraklMcmProductExists(string $sku): bool
@@ -1264,17 +1228,21 @@ trait MiraklMcmBulletImport
             $row['msrp'] = $msrp;
         }
 
+        $context = [
+            'title' => $title,
+            'description' => $description,
+            'bullets' => $bullets,
+            'images' => $this->miraklMcmPublicImageUrls($images),
+        ];
         $this->miraklMcmForceFillRequired = true;
         try {
-            return $this->miraklMcmCompleteP41RequiredAttributes($sku, $hierarchy, $row, [
-                'title' => $title,
-                'description' => $description,
-                'bullets' => $bullets,
-                'images' => $images,
-            ], $extraRequired);
+            $row = $this->miraklMcmCompleteP41RequiredAttributes($sku, $hierarchy, $row, $context, $extraRequired);
         } finally {
             $this->miraklMcmForceFillRequired = false;
         }
+        $row = $this->miraklMcmSanitizeP41MediaColumns($row, $hierarchy, $context);
+
+        return $this->miraklMcmApplyP41LengthLimits($row, $hierarchy);
     }
 
     /**
@@ -1308,6 +1276,627 @@ trait MiraklMcmBulletImport
         return "\xEF\xBB\xBF".($csv ?: '');
     }
 
+    /** @var array<string, array{title: string, description: string, bullets: list<string>, images: list<string>}> */
+    private array $miraklMcmAppContentCache = [];
+
+    /**
+     * Successful P41 rows of this process (per service class + SKU), so the title / bullets /
+     * description / images calls of one Listing Manager push do not re-import an identical row.
+     *
+     * @var array<string, list<array{at: int, row: array<string, string>, import_id: int, pending: bool}>>
+     */
+    private static array $miraklMcmP41SuccessMemo = [];
+
+    /**
+     * Content saved in the app (Product Master) for this SKU — the Listing Manager modal saves it
+     * right before pushing. P41 validates the whole row, so every row carries it: required
+     * fnb* / description fields are never empty and a later row never reverts an earlier one.
+     *
+     * @return array{title: string, description: string, bullets: list<string>, images: list<string>}
+     */
+    protected function miraklMcmAppContent(string $sku): array
+    {
+        $key = strtoupper(trim($sku));
+        if (isset($this->miraklMcmAppContentCache[$key])) {
+            return $this->miraklMcmAppContentCache[$key];
+        }
+
+        $out = ['title' => '', 'description' => '', 'bullets' => [], 'images' => []];
+        try {
+            if (Schema::hasTable('product_master')) {
+                $base = DB::table('product_master');
+                if (Schema::hasColumn('product_master', 'deleted_at')) {
+                    $base->whereNull('deleted_at');
+                }
+                $row = (clone $base)->where('sku', trim($sku))->first()
+                    ?? (clone $base)->whereRaw("REPLACE(UPPER(TRIM(sku)), ' ', '') = ?", [str_replace(' ', '', $key)])->first();
+                if ($row) {
+                    $get = static fn (string $col): string => trim((string) ($row->{$col} ?? ''));
+                    $out['title'] = $this->miraklMcmFirstNonEmptyString($get('title150'), $get('title100'), $get('title80'));
+                    $out['description'] = $this->miraklMcmFirstNonEmptyString($get('description_html'), $get('description_1500'), $get('product_description'));
+                    for ($i = 1; $i <= 5; $i++) {
+                        if ($get('bullet'.$i) !== '') {
+                            $out['bullets'][] = $get('bullet'.$i);
+                        }
+                    }
+                    $images = [$get('main_image')];
+                    for ($i = 1; $i <= 20; $i++) {
+                        $images[] = $get('image'.$i);
+                    }
+                    $out['images'] = $this->miraklMcmPublicImageUrls($images);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning($this->miraklMcmMarketplaceLabel().' P41 Product Master content read failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
+
+        if ($out['bullets'] === []) {
+            try {
+                $table = $this->miraklMcmMetricsTable();
+                if ($table !== null && Schema::hasTable($table) && Schema::hasColumn($table, 'bullet_points')) {
+                    $out['bullets'] = array_slice($this->miraklMcmBulletLines(
+                        (string) (DB::table($table)->where('sku', trim($sku))->value('bullet_points') ?? '')
+                    ), 0, 5);
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return $this->miraklMcmAppContentCache[$key] = $out;
+    }
+
+    /**
+     * Pushed field(s) on top of the app content. Description and bullets always ride along (they
+     * are required by most operators); title and images too unless mcm_p41_full_content_row=false.
+     *
+     * @param  array{title?: string, description?: string, bullets?: list<string>, images?: list<string>}  $pushed
+     * @return array{title: string, description: string, bullets: list<string>, images: list<string>}
+     */
+    protected function miraklMcmP41PushContext(string $sku, array $pushed): array
+    {
+        $app = $this->miraklMcmAppContent($sku);
+        $full = filter_var($this->miraklMcmConfig('mcm_p41_full_content_row', true), FILTER_VALIDATE_BOOL);
+        $context = [
+            'title' => $full ? $app['title'] : '',
+            'description' => $app['description'],
+            'bullets' => $app['bullets'],
+            'images' => $full ? $app['images'] : [],
+        ];
+        foreach ($pushed as $field => $value) {
+            if (is_array($value) ? $value !== [] : trim((string) $value) !== '') {
+                $context[$field] = $value;
+            }
+        }
+        $context['title'] = mb_substr(trim((string) $context['title']), 0, 150);
+        $context['description'] = trim((string) $context['description']);
+        $context['bullets'] = array_slice(array_values(array_filter(array_map(static fn ($v) => trim((string) $v), (array) $context['bullets']), static fn ($v) => $v !== '')), 0, 5);
+        $context['images'] = $this->miraklMcmPublicImageUrls((array) $context['images']);
+
+        return $context;
+    }
+
+    /**
+     * @param  list<mixed>  $urls
+     * @return list<string>
+     */
+    protected function miraklMcmPublicImageUrls(array $urls): array
+    {
+        $urls = array_values(array_filter(array_map(
+            static fn ($v) => str_starts_with(trim((string) $v), '//') ? 'https:'.trim((string) $v) : trim((string) $v),
+            $urls
+        ), static fn ($v) => $v !== '' && $v !== '-'));
+        if ($urls === []) {
+            return [];
+        }
+        try {
+            $urls = ListingManagerImageStore::publishUrls($urls, $urls);
+        } catch (\Throwable) {
+        }
+        $out = [];
+        foreach ($urls as $url) {
+            $url = $this->miraklMcmAbsoluteMediaUrl((string) $url);
+            if ($url !== '' && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        }
+
+        return array_slice($out, 0, 11);
+    }
+
+    /**
+     * Absolute http(s) URL Mirakl can download, or '' (protocol-relative and /storage paths are
+     * resolved against APP_URL; localhost hosts are rejected).
+     */
+    protected function miraklMcmAbsoluteMediaUrl(string $value): string
+    {
+        $url = trim($value);
+        if ($url === '') {
+            return '';
+        }
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        } elseif (str_starts_with($url, '/')) {
+            $base = rtrim((string) config('app.url'), '/');
+            if (! preg_match('#^https?://#i', $base)) {
+                return '';
+            }
+            $url = $base.$url;
+        }
+        $url = str_replace(' ', '%20', $url);
+        if (! preg_match('#^https?://#i', $url) || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return '';
+        }
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        if ($host === '' || $host === 'localhost' || str_starts_with($host, '127.') || str_ends_with($host, '.test') || str_ends_with($host, '.local')) {
+            return '';
+        }
+
+        return $url;
+    }
+
+    /**
+     * One complete P41 row: pushed field + app content + live/operator values + PM11 required
+     * attributes, with media URLs and text lengths made valid for the operator.
+     *
+     * @param  array{title: string, description: string, bullets: list<string>, images: list<string>}  $context
+     * @param  array<string, string>  $extraRequired  code => label (from a previous error report)
+     * @param  array{bad_urls?: list<string>, max?: array<string, int>}  $fixes
+     * @return array<string, string>
+     */
+    protected function buildMiraklMcmP41ContentRow(string $sku, string $hierarchy, array $context, array $extraRequired = [], array $fixes = []): array
+    {
+        $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
+        $maxLen = (int) $this->miraklMcmConfig('features_benefits_max_length', 254);
+        if ($context['bullets'] === []) {
+            $context['bullets'] = $this->resolveMiraklMcmBulletLinesForP41Row($sku, $fbCodes);
+        }
+        $title = $context['title'];
+        $description = $context['description'];
+        $images = $context['images'];
+
+        if (filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL)) {
+            $row = $this->resolveMiraklMcmP41RowValues(
+                $sku,
+                $context['bullets'],
+                $fbCodes,
+                $hierarchy,
+                $maxLen,
+                $title !== '' ? $title : null,
+                $description !== '' ? $description : null,
+                $images !== [] ? $images : null
+            );
+        } else {
+            $row = [(string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku') => $sku];
+            if ($title !== '') {
+                $row['productName'] = $title;
+            }
+            if ($description !== '') {
+                $row['productLongDescription'] = $description;
+            }
+            if ($context['bullets'] !== []) {
+                $row = array_merge($row, $this->miraklMcmP41BulletFieldValues($context['bullets'], $fbCodes, $maxLen));
+            }
+            if ($images !== []) {
+                $row = array_merge($row, $this->miraklMcmP41ImageFieldValues($images));
+            }
+        }
+        $row[$this->miraklMcmCategoryColumn()] = $hierarchy;
+
+        $this->miraklMcmForceFillRequired = true;
+        try {
+            $row = $this->miraklMcmCompleteP41RequiredAttributes($sku, $hierarchy, $row, $context, $extraRequired);
+        } finally {
+            $this->miraklMcmForceFillRequired = false;
+        }
+        $row = $this->miraklMcmSanitizeP41MediaColumns($row, $hierarchy, $context, $fixes['bad_urls'] ?? []);
+
+        return $this->miraklMcmApplyP41LengthLimits($row, $hierarchy, $fixes['max'] ?? []);
+    }
+
+    /**
+     * MEDIA / LINK / image-like columns must hold an absolute http(s) URL ("must be a valid URL",
+     * error 2014). Fixable values are normalised, others replaced with an app image or dropped.
+     *
+     * @param  array<string, string>  $row
+     * @param  array<string, mixed>  $context
+     * @param  list<string>  $forceInvalid  codes Mirakl already rejected as invalid URLs
+     * @return array<string, string>
+     */
+    protected function miraklMcmSanitizeP41MediaColumns(array $row, ?string $hierarchy, array $context, array $forceInvalid = []): array
+    {
+        $byCode = [];
+        foreach ($this->fetchMiraklMcmPm11Attributes($hierarchy) as $attr) {
+            if (is_array($attr) && trim((string) ($attr['code'] ?? '')) !== '') {
+                $byCode[trim((string) $attr['code'])] = $attr;
+            }
+        }
+        $images = array_values((array) ($context['images'] ?? []));
+
+        foreach ($row as $code => $value) {
+            $code = (string) $code;
+            $attr = $byCode[$code] ?? ['code' => $code, 'label' => ''];
+            $type = strtoupper((string) ($attr['type'] ?? ''));
+            $forced = in_array($code, $forceInvalid, true);
+            $looksMedia = in_array($type, ['MEDIA', 'LINK'], true)
+                || ($type === '' && preg_match('/image|zoom|swatch|photo|picture/i', $code) === 1
+                    && preg_match('/alt|text|count|type|desc|name|title/i', $code) !== 1);
+            $value = trim((string) $value);
+            if ((! $looksMedia && ! $forced) || $value === '') {
+                continue;
+            }
+
+            $parts = [];
+            if (! $forced) {
+                foreach (explode('|', $value) as $part) {
+                    $fixed = $this->miraklMcmAbsoluteMediaUrl($part);
+                    if ($fixed !== '') {
+                        $parts[] = $fixed;
+                    }
+                }
+            }
+            if ($parts !== []) {
+                $row[$code] = implode('|', array_unique($parts));
+
+                continue;
+            }
+
+            $replacement = (string) ($images[$this->miraklMcmAttributeSlot($attr) - 1] ?? $images[0] ?? '');
+            if ($replacement !== '' && $replacement !== $value) {
+                $row[$code] = $replacement;
+            } else {
+                unset($row[$code]);
+            }
+            Log::info($this->miraklMcmMarketplaceLabel().' P41 media column fixed', [
+                'code' => $code,
+                'was' => mb_substr($value, 0, 200),
+                'now' => $row[$code] ?? '(dropped)',
+            ]);
+        }
+
+        return $row;
+    }
+
+    /**
+     * Extra per-attribute character limits (code => max) on top of PM11 MAX_LENGTH validations.
+     *
+     * @return array<string, int>
+     */
+    protected function miraklMcmP41MaxLengths(): array
+    {
+        $out = [];
+        foreach ((array) $this->miraklMcmConfig('mcm_p41_max_lengths', []) as $code => $max) {
+            if ((int) $max > 0) {
+                $out[(string) $code] = (int) $max;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, string>  $row
+     * @param  array<string, int>  $extra
+     * @return array<string, string>
+     */
+    protected function miraklMcmApplyP41LengthLimits(array $row, ?string $hierarchy, array $extra = []): array
+    {
+        $limits = $this->miraklMcmP41MaxLengths();
+        foreach ($this->fetchMiraklMcmPm11Attributes($hierarchy) as $attr) {
+            $code = is_array($attr) ? trim((string) ($attr['code'] ?? '')) : '';
+            if ($code === '' || ! isset($row[$code])) {
+                continue;
+            }
+            $validations = $attr['validations'] ?? '';
+            $validations = is_array($validations) ? json_encode($validations) : (string) $validations;
+            if (preg_match('/MAX_LENGTH\W*(\d+)/i', $validations, $m) === 1 && (int) $m[1] > 0) {
+                $limits[$code] = min($limits[$code] ?? PHP_INT_MAX, (int) $m[1]);
+            }
+        }
+        foreach ($extra as $code => $max) {
+            if ((int) $max > 0) {
+                $limits[$code] = min($limits[$code] ?? PHP_INT_MAX, (int) $max);
+            }
+        }
+
+        foreach ($limits as $code => $max) {
+            if (isset($row[$code]) && mb_strlen((string) $row[$code]) > $max) {
+                $row[$code] = $this->miraklMcmTruncateP41Text((string) $row[$code], $max);
+            }
+        }
+
+        return $row;
+    }
+
+    /**
+     * Cut to $max characters on a word boundary. HTML that does not fit is sent as plain text so
+     * the cut never leaves an unclosed tag.
+     */
+    protected function miraklMcmTruncateP41Text(string $value, int $max): string
+    {
+        if (mb_strlen($value) <= $max) {
+            return $value;
+        }
+        if ($value !== strip_tags($value)) {
+            $text = (string) preg_replace('#<\s*(br|/p|/li|/div|/h[1-6]|/tr)\b[^>]*>#i', "\n", $value);
+            $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $text = trim((string) preg_replace("/[ \t]+/", ' ', (string) preg_replace("/\n\s*\n+/", "\n", $text)));
+            if (mb_strlen($text) <= $max) {
+                return $text;
+            }
+            $value = $text;
+        }
+        $cut = mb_substr($value, 0, $max);
+        $space = mb_strrpos($cut, ' ');
+        if ($space !== false && $space > $max * 0.85) {
+            $cut = mb_substr($cut, 0, $space);
+        }
+
+        return rtrim($cut);
+    }
+
+    /**
+     * @param  array<string, string>  $row
+     * @return array{at: int, row: array<string, string>, import_id: int, pending: bool}|null
+     */
+    protected function miraklMcmP41DedupeHit(string $sku, array $row, array $updateOptions = []): ?array
+    {
+        $key = static::class.'|'.strtoupper(trim($sku)).'|'.json_encode($updateOptions);
+        foreach (array_reverse(self::$miraklMcmP41SuccessMemo[$key] ?? []) as $entry) {
+            if (time() - $entry['at'] > 900) {
+                continue;
+            }
+            $covered = true;
+            foreach ($row as $code => $value) {
+                if (! array_key_exists($code, $entry['row']) || (string) $entry['row'][$code] !== (string) $value) {
+                    $covered = false;
+                    break;
+                }
+            }
+            if ($covered) {
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param  array<string, string>  $row */
+    protected function rememberMiraklMcmP41Success(string $sku, array $row, int $importId, bool $pending, array $updateOptions = []): void
+    {
+        $key = static::class.'|'.strtoupper(trim($sku)).'|'.json_encode($updateOptions);
+        $entries = array_filter(self::$miraklMcmP41SuccessMemo[$key] ?? [], static fn ($e) => time() - $e['at'] <= 900);
+        $entries[] = ['at' => time(), 'row' => $row, 'import_id' => $importId, 'pending' => $pending];
+        self::$miraklMcmP41SuccessMemo[$key] = array_slice(array_values($entries), -5);
+    }
+
+    /**
+     * "The attribute 'frontZoom' (Front_Zoom) must be a valid URL" => ['frontZoom'].
+     *
+     * @return list<string>
+     */
+    protected function miraklMcmInvalidUrlCodesFromErrorReport(string $report): array
+    {
+        if ($report === '' || preg_match_all("/The attribute '([^']+)'[^'|\"]*?must be a valid URL/i", $report, $m) < 1) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map('trim', $m[1])));
+    }
+
+    /**
+     * "The 'productLongDescription' (…) attribute must have a maximum of 3 500 characters" => ['productLongDescription' => 3500].
+     *
+     * @return array<string, int>
+     */
+    protected function miraklMcmMaxLengthsFromErrorReport(string $report): array
+    {
+        $out = [];
+        if ($report !== '' && preg_match_all("/'([^']+)'[^'|\"]*?maximum of\s+([\d\s\x{00A0}\x{202F},.]+)\s*characters/iu", $report, $m, PREG_SET_ORDER) > 0) {
+            foreach ($m as $match) {
+                $max = (int) preg_replace('/\D+/', '', $match[2]);
+                if ($max > 0) {
+                    $out[trim($match[1])] = $max;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Resolve the category, build the full row, skip it when an identical row already succeeded
+     * in this push, run P41 + P42, and retry once with what the error report asked for (newly
+     * reported required attributes, invalid URLs, length limits).
+     *
+     * @param  array{title: string, description: string, bullets: list<string>, images: list<string>}  $context
+     * @param  array<string, bool>  $updateOptions
+     * @return array{success: bool, message: string, import_id?: int, poll?: array<string, mixed>, deduped?: bool, mcm_integration_pending?: bool, missing?: list<string>}
+     */
+    protected function submitMiraklMcmP41ContentRow(string $sku, array $context, string $what, array $updateOptions = []): array
+    {
+        $label = $this->miraklMcmMarketplaceLabel();
+        $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
+        if ($hierarchy === null || trim($hierarchy) === '') {
+            return [
+                'success' => false,
+                'message' => "{$label} {$what} not sent: no {$label} category (hierarchy code) could be found for [{$sku}]. "
+                    .'Mirakl rejects product rows without a category (error 1004). Checked: picked category, live offer (OF21), '
+                    ."MCM product (P31) and local {$label} data. Create/repair the {$label} listing or pick its category, then publish again.",
+            ];
+        }
+
+        $extraRequired = [];
+        $fixes = ['bad_urls' => [], 'max' => []];
+        $notes = [];
+        $result = ['success' => false, 'message' => "{$label} P41 {$what} import failed."];
+        $row = [];
+        $report = '';
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $row = $this->buildMiraklMcmP41ContentRow($sku, $hierarchy, $context, $extraRequired, $fixes);
+
+            $memo = $this->miraklMcmP41DedupeHit($sku, $row, $updateOptions);
+            if ($memo !== null) {
+                return [
+                    'success' => true,
+                    'deduped' => true,
+                    'import_id' => $memo['import_id'],
+                    'mcm_integration_pending' => $memo['pending'],
+                    'message' => "{$label} {$what} was already included in P41 import #{$memo['import_id']} of this push (same complete row), so no second import was sent."
+                        .($memo['pending'] ? ' That import is waiting for operator integration (SENT).' : ''),
+                ];
+            }
+
+            Log::info("{$label} MCM P41 {$what} row", [
+                'sku' => $sku,
+                'hierarchy' => $hierarchy,
+                'attempt' => $attempt,
+                'columns' => array_keys($row),
+            ]);
+            $import = $this->importMiraklMcmProductsP41($this->miraklMcmRowToCsv($row), $updateOptions);
+            if (! ($import['success'] ?? false)) {
+                return $import;
+            }
+            $importId = (int) ($import['import_id'] ?? 0);
+            if ($importId <= 0) {
+                return ['success' => false, 'message' => "{$label} P41 {$what} import did not return an import_id."];
+            }
+
+            $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
+            if ($poll['success'] ?? false) {
+                $pending = (bool) ($poll['mcm_integration_pending'] ?? false);
+                $this->rememberMiraklMcmP41Success($sku, $row, $importId, $pending, $updateOptions);
+
+                return [
+                    'success' => true,
+                    'message' => trim((string) ($poll['message'] ?? '').($notes !== [] ? ' '.implode(' ', $notes) : '')),
+                    'notes' => $notes,
+                    'import_id' => $importId,
+                    'poll' => $poll,
+                    'mcm_integration_pending' => $pending,
+                ];
+            }
+
+            $result = $this->miraklMcmAttachImportErrorReport($poll, $importId, $sku);
+            $report = $this->fetchMiraklMcmImportErrorReport($importId, is_array($poll['response'] ?? null) ? $poll['response'] : null);
+            if ($attempt > 0 || $report === '') {
+                break;
+            }
+
+            $applied = [];
+            $required = array_filter(
+                $this->miraklMcmRequiredCodesFromErrorReport($report),
+                fn ($_, $code) => ! $this->miraklMcmP41RowValueIsFilled($row, (string) $code),
+                ARRAY_FILTER_USE_BOTH
+            );
+            $newRequired = array_diff_key($required, $extraRequired);
+            $extraRequired += $newRequired;
+            $badUrls = array_values(array_diff($this->miraklMcmInvalidUrlCodesFromErrorReport($report), $fixes['bad_urls']));
+            if ($badUrls !== []) {
+                $fixes['bad_urls'] = array_merge($fixes['bad_urls'], $badUrls);
+                $applied[] = 'fixed URL '.implode(', ', $badUrls);
+            }
+            foreach ($this->miraklMcmMaxLengthsFromErrorReport($report) as $code => $max) {
+                if (isset($row[$code]) && mb_strlen((string) $row[$code]) > $max) {
+                    $fixes['max'][$code] = $max;
+                    $applied[] = "shortened {$code}";
+                }
+            }
+            $retryRow = $this->buildMiraklMcmP41ContentRow($sku, $hierarchy, $context, $extraRequired, $fixes);
+            $filled = array_keys(array_filter($newRequired, fn ($_, $code) => $this->miraklMcmP41RowValueIsFilled($retryRow, (string) $code), ARRAY_FILTER_USE_BOTH));
+            if ($filled !== []) {
+                array_unshift($applied, 'filled '.implode(', ', $filled));
+            }
+            if ($applied === [] || $retryRow === $row) {
+                break;
+            }
+            $notes[] = "(First import #{$importId} was rejected; retried after: ".implode('; ', $applied).'.)';
+        }
+
+        $unresolved = [];
+        $missingBullets = [];
+        foreach ($this->miraklMcmRequiredCodesFromErrorReport($report) as $code => $name) {
+            if ($this->miraklMcmP41RowValueIsFilled($row, (string) $code)) {
+                continue;
+            }
+            if ($this->miraklMcmIsBulletAttributeCode((string) $code)) {
+                $missingBullets[] = (string) $code;
+            } else {
+                $unresolved[(string) $code] = $name !== '' ? "{$name} ({$code})" : (string) $code;
+            }
+        }
+        if ($missingBullets !== []) {
+            $result['missing'] = $missingBullets;
+            $result['message'] = trim(($result['message'] ?? '')." {$label} requires bullet points in "
+                .implode(', ', $missingBullets).', but this SKU only has '.count($context['bullets']).' bullet point(s) saved. Add more bullets and publish again.');
+        }
+        if ($unresolved !== []) {
+            $leaf = static fn (string $c): string => str_contains($c, '.') ? substr($c, (int) strrpos($c, '.') + 1) : $c;
+            $result['missing'] = array_merge($result['missing'] ?? [], array_keys($unresolved));
+            $result['message'] = trim(($result['message'] ?? '').' '.implode(' ', $notes)
+                .' No value could be determined for: '.implode(', ', $unresolved).'.'
+                ." Set it once in the {$label} seller portal, or add it to config services.{$this->miraklMcmConfigKey()}.mcm_p41_defaults (e.g. '"
+                .$leaf((string) array_key_first($unresolved))."' => '<value from the {$label} list>'), then publish again.");
+        } elseif ($notes !== []) {
+            $result['message'] = trim(($result['message'] ?? '').' '.implode(' ', $notes));
+        }
+        $result['success'] = false;
+
+        return $result;
+    }
+
+    /**
+     * Shared success message for title / bullets / description / images P41 pushes.
+     *
+     * @param  array<string, mixed>  $submit
+     * @param  array{verified?: bool, message?: string}  $verify
+     * @return array<string, mixed>
+     */
+    protected function miraklMcmP41PushSuccess(string $what, array $submit, array $verify, string $verifiedNote): array
+    {
+        $label = $this->miraklMcmMarketplaceLabel();
+        $importId = (int) ($submit['import_id'] ?? 0);
+        if ($submit['deduped'] ?? false) {
+            return [
+                'success' => true,
+                'message' => (string) $submit['message'],
+                'import_id' => $importId,
+                'mcm_verified' => false,
+                'mcm_integration_pending' => (bool) ($submit['mcm_integration_pending'] ?? false),
+            ];
+        }
+
+        $poll = is_array($submit['poll'] ?? null) ? $submit['poll'] : [];
+        $integrationPending = (bool) ($poll['mcm_integration_pending'] ?? false);
+        $lockedNotice = $this->miraklMcmP42LockedValuesNotice(is_array($poll['response'] ?? null) ? $poll['response'] : null);
+        if ($integrationPending) {
+            $message = trim((string) ($submit['message'] ?? ''));
+            if ($message === '') {
+                $message = "{$label} P41 {$what} import #{$importId} accepted (SENT) — the seller portal updates once {$label} integrates it.";
+            }
+        } else {
+            $message = "{$label} {$what} updated via MCM P41 (import #{$importId}).";
+            $message .= ($verify['verified'] ?? false)
+                ? ' '.$verifiedNote
+                : ' Warning: '.($verify['message'] ?? 'MCM read-back not verified yet.');
+            if (! empty($submit['notes'])) {
+                $message .= ' '.implode(' ', (array) $submit['notes']);
+            }
+        }
+        if ($lockedNotice !== '' && ! str_contains($message, 'manually edited')) {
+            $message .= ' '.$lockedNotice;
+        }
+
+        return [
+            'success' => true,
+            'message' => trim($message),
+            'import_id' => $importId,
+            'import_status' => $poll['import_status'] ?? null,
+            'mcm_verified' => (bool) ($verify['verified'] ?? false),
+            'mcm_integration_pending' => $integrationPending,
+            'mcm_locked_values_override' => $this->miraklMcmP42AllowsLockedOverride(is_array($poll['response'] ?? null) ? $poll['response'] : null),
+        ];
+    }
+
     /**
      * @return array{success: bool, message: string, import_id?: int, import_status?: string|null, mcm_verified?: bool}
      */
@@ -1327,68 +1916,23 @@ trait MiraklMcmBulletImport
         }
 
         $sku = $this->resolveMiraklMcmLiveShopSku($sku);
-
-        $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
-
-        $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
-        $bulletLines = $this->resolveMiraklMcmBulletLinesForP41Row($sku, $fbCodes);
+        $context = $this->miraklMcmP41PushContext($sku, ['title' => $title]);
 
         Log::info("{$this->miraklMcmMarketplaceLabel()} MCM title push (P41)", [
             'sku' => $sku,
-            'hierarchy' => $hierarchy,
             'title_chars' => mb_strlen($title),
-            'bullet_lines_for_row' => count($bulletLines),
+            'bullet_lines_for_row' => count($context['bullets']),
         ]);
 
-        $csv = $this->buildMiraklMcmP41TitleImportCsv($sku, $title, $bulletLines, $fbCodes, $hierarchy);
-        $import = $this->importMiraklMcmProductsP41($csv);
-        if (! ($import['success'] ?? false)) {
-            return $import;
+        $submit = $this->submitMiraklMcmP41ContentRow($sku, $context, 'title');
+        if (! ($submit['success'] ?? false)) {
+            return $submit;
         }
+        $verify = ($submit['deduped'] ?? false) || ($submit['mcm_integration_pending'] ?? false)
+            ? []
+            : $this->verifyMiraklMcmTitle($sku, $title);
 
-        $importId = (int) ($import['import_id'] ?? 0);
-        if ($importId <= 0) {
-            return ['success' => false, 'message' => "{$this->miraklMcmMarketplaceLabel()} P41 title import did not return an import_id."];
-        }
-
-        $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
-        if (! ($poll['success'] ?? false)) {
-            return $this->miraklMcmAttachImportErrorReport($poll, $importId, $sku);
-        }
-
-        $verify = $this->verifyMiraklMcmTitle($sku, $title);
-        $label = $this->miraklMcmMarketplaceLabel();
-        $integrationPending = (bool) ($poll['mcm_integration_pending'] ?? false);
-        $lockedNotice = $this->miraklMcmP42LockedValuesNotice(
-            is_array($poll['response'] ?? null) ? $poll['response'] : null
-        );
-
-        if ($integrationPending) {
-            $message = trim((string) ($poll['message'] ?? ''));
-            if ($message === '') {
-                $message = "{$label} P41 title import #{$importId} accepted (SENT) — MCM productName may not show in UI yet.";
-            }
-        } else {
-            $message = "{$label} title updated via MCM P41 (import #{$importId}).";
-            if ($verify['verified'] ?? false) {
-                $message .= ' MCM productName read-back verified.';
-            } else {
-                $message .= ' Warning: '.($verify['message'] ?? 'MCM productName not verified yet.');
-            }
-        }
-
-        if ($lockedNotice !== '' && ! str_contains($message, 'manually edited')) {
-            $message .= ' '.$lockedNotice;
-        }
-
-        return [
-            'success' => true,
-            'message' => trim($message),
-            'import_id' => $importId,
-            'import_status' => $poll['import_status'] ?? null,
-            'mcm_verified' => $verify['verified'] ?? false,
-            'mcm_integration_pending' => $integrationPending,
-        ];
+        return $this->miraklMcmP41PushSuccess('title', $submit, $verify, 'MCM productName read-back verified.');
     }
 
     /**
@@ -1434,71 +1978,6 @@ trait MiraklMcmBulletImport
         $mcm['message'] = trim(($mcm['message'] ?? "{$label} MCM P41 title failed.").$connectNote);
 
         return $mcm;
-    }
-
-    /**
-     * @param  list<string>  $bulletLines
-     * @param  list<string>  $attributeCodes
-     */
-    protected function buildMiraklMcmP41TitleImportCsv(
-        string $sku,
-        string $title,
-        array $bulletLines,
-        array $attributeCodes,
-        ?string $hierarchy = null
-    ): string {
-        $maxLen = (int) $this->miraklMcmConfig('features_benefits_max_length', 254);
-        $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
-        if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
-            Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 title using title-only row (no categoryCode)', [
-                'sku' => $sku,
-            ]);
-            $useEnriched = false;
-        }
-
-        $rowValues = $useEnriched
-            ? $this->resolveMiraklMcmP41RowValues($sku, $bulletLines, $attributeCodes, $hierarchy, $maxLen, $title)
-            : $this->resolveMiraklMcmP41TitleOnlyRowValues($sku, $title, $hierarchy);
-        $rowValues = $this->miraklMcmCompleteP41RequiredAttributes($sku, $hierarchy, $rowValues, [
-            'title' => $title,
-            'bullets' => $bulletLines,
-        ]);
-
-        $headers = array_keys($rowValues);
-        $values = array_values($rowValues);
-
-        $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, $headers);
-        fputcsv($handle, $values);
-        rewind($handle);
-        $csv = stream_get_contents($handle);
-        fclose($handle);
-
-        Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 title CSV columns', [
-            'sku' => $sku,
-            'columns' => $headers,
-        ]);
-
-        return "\xEF\xBB\xBF".($csv ?: '');
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    protected function resolveMiraklMcmP41TitleOnlyRowValues(string $sku, string $title, ?string $hierarchy): array
-    {
-        $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = $this->miraklMcmCategoryColumn();
-
-        $row = [
-            $skuColumn => $sku,
-            'productName' => mb_substr(trim($title), 0, 150),
-        ];
-        if ($hierarchy !== null && trim($hierarchy) !== '') {
-            $row[$categoryColumn] = trim($hierarchy);
-        }
-
-        return $row;
     }
 
     /**
@@ -1736,185 +2215,28 @@ trait MiraklMcmBulletImport
             ];
         }
 
-        $imageUrls = array_slice(array_values(array_filter(array_map('trim', $imageUrls), fn ($s) => $s !== '')), 0, 11);
+        $imageUrls = $this->miraklMcmPublicImageUrls($imageUrls);
         if ($imageUrls === []) {
-            return ['success' => false, 'message' => 'At least one image URL is required for MCM P41.'];
+            return ['success' => false, 'message' => 'At least one public https image URL is required for MCM P41 (relative or localhost URLs cannot be downloaded by Mirakl).'];
         }
 
-        $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
-        $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
-        if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
-            Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 image using image-only row (no categoryCode)', [
-                'sku' => $sku,
-            ]);
-            $useEnriched = false;
-        }
-
-        $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
-        $bulletLines = $this->resolveMiraklMcmBulletLinesForP41Row($sku, $fbCodes);
+        $context = $this->miraklMcmP41PushContext($sku, ['images' => $imageUrls]);
 
         Log::info("{$this->miraklMcmMarketplaceLabel()} MCM image push (P41)", [
             'sku' => $sku,
-            'hierarchy' => $hierarchy,
             'image_count' => count($imageUrls),
-            'bullet_lines_for_row' => count($bulletLines),
+            'bullet_lines_for_row' => count($context['bullets']),
         ]);
 
-        $csv = $this->buildMiraklMcmP41ImageImportCsv($sku, $imageUrls, $bulletLines, $fbCodes, $hierarchy);
-        $import = $this->importMiraklMcmProductsP41($csv, $this->miraklMcmP41ImportUpdateOptions(true));
-        if (! ($import['success'] ?? false)) {
-            return $import;
+        $submit = $this->submitMiraklMcmP41ContentRow($sku, $context, 'images', $this->miraklMcmP41ImportUpdateOptions(true));
+        if (! ($submit['success'] ?? false)) {
+            return $submit;
         }
+        $verify = ($submit['deduped'] ?? false) || ($submit['mcm_integration_pending'] ?? false)
+            ? []
+            : $this->verifyMiraklMcmImages($sku, $imageUrls);
 
-        $importId = (int) ($import['import_id'] ?? 0);
-        if ($importId <= 0) {
-            return ['success' => false, 'message' => "{$this->miraklMcmMarketplaceLabel()} P41 image import did not return an import_id."];
-        }
-
-        $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
-        if (! ($poll['success'] ?? false)) {
-            return $this->miraklMcmAttachImportErrorReport($poll, $importId, $sku);
-        }
-
-        $verify = $this->verifyMiraklMcmImages($sku, $imageUrls);
-        $label = $this->miraklMcmMarketplaceLabel();
-        $integrationPending = (bool) ($poll['mcm_integration_pending'] ?? false);
-        $lockedNotice = $this->miraklMcmP42LockedValuesNotice(
-            is_array($poll['response'] ?? null) ? $poll['response'] : null
-        );
-
-        if ($integrationPending) {
-            $message = trim((string) ($poll['message'] ?? ''));
-            if ($message === '') {
-                $message = "{$label} P41 image import #{$importId} accepted (SENT) — MCM mainImage may not show in UI yet.";
-            }
-        } else {
-            $message = "{$label} images updated via MCM P41 (import #{$importId}).";
-            if ($verify['verified'] ?? false) {
-                $message .= ' MCM mainImage read-back verified.';
-            } else {
-                $message .= ' Warning: '.($verify['message'] ?? 'MCM mainImage not verified yet.');
-            }
-        }
-
-        if ($lockedNotice !== '' && ! str_contains($message, 'manually edited')) {
-            $message .= ' '.$lockedNotice;
-        }
-
-        return [
-            'success' => true,
-            'message' => trim($message),
-            'import_id' => $importId,
-            'import_status' => $poll['import_status'] ?? null,
-            'mcm_verified' => $verify['verified'] ?? false,
-            'mcm_integration_pending' => $integrationPending,
-        ];
-    }
-
-    /**
-     * @param  list<string>  $imageUrls
-     * @param  list<string>  $bulletLines
-     * @param  list<string>  $attributeCodes
-     */
-    protected function buildMiraklMcmP41ImageImportCsv(
-        string $sku,
-        array $imageUrls,
-        array $bulletLines,
-        array $attributeCodes,
-        ?string $hierarchy = null
-    ): string {
-        $maxLen = (int) $this->miraklMcmConfig('features_benefits_max_length', 254);
-        $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
-        if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
-            Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 image using image-only row (no categoryCode)', [
-                'sku' => $sku,
-            ]);
-            $useEnriched = false;
-        }
-
-        $rowValues = $useEnriched
-            ? $this->resolveMiraklMcmP41RowValues($sku, $bulletLines, $attributeCodes, $hierarchy, $maxLen, null, null, $imageUrls)
-            : $this->resolveMiraklMcmP41ImageOnlyRowValues($sku, $imageUrls, $hierarchy);
-        $rowValues = $this->miraklMcmCompleteP41RequiredAttributes($sku, $hierarchy, $rowValues, [
-            'images' => $imageUrls,
-            'bullets' => $bulletLines,
-        ]);
-
-        $headers = array_keys($rowValues);
-        $values = array_values($rowValues);
-
-        $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, $headers);
-        fputcsv($handle, $values);
-        rewind($handle);
-        $csv = stream_get_contents($handle);
-        fclose($handle);
-
-        Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 image CSV columns', [
-            'sku' => $sku,
-            'columns' => $headers,
-        ]);
-
-        return "\xEF\xBB\xBF".($csv ?: '');
-    }
-
-    /**
-     * @param  list<string>  $imageUrls
-     * @return array<string, string>
-     */
-    protected function resolveMiraklMcmP41ImageOnlyRowValues(string $sku, array $imageUrls, ?string $hierarchy): array
-    {
-        $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = $this->miraklMcmCategoryColumn();
-
-        $row = [
-            $skuColumn => $sku,
-        ];
-        if ($hierarchy !== null && trim($hierarchy) !== '') {
-            $row[$categoryColumn] = trim($hierarchy);
-        }
-
-        return array_merge($row, $this->miraklMcmP41ImageFieldValues($imageUrls));
-    }
-
-    /**
-     * Minimal enriched P41 row for image-only updates (shop identifiers + image MEDIA columns).
-     *
-     * @param  list<string>  $imageUrls
-     * @return array<string, string>
-     */
-    protected function resolveMiraklMcmP41ImageRowValues(string $sku, array $imageUrls, ?string $hierarchy): array
-    {
-        $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = $this->miraklMcmCategoryColumn();
-        $offer = $this->fetchMiraklMcmOfferBySku($sku);
-        $priceRow = $this->fetchMiraklMcmPriceDataRowBySku($sku) ?? $this->fetchMiraklMcmRelatedPriceDataRow($sku);
-        $connect = $this->resolveMiraklMcmConnectCatalogContext($sku);
-
-        $row = [
-            $skuColumn => $sku,
-        ];
-        if ($hierarchy !== null && trim($hierarchy) !== '') {
-            $row[$categoryColumn] = trim($hierarchy);
-        }
-
-        $productSku = trim((string) ($offer['product_sku'] ?? $priceRow?->product_sku ?? $connect['product_sku'] ?? ''));
-        if ($productSku !== '') {
-            $row['pid'] = $productSku;
-        }
-
-        $upc = $this->miraklMcmOfferReference($offer, 'UPC')
-            ?: trim((string) ($connect['upc'] ?? ''))
-            ?: trim((string) ($priceRow?->upc ?? ''));
-        if ($upc !== '') {
-            $row['UPC'] = $upc;
-        }
-
-        foreach ($this->miraklMcmP41ImageFieldValues($imageUrls) as $code => $value) {
-            $row[$code] = $value;
-        }
-
-        return $row;
+        return $this->miraklMcmP41PushSuccess('images', $submit, $verify, 'MCM mainImage read-back verified.');
     }
 
     /**
@@ -1986,40 +2308,6 @@ trait MiraklMcmBulletImport
     }
 
     /**
-     * @param  list<string>  $bulletLines
-     * @param  list<string>  $attributeCodes
-     */
-    protected function buildMiraklMcmP41BulletImportCsv(string $sku, array $bulletLines, array $attributeCodes, ?string $hierarchy = null): string
-    {
-        $maxLen = (int) $this->miraklMcmConfig('features_benefits_max_length', 254);
-        $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
-
-        $rowValues = $useEnriched
-            ? $this->resolveMiraklMcmP41RowValues($sku, $bulletLines, $attributeCodes, $hierarchy, $maxLen)
-            : $this->resolveMiraklMcmP41BulletOnlyRowValues($sku, $bulletLines, $attributeCodes, $hierarchy, $maxLen);
-        $rowValues = $this->miraklMcmCompleteP41RequiredAttributes($sku, $hierarchy, $rowValues, [
-            'bullets' => $bulletLines,
-        ]);
-
-        $headers = array_keys($rowValues);
-        $values = array_values($rowValues);
-
-        $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, $headers);
-        fputcsv($handle, $values);
-        rewind($handle);
-        $csv = stream_get_contents($handle);
-        fclose($handle);
-
-        Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 CSV columns', [
-            'sku' => $sku,
-            'columns' => $headers,
-        ]);
-
-        return "\xEF\xBB\xBF".($csv ?: '');
-    }
-
-    /**
      * @return array{success: bool, message: string, import_id?: int, import_status?: string|null, mcm_verified?: bool}
      */
     protected function pushDescriptionViaMiraklMcm(string $sku, string $description): array
@@ -2037,158 +2325,23 @@ trait MiraklMcmBulletImport
             return ['success' => false, 'message' => 'Description is required for MCM P41.'];
         }
 
-        $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
-        $hierarchy = $this->resolveMiraklMcmHierarchyForP41($sku);
-        if ($useEnriched && ($hierarchy === null || trim($hierarchy) === '')) {
-            $label = $this->miraklMcmMarketplaceLabel();
-
-            return [
-                'success' => false,
-                'message' => "{$label} MCM P41 description skipped: categoryCode could not be resolved for [{$sku}].",
-            ];
-        }
-
-        $fbCodes = $this->resolveMiraklMcmBulletAttributeCodes($hierarchy);
-        $bulletLines = $this->resolveMiraklMcmBulletLinesForP41Row($sku, $fbCodes);
+        $context = $this->miraklMcmP41PushContext($sku, ['description' => $description]);
 
         Log::info("{$this->miraklMcmMarketplaceLabel()} MCM description push (P41)", [
             'sku' => $sku,
-            'hierarchy' => $hierarchy,
             'description_chars' => mb_strlen($description),
-            'bullet_lines_for_row' => count($bulletLines),
+            'bullet_lines_for_row' => count($context['bullets']),
         ]);
 
-        $csv = $this->buildMiraklMcmP41DescriptionImportCsv($sku, $description, $bulletLines, $fbCodes, $hierarchy);
-        $import = $this->importMiraklMcmProductsP41($csv);
-        if (! ($import['success'] ?? false)) {
-            return $import;
+        $submit = $this->submitMiraklMcmP41ContentRow($sku, $context, 'description');
+        if (! ($submit['success'] ?? false)) {
+            return $submit;
         }
+        $verify = ($submit['deduped'] ?? false) || ($submit['mcm_integration_pending'] ?? false)
+            ? []
+            : $this->verifyMiraklMcmDescription($sku, $description);
 
-        $importId = (int) ($import['import_id'] ?? 0);
-        if ($importId <= 0) {
-            return ['success' => false, 'message' => "{$this->miraklMcmMarketplaceLabel()} P41 description import did not return an import_id."];
-        }
-
-        $poll = $this->waitForMiraklMcmImportP42($importId, $sku);
-        if (! ($poll['success'] ?? false)) {
-            return $this->miraklMcmAttachImportErrorReport($poll, $importId, $sku);
-        }
-
-        $verify = $this->verifyMiraklMcmDescription($sku, $description);
-        $label = $this->miraklMcmMarketplaceLabel();
-        $integrationPending = (bool) ($poll['mcm_integration_pending'] ?? false);
-        $lockedNotice = $this->miraklMcmP42LockedValuesNotice(
-            is_array($poll['response'] ?? null) ? $poll['response'] : null
-        );
-
-        if ($integrationPending) {
-            $message = trim((string) ($poll['message'] ?? ''));
-            if ($message === '') {
-                $message = "{$label} P41 description import #{$importId} accepted (SENT) — MCM productLongDescription may not show in UI yet.";
-            }
-        } else {
-            $message = "{$label} description updated via MCM P41 (import #{$importId}).";
-            if ($verify['verified'] ?? false) {
-                $message .= ' MCM description read-back verified.';
-            } else {
-                $message .= ' Warning: '.($verify['message'] ?? 'MCM description not verified yet.');
-            }
-        }
-
-        if ($lockedNotice !== '' && ! str_contains($message, 'manually edited')) {
-            $message .= ' '.$lockedNotice;
-        }
-
-        return [
-            'success' => true,
-            'message' => trim($message),
-            'import_id' => $importId,
-            'import_status' => $poll['import_status'] ?? null,
-            'mcm_verified' => $verify['verified'] ?? false,
-            'mcm_integration_pending' => $integrationPending,
-        ];
-    }
-
-    /**
-     * @param  list<string>  $bulletLines
-     * @param  list<string>  $attributeCodes
-     */
-    protected function buildMiraklMcmP41DescriptionImportCsv(
-        string $sku,
-        string $description,
-        array $bulletLines,
-        array $attributeCodes,
-        ?string $hierarchy = null
-    ): string {
-        $maxLen = (int) $this->miraklMcmConfig('features_benefits_max_length', 254);
-        $useEnriched = filter_var($this->miraklMcmConfig('mcm_p41_enriched_row', true), FILTER_VALIDATE_BOOL);
-
-        $rowValues = $useEnriched
-            ? $this->resolveMiraklMcmP41RowValues($sku, $bulletLines, $attributeCodes, $hierarchy, $maxLen, null, $description)
-            : $this->resolveMiraklMcmP41DescriptionOnlyRowValues($sku, $description, $hierarchy);
-        $rowValues = $this->miraklMcmCompleteP41RequiredAttributes($sku, $hierarchy, $rowValues, [
-            'description' => $description,
-            'bullets' => $bulletLines,
-        ]);
-
-        $headers = array_keys($rowValues);
-        $values = array_values($rowValues);
-
-        $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, $headers);
-        fputcsv($handle, $values);
-        rewind($handle);
-        $csv = stream_get_contents($handle);
-        fclose($handle);
-
-        Log::info($this->miraklMcmMarketplaceLabel().' MCM P41 description CSV columns', [
-            'sku' => $sku,
-            'columns' => $headers,
-        ]);
-
-        return "\xEF\xBB\xBF".($csv ?: '');
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    protected function resolveMiraklMcmP41DescriptionOnlyRowValues(string $sku, string $description, ?string $hierarchy): array
-    {
-        $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = $this->miraklMcmCategoryColumn();
-
-        $row = [
-            $skuColumn => $sku,
-            'productLongDescription' => trim($description),
-        ];
-        if ($hierarchy !== null && trim($hierarchy) !== '') {
-            $row[$categoryColumn] = trim($hierarchy);
-        }
-
-        return $row;
-    }
-
-    /**
-     * @param  list<string>  $bulletLines
-     * @param  list<string>  $attributeCodes
-     * @return array<string, string>
-     */
-    protected function resolveMiraklMcmP41BulletOnlyRowValues(
-        string $sku,
-        array $bulletLines,
-        array $attributeCodes,
-        ?string $hierarchy,
-        int $maxLen
-    ): array {
-        $skuColumn = (string) $this->miraklMcmConfig('mcm_sku_column', 'shopSku');
-        $categoryColumn = $this->miraklMcmCategoryColumn();
-
-        $row = [$skuColumn => $sku];
-        if ($hierarchy !== null && trim($hierarchy) !== '') {
-            $row[$categoryColumn] = trim($hierarchy);
-        }
-
-        return array_merge($row, $this->miraklMcmP41BulletFieldValues($bulletLines, $attributeCodes, $maxLen));
+        return $this->miraklMcmP41PushSuccess('description', $submit, $verify, 'MCM description read-back verified.');
     }
 
     /**
@@ -2433,7 +2586,7 @@ trait MiraklMcmBulletImport
             }
             $required[$code] = true;
             if (! isset($byCode[$code])) {
-                $byCode[$code] = ['code' => $code, 'label' => (string) $name];
+                $byCode[$code] = $this->miraklMcmPm11AttributeByCode($code, $hierarchy) ?? ['code' => $code, 'label' => (string) $name];
             }
         }
 
@@ -2468,7 +2621,7 @@ trait MiraklMcmBulletImport
                 $value = trim((string) ($this->miraklMcmExistingAttributeValue($existing, $code) ?? ''));
             }
             if ($value === '') {
-                $value = trim((string) ($hierarchyDefaults[$code] ?? $defaults[$code] ?? ''));
+                $value = $this->miraklMcmConfiguredP41Default($code, $hierarchyDefaults, $defaults);
             }
             if ($value === '') {
                 $master ??= $this->miraklMcmMasterData($sku);
@@ -2520,6 +2673,27 @@ trait MiraklMcmBulletImport
         }
 
         return $row;
+    }
+
+    /**
+     * Config default for an attribute: exact code first, then the leaf after the category prefix
+     * ("Car_Speakers.speakerSize" can be configured as "speakerSize").
+     *
+     * @param  array<string, mixed>  $hierarchyDefaults
+     * @param  array<string, mixed>  $defaults
+     */
+    protected function miraklMcmConfiguredP41Default(string $code, array $hierarchyDefaults, array $defaults): string
+    {
+        $leaf = str_contains($code, '.') ? substr($code, (int) strrpos($code, '.') + 1) : $code;
+        foreach ([$hierarchyDefaults, $defaults] as $source) {
+            foreach (array_unique([$code, $leaf]) as $key) {
+                if (isset($source[$key]) && is_scalar($source[$key]) && trim((string) $source[$key]) !== '') {
+                    return trim((string) $source[$key]);
+                }
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -2605,6 +2779,12 @@ trait MiraklMcmBulletImport
         }
         if (preg_match('/feature_?bullets?\W*\d+\W*(desc|description|text|value|body)/', $fullCode) === 1) {
             return 'feature_bullet_description';
+        }
+        if (preg_match('/speaker ?size|driver ?size|woofer ?size|speakersize|driversize|woofersize/', $text) === 1) {
+            return 'speaker_size';
+        }
+        if (preg_match('/vehicle ?type|vehicletype|vehicle ?compat|vehiclecompat/', $text) === 1) {
+            return 'vehicle_type';
         }
         $fullText = strtolower(preg_replace('/[-_.]+/', ' ', $code).' '.(string) ($attr['label'] ?? ''));
         $early = [
@@ -2813,6 +2993,23 @@ trait MiraklMcmBulletImport
         return mb_substr(implode(' ', array_slice(preg_split('/\s+/', $t) ?: [], 0, 3)), 0, 60);
     }
 
+    /**
+     * 'SP 12120 … 12 Inch …' => '12"', '6x9" coaxial' => '6x9"', '6.5-inch' => '6.5"'; '' when the
+     * text names no driver size.
+     */
+    protected function miraklMcmSpeakerSizeFromText(string $text): string
+    {
+        $text = str_replace(['”', '″', "''"], '"', $text);
+        if (preg_match('/\b(\d{1,2}(?:\.\d)?)\s*(?:"|-?\s*in(?:ch(?:es)?)?\b\.?)?\s*[x×]\s*(\d{1,2}(?:\.\d)?)\s*(?:"|-?\s*in(?:ch(?:es)?)?\b)/iu', $text, $m) === 1) {
+            return $m[1].'x'.$m[2].'"';
+        }
+        if (preg_match('/\b(\d{1,2}(?:\.\d)?)\s*(?:"|-?\s*inch(?:es)?\b|-?\s*in\b\.?)/iu', $text, $m) === 1) {
+            return $m[1].'"';
+        }
+
+        return '';
+    }
+
     protected function miraklMcmGuessHaystack(array $master, array $context): string
     {
         $bullets = (array) (! empty($context['bullets']) ? $context['bullets'] : ($master['bullets'] ?? []));
@@ -2923,6 +3120,17 @@ trait MiraklMcmBulletImport
                 $images = array_values(array_filter(array_map('trim', (array) (! empty($context['images']) ? $context['images'] : ($master['images'] ?? [])))));
 
                 return $images[0] ?? '';
+            case 'speaker_size':
+                return $this->miraklMcmSpeakerSizeFromText($title.' '.implode(' ', $bullets));
+            case 'vehicle_type':
+                $haystack = strtolower($title.' '.implode(' ', $bullets));
+                foreach (['Motorcycle' => '/motorcycle|motorbike/', 'Boat' => '/\bmarine\b|\bboat/', 'Truck' => '/\btruck/', 'Car' => '/\bcar\b|\bauto(motive)?\b|\bvehicle/'] as $type => $pattern) {
+                    if (preg_match($pattern, $haystack) === 1) {
+                        return $type;
+                    }
+                }
+
+                return '';
             case 'size':
                 return 'One Size';
             case 'list_guess':
@@ -2968,6 +3176,39 @@ trait MiraklMcmBulletImport
             if ($norm((string) $code) === $target || $norm($label) === $target) {
                 return (string) $code;
             }
+        }
+
+        if ($semantic === 'speaker_size') {
+            // '12"' must match "12 in." / "12 Inches" / '12"' but not "1.2" or "120mm".
+            $numbers = static function (string $s): array {
+                preg_match_all('/\d+(?:\.\d+)?/', str_replace(['½', ' 1/2'], ['.5', '.5'], $s), $m);
+
+                return array_map('floatval', $m[0]);
+            };
+            $wanted = $numbers($value);
+            foreach ($values as $code => $label) {
+                if ($wanted !== [] && $numbers($label) === $wanted && preg_match('/mm|cm/i', $label) !== 1) {
+                    return (string) $code;
+                }
+            }
+
+            return '';
+        }
+        if ($semantic === 'vehicle_type') {
+            foreach ($values as $code => $label) {
+                if (str_starts_with($norm($label), $target) || str_starts_with($target, $norm($label))) {
+                    return (string) $code;
+                }
+            }
+            foreach (['universal', 'allvehicles', 'car', 'cars', 'passengercar', 'automotive'] as $generic) {
+                foreach ($values as $code => $label) {
+                    if ($norm($label) === $generic || str_starts_with($norm($label), $generic)) {
+                        return (string) $code;
+                    }
+                }
+            }
+
+            return '';
         }
 
         $booleanSynonyms = match ($target) {
@@ -3828,11 +4069,8 @@ trait MiraklMcmBulletImport
                 if (preg_match('/\b1004\b|category could not be identified/i', $errorReport)) {
                     $column = $this->miraklMcmCategoryColumn();
                     $envName = strtoupper(str_replace('purchasingpower', 'purchasing_power', $this->miraklMcmConfigKey())).'_MCM_CATEGORY_COLUMN';
-                    $nextColumn = $this->rememberMiraklMcmCategoryColumnRejected($column);
-                    $hint = " Mirakl did not recognise \"{$column}\" as the category column.";
-                    $hint .= $nextColumn !== null && $nextColumn !== $column
-                        ? " Click Publish again — the next attempt sends the category as \"{$nextColumn}\" (or set {$envName} to the operator's category attribute code)."
-                        : " Set {$envName} to the operator's category attribute code.";
+                    $hint = " Mirakl found no category in column \"{$column}\" (error 1004 = category column missing, empty or not the operator's CATEGORY attribute)."
+                        ." Check that {$envName} (if set) matches the PM11 attribute with role CATEGORY and that this SKU's category code exists in H11.";
                 } elseif (preg_match('/\b100[156]\b|category is unknown|leaf operator/i', $errorReport)) {
                     $hint = ' Pick a leaf category from the Category tab (the code sent is not a valid leaf on this marketplace).';
                 }

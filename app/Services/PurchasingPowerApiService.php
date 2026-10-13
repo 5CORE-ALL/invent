@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\PurchasingPowerProduct;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Purchasing Power — Mirakl Connect channel + MCM seller APIs (OF21 / OR11 / PRI01).
@@ -65,6 +67,42 @@ class PurchasingPowerApiService extends BestBuyApiService
     protected function miraklMcmP41ExtraAttributeValues(string $sku, ?string $hierarchy, array $offer, mixed $priceRow): array
     {
         return [];
+    }
+
+    /**
+     * Purchasing Power has no price-data sheet; when neither the live offer (OF21) nor the MCM
+     * product (P31) names the category, reuse the category_code Mirakl put on this SKU's order lines.
+     */
+    protected function resolveMiraklMcmHierarchyExtraFallback(string $sku): ?string
+    {
+        $candidates = array_values(array_unique(array_filter([
+            trim($sku),
+            str_replace(' ', '', trim($sku)),
+            ...$this->miraklMcmRelatedSkuCandidates($sku),
+        ])));
+        foreach (['purchasing_power_sales', 'purchasing_power_sales_l60'] as $table) {
+            try {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'category_code')) {
+                    continue;
+                }
+                $code = DB::table($table)
+                    ->where(function ($q) use ($candidates) {
+                        $q->whereIn('offer_sku', $candidates)->orWhereIn('product_sku', $candidates);
+                    })
+                    ->whereNotNull('category_code')
+                    ->where('category_code', '!=', '')
+                    ->orderByDesc('id')
+                    ->value('category_code');
+            } catch (\Throwable $e) {
+                Log::warning('Purchasing Power category lookup from sales failed', ['table' => $table, 'error' => $e->getMessage()]);
+                continue;
+            }
+            if (is_string($code) && trim($code) !== '') {
+                return trim($code);
+            }
+        }
+
+        return null;
     }
 
     /**
