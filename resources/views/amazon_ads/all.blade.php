@@ -4712,6 +4712,10 @@
             function amzHistoryFmt(v) {
                 var n = Number(v);
                 if (!isFinite(n)) return '-';
+                if (amzCpcAvgRow && amzCpcAvgRow.badgeHistory) {
+                    if (amzHistoryIsPercent()) return Math.round(n) + '%';
+                    return '$' + Math.round(n).toLocaleString('en-US');
+                }
                 if (amzHistoryIsPercent()) return n.toFixed(1) + '%';
                 return '$' + n.toFixed(2);
             }

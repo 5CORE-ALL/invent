@@ -4773,7 +4773,8 @@ class AmazonAdsController extends Controller
 
     /**
      * Rolling history for the Yesterday Spend / Ads Sales / ACOS badges.
-     * Same campaign universe as those badges. Daily rows, one value per calendar day.
+     * Same campaign universe and the same L1 columns as those badges (cost, sales30d).
+     * The latest point is the badge total. Older points are that column on each calendar day.
      */
     public function yesterdayBadgeHistory(Request $request): JsonResponse
     {
@@ -4810,11 +4811,33 @@ class AmazonAdsController extends Controller
         $span = $days === 0 ? 364 : max(0, $days - 1);
         $start = Carbon::parse($end)->subDays($span)->toDateString();
         $byDate = [];
+        $badgeSpend = 0.0;
+        $badgeSales = 0.0;
+        $haveBadge = false;
         foreach ($tables as $table) {
             $byDate = AmazonAdsYesterdayBadgeHistory::mergeDaily(
                 $byDate,
                 self::dailySpendSalesForFilteredCampaigns($request, $table, $start, $end)
             );
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            $dbColumns = self::orderedColumnsForTable($table);
+            $universe = self::badgeUniverseQuery($request, $table, $dbColumns);
+            if ($universe === null) {
+                continue;
+            }
+            $agg = self::sumLatestSummaryMetricsForFilteredCampaigns($universe, $table, $dbColumns, 'L1');
+            $badgeSpend += (float) $agg['cost_sum'];
+            $badgeSales += (float) $agg['sales_sum'];
+            $haveBadge = true;
+        }
+        if ($haveBadge) {
+            // Rightmost point is the Yesterday badge itself (L1 cost + sales30d), not a different daily column.
+            $byDate[$end] = [
+                'spend' => $badgeSpend,
+                'sales' => $badgeSales,
+            ];
         }
         if ($byDate === []) {
             return response()->json(['ok' => true, 'points' => [], 'tones' => $emptyTones]);
@@ -4897,7 +4920,8 @@ class AmazonAdsController extends Controller
             $latest->groupBy('src.report_date_range', 'src.campaign_id');
         }
 
-        $salesExpr = self::dailySalesPreferExpr('t', $dbColumns);
+        $salesCol = self::l30SummarySalesDbColumn($dbColumns);
+        $salesExpr = $salesCol !== null ? 'COALESCE(t.`'.$salesCol.'`, 0)' : '0';
         $rows = DB::query()
             ->fromSub($latest, 'm')
             ->join($table.' as t', 't.id', '=', 'm.max_id')
@@ -4921,26 +4945,6 @@ class AmazonAdsController extends Controller
         }
 
         return $out;
-    }
-
-    /**
-     * Daily sales: first positive of sales1d, sales, sales30d, sales7d (same as the Y Sales row).
-     *
-     * @param  array<int, string>  $dbColumns
-     */
-    private static function dailySalesPreferExpr(string $alias, array $dbColumns): string
-    {
-        $parts = [];
-        foreach (['sales1d', 'sales', 'sales30d', 'sales7d'] as $col) {
-            if (in_array($col, $dbColumns, true)) {
-                $parts[] = 'NULLIF('.$alias.'.`'.$col.'`, 0)';
-            }
-        }
-        if ($parts === []) {
-            return '0';
-        }
-
-        return 'COALESCE('.implode(', ', $parts).', 0)';
     }
 
     /**

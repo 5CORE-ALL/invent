@@ -68,6 +68,6 @@ class AmazonAdsYesterdayBadgeHistoryTest extends TestCase
         $this->assertSame([
             ['date' => '2026-10-14', 'yspend' => 12.5],
         ], AmazonAdsYesterdayBadgeHistory::chartPoints($series, 'yspend'));
-        $this->assertSame(31.3, AmazonAdsYesterdayBadgeHistory::chartPoints($series, 'yacos')[0]['yacos']);
+        $this->assertSame(31.0, AmazonAdsYesterdayBadgeHistory::chartPoints($series, 'yacos')[0]['yacos']);
     }
 }

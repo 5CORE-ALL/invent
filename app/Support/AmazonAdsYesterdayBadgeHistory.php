@@ -44,7 +44,7 @@ final class AmazonAdsYesterdayBadgeHistory
         if ($sales > 0) {
             $v = ($spend / $sales) * 100;
 
-            return is_finite($v) ? round($v, 1) : 0.0;
+            return is_finite($v) ? (float) round($v, 0) : 0.0;
         }
         if ($spend > 0) {
             return 100.0;
