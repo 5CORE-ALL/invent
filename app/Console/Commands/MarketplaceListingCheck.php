@@ -69,7 +69,7 @@ class MarketplaceListingCheck extends Command
         $this->line(sprintf('REQ %d | NRL %d | Listed %d | Missing L %d', $counts['REQ'], $counts['NRL'], $counts['Listed'], $counts['Pending']));
 
         $missing = AutomatedListingPage::rows($listingKey)
-            ->filter(fn ($r) => (int) ($r->INV ?? 0) > 0 && ($r->nr_req ?? '') === 'REQ' && ($r->listed ?? '') !== 'Listed')
+            ->filter(fn ($r) => (int) ($r->INV ?? 0) > 0 && ($r->nr_req ?? '') === 'REQ' && ($r->listed ?? '') === 'Pending')
             ->values();
 
         $compactOffers = [];
@@ -158,7 +158,7 @@ class MarketplaceListingCheck extends Command
         $this->line(sprintf('REQ %d | NRL %d | Listed %d | Missing L %d', $counts['REQ'], $counts['NRL'], $counts['Listed'], $counts['Pending']));
 
         $missing = AutomatedListingPage::rows('topdawg')
-            ->filter(fn ($r) => (int) ($r->INV ?? 0) > 0 && ($r->nr_req ?? '') === 'REQ' && ($r->listed ?? '') !== 'Listed')
+            ->filter(fn ($r) => (int) ($r->INV ?? 0) > 0 && ($r->nr_req ?? '') === 'REQ' && ($r->listed ?? '') === 'Pending')
             ->values();
 
         $this->line('');

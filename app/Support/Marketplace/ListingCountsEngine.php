@@ -152,6 +152,22 @@ class ListingCountsEngine
     }
 
     /**
+     * Listed-map ids with this prefix are pages created on the marketplace that are
+     * not Published / Active: counted as neither Listed nor Missing L.
+     */
+    public const PAGE_CREATED_PREFIX = 'created:';
+
+    public static function isPageCreatedId(?string $id): bool
+    {
+        return $id !== null && str_starts_with($id, self::PAGE_CREATED_PREFIX);
+    }
+
+    public static function pageCreatedId(string $id): string
+    {
+        return self::isPageCreatedId($id) ? $id : self::PAGE_CREATED_PREFIX.$id;
+    }
+
+    /**
      * @param  Collection<string, mixed>  $nrValuesBySkuUpper  sku_upper → raw DataView value
      * @param  array<string, string>  $listedIdBySkuLower  sku_lower → non-empty listing id when listed
      * @return array{REQ: int, NRL: int, Listed: int, Pending: int, MissingL: int}
@@ -187,6 +203,9 @@ class ListingCountsEngine
             }
 
             $listingId = self::listingIdFromMap($listedIdBySkuLower, $sku);
+            if (self::isPageCreatedId($listingId)) {
+                continue;
+            }
             if ($listingId !== '') {
                 $listedCount++;
             } elseif ($nrReq === 'REQ') {

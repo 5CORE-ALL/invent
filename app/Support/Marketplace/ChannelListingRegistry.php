@@ -646,15 +646,12 @@ class ChannelListingRegistry
                 if ($sku === '') {
                     return;
                 }
-                $listed = (float) ($row->price ?? 0) > 0;
-                if (! $listed && $hasStatus) {
-                    $status = strtolower(trim((string) ($row->listing_status ?? '')));
-                    $listed = in_array($status, ['active', 'inactive'], true)
-                        && $row->updated_at !== null
-                        && $row->updated_at >= $freshSince;
-                }
-                if ($listed) {
+                $status = $hasStatus ? strtolower(trim((string) ($row->listing_status ?? ''))) : '';
+                $fresh = $row->updated_at !== null && $row->updated_at >= $freshSince;
+                if ((float) ($row->price ?? 0) > 0 || ($status === 'active' && $fresh)) {
                     self::putListedId($byKey, $wanted, $sku, $sku);
+                } elseif ($status === 'inactive' && $fresh) {
+                    self::putListedId($byKey, $wanted, $sku, ListingCountsEngine::pageCreatedId($sku));
                 }
             });
 
@@ -695,8 +692,8 @@ class ChannelListingRegistry
     }
 
     /**
-     * Listed = any live MCM offer (active or inactive) whose shop SKU, Mirakl
-     * product SKU or UPC matches the Product Master SKU.
+     * Listed = active MCM offer whose shop SKU, Mirakl product SKU or UPC matches the
+     * Product Master SKU. A matching inactive offer is a page created (neither Listed nor Missing L).
      *
      * @param  list<string>  $skus
      * @param  array{offers: list<array<string, mixed>>}  $index
@@ -707,6 +704,12 @@ class ChannelListingRegistry
         $keyMap = \App\Services\MarketplaceManager\MiraklMcmOfferIndex::skuKeyMap($index);
         $upcMap = \App\Services\MarketplaceManager\MiraklMcmOfferIndex::upcMap($index);
         $upcBySku = $upcMap === [] ? [] : self::productMasterUpcs($skus);
+        $activeShopSkus = [];
+        foreach ($index['offers'] ?? [] as $offer) {
+            if (! empty($offer['active']) && (string) ($offer['shop_sku'] ?? '') !== '') {
+                $activeShopSkus[strtoupper((string) $offer['shop_sku'])] = true;
+            }
+        }
 
         $map = [];
         foreach ($skus as $raw) {
@@ -728,7 +731,9 @@ class ChannelListingRegistry
                 }
             }
             if ($hit !== '') {
-                $map[strtolower($sku)] = $hit;
+                $map[strtolower($sku)] = isset($activeShopSkus[strtoupper($hit)])
+                    ? $hit
+                    : ListingCountsEngine::pageCreatedId($hit);
             }
         }
 
@@ -1196,8 +1201,9 @@ class ChannelListingRegistry
     }
 
     /**
-     * TopDawg Listed = row from the live SupplierProduct/list catalog in topdawg_products,
-     * in any state (pending / review / rejected are on TopDawg, so not Missing L).
+     * TopDawg Listed = published row from the live SupplierProduct/list catalog in
+     * topdawg_products. Pending / review / rejected / inactive rows are pages created
+     * (neither Listed nor Missing L).
      * Pack / GTR / parent product_code aliases count as listed.
      *
      * @param  list<string>  $skus
@@ -1228,6 +1234,9 @@ class ChannelListingRegistry
                         if ($id === '') {
                             continue;
                         }
+                        if (! self::topDawgStateIsPublished($row->listing_state ?? null)) {
+                            $id = ListingCountsEngine::pageCreatedId($id);
+                        }
                         ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, $id, true);
                     }
                 });
@@ -1245,6 +1254,9 @@ class ChannelListingRegistry
                     if (! self::isLiveTopDawgListingId($id, $sku)) {
                         continue;
                     }
+                    if (! self::topDawgStateIsPublished($row['state'] ?? null)) {
+                        $id = ListingCountsEngine::pageCreatedId($id);
+                    }
                     ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, $id, true);
                 }
             }
@@ -1253,6 +1265,22 @@ class ChannelListingRegistry
         }
 
         return ListingCountsEngine::listedMapForProductSkus($skus, $byNorm, true);
+    }
+
+    /**
+     * SupplierProduct/list rows carry no status field, so a blank state is a published product.
+     */
+    private static function topDawgStateIsPublished(?string $state): bool
+    {
+        $s = strtolower(trim((string) $state));
+        if ($s === '' || $s === 'other') {
+            return true;
+        }
+        if (ListingCountsEngine::isPendingOrReviewListingState($s)) {
+            return false;
+        }
+
+        return ! in_array($s, ['inactive', 'disabled', 'deactivated', 'archived', 'suspended', 'no', 'false', '0'], true);
     }
 
     /**

@@ -150,6 +150,20 @@ class MiraklMcmOfferIndex
     }
 
     /**
+     * Active offers first, so a key shared by an active and an inactive offer maps to the active one.
+     *
+     * @param  array{offers: list<array<string, mixed>>}  $index
+     * @return list<array<string, mixed>>
+     */
+    private static function activeFirst(array $index): array
+    {
+        $offers = $index['offers'] ?? [];
+        usort($offers, static fn ($a, $b) => (int) empty($a['active']) <=> (int) empty($b['active']));
+
+        return $offers;
+    }
+
+    /**
      * Match keys of every offer (shop SKU and Mirakl product SKU) => shop_sku.
      *
      * @param  array{offers: list<array<string, mixed>>}  $index
@@ -158,7 +172,7 @@ class MiraklMcmOfferIndex
     public static function skuKeyMap(array $index): array
     {
         $map = [];
-        foreach ($index['offers'] ?? [] as $offer) {
+        foreach (self::activeFirst($index) as $offer) {
             $shopSku = (string) ($offer['shop_sku'] ?? '');
             foreach ([$shopSku, (string) ($offer['product_sku'] ?? '')] as $sku) {
                 if ($sku === '') {
@@ -180,7 +194,7 @@ class MiraklMcmOfferIndex
     public static function upcMap(array $index): array
     {
         $map = [];
-        foreach ($index['offers'] ?? [] as $offer) {
+        foreach (self::activeFirst($index) as $offer) {
             $upc = ltrim(preg_replace('/\D/', '', (string) ($offer['upc'] ?? '')) ?? '', '0');
             if ($upc !== '') {
                 $map[$upc] ??= (string) ($offer['shop_sku'] ?? '');
