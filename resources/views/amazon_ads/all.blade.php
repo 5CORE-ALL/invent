@@ -1085,6 +1085,8 @@
         #amazonAdsSbidRuleModal .amz-sbid-leg-head span:nth-child(4) { text-align: right; }
         #amazonAdsSbidRuleModal .amz-sbid-leg-row strong { font-variant-numeric: tabular-nums; }
         #amazonAdsSbidRuleModal .amz-sbid-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
+        #amazonAdsSbidRuleModal .amz-sbid-leg-total { margin-top: 4px; padding-top: 6px; border-top: 1px solid #e2e8f0; font-weight: 700; color: #0f172a; }
+        #amazonAdsSbidRuleModal .amz-sbid-sum-all { margin-left: auto; font-weight: 700; color: #0f172a; }
         #amazonAdsSbidRuleModal .amz-sbid-swatch { width: 8px; height: 8px; border-radius: 50%; }
         #amazonAdsSbidRuleModal .amz-sbid-fields { margin-top: 10px; }
         #amazonAdsSbidRuleModal .amz-sbid-field {
@@ -1812,6 +1814,7 @@
                         <label for="amazonAdsSbidRuleUtilHigh">High %</label>
                         <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required title="Both U7% and U1% must be above this">
                         <span class="text-muted">Counts are every campaign in the current filters, the same set as the CAMPAIGN badge.</span>
+                        <span class="amz-sbid-sum-all">Sum of counts: <span id="amazonAdsSbidSumAll">0</span></span>
                     </div>
                     <div class="amz-sbid-cols">
                         <div class="amz-sbid-col" data-amz-sbid-panel="below">
@@ -7965,7 +7968,7 @@
                     legend.innerHTML = head + rows.map(function (r) {
                         var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
                         return '<div class="amz-sbid-leg-row"><span class="amz-sbid-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-sbid-leg-pct">' + pct + '%</span></div>';
-                    }).join('');
+                    }).join('') + '<div class="amz-sbid-leg-row amz-sbid-leg-total"><span></span><span>Sum</span><strong>' + total.toLocaleString('en-US') + '</strong><span class="amz-sbid-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>';
                 }
                 if (!canvas || typeof Chart === 'undefined') return;
                 if (amzSbidCharts[key]) { try { amzSbidCharts[key].destroy(); } catch (e) {} amzSbidCharts[key] = null; }
@@ -8012,7 +8015,9 @@
             }
             function amzSbidPaint() {
                 var g = amzSbidGroups();
-                if (!g) { amzSbidPaintWaiting(); return; }
+                if (!g) { amzSbidPaintWaiting(); amzSetText('amazonAdsSbidSumAll', '…'); return; }
+                var sumAll = g.below.l1 + g.below.l2 + g.below.l7 + g.below.avg + g.below.fb + g.mid + g.above.l1 + g.above.none;
+                amzSetText('amazonAdsSbidSumAll', sumAll.toLocaleString('en-US'));
                 amzSbidPaintColumn('below', [
                     { label: '× L1', n: g.below.l1, color: '#7c3aed' },
                     { label: '× L2', n: g.below.l2, color: '#2563eb' },
