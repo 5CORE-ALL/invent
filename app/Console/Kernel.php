@@ -1029,6 +1029,25 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // New Temu Two Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → Temu 2 base price.
+        // Same twice-daily idea as Amazon, offset 20 min. /new-temu2 does not need to be open.
+        // Do NOT wrap 20:20 in $ist() — IST window ends at 20:00.
+        $schedule->command('newtemutwo:sprc-dil-auto-push')
+            ->dailyAt('04:20')
+            ->timezone('Asia/Kolkata')
+            ->name('newtemutwo-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('newtemutwo:sprc-dil-auto-push')
+            ->dailyAt('20:20')
+            ->timezone('Asia/Kolkata')
+            ->name('newtemutwo-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload": blue-triangle SKUs (INV > 0, Price ≠ S PRC) keep getting
         // pushed + pulled all day with the page closed. The two daily runs above skip a SKU whose
         // last pushed offer already equals the target, so a drifted Price stayed stale until the

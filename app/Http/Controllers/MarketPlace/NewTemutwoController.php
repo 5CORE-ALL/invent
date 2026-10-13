@@ -16,7 +16,6 @@ use App\Models\Temu2Metric;
 use App\Models\Temu2Order;
 use App\Models\Temu2Pricing;
 use App\Models\Temu2ViewData;
-use App\Services\DilRuleSpriceApplyService;
 use App\Services\LmpSkuGroupService;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Services\Support\NewTemutwoSuggestedPriceStore;
@@ -40,9 +39,14 @@ class NewTemutwoController extends Controller
         return view('market-places.new_temutwo_tabulator_view', [
             'temuMargin' => TemuShopifySalesService::temu2MarginDecimal(),
             'temuAds' => $this->temuChannelAdsSummary(),
-            'newtemutwoPageReloadPushEnabled' => ChannelPromoPricingController::isPageReloadPushEnabled('newtemutwo'),
             'newtemutwoPushSpriceLive' => ChannelPushSpriceRunner::livePushAllowed(),
         ]);
+    }
+
+    /** Channel Ads% the page nets from every row (used by the server S PRC job for Min NPFT). */
+    public function channelAdsPercent(): float
+    {
+        return (float) ($this->temuChannelAdsSummary()['percent'] ?? 0);
     }
 
     /**
@@ -274,10 +278,7 @@ class NewTemutwoController extends Controller
                 );
             }
 
-            DilRuleSpriceApplyService::copyDilGroiStoreIfMissing('newtemutwo', 'temu');
-            $dilStore = DilRuleSpriceApplyService::for('newtemutwo')->loadDilGroiStore();
-            $dilRules = $dilStore['rules'] ?? [];
-            $cvrAdj = $dilStore['cvr_adj'] ?? null;
+            // S PRC is saved + pushed by the server (newtemutwo:sprc-dil-auto-push). The page only reads it.
             $suggestedStore = new NewTemutwoSuggestedPriceStore();
             $suggestedStore->loadForSkus($skus);
             $percentage = TemuShopifySalesService::temu2MarginDecimal();
@@ -369,25 +370,7 @@ class NewTemutwoController extends Controller
                 }
 
                 $lmpInfo = $this->resolveTemu2Lmp($sku, $temuLmpByNormalizedSku, $normalizeSku);
-                $suggested = $suggestedStore->resolve(
-                    $sku,
-                    [
-                        'inv' => $inv,
-                        'lp' => $lp,
-                        'ship' => $temuShip,
-                        'dil' => $dilPct,
-                        'temu_l30' => $temuL30,
-                        'cvr' => $cvrPercent,
-                        'cvr60' => $cvr60,
-                        'ads' => $adsPercent,
-                        'ebay' => $this->temuEbayRefPrice($ebayPrice, $ebay2Price),
-                        'amz' => $amazonPrice,
-                        'lmp' => $lmpInfo['raw'],
-                    ],
-                    $dilRules,
-                    is_array($cvrAdj) ? $cvrAdj : null
-                );
-                $sprcDil = (float) ($suggested['sprc_dil'] ?? 0);
+                $suggested = $suggestedStore->readSaved($sku);
                 $sprice = (float) ($suggested['sprice'] ?? 0);
                 $sBasePrice = (float) ($suggested['s_base'] ?? 0);
                 $sRPrice = TemuShopifySalesService::computeRPrice($sBasePrice);
@@ -452,7 +435,6 @@ class NewTemutwoController extends Controller
                     'lmp_raw' => $lmpInfo['raw'],
                     'lmp_link' => $lmpInfo['link'],
                     'lmp_entries' => $lmpInfo['entries'],
-                    'sprc_dil' => $sprcDil > 0 ? $sprcDil : null,
                     'sprice' => $sprice > 0 ? $sprice : null,
                     'SPRICE' => $sprice > 0 ? $sprice : null,
                     's_base_price' => $sBasePrice > 0 ? $sBasePrice : null,
@@ -467,6 +449,7 @@ class NewTemutwoController extends Controller
                     'nto_pushed_base' => $suggested['pushed_base'] ?? null,
                     'nto_pushed_at' => $suggested['pushed_at'] ?? null,
                     'nto_push_status' => $suggested['push_status'] ?? null,
+                    'nto_push_error_at' => $suggested['push_error_at'] ?? null,
                     'npft_percent' => $npftPercent,
                     'nroi_percent' => $nroiPercent,
                     'snpft_percent' => $snpftPercent,
@@ -478,74 +461,12 @@ class NewTemutwoController extends Controller
                 ];
             }
 
-            $suggestedStore->flush();
-
             return response()->json($result);
         } catch (\Exception $e) {
             Log::error('Error fetching New Temu Two data: ' . $e->getMessage());
 
             return response()->json(['error' => 'Failed to fetch data'], 500);
         }
-    }
-
-    /**
-     * Persist the painted S PRC cell for /new-temu2. Same dollar the cell shows.
-     */
-    public function saveSprice(Request $request)
-    {
-        $updates = $request->input('updates');
-        if (! is_array($updates)) {
-            $sku = trim((string) $request->input('sku', ''));
-            if ($sku === '') {
-                return response()->json(['success' => false, 'message' => 'updates array required'], 422);
-            }
-            $updates = [[
-                'sku' => $sku,
-                'sprice' => $request->input('sprice'),
-                'lp' => $request->input('lp'),
-                'ship' => $request->input('ship'),
-            ]];
-        }
-
-        $skus = [];
-        foreach ($updates as $row) {
-            $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku !== '') {
-                $skus[] = $sku;
-            }
-        }
-        $store = new NewTemutwoSuggestedPriceStore();
-        $store->loadForSkus($skus);
-        $cleared = 0;
-        $saved = 0;
-        foreach ($updates as $row) {
-            $sku = trim((string) ($row['sku'] ?? ''));
-            if ($sku === '') {
-                continue;
-            }
-            $sprice = (float) ($row['sprice'] ?? 0);
-            if ($sprice > 0) {
-                $store->writeExactSprice(
-                    $sku,
-                    $sprice,
-                    (float) ($row['lp'] ?? 0),
-                    (float) ($row['ship'] ?? 0),
-                    (float) ($row['sprc_dil'] ?? 0),
-                    is_array($row['labels'] ?? null) ? $row['labels'] : []
-                );
-                $saved++;
-            } else {
-                $store->clearSprice($sku);
-                $cleared++;
-            }
-        }
-        $store->flush();
-
-        return response()->json([
-            'success' => true,
-            'cleared' => $cleared,
-            'saved' => $saved,
-        ]);
     }
 
     public function saveLinks(Request $request)
