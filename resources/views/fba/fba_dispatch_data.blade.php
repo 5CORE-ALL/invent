@@ -31,6 +31,42 @@
             padding-right: 0px !important;
         }
 
+        /* Keep every visible column on one screen width */
+        #fba-table .tabulator {
+            width: 100% !important;
+            font-size: 11px;
+        }
+
+        #fba-table .tabulator-col-content {
+            padding: 2px 1px !important;
+        }
+
+        #fba-table .tabulator-cell {
+            padding: 2px 2px !important;
+        }
+
+        #fba-table .tabulator-header-filter input {
+            min-width: 0 !important;
+            width: 100% !important;
+            padding: 1px 2px;
+            font-size: 10px;
+        }
+
+        #fba-table .tabulator-cell.fba-sku-col {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #column-dropdown-menu .dropdown-header {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #6c757d;
+            padding-top: 8px;
+        }
+
         /* Red/Green toggle dot for Sugg Send column */
         .send-toggle-dot {
             display: inline-block;
@@ -72,6 +108,94 @@
         /* Send Qty column always yellow */
         .send-qty-cell {
             background-color: #ffc107 !important;
+        }
+
+        /* Compact history indicator — details appear on hover */
+        .history-dot {
+            display: inline-block;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+
+        .history-dot.empty {
+            background-color: #c5cdd6;
+        }
+
+        .history-dot.has {
+            background-color: #28a745;
+        }
+
+        .history-dot.cleared {
+            background-color: #dc3545;
+        }
+
+        .history-pop {
+            position: fixed;
+            z-index: 2000;
+            min-width: 200px;
+            max-width: 320px;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+            padding: 8px 10px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .history-pop-title {
+            font-weight: 700;
+            font-size: 11px;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 4px;
+        }
+
+        .history-pop-list {
+            max-height: 160px;
+            overflow-y: auto;
+            margin-bottom: 4px;
+        }
+
+        .barcode-label {
+            font-weight: 700;
+            cursor: default;
+        }
+
+        .barcode-label.bar {
+            color: #28a745;
+        }
+
+        .barcode-label.asin {
+            color: #b8860b;
+        }
+
+        .barcode-label.verify {
+            color: #dc3545;
+        }
+
+        .barcode-label:hover {
+            text-decoration: underline;
+        }
+
+        .s-status-dot {
+            display: inline-block;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            vertical-align: middle;
+        }
+
+        .s-status-dot.good {
+            background-color: #28a745;
+        }
+
+        .s-status-dot.bad {
+            background-color: #dc3545;
         }
 
         /* Ensure all modals have proper z-index */
@@ -122,7 +246,7 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fa fa-lightbulb me-2"></i>CTN Details<span id="ctnDetailsSku" class="ms-2 text-muted"></span></h5>
+                    <h5 class="modal-title">CTN<span id="ctnDetailsSku" class="ms-2 text-muted"></span></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -133,16 +257,16 @@
                         <input type="number" step="0.01" class="form-control" id="ctnQtyInput">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">CTN L (inch)</label>
-                        <input type="number" step="0.01" class="form-control" id="ctnLInput">
+                        <label class="form-label">Carton CBM each</label>
+                        <input type="number" step="0.0001" class="form-control" id="ctnCbmEachInput">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">CTN W (inch)</label>
-                        <input type="number" step="0.01" class="form-control" id="ctnWInput">
+                        <label class="form-label">CBM (E)</label>
+                        <input type="number" step="0.0001" class="form-control" id="cbmEInput">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">CTN H (inch)</label>
-                        <input type="number" step="0.01" class="form-control" id="ctnHInput">
+                        <label class="form-label">CTN Weight (KG)</label>
+                        <input type="number" step="0.01" class="form-control" id="ctnWtKgInput">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">CTN WT (LB)</label>
@@ -696,28 +820,29 @@
                     modal.show();
                 }
 
-                // CTN details edit modal (data source: /dim-wt-master-ctn -> ProductMaster Values)
-                const CM_PER_INCH = 2.54;
+                // CTN details edit modal (same fields and table as /dim-wt-master-ctn)
+                const KG_TO_LB = 2.2046226218;
                 let ctnDetailsRow = null;
+                let ctnDetailsOriginalKg = null;
+
+                function ctnFieldValue(value) {
+                    return (value === null || value === undefined) ? '' : value;
+                }
 
                 function openCtnDetailsModal(row) {
                     const data = row.getData();
                     ctnDetailsRow = row;
+                    ctnDetailsOriginalKg = ctnFieldValue(data.CTN_WT_KG);
 
                     document.getElementById('ctnProductId').value = data.product_id ?? '';
                     document.getElementById('ctnSku').value = data.SKU ?? '';
                     document.getElementById('ctnDetailsSku').textContent = (data.FBA_SKU || data.SKU) ? ` — ${data.FBA_SKU || data.SKU}` : '';
 
-                    const toInch = (cm) => {
-                        const n = parseFloat(cm);
-                        return isNaN(n) ? '' : (n / CM_PER_INCH).toFixed(2);
-                    };
-
-                    document.getElementById('ctnQtyInput').value = (data.CTN_QTY ?? '') === '' ? '' : data.CTN_QTY;
-                    document.getElementById('ctnLInput').value = toInch(data.CTN_L);
-                    document.getElementById('ctnWInput').value = toInch(data.CTN_W);
-                    document.getElementById('ctnHInput').value = toInch(data.CTN_H);
-                    document.getElementById('ctnWtLbInput').value = (data.CTN_WT_LB ?? '') === '' ? '' : data.CTN_WT_LB;
+                    document.getElementById('ctnQtyInput').value = ctnFieldValue(data.CTN_QTY);
+                    document.getElementById('ctnCbmEachInput').value = ctnFieldValue(data.CTN_CBM_EACH);
+                    document.getElementById('cbmEInput').value = ctnFieldValue(data.CBM_E);
+                    document.getElementById('ctnWtKgInput').value = ctnFieldValue(data.CTN_WT_KG);
+                    document.getElementById('ctnWtLbInput').value = ctnFieldValue(data.CTN_WT_LB);
 
                     bootstrap.Modal.getOrCreateInstance(document.getElementById('ctnDetailsModal')).show();
                 }
@@ -733,37 +858,40 @@
                         const n = parseFloat(v);
                         return isNaN(n) ? null : n;
                     };
-                    const inchToCm = (v) => {
-                        const n = num(v);
-                        return n === null ? null : +(n * CM_PER_INCH).toFixed(2);
-                    };
 
                     const ctnQty = num(document.getElementById('ctnQtyInput').value);
-                    const ctnLcm = inchToCm(document.getElementById('ctnLInput').value);
-                    const ctnWcm = inchToCm(document.getElementById('ctnWInput').value);
-                    const ctnHcm = inchToCm(document.getElementById('ctnHInput').value);
-                    const ctnWtLb = num(document.getElementById('ctnWtLbInput').value);
+                    const ctnCbmEach = num(document.getElementById('ctnCbmEachInput').value);
+                    const cbmE = num(document.getElementById('cbmEInput').value);
+                    const ctnWtKg = num(document.getElementById('ctnWtKgInput').value);
+                    let ctnWtLb = num(document.getElementById('ctnWtLbInput').value);
+                    const kgChanged = String(ctnFieldValue(ctnWtKg)) !== String(ctnDetailsOriginalKg);
+                    if (kgChanged && ctnWtKg !== null) {
+                        ctnWtLb = +(ctnWtKg * KG_TO_LB).toFixed(4);
+                    }
+
+                    const payload = {
+                        _token: '{{ csrf_token() }}',
+                        product_id: productId,
+                        sku: sku,
+                        ctn_qty: ctnQty,
+                        ctn_cbm_each: ctnCbmEach,
+                        cbm_e: cbmE,
+                        ctn_weight_lb: ctnWtLb
+                    };
+                    if (kgChanged) {
+                        payload.ctn_weight_kg = ctnWtKg;
+                    }
 
                     $.ajax({
                         url: '/dim-wt-master/update',
                         method: 'POST',
-                        data: {
-                            _token: '{{ csrf_token() }}',
-                            product_id: productId,
-                            sku: sku,
-                            ctn_qty: ctnQty,
-                            ctn_l: ctnLcm,
-                            ctn_w: ctnWcm,
-                            ctn_h: ctnHcm,
-                            ctn_weight_lb: ctnWtLb
-                        },
+                        data: payload,
                         success: function() {
-                            // Reflect changes back into the row (store CM + LB; CTN_QTY)
                             ctnDetailsRow.update({
                                 CTN_QTY: ctnQty,
-                                CTN_L: ctnLcm,
-                                CTN_W: ctnWcm,
-                                CTN_H: ctnHcm,
+                                CTN_CBM_EACH: ctnCbmEach,
+                                CBM_E: cbmE,
+                                CTN_WT_KG: ctnWtKg,
                                 CTN_WT_LB: ctnWtLb
                             });
                             showToast('CTN details saved', 'success');
@@ -827,8 +955,13 @@
 
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
-                    layout: "fitDataStretch",
+                    layout: "fitColumns",
                     layoutColumnsOnNewData: true,
+                    columnDefaults: {
+                        minWidth: 28,
+                        widthShrink: 1,
+                        widthGrow: 1
+                    },
                     editTriggerEvent: "dblclick",
                     pagination: true,
                     paginationSize: 50,
@@ -858,13 +991,35 @@
                             visible: false
                         },
                         {
+                            title: "Image",
+                            field: "image_path",
+                            headerSort: false,
+                            hozAlign: "center",
+                            frozen: true,
+                            width: 44,
+                            minWidth: 44,
+                            widthGrow: 0,
+                            widthShrink: 0,
+                            formatter: function(cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const value = (cell.getValue() || '').toString().trim();
+                                if (!value) return '';
+                                const src = value.replace(/"/g, '&quot;');
+                                return `<img src="${src}" alt="" style="width:36px;height:36px;object-fit:contain;" onerror="this.style.display='none'">`;
+                            }
+                        },
+                        {
                             title: "FBA SKU",
                             field: "FBA_SKU",
                             headerFilter: "input",
                             headerFilterPlaceholder: "Search SKU...",
-                            cssClass: "font-weight-bold",
+                            cssClass: "font-weight-bold fba-sku-col",
                             tooltip: true,
                             frozen: true,
+                            width: 150,
+                            minWidth: 96,
+                            widthGrow: 2,
                             formatter: function(cell) {
                                 const fbaSku = cell.getValue();
                                 const rowData = cell.getRow().getData();
@@ -950,24 +1105,6 @@
                         },
 
                         {
-                            title: "<i class='fa fa-search'></i>",
-                            field: "_details",
-                            headerSort: false,
-                            hozAlign: "center",
-                            width: 50,
-                            formatter: function(cell) {
-                                const rowData = cell.getRow().getData();
-                                if (rowData.is_parent) return '';
-                                return `<i class="fa fa-search row-details-btn" style="cursor:pointer; color:#3b7ddd;" title="View all details"></i>`;
-                            },
-                            cellClick: function(e, cell) {
-                                if (!e.target.closest('.row-details-btn')) return;
-                                const rowData = cell.getRow().getData();
-                                showRowDetailsModal(rowData);
-                            }
-                        },
-
-                        {
                             title: "Main INV",
                             field: "Shopify_INV",
                             hozAlign: "center",
@@ -985,10 +1122,9 @@
                         },
 
                         {
-                            title: "ctn qty",
+                            title: "Ctn Qty",
                             field: "CTN_QTY",
                             hozAlign: "center",
-                            visible: false,
                             editor: "input",
                             editable: function(cell) {
                                 // Not editable on parent rows
@@ -1038,15 +1174,20 @@
                         },
 
                         {
-                            title: "<i class='fa fa-lightbulb'></i>",
+                            title: "CTN",
                             field: "_ctn_details",
                             headerSort: false,
                             hozAlign: "center",
-                            width: 50,
+                            width: 32,
+                            minWidth: 32,
+                            widthGrow: 0,
+                            widthShrink: 0,
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
-                                return `<i class="fa fa-lightbulb ctn-details-btn" style="cursor:pointer; color:#f0ad4e;" title="Edit CTN details"></i>`;
+                                const qty = parseFloat(rowData.CTN_QTY);
+                                const cls = (!isNaN(qty) && qty > 0) ? 'has' : 'empty';
+                                return `<span class="history-dot ctn-details-btn ${cls}" title="CTN details"></span>`;
                             },
                             cellClick: function(e, cell) {
                                 if (!e.target.closest('.ctn-details-btn')) return;
@@ -1065,6 +1206,14 @@
                                 listOnEmpty: true
                             },
                             hozAlign: "center",
+                            tooltip: function(e, cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return false;
+                                let value = (cell.getValue() || '').toString().trim();
+                                if (value === 'M') value = 'Barcode';
+                                else if (value === 'A') value = 'Asin';
+                                return value || false;
+                            },
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
@@ -1074,15 +1223,20 @@
                                 else if (value === 'A') value = 'Asin';
                                 if (!value) return '';
 
-                                const bgMap = {
-                                    'Barcode': '#28a745', // green
-                                    'Asin': '#ffc107',     // yellow
-                                    'Verify': '#dc3545'    // red
+                                const labelMap = {
+                                    'Barcode': 'Bar',
+                                    'Asin': 'Asin',
+                                    'Verify': 'Verify'
                                 };
-                                const bg = bgMap[value];
-                                if (!bg) return value;
-                                const textColor = (value === 'Asin') ? '#000' : '#fff';
-                                return `<span style="background-color:${bg}; color:${textColor}; padding:4px 8px; border-radius:3px; font-weight:600;">${value}</span>`;
+                                const classMap = {
+                                    'Barcode': 'bar',
+                                    'Asin': 'asin',
+                                    'Verify': 'verify'
+                                };
+                                const label = labelMap[value];
+                                const cls = classMap[value];
+                                if (!label) return value;
+                                return `<span class="barcode-label ${cls}">${label}</span>`;
                             }
                         },
 
@@ -1120,6 +1274,10 @@
                             title: "Sent QTY",
                             field: "Total_quantity_sent",
                             hozAlign: "center",
+                            width: 32,
+                            minWidth: 32,
+                            widthGrow: 0,
+                            widthShrink: 0,
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
@@ -1166,33 +1324,21 @@
                             title: "History",
                             field: "Send_History",
                             headerSort: false,
-                            minWidth: 180,
+                            hozAlign: "center",
+                            width: 32,
+                            minWidth: 32,
+                            widthGrow: 0,
+                            widthShrink: 0,
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
                                 const history = parseSendHistory(cell.getValue());
-
-                                let html = '';
+                                let cls = 'empty';
                                 if (history.length > 0) {
-                                    html += '<div style="font-size:11px; line-height:1.4; max-height:60px; overflow-y:auto;">';
-                                    history.forEach(h => {
-                                        const action = h.action || '';
-                                        const color = action === 'Cleared' ? '#dc3545' : '#28a745';
-                                        html += `<div><span style="color:${color}; font-weight:600;">${action}</span> — ${h.user || ''} <span class="text-muted">(${h.date || ''})</span></div>`;
-                                    });
-                                    html += '</div>';
-                                } else {
-                                    html += '<span class="text-muted">No history</span>';
+                                    const last = history[history.length - 1];
+                                    cls = (last && last.action === 'Cleared') ? 'cleared' : 'has';
                                 }
-
-                                html += `<button class="btn btn-sm btn-outline-danger send-history-clear mt-1" style="font-size:10px; padding:1px 6px;">Clear</button>`;
-                                return html;
-                            },
-                            cellClick: function(e, cell) {
-                                if (!e.target.closest('.send-history-clear')) return;
-                                const rowData = cell.getRow().getData();
-                                if (rowData.is_parent) return;
-                                appendSendHistory(cell.getRow(), 'Cleared');
+                                return `<span class="history-dot ${cls}"></span>`;
                             }
                         },
 
@@ -1208,7 +1354,6 @@
                             title: "Dil",
                             field: "Dil",
                             hozAlign: "center",
-                            visible: false,
                             formatter: function(cell) {
                                 const value = parseFloat(cell.getValue());
                                 if (isNaN(value)) return '';
@@ -1292,6 +1437,10 @@
                             title: "Compliance",
                             field: "compliance",
                             hozAlign: "center",
+                            width: 32,
+                            minWidth: 32,
+                            widthGrow: 0,
+                            widthShrink: 0,
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) {
@@ -1350,6 +1499,10 @@
                             title: "Send Toggle",
                             field: "send_toggle",
                             hozAlign: "center",
+                            width: 32,
+                            minWidth: 32,
+                            widthGrow: 0,
+                            widthShrink: 0,
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) {
@@ -1451,7 +1604,6 @@
                                 const baseSku = sku.replace(/\s*FBA\s*/i, '').trim();
                                 return '<a href="#" class="lmp-price-link" data-sku="' + baseSku.replace(/"/g, '&quot;') + '" data-marketplace="amazon" style="color: ' + color + '; text-decoration: none; cursor: pointer; font-weight: 600;">$' + price.toFixed(2) + '</a>';
                             },
-                            minWidth: 70
                         },
                         {
                             title: "Price",
@@ -1473,7 +1625,6 @@
                                 const price = parseFloat(value);
                                 return '<span style="font-weight: 600;">$' + price.toFixed(2) + '</span>';
                             },
-                            minWidth: 70
                         },
                         {
                             title: "FBM<br>GPFT%",
@@ -1492,7 +1643,6 @@
                                 else color = '#e83e8c';
                                 return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(0)}%</span>`;
                             },
-                            minWidth: 70
                         },
                         {
                             title: "AMZ<br>AD%",
@@ -1513,7 +1663,6 @@
                                 else color = '#6c757d';
                                 return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
                             },
-                            minWidth: 70
                         },
                         {
                             title: "AMZ<br>NPFT%",
@@ -1532,7 +1681,6 @@
                                 else color = '#e83e8c';
                                 return `<span style="color: ${color}; font-weight: 600;">${pct.toFixed(1)}%</span>`;
                             },
-                            minWidth: 70
                         },
                         {
                             title: "CVR<br>L60<br>amz",
@@ -1565,7 +1713,6 @@
                                 };
                                 return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                             },
-                            minWidth: 65
                         },
                         {
                             title: "CVR<br>L45<br>amz",
@@ -1607,7 +1754,6 @@
                                 };
                                 return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                             },
-                            minWidth: 65
                         },
                         {
                             title: "cvr",
@@ -1662,7 +1808,6 @@
                                 };
                                 return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                             },
-                            minWidth: 65
                         },
                         {
                             title: "Rating",
@@ -1697,7 +1842,7 @@
                                         <i class="fa fa-star"></i> ${rating.toFixed(1)}
                                     </span>
                                     <span style="font-size: 11px; color: ${reviewColor}; font-weight: ${fontWeight};">
-                                        ${reviews.toLocaleString()} reviews
+                                        (${reviews.toLocaleString()})
                                     </span>
                                 </div>`;
                             },
@@ -1706,7 +1851,6 @@
                                 const ratingB = parseFloat(bRow.getData()['AMZ_Rating'] || 0);
                                 return ratingA - ratingB;
                             },
-                            minWidth: 80
                         },
 
                         {
@@ -1892,6 +2036,10 @@
                             title: "UPC Codes",
                             field: "UPC_Codes",
                             hozAlign: "center",
+                            width: 32,
+                            minWidth: 32,
+                            widthGrow: 0,
+                            widthShrink: 0,
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
@@ -2133,22 +2281,25 @@
                             title: "S status",
                             field: "FBA_Shipment_Status",
                             hozAlign: "center",
+                            width: 32,
+                            minWidth: 32,
+                            widthGrow: 0,
+                            widthShrink: 0,
+                            tooltip: function(e, cell) {
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return false;
+                                const status = (cell.getValue() || '').toString().trim();
+                                return status || false;
+                            },
                             formatter: function(cell) {
-                                const status = cell.getValue() || '';
+                                const rowData = cell.getRow().getData();
+                                if (rowData.is_parent) return '';
+                                const status = (cell.getValue() || '').toString().trim();
                                 if (!status) return '';
 
-                                const statusColors = {
-                                    'WORKING': '#FF8C00',
-                                    'SHIPPED': '#1E90FF',
-                                    'IN_TRANSIT': '#0066CC',
-                                    'DELIVERED': '#228B22',
-                                    'RECEIVING': '#DAA520',
-                                    'CLOSED': '#696969',
-                                    'CANCELLED': '#B22222',
-                                    'ERROR': '#CC0000'
-                                };
-                                const color = statusColors[status] || '#000';
-                                return `<span style="color: ${color}; font-weight: 700; font-size: 12px;">${status}</span>`;
+                                const bad = ['CANCELLED', 'DELETED', 'ERROR'];
+                                const cls = bad.includes(status) ? 'bad' : 'good';
+                                return `<span class="s-status-dot ${cls}"></span>`;
                             }
                         },
 
@@ -2158,6 +2309,10 @@
                             title: "ASIN",
                             field: "ASIN",
                             hozAlign: "center",
+                            width: 32,
+                            minWidth: 32,
+                            widthGrow: 0,
+                            widthShrink: 0,
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
@@ -2529,6 +2684,98 @@
                     ]
                 });
 
+                function escapeHistoryText(value) {
+                    return String(value ?? '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+                }
+
+                let historyPopEl = null;
+                let historyPopHideTimer = null;
+
+                function hideHistoryPop() {
+                    if (historyPopHideTimer) {
+                        clearTimeout(historyPopHideTimer);
+                        historyPopHideTimer = null;
+                    }
+                    if (historyPopEl) {
+                        historyPopEl.remove();
+                        historyPopEl = null;
+                    }
+                }
+
+                function scheduleHideHistoryPop() {
+                    if (historyPopHideTimer) clearTimeout(historyPopHideTimer);
+                    historyPopHideTimer = setTimeout(hideHistoryPop, 180);
+                }
+
+                function showHistoryPop(cell) {
+                    hideHistoryPop();
+                    const rowData = cell.getRow().getData();
+                    if (rowData.is_parent) return;
+
+                    const history = parseSendHistory(cell.getValue());
+                    const pop = document.createElement('div');
+                    pop.className = 'history-pop';
+
+                    let html = '<div class="history-pop-title">History</div>';
+                    if (history.length > 0) {
+                        html += '<div class="history-pop-list">';
+                        history.forEach(h => {
+                            const action = h.action || '';
+                            const color = action === 'Cleared' ? '#dc3545' : '#28a745';
+                            html += `<div><span style="color:${color}; font-weight:600;">${escapeHistoryText(action)}</span> — ${escapeHistoryText(h.user || '')} <span class="text-muted">(${escapeHistoryText(h.date || '')})</span></div>`;
+                        });
+                        html += '</div>';
+                    } else {
+                        html += '<div class="text-muted">No history</div>';
+                    }
+                    html += '<button type="button" class="btn btn-sm btn-outline-danger send-history-clear mt-1" style="font-size:10px; padding:1px 6px;">Clear</button>';
+                    pop.innerHTML = html;
+                    document.body.appendChild(pop);
+
+                    const rect = cell.getElement().getBoundingClientRect();
+                    const popWidth = pop.offsetWidth;
+                    const popHeight = pop.offsetHeight;
+                    let left = rect.left + (rect.width / 2) - (popWidth / 2);
+                    let top = rect.bottom + 4;
+                    if (left + popWidth > window.innerWidth - 8) left = window.innerWidth - popWidth - 8;
+                    if (left < 8) left = 8;
+                    if (top + popHeight > window.innerHeight - 8) top = Math.max(8, rect.top - popHeight - 4);
+                    pop.style.left = left + 'px';
+                    pop.style.top = top + 'px';
+
+                    pop.addEventListener('mouseenter', function() {
+                        if (historyPopHideTimer) {
+                            clearTimeout(historyPopHideTimer);
+                            historyPopHideTimer = null;
+                        }
+                    });
+                    pop.addEventListener('mouseleave', scheduleHideHistoryPop);
+                    pop.querySelector('.send-history-clear').addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        appendSendHistory(cell.getRow(), 'Cleared');
+                        hideHistoryPop();
+                    });
+
+                    historyPopEl = pop;
+                }
+
+                table.on('cellMouseEnter', function(e, cell) {
+                    if (cell.getField() !== 'Send_History') return;
+                    showHistoryPop(cell);
+                });
+                table.on('cellMouseLeave', function(e, cell) {
+                    if (cell.getField() !== 'Send_History') return;
+                    scheduleHideHistoryPop();
+                });
+                table.on('scrollVertical', hideHistoryPop);
+                table.on('scrollHorizontal', hideHistoryPop);
+                table.on('pageLoaded', hideHistoryPop);
+
                 table.on('cellEdited', function(cell) {
                     var row = cell.getRow();
                     var data = row.getData();
@@ -2784,17 +3031,42 @@
                 });
 
                 // Build Column Visibility Dropdown
+                function columnMenuLabel(title, field) {
+                    const text = String(title || field || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    return text || field;
+                }
+
                 function buildColumnDropdown() {
                     const menu = document.getElementById("column-dropdown-menu");
                     menu.innerHTML = '';
 
-                    table.getColumns().forEach(col => {
-                        const def = col.getDefinition();
-                        const field = def.field;
-                        const title = def.title || field;
+                    const groupFields = {
+                        Basics: ['image_path', 'Parent', 'SKU', 'FBA_SKU', 'Sugg_Send', 'Shopify_INV', 'CTN_QTY', 'Barcode', 'Send_Qty', 'Total_quantity_sent', 'Send_History', 'Shopify_OV_L30', 'Dil', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'compliance', 'send_toggle', 'AMZ_Rating', 'UPC_Codes', 'ASIN', 'NRL_FBA', 'Current_Month_Views'],
+                        Pricing: ['FBA_Price', 'LMP', 'AMZ_Price', 'AMZ_GPFT', 'AMZ_AD', 'AMZ_NPFT', 'CVR_L30_amz', 'CVR_L60_amz', 'CVR_L45_amz', 'ROI%', 'GROI%', 'GPFT%', 'TPFT', 'FBA_ROI', 'S_Price', 'SPft%', 'SROI%', 'lmp_1', 'Fulfillment_Fee', 'FBA_Fee_Manual', 'T_sales'],
+                        Shipping: ['_ctn_details', 'Length', 'Width', 'Height', 'Quantity_in_each_box', 'GW_CTN', 'Shipping_Amount', 'FBA_Shipment_Status', 'FBA_Ship_Calculation', 'Ship', 'Send_Cost']
+                    };
+                    const skipFields = new Set(['_select', '_accept', '_details']);
+                    const grouped = { Basics: [], Pricing: [], Shipping: [], Other: [] };
 
-                        // Only list currently visible columns; hidden columns are not offered as options
-                        if (field && field !== '_select' && field !== '_accept' && field !== '_details' && field !== '_ctn_details' && title && col.isVisible()) {
+                    table.getColumns().forEach(col => {
+                        const field = col.getDefinition().field;
+                        if (!field || skipFields.has(field)) return;
+                        const name = Object.keys(groupFields).find(group => groupFields[group].includes(field)) || 'Other';
+                        grouped[name].push(col);
+                    });
+
+                    ['Basics', 'Pricing', 'Shipping', 'Other'].forEach(name => {
+                        if (!grouped[name].length) return;
+
+                        const header = document.createElement('li');
+                        const heading = document.createElement('h6');
+                        heading.className = 'dropdown-header';
+                        heading.textContent = name;
+                        header.appendChild(heading);
+                        menu.appendChild(header);
+
+                        grouped[name].forEach(col => {
+                            const def = col.getDefinition();
                             const li = document.createElement('li');
                             const label = document.createElement('label');
                             label.className = 'dropdown-item';
@@ -2804,10 +3076,10 @@
                             checkbox.type = 'checkbox';
                             checkbox.checked = col.isVisible();
                             checkbox.style.marginRight = '8px';
-                            checkbox.dataset.field = field;
+                            checkbox.dataset.field = def.field;
 
                             label.appendChild(checkbox);
-                            label.appendChild(document.createTextNode(title));
+                            label.appendChild(document.createTextNode(columnMenuLabel(def.title, def.field)));
                             li.appendChild(label);
                             menu.appendChild(li);
 
@@ -2818,8 +3090,9 @@
                                     col.hide();
                                 }
                                 saveColumnVisibilityToServer();
+                                table.redraw(true);
                             });
-                        }
+                        });
                     });
                 }
 
@@ -2859,8 +3132,11 @@
                             table.getColumns().forEach(col => {
                                 const def = col.getDefinition();
                                 if (def.field) {
-                                    // Hide columns that should be hidden by default on initial load
-                                    if (defaultHiddenColumns.includes(def.field)) {
+                                    // Dil sits after Ov L30 and stays visible even if an older
+                                    // saved layout still has it hidden from when the column was off.
+                                    if (def.field === 'Dil' || def.field === 'CTN_QTY') {
+                                        col.show();
+                                    } else if (defaultHiddenColumns.includes(def.field)) {
                                         col.hide();
                                     } else if (savedVisibility[def.field] !== undefined) {
                                         // Apply saved preferences for other columns
@@ -2872,6 +3148,7 @@
                                     }
                                 }
                             });
+                            table.redraw(true);
                         })
                         .catch(error => console.error('Error loading column visibility:', error));
                 }

@@ -617,7 +617,10 @@ class FbaDataController extends Controller
       $amazonLmpLookup = $data['amazonLmpLookup'];
       $fbaAgeData = $data['fbaAgeData'];
       $productData = $data['productData']->keyBy(function ($p) {
-         return strtoupper(trim($p->sku));
+         return strtoupper(FbaInventoryService::normalizeSkuChars($p->sku));
+      });
+      $productByCompact = $data['productData']->keyBy(function ($p) {
+         return FbaInventoryService::skuCompact($p->sku);
       });
 
       // Fetch FBA Listing Status data - normalize SKU keys to match format
@@ -753,11 +756,12 @@ class FbaDataController extends Controller
       }
 
       // Prepare table data with repeated parent name for all child SKUs
-      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage, $fbaAgeData, $amazonListingStatuses, $amazonChannelAdsPercent) {
+      $tableData = $fbaData->map(function ($fba, $sku) use ($fbaPriceData, $fbaReportsData, $shopifyData, $productData, $productByCompact, $fbaMonthlySales, $fbaManualData, $fbaDispatchDates, $fbaShipCalculations, $amazonDatasheet, $amazonReviews, $fbaShipments, $adsKWDataBySku, $adsPTDataBySku, $overallAvgPrice, $fbaListingStatuses, $amazonLmpLookup, $amazonAdSpendBySku, $amazonPercentage, $fbaAgeData, $amazonListingStatuses, $amazonChannelAdsPercent) {
          $fbaPriceInfo = $fbaPriceData->get($sku);
          $fbaReportsInfo = $fbaReportsData->get($sku);
          $shopifyInfo = $shopifyData->get($sku);
-         $product = $productData->get($sku);
+         $product = $productData->get($sku)
+            ?? $productByCompact->get(FbaInventoryService::skuCompact($sku));
          $monthlySales = $fbaMonthlySales->get($sku);
          $manual = $fbaManualData->get(strtoupper(trim($fba->seller_sku)));
          $dispatchDate = $fbaDispatchDates->get($sku);
@@ -937,6 +941,9 @@ class FbaDataController extends Controller
          $ctnW = null; // CTN W (CM)
          $ctnH = null; // CTN H (CM)
          $ctnWtLb = null; // CTN Weight (LB)
+         $ctnWtKg = null;
+         $ctnCbmEach = null;
+         $cbmE = null;
          $shipVal = null; // Shipping Master "Ship" (ProductMaster Values['ship'])
          if ($product) {
             $values = $product->Values ?: [];
@@ -951,6 +958,9 @@ class FbaDataController extends Controller
                if (strtolower($k) === "ctn_w") $ctnW = $v;
                if (strtolower($k) === "ctn_h") $ctnH = $v;
                if (strtolower($k) === "ctn_weight_lb") $ctnWtLb = $v;
+               if (strtolower($k) === "ctn_weight_kg") $ctnWtKg = $v;
+               if (strtolower($k) === "ctn_cbm_each") $ctnCbmEach = $v;
+               if (strtolower($k) === "cbm_e") $cbmE = $v;
             }
          }
          
@@ -1023,6 +1033,9 @@ class FbaDataController extends Controller
             'CTN_W' => $ctnW,
             'CTN_H' => $ctnH,
             'CTN_WT_LB' => $ctnWtLb,
+            'CTN_WT_KG' => $ctnWtKg,
+            'CTN_CBM_EACH' => $ctnCbmEach,
+            'CBM_E' => $cbmE,
             'Ship' => $shipVal,
             'Shopify_OV_L30' => $shopifyInfo ? ($shopifyInfo->quantity ?? 0) : 0,
             'Shopify_INV' => $shopifyInfo ? ($shopifyInfo->inv ?? 0) : 0,
