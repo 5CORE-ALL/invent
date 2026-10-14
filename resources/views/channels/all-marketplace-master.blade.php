@@ -7059,19 +7059,50 @@
                         ctx.textAlign = 'left';
                         ctx.textBaseline = 'middle';
 
+                        // Labels are rotated by `angle`, so two neighbours are parallel
+                        // diagonals. They collide when their perpendicular distance is
+                        // small AND they overlap along the text direction — not only
+                        // when their start points are close (the old check missed
+                        // "$310,243" running into "$317,484").
+                        const angle = Math.PI / 5;
+                        const sinA = Math.sin(angle);
+                        const cosA = Math.cos(angle);
+                        const minGap = 13;
+                        const minOffset = -44;
+                        const maxOffset = -8;
+
                         meta.data.forEach((point, i) => {
                             const val = dataset.data[i];
+                            const textW = ctx.measureText(fmtVal(val)).width;
                             let offsetY = (i % 2 === 0) ? -12 : -26;
                             if (i === lastIdx) {
                                 offsetY = (lastIdx % 2 === 0) ? -26 : -12;
                             }
-                            if (anchors.length) {
-                                const prev = anchors[anchors.length - 1];
-                                if (Math.abs(point.x - prev.x) < 36 && Math.abs((point.y + offsetY) - prev.y) < 14) {
-                                    offsetY = (offsetY === -12) ? -28 : -12;
+
+                            const collisionShift = function (oy) {
+                                const sx = point.x;
+                                const sy = point.y + oy;
+                                for (let k = anchors.length - 1; k >= Math.max(0, anchors.length - 3); k--) {
+                                    const p = anchors[k];
+                                    const dx = sx - p.x;
+                                    const dy = sy - p.y;
+                                    const along = dx * cosA - dy * sinA;
+                                    if (!(along < p.w && along + textW > 0)) continue;
+                                    const d = dx * sinA + dy * cosA;
+                                    if (Math.abs(d) >= minGap) continue;
+                                    const down = (minGap - d) / cosA;
+                                    const up = (-minGap - d) / cosA;
+                                    const options = [down, up].sort(function (a, b) { return Math.abs(a) - Math.abs(b); });
+                                    for (let o = 0; o < options.length; o++) {
+                                        const next = oy + options[o];
+                                        if (next >= minOffset && next <= maxOffset) return next;
+                                    }
+                                    return oy;
                                 }
-                            }
-                            anchors.push({ x: point.x, y: point.y + offsetY });
+                                return oy;
+                            };
+                            offsetY = collisionShift(offsetY);
+                            anchors.push({ x: point.x, y: point.y + offsetY, w: textW });
 
                             ctx.save();
                             ctx.fillStyle = labelColors[i];
