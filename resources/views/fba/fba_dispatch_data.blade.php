@@ -31,18 +31,19 @@
             padding-right: 0px !important;
         }
 
-        /* Keep every visible column on one screen width */
+        /* Size columns to their values; scroll sideways instead of clipping text */
         #fba-table .tabulator {
-            width: 100% !important;
             font-size: 11px;
         }
 
         #fba-table .tabulator-col-content {
-            padding: 2px 1px !important;
+            padding: 2px 4px !important;
         }
 
         #fba-table .tabulator-cell {
-            padding: 2px 2px !important;
+            padding: 2px 4px !important;
+            white-space: nowrap;
+            overflow: visible;
         }
 
         #fba-table .tabulator-header-filter input {
@@ -52,19 +53,104 @@
             font-size: 10px;
         }
 
-        #fba-table .tabulator-cell.fba-sku-col {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        #column-dropdown-menu.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
         }
 
-        #column-dropdown-menu .dropdown-header {
-            font-size: 11px;
+        #column-dropdown-menu > li.col-vis-full {
+            list-style: none;
+        }
+
+        #column-dropdown-menu .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 8px;
+            margin: 0;
+            padding: 0;
+        }
+
+        #column-dropdown-menu .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #column-dropdown-menu .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
             font-weight: 700;
-            letter-spacing: 0.04em;
             text-transform: uppercase;
-            color: #6c757d;
-            padding-top: 8px;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+
+        #column-dropdown-menu .col-vis-group-title input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        #column-dropdown-menu .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        #column-dropdown-menu .col-vis-item {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        #column-dropdown-menu .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+
+        #column-dropdown-menu .col-vis-item > label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+        }
+
+        #column-dropdown-menu .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+
+        @media (max-width: 768px) {
+            #column-dropdown-menu .col-vis-groups {
+                grid-template-columns: repeat(2, minmax(140px, 1fr));
+            }
         }
 
         /* Red/Green toggle dot for Sugg Send column */
@@ -332,12 +418,10 @@
                             </a>
                             <div class="btn-group me-2" role="group">
                                 <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle"
-                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
                                     <i class="fa fa-columns"></i>
                                 </button>
-                                <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu"
-                                    style="max-height: 400px; overflow-y: auto;">
-                                </ul>
+                                <ul class="dropdown-menu dropdown-menu-end" id="column-dropdown-menu"></ul>
                             </div>
                             <button id="reset-all-filters-btn" type="button" class="btn btn-sm btn-warning me-2">
                                 <i class="fa fa-filter-circle-xmark"></i> all
@@ -955,13 +1039,8 @@
 
                 const table = new Tabulator("#fba-table", {
                     ajaxURL: "/fba-data-json",
-                    layout: "fitColumns",
+                    layout: "fitDataStretch",
                     layoutColumnsOnNewData: true,
-                    columnDefaults: {
-                        minWidth: 28,
-                        widthShrink: 1,
-                        widthGrow: 1
-                    },
                     editTriggerEvent: "dblclick",
                     pagination: true,
                     paginationSize: 50,
@@ -1014,12 +1093,9 @@
                             field: "FBA_SKU",
                             headerFilter: "input",
                             headerFilterPlaceholder: "Search SKU...",
-                            cssClass: "font-weight-bold fba-sku-col",
+                            cssClass: "font-weight-bold",
                             tooltip: true,
                             frozen: true,
-                            width: 150,
-                            minWidth: 96,
-                            widthGrow: 2,
                             formatter: function(cell) {
                                 const fbaSku = cell.getValue();
                                 const rowData = cell.getRow().getData();
@@ -3036,6 +3112,25 @@
                     return text || field;
                 }
 
+                function setFieldVisible(field, visible) {
+                    table.getColumns().forEach(col => {
+                        if (col.getDefinition().field !== field) return;
+                        if (visible) col.show();
+                        else col.hide();
+                    });
+                }
+
+                function syncGroupHeaderCheckbox(groupEl) {
+                    if (!groupEl) return;
+                    const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                    const itemCbs = groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]');
+                    if (!headerCb || !itemCbs.length) return;
+                    let checked = 0;
+                    itemCbs.forEach(cb => { if (cb.checked) checked++; });
+                    headerCb.checked = checked === itemCbs.length;
+                    headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+                }
+
                 function buildColumnDropdown() {
                     const menu = document.getElementById("column-dropdown-menu");
                     menu.innerHTML = '';
@@ -3045,6 +3140,7 @@
                         Pricing: ['FBA_Price', 'LMP', 'AMZ_Price', 'AMZ_GPFT', 'AMZ_AD', 'AMZ_NPFT', 'CVR_L30_amz', 'CVR_L60_amz', 'CVR_L45_amz', 'ROI%', 'GROI%', 'GPFT%', 'TPFT', 'FBA_ROI', 'S_Price', 'SPft%', 'SROI%', 'lmp_1', 'Fulfillment_Fee', 'FBA_Fee_Manual', 'T_sales'],
                         Shipping: ['_ctn_details', 'Length', 'Width', 'Height', 'Quantity_in_each_box', 'GW_CTN', 'Shipping_Amount', 'FBA_Shipment_Status', 'FBA_Ship_Calculation', 'Ship', 'Send_Cost']
                     };
+                    const groupNames = ['Basics', 'Pricing', 'Shipping', 'Other'];
                     const skipFields = new Set(['_select', '_accept', '_details']);
                     const grouped = { Basics: [], Pricing: [], Shipping: [], Other: [] };
 
@@ -3055,45 +3151,57 @@
                         grouped[name].push(col);
                     });
 
-                    ['Basics', 'Pricing', 'Shipping', 'Other'].forEach(name => {
-                        if (!grouped[name].length) return;
+                    const groupsLi = document.createElement('li');
+                    groupsLi.className = 'col-vis-full';
+                    const groupsWrap = document.createElement('div');
+                    groupsWrap.className = 'col-vis-groups';
 
-                        const header = document.createElement('li');
-                        const heading = document.createElement('h6');
-                        heading.className = 'dropdown-header';
-                        heading.textContent = name;
-                        header.appendChild(heading);
-                        menu.appendChild(header);
+                    groupNames.forEach(name => {
+                        const group = document.createElement('div');
+                        group.className = 'col-vis-group';
+                        group.dataset.group = name;
+
+                        const titleEl = document.createElement('label');
+                        titleEl.className = 'col-vis-group-title';
+                        const groupCb = document.createElement('input');
+                        groupCb.type = 'checkbox';
+                        groupCb.className = 'col-vis-group-toggle';
+                        groupCb.title = 'Select / deselect all in ' + name;
+                        titleEl.appendChild(groupCb);
+                        titleEl.appendChild(document.createTextNode(name));
+                        group.appendChild(titleEl);
+
+                        const list = document.createElement('ul');
+                        list.className = 'col-vis-group-list';
 
                         grouped[name].forEach(col => {
                             const def = col.getDefinition();
                             const li = document.createElement('li');
-                            const label = document.createElement('label');
-                            label.className = 'dropdown-item';
-                            label.style.cursor = 'pointer';
+                            li.className = 'col-vis-item';
+                            li.dataset.field = def.field;
 
+                            const label = document.createElement('label');
                             const checkbox = document.createElement('input');
                             checkbox.type = 'checkbox';
+                            checkbox.className = 'col-vis-field-toggle';
                             checkbox.checked = col.isVisible();
-                            checkbox.style.marginRight = '8px';
                             checkbox.dataset.field = def.field;
 
+                            const title = columnMenuLabel(def.title, def.field);
                             label.appendChild(checkbox);
-                            label.appendChild(document.createTextNode(columnMenuLabel(def.title, def.field)));
+                            label.appendChild(document.createTextNode(title));
+                            label.title = title;
                             li.appendChild(label);
-                            menu.appendChild(li);
-
-                            checkbox.addEventListener('change', function() {
-                                if (this.checked) {
-                                    col.show();
-                                } else {
-                                    col.hide();
-                                }
-                                saveColumnVisibilityToServer();
-                                table.redraw(true);
-                            });
+                            list.appendChild(li);
                         });
+
+                        group.appendChild(list);
+                        groupsWrap.appendChild(group);
+                        syncGroupHeaderCheckbox(group);
                     });
+
+                    groupsLi.appendChild(groupsWrap);
+                    menu.appendChild(groupsLi);
                 }
 
                 function saveColumnVisibilityToServer() {
@@ -3149,6 +3257,7 @@
                                 }
                             });
                             table.redraw(true);
+                            buildColumnDropdown();
                         })
                         .catch(error => console.error('Error loading column visibility:', error));
                 }
@@ -3159,10 +3268,36 @@
                     buildColumnDropdown();
                 }, 500);
 
-                // Toggle column from dropdown
                 document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-                    if (e.target.type === 'checkbox') {
-                        buildColumnDropdown();
+                    if (e.target.type !== 'checkbox') return;
+
+                    if (e.target.classList.contains('col-vis-group-toggle')) {
+                        const checked = e.target.checked;
+                        const groupEl = e.target.closest('.col-vis-group');
+                        const itemCbs = groupEl
+                            ? groupEl.querySelectorAll('.col-vis-item input[type="checkbox"]')
+                            : [];
+                        itemCbs.forEach(function(cb) {
+                            cb.checked = checked;
+                            setFieldVisible(cb.dataset.field, checked);
+                        });
+                        e.target.indeterminate = false;
+                        saveColumnVisibilityToServer();
+                        table.redraw(true);
+                        return;
+                    }
+
+                    const field = e.target.dataset.field;
+                    if (!field) return;
+                    setFieldVisible(field, e.target.checked);
+                    syncGroupHeaderCheckbox(e.target.closest('.col-vis-group'));
+                    saveColumnVisibilityToServer();
+                    table.redraw(true);
+                });
+
+                document.getElementById("column-dropdown-menu").addEventListener("click", function(e) {
+                    if (e.target.closest('label') || e.target.type === 'checkbox') {
+                        e.stopPropagation();
                     }
                 });
 
