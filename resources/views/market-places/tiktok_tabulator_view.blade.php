@@ -324,9 +324,6 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => $tiktokPromoChannel])
-        @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => $tiktokPromoChannel])
-        @endif
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#ttLmpModal'])
     </style>
 @endsection
@@ -468,9 +465,6 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Off">
                         PRc
                     </button>
-                    @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => $tiktokPromoChannel])
-                    @endif
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => $tiktokPromoChannel])
 
                     {{-- Target ROI% bulk control — back-solves SPRICE so SROI = Target ROI%. --}}
@@ -1027,9 +1021,6 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => $tiktokPromoChannel])
-    @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => $tiktokPromoChannel])
-    @endif
 
 @endsection
 
@@ -1057,6 +1048,8 @@
 @section('script-bottom')
     <script>
         const TTP_CFG = @json($ttpCfg);
+        // S PRC is saved + pushed by the server (tiktok:sprc-dil-auto-push). The page only shows it.
+        window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => $tiktokPromoChannel])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         const DEFAULT_TIKTOK_MARGIN_PERCENT = Number(@json($tiktokPercentage ?? 80));
@@ -1069,9 +1062,6 @@
         const ALWAYS_HIDDEN_COLUMNS = ['out_roas', 'in_roas', 'T Profit', 'TT Ship'];
         let table = null;
         let allTableData = [];
-        @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => $tiktokPromoChannel])
-        @endif
         let blueTriangleFilterActive = false;
         let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
         let decreaseModeActive = false;
@@ -1392,19 +1382,11 @@
         }
         window.ttDisplayedSprice = ttDisplayedSprice;
         /**
-         * Ads% used by Sprc Dil NROI (same as ebayDilAdsPct).
-         * TikTok 2 has no Channel Ads% — do not subtract listing TACOS%
+         * Ads% used by the SNROI column. TikTok 2 has no Channel Ads%, so listing TACOS% is not subtracted
          * (spend/sales, often 100% when spend exists but TT Price/sales is 0).
-         * That made SNROI/SNPFT deeply negative while SGROI still matched the Dil slab.
          */
         function ttDilAdsPct(rowData) {
-            if (TTP_CFG && TTP_CFG.summaryChannel === 'tiktok2') {
-                if (typeof ebayDilAdsPct === 'function') {
-                    const n = parseFloat(ebayDilAdsPct());
-                    if (isFinite(n) && n > 0) return n;
-                }
-                return 0;
-            }
+            if (TTP_CFG && TTP_CFG.summaryChannel === 'tiktok2') return 0;
             const tacos = parseFloat(rowData && rowData['TACOS%']);
             return (isFinite(tacos) && tacos > 0) ? tacos : 0;
         }
@@ -1412,7 +1394,7 @@
             const live = ttDisplayedSprice(rowData);
             return live > 0 ? live : ttSavedSpriceAmount(rowData);
         }
-        /** SGROI = live gross PFT$ / LP at the displayed S PRC (not the stored Dil target). */
+        /** SGROI = live gross PFT$ / LP at the displayed S PRC (not the stored target). */
         function ttComputeSgroi(rowData) {
             const price = ttSnroiPrice(rowData);
             const lp = parseFloat(rowData && rowData.LP_productmaster);
@@ -1421,7 +1403,7 @@
             const margin = getRowMarginFactor(rowData);
             return (((price * margin) - ship - lp) / lp) * 100;
         }
-        /** SNROI = (gross PFT$ − S PRC × Ads%/100) / LP × 100 — Ads% matches Sprc Dil. */
+        /** SNROI = (gross PFT$ − S PRC × Ads%/100) / LP × 100 — Ads% = listing TACOS% (TikTok 2 = 0). */
         function ttComputeSnroi(rowData) {
             const sgroi = ttComputeSgroi(rowData);
             if (sgroi == null || !isFinite(sgroi)) return null;
@@ -4072,50 +4054,13 @@
                         width: 70
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
-                    @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-                    {
-                        title: "Sprc Dil",
-                        field: "SPRC_DIL",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof ebaySprcDilForRow === 'function')
-                                    ? (ebaySprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
-                        headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. TT L30 = 0 still uses the Dil-matching slab. CVR overlay (editable) adjusts Target NROI; Count updates live. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (typeof ttIsParentRow === 'function' && ttIsParentRow(rowData)) return '';
-                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                            const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = (typeof ebayDilGroiTipText === 'function')
-                                ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold TT L30 → min Target GROI' })
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                    + ' → ' + meta.label
-                                    + ' → GROI ' + meta.groi + '%'
-                                    + ' → $' + meta.sprc.toFixed(2));
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
-                        },
-                        width: 78
-                    },
-                    @endif
                     {
                         title: "SPRICE",
                         field: "SPRICE",
                         hozAlign: "center",
                         editable: false,
                         sorter: "number",
-                        headerTooltip: @if(in_array($tiktokPromoChannel ?? '', ['tiktok', 'tiktok2'], true))
-                            "S PRC = Dil Target SNROI back-solve: (LP × (1 + Target%/100) + Ship) / margin. Only a Dil inside a From–To slab (or Dil = 0 on the 0–0 slab). TT L30 = 0 still uses that same slab. Dil outside every slab does not set S PRC. CVR overlay adjusts the target. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP."
-                        @else
-                            "S PRC = Std × (1 − (PRMT% + cvr%)/100). S PRC ≥ LMP is capped at LMP and keeps a red triangle after push. Blue triangle = S PRC ≠ Price."
-                        @endif,
+                        headerTooltip: "S PRC = Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), raised to Min NPFT % (Ship + Ads%), capped at LMP when SGROI at LMP ≥ 20% (Min NPFT wins), Std Prc is the maximum. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price. Red = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
@@ -4270,7 +4215,7 @@
                                  - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
                         },
                         headerTooltip: (TTP_CFG.summaryChannel === 'tiktok2')
-                            ? "SNROI from Dil S PRC using the same Ads% as Sprc Dil (TikTok 2 Channel Ads% = 0, so SNROI = SGROI). Listing TACOS% is not subtracted."
+                            ? "SNROI from the displayed S PRC: (S PRC × margin − Ship − LP − S PRC × Ads%) / LP. TikTok 2 Ads% = 0, so SNROI = SGROI."
                             : "SNROI from S PRC: (gross PFT$ − S PRC × TACOS%/100) / LP × 100.",
                         formatter: function(cell) {
                             const percent = ttComputeSnroi(cell.getRow().getData());
@@ -4293,7 +4238,7 @@
                                  - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
                         },
                         headerTooltip: (TTP_CFG.summaryChannel === 'tiktok2')
-                            ? "SNPFT from Dil S PRC using the same Ads% as Sprc Dil (TikTok 2 = 0, so SNPFT = SGPFT)."
+                            ? "SNPFT from the displayed S PRC with listing TACOS% (TikTok 2 = 0, so SNPFT = SGPFT)."
                             : "SNPFT = live S GPFT − TACOS%. Same S PRC as SGPFT / SNROI.",
                         formatter: function(cell) {
                             const percent = ttComputeSnpft(cell.getRow().getData());
@@ -5940,16 +5885,10 @@
                     // be overwritten by that subset and later filters would run against only
                     // those rows, leaving the table stuck on the expanded group.
                     if (window.ParentExpand && ParentExpand.isExpanded()) {
-                        if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                            ebayScheduleSprcDilAutoApply();
-                        }
                         return;
                     }
                     allTableData = data;
                     if (window.ParentExpand) ParentExpand.captureDataset(data);
-                }
-                if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                    ebayScheduleSprcDilAutoApply();
                 }
                 function afterLoad() {
                     setTimeout(function() {

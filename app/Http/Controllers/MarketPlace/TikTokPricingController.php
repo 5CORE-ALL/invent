@@ -696,6 +696,7 @@ class TikTokPricingController extends Controller
             $processedItem["SPRICE_STATUS_UPDATED_AT"] = null;
             $processedItem["SPRICE_PUSHED_VALUE"] = null;
             $processedItem["SPRICE_PUSHED_BY"] = null;
+            $processedItem["SPRICE_PUSHED_AT"] = null;
             $tiktokValArr = [];
 
             // Buyer / Seller links default (TikTok 2 reads from its shop data view value below)
@@ -753,6 +754,7 @@ class TikTokPricingController extends Controller
                     ? floatval($tiktokValArr["SPRICE_PUSHED_VALUE"])
                     : null;
                 $processedItem["SPRICE_PUSHED_BY"] = $tiktokValArr["SPRICE_PUSHED_BY"] ?? null;
+                $processedItem["SPRICE_PUSHED_AT"] = $tiktokValArr["SPRICE_PUSHED_AT"] ?? null;
                 $processedItem["has_custom_sprice"] = floatval($processedItem["SPRICE"] ?? 0) > 0;
             }
             if (!isset($processedItem["NR"]) && isset($reverbViewData[$sku])) {

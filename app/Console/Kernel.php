@@ -1146,6 +1146,39 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // TikTok / TikTok 2 Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ship + Ads%, LMP cap, Std max)
+        // → S PRC → TikTok Shop price API. Same twice-daily idea as Amazon. /tiktok-pricing and /tiktok-2-pricing do not need
+        // to be open. Evening runs are NOT wrapped in $ist() — the IST window ends at 20:00.
+        foreach ([
+            ['tiktok', '06:15', '22:15', 'tiktok'],
+            ['tiktok2', '06:25', '22:25', 'tiktok2'],
+        ] as [$ttChannel, $ttMorning, $ttEvening, $ttSlug]) {
+            $schedule->command('tiktok:sprc-dil-auto-push --channel='.$ttChannel)
+                ->dailyAt($ttMorning)
+                ->timezone('Asia/Kolkata')
+                ->name($ttSlug.'-sprc-dil-auto-push-am-ist')
+                ->withoutOverlapping(180)
+                ->runInBackground()
+                ->appendOutputTo($log);
+
+            $schedule->command('tiktok:sprc-dil-auto-push --channel='.$ttChannel)
+                ->dailyAt($ttEvening)
+                ->timezone('Asia/Kolkata')
+                ->name($ttSlug.'-sprc-dil-auto-push-pm-ist')
+                ->withoutOverlapping(180)
+                ->runInBackground()
+                ->appendOutputTo($log);
+
+            // Headless "Push on reload" (same as amazon:push-blue-prices): blue-triangle SKUs (INV > 0, TT Price ≠ S PRC)
+            // are checked every 10 min, 24/7 on purpose (no $ist()).
+            $schedule->command('tiktok:push-blue-prices --channel='.$ttChannel)
+                ->everyTenMinutes()
+                ->name($ttSlug.'-push-blue-prices')
+                ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
         // Best Buy Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap, Amz rule) → S PRC → Best Buy MCM.
         // Same twice-daily idea as Amazon, offset 40 min. /bestbuy-pricing does not need to be open.
         // Do NOT wrap 20:40 in $ist() — IST window ends at 20:00.
@@ -1222,8 +1255,6 @@ class Kernel extends ConsoleKernel
             ['05:35', '21:35', 'dil:rule-sprice-apply temu --push', 'temu-sprc-dil'],
             ['05:45', '21:45', 'dil:rule-sprice-apply temu2 --push', 'temu2-sprc-dil'],
             ['05:55', '21:55', 'dil:rule-sprice-apply temu3 --push', 'temu3-sprc-dil'],
-            ['06:15', '22:15', 'dil:rule-sprice-apply tiktok --push', 'tiktok-sprc-dil'],
-            ['06:25', '22:25', 'dil:rule-sprice-apply tiktok2 --push', 'tiktok2-sprc-dil'],
             ['06:35', '22:35', 'dil:rule-sprice-apply doba', 'doba-sprc-dil'],
             ['06:55', '22:55', 'dil:rule-sprice-apply shein --push', 'shein-sprc-dil'],
             ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],

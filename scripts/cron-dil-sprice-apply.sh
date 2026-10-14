@@ -67,12 +67,20 @@ case "$MODE" in
     CMD=(purchasing-power:sprc-dil-auto-push)
     MODE=purchasing_power
     ;;
-  newegg|temu|temu2|temu3|tiktok|tiktok2|shein|wayfair|walmart|pls)
+  newegg|temu|temu2|temu3|shein|wayfair|walmart|pls)
     CMD=(dil:rule-sprice-apply "$MODE" --push)
     ;;
   faire)
     CMD=(faire:sprc-dil-auto-push)
     MODE=faire
+    ;;
+  tiktok)
+    CMD=(tiktok:sprc-dil-auto-push --channel=tiktok)
+    MODE=tiktok
+    ;;
+  tiktok2)
+    CMD=(tiktok:sprc-dil-auto-push --channel=tiktok2)
+    MODE=tiktok2
     ;;
   reverb)
     CMD=(reverb:sprc-dil-auto-push)

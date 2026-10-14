@@ -48,6 +48,8 @@ class StdPrcVsDilDailyCommand extends Command
                 ['topdawg:sprc-dil-auto-push', $save],
                 ['purchasing-power:sprc-dil-auto-push', $save],
                 ['faire:sprc-dil-auto-push', $save],
+                ['tiktok:sprc-dil-auto-push', ['--channel' => 'tiktok'] + $save],
+                ['tiktok:sprc-dil-auto-push', ['--channel' => 'tiktok2'] + $save],
                 ['bestbuy:sprc-dil-auto-push', $save],
                 ['dil:rule-sprice-apply', ['channel' => 'all'] + $saveAndPush],
                 ['shopify-b2c:rule-sprice-apply', $saveAndPush],

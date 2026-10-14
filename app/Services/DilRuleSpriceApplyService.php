@@ -26,10 +26,6 @@ use App\Models\Temu3Order;
 use App\Models\Temu3Pricing;
 use App\Models\TemuDataView;
 use App\Models\TemuMetric;
-use App\Models\TikTokProduct;
-use App\Models\TikTokProductTwo;
-use App\Models\TiktokShopDataView;
-use App\Models\TiktokTwoShopDataView;
 use App\Models\WalmartDataView;
 use App\Models\WalmartMetrics;
 use App\Models\WayfairDataView;
@@ -62,8 +58,6 @@ class DilRuleSpriceApplyService
         'temu',
         'temu2',
         'temu3',
-        'tiktok',
-        'tiktok2',
         'doba',
         'shein',
         'wayfair',
@@ -78,8 +72,6 @@ class DilRuleSpriceApplyService
         'temu',
         'temu2',
         'temu3',
-        'tiktok',
-        'tiktok2',
         'shein',
         'wayfair',
         'walmart',
@@ -105,8 +97,6 @@ class DilRuleSpriceApplyService
         $channel = strtolower(trim($channel));
 
         return match ($channel) {
-            'tt', 'tiktokshop' => 'tiktok',
-            'tiktok_2', 'tiktoktwo' => 'tiktok2',
             'fb', 'facebook', 'fbmarketplace' => 'fb_marketplace',
             'wf' => 'wayfair',
             'wm', 'walmart_wfs' => 'walmart',
@@ -311,9 +301,7 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        $skipTiktokZeroSoldCvr = $isZeroSold
-            && in_array($this->channel, ['tiktok', 'tiktok2'], true);
-        if (! empty($cfg['cvr_adj']) && ! $skipTiktokZeroSoldCvr) {
+        if (! empty($cfg['cvr_adj'])) {
             $views = (float) ($row['views'] ?? 0);
             if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
                 $cvr = (float) ($row['cvr'] ?? 0);
@@ -475,8 +463,6 @@ class DilRuleSpriceApplyService
         } elseif ($this->channel === 'shein') {
             $l30Overlay = $this->sheinL30BySku($skus);
         }
-        // TikTok 0 Sold uses TT L30 = the page's sold qty (tiktok_orders L30), not tiktok_products.sold.
-        $ttL30BySku = in_array($this->channel, ['tiktok', 'tiktok2'], true) ? $this->tiktokL30BySku() : null;
 
         $draft = [];
         foreach ($skus as $sku) {
@@ -529,7 +515,6 @@ class DilRuleSpriceApplyService
                     ? (float) ($l30Overlay[$sku] ?? 0)
                     : $ov,
                 'al30' => $al30,
-                'tt_l30' => $ttL30BySku === null ? null : (float) ($ttL30BySku[$sku] ?? 0),
                 'live' => round((float) ($metric->{$priceCol} ?? 0), 2),
                 'lp' => $lpShip['lp'],
                 'ship' => $lpShip['ship'],
@@ -717,31 +702,6 @@ class DilRuleSpriceApplyService
 
             return [];
         }
-    }
-
-    /**
-     * TikTok / TikTok 2 L30 sold by UPPER(sku), NBSP-safe. Same source as /tiktok-pricing "TT L30".
-     * Returns null when the orders table is not ready or has no L30 orders, so a missing source is never read as 0 sold.
-     *
-     * @return array<string, float>|null
-     */
-    protected function tiktokL30BySku(): ?array
-    {
-        $two = $this->channel === 'tiktok2';
-        $model = $two ? \App\Models\Tiktok2Order::class : \App\Models\TiktokOrder::class;
-        if (! $model::tableReady()) {
-            return null;
-        }
-        $out = [];
-        foreach ($model::soldQtyL30(null, 30) as $sku => $qty) {
-            $key = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $sku)));
-            if ($key !== '') {
-                $out[$key] = ($out[$key] ?? 0) + (float) $qty;
-            }
-        }
-
-        // No L30 orders at all means the order sync is broken or empty. Never read that as every SKU being 0 sold.
-        return $out === [] ? null : $out;
     }
 
     /**
@@ -1061,24 +1021,6 @@ class DilRuleSpriceApplyService
                 'zero_sold_min_groi' => false,
                 'match_or_nearest' => true,
                 'live_is_base' => true,
-            ],
-            'tiktok' => [
-                'metric' => TikTokProduct::class,
-                'view' => TiktokShopDataView::class,
-                'price' => 'price',
-                'l30' => 'sold',
-                'views' => 'views',
-                'zero_sold_min_groi' => false,
-                'cvr_adj' => true,
-            ],
-            'tiktok2' => [
-                'metric' => TikTokProductTwo::class,
-                'view' => TiktokTwoShopDataView::class,
-                'price' => 'price',
-                'l30' => 'sold',
-                'views' => 'views',
-                'zero_sold_min_groi' => false,
-                'cvr_adj' => true,
             ],
             'doba' => [
                 'metric' => DobaMetric::class,

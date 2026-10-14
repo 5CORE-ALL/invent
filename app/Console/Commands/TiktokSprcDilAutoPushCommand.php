@@ -1,0 +1,112 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Services\CronMonitor\CronExecutionContext;
+use App\Services\TiktokSprcDilAutoPushService;
+use Illuminate\Console\Command;
+
+/**
+ * Twice daily (TikTok 06:15 / 22:15 IST, TikTok 2 06:25 / 22:25 IST): TikTok Std prc vs dil
+ * (Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ship + Ads%, LMP cap, Std max) → SPRICE → TikTok Shop price API.
+ * Page not required. Only pushes SKUs whose target price differs from the live TikTok Price and from the last pushed price.
+ * tiktok:push-blue-prices handles the 10-minute catch-up.
+ */
+class TiktokSprcDilAutoPushCommand extends Command
+{
+    use MonitorsCronExecution;
+
+    protected $signature = 'tiktok:sprc-dil-auto-push
+        {--channel=tiktok : tiktok or tiktok2}
+        {--dry-run : Compute only. Do NOT save SPRICE and do NOT push to TikTok}
+        {--skip-push : Save SPRICE, but skip the TikTok push}
+        {--push-all : Push every eligible SKU (ignore the last-pushed match and cooldown)}
+        {--limit= : Max SKUs (for testing)}
+        {--sleep-ms=300 : Delay between TikTok price API calls (ms)}';
+
+    protected $description = 'TikTok / TikTok 2 Std prc vs dil (Min NPFT, LMP cap, Std max) → SPRICE → TikTok Shop (twice daily IST).';
+
+    protected string $monitorJobName = 'TikTok Sprc Dil Auto Push';
+
+    public function handle(): int
+    {
+        $channel = TiktokSprcDilAutoPushService::normalizeChannel((string) $this->option('channel'));
+        $service = TiktokSprcDilAutoPushService::forChannel($channel);
+
+        return $this->runMonitored(
+            fn (CronExecutionContext $m) => $this->executeRun($service, $m),
+            $channel === 'tiktok2' ? 'TikTok 2 Sprc Dil Auto Push' : $this->monitorJobName
+        );
+    }
+
+    protected function executeRun(TiktokSprcDilAutoPushService $service, CronExecutionContext $monitor): int
+    {
+        @ini_set('max_execution_time', '0');
+        @set_time_limit(0);
+
+        $dryRun = (bool) $this->option('dry-run');
+        $skipPush = (bool) $this->option('skip-push');
+        $pushAll = (bool) $this->option('push-all');
+        $limitOpt = $this->option('limit');
+        $limit = ($limitOpt !== null && $limitOpt !== '') ? max(1, (int) $limitOpt) : null;
+        $sleepMs = max(0, (int) $this->option('sleep-ms'));
+        $channel = $service->channel();
+
+        $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        $this->info(($channel === 'tiktok2' ? 'TikTok 2' : 'TikTok').' Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
+        $this->info('Schedule: '.($channel === 'tiktok2' ? '06:25 and 22:25' : '06:15 and 22:15').' Asia/Kolkata (IST)');
+        $this->info('Rules: '.$channel.'_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT (Ship + Ads%) + LMP cap + Std max');
+        $this->info('Push: TikTok Shop price API — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
+        $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        $summary = $service->run(
+            dryRun: $dryRun,
+            skipPush: $skipPush,
+            limit: $limit,
+            sleepMs: $sleepMs,
+            onlySkus: null,
+            logger: fn (string $msg) => $this->line($msg),
+            pushAll: $pushAll
+        );
+
+        $stats = $summary['stats'] ?? [];
+        $totalExpected = (int) ($stats['candidates'] ?? 0);
+        $totalApplied = (int) ($stats['applied'] ?? 0);
+        $totalPushed = (int) ($stats['pushed'] ?? 0);
+        $totalFailed = (int) ($stats['push_failed'] ?? 0);
+        $unchanged = (int) ($stats['skipped_unchanged'] ?? 0);
+        $changedOk = $dryRun || $skipPush ? $totalApplied : $totalPushed;
+
+        if ($dryRun || $skipPush) {
+            $monitor->meta['dry_run'] = true;
+        }
+
+        $monitor->markApiConnected();
+        $monitor->setExpected($totalExpected);
+        $monitor->setFetched($totalExpected);
+        $monitor->setProcessed($totalApplied + $unchanged);
+        $monitor->setUpdated($changedOk + $unchanged);
+        $monitor->setSkipped($unchanged);
+        $monitor->setFailed($totalFailed);
+
+        foreach (array_slice($stats['errors'] ?? [], 0, 15) as $err) {
+            $this->warn('  · '.$err);
+        }
+
+        $this->newLine();
+        $this->info(sprintf(
+            'Done. candidates=%d applied=%d pushed=%d unchanged=%d repaired=%d failed=%d',
+            $totalExpected,
+            $totalApplied,
+            $totalPushed,
+            $unchanged,
+            (int) ($stats['price_repaired'] ?? 0),
+            $totalFailed
+        ));
+
+        return ($totalFailed > 0 && $totalPushed === 0 && ! $dryRun && ! $skipPush)
+            ? self::FAILURE
+            : self::SUCCESS;
+    }
+}
