@@ -623,7 +623,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
                     editable: false, sorter: 'number', width: 110,
-                    headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, raised to Min NPFT % (default 10, clearance exempt), Std Prc is the maximum, then never below A Price (Amz). Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
+                    headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, Std Prc is the maximum, never below A Price (Amz), and last raised so SNPFT% is at least Min NPFT % (default 10). Min NPFT wins over Std Prc and Amz. Clearance SKUs are exempt. Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';

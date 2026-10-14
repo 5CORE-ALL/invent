@@ -270,6 +270,16 @@ class BestBuySprcDilAutoPushService
             $lmpCapped = false;
         }
 
+        // Min NPFT is on SNPFT (the S PRC's own NPFT), so it is the last word: it wins over the Std Prc
+        // maximum, the LMP cap and the Amz rule. Clearance SKUs are exempt (the pricer skips them).
+        $floored = $pricer->enforceMinNpft($final, $pricerRow);
+        $npftFloor = $floored > $final + 0.0001;
+        if ($npftFloor) {
+            $final = $floored;
+            $lmpCapped = false;
+            $amzCapped = $amz > 0 && abs($final - $amz) <= 0.005;
+        }
+
         if (! is_finite($final) || $final < 0.01) {
             return null;
         }
@@ -278,6 +288,7 @@ class BestBuySprcDilAutoPushService
             'sprice' => round($final, 2),
             'uncapped' => round($uncapped, 2),
             'amz_capped' => $amzCapped,
+            'npft_floor' => $npftFloor,
             'lmp_capped' => $lmpCapped,
             'base' => round($std, 2),
             'margin' => $margin,

@@ -91,12 +91,47 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
 
-    public function test_std_is_the_maximum(): void
+    public function test_std_is_the_maximum_when_min_npft_is_already_met(): void
     {
+        // Raw 90 is under Std 100 and NPFT is healthy, so Std never lifts the price.
+        $out = $this->service()->computeTarget($this->row(), $this->pricer());
+
+        $this->assertNotNull($out);
+        $this->assertLessThanOrEqual(100.00, $out['sprice']);
+        $this->assertFalse($out['npft_floor']);
+    }
+
+    public function test_min_npft_on_snpft_wins_over_the_std_maximum(): void
+    {
+        // LP 70 + Ship BB 8 = 78. Min NPFT 10%: 78 / (0.80 − 0.10) = 111.43, above Std 100.
         $out = $this->service()->computeTarget($this->row(['lp' => 70, 'ship' => 8]), $this->pricer());
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(100.00, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(111.43, $out['sprice'], 0.011);
+        $this->assertTrue($out['npft_floor']);
+        $snpft = ((($out['sprice'] * 0.80) - 78) / $out['sprice']) * 100;
+        $this->assertGreaterThanOrEqual(9.99, $snpft);
+    }
+
+    public function test_min_npft_on_snpft_wins_over_the_amz_rule(): void
+    {
+        // A Price 5.99 is far under the Min NPFT price, so the floor is the S PRC, not A Price.
+        $out = $this->service()->computeTarget($this->row(['lp' => 6, 'ship' => 2, 'standard_price' => 5.99, 'amz' => 5.99]), $this->pricer());
+
+        $this->assertNotNull($out);
+        $this->assertGreaterThan(5.99, $out['sprice']);
+        $snpft = ((($out['sprice'] * 0.80) - 8) / $out['sprice']) * 100;
+        $this->assertGreaterThanOrEqual(9.99, $snpft);
+    }
+
+    public function test_clearance_is_exempt_from_the_snpft_floor(): void
+    {
+        $out = $this->service()->computeTarget($this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]), $this->pricer());
+
+        $this->assertNotNull($out);
+        $this->assertFalse($out['npft_floor']);
+        // Clearance keeps the discount price (Std 100 − 10%), even though its SNPFT is under the floor.
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
 
     public function test_lmp_caps_the_price_when_sgroi_at_lmp_is_healthy(): void
