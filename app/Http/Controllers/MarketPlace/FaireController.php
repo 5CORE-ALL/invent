@@ -1182,6 +1182,7 @@ class FaireController extends Controller
                     'ship' => round($ship, 2),
                     'sprice' => round($sprice, 2),
                     'sgpft' => $sgpft,
+                    'SNPFT' => $sgpft,
                     'sroi' => $sroi,
                     'push_status' => $pushStatus,
                     'push_status_at' => $pushStatusAt,
@@ -1287,6 +1288,7 @@ class FaireController extends Controller
 
                     $stored['SPRICE'] = $sprice;
                     $stored['SGPFT'] = $sgpft;
+                    $stored['SNPFT'] = $sgpft;
                     $stored['SROI'] = $sroi;
 
                     // New SPRICE invalidates prior push success (unless this save also sets push_status).
@@ -1577,6 +1579,7 @@ class FaireController extends Controller
             'ship' => '-',
             'sprice' => '-',
             'sgpft' => '-',
+            'SNPFT' => '-',
             'sroi' => '-',
             'push_status' => null,
             'product_id' => null,

@@ -1820,8 +1820,14 @@
                                 }
                             }
                         });
-                        frBuildColumnDropdown();
                     }
+                    try {
+                        const snpftCol = table.getColumn('SNPFT');
+                        if (snpftCol && !(visibility && Object.prototype.hasOwnProperty.call(visibility, 'SNPFT') && !visibility.SNPFT)) {
+                            snpftCol.show();
+                        }
+                    } catch (e) { /* ignore */ }
+                    frBuildColumnDropdown();
                     if (typeof applyFilters === 'function') applyFilters();
                 }
             });
@@ -2291,7 +2297,7 @@
                         }
                     },
                     {
-                        title: 'SNPFT%', field: 'SNPFT', headerSort: true, hozAlign: 'right',
+                        title: 'SNPFT%', field: 'SNPFT', width: 62, headerSort: true, hozAlign: 'right', visible: true,
                         sorter: function(a, b, aRow, bRow) {
                             return (frFaireShownSgpft(aRow.getData()) || 0) - (frFaireShownSgpft(bRow.getData()) || 0);
                         },
