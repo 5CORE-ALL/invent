@@ -2448,9 +2448,14 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ BB Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
+                        // Clearance SKUs: Min NPFT is not applied, so a low SNPFT is expected. Red "C" after the value.
+                        const isClearance = typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData);
+                        const clearanceMark = isClearance
+                            ? '<span class="bestbuy-sprice-clearance" title="Clearance — Min NPFT not applied" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
+                            : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
                     },
-                    width: 110
+                    width: 120
                 },
                 {
                     title: "SGROI%",
@@ -2850,6 +2855,8 @@
             window.chStdLoadClearance().always(function() {
                 // Clearance list is in: apply the Min NPFT floor on SNPFT, again once the saved rule has loaded.
                 try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ }
+                // The S PRC cells painted before the clearance list arrived: repaint so the "C" shows.
+                try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
                 setTimeout(function() { try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ } }, 2500);
                 try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
             });
