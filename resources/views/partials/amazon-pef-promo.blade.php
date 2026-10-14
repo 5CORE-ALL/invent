@@ -3299,13 +3299,32 @@
             }
             return n > 0 ? amzPefRound2(n) : 0;
         }
+        /**
+         * Sprc Dil price with no LMP / Std cap and a negative NPFT → raise to Min NPFT (default 10%).
+         * Capped SKUs (the cap pulled the price below the Dil price) and clearance SKUs are untouched.
+         * Std Prc stays the maximum. Same math as the Amazon Sprc Dil cron.
+         */
+        function amzDilRaiseUncappedNegative(d, raw, capped) {
+            const base = Number(capped) || 0;
+            if (!(base > 0)) return base;
+            if ((Number(raw) || 0) - base > 0.009) return base; // LMP or Std cap is active
+            if (typeof amzStdNpftAt !== 'function' || typeof amzStdRaiseToMinNpft !== 'function') return base;
+            if (amzStdNpftAt(base, d) >= 0) return base;
+            let raised = Number(amzStdRaiseToMinNpft(base, d)) || 0;
+            if (!(raised > base)) return base;
+            if (typeof amazonCapToStdWhenNoLmp === 'function') {
+                raised = Number(amazonCapToStdWhenNoLmp(d, raised)) || raised;
+            }
+            return raised > base ? amzPefRound2(raised) : base;
+        }
         /** Live S PRC from Dil / CVR Disc / 0 Sold. Ignores stored SPRICE. */
         function amzLiveRuleSprice(d) {
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
-                return raw > 0 ? amzCapRuleSprice(d, raw) : 0;
+                if (!(raw > 0)) return 0;
+                return amzDilRaiseUncappedNegative(d, raw, amzCapRuleSprice(d, raw));
             }
             const plan = computeAmzPushPrcPlan(d);
             if (!plan || !(plan.effective > 0)) return 0;
