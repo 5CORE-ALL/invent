@@ -207,7 +207,12 @@ class BestBuyPricingController extends Controller
         }
 
         // NR/REQ + SPRICE data from BestbuyUSADataView
-        $dataViews = BestbuyUSADataView::whereIn("sku", $skus)->pluck("value", "sku");
+        // Keyed by UPPER(TRIM(sku)): the DB match is case-insensitive, but a PHP array key is not. A SKU saved as
+        // "CS 04 2W WOG" was never found for the Product Master spelling "CS 04 2W WoG", so its S PRC showed blank.
+        $dataViews = [];
+        foreach (BestbuyUSADataView::whereIn("sku", $skus)->get(['sku', 'value']) as $dv) {
+            $dataViews[strtoupper(trim((string) $dv->sku))] = $dv->getRawOriginal('value');
+        }
 
         // Listing status data
         $listingStatusData = BestbuyUSAListingStatus::whereIn("sku", $skus)
@@ -339,8 +344,9 @@ class BestBuyPricingController extends Controller
             $row['Listed'] = null;
             $row['Live'] = null;
             
-            if (isset($dataViews[$pm->sku])) {
-                $raw = $dataViews[$pm->sku];
+            $dvKey = strtoupper(trim((string) $pm->sku));
+            if (isset($dataViews[$dvKey])) {
+                $raw = $dataViews[$dvKey];
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
                 }
@@ -366,8 +372,9 @@ class BestBuyPricingController extends Controller
             $row['SPRICE_UNCAPPED'] = null;
 
             $raw = null;
-            if (isset($dataViews[$pm->sku])) {
-                $raw = $dataViews[$pm->sku];
+            $dvKey = strtoupper(trim((string) $pm->sku));
+            if (isset($dataViews[$dvKey])) {
+                $raw = $dataViews[$dvKey];
                 if (!is_array($raw)) {
                     $raw = json_decode($raw, true);
                 }

@@ -40,6 +40,9 @@ class BestBuySprcDilAutoPushService
 
     public function __construct(private readonly BestBuyApiService $bbApi) {}
 
+    /** @var array<string, string> Why a requested SKU was left out of the candidates (--sku runs). */
+    protected array $skipReasons = [];
+
     /**
      * @param  list<string>|null  $onlySkus  Uppercase SKUs; null = all listed candidates
      * @param  callable(string): void|null  $logger
@@ -79,6 +82,21 @@ class BestBuySprcDilAutoPushService
             $this->log($logger, '✗ Load failed: '.$e->getMessage());
 
             return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => $stats];
+        }
+
+        if ($onlySkus !== null && $onlySkus !== []) {
+            $found = [];
+            foreach ($rows as $cand) {
+                $found[strtoupper(trim((string) ($cand['sku'] ?? '')))] = true;
+            }
+            foreach ($onlySkus as $want) {
+                $wantKey = strtoupper(trim((string) $want));
+                if (isset($found[$wantKey])) {
+                    continue;
+                }
+                $this->log($logger, $wantKey.': not a candidate — '.($this->skipReasons[$wantKey]
+                    ?? 'not found on the page rows (check the SKU spelling, or it is not a child SKU in Product Master)'));
+            }
         }
 
         $lock = Cache::lock(self::LOCK_KEY, 10800);
@@ -235,7 +253,10 @@ class BestBuySprcDilAutoPushService
             (string) ($row['inv'] ?? 0)
         );
         if ($computed === null) {
-            return $line.' → no target (INV or Std Prc missing)';
+            $why = ! ((float) ($row['inv'] ?? 0) > 0) ? 'INV is 0'
+                : (! ((float) ($row['standard_price'] ?? 0) > 0) ? 'Std Prc is blank (Amazon STANDARD_PRICE for this SKU or its Sku Link siblings)' : 'rule gave no price');
+
+            return $line.' → no target: '.$why;
         }
         $sp = (float) $computed['sprice'];
         $snpft = $sp > 0 ? (($sp * ($margin > 0 ? $margin : 0.80) - $ship - $lp) / $sp) * 100 : 0.0;
@@ -403,6 +424,23 @@ class BestBuySprcDilAutoPushService
             // Live MCM price. "BB Price" can show the last pushed value, which hides a push that never landed.
             $price = (float) ($r['BB Price MCM'] ?? $r['BB Price'] ?? 0);
             if (! ($inv > 0) || ! ($price > 0) || ! empty($r['is_bb_inactive']) || ! empty($r['is_missing_bb'])) {
+                if ($want !== null) {
+                    // Single-SKU run: remember why a requested SKU is not a candidate.
+                    $why = [];
+                    if (! ($inv > 0)) {
+                        $why[] = 'INV is 0';
+                    }
+                    if (! ($price > 0)) {
+                        $why[] = 'no live price on the marketplace';
+                    }
+                    if (! empty($r['is_bb_inactive'])) {
+                        $why[] = 'listing is inactive';
+                    }
+                    if (! empty($r['is_missing_bb'])) {
+                        $why[] = 'listing is missing on the marketplace';
+                    }
+                    $this->skipReasons[$key] = implode(', ', $why);
+                }
                 continue;
             }
             $seen[$key] = true;

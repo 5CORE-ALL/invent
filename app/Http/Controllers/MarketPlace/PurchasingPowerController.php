@@ -257,7 +257,12 @@ class PurchasingPowerController extends Controller
         $shopifyData = ShopifySku::mapByProductSkus($skus);
         $ppFreshAfter = self::latestMcmFreshAfter();
         $ppMetrics    = self::indexProductsByNormalizedSku(PurchasingPowerProduct::query()->get());
-        $dataViews    = PurchasingPowerDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        // Keyed by UPPER(TRIM(sku)): the DB match ignores case but a PHP array key does not, so a SKU saved in a
+        // different case than Product Master showed a blank S PRC.
+        $dataViews    = [];
+        foreach (PurchasingPowerDataView::whereIn('sku', $skus)->get(['sku', 'value']) as $dv) {
+            $dataViews[strtoupper(trim((string) $dv->sku))] = $dv->getRawOriginal('value');
+        }
         $amazonData   = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper($i->sku));
 
         $listingStatusData = [];
@@ -348,8 +353,9 @@ class PurchasingPowerController extends Controller
             $row['B Link']          = '';
             $row['S Link']          = '';
 
-            if (isset($dataViews[$pm->sku])) {
-                $raw = $dataViews[$pm->sku];
+            $dvKey = strtoupper(trim((string) $pm->sku));
+            if (isset($dataViews[$dvKey])) {
+                $raw = $dataViews[$dvKey];
                 if (!is_array($raw)) $raw = json_decode($raw, true);
                 if (is_array($raw)) {
                     $row['nr_req'] = $raw['nr_req'] ?? 'REQ';
@@ -364,7 +370,7 @@ class PurchasingPowerController extends Controller
                         $row['has_custom_sprice'] = true;
                         $row['SPRICE_STATUS']     = $raw['SPRICE_STATUS'] ?? 'saved';
                     } else {
-                        $row['SPRICE'] = isset($dataViews[$pm->sku]) ? 0 : null;
+                        $row['SPRICE'] = isset($dataViews[$dvKey]) ? 0 : null;
                         $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null;
                     }
                     $row['push_status'] = $row['SPRICE_STATUS'];
