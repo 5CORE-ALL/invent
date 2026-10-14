@@ -754,7 +754,7 @@ class DilRuleSpriceApplyService
 
     /**
      * TikTok / TikTok 2 L30 sold by UPPER(sku), NBSP-safe. Same source as /tiktok-pricing "TT L30".
-     * Returns null when the orders table is not ready, so a missing source is never read as 0 sold.
+     * Returns null when the orders table is not ready or has no L30 orders, so a missing source is never read as 0 sold.
      *
      * @return array<string, float>|null
      */
@@ -773,7 +773,8 @@ class DilRuleSpriceApplyService
             }
         }
 
-        return $out;
+        // No L30 orders at all means the order sync is broken or empty. Never read that as every SKU being 0 sold.
+        return $out === [] ? null : $out;
     }
 
     /**

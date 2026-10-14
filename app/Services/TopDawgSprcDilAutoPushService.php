@@ -140,21 +140,24 @@ class TopDawgSprcDilAutoPushService
                             $stats['skipped']++;
                             continue;
                         }
-                        if ($this->isUnchanged($row, $computed)) {
-                            if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                                // Already queued in TopDawg review at this price. Wait for approval.
+                        if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
+                            // A push is still in TopDawg review (1–24h). Re-submitting, even at a changed price,
+                            // can restart that review. A changed target is picked up by the twice-daily run.
+                            $stats['skipped_unchanged']++;
+                            continue;
+                        }
+                        if ($this->isUnchanged($row, $computed) && ! $dryRun && $canPush) {
+                            // Review window is over. Pull the live price first: TopDawg may already be right
+                            // and only the Price column stale.
+                            $pull = $this->pullLive((string) $row['sku'], $sprice);
+                            if ($sleepMs > 0) {
+                                usleep($sleepMs * 1000);
+                            }
+                            if ($pull && ! empty($pull['success'])
+                                && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
+                                $stats['price_repaired']++;
                                 $stats['skipped_unchanged']++;
                                 continue;
-                            }
-                            // Pull the live price first. TopDawg may already be right and only the Price column stale.
-                            if (! $dryRun && $canPush) {
-                                $pull = $this->pullLive((string) $row['sku'], $sprice);
-                                if ($pull && ! empty($pull['success'])
-                                    && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
-                                    $stats['price_repaired']++;
-                                    $stats['skipped_unchanged']++;
-                                    continue;
-                                }
                             }
                         }
                     } elseif (! $pushAll && $this->isUnchanged($row, $computed)) {
@@ -164,12 +167,16 @@ class TopDawgSprcDilAutoPushService
                             if ($pull && ! empty($pull['success'])) {
                                 $stats['price_repaired']++;
                             }
+                            if ($sleepMs > 0) {
+                                usleep($sleepMs * 1000);
+                            }
                         }
                         $stats['skipped_unchanged']++;
                         continue;
                     }
 
-                    if (! $dryRun) {
+                    // The blue catch-up runs every 10 min: only rewrite the saved S PRC when it changed.
+                    if (! $dryRun && (! $blueCatchUp || ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice))) {
                         $this->saveSprice((string) $row['sku'], $computed, 'applied');
                     }
                     $stats['applied']++;
@@ -360,7 +367,9 @@ class TopDawgSprcDilAutoPushService
                 'pushed_value' => isset($r['SPRICE_PUSHED_VALUE']) && is_numeric($r['SPRICE_PUSHED_VALUE'])
                     ? (float) $r['SPRICE_PUSHED_VALUE']
                     : null,
-                'pushed_at' => $status === 'pushed' ? $statusAt : null,
+                // Last successful push time. Kept even when a later push failed, so a SKU that is still in
+                // TopDawg review is never re-submitted early.
+                'pushed_at' => $r['SPRICE_PUSHED_AT'] ?? ($status === 'pushed' ? $statusAt : null),
                 'push_error_at' => in_array($status, ['failed', 'error'], true) ? $statusAt : null,
             ];
 
