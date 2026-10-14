@@ -203,7 +203,7 @@
                             <div class="ch-sp-col-head"><div class="ch-sp-pie-title">All discounts</div><button type="button" class="ch-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-all"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-all"></div>
-                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Discount</th><th class="text-center">SKUs</th><th class="text-end">Disc %</th><th class="text-end">$ off</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Discount</th><th class="text-center">Count</th><th class="text-end">Disc $</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
                         </div>
                     </div>
                 </div>
@@ -722,13 +722,16 @@
                 + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ' + prefix + '-disc" value="' + rule.disc + '"></td>'
                 + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ' + prefix + '-del" title="Remove">&times;</button></td></tr>';
         }
-        function chStdLegend(el, slices, counts, chart) {
+        // `money` (optional): { key: dollars }. When given, the legend shows SKU count + $ off instead of count + %,
+        // and the daily history keeps recording the $ off value.
+        function chStdLegend(el, slices, counts, chart, money) {
             const total = slices.reduce(function(sum, s) { return sum + (counts[s.key] || 0); }, 0);
             $(el).html(slices.map(function(s) {
                 const n = counts[s.key] || 0;
                 const pct = total > 0 ? Math.round((n / total) * 100) : 0;
-                chStdHistLive[chart + ':' + s.key] = n;
-                return '<div class="ch-sp-leg-row"><span class="ch-sp-swatch" style="background:' + s.color + '"></span><span>' + chStdEsc(s.label) + '</span><strong>' + n + '</strong><span class="ch-sp-leg-pct">' + pct + '%</span>'
+                chStdHistLive[chart + ':' + s.key] = money ? Math.round(Number(money[s.key]) || 0) : n;
+                const third = money ? chStdMoney(money[s.key]) : (pct + '%');
+                return '<div class="ch-sp-leg-row"><span class="ch-sp-swatch" style="background:' + s.color + '"></span><span>' + chStdEsc(s.label) + '</span><strong>' + n + '</strong><span class="ch-sp-leg-pct">' + third + '</span>'
                     + '<button type="button" class="ch-sp-hist-dot" data-chart="' + chStdEsc(chart) + '" data-band="' + chStdEsc(s.key) + '" data-label="' + chStdEsc(s.label) + '" data-color="' + chStdEsc(s.color) + '" style="background:' + s.color + ';" title="' + chStdEsc(s.label) + ' daily history"></button></div>';
             }).join(''));
         }
@@ -887,7 +890,8 @@
                 { key: 'buss', label: 'B Disc', color: '#0d6efd' },
                 { key: 'zs', label: '0 Sold', color: '#f59e0b' },
             ];
-            const allCounts = { age: Math.round(dollars.age), dil: Math.round(dollars.dil), cvr: Math.round(dollars.cvr), rev: Math.round(dollars.rev), buss: Math.round(dollars.buss), zs: Math.round(dollars.zs) };
+            // SKU count per discount type (bars + legend count). $ off is shown next to it, not a percentage.
+            const allCounts = { age: skuHits.age, dil: skuHits.dil, cvr: skuHits.cvr, rev: skuHits.rev, buss: skuHits.buss, zs: skuHits.zs };
             const zsSlices = [
                 { key: 'zero', label: '0 sold', color: '#f59e0b' },
                 { key: 'sold', label: 'Sold', color: '#94a3b8' },
@@ -899,7 +903,7 @@
             chStdLegend('#ch-sp-leg-zs', zsSlices, zsCounts, 'zs');
             chStdLegend('#ch-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
             chStdLegend('#ch-sp-leg-age', ageSlices, ageCounts, 'age');
-            chStdLegend('#ch-sp-leg-all', allSlices, allCounts, 'all');
+            chStdLegend('#ch-sp-leg-all', allSlices, allCounts, 'all', dollars);
             chStdDrawBars([
                 { id: 'ch-sp-pie-dil', slices: dilSlices, counts: dilCounts },
                 { id: 'ch-sp-pie-rev', slices: revSlices, counts: revCounts },
@@ -909,12 +913,12 @@
                 { id: 'ch-sp-pie-age', slices: ageSlices, counts: ageCounts },
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
-            let pctSum = 0, dollarSum = 0;
-            const body = [['Age', skuHits.age, pctTotals.age, dollars.age], ['Dil', skuHits.dil, pctTotals.dil, dollars.dil], ['B Disc', skuHits.buss, pctTotals.buss, dollars.buss], ['0 Sold', skuHits.zs, pctTotals.zs, dollars.zs], ['CVR', skuHits.cvr, pctTotals.cvr, dollars.cvr], ['Reviews', skuHits.rev, pctTotals.rev, dollars.rev]].map(function(row) {
-                pctSum += row[2]; dollarSum += row[3];
-                return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td><td class="text-end">' + row[2] + '</td><td class="text-end">' + chStdMoney(row[3]) + '</td></tr>';
+            let dollarSum = 0;
+            const body = [['Age', skuHits.age, dollars.age], ['Dil', skuHits.dil, dollars.dil], ['B Disc', skuHits.buss, dollars.buss], ['0 Sold', skuHits.zs, dollars.zs], ['CVR', skuHits.cvr, dollars.cvr], ['Reviews', skuHits.rev, dollars.rev]].map(function(row) {
+                dollarSum += row[2];
+                return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td><td class="text-end">' + chStdMoney(row[2]) + '</td></tr>';
             });
-            body.push('<tr class="fw-semibold"><td>All</td><td class="text-center">' + skuHits.all + '</td><td class="text-end">' + pctSum + '</td><td class="text-end">' + chStdMoney(dollarSum) + '</td></tr>');
+            body.push('<tr class="fw-semibold"><td>All</td><td class="text-center">' + skuHits.all + '</td><td class="text-end">' + chStdMoney(dollarSum) + '</td></tr>');
             $('#ch-sp-all-tbody').html(body.join(''));
             function metricHtml(bucket) {
                 const rows = [
