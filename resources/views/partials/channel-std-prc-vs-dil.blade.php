@@ -1876,7 +1876,7 @@
             bindChStdPrcUi();
             chStdScheduleAutoApply();
             if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.bind === 'function') {
-                window.minNpftSpriceMark.bind(0);
+                setTimeout(function() { window.minNpftSpriceMark.bind(0); }, 0);
             }
             setTimeout(chStdApplyPanelColumns, 800);
             setTimeout(chStdApplyPanelColumns, 2200);

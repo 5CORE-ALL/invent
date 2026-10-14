@@ -25,8 +25,31 @@
                 if (typeof amzStdMinNpft !== 'undefined' && Number(amzStdMinNpft) > 0) return Number(amzStdMinNpft);
                 return 10;
             }
+            function currentTable() {
+                try {
+                    if (typeof table !== 'undefined' && table) return table;
+                } catch (e) { /* let table is still in TDZ while the page script is loading */ }
+                return (typeof window !== 'undefined' && window.table) ? window.table : null;
+            }
+            function pageSnpft(d) {
+                if (typeof ebay2ComputeSgpftFromSprice === 'function' && typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined') {
+                    const sgpft = ebay2ComputeSgpftFromSprice(d);
+                    if (sgpft != null && isFinite(sgpft)) return sgpft - (parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0);
+                }
+                if (typeof ebayComputeSgpftFromSprice === 'function' && typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') {
+                    const sgpft = ebayComputeSgpftFromSprice(d);
+                    if (sgpft != null && isFinite(sgpft)) return sgpft - (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0);
+                }
+                if (typeof ebay3ComputeSgpftFromSprice === 'function' && typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') {
+                    const sgpft = ebay3ComputeSgpftFromSprice(d);
+                    if (sgpft != null && isFinite(sgpft)) return sgpft - (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0);
+                }
+                return null;
+            }
             function snpftOf(d) {
                 if (!d) return null;
+                const page = pageSnpft(d);
+                if (page != null && isFinite(page)) return page;
                 if (typeof ebayDilComputedSnpft === 'function') {
                     const v = ebayDilComputedSnpft(d);
                     if (v != null && isFinite(v)) return v;
@@ -72,7 +95,7 @@
                 });
             }
             function stamp(tbl) {
-                tbl = tbl || ((typeof table !== 'undefined') ? table : null);
+                tbl = tbl || currentTable();
                 if (!tbl) return;
                 const floor = floorPct();
                 spriceColumns(tbl).forEach(function(col) {
@@ -99,9 +122,9 @@
                 });
             }
             function bind(tries) {
-                const tbl = (typeof table !== 'undefined') ? table : null;
+                const tbl = currentTable();
                 if (!tbl || typeof tbl.on !== 'function') {
-                    if ((tries || 0) < 40) setTimeout(function() { bind((tries || 0) + 1); }, 250);
+                    if ((tries || 0) < 80) setTimeout(function() { bind((tries || 0) + 1); }, 250);
                     return;
                 }
                 if (!tbl._minNpftMarkBound) {

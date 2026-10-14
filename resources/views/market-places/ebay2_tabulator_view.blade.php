@@ -3797,8 +3797,10 @@
                                         + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
                                 : '';
 
+                            const npftMark = (typeof window.chStdNpftMarkHtml === 'function')
+                                ? window.chStdNpftMarkHtml(rowData) : '';
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + formattedValue + blueTri + redTri + '</span>';
+                                + formattedValue + blueTri + redTri + npftMark + '</span>';
                         },
                         width: 118
                     },
@@ -5065,6 +5067,9 @@
 
             // Also initialize tooltips when table is rendered (matching Amazon approach)
             table.on('renderComplete', function() {
+                if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
+                    window.minNpftSpriceMark.stamp(table);
+                }
                 if (typeof ebay2UpdatePaginationCounter === 'function') ebay2UpdatePaginationCounter();
                 setTimeout(function() {
                     // Refresh checkboxes to reflect selectedSkus set
