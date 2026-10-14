@@ -661,7 +661,7 @@
                 const itemId = String(item.eBay_item_id || '').trim();
                 // Automated: NRL is automatic; Listed from alibaba_metrics listing
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = itemId ? 'Listed' : 'Pending';
+                const listed = item.page_created ? 'Created' : (itemId ? 'Listed' : 'Pending');
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -839,6 +839,7 @@
         function formatListed(cell) {
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
+            if (data.page_created || data.listed === 'Created') return '';
 
             // Missing Listing: channel listing id / price signal = Listed
             const itemId = String(data.eBay_item_id || '').trim();

@@ -108,5 +108,16 @@ class ListingCountsEngineNrReqTest extends TestCase
         $this->assertSame('TD-KS', ListingCountsEngine::listingIdFromMap($map, 'KS 1X BLK+KBB 02 BR'));
         $this->assertSame('TD-CS04', ListingCountsEngine::listingIdFromMap($map, 'CS 04 2W 2PAIR'));
         $this->assertSame('', ListingCountsEngine::listingIdFromMap($map, 'HW 405 RED'));
+
+        $family = [];
+        $familyWanted = ListingCountsEngine::wantedSkuKeySet(['LS 100-6 WH', 'DFP DCH 06', 'RM 8 BG + F998 PAIR'], true);
+        ListingCountsEngine::putListedForSku($family, $familyWanted, 'LS 100-6', 'TD-LS', true);
+        ListingCountsEngine::putListedForSku($family, $familyWanted, 'DFP DCH 6', 'TD-DFP', true);
+        ListingCountsEngine::putListedForSku($family, $familyWanted, 'RM 8 BG + F998', 'AE-RM', true);
+        $familyMap = ListingCountsEngine::listedMapForProductSkus(['LS 100-6 WH', 'DFP DCH 06', 'RM 8 BG + F998 PAIR', 'HW 405 RED'], $family, true);
+        $this->assertSame('TD-LS', ListingCountsEngine::listingIdFromMap($familyMap, 'LS 100-6 WH'));
+        $this->assertSame('TD-DFP', ListingCountsEngine::listingIdFromMap($familyMap, 'DFP DCH 06'));
+        $this->assertSame('AE-RM', ListingCountsEngine::listingIdFromMap($familyMap, 'RM 8 BG + F998 PAIR'));
+        $this->assertSame('', ListingCountsEngine::listingIdFromMap($familyMap, 'HW 405 RED'));
     }
 }

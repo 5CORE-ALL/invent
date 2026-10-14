@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Cache;
 class MarketplaceListingCheck extends Command
 {
     protected $signature = 'marketplace:listing-check
-        {channel=macy : macy | bestbuy | purchasingpower | topdawg | aliexpress}
+        {channel=macy : macy | bestbuy | purchasingpower | topdawg | aliexpress | alibaba}
         {--limit=200 : Max missing SKUs to print}
         {--dump= : Comma-separated SKUs: print their raw Mirakl Connect product JSON}';
 
@@ -42,10 +42,13 @@ class MarketplaceListingCheck extends Command
         if ($channel === 'aliexpress') {
             return $this->checkAliExpress();
         }
+        if ($channel === 'alibaba') {
+            return $this->checkAlibaba();
+        }
 
         $cfgKey = MiraklMcmOfferIndex::configKey($channel);
         if ($cfgKey === null) {
-            $this->error('Unknown channel. Use macy, bestbuy, purchasingpower, topdawg or aliexpress.');
+            $this->error('Unknown channel. Use macy, bestbuy, purchasingpower, topdawg, aliexpress or alibaba.');
 
             return self::FAILURE;
         }
@@ -147,6 +150,35 @@ class MarketplaceListingCheck extends Command
                 }
             }
             $this->line(sprintf('  %-28s INV %-5d %s%s', $sku, (int) $row->INV, implode(' | ', $where), $near !== [] ? ' | similar offers: '.implode(', ', $near) : ''));
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function checkAlibaba(): int
+    {
+        $this->info('Reading the Alibaba product catalog...');
+        try {
+            $result = app(\App\Services\MarketplaceManager\AlibabaLinkMapSyncService::class)->syncAll(20);
+            $this->line((string) ($result['message'] ?? 'Alibaba catalog sync finished.'));
+            if (empty($result['success'])) {
+                $this->warn('Alibaba catalog sync failed. Counting from the saved catalog.');
+            }
+        } catch (\Throwable $e) {
+            $this->warn('Alibaba catalog sync failed: '.$e->getMessage());
+        }
+
+        $counts = ListingChannelCounts::refreshChannelOnMissingListingPage('alibaba');
+        $this->line(sprintf('REQ %d | NRL %d | Listed %d | Missing L %d', $counts['REQ'], $counts['NRL'], $counts['Listed'], $counts['Pending']));
+
+        $missing = AutomatedListingPage::rows('alibaba')
+            ->filter(fn ($r) => (int) ($r->INV ?? 0) > 0 && ($r->nr_req ?? '') === 'REQ' && ($r->listed ?? '') === 'Pending')
+            ->values();
+
+        $this->line('');
+        $this->info('Not on Alibaba ('.$missing->count().'):');
+        foreach ($missing->take((int) $this->option('limit')) as $row) {
+            $this->line(sprintf('  %-28s INV %d', (string) $row->sku, (int) $row->INV));
         }
 
         return self::SUCCESS;

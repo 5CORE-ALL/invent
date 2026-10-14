@@ -401,11 +401,63 @@ class ListingCountsEngine
             }
         }
         $compact = ShopifySku::compactSkuForLookup($sku);
-        if ($compact !== '') {
-            $keys[] = 'c:'.$compact;
+        foreach (self::compactIndexKeys($compact) as $key) {
+            $keys[] = $key;
         }
 
         return array_values(array_unique(array_filter($keys)));
+    }
+
+    /**
+     * Compact key plus the same key with a leading zero removed from a number
+     * ("DFPDCH06" and "DFPDCH6"). Zeros inside 100 are left alone.
+     *
+     * @return list<string>
+     */
+    public static function compactIndexKeys(string $compact): array
+    {
+        $compact = strtoupper(trim($compact));
+        if ($compact === '') {
+            return [];
+        }
+
+        $keys = ['c:'.$compact];
+        $stripped = preg_replace('/(?<=\D)0+(?=\d)/', '', $compact);
+        if (is_string($stripped) && $stripped !== '' && $stripped !== $compact) {
+            $keys[] = 'c:'.$stripped;
+        }
+
+        return $keys;
+    }
+
+    /**
+     * Product Master color variant with the color word removed, for a catalog
+     * row stored without that color ("LS 100-6 WH" → "LS 100-6").
+     *
+     * @return list<string>
+     */
+    public static function colorDroppedBases(string $sku): array
+    {
+        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+        $parts = $norm === '' ? [] : (preg_split('/\s+/', $norm) ?: []);
+        if (count($parts) < 2) {
+            return [];
+        }
+        $colors = [
+            'WH', 'WHT', 'WHITE', 'RED', 'BLK', 'BLACK', 'BLU', 'BLUE', 'SLV', 'SILVER',
+            'GLD', 'GOLD', 'GRN', 'GREEN', 'YLW', 'YELLOW', 'PNK', 'PINK', 'ORG', 'ORANGE',
+            'PRPL', 'PURPLE', 'GRY', 'GREY', 'GRAY', 'BRN', 'BROWN', 'CML', 'CHRY',
+        ];
+        if (! in_array($parts[count($parts) - 1], $colors, true)) {
+            return [];
+        }
+        array_pop($parts);
+        $base = trim(implode(' ', $parts));
+        if ($base === '' || ! preg_match('/[A-Z]/', $base)) {
+            return [];
+        }
+
+        return [$base];
     }
 
     /**
@@ -418,6 +470,13 @@ class ListingCountsEngine
         foreach ($skus as $raw) {
             foreach (self::skuMatchKeys((string) $raw, $withAliases) as $key) {
                 $wanted[$key] = true;
+            }
+            if ($withAliases) {
+                foreach (self::colorDroppedBases((string) $raw) as $base) {
+                    foreach (self::skuIndexKeys($base) as $key) {
+                        $wanted[$key] = true;
+                    }
+                }
             }
         }
 
@@ -561,6 +620,17 @@ class ListingCountsEngine
                 if ($cand !== '') {
                     $id = $cand;
                     break;
+                }
+            }
+            if ($id === '' && $withAliases) {
+                foreach (self::colorDroppedBases($sku) as $base) {
+                    foreach (self::skuIndexKeys($base) as $key) {
+                        $cand = trim((string) ($byKey[$key] ?? ''));
+                        if ($cand !== '') {
+                            $id = $cand;
+                            break 2;
+                        }
+                    }
                 }
             }
             if ($id === '') {
