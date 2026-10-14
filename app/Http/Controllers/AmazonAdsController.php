@@ -4066,6 +4066,87 @@ class AmazonAdsController extends Controller
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
+    private const COUNT_HISTORY_CHANNEL = 'amazon_ads_count_hist';
+
+    /**
+     * Daily slab counts for the history dots in the SBID and BGT rule modals. One snapshot per PDT day,
+     * the same way the Std prc vs dil history works.
+     */
+    public function getCountHistory(Request $request): JsonResponse
+    {
+        $days = max(7, min(90, (int) $request->input('days', 30)));
+        $row = \App\Models\ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', self::COUNT_HISTORY_CHANNEL)
+            ->first();
+        $hist = is_array($row?->visibility) ? $row->visibility : [];
+        $end = Carbon::now('America/Los_Angeles')->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $key = $d->toDateString();
+            $counts = is_array($hist[$key] ?? null) ? $hist[$key] : [];
+            $out[] = array_merge(['date' => $key, 'label' => $d->format('m-d')], $counts);
+        }
+
+        return response()->json(['success' => true, 'days' => $days, 'data' => $out])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    /**
+     * Merge today's counts into the daily snapshot. Each modal sends only its own keys, so they are merged
+     * rather than replaced.
+     */
+    public function saveCountHistory(Request $request): JsonResponse
+    {
+        $incoming = $request->input('counts');
+        if (! is_array($incoming)) {
+            return response()->json(['success' => false, 'message' => 'counts required'], 422);
+        }
+        $counts = [];
+        foreach ($incoming as $key => $value) {
+            $key = (string) $key;
+            if (! preg_match('/^[a-z][a-z0-9_]*:[a-z0-9._-]{1,40}$/', $key) || ! is_numeric($value)) {
+                continue;
+            }
+            $counts[$key] = round((float) $value, 2);
+            if (count($counts) >= 300) {
+                break;
+            }
+        }
+        if ($counts === []) {
+            return response()->json(['success' => false, 'message' => 'no valid counts'], 422);
+        }
+
+        $today = Carbon::now('America/Los_Angeles')->toDateString();
+        $cutoff = Carbon::now('America/Los_Angeles')->subDays(89)->toDateString();
+        $row = \App\Models\ChannelTabulatorColumnSetting::query()->firstOrNew([
+            'channel_name' => self::COUNT_HISTORY_CHANNEL,
+        ]);
+        $hist = is_array($row->visibility) ? $row->visibility : [];
+        $day = is_array($hist[$today] ?? null) ? $hist[$today] : [];
+        // A modal repaints with a new set of slab keys after a rule edit, so drop its previous keys first.
+        foreach ($counts as $key => $value) {
+            $prefix = explode(':', $key, 2)[0];
+            foreach (array_keys($day) as $existing) {
+                if (str_starts_with((string) $existing, $prefix.':')) {
+                    unset($day[$existing]);
+                }
+            }
+        }
+        $hist[$today] = array_merge($day, $counts);
+        foreach (array_keys($hist) as $date) {
+            if (! is_string($date) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || $date < $cutoff) {
+                unset($hist[$date]);
+            }
+        }
+        ksort($hist);
+        $row->visibility = $hist;
+        $row->column_order = ['history'];
+        $row->save();
+
+        return response()->json(['success' => true, 'date' => $today]);
+    }
+
     /**
      * Recalculate BGT chart counts in the background.
      */
