@@ -1822,7 +1822,7 @@
                         if (!cid || !/^\d{6,}$/.test(cid)) return '';
                         if (faasRowNeedsAudit(row) && !row._audit_at) {
                             return `<button type="button" class="faas-audit-now" data-audit-cid="${cid}"
-                                        title="AUDIT NOW — Spend is above $15 and ACOS is red (above 40%). Record the audit — the date and time are saved automatically.">AN</button>`;
+                                        title="AUDIT NOW — Spend is above $15 and ACOS is red (above 40%). Record the audit — the date and time are saved automatically.">ADT</button>`;
                         }
                         if (row._audit_at) {
                             const when = faasAuditStamp(row._audit_at);

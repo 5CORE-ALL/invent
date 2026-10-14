@@ -405,11 +405,18 @@ class AmazonSprcDilAutoPushService
             'review_max' => 4,
             'min_npft' => $minNpft,
         ], 'amazon');
+        $preMinNpft = $effective;
         $effective = $npftPricer->enforceMinNpft($effective, $npftRow);
+        // "!" = S PRC was raised to hold Min NPFT. That floor wins over the Std Prc maximum,
+        // otherwise the Std cap pulls the price straight back under the floor.
+        $minNpftRaised = ($effective - $preMinNpft) > 0.009;
 
         $stdCeiling = $std;
         if ($totalDisc < 0 && $std > 0 && $sale !== null) {
             $stdCeiling = (float) $sale;
+        }
+        if ($minNpftRaised) {
+            $stdCeiling = 0.0;
         }
         $capped = AmazonDilGroiRule::capSpriceToLmp(
             $effective,
