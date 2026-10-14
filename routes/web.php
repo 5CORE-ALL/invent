@@ -3990,6 +3990,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/newegg/competitors/update', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'updateCompetitor'])->name('newegg.competitors.update');
     Route::post('/newegg/competitors/delete', [\App\Http\Controllers\MarketPlace\NeweggPricingController::class, 'deleteCompetitor'])->name('newegg.competitors.delete');
 
+    // Newegg B2B — same catalog as /newegg-pricing-view, basic columns only
+    Route::get('/newegg-b2b-pricing', [\App\Http\Controllers\MarketPlace\NeweggB2bPricingController::class, 'index'])->name('newegg.b2b.pricing');
+    Route::get('/newegg-b2b-pricing-data', [\App\Http\Controllers\MarketPlace\NeweggB2bPricingController::class, 'getData'])->name('newegg.b2b.pricing.data');
+
     // Wayfair Sales Routes
     Route::get('/wayfair/daily-sales-data', [WayfairSalesController::class, 'getData'])->name('wayfair.daily.sales.data');
     Route::get('/wayfair/daily-sales', [WayfairSalesController::class, 'index'])->name('wayfair.daily.sales');

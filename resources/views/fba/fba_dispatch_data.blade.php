@@ -1200,73 +1200,20 @@
                         {
                             title: "Ctn Qty",
                             field: "CTN_QTY",
+                            headerSort: false,
                             hozAlign: "center",
-                            editor: "input",
-                            editable: function(cell) {
-                                // Not editable on parent rows
-                                return !cell.getRow().getData().is_parent;
-                            },
                             formatter: function(cell) {
                                 const rowData = cell.getRow().getData();
                                 if (rowData.is_parent) return '';
                                 const value = cell.getValue();
-                                if (value === null || value === undefined || value === '') {
-                                    return '<span class="text-muted">--</span>';
-                                }
-                                return value;
-                            },
-                            cellEdited: function(cell) {
-                                const data = cell.getRow().getData();
-                                if (data.is_parent) return;
-                                const raw = cell.getValue();
-                                const value = (raw === '' || raw === null) ? null : parseFloat(raw);
-
-                                if (raw !== '' && raw !== null && isNaN(value)) {
-                                    showToast('CTN qty must be a number', 'error');
-                                    cell.setValue(cell.getOldValue(), true);
-                                    return;
-                                }
-
-                                // Save to the same place as Dim Wt Master (CTN): ProductMaster Values['ctn_qty']
-                                $.ajax({
-                                    url: '/dim-wt-master/update',
-                                    method: 'POST',
-                                    data: {
-                                        _token: '{{ csrf_token() }}',
-                                        product_id: data.product_id,
-                                        sku: data.SKU,
-                                        ctn_qty: value
-                                    },
-                                    success: function() {
-                                        showToast('CTN qty saved', 'success');
-                                    },
-                                    error: function(xhr) {
-                                        console.error('Error saving CTN qty:', xhr.responseText);
-                                        showToast('Failed to save CTN qty', 'error');
-                                        cell.setValue(cell.getOldValue(), true);
-                                    }
-                                });
-                            }
-                        },
-
-                        {
-                            title: "CTN",
-                            field: "_ctn_details",
-                            headerSort: false,
-                            hozAlign: "center",
-                            width: 32,
-                            minWidth: 32,
-                            widthGrow: 0,
-                            widthShrink: 0,
-                            formatter: function(cell) {
-                                const rowData = cell.getRow().getData();
-                                if (rowData.is_parent) return '';
-                                const qty = parseFloat(rowData.CTN_QTY);
-                                const cls = (!isNaN(qty) && qty > 0) ? 'has' : 'empty';
-                                return `<span class="history-dot ctn-details-btn ${cls}" title="CTN details"></span>`;
+                                const qty = parseFloat(value);
+                                const empty = value === null || value === undefined || value === '' || isNaN(qty);
+                                const label = empty ? '<span class="text-muted">--</span>' : value;
+                                const cls = (!empty && qty > 0) ? 'has' : 'empty';
+                                return `<span class="ctn-details-btn" style="cursor:pointer; display:inline-flex; align-items:center; gap:4px;" title="CTN details">${label}<span class="history-dot ${cls}"></span></span>`;
                             },
                             cellClick: function(e, cell) {
-                                if (!e.target.closest('.ctn-details-btn')) return;
+                                if (cell.getRow().getData().is_parent) return;
                                 openCtnDetailsModal(cell.getRow());
                             }
                         },
@@ -3136,9 +3083,9 @@
                     menu.innerHTML = '';
 
                     const groupFields = {
-                        Basics: ['image_path', 'Parent', 'SKU', 'FBA_SKU', 'Sugg_Send', 'Shopify_INV', 'CTN_QTY', 'Barcode', 'Send_Qty', 'Total_quantity_sent', 'Send_History', 'Shopify_OV_L30', 'Dil', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'compliance', 'send_toggle', 'AMZ_Rating', 'UPC_Codes', 'ASIN', 'NRL_FBA', 'Current_Month_Views'],
+                        Basics: ['image_path', 'Parent', 'SKU', 'FBA_SKU', 'Sugg_Send', 'Shopify_INV', 'CTN_QTY', 'Barcode', 'Send_Qty', 'Total_quantity_sent', 'Shopify_OV_L30', 'Dil', 'FBA_Quantity', 'Inbound_Quantity', 'l30_units', 'AMZ_L30', 'FBA_Dil', 'MSL', 'AMZ_Rating', 'NRL_FBA', 'Current_Month_Views'],
                         Pricing: ['FBA_Price', 'LMP', 'AMZ_Price', 'AMZ_GPFT', 'AMZ_AD', 'AMZ_NPFT', 'CVR_L30_amz', 'CVR_L60_amz', 'CVR_L45_amz', 'ROI%', 'GROI%', 'GPFT%', 'TPFT', 'FBA_ROI', 'S_Price', 'SPft%', 'SROI%', 'lmp_1', 'Fulfillment_Fee', 'FBA_Fee_Manual', 'T_sales'],
-                        Shipping: ['_ctn_details', 'Length', 'Width', 'Height', 'Quantity_in_each_box', 'GW_CTN', 'Shipping_Amount', 'FBA_Shipment_Status', 'FBA_Ship_Calculation', 'Ship', 'Send_Cost']
+                        Shipping: ['Length', 'Width', 'Height', 'Quantity_in_each_box', 'GW_CTN', 'Shipping_Amount', 'FBA_Ship_Calculation', 'Ship', 'Send_Cost']
                     };
                     const groupNames = ['Basics', 'Pricing', 'Shipping', 'Other'];
                     const skipFields = new Set(['_select', '_accept', '_details']);

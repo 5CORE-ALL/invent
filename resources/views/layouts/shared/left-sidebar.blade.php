@@ -2668,6 +2668,7 @@
                 <div class="collapse" id="sidebarNewegg">
                     <ul class="side-nav-third-level">
                         <li><a href="{{ route('newegg.pricing.view') }}">Newegg Pricing</a></li>
+                        <li><a href="{{ route('newegg.b2b.pricing') }}">Newegg B2B</a></li>
                         <li><a href="{{ route('newegg.listing.variation.verify') }}">Newegg Listing Variation Verify</a></li>
                         <li><a href="{{ route('channel.title.ads', ['channel' => 'newegg', 'title' => 'Newegg']) }}">Newegg Ads</a></li>
 <li><a href="{{ route('channel.ads.missing', ['channel' => 'newegg']) }}">Missing Ads</a></li>
@@ -3250,6 +3251,8 @@
                         <li><a href="{{ route('newegg.daily.sales') }}">Newegg Sales Data</a></li>
 
                         <li><a href="{{ route('newegg.pricing.view') }}">Newegg Pricing</a></li>
+
+                        <li><a href="{{ route('newegg.b2b.pricing') }}">Newegg B2B</a></li>
 
                         <li><a href="{{ route('newegg.listing.variation.verify') }}">Newegg Listing Variation Verify</a></li>
 
