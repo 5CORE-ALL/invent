@@ -959,6 +959,23 @@
             return raised > current ? raised : current;
         }
         window.amzStdRaiseToMinNpft = amzStdRaiseToMinNpft;
+        /** S PRC the cell actually paints (after LMP / Std caps). */
+        function amzStdShownSpriceForMark(d) {
+            if (typeof amazonDisplaySprice === 'function') {
+                const n = Number(amazonDisplaySprice(d));
+                if (n > 0) return n;
+            }
+            if (typeof amazonShownSprice === 'function') {
+                const n = Number(amazonShownSprice(d));
+                if (n > 0) return n;
+            }
+            if (typeof amzDisplayedSprice === 'function') {
+                const n = Number(amzDisplayedSprice(d));
+                if (n > 0) return n;
+            }
+            const saved = Number(d && d.SPRICE);
+            return saved > 0 ? saved : 0;
+        }
         function amzStdMinNpftWasApplied(d, minNpft) {
             if (!d || amzStdIsClearance(d)) return false;
             const floor = minNpft == null ? Number(amzStdMinNpft) : Number(minNpft);
@@ -974,7 +991,12 @@
                 }
             }
             if (!(pre > 0)) return false;
-            return amzStdRaiseToMinNpft(pre, d, floor) > pre + 0.009;
+            // A raise was needed on the discount price…
+            if (!(amzStdRaiseToMinNpft(pre, d, floor) > pre + 0.009)) return false;
+            // …and the S PRC the cell shows actually reached the floor. Do not paint "!" when
+            // Std / LMP pulled the price back under Min NPFT (SNPFT still below 10%).
+            const shown = amzStdShownSpriceForMark(d);
+            return shown > 0 && amzStdNpftAt(shown, d) >= floor - 0.001;
         }
         window.amzStdMinNpftWasApplied = amzStdMinNpftWasApplied;
         let amzStdNpftMarksBound = false;

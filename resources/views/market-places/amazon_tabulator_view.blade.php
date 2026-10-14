@@ -1617,6 +1617,34 @@
             return sgpft - (parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0);
         }
 
+        /**
+         * Sorter for computed metric columns. Sorts by the same value the cell shows, low → high and
+         * high → low, and always keeps rows with no value (blank cell) at the bottom in both directions.
+         */
+        function amazonMetricSorter(valueFn) {
+            return function(a, b, aRow, bRow, column, dir) {
+                const av = valueFn(aRow.getData());
+                const bv = valueFn(bRow.getData());
+                const aOk = av != null && isFinite(av);
+                const bOk = bv != null && isFinite(bv);
+                if (!aOk && !bOk) return 0;
+                if (!aOk) return dir === 'asc' ? 1 : -1;
+                if (!bOk) return dir === 'asc' ? -1 : 1;
+                return av - bv;
+            };
+        }
+        /** ACOS% as the cell shows it: stored value, else spend ÷ sales, else 100 when spend with no sales. */
+        function amazonAcosValue(row) {
+            if (!row) return null;
+            let acos = parseFloat(row.ACOS);
+            if (isFinite(acos)) return acos;
+            const spend = parseFloat(row.ad_spend);
+            const sales = parseFloat(row.T_Sale_l30);
+            if (isFinite(sales) && sales > 0 && isFinite(spend)) return (spend / sales) * 100;
+            if (isFinite(spend) && spend > 0) return 100;
+            return 0;
+        }
+
         function amazonModalFmtL30(v) {
             const n = parseFloat(v);
             if (isNaN(n)) return '—';
@@ -4856,14 +4884,10 @@
                         field: "SPRC_DIL",
                         hozAlign: "center",
                         headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof amzSprcDilForRow === 'function')
-                                    ? (amzSprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
+                        sorter: amazonMetricSorter(function(d) {
+                            const v = (typeof amzSprcDilForRow === 'function') ? (Number(amzSprcDilForRow(d)) || 0) : 0;
+                            return v > 0 ? v : null;
+                        }),
                         headerTooltip: "Suggested price from Dil → Target NROI% slabs (including 0 Sold). CVR Down < 7% subtracts 10 from Target NROI%; CVR Up > 10% adds 10. Formula: (LP × (1 + NROI%/100) + Ship) / (0.80 − Ads%/100) so SNROI = target.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -4900,16 +4924,14 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            // Sort by the price the cell shows (clearance rows show their rule price next to "C").
-                            const av = (typeof amazonDisplaySprice === 'function')
-                                ? (amazonDisplaySprice(aRow.getData()) || 0)
-                                : (parseFloat(a) || 0);
-                            const bv = (typeof amazonDisplaySprice === 'function')
-                                ? (amazonDisplaySprice(bRow.getData()) || 0)
-                                : (parseFloat(b) || 0);
-                            return av - bv;
-                        },
+                        // Sort by the price the cell shows (clearance rows show their rule price next to "C").
+                        // Blank cells stay at the bottom in both directions.
+                        sorter: amazonMetricSorter(function(d) {
+                            const v = (typeof amazonDisplaySprice === 'function')
+                                ? (Number(amazonDisplaySprice(d)) || 0)
+                                : (parseFloat(d && d.SPRICE) || 0);
+                            return v > 0 ? v : null;
+                        }),
                         editable: false,
                         headerTooltip: "Read-only. S PRC = Std Prc − (Age Disc + Dil Disc + B Disc + 0 Sold + CVR Disc + Rev Disc). If LMP is lower and SGROI at that LMP is at least 20%, S PRC becomes LMP. Std Prc is the maximum.",
                         formatter: function(cell) {
@@ -5168,7 +5190,7 @@
                             const _st = (window.MetricPctColors && MetricPctColors.styleForField(cell.getField ? cell.getField() : 'GROI%', percent)) || '';
                             return _st ? `<span style="${_st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                         },
-                        sorter: "number",
+                        sorter: amazonMetricSorter(function(d) { return amazonComputeGroiAt(d && d.price, d); }),
                         width: 65
                     },
 
@@ -5176,7 +5198,7 @@
                         title: "GPFT %",
                         field: "GPFT%",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: amazonMetricSorter(function(d) { return amazonComputeGpftAt(d && d.price, d); }),
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             const percent = amazonComputeGpftAt(d && d.price, d);
@@ -5192,12 +5214,7 @@
                         field: "NROI",
                         hozAlign: "center",
                         headerTooltip: "NROI% = (gross PFT$ − ad spend$) / LP × 100. Same formula as the NROI badge / SNROI, using current Amazon price.",
-                        sorter: function(a, b, aRow, bRow) {
-                            const aNet = amazonComputeNroi(aRow.getData());
-                            const bNet = amazonComputeNroi(bRow.getData());
-                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
-                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
-                        },
+                        sorter: amazonMetricSorter(amazonComputeNroi),
                         formatter: function(cell) {
                             const percent = amazonComputeNroi(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
@@ -5210,12 +5227,12 @@
                         title: "NPFT%",
                         field: "PFT%",
                         hozAlign: "center",
-                        sorter: function(a, b, aRow, bRow) {
+                        // Same value the cell shows (blank GPFT counts as 0, minus Ads%).
+                        sorter: amazonMetricSorter(function(d) {
                             const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
-                            const aGpft = amazonComputeGpftAt(aRow.getData().price, aRow.getData()) || 0;
-                            const bGpft = amazonComputeGpftAt(bRow.getData().price, bRow.getData()) || 0;
-                            return (aGpft - ads) - (bGpft - ads);
-                        },
+                            const gpft = amazonComputeGpftAt(d && d.price, d);
+                            return (gpft == null || !isFinite(gpft) ? 0 : gpft) - ads;
+                        }),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const ads = parseFloat(AMAZON_CHANNEL_ADS_PCT) || 0;
@@ -5230,7 +5247,7 @@
                         title: "ACOS",
                         field: "ACOS",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: amazonMetricSorter(amazonAcosValue),
                         headerSortStartingDir: "desc",
                         headerTooltip: "ACOS % = Spend L30 ÷ L30 sales × 100. Spend with $0 sales is 100%.",
                         formatter: function(cell) {
@@ -5328,12 +5345,7 @@
                         field: "SGROI",
                         hozAlign: "center",
                         // Same formula as GROI%: ((SPRICE × 0.80 − ship − lp) / lp) × 100
-                        sorter: function(a, b, aRow, bRow) {
-                            const aVal = amazonComputeSroi(aRow.getData());
-                            const bVal = amazonComputeSroi(bRow.getData());
-                            return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
-                                 - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
-                        },
+                        sorter: amazonMetricSorter(amazonComputeSroi),
                         formatter: function(cell) {
                             const percent = amazonComputeSroi(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
@@ -5348,12 +5360,7 @@
                         field: "SGPFT",
                         hozAlign: "center",
                         headerTooltip: "Live from S PRC: ((S PRC × 0.80 − ship − LP) / S PRC) × 100. Same profit $ as SGROI.",
-                        sorter: function(a, b, aRow, bRow) {
-                            const aVal = amazonComputeSgpft(aRow.getData());
-                            const bVal = amazonComputeSgpft(bRow.getData());
-                            return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
-                                 - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
-                        },
+                        sorter: amazonMetricSorter(amazonComputeSgpft),
                         formatter: function(cell) {
                             const percent = amazonComputeSgpft(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
@@ -5368,12 +5375,7 @@
                         field: "SROI",
                         hozAlign: "center",
                         // Same formula as NROI badge: (PFT$ − Ad Spend$) / COGS × 100
-                        sorter: function(a, b, aRow, bRow) {
-                            const aNet = amazonComputeNetSroi(aRow.getData());
-                            const bNet = amazonComputeNetSroi(bRow.getData());
-                            return ((aNet == null || !isFinite(aNet)) ? 0 : aNet)
-                                 - ((bNet == null || !isFinite(bNet)) ? 0 : bNet);
-                        },
+                        sorter: amazonMetricSorter(amazonComputeNetSroi),
                         formatter: function(cell) {
                             const percent = amazonComputeNetSroi(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';
@@ -5388,12 +5390,7 @@
                         field: "Spft%",
                         hozAlign: "center",
                         headerTooltip: "SNPFT = live S GPFT − Ads%. Same S PRC as SGROI / S GPFT.",
-                        sorter: function(a, b, aRow, bRow) {
-                            const aVal = amazonComputeSpft(aRow.getData());
-                            const bVal = amazonComputeSpft(bRow.getData());
-                            return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
-                                 - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
-                        },
+                        sorter: amazonMetricSorter(amazonComputeSpft),
                         formatter: function(cell) {
                             const percent = amazonComputeSpft(cell.getRow().getData());
                             if (percent === null || !isFinite(percent)) return '';

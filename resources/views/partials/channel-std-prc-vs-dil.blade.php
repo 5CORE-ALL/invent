@@ -550,13 +550,40 @@
             }
             return Math.round(raw * 100) / 100;
         }
+        /** S PRC the cell actually paints (saved on eBay; live rule price on other channels). */
+        function chStdShownSpriceForMark(d) {
+            if (!d) return 0;
+            if (typeof ebayDisplayedSprice === 'function') {
+                const n = Number(ebayDisplayedSprice(d));
+                if (n > 0) return n;
+            }
+            if (typeof ebay2DisplayedSprice === 'function') {
+                const n = Number(ebay2DisplayedSprice(d));
+                if (n > 0) return n;
+            }
+            if (typeof ebay3DisplayedSprice === 'function') {
+                const n = Number(ebay3DisplayedSprice(d));
+                if (n > 0) return n;
+            }
+            if (typeof chStdPriceForRow === 'function') {
+                const n = Number(chStdPriceForRow(d));
+                if (n > 0) return n;
+            }
+            const saved = Number(d.SPRICE_SERVER != null ? d.SPRICE_SERVER : (d.SPRICE || d.sprice));
+            return saved > 0 ? saved : 0;
+        }
         function chStdMinNpftWasApplied(d, draft) {
             if (!chStdUsesMinNpft() || !d || chStdIsClearance(d)) return false;
             const floor = (draft && draft.minNpft != null) ? Number(draft.minNpft) : Number(chStdMinNpft);
             if (!(floor > 0)) return false;
             const before = chStdPriceBeforeMinNpft(d, draft);
             if (!(before > 0)) return false;
-            return chStdRaiseToMinNpft(before, d, floor) > before + 0.009;
+            // A raise was needed on the discount price…
+            if (!(chStdRaiseToMinNpft(before, d, floor) > before + 0.009)) return false;
+            // …and the S PRC the cell shows actually reached the floor. Do not paint "!" when
+            // Std / LMP pulled the price back under Min NPFT (SNPFT still below 10%).
+            const shown = chStdShownSpriceForMark(d);
+            return shown > 0 && chStdNpftAt(shown, d) >= floor - 0.001;
         }
         window.chStdMinNpftWasApplied = chStdMinNpftWasApplied;
         function chStdNpftMarkHtml(d) {
