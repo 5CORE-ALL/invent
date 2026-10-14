@@ -4861,22 +4861,27 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
-                            if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData)) {
-                                return '<span title="Clearance — no S PRC" style="font-weight:700;color:#dc3545;">C</span>';
-                            }
+                            // Clearance SKUs: show the rule price with a red "C" in front. It is display only —
+                            // no S PRC is saved or pushed for them.
+                            const isClearance = typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData);
+                            const clearanceBadge = isClearance
+                                ? '<span title="Clearance — price shown only, not saved or pushed" style="font-weight:700;color:#dc3545;margin-right:2px;">C</span>'
+                                : '';
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const currentPrice = parseFloat(rowData.price) || 0;
                             let raw = 0;
-                            if (typeof amzLiveRuleSprice === 'function') {
+                            if (isClearance && typeof amzClearanceViewSprice === 'function') {
+                                raw = Number(amzClearanceViewSprice(rowData)) || 0;
+                            } else if (typeof amzLiveRuleSprice === 'function') {
                                 raw = Number(amzLiveRuleSprice(rowData)) || 0;
                             }
                             if (!(raw > 0) && typeof computeAmzPushPrcPlan === 'function') {
                                 const plan = computeAmzPushPrcPlan(rowData);
                                 if (plan && plan.effective > 0) raw = Number(plan.effective);
                             }
-                            if (!(raw > 0)) raw = parseFloat(rowData.SPRICE) || 0;
+                            if (!(raw > 0) && !isClearance) raw = parseFloat(rowData.SPRICE) || 0;
 
-                            if (!(raw > 0)) return '';
+                            if (!(raw > 0)) return isClearance ? clearanceBadge : '';
 
                             const lmpNow = lmpWithShipping(rowData);
                             const stdNow = amazonStdPrice(rowData);
@@ -4932,7 +4937,7 @@
                             }
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                dot + formattedValue + blueTri + redTri + reviewTri + stdTri + '</span>';
+                                clearanceBadge + dot + formattedValue + blueTri + redTri + reviewTri + stdTri + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {

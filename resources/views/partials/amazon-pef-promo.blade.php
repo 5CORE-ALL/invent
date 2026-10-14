@@ -3322,6 +3322,17 @@
             return typeof amzStdIsClearance === 'function' && !!d && amzStdIsClearance(d);
         }
         window.amzIsClearanceSku = amzIsClearanceSku;
+        /** Rule price shown next to "C" on clearance SKUs. Display only — never saved or pushed. */
+        function amzClearanceViewSprice(d) {
+            if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
+            if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
+                const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
+                return meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
+            }
+            const plan = computeAmzPushPrcPlan(d);
+            return plan && plan.effective > 0 ? Number(plan.effective) : 0;
+        }
+        window.amzClearanceViewSprice = amzClearanceViewSprice;
         function amzLiveRuleSprice(d) {
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
             // Clearance SKUs have no S PRC. The column shows "C".
