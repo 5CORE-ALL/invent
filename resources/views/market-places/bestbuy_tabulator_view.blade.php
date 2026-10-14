@@ -2885,6 +2885,12 @@
             applyFilters();
         });
 
+        // Std prc vs dil rule + Min NPFT + clearance all loaded: floor, repaint the "!" / "C" marks, recount the badges.
+        $(document).off('chStd:settled.bestbuy').on('chStd:settled.bestbuy', function() {
+            try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ }
+            try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
+            try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
+        });
         // Clearance SKU list (Inv days clearance = YES) loads once, then the C badge count refreshes.
         (function loadClearanceForBadge(tries) {
             if (typeof window.chStdLoadClearance !== 'function') {

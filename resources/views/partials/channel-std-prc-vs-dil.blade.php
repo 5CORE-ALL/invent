@@ -1652,6 +1652,8 @@
                     chStdAutoApplied = true;
                     chStdEnsureColumns();
                     chStdRepaintDiscColumns();
+                    // Rule, Min NPFT and clearance are all loaded now: pages repaint their S PRC "!" marks and header counts.
+                    try { $(document).trigger('chStd:settled'); } catch (e) { /* ignore */ }
                     if (!chStdOwnsSprice()) return;
                     const updates = chStdWritePrices(chStdDraftNow());
                 const redraw = function() {
