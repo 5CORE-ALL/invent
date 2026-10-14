@@ -1378,6 +1378,12 @@
             if (!(lmp > 0) || !(s > 0) || s + 0.0001 < lmp) return false;
             const sgroiAtLmp = amazonSgroiAtPrice(rowData, lmp);
             if (sgroiAtLmp != null && sgroiAtLmp < 20) return false;
+            // Min NPFT wins over the LMP cap (same as the Amazon auto-push service).
+            if (typeof amzStdMinNpftNow === 'function' && typeof amzStdNpftAt === 'function') {
+                const floorPct = Number(amzStdMinNpftNow()) || 0;
+                const clearance = (typeof amzStdIsClearance === 'function') && amzStdIsClearance(rowData);
+                if (floorPct > 0 && !clearance && amzStdNpftAt(lmp, rowData) < floorPct - 0.001) return false;
+            }
             return true;
         }
         function amazonStdPrice(rowData) {

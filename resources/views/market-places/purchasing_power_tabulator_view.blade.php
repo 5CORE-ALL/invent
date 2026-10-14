@@ -31,7 +31,6 @@
             cursor: help;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'purchasing_power'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'purchasing_power'])
     </style>
 @endsection
 
@@ -106,11 +105,6 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
-                    <button type="button" id="pp-rule-btn" class="btn btn-sm btn-outline-dark"
-                        title="Price rules: Dil %, PP sold qty, Discount % → SPRICE = (STD × (1−Disc%)) − Ship BB">
-                        <i class="fas fa-sliders-h"></i> Rule
-                    </button>
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'purchasing_power'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'purchasing_power'])
                 </div>
 
@@ -165,274 +159,20 @@
         </div>
     </div>
 
-    <!-- Price Rule (PP-specific modal/table — same rule as /faire-pricing) -->
-    <div class="modal fade" id="ppPriceRuleModal" tabindex="-1" aria-labelledby="ppPriceRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="ppPriceRuleModalLabel">
-                        <i class="fas fa-sliders-h me-1"></i> Price Rule
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-2">
-                        Match rows by <strong>Dil %</strong> and <strong>Sold qty (PP L30)</strong>.
-                        Apply sets <strong>SPRICE = (STD prc × (1 − Discount%/100)) − Ship BB</strong>.
-                        Blank min/max = no limit. If SKUs are checked, only those are updated.
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-2" id="pp-price-rule-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:12%">Dil % min</th>
-                                    <th style="width:12%">Dil % max</th>
-                                    <th style="width:14%">Sold min</th>
-                                    <th style="width:14%">Sold max</th>
-                                    <th style="width:14%">Discount %</th>
-                                    <th style="width:8%"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="pp-price-rule-tbody"></tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="pp-price-rule-add-btn">
-                        <i class="fas fa-plus"></i> Add rule
-                    </button>
-                    <div id="pp-price-rule-msg" class="small mt-2 text-danger d-none"></div>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-outline-success" id="pp-price-rule-save-btn">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                    <button type="button" class="btn btn-sm btn-primary" id="pp-price-rule-apply-btn">
-                        <i class="fas fa-check"></i> Apply
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'purchasing_power'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'purchasing_power'])
 @endsection
 
 @section('script-bottom')
     @include('partials.lazy-chart-js')
 <script>
+    // S PRC is saved + pushed by the server (purchasing-power:sprc-dil-auto-push). The page only shows it.
+    window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'purchasing_power'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'purchasing_power'])
     const COLUMN_VIS_KEY = "pp_tabulator_column_visibility";
     let table = null;
     let allTableData = [];
     let selectedSkus = new Set();
     const PP_MARGIN = {{ $ppPercentage }} / 100;
-
-    // ---- Price Rule (same logic as Faire; separate modal/table + storage) ----
-    const PP_PRICE_RULES_KEY = 'pp_price_rules_v1';
-    let ppPriceRules = [];
-
-    function ppDefaultPriceRules() {
-        return [{ dil_min: null, dil_max: null, sold_min: null, sold_max: null, discount_pct: 25 }];
-    }
-
-    function ppLoadPriceRules() {
-        try {
-            const raw = localStorage.getItem(PP_PRICE_RULES_KEY);
-            if (!raw) return ppDefaultPriceRules();
-            const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) && parsed.length ? parsed : ppDefaultPriceRules();
-        } catch (e) {
-            return ppDefaultPriceRules();
-        }
-    }
-
-    function ppSavePriceRulesToStorage(rules) {
-        localStorage.setItem(PP_PRICE_RULES_KEY, JSON.stringify(rules || []));
-    }
-
-    function ppNumOrNull(v) {
-        if (v === null || v === undefined || v === '') return null;
-        const n = parseFloat(v);
-        return isFinite(n) ? n : null;
-    }
-
-    function ppInRange(val, min, max) {
-        if (min !== null && min !== undefined && val < min) return false;
-        if (max !== null && max !== undefined && val > max) return false;
-        return true;
-    }
-
-    function ppReadPriceRulesFromDom() {
-        const rules = [];
-        $('#pp-price-rule-tbody tr').each(function() {
-            const $tr = $(this);
-            rules.push({
-                dil_min: ppNumOrNull($tr.find('[data-field="dil_min"]').val()),
-                dil_max: ppNumOrNull($tr.find('[data-field="dil_max"]').val()),
-                sold_min: ppNumOrNull($tr.find('[data-field="sold_min"]').val()),
-                sold_max: ppNumOrNull($tr.find('[data-field="sold_max"]').val()),
-                discount_pct: ppNumOrNull($tr.find('[data-field="discount_pct"]').val()),
-            });
-        });
-        return rules;
-    }
-
-    function ppRenderPriceRules(rules) {
-        ppPriceRules = Array.isArray(rules) ? rules : [];
-        const $tb = $('#pp-price-rule-tbody');
-        $tb.empty();
-        if (!ppPriceRules.length) ppPriceRules = ppDefaultPriceRules();
-        ppPriceRules.forEach(function(rule, idx) {
-            const r = rule || {};
-            $tb.append(
-                '<tr data-idx="' + idx + '">' +
-                '<td><input type="number" class="form-control form-control-sm" data-field="dil_min" step="0.1" placeholder="—" value="' + (r.dil_min != null ? r.dil_min : '') + '"></td>' +
-                '<td><input type="number" class="form-control form-control-sm" data-field="dil_max" step="0.1" placeholder="—" value="' + (r.dil_max != null ? r.dil_max : '') + '"></td>' +
-                '<td><input type="number" class="form-control form-control-sm" data-field="sold_min" step="1" placeholder="—" title="PP L30 sold qty" value="' + (r.sold_min != null ? r.sold_min : '') + '"></td>' +
-                '<td><input type="number" class="form-control form-control-sm" data-field="sold_max" step="1" placeholder="—" title="PP L30 sold qty" value="' + (r.sold_max != null ? r.sold_max : '') + '"></td>' +
-                '<td><input type="number" class="form-control form-control-sm" data-field="discount_pct" step="0.1" placeholder="e.g. 25" value="' + (r.discount_pct != null ? r.discount_pct : '') + '"></td>' +
-                '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger pp-price-rule-del" title="Remove"><i class="fas fa-trash"></i></button></td>' +
-                '</tr>'
-            );
-        });
-    }
-
-    function ppRuleMatchesRow(rule, d) {
-        const inv = parseFloat(d.INV) || 0;
-        const ovL30 = parseFloat(d.L30) || 0;
-        const dilVal = inv > 0 ? (ovL30 / inv) * 100 : 0;
-        const soldVal = parseFloat(d['PP L30']) || 0;
-        return ppInRange(dilVal, rule.dil_min, rule.dil_max)
-            && ppInRange(soldVal, rule.sold_min, rule.sold_max);
-    }
-
-    function ppApplyPriceRules() {
-        const $msg = $('#pp-price-rule-msg');
-        $msg.addClass('d-none').text('');
-        if (!table) return;
-
-        const rules = ppReadPriceRulesFromDom().filter(function(r) {
-            return r.discount_pct !== null && isFinite(r.discount_pct);
-        });
-        if (!rules.length) {
-            $msg.removeClass('d-none').text('Add at least one rule with a Discount %.');
-            return;
-        }
-
-        const restrictSelected = selectedSkus.size > 0;
-        const updates = [];
-        let matched = 0;
-        let skippedNoStd = 0;
-        const margin = (typeof PP_MARGIN === 'number' && PP_MARGIN > 0)
-            ? PP_MARGIN
-            : {{ isset($ppPercentage) ? ((float) $ppPercentage / 100) : 0.65 }};
-
-        table.getRows().forEach(function(row) {
-            const d = row.getData();
-            const sku = d['(Child) sku'];
-            if (!sku) return;
-            if (restrictSelected && !selectedSkus.has(sku)) return;
-
-            let hit = null;
-            for (let i = 0; i < rules.length; i++) {
-                if (ppRuleMatchesRow(rules[i], d)) {
-                    hit = rules[i];
-                    break;
-                }
-            }
-            if (!hit) return;
-            matched++;
-
-            const std = parseFloat(d.standard_price);
-            if (!(std > 0)) {
-                skippedNoStd++;
-                return;
-            }
-
-            const factor = 1 - (parseFloat(hit.discount_pct) / 100);
-            const ship = parseFloat(d.Ship_productmaster) || 0;
-            // SPRICE = (STD × (1 − Discount%/100)) − Ship BB
-            let raw = Math.max(0.99, (std * factor) - ship);
-            let newSprice = (typeof roundToRetailPrice === 'function')
-                ? roundToRetailPrice(raw)
-                : (raw < 20.99 ? +raw.toFixed(2) : Math.ceil(raw) - 0.01);
-            const lp = parseFloat(d.LP_productmaster) || 0;
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp - ship) / newSprice) * 10000) / 100 : 0;
-            const sroi = lp > 0 ? Math.round(((newSprice * margin - lp - ship) / lp) * 10000) / 100 : 0;
-            row.update({ SPRICE: newSprice, SGPFT: sgpft, SPFT: sgpft, SROI: sroi });
-            updates.push({ sku: sku, sprice: newSprice });
-        });
-
-        if (!updates.length) {
-            $msg.removeClass('d-none').text(
-                matched
-                    ? ('Matched ' + matched + ' row(s) but none have STD prc > 0' + (skippedNoStd ? ' (' + skippedNoStd + ')' : '') + '.')
-                    : (restrictSelected
-                        ? 'No checked rows match the Dil % / Sold qty filters.'
-                        : 'No rows match the Dil % / Sold qty filters.')
-            );
-            return;
-        }
-
-        ppSavePriceRulesToStorage(ppReadPriceRulesFromDom());
-        if (typeof saveSpriceUpdates === 'function') {
-            saveSpriceUpdates(updates);
-        } else {
-            $.ajax({
-                url: '{{ route("pp.save.sprice.batch") }}',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                data: { _token: '{{ csrf_token() }}', updates: updates }
-            });
-        }
-        const tip = 'Applied SPRICE on ' + updates.length + ' SKU(s)'
-            + (skippedNoStd ? ' (' + skippedNoStd + ' skipped — no STD)' : '')
-            + '.';
-        showToast(tip, 'success');
-    }
-
-    function ppBindPriceRuleUi() {
-        $('#pp-rule-btn').on('click', function() {
-            ppRenderPriceRules(ppLoadPriceRules());
-            $('#pp-price-rule-msg').addClass('d-none').text('');
-            const el = document.getElementById('ppPriceRuleModal');
-            if (el && window.bootstrap && bootstrap.Modal) {
-                bootstrap.Modal.getOrCreateInstance(el).show();
-            } else {
-                $(el).modal('show');
-            }
-        });
-
-        $('#pp-price-rule-add-btn').on('click', function() {
-            ppPriceRules = ppReadPriceRulesFromDom();
-            ppPriceRules.push({ dil_min: null, dil_max: null, sold_min: null, sold_max: null, discount_pct: 25 });
-            ppRenderPriceRules(ppPriceRules);
-        });
-
-        $(document).on('click', '#pp-price-rule-tbody .pp-price-rule-del', function() {
-            const idx = parseInt($(this).closest('tr').attr('data-idx'), 10);
-            ppPriceRules = ppReadPriceRulesFromDom();
-            if (ppPriceRules.length <= 1) {
-                ppPriceRules = ppDefaultPriceRules();
-            } else {
-                ppPriceRules.splice(idx, 1);
-            }
-            ppRenderPriceRules(ppPriceRules);
-        });
-
-        $('#pp-price-rule-save-btn').on('click', function() {
-            const rules = ppReadPriceRulesFromDom();
-            ppSavePriceRulesToStorage(rules);
-            ppPriceRules = rules;
-            showToast('Price rules saved', 'success');
-        });
-
-        $('#pp-price-rule-apply-btn').on('click', function() {
-            ppApplyPriceRules();
-        });
-    }
-
 
     /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
     function ppStdPrcChangeDotMeta(stdPrc, comparePrice) {
@@ -554,118 +294,17 @@
             const flag = String(rowData.live_inactive || rowData.listing_status || '').toLowerCase();
             return ['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1;
         }
-        function ppPushPriceValue(d) {
-            let p = ppDisplayedSprice(d);
-            if (typeof chPromoFinalSpriceToSave === 'function' && p > 0) {
-                p = Number(chPromoFinalSpriceToSave(d, p)) || p;
-            }
-            return Math.round((Number(p) || 0) * 100) / 100;
-        }
-        function ppFindRowBySku(sku) {
-            const want = String(sku || '').trim().toUpperCase();
-            if (!want || typeof table === 'undefined' || !table) return null;
-            try {
-                const exact = table.searchRows('(Child) sku', '=', sku);
-                if (exact && exact.length) return exact[0];
-            } catch (e) { /* ignore */ }
-            let found = null;
-            try {
-                (table.getRows() || []).forEach(function(row) {
-                    if (found) return;
-                    const d = row.getData() || {};
-                    if (String(d['(Child) sku'] || '').trim().toUpperCase() === want) found = row;
-                });
-            } catch (e) { /* ignore */ }
-            return found;
-        }
-        function ppApplyPushResults(results) {
-            (results || []).forEach(function(r) {
-                if (!r || !r.sku) return;
-                const row = ppFindRowBySku(r.sku);
-                if (!row) return;
-                const ok = !!r.success;
-                const live = Number(r.price) || 0;
-                const patch = {
-                    SPRICE_STATUS: ok ? 'pushed' : 'error',
-                    push_status: ok ? 'pushed' : 'error',
-                };
-                if (ok && live > 0 && isPpListed(row.getData() || {})) {
-                    patch.SPRICE_PUSHED_VALUE = live;
-                    patch['PP Price'] = live;
-                }
-                try { row.update(patch); } catch (e) { /* ignore */ }
-                try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
-            });
-            if (typeof updateSummary === 'function') updateSummary();
-        }
-        function ppPushPriceForRow(row) {
-            if (!row || typeof row.getData !== 'function') return;
-            const d = row.getData() || {};
-            if (ppIsParentRow(d)) return;
-            const sku = String(d['(Child) sku'] || '').trim();
-            const price = ppPushPriceValue(d);
-            const status = String(d.push_status || d.SPRICE_STATUS || '');
-            if (!sku || !(price > 0)) {
-                showToast('Set a valid SPRICE before pushing', 'error');
-                return;
-            }
-            if (isPpInactive(d) || !isPpListed(d)) {
-                showToast('Inactive / not listed — skip push', 'warning');
-                return;
-            }
-            if (status === 'pushing' || status === 'processing' || status === 'queued') return;
-            try { row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' }); } catch (e) { /* ignore */ }
-            if (typeof enqueueChannelPushSpriceAfterSave === 'function'
-                && typeof chPushSpriceAutoPushAllowed === 'function'
-                && chPushSpriceAutoPushAllowed()) {
-                enqueueChannelPushSpriceAfterSave(sku, price, row, { force: true });
-                return;
-            }
-            $.ajax({
-                url: '/pp-push-price',
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                    'Accept': 'application/json'
-                },
-                data: { sku: sku, price: price }
-            }).done(function(resp) {
-                ppApplyPushResults([{
-                    sku: sku,
-                    success: !!(resp && resp.success),
-                    price: (resp && resp.price != null) ? resp.price : price,
-                    message: (resp && resp.message) || ''
-                }]);
-                if (resp && resp.success) {
-                    showToast(sku + ': price pushed', 'success');
-                } else {
-                    showToast((resp && resp.message) || 'Purchasing Power price push failed', 'error');
-                }
-            }).fail(function(xhr) {
-                ppApplyPushResults([{ sku: sku, success: false, price: price }]);
-                showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Purchasing Power price push failed', 'error');
-            });
-        }
         function ppAmazonPrice(data) {
             return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
         }
-        function ppApplyAmzFloor(data, sprice) {
-            const s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
+        // Set by the server job when the Amz rule raised S PRC to A Price (AMZ_CAPPED on the saved row).
+        function ppHasAmzCap(data) {
+            if (ppIsParentRow(data)) return false;
+            const flag = data && data.AMZ_CAPPED;
+            if (!(flag === true || flag === 1 || flag === '1' || flag === 'true')) return false;
             const amz = ppAmazonPrice(data);
-            if (s > 0 && amz > 0 && s < amz - 0.0001) return amz;
-            return s > 0 ? s : 0;
-        }
-        function ppUncappedDil(data) {
-            if (data && !ppIsParentRow(data) && typeof ebayDilGroiMetaForRow === 'function') {
-                const meta = ebayDilGroiMetaForRow(data);
-                const raw = Number(meta && meta.rawSprc);
-                if (raw > 0) return Math.round(raw * 100) / 100;
-            }
-            if (typeof ebaySprcDilForRow === 'function' && data && !ppIsParentRow(data)) {
-                const dil = Number(ebaySprcDilForRow(data));
-                if (dil > 0) return Math.round(dil * 100) / 100;
-            }
-            return 0;
+            const shown = ppDisplayedSprice(data);
+            return amz > 0 && shown > 0 && Math.abs(shown - amz) <= 0.015;
         }
         function ppDisplayedSprice(data) {
             if (!data || ppIsParentRow(data)) return 0;
@@ -687,14 +326,6 @@
         }
         function ppRowSpriceForAlert(data) {
             return ppDisplayedSprice(data);
-        }
-        function ppHasAmzCap(data) {
-            if (ppIsParentRow(data)) return false;
-            const discounted = ppUncappedDil(data);
-            const amz = ppAmazonPrice(data);
-            if (!(discounted > 0) || !(amz > 0) || discounted >= amz - 0.0001) return false;
-            const shown = ppDisplayedSprice(data);
-            return shown > 0 && Math.abs(shown - amz) <= 0.015;
         }
         function ppHasBlueTriangle(data) {
             if (ppIsParentRow(data) || !isPpListed(data)) return false;
@@ -770,22 +401,6 @@
                 success: function(response) {
                     if (response.success) {
                         console.log('PP SPRICE saved:', response.updated, 'records');
-                        if (Array.isArray(response.price_push_results) && response.price_push_results.length) {
-                            ppApplyPushResults(response.price_push_results);
-                        }
-                        if (response.price_push_success_count !== undefined || response.price_push_failed_count !== undefined) {
-                            const pushOk = Number(response.price_push_success_count || 0);
-                            const pushFail = Number(response.price_push_failed_count || 0);
-                            if (pushFail > 0) {
-                                let pushMsg = `Purchasing Power price push: ${pushOk} success, ${pushFail} failed`;
-                                if (response.price_push_errors && response.price_push_errors.length > 0) {
-                                    pushMsg += ` (${response.price_push_errors[0]})`;
-                                }
-                                showToast(pushMsg, 'warning');
-                            } else if (pushOk > 0) {
-                                showToast(`Purchasing Power price push successful for ${pushOk} SKU(s)`, 'success');
-                            }
-                        }
                     }
                 },
                 error: function(xhr) {
@@ -809,52 +424,6 @@
             });
             if (updates.length) saveSpriceUpdates(updates);
             showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
-        }
-
-        function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
-            if (row && Number(sprice) > 0 && typeof chPromoFinalSpriceToSave === 'function') {
-                sprice = chPromoFinalSpriceToSave(row.getData(), sprice);
-            }
-            if (!skipClear && retryCount === 0 && Number(sprice) > 0) {
-                if (typeof chPromoWipeSpriceRow === 'function') chPromoWipeSpriceRow(row);
-                else if (row) row.update({ SPRICE: 0, SGPFT: 0, SPFT: 0, SROI: 0 });
-                $.ajax({
-                    url: '/pp-save-sprice-tabulator',
-                    method: 'POST',
-                    data: { sku, sprice: 0, _token: '{{ csrf_token() }}' }
-                }).always(function() {
-                    saveSpriceWithRetry(sku, sprice, row, 0, true);
-                });
-                return;
-            }
-            $.ajax({
-                url: '/pp-save-sprice-tabulator',
-                method: 'POST',
-                data: { sku, sprice, _token: '{{ csrf_token() }}' },
-                success: function(response) {
-                    const pushOk = response.price_push_success === true || response.price_push_skipped === true;
-                    const pushMsg = response.price_push_message ? ` — ${response.price_push_message}` : '';
-                    const status = response.push_status
-                        || (response.price_push_skipped ? 'applied' : (pushOk ? 'pushed' : 'error'));
-                    showToast(
-                        (pushOk ? '✓ SPRICE saved' : '⚠ SPRICE saved, push failed') + `: ${sku} = $${parseFloat(sprice).toFixed(2)}` + pushMsg,
-                        pushOk ? 'success' : 'warning'
-                    );
-                    const patch = { SPRICE_STATUS: status, push_status: status };
-                    if (response.spft_percent  !== undefined) patch.SPFT = response.spft_percent;
-                    if (response.sroi_percent  !== undefined) patch.SROI = response.sroi_percent;
-                    if (response.sgpft_percent !== undefined) patch.SGPFT = response.sgpft_percent;
-                    if (status === 'pushed' && Number(sprice) > 0 && isPpListed(row.getData() || {})) {
-                        patch.SPRICE_PUSHED_VALUE = Number(sprice);
-                        patch['PP Price'] = Number(sprice);
-                    }
-                    row.update(patch);
-                },
-                error: function(xhr) {
-                    if (retryCount < 3) setTimeout(() => saveSpriceWithRetry(sku, sprice, row, retryCount + 1, true), 2000);
-                    else showToast(`Failed to save SPRICE for ${sku}`, 'error');
-                }
-            });
         }
 
         // Initialize Tabulator
@@ -1043,42 +612,9 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: 'Sprc Dil',
-                    field: 'SPRC_DIL',
-                    hozAlign: 'center',
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: 'S PRC from Dil → Target SNROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. PP L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin so SNROI = target. If that S PRC < A Price, S PRC = A Price.',
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (ppIsParentRow(rowData)) return '';
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const dilShown = (meta.rawSprc > 0) ? meta.rawSprc : meta.sprc;
-                        let tip = 'Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                            + ' → ' + meta.label
-                            + ' → SNROI ' + meta.groi + '%'
-                            + ' → $' + Number(dilShown).toFixed(2);
-                        if (meta.amzApplied) {
-                            tip += ' → A Price $' + Number(meta.sprc).toFixed(2);
-                        }
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + Number(dilShown).toFixed(2) + '</span>';
-                    },
-                    width: 78
-                },
-                {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
                     editable: false, sorter: 'number', width: 110,
-                    headerTooltip: 'S PRC from Sprc Dil. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. PP L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + SNROI%/100) + Ship BB) / margin so SNROI = target. If that price < A Price, S PRC = A Price. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                    headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, raised to Min NPFT % (default 10, clearance exempt), Std Prc is the maximum, then never below A Price (Amz). Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
@@ -1108,71 +644,6 @@
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
                         return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
-                    }
-                },
-                {
-                    title: 'Push',
-                    field: 'push_status',
-                    hozAlign: 'center',
-                    headerSort: true,
-                    width: 52,
-                    headerTooltip: 'Price push status. Double tick = pushed to Purchasing Power. Cross = failed. Click to push or retry. If S PRC is below A Price, push uses A Price.',
-                    sorter: function(a, b, aRow, bRow) {
-                        const rank = function(d) {
-                            const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
-                            if (status === 'pushed') return 4;
-                            if (status === 'queued' || status === 'pushing' || status === 'processing') return 3;
-                            if (status === 'error' || status === 'failed') return 2;
-                            return ppPushPriceValue(d) > 0 ? 1 : 0;
-                        };
-                        return rank(aRow.getData()) - rank(bRow.getData());
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (ppIsParentRow(rowData)) return '';
-                        const sku = String(rowData['(Child) sku'] || '');
-                        const price = ppPushPriceValue(rowData);
-                        if (!sku || !(price > 0)) return '';
-                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
-                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
-                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT || '';
-                        const pushedBy = rowData.SPRICE_PUSHED_BY || '';
-                        let icon = '<i class="fas fa-upload"></i>';
-                        let color = '#0d6efd';
-                        let tip = 'Push $' + price.toFixed(2) + ' to Purchasing Power';
-                        if (status === 'pushing' || status === 'processing' || status === 'queued') {
-                            icon = '<i class="fas fa-spinner fa-spin"></i>';
-                            color = '#ffc107';
-                            tip = 'Pushing to Purchasing Power…';
-                        } else if (status === 'pushed') {
-                            icon = '<i class="fa-solid fa-check-double"></i>';
-                            color = '#28a745';
-                            tip = 'Pushed to Purchasing Power';
-                        } else if (status === 'error' || status === 'failed') {
-                            icon = '<i class="fa-solid fa-x"></i>';
-                            color = '#dc3545';
-                            tip = 'Push failed — click to retry';
-                        }
-                        if (pushedValue != null && pushedValue !== '') {
-                            tip += ' | Last $' + (parseFloat(pushedValue) || 0).toFixed(2);
-                        }
-                        if (updatedAt) tip += ' | ' + updatedAt;
-                        if (pushedBy) tip += ' | by ' + pushedBy;
-                        return '<button type="button" class="pp-push-single-btn" data-sku="'
-                            + sku.replace(/"/g, '&quot;') + '" data-price="' + price.toFixed(2)
-                            + '" data-status="' + status.replace(/"/g, '&quot;')
-                            + '" title="' + String(tip).replace(/"/g, '&quot;')
-                            + '" style="border:none;background:none;color:' + color
-                            + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
-                    },
-                    cellClick: function(e, cell) {
-                        const t = e.target;
-                        if (!t || typeof t.closest !== 'function') return;
-                        const btn = t.closest('.pp-push-single-btn');
-                        if (!btn) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        ppPushPriceForRow(cell.getRow());
                     }
                 },
                 {
@@ -1287,17 +758,7 @@
                 return;
             }
 
-            if (field !== 'SPRICE') return;
-            const newSprice = parseFloat(cell.getValue()) || 0;
-            const percentage = {{ $ppPercentage }} / 100;
-            const lp   = d.LP_productmaster || 0;
-            const ship = parseFloat(d.Ship_productmaster) || 0;
-            const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - lp - ship) / newSprice) * 10000) / 100 : 0;
-            const sroi  = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 10000) / 100 : 0;
-            row.update({ SGPFT: sgpft, SPFT: sgpft, SROI: sroi, has_custom_sprice: true });
-
-            // Auto-save immediately — no Send button needed
-            saveSpriceWithRetry(d['(Child) sku'], newSprice, row);
+            // S PRC is server-owned (read-only on this page). Only Std Prc is editable.
         });
 
         $(document).on('click', '.copy-sku-btn', function(e) {
@@ -1579,9 +1040,6 @@
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
             setTimeout(function() { applyFilters(); updateSummary(); }, 100);
-            if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                ebayScheduleSprcDilAutoApply();
-            }
         });
         table.on('renderComplete', function() { setTimeout(function() { updateSummary(); }, 100); });
 
@@ -1619,7 +1077,6 @@
             showToast('Export downloaded!', 'success');
         });
 
-        ppBindPriceRuleUi();
     });
 </script>
 @endsection

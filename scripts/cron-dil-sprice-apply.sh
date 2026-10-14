@@ -19,14 +19,14 @@
 #   45 6,22 * * * ... cron-dil-sprice-apply.sh faire
 #   50 5,21 * * * ... cron-dil-sprice-apply.sh macys push
 #   55 6,22 * * * ... cron-dil-sprice-apply.sh shein
-#   0 6,22 * * *  ... cron-dil-sprice-apply.sh purchasing_power
+#   35 4,20 * * * ... cron-dil-sprice-apply.sh purchasing_power
 #   5 7,23 * * *  ... cron-dil-sprice-apply.sh wayfair
 #   30 4,20 * * * ... cron-dil-sprice-apply.sh topdawg
 #   25 7,23 * * * ... cron-dil-sprice-apply.sh fb_marketplace
 #   35 7,23 * * * ... cron-dil-sprice-apply.sh walmart
 #   45 7,23 * * * ... cron-dil-sprice-apply.sh pls
 #
-# Hourly Macys / Purchasing Power and the 13:40 Shopify save stay without "push".
+# Hourly Macys and the 13:40 Shopify save stay without "push".
 #
 set -euo pipefail
 
@@ -64,7 +64,7 @@ case "$MODE" in
     MODE=macys
     ;;
   purchasing_power|pp)
-    CMD=(purchasing-power:rule-sprice-apply)
+    CMD=(purchasing-power:sprc-dil-auto-push)
     MODE=purchasing_power
     ;;
   bestbuy|newegg|temu|temu2|temu3|tiktok|tiktok2|faire|shein|wayfair|walmart|pls)

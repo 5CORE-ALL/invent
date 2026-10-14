@@ -379,14 +379,15 @@ class AmazonSprcDilAutoPushService
         $npftRow['margin'] = AmazonDilGroiRule::TAKE_HOME;
         $npftRow['lp'] = $lp;
         $npftRow['ship'] = $ship;
-        $effective = (new StdPrcVsDilPricer([
+        $npftPricer = new StdPrcVsDilPricer([
             'dil' => [],
             'age' => [],
             'cvr' => ['flat_disc' => 0],
             'reviews' => [],
             'review_max' => 4,
             'min_npft' => $minNpft,
-        ], 'amazon'))->enforceMinNpft($effective, $npftRow);
+        ], 'amazon');
+        $effective = $npftPricer->enforceMinNpft($effective, $npftRow);
 
         $stdCeiling = $std;
         if ($totalDisc < 0 && $std > 0 && $sale !== null) {
@@ -400,6 +401,13 @@ class AmazonSprcDilAutoPushService
             AmazonDilGroiRule::TAKE_HOME,
             $stdCeiling
         );
+        // Min NPFT wins over the LMP cap: a cap that would drop NPFT under the floor is skipped.
+        if ($lmp > 0
+            && ($effective - $capped) > 0.009
+            && abs($capped - round($lmp, 2)) <= 0.02
+            && $npftPricer->enforceMinNpft($capped, $npftRow) > $capped + 0.0001) {
+            $capped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), $lmp, $stdCeiling);
+        }
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
