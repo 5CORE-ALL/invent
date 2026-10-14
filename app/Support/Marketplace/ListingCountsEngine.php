@@ -531,9 +531,11 @@ class ListingCountsEngine
 
         foreach ($keys as $key) {
             $existing = $byKey[$key] ?? '';
-            $preferNew = $existing === '' || (
-                strcasecmp($existing, $sku) === 0 && strcasecmp($id, $sku) !== 0
-            );
+            $existingCreated = self::isPageCreatedId($existing);
+            $newCreated = self::isPageCreatedId($id);
+            $preferNew = $existing === ''
+                || ($existingCreated && ! $newCreated)
+                || (! $existingCreated && ! $newCreated && strcasecmp($existing, $sku) === 0 && strcasecmp($id, $sku) !== 0);
             if ($preferNew) {
                 $byKey[$key] = $id;
             }

@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Cache;
 class MarketplaceListingCheck extends Command
 {
     protected $signature = 'marketplace:listing-check
-        {channel=macy : macy | bestbuy | purchasingpower | topdawg}
+        {channel=macy : macy | bestbuy | purchasingpower | topdawg | aliexpress}
         {--limit=200 : Max missing SKUs to print}
         {--dump= : Comma-separated SKUs: print their raw Mirakl Connect product JSON}';
 
@@ -39,10 +39,13 @@ class MarketplaceListingCheck extends Command
         if ($channel === 'topdawg') {
             return $this->checkTopDawg();
         }
+        if ($channel === 'aliexpress') {
+            return $this->checkAliExpress();
+        }
 
         $cfgKey = MiraklMcmOfferIndex::configKey($channel);
         if ($cfgKey === null) {
-            $this->error('Unknown channel. Use macy, bestbuy, purchasingpower or topdawg.');
+            $this->error('Unknown channel. Use macy, bestbuy, purchasingpower, topdawg or aliexpress.');
 
             return self::FAILURE;
         }
@@ -59,9 +62,11 @@ class MarketplaceListingCheck extends Command
             $this->warn("Could not read {$label} MCM offers: ".($offerIndex->lastError ?? 'unknown error'));
             $index = $offerIndex->get($cfgKey, false);
             if ($index === null) {
-                return self::FAILURE;
+                $this->warn('No saved offer list. Counting from Mirakl Connect products only.');
+                $index = ['fetched_at' => '', 'offers' => []];
+            } else {
+                $this->warn('Using the last saved offer list from '.$index['fetched_at'].'.');
             }
-            $this->warn('Using the last saved offer list from '.$index['fetched_at'].'.');
         }
 
         $offers = $index['offers'];
@@ -142,6 +147,31 @@ class MarketplaceListingCheck extends Command
                 }
             }
             $this->line(sprintf('  %-28s INV %-5d %s%s', $sku, (int) $row->INV, implode(' | ', $where), $near !== [] ? ' | similar offers: '.implode(', ', $near) : ''));
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function checkAliExpress(): int
+    {
+        $this->info('Reading the AliExpress catalog (onSelling, auditing, editing, offline)...');
+        try {
+            app(\App\Services\MarketplaceManager\AliexpressLiveListingsService::class)->all(true);
+        } catch (\Throwable $e) {
+            $this->warn('AliExpress catalog refresh failed: '.$e->getMessage());
+        }
+
+        $counts = ListingChannelCounts::refreshChannelOnMissingListingPage('aliexpress');
+        $this->line(sprintf('REQ %d | NRL %d | Listed %d | Missing L %d', $counts['REQ'], $counts['NRL'], $counts['Listed'], $counts['Pending']));
+
+        $missing = AutomatedListingPage::rows('aliexpress')
+            ->filter(fn ($r) => (int) ($r->INV ?? 0) > 0 && ($r->nr_req ?? '') === 'REQ' && ($r->listed ?? '') === 'Pending')
+            ->values();
+
+        $this->line('');
+        $this->info('Not on AliExpress ('.$missing->count().'):');
+        foreach ($missing->take((int) $this->option('limit')) as $row) {
+            $this->line(sprintf('  %-28s INV %d', (string) $row->sku, (int) $row->INV));
         }
 
         return self::SUCCESS;

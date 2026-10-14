@@ -68,6 +68,9 @@ class AliexpressListingCounts
             }
 
             $resolved = self::resolveListed($sku, $metricsByNorm, $pricingByNorm);
+            if (! empty($resolved['page_created'])) {
+                continue;
+            }
             if ($resolved['listed']) {
                 $listedCount++;
             } elseif ($nrReq === 'REQ') {
@@ -94,16 +97,23 @@ class AliexpressListingCounts
      *
      * @param  array<string, string>  $metricsByNorm
      * @param  array<string, string>  $pricingByNorm
-     * @return array{product_id: string, listed: bool}
+     * @return array{product_id: string, listed: bool, page_created: bool}
      */
     public static function resolveListed(string $sku, array $metricsByNorm, array $pricingByNorm): array
     {
         $productId = self::productIdForSku($sku, $metricsByNorm);
-        $listed = $productId !== '';
+        if (ListingCountsEngine::isPageCreatedId($productId)) {
+            return [
+                'product_id' => '',
+                'listed' => false,
+                'page_created' => true,
+            ];
+        }
 
         return [
             'product_id' => $productId,
-            'listed' => $listed,
+            'listed' => $productId !== '',
+            'page_created' => false,
         ];
     }
 
@@ -133,18 +143,31 @@ class AliexpressListingCounts
                     $status = $hasListingStatus
                         ? strtolower(trim((string) ($row->listing_status ?? '')))
                         : '';
-                    if (in_array($status, ['offline', 'service_delete'], true)) {
+                    if (in_array($status, ['service_delete', 'deleted'], true)) {
                         continue;
                     }
                     $norm = ShopifySku::normalizeSkuForShopifyLookup((string) $row->sku);
                     $id = self::normalizeProductId($row->product_id, (string) $row->sku);
-                    if ($norm !== '' && $id !== '' && ! isset($byNorm[$norm])) {
+                    $skuText = trim((string) $row->sku);
+                    if ($status === 'offline' || $id === '') {
+                        $marker = ListingCountsEngine::pageCreatedId($skuText !== '' ? $skuText : $norm);
+                        if ($norm !== '' && ! isset($byNorm[$norm])) {
+                            $byNorm[$norm] = $marker;
+                        }
+                        $compact = self::compactSku($skuText);
+                        if ($compact !== '' && ! isset($byNorm['c:'.$compact])) {
+                            $byNorm['c:'.$compact] = $marker;
+                        }
+
+                        continue;
+                    }
+                    if ($norm !== '' && ! isset($byNorm[$norm])) {
                         $byNorm[$norm] = $id;
                     }
                     if ($status === 'onselling' && $norm !== '' && $id !== '') {
                         $byNorm[$norm] = $id;
                     }
-                    $compact = self::compactSku((string) $row->sku);
+                    $compact = self::compactSku($skuText);
                     if ($compact !== '' && $id !== '' && ! isset($byNorm['c:'.$compact])) {
                         $byNorm['c:'.$compact] = $id;
                     }
@@ -292,21 +315,30 @@ class AliexpressListingCounts
                 continue;
             }
             $state = strtolower(trim((string) ($row['state'] ?? '')));
-            if (in_array($state, ['offline', 'service_delete', 'deleted'], true)) {
+            if (in_array($state, ['service_delete', 'deleted'], true)) {
                 continue;
             }
             $sku = trim((string) ($row['sku'] ?? ''));
-            $id = self::normalizeProductId($row['product_id'] ?? '', $sku);
-            if ($sku === '' || $id === '') {
+            if ($sku === '') {
                 continue;
             }
+            $id = self::normalizeProductId($row['product_id'] ?? '', $sku);
+            $value = ($state === 'offline' || $id === '')
+                ? ListingCountsEngine::pageCreatedId($sku)
+                : $id;
             $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-            if ($norm !== '' && ! isset($byNorm[$norm])) {
-                $byNorm[$norm] = $id;
+            if ($norm !== '') {
+                $existing = $byNorm[$norm] ?? '';
+                if ($existing === '' || (ListingCountsEngine::isPageCreatedId($existing) && ! ListingCountsEngine::isPageCreatedId($value))) {
+                    $byNorm[$norm] = $value;
+                }
             }
             $compact = self::compactSku($sku);
-            if ($compact !== '' && ! isset($byNorm['c:'.$compact])) {
-                $byNorm['c:'.$compact] = $id;
+            if ($compact !== '') {
+                $existing = $byNorm['c:'.$compact] ?? '';
+                if ($existing === '' || (ListingCountsEngine::isPageCreatedId($existing) && ! ListingCountsEngine::isPageCreatedId($value))) {
+                    $byNorm['c:'.$compact] = $value;
+                }
             }
         }
     }

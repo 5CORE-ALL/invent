@@ -818,6 +818,11 @@ class ChannelListingRegistry
                 continue;
             }
             $resolved = AliexpressListingCounts::resolveListed($sku, $metrics, $pricing);
+            if (! empty($resolved['page_created'])) {
+                self::putListedId($byKey, $wanted, $sku, ListingCountsEngine::pageCreatedId($sku));
+
+                continue;
+            }
             if (! ($resolved['listed'] ?? false)) {
                 continue;
             }
@@ -1232,6 +1237,8 @@ class ChannelListingRegistry
                             ? $listingId
                             : (self::isLiveTopDawgListingId($tdid, $sku) ? $tdid : '');
                         if ($id === '') {
+                            ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, ListingCountsEngine::pageCreatedId($sku), true);
+
                             continue;
                         }
                         if (! self::topDawgStateIsPublished($row->listing_state ?? null)) {
@@ -1252,6 +1259,8 @@ class ChannelListingRegistry
                     $sku = trim((string) ($row['sku'] ?? ''));
                     $id = trim((string) ($row['product_id'] ?? ''));
                     if (! self::isLiveTopDawgListingId($id, $sku)) {
+                        ListingCountsEngine::putListedForSku($byNorm, $wantedNorm, $sku, ListingCountsEngine::pageCreatedId($sku), true);
+
                         continue;
                     }
                     if (! self::topDawgStateIsPublished($row['state'] ?? null)) {
