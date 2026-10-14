@@ -1405,14 +1405,6 @@
             const s = parseFloat(sprice);
             if (!(s > 0)) return s;
             const rounded = +Number(s).toFixed(2);
-            // "!" on S PRC (Std prc vs dil rule): the price was raised to hold Min NPFT.
-            // That floor wins over the Std Prc maximum, so Std is ignored for these rows.
-            if (typeof amzStdMinNpftWasApplied === 'function'
-                && !(typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil')) {
-                let npftFloor = null;
-                if (typeof amzStdMinNpftNow === 'function') npftFloor = Number(amzStdMinNpftNow());
-                if (amzStdMinNpftWasApplied(rowData, npftFloor)) return rounded;
-            }
             const std = amazonStdPrice(rowData);
             let ceiling = std;
             if (std > 0 && typeof computeAmzSumDiscountPct === 'function') {
