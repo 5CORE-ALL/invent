@@ -2125,6 +2125,7 @@
         $(document).ready(function() {
             var lastDotColorByKey = {};
             var lastDotPairByKey = {};
+            var chartSyncedAllMetrics = {};
             var invertedDotMetrics = ['acos', 'ads_pct', 'tat'];
             var ySalesAllChartPrefetch = null;
             var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','today_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
@@ -2149,6 +2150,8 @@
                         var pair = metrics[metric];
                         var v1 = pair && pair[0] != null ? parseFloat(pair[0]) : null;
                         var v2 = pair && pair[1] != null ? parseFloat(pair[1]) : null;
+                        // Keep the pair taken from the graph's own series (see syncAllBadgeDotWithChart).
+                        if (norm === 'all' && chartSyncedAllMetrics[metric]) return;
                         lastDotPairByKey[norm + '_' + metric] = [v1, v2];
                         lastDotColorByKey[norm + '_' + metric] = colorFromDotPair(v1, v2, metric);
                     });
@@ -6330,6 +6333,20 @@
                 loadAdBreakdownChart();
             }
 
+            // Summary badge dots must read the same last-two points as the graph
+            // (graph dot = last value vs the day before). The dot-trend cache is built
+            // from a different snapshot table and could disagree (green dot, red graph).
+            function syncAllBadgeDotWithChart(metric, values) {
+                if (!metric || metric === 'today_sales' || !Array.isArray(values) || values.length < 2) return;
+                var v1 = Number(values[values.length - 2]);
+                var v2 = Number(values[values.length - 1]);
+                if (!isFinite(v1) || !isFinite(v2)) return;
+                if (!$('#summary-stats .summary-trend-dot[data-metric="' + metric + '"]').length) return;
+                lastDotPairByKey['all_' + metric] = [v1, v2];
+                chartSyncedAllMetrics[metric] = true;
+                colorSummaryBadgeDots(channelKeysFromTableData());
+            }
+
             function prefetchAllYSalesChart(badgeValue) {
                 if (ySalesAllChartPrefetch && ySalesAllChartPrefetch.readyState !== 4) {
                     return;
@@ -6343,6 +6360,9 @@
                         days: 30,
                         badge_value: badgeValue
                     }
+                }).done(function(response) {
+                    var rows = response && response.success && Array.isArray(response.data) ? response.data : [];
+                    syncAllBadgeDotWithChart('y_sales', rows.map(function(r) { return Number(r.value); }));
                 });
             }
 
@@ -6975,6 +6995,9 @@
                 const invertedMetrics = ['acos', 'ads_pct', 'tat'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
+                if (currentChartMode === 'metric' && currentChartChannel === 'all') {
+                    syncAllBadgeDotWithChart(currentChartMetric, values);
+                }
 
                 // Labels + High/Low use the same day-over-day color as the dots.
                 const labelColors = dotColors.slice();
