@@ -329,6 +329,71 @@
             const sroi = lp > 0 ? Math.round(((price * PP_MARGIN - lp - ship) / lp) * 10000) / 100 : 0;
             return { sgpft: sgpft, sroi: sroi };
         }
+        /**
+         * Min NPFT on SNPFT, shown right away. The server job saves the same price; until it re-saves a SKU, this keeps the
+         * page from showing a S PRC whose SNPFT is under the floor. Same math as the server (Ship BB, no ads, clearance exempt).
+         * Returns the fields to write on the row, or null when nothing changes.
+         */
+        function ppFloorPatch(row) {
+            if (!row || ppIsParentRow(row)) return null;
+            if (typeof window.chStdMinNpftNow !== 'function') return null;
+            const minNpft = Number(window.chStdMinNpftNow()) || 0;
+            if (!(minNpft > 0)) return null;
+            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) return null;
+            const shown = ppDisplayedSprice(row);
+            if (!(shown > 0)) return null;
+            const lp = Number(row.LP_productmaster != null ? row.LP_productmaster : row.lp) || 0;
+            const ship = Number(row.Ship_productmaster != null ? row.Ship_productmaster : row.ship) || 0;
+            let margin = Number(PP_MARGIN) || 0;
+            if (!(margin > 0 && margin <= 1)) margin = 0.65;
+            if (!(lp > 0)) return null;
+            const denom = margin - minNpft / 100;
+            if (!(denom > 0.0001)) return null;
+            const npftAt = function(p) { return ((p * margin - ship - lp) / p) * 100; };
+            if (!(npftAt(shown) < minNpft - 0.001)) return null;
+            let target = Math.ceil(((lp + ship) / denom) * 100 - 1e-6) / 100;
+            if (npftAt(target) + 1e-6 < minNpft) target = Math.round((target + 0.01) * 100) / 100;
+            if (!(target > shown)) return null;
+            const sgpft = Math.round(npftAt(target) * 100) / 100;
+            const sroi = Math.round((((target * margin - ship - lp) / lp) * 100) * 100) / 100;
+            const patch = { SPRICE: target, sprice: target, SGPFT: sgpft, SPFT: sgpft, SROI: sroi, SNROI: sroi, SGROI: sroi };
+            const amz = ppAmazonPrice(row);
+            if (amz > 0 && target > amz + 0.005) patch.AMZ_CAPPED = false;
+            return patch;
+        }
+        function ppApplySnpftFloor() {
+            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+            const bySku = {};
+            let changed = 0;
+            try {
+                table.getRows().forEach(function(r) {
+                    const d = r.getData();
+                    const patch = ppFloorPatch(d);
+                    if (!patch) return;
+                    bySku[String(d['(Child) sku'] || d.sku || '').trim().toUpperCase()] = patch;
+                    try { r.update(patch); } catch (e) { /* ignore */ }
+                    changed++;
+                });
+            } catch (e) { /* ignore */ }
+            if (!changed) return;
+            const walk = function(arr) {
+                if (!Array.isArray(arr)) return;
+                arr.forEach(function(d) {
+                    if (!d) return;
+                    const patch = bySku[String(d['(Child) sku'] || d.sku || '').trim().toUpperCase()];
+                    if (patch) Object.assign(d, patch);
+                    if (Array.isArray(d._children)) walk(d._children);
+                });
+            };
+            walk(allTableData);
+            if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
+                try { ParentExpand.captureDataset(allTableData); } catch (e) { /* ignore */ }
+            }
+            if (typeof updateSummary === 'function') {
+                try { updateSummary(); } catch (e) { /* ignore */ }
+            }
+        }
+        window.ppApplySnpftFloor = ppApplySnpftFloor;
         function ppRowSpriceForAlert(data) {
             return ppDisplayedSprice(data);
         }
@@ -622,7 +687,7 @@
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
-                    editable: false, sorter: 'number', width: 110,
+                    editable: false, sorter: 'number', width: 120,
                     headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, Std Prc is the maximum, never below A Price (Amz), and last raised so SNPFT% is at least Min NPFT % (default 10). Min NPFT wins over Std Prc and Amz. Clearance SKUs are exempt. Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
@@ -652,7 +717,12 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
+                        // Clearance SKUs: Min NPFT is not applied, so a low SNPFT is expected. Red "C" after the value.
+                        const isClearance = typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d);
+                        const clearanceMark = isClearance
+                            ? '<span class="pp-sprice-clearance" title="Clearance — Min NPFT not applied" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
+                            : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
@@ -927,6 +997,11 @@
                 return;
             }
             window.chStdLoadClearance().always(function() {
+                // Clearance list is in: apply the Min NPFT floor on SNPFT, again once the saved rule has loaded.
+                try { ppApplySnpftFloor(); } catch (e) { /* ignore */ }
+                // The S PRC cells painted before the clearance list arrived: repaint so the "C" shows.
+                try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
+                setTimeout(function() { try { ppApplySnpftFloor(); } catch (e) { /* ignore */ } }, 2500);
                 try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
             });
         })(0);
@@ -1083,7 +1158,7 @@
             if (window.ParentExpand && ParentExpand.isExpanded()) return;
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
-            setTimeout(function() { applyFilters(); updateSummary(); }, 100);
+            setTimeout(function() { ppApplySnpftFloor(); applyFilters(); updateSummary(); }, 100);
         });
         table.on('renderComplete', function() { setTimeout(function() { updateSummary(); }, 100); });
 
