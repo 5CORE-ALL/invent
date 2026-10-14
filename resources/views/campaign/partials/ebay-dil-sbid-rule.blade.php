@@ -216,13 +216,13 @@
                         <div class="dsb-title" title="Dil + Views + CVR + eBay Sold + Std NPFT %. This sum, after the CVR up / down adjustment, fills the S BID column.">Sum S Bid</div>
                         <div class="dsb-canvas"><canvas id="dil-sbid-chart-sum"></canvas></div>
                         <div class="dsb-legend" id="dil-sbid-leg-sum"></div>
-                        <div class="table-responsive">
+                        <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
                             <table class="table table-sm table-bordered align-middle mb-0" id="dil-sbid-sum-table">
-                                <thead>
+                                <thead style="position: sticky; top: 0; z-index: 1;">
                                     <tr>
-                                        <th>Table</th>
-                                        <th class="text-center" title="Unique SKUs where this table adds a non-zero S Bid.">SKUs</th>
-                                        <th class="text-end" title="Average S Bid this table adds, over those SKUs.">Avg S Bid</th>
+                                        <th title="Final S Bid, rounded to a whole number.">Bid</th>
+                                        <th class="text-center" title="Unique SKUs with this final S Bid.">Count</th>
+                                        <th class="text-end" title="Share of SKUs that have an S Bid.">%</th>
                                     </tr>
                                 </thead>
                                 <tbody id="dil-sbid-sum-tbody"></tbody>
@@ -1702,7 +1702,7 @@ function dilSbidQueueCharts(jobs) {
 /** Per table: SKUs with a non-zero S Bid and the average added. Sum = the final bid that fills S BID. */
 function dilSbidSumStats(rows) {
     const keys = ['dil'].concat(DIL_SBID_EXT_KEYS);
-    const st = { sum: { n: 0, total: 0 } };
+    const st = { sum: { n: 0, total: 0 }, byBid: {} };
     keys.forEach(function(k) { st[k] = { n: 0, total: 0 }; });
     rows.forEach(function(row) {
         const part = dilSbidDilPart(row, dilSbidMetric(row));
@@ -1712,7 +1712,11 @@ function dilSbidSumStats(rows) {
             if (extra[k].bid) { st[k].n++; st[k].total += extra[k].bid; }
         });
         const res = dilSbidOfRow(row);
-        if (!res.skip && res.bid > 0) { st.sum.n++; st.sum.total += res.bid; }
+        if (!res.skip && res.bid > 0) {
+            st.sum.n++; st.sum.total += res.bid;
+            const bucket = Math.round(res.bid);
+            st.byBid[bucket] = (st.byBid[bucket] || 0) + 1;
+        }
     });
     return st;
 }
@@ -1782,15 +1786,19 @@ function dilSbidExtPaint() {
         { key: 'npft', label: DIL_SBID_EXT_LABELS.npft + ' %' },
         { key: 'sum', label: 'Sum S Bid' },
     ];
-    const avg = function(x) { return x.n > 0 ? (x.total / x.n).toFixed(1) + '%' : '—'; };
+    // Bid-wise: one row per final S Bid (rounded to a whole number), with SKU count and share.
     const sumBody = document.getElementById('dil-sbid-sum-tbody');
     if (sumBody) {
-        sumBody.innerHTML = sumRows.map(function(r) {
-            const x = st[r.key];
-            const cls = r.key === 'sum' ? ' class="dsb-sum-total"' : '';
-            return '<tr' + cls + '><td><span class="dsb-swatch d-inline-block me-1" style="background:' + DIL_SBID_SUM_COLORS[r.key] + '"></span>' + dilSbidEsc(r.label) + '</td>'
-                + '<td class="text-center">' + x.n + '</td><td class="text-end">' + avg(x) + '</td></tr>';
+        const bidTotal = st.sum.n;
+        const bids = Object.keys(st.byBid).map(Number).sort(function(a, b) { return a - b; });
+        let html = bids.map(function(b) {
+            const n = st.byBid[b];
+            const pct = bidTotal > 0 ? ((n / bidTotal) * 100).toFixed(1) : '0.0';
+            return '<tr><td class="text-center fw-semibold">' + b + '%</td><td class="text-center">' + n + '</td><td class="text-end">' + pct + '%</td></tr>';
         }).join('');
+        if (!bids.length) html = '<tr><td colspan="3" class="text-center text-muted">No S Bid</td></tr>';
+        else html += '<tr class="dsb-sum-total"><td class="text-center">Total</td><td class="text-center">' + bidTotal + '</td><td class="text-end">100%</td></tr>';
+        sumBody.innerHTML = html;
     }
     const sumSlices = sumRows.map(function(r) {
         return { label: r.label, count: st[r.key].n, color: DIL_SBID_SUM_COLORS[r.key] };

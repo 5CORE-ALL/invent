@@ -360,6 +360,165 @@
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
 
+        /* ── BGT Rules — single modal (same layout as /amazon-ads/all) ── */
+        #gacRawBgtRulesModal .modal-dialog {
+            width: calc(100vw - 0.75rem);
+            max-width: calc(100vw - 0.75rem);
+            height: calc(100vh - 0.75rem);
+            max-height: calc(100vh - 0.75rem);
+            margin: 0.375rem auto;
+        }
+        #gacRawBgtRulesModal .modal-content {
+            height: 100%;
+            max-height: 100%;
+            display: flex;
+            flex-direction: column;
+            border: 0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+        }
+        #gacRawBgtRulesModal .modal-header { background: #fff; border-bottom: 1px solid #e8eef5; padding: 8px 12px; flex: 0 0 auto; }
+        #gacRawBgtRulesModal .modal-title { font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+        #gacRawBgtRulesModal .gac-bgt-sub {
+            color: #64748b; font-size: 11px; font-weight: 500; margin-top: 1px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100vw - 5rem);
+        }
+        #gacRawBgtRulesModal .modal-body {
+            background: #f4f7fb; overflow-x: hidden; overflow-y: auto; padding: 8px;
+            flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+        }
+        #gacRawBgtRulesModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; padding: 6px 12px; flex: 0 0 auto; }
+        #gacRawBgtRulesModal #gacRawBgtRulesSaveBtn { font-weight: 700; border-radius: 8px; padding: 6px 16px; }
+        #gacRawBgtRulesModal .gac-bgt-global-err { margin: 0 0 6px; }
+
+        #gacRawBgtRulesModal .gac-bgt-cols {
+            display: flex; flex-wrap: wrap; align-items: stretch; align-content: flex-start;
+            gap: 8px; width: 100%; min-width: 0; flex: 0 0 auto;
+        }
+        #gacRawBgtRulesModal .gac-bgt-col {
+            flex: 1 1 calc((100% - 24px) / 4);
+            max-width: calc((100% - 24px) / 4);
+            min-width: 0; min-height: 0;
+            display: flex; flex-direction: column;
+            border: 1px solid #e6edf5; border-radius: 10px; padding: 8px; background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); overflow: auto;
+        }
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--wide { flex: 1 1 calc((100% - 24px) / 2); max-width: calc((100% - 8px) / 2); }
+        #gacRawBgtRulesModal .gac-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 4px; }
+        #gacRawBgtRulesModal .gac-bgt-title {
+            font-weight: 700; font-size: 12px; color: #0f172a; letter-spacing: -0.01em;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        #gacRawBgtRulesModal .gac-bgt-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        #gacRawBgtRulesModal .gac-bgt-min-btn,
+        #gacRawBgtRulesModal .gac-bgt-exp-btn {
+            border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px;
+            padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; font-size: 13px;
+        }
+        #gacRawBgtRulesModal .gac-bgt-min-btn:hover,
+        #gacRawBgtRulesModal .gac-bgt-exp-btn:hover { background: #e2e8f0; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-exp-btn { display: none; }
+        #gacRawBgtRulesModal .gac-bgt-cols.is-expanded .gac-bgt-col:not(.is-max) { display: none; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-max { flex: 1 1 100%; min-width: 0; max-width: none; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas { height: 220px; flex: 0 0 220px; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas canvas { height: 220px !important; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-min { flex: 0 0 40px; width: 40px; max-width: 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-min > :not(.gac-bgt-col-head) { display: none !important; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+
+        #gacRawBgtRulesModal .gac-bgt-chart { display: flex; flex-direction: column; margin-bottom: 4px; flex: 0 0 auto; }
+        #gacRawBgtRulesModal .gac-bgt-chart-canvas { position: relative; width: 100%; height: 64px; flex: 0 0 64px; }
+        #gacRawBgtRulesModal .gac-bgt-chart-canvas canvas { display: block; width: 100% !important; height: 64px !important; }
+        #gacRawBgtRulesModal .gac-bgt-legend { width: 100%; font-size: 10px; margin-top: 2px; color: #334155; line-height: 1.2; }
+        #gacRawBgtRulesModal .gac-bgt-leg-row {
+            display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto 8px; gap: 4px; align-items: center; padding: 0;
+        }
+        #gacRawBgtRulesModal .gac-bgt-leg-row strong { font-variant-numeric: tabular-nums; }
+        #gacRawBgtRulesModal .gac-bgt-leg-total { font-weight: 700; border-top: 1px solid #e2e8f0; margin-top: 2px; padding-top: 2px; }
+        #gacRawBgtRulesModal .gac-bgt-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
+        #gacRawBgtRulesModal .gac-bgt-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+        #gacRawBgtRulesModal .gac-bgt-col .table { font-size: 11px; margin-bottom: 0; border-color: #e8eef5; }
+        #gacRawBgtRulesModal .gac-bgt-col .table thead th {
+            background: #f8fafc; color: #64748b; font-size: 9px; font-weight: 700; letter-spacing: 0.03em;
+            text-transform: uppercase; border-color: #e8eef5; white-space: nowrap;
+        }
+        #gacRawBgtRulesModal .gac-bgt-col .table th,
+        #gacRawBgtRulesModal .gac-bgt-col .table td { padding: 1px 3px; border-color: #eef2f7; vertical-align: middle; }
+        #gacRawBgtRulesModal .gac-bgt-col .table:not(.gac-bgt-sum-table) th:first-child,
+        #gacRawBgtRulesModal .gac-bgt-col .table:not(.gac-bgt-sum-table) td:first-child { display: none; }
+        #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm {
+            padding: 0 2px; font-size: 11px; min-width: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+        }
+        #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm:focus { border: 0; background: transparent; box-shadow: none; }
+        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger {
+            border: 0; background: transparent; box-shadow: none; padding: 0; line-height: 1; font-size: 0.8em; border-radius: 0;
+        }
+        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:hover,
+        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:focus,
+        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:disabled { border: 0; background: transparent; box-shadow: none; }
+        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:disabled { opacity: 0.35; }
+        #gacRawBgtRulesModal .gac-bgt-add {
+            width: 100%; border-radius: 6px; font-weight: 600; padding: 3px 8px; font-size: 12px; margin-top: auto; border-style: dashed;
+        }
+        #gacRawBgtRulesModal .gac-bgt-col .table-responsive { margin-bottom: 0; flex: 1 1 auto; min-height: 0; overflow: auto; }
+        #gacRawBgtRulesModal .gac-bgt-col .gac-bgt-add { margin-top: 6px; }
+
+        /* Summary bar (full width) */
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar {
+            flex: 0 0 auto; align-self: stretch; width: 100%; max-width: none; flex-direction: column;
+            align-items: stretch; gap: 10px; margin-bottom: 8px; padding: 12px 14px 14px; overflow: visible;
+        }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-col-head { margin: 0; flex: 0 0 auto; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-title { font-size: 16px; }
+        #gacRawBgtRulesModal .gac-bgt-sum-sub { color: #64748b; font-size: 12px; font-weight: 500; margin-top: 1px; }
+        #gacRawBgtRulesModal .gac-bgt-sum-body { display: flex; flex-wrap: wrap; gap: 18px; align-items: stretch; min-width: 0; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-chart { flex: 1 1 auto; align-items: stretch; gap: 8px; margin: 0; min-width: 0; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-chart-canvas { flex: 0 0 180px; width: 100%; height: 180px; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-chart-canvas,
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-chart-canvas canvas { height: 180px !important; flex-basis: 180px; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; flex: 0 0 auto; font-size: 13px; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-leg-row {
+            display: inline-flex; width: auto; gap: 6px; align-items: center; background: #f8fafc;
+            border: 1px solid #e8eef5; border-radius: 999px; padding: 4px 10px; font-size: 13px;
+        }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-leg-row strong { font-size: 14px; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-leg-total { border-top: 0; margin: 0; padding: 4px 10px; background: #0f172a; color: #fff; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-leg-total .gac-bgt-leg-pct { color: #cbd5e1; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-swatch { width: 10px; height: 10px; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .table-responsive { flex: 1 1 300px; width: auto; min-width: 280px; max-width: 420px; overflow: visible; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table {
+            width: 100%; height: 100%; border: 1px solid #e8eef5; border-radius: 10px; overflow: hidden; font-size: 14px;
+        }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table th,
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table td {
+            padding: 7px 12px; font-size: 14px; line-height: 1.3; border-color: #eef2f7; background: #fff;
+        }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table thead th { font-size: 11px; padding: 8px 12px; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table td:first-child { font-weight: 600; color: #0f172a; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table tr.fw-semibold td { background: #eff6ff; font-size: 15px; }
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min { flex: 0 0 auto; flex-direction: row; width: 100%; max-width: none; height: auto; min-width: 0; padding: 6px 8px; }
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min .gac-bgt-col-head { flex-direction: row; height: auto; }
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min .gac-bgt-title { writing-mode: horizontal-tb; transform: none; font-size: 12px; }
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min .gac-bgt-sum-sub { display: none; }
+
+        /* SBID card form */
+        #gacRawBgtRulesModal .gac-bgt-sbid-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 8px; }
+        #gacRawBgtRulesModal .gac-bgt-sbid-grid label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.02em; margin: 0; }
+        #gacRawBgtRulesModal .gac-bgt-sbid-grid .form-control { font-size: 12px; padding: 2px 6px; }
+        #gacRawBgtRulesModal .gac-bgt-sbid-h { font-size: 11px; font-weight: 700; color: #0f172a; margin: 8px 0 4px; }
+        #gacRawBgtRulesModal .gac-bgt-sbid-note { font-size: 11px; color: #64748b; margin: 0 0 4px; }
+
+        @media (max-width: 1199px) {
+            #gacRawBgtRulesModal .gac-bgt-col { flex-basis: calc((100% - 8px) / 2); max-width: calc((100% - 8px) / 2); }
+            #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--wide { flex-basis: 100%; max-width: 100%; }
+        }
+        @media (max-width: 767px) {
+            #gacRawBgtRulesModal .gac-bgt-col { flex-basis: 100%; max-width: 100%; }
+            #gacRawBgtRulesModal .gac-bgt-sbid-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
     </style>
 @endsection
 
@@ -458,11 +617,7 @@
                                 {{-- Populated dynamically after the grid builds --}}
                             </ul>
                         </div>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbgt-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbgtRuleModal" title="Edit ACOS band thresholds and BGT ACOS values">BGT Vs ACOS Rule</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-views-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtViewsRuleModal" title="Edit View L7 bands and Bgt Views values">BGT Vs VIEWS</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-cvr-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtCvrRuleModal" title="Edit CVR L30 bands and Bgt Cvr values">BGT Vs CVR</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-prc-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtPrcRuleModal" title="Edit Price bands and BGT PRC values">BGT PRC</button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rule-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRuleModal" title="Edit 7UB/1UB% thresholds and CPC multipliers for suggested SBID">SBID RULE</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-rules-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtRulesModal" title="Edit BGT Vs ACOS, BGT Vs VIEWS, BGT Vs CVR, BGT PRC and SBID rules in one place">BGT Rules</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Pushes each row’s SBGT as daily budget (chunks of 10). SBGT 0 / INV ≤ 0 pauses the campaign — $0 cannot be pushed.">
                             <i class="fa fa-cloud-upload-alt"></i> Push SBGT
@@ -613,235 +768,168 @@
         </div>
     </div>
 
-    <div class="modal fade" id="gacRawSbgtRuleModal" tabindex="-1" aria-labelledby="gacRawSbgtRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    {{-- BGT Rules — one modal for BGT Vs ACOS, VIEWS, CVR, PRC and SBID (same layout as /amazon-ads/all). --}}
+    @php
+        $gacBgtSlabCards = [
+            ['key' => 'views', 'title' => 'BGT Vs VIEWS', 'hint' => 'Inclusive Shopify View L7 range (parent = sum of children). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-views-bands-body', 'add' => 'gac-bgt-views-add-band-btn', 'err' => 'gacRawBgtViewsRuleErr'],
+            ['key' => 'cvr', 'title' => 'BGT Vs CVR', 'hint' => 'Inclusive Google Shopping CVR L30 range (Sold ÷ Clicks × 100). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-cvr-bands-body', 'add' => 'gac-bgt-cvr-add-band-btn', 'err' => 'gacRawBgtCvrRuleErr'],
+            ['key' => 'prc', 'title' => 'BGT PRC', 'hint' => 'Inclusive Shopify Price range (parent = average of children with price > 0). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-prc-bands-body', 'add' => 'gac-bgt-prc-add-band-btn', 'err' => 'gacRawBgtPrcRuleErr'],
+        ];
+    @endphp
+    <div class="modal fade" id="gacRawBgtRulesModal" tabindex="-1" aria-labelledby="gacRawBgtRulesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawSbgtRuleModalLabel">BGT Vs ACOS — ACOS % → BGT ACOS</h5>
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title fs-6 mb-0" id="gacRawBgtRulesModalLabel">BGT Rules</h5>
+                        <div class="gac-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC. INV ≤ 0 forces SBGT to 0, and SBGT 0 cannot be pushed (the campaign is paused). Save and apply writes every rule, then refreshes the grid.</div>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Same ACOS → BGT ACOS brackets as <strong>/amazon-ads/all</strong>, matched on
-                        <strong>ACOS % only</strong> (no spend gate). Rows are checked
-                        <strong>top to bottom</strong>; the first range that contains the
-                        campaign's ACOS gets its BGT ACOS. Grid <strong>SBGT</strong> is the sum of
-                        Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC.
-                        <strong>INV ≤ 0</strong> forces SBGT to 0. SBGT 0 cannot be pushed — those campaigns are paused.
-                        Use <code>9999</code> on <em>To</em> for the catch-all highest band.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0" id="gac-sbgt-rule-table">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th style="width:110px;">ACOS%</th>
-                                <th style="width:120px;">ACOS From (%)</th>
-                                <th style="width:120px;">ACOS To (%)</th>
-                                <th style="width:100px;">SBGT</th>
-                                <th style="width:56px;" class="text-center">Del</th>
-                            </tr>
-                        </thead>
-                        <tbody id="gac-sbgt-bands-body"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-sbgt-add-band-btn">
-                        <i class="fas fa-plus me-1"></i>Add band
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawSbgtRuleErr" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="gacRawSbgtRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                    <p class="small text-danger gac-bgt-global-err d-none" id="gacRawBgtRulesErr" role="alert"></p>
 
-    <div class="modal fade" id="gacRawBgtViewsRuleModal" tabindex="-1" aria-labelledby="gacRawBgtViewsRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawBgtViewsRuleModalLabel">BGT Vs VIEWS — View L7 → Bgt Views</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Shopify View L7</strong> range for the campaign SKU
-                        (parent = sum of children). Rows are checked <strong>top to bottom</strong>; the first
-                        range that contains the views gets its <strong>Bgt Views</strong>.
-                        Saved in a Google-only table — not synced with Amazon.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Name</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;">Count</th>
-                                <th style="width:120px;">Bgt Views</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="gac-bgt-views-bands-body"></tbody>
-                    </table>
+                    <div class="gac-bgt-col gac-bgt-sumbar" data-gac-bgt-panel="sum">
+                        <div class="gac-bgt-col-head">
+                            <div>
+                                <div class="gac-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC. A total of 0 pauses the campaign.">Sum</div>
+                                <div class="gac-bgt-sum-sub">SBGT for the rows on the current grid page (saved rules): campaigns per daily budget, and what each part adds up to. Charts below count the same rows against the bands you are editing.</div>
+                            </div>
+                            <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
+                        </div>
+                        <div class="gac-bgt-sum-body">
+                            <div class="gac-bgt-chart">
+                                <div class="gac-bgt-chart-canvas"><canvas id="gac-bgt-chart-sum"></canvas></div>
+                                <div class="gac-bgt-legend" id="gac-bgt-leg-sum"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0 gac-bgt-sum-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Part</th>
+                                            <th class="text-center">Campaigns</th>
+                                            <th class="text-end">Budget</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gac-bgt-sum-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-bgt-views-add-band-btn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawBgtViewsRuleErr" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtViewsRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <div class="modal fade" id="gacRawBgtCvrRuleModal" tabindex="-1" aria-labelledby="gacRawBgtCvrRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawBgtCvrRuleModalLabel">BGT Vs CVR — CVR L30 → Bgt Cvr</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Google Shopping CVR L30</strong> range
-                        (Sold ÷ Clicks × 100). Rows are checked <strong>top to bottom</strong>.
-                        Saved in a Google-only table — not synced with Amazon.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Name</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;">Count</th>
-                                <th style="width:120px;">Bgt Cvr</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="gac-bgt-cvr-bands-body"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-bgt-cvr-add-band-btn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawBgtCvrRuleErr" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtCvrRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                    <div class="gac-bgt-cols">
+                        <div class="gac-bgt-col" data-gac-bgt-panel="acos">
+                            <div class="gac-bgt-col-head">
+                                <div class="gac-bgt-title" title="Same ACOS → BGT ACOS brackets as /amazon-ads/all, matched on ACOS % only (no spend gate). Rows are checked top to bottom; the first range that contains the campaign's ACOS gets its BGT ACOS. Use 9999 on To for the catch-all highest band.">BGT Vs ACOS</div>
+                                <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="gac-bgt-min-btn" title="Minimize BGT Vs ACOS" aria-label="Minimize BGT Vs ACOS">−</button></span>
+                            </div>
+                            <div class="gac-bgt-chart">
+                                <div class="gac-bgt-chart-canvas"><canvas id="gac-bgt-chart-acos"></canvas></div>
+                                <div class="gac-bgt-legend" id="gac-bgt-leg-acos"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0" id="gac-sbgt-rule-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>SBGT</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="gac-sbgt-bands-body"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary gac-bgt-add" id="gac-sbgt-add-band-btn">Add band</button>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="gacRawSbgtRuleErr" role="alert"></p>
+                        </div>
 
-    <div class="modal fade" id="gacRawBgtPrcRuleModal" tabindex="-1" aria-labelledby="gacRawBgtPrcRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawBgtPrcRuleModalLabel">BGT PRC — Price → Bgt Prc</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-3">
-                        Each row is an inclusive <strong>Shopify Price</strong> range (parent = average of children with price &gt; 0).
-                        Rows are checked <strong>top to bottom</strong>.
-                        Saved in a Google-only table — not synced with Amazon.
-                    </p>
-                    <div class="table-responsive">
-                    <table class="table table-sm table-bordered align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:40px;">#</th>
-                                <th>Name</th>
-                                <th style="width:110px;">From</th>
-                                <th style="width:110px;">To</th>
-                                <th style="width:80px;">Count</th>
-                                <th style="width:120px;">Bgt Prc</th>
-                                <th style="width:50px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="gac-bgt-prc-bands-body"></tbody>
-                    </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="gac-bgt-prc-add-band-btn">
-                        <i class="fas fa-plus me-1"></i>Add slab
-                    </button>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawBgtPrcRuleErr" role="alert"></p>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtPrcRuleSaveBtn">Save &amp; refresh grid</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                        @foreach ($gacBgtSlabCards as $card)
+                            <div class="gac-bgt-col" data-gac-bgt-panel="{{ $card['key'] }}">
+                                <div class="gac-bgt-col-head">
+                                    <div class="gac-bgt-title" title="{{ $card['hint'] }}">{{ $card['title'] }}</div>
+                                    <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="gac-bgt-min-btn" title="Minimize {{ $card['title'] }}" aria-label="Minimize {{ $card['title'] }}">−</button></span>
+                                </div>
+                                <div class="gac-bgt-chart">
+                                    <div class="gac-bgt-chart-canvas"><canvas id="gac-bgt-chart-{{ $card['key'] }}"></canvas></div>
+                                    <div class="gac-bgt-legend" id="gac-bgt-leg-{{ $card['key'] }}"></div>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered align-middle mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>#</th>
+                                                <th>From</th>
+                                                <th>To</th>
+                                                <th>BGT</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="{{ $card['tbody'] }}"></tbody>
+                                    </table>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary gac-bgt-add" id="{{ $card['add'] }}">Add slab</button>
+                                <p class="small text-danger mb-0 mt-2 d-none" id="{{ $card['err'] }}" role="alert"></p>
+                            </div>
+                        @endforeach
 
-    <div class="modal fade" id="gacRawSbidRuleModal" tabindex="-1" aria-labelledby="gacRawSbidRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="gacRawSbidRuleModalLabel">SBID rule — 7UB% / 1UB% → suggested bid</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-2">When <strong>both</strong> 7UB% and 1UB% are <strong>above</strong> the high threshold, SBID = L1 CPC × over multiplier. When <strong>both</strong> are <strong>below</strong> the low threshold: if CPC &lt; low-bid ceiling, SBID = CPC + flat incr; otherwise CPC × under multipliers (or fallback when no CPC). Otherwise SBID shows —.</p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUtilLow">Low threshold (%)</label>
-                            <input type="number" step="0.1" class="form-control form-control-sm" id="gacSbidUtilLow">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUtilHigh">High threshold (%)</label>
-                            <input type="number" step="0.1" class="form-control form-control-sm" id="gacSbidUtilHigh">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderFallback">Fallback (no CPC)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFallback">
+                        <div class="gac-bgt-col gac-bgt-col--wide" data-gac-bgt-panel="sbid">
+                            <div class="gac-bgt-col-head">
+                                <div class="gac-bgt-title" title="When both 7UB% and 1UB% are above the high threshold, SBID = L1 CPC × over multiplier. When both are below the low threshold: if CPC is under the low-bid ceiling, SBID = CPC + flat incr; otherwise CPC × under multipliers (or fallback when no CPC). Otherwise SBID shows —.">SBID RULE — 7UB% / 1UB% → suggested bid</div>
+                                <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-min-btn" title="Minimize SBID RULE" aria-label="Minimize SBID RULE">−</button></span>
+                            </div>
+                            <p class="gac-bgt-sbid-note">Both 7UB% and 1UB% above <strong>high</strong>: SBID = L1 CPC × over multiplier. Both below <strong>low</strong>: CPC under the ceiling gets CPC + flat incr, otherwise CPC × the under multipliers (fallback when no CPC). Otherwise SBID shows —.</p>
+                            <div class="gac-bgt-sbid-grid">
+                                <div>
+                                    <label for="gacSbidUtilLow">Low threshold (%)</label>
+                                    <input type="number" step="0.1" class="form-control form-control-sm" id="gacSbidUtilLow">
+                                </div>
+                                <div>
+                                    <label for="gacSbidUtilHigh">High threshold (%)</label>
+                                    <input type="number" step="0.1" class="form-control form-control-sm" id="gacSbidUtilHigh">
+                                </div>
+                                <div>
+                                    <label for="gacSbidUnderFallback">Fallback (no CPC)</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFallback">
+                                </div>
+                            </div>
+                            <div class="gac-bgt-sbid-h">Both below low — CPC multipliers</div>
+                            <div class="gac-bgt-sbid-grid">
+                                <div>
+                                    <label for="gacSbidUnderMultL1">× L1 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL1">
+                                </div>
+                                <div>
+                                    <label for="gacSbidUnderMultL7">× L7 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL7">
+                                </div>
+                            </div>
+                            <div class="gac-bgt-sbid-h">Both below low — flat incr when CPC is low</div>
+                            <div class="gac-bgt-sbid-grid">
+                                <div>
+                                    <label for="gacSbidUnderFlatMax">If CPC &lt;</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatMax" title="When base CPC is below this, use CPC + incr instead of the multiplier">
+                                </div>
+                                <div>
+                                    <label for="gacSbidUnderFlatIncr">Bid incr (+)</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatIncr" title="Flat amount added to CPC when below the ceiling">
+                                </div>
+                            </div>
+                            <div class="gac-bgt-sbid-h">Both above high</div>
+                            <div class="gac-bgt-sbid-grid">
+                                <div>
+                                    <label for="gacSbidOverMultL1">× L1 CPC</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidOverMultL1">
+                                </div>
+                            </div>
+                            <p class="small text-danger mb-0 mt-2 d-none" id="gacRawSbidRuleErr" role="alert"></p>
                         </div>
                     </div>
-                    <p class="small fw-semibold mb-1">Both below low — CPC multipliers</p>
-                    <div class="row g-2 mb-2">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderMultL1">× L1 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL1">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderMultL7">× L7 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL7">
-                        </div>
-                    </div>
-                    <p class="small fw-semibold mb-1">Both below low — flat incr when CPC is low</p>
-                    <div class="row g-2 mb-3">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderFlatMax">If CPC &lt;</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatMax" title="When base CPC is below this, use CPC + incr instead of the multiplier">
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidUnderFlatIncr">Bid incr (+)</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatIncr" title="Flat amount added to CPC when below the ceiling">
-                        </div>
-                    </div>
-                    <p class="small fw-semibold mb-1">Both above high</p>
-                    <div class="row g-2">
-                        <div class="col-4">
-                            <label class="form-label small mb-0" for="gacSbidOverMultL1">× L1 CPC</label>
-                            <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidOverMultL1">
-                        </div>
-                    </div>
-                    <p class="small text-danger mb-0 mt-2 d-none" id="gacRawSbidRuleErr" role="alert"></p>
                 </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="gacRawSbidRuleSaveBtn">Save &amp; refresh grid</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtRulesSaveBtn">Save &amp; apply</button>
                 </div>
             </div>
         </div>
@@ -3011,10 +3099,6 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="text" class="form-control form-control-sm text-center fw-semibold"'
-                        + ' value="' + String(band.label ?? '').replace(/"/g, '&quot;') + '"'
-                        + ' data-idx="' + i + '" data-field="label" placeholder="e.g. Good"'
-                        + ' style="background:' + schema.bg + ';color:' + schema.fg + ';border:none;min-width:6.5rem;"></td>'
                         + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
                         + ' value="' + (band.acos_from ?? '') + '" data-idx="' + i + '" data-field="acos_from"'
                         + ' placeholder="0"></td>'
@@ -3036,21 +3120,12 @@
                         if (!gacCurrentSbgtBands[idx]) return;
                         gacCurrentSbgtBands[idx][fld] = (fld === 'sbgt')
                             ? (this.value === '' ? '' : parseInt(this.value, 10))
-                            : (fld === 'acos_from' || fld === 'acos_to')
-                                ? (this.value === '' ? '' : parseFloat(this.value))
-                                : this.value;
+                            : (this.value === '' ? '' : parseFloat(this.value));
                         if (fld === 'acos_from' || fld === 'acos_to') {
                             var band = gacCurrentSbgtBands[idx];
-                            var schema = gacAcosSchemaStyleForBand(band.acos_from, band.acos_to);
-                            band.color = schema.bg;
-                            var labelInp = this.closest('tr')
-                                ? this.closest('tr').querySelector('input[data-field="label"]')
-                                : null;
-                            if (labelInp) {
-                                labelInp.style.background = schema.bg;
-                                labelInp.style.color = schema.fg;
-                            }
+                            band.color = gacAcosSchemaStyleForBand(band.acos_from, band.acos_to).bg;
                         }
+                        gacBgtPaintAcosCard();
                     });
                 });
 
@@ -3064,6 +3139,7 @@
                         gacRenderSbgtBands(gacCurrentSbgtBands);
                     });
                 });
+                gacBgtPaintAcosCard();
             }
 
             function gacLoadSbgtBandsFromRule(sbgt) {
@@ -3502,6 +3578,175 @@
                     .catch(function() { if (typeof cb === 'function') cb(); });
             }
 
+            // ======================================================================
+            // BGT Rules — single modal (BGT Vs ACOS, VIEWS, CVR, PRC, SBID).
+            // Rule values, validation and save endpoints are unchanged; this only
+            // lets all of them be edited and saved together.
+            // ======================================================================
+            var GAC_BGT_FALLBACK_COLORS = ['#e83e8c', '#2563eb', '#28a745', '#f59e0b', '#7c3aed', '#94a3b8'];
+            var gacBgtCharts = {};
+            var gacBgtSlabCtrls = {};
+            var gacBgtRulesLoaded = false;
+
+            function gacBgtEsc(s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+            function gacBgtFmtNum(v) {
+                var n = Number(v);
+                if (!isFinite(n)) return '';
+                return String(Math.round(n * 100) / 100);
+            }
+            function gacBgtMoney(n) {
+                return '$' + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+            }
+            function gacBgtGridRows() {
+                try {
+                    return (table && typeof table.getData === 'function') ? (table.getData() || []) : [];
+                } catch (e) {
+                    return [];
+                }
+            }
+            function gacBgtShowErr(id, msg) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                if (msg) { el.textContent = msg; el.classList.remove('d-none'); }
+                else { el.textContent = ''; el.classList.add('d-none'); }
+            }
+
+            /** Rows per band (first matching band wins, inclusive From/To) for the rows on the grid page. */
+            function gacBgtTally(bands, fromKey, toKey, valueOfRow) {
+                var counts = (bands || []).map(function() { return 0; });
+                var unmatched = 0;
+                var total = 0;
+                gacBgtGridRows().forEach(function(row) {
+                    var n = valueOfRow(row);
+                    if (n == null || !isFinite(n)) return;
+                    total++;
+                    var hit = false;
+                    for (var i = 0; i < bands.length; i++) {
+                        var from = parseFloat(bands[i][fromKey]);
+                        var to = parseFloat(bands[i][toKey]);
+                        if (!isFinite(from) || !isFinite(to)) continue;
+                        if (n >= from && n <= to) { counts[i]++; hit = true; break; }
+                    }
+                    if (!hit) unmatched++;
+                });
+                return { counts: counts, unmatched: unmatched, total: total };
+            }
+
+            /** Legend pills + bar chart for one card. items = [{label, n, color}]. */
+            function gacBgtDrawChart(key, items, total, axes) {
+                var legend = document.getElementById('gac-bgt-leg-' + key);
+                var canvas = document.getElementById('gac-bgt-chart-' + key);
+                if (!legend || !canvas) return;
+                legend.innerHTML = items.map(function(r) {
+                    var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
+                    return '<div class="gac-bgt-leg-row"><span class="gac-bgt-swatch" style="background:' + gacBgtEsc(r.color) + '"></span>'
+                        + '<span>' + gacBgtEsc(r.label) + '</span><strong>' + r.n + '</strong>'
+                        + '<span class="gac-bgt-leg-pct">' + pct + '%</span></div>';
+                }).join('') + (items.length
+                    ? '<div class="gac-bgt-leg-row gac-bgt-leg-total"><span class="gac-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>'
+                        + total + '</strong><span class="gac-bgt-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>'
+                    : '<div class="text-muted">No rows on this page.</div>');
+                if (gacBgtCharts[key]) {
+                    try { gacBgtCharts[key].destroy(); } catch (e) {}
+                    gacBgtCharts[key] = null;
+                }
+                if (typeof Chart === 'undefined') return;
+                gacBgtCharts[key] = new Chart(canvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: items.map(function(r) { return r.label; }),
+                        datasets: [{
+                            data: items.map(function(r) { return r.n; }),
+                            backgroundColor: items.map(function(r) { return r.color; }),
+                            borderWidth: 0,
+                            borderRadius: 4,
+                            maxBarThickness: 28
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { display: !!axes, grid: { display: false } },
+                            y: { display: !!axes, beginAtZero: true, grid: { display: false } }
+                        }
+                    }
+                });
+            }
+
+            function gacBgtPaintCard(key, bands, fromKey, toKey, valueOfRow) {
+                var t = gacBgtTally(bands, fromKey, toKey, valueOfRow);
+                var items = (bands || []).map(function(b, i) {
+                    var f = gacBgtFmtNum(b[fromKey]);
+                    var to = gacBgtFmtNum(b[toKey]);
+                    return {
+                        label: (f !== '' && to !== '') ? (f + '–' + to) : ('Band ' + (i + 1)),
+                        n: t.counts[i] || 0,
+                        color: b.color || GAC_BGT_FALLBACK_COLORS[i % GAC_BGT_FALLBACK_COLORS.length]
+                    };
+                });
+                if (t.unmatched > 0) items.push({ label: 'No match', n: t.unmatched, color: '#94a3b8' });
+                gacBgtDrawChart(key, items, t.total, false);
+            }
+
+            function gacBgtAcosValueOfRow(row) {
+                var n = parseFloat(row && row.acos_l30);
+                return (isFinite(n) && n >= 0) ? n : null;
+            }
+            function gacBgtPaintAcosCard() {
+                gacBgtPaintCard('acos', gacCurrentSbgtBands || [], 'acos_from', 'acos_to', gacBgtAcosValueOfRow);
+            }
+
+            /** Summary: SBGT currently on the grid (saved rules) + what each part adds up to. */
+            function gacBgtPaintSum() {
+                var rows = gacBgtGridRows();
+                var byVal = {};
+                var total = 0;
+                rows.forEach(function(r) {
+                    var n = parseFloat(r && r.sbgt);
+                    if (!isFinite(n)) return;
+                    var k = String(n);
+                    byVal[k] = (byVal[k] || 0) + 1;
+                    total++;
+                });
+                var keys = Object.keys(byVal).sort(function(a, b) { return Number(a) - Number(b); });
+                var items = keys.map(function(k, i) {
+                    return { label: '$' + k, n: byVal[k], color: GAC_BGT_FALLBACK_COLORS[i % GAC_BGT_FALLBACK_COLORS.length] };
+                });
+                gacBgtDrawChart('sum', items, total, true);
+
+                var parts = [
+                    ['BGT ACOS', 'bgt_acos'], ['Bgt Views', 'bgt_views'], ['Bgt Cvr', 'bgt_cvr'],
+                    ['BGT PRC', 'bgt_prc'], ['SBGT', 'sbgt']
+                ];
+                var tbody = document.getElementById('gac-bgt-sum-tbody');
+                if (!tbody) return;
+                tbody.innerHTML = parts.map(function(p) {
+                    var n = 0, sum = 0;
+                    rows.forEach(function(r) {
+                        var v = parseFloat(r && r[p[1]]);
+                        if (!isFinite(v)) return;
+                        n++;
+                        sum += v;
+                    });
+                    var isTotal = p[1] === 'sbgt';
+                    return '<tr' + (isTotal ? ' class="fw-semibold"' : '') + '><td>' + gacBgtEsc(p[0]) + '</td>'
+                        + '<td class="text-center">' + n + '</td><td class="text-end">' + gacBgtMoney(sum) + '</td></tr>';
+                }).join('');
+            }
+
+            function gacBgtPaintAll() {
+                gacBgtPaintSum();
+                gacBgtPaintAcosCard();
+                Object.keys(gacBgtSlabCtrls).forEach(function(k) { gacBgtSlabCtrls[k].repaint(); });
+            }
+
+            // ---- BGT Vs ACOS (+ SBID) — add band ------------------------------------
             var sbgtAddBandBtn = document.getElementById('gac-sbgt-add-band-btn');
             if (sbgtAddBandBtn) {
                 sbgtAddBandBtn.addEventListener('click', function() {
@@ -3520,148 +3765,8 @@
                 });
             }
 
-            var sbgtModalEl = document.getElementById('gacRawSbgtRuleModal');
-            if (sbgtModalEl) {
-                sbgtModalEl.addEventListener('show.bs.modal', function() {
-                    var errEl = document.getElementById('gacRawSbgtRuleErr');
-                    if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
-                    gacRefreshRuleFromServer(function() {
-                        gacLoadSbgtBandsFromRule((window.gacRawRule && window.gacRawRule.sbgt) || {});
-                    });
-                });
-            }
-            var sbgtSaveBtn = document.getElementById('gacRawSbgtRuleSaveBtn');
-            if (sbgtSaveBtn) {
-                sbgtSaveBtn.addEventListener('click', function() {
-                    var errEl = document.getElementById('gacRawSbgtRuleErr');
-                    if (errEl) { errEl.classList.add('d-none'); errEl.textContent = ''; }
-                    var cleaned = gacCollectSbgtBandsPayload();
-                    if (!cleaned.length) {
-                        if (errEl) {
-                            errEl.textContent = 'Add at least one band before saving.';
-                            errEl.classList.remove('d-none');
-                        }
-                        return;
-                    }
-                    for (var i = 0; i < cleaned.length; i++) {
-                        var b = cleaned[i];
-                        if (!isFinite(b.acos_from) || !isFinite(b.acos_to) || !isFinite(b.sbgt)) {
-                            if (errEl) {
-                                errEl.textContent = 'Every band needs numeric From, To, and SBGT values.';
-                                errEl.classList.remove('d-none');
-                            }
-                            return;
-                        }
-                        if (b.acos_from > b.acos_to) {
-                            if (errEl) {
-                                errEl.textContent = 'Each band needs From ≤ To.';
-                                errEl.classList.remove('d-none');
-                            }
-                            return;
-                        }
-                    }
-                    var sbidKeep = (window.gacRawRule && window.gacRawRule.sbid) ? window.gacRawRule.sbid : {};
-                    var payload = { sbgt: { bands: cleaned }, sbid: sbidKeep };
-                    var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                    sbgtSaveBtn.disabled = true;
-                    fetch(gacRawRuleSaveUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Accept: 'application/json',
-                            'X-CSRF-TOKEN': token,
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        credentials: 'same-origin',
-                        body: JSON.stringify(payload),
-                    })
-                        .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
-                        .then(function(out) {
-                            var b = out.body || {};
-                            if (!out.ok) {
-                                if (errEl) {
-                                    errEl.textContent = b.message || b.error || 'Save failed.';
-                                    errEl.classList.remove('d-none');
-                                }
-                                return;
-                            }
-                            window.gacRawRule = b.rule || window.gacRawRule;
-                            if (typeof bootstrap !== 'undefined' && sbgtModalEl) {
-                                var inst = bootstrap.Modal.getInstance(sbgtModalEl);
-                                if (inst) inst.hide();
-                            }
-                            return Promise.resolve(table.setData(dataUrl));
-                        })
-                        .then(function() { gacRawRefreshTableUiSoon(); })
-                        .catch(function() {
-                            if (errEl) {
-                                errEl.textContent = 'Network or server error.';
-                                errEl.classList.remove('d-none');
-                            }
-                        })
-                        .finally(function() { sbgtSaveBtn.disabled = false; });
-                });
-            }
-
-            var sbidModalEl = document.getElementById('gacRawSbidRuleModal');
-            if (sbidModalEl) {
-                sbidModalEl.addEventListener('show.bs.modal', function() {
-                    var sErr = document.getElementById('gacRawSbidRuleErr');
-                    if (sErr) { sErr.classList.add('d-none'); sErr.textContent = ''; }
-                    gacRefreshRuleFromServer(function() {
-                        gacFillSbidForm((window.gacRawRule && window.gacRawRule.sbid) || {});
-                    });
-                });
-            }
-            var sbidSaveBtn = document.getElementById('gacRawSbidRuleSaveBtn');
-            if (sbidSaveBtn) {
-                sbidSaveBtn.addEventListener('click', function() {
-                    var sErr = document.getElementById('gacRawSbidRuleErr');
-                    if (sErr) { sErr.classList.add('d-none'); sErr.textContent = ''; }
-                    var sbgtKeep = (window.gacRawRule && window.gacRawRule.sbgt) ? window.gacRawRule.sbgt : {};
-                    var payload = { sbgt: sbgtKeep, sbid: gacCollectSbid() };
-                    var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-                    sbidSaveBtn.disabled = true;
-                    fetch(gacRawRuleSaveUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Accept: 'application/json',
-                            'X-CSRF-TOKEN': token,
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        credentials: 'same-origin',
-                        body: JSON.stringify(payload),
-                    })
-                        .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
-                        .then(function(out) {
-                            var b = out.body || {};
-                            if (!out.ok) {
-                                if (sErr) {
-                                    sErr.textContent = b.message || b.error || 'Save failed.';
-                                    sErr.classList.remove('d-none');
-                                }
-                                return;
-                            }
-                            window.gacRawRule = b.rule || window.gacRawRule;
-                            if (typeof bootstrap !== 'undefined' && sbidModalEl) {
-                                var sInst = bootstrap.Modal.getInstance(sbidModalEl);
-                                if (sInst) sInst.hide();
-                            }
-                            return Promise.resolve(table.setData(dataUrl));
-                        })
-                        .then(function() { gacRawRefreshTableUiSoon(); })
-                        .catch(function() {
-                            if (sErr) {
-                                sErr.textContent = 'Network or server error.';
-                                sErr.classList.remove('d-none');
-                            }
-                        })
-                        .finally(function() { sbidSaveBtn.disabled = false; });
-                });
-            }
-
-            function gacBindBgtSlabRule(opts) {
+            // ---- BGT Vs VIEWS / CVR / PRC — slab cards ------------------------------
+            function gacBgtBindSlab(opts) {
                 var bands = [];
                 var defaults = opts.defaults || [];
                 var labels = opts.labels || [];
@@ -3669,6 +3774,7 @@
                 var fromKey = opts.fromKey;
                 var toKey = opts.toKey;
                 var minBgt = opts.minBgt != null ? opts.minBgt : 0;
+
                 function normalize(existing) {
                     var prev = Array.isArray(existing) ? existing : [];
                     var out = [];
@@ -3687,47 +3793,22 @@
                     });
                     return out.length ? out : defaults.map(function(d) { return Object.assign({}, d); });
                 }
-                function valueOfRow(row) {
-                    return opts.valueOfRow ? opts.valueOfRow(row) : null;
-                }
-                function counts() {
-                    var out = (bands || []).map(function() { return 0; });
-                    if (!table || typeof table.getData !== 'function') return out;
-                    var rows = [];
-                    try { rows = table.getData() || []; } catch (e) { return out; }
-                    rows.forEach(function(row) {
-                        var n = valueOfRow(row);
-                        if (n == null || !isFinite(n)) return;
-                        for (var i = 0; i < bands.length; i++) {
-                            var from = parseFloat(bands[i][fromKey]);
-                            var to = parseFloat(bands[i][toKey]);
-                            if (!isFinite(from) || !isFinite(to)) continue;
-                            var hit = (n >= from && n <= to);
-                            if (!hit && opts.fillGaps) {
-                                var nextFrom = (i < bands.length - 1) ? parseFloat(bands[i + 1][fromKey]) : NaN;
-                                hit = isFinite(nextFrom) && n > to && n < nextFrom;
-                            }
-                            if (hit) { out[i]++; break; }
-                        }
-                    });
-                    return out;
+                function repaint() {
+                    gacBgtPaintCard(opts.key, bands, fromKey, toKey, opts.valueOfRow);
                 }
                 function render() {
                     var tbody = document.getElementById(opts.tbodyId);
                     if (!tbody) return;
                     var canDelete = bands.length > 1;
-                    var c = counts();
                     tbody.innerHTML = '';
                     bands.forEach(function(band, i) {
                         var tr = document.createElement('tr');
                         tr.innerHTML = ''
                             + '<td class="text-muted small">' + (i + 1) + '</td>'
-                            + '<td><input type="text" class="form-control form-control-sm" value="' + String(band.label != null ? band.label : '').replace(/"/g, '&quot;') + '" data-idx="' + i + '" data-field="label"></td>'
                             + '<td><input type="number" step="' + (opts.step || '1') + '" min="0" class="form-control form-control-sm" value="' + (band[fromKey] != null ? band[fromKey] : '') + '" data-idx="' + i + '" data-field="' + fromKey + '"></td>'
                             + '<td><input type="number" step="' + (opts.step || '1') + '" min="0" class="form-control form-control-sm" value="' + (band[toKey] != null ? band[toKey] : '') + '" data-idx="' + i + '" data-field="' + toKey + '"></td>'
-                            + '<td class="text-center"><span class="fw-semibold" data-count-idx="' + i + '">' + (c[i] != null ? c[i] : 0) + '</span></td>'
                             + '<td><input type="number" step="1" min="' + minBgt + '" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>'
-                            + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '"' + (canDelete ? '' : ' disabled') + '><i class="fas fa-trash"></i></button></td>';
+                            + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '"' + (canDelete ? '' : ' disabled') + ' title="Delete this slab" aria-label="Delete slab"><i class="fas fa-trash"></i></button></td>';
                         tbody.appendChild(tr);
                     });
                     tbody.querySelectorAll('input[data-idx]').forEach(function(inp) {
@@ -3735,15 +3816,8 @@
                             var idx = +this.dataset.idx, fld = this.dataset.field;
                             if (!bands[idx]) return;
                             if (fld === 'bgt') bands[idx][fld] = (this.value === '' ? '' : parseInt(this.value, 10));
-                            else if (fld === fromKey || fld === toKey) bands[idx][fld] = (this.value === '' ? '' : parseFloat(this.value));
-                            else bands[idx][fld] = this.value;
-                            if (fld === fromKey || fld === toKey) {
-                                var c = counts();
-                                tbody.querySelectorAll('[data-count-idx]').forEach(function(el) {
-                                    var ci = +el.dataset.countIdx;
-                                    el.textContent = String(c[ci] != null ? c[ci] : 0);
-                                });
-                            }
+                            else bands[idx][fld] = (this.value === '' ? '' : parseFloat(this.value));
+                            repaint();
                         });
                     });
                     tbody.querySelectorAll('[data-remove-idx]').forEach(function(btn) {
@@ -3753,82 +3827,78 @@
                             render();
                         });
                     });
+                    repaint();
                 }
                 function loadFromRule(rule) {
                     bands = normalize((rule && Array.isArray(rule.bands)) ? rule.bands : []);
                     render();
                 }
-                var modalEl = document.getElementById(opts.modalId);
-                if (modalEl) {
-                    modalEl.addEventListener('show.bs.modal', function() {
-                        var err = document.getElementById(opts.errId);
-                        if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                        fetch(opts.getUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                            .then(function(r) { return r.json(); })
-                            .then(function(body) { loadFromRule((body && body.rule) || {}); })
-                            .catch(function() { loadFromRule({}); });
-                    });
+                function fetchAndLoad() {
+                    return fetch(opts.getUrl, { method: 'GET', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                        .then(function(r) { return r.json(); })
+                        .then(function(body) { loadFromRule((body && body.rule) || {}); })
+                        .catch(function() { loadFromRule({}); });
                 }
+                /** @return {{cleaned: Array|null, error: string}} */
+                function collect() {
+                    var cleaned = (bands || []).map(function(b) {
+                        var row = {
+                            bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
+                            label: (b.label || '').toString(),
+                            color: (b.color || '#6c757d').toString()
+                        };
+                        row[fromKey] = (b[fromKey] === '' || b[fromKey] == null) ? NaN : parseFloat(b[fromKey]);
+                        row[toKey] = (b[toKey] === '' || b[toKey] == null) ? NaN : parseFloat(b[toKey]);
+                        return row;
+                    });
+                    if (!cleaned.length) return { cleaned: null, error: 'Add at least one slab before saving.' };
+                    for (var i = 0; i < cleaned.length; i++) {
+                        var b = cleaned[i];
+                        if (!isFinite(b[fromKey]) || !isFinite(b[toKey]) || !isFinite(b.bgt)) return { cleaned: null, error: 'Every slab needs numeric From, To, and Bgt values.' };
+                        if (b[fromKey] > b[toKey]) return { cleaned: null, error: 'Each slab needs From ≤ To.' };
+                        if (b[fromKey] < 0) return { cleaned: null, error: 'From must be 0 or more.' };
+                        if (b.bgt < minBgt) return { cleaned: null, error: 'Bgt must be ' + minBgt + ' or more.' };
+                    }
+                    return { cleaned: cleaned, error: '' };
+                }
+                /** @return {Promise<string>} resolves '' on success, else an error message. */
+                function save(cleaned) {
+                    return fetch(opts.saveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': gacCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ bands: cleaned })
+                    })
+                        .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                        .then(function(out) {
+                            var body = out.body || {};
+                            if (!out.ok || body.status === 422 || body.status === 500) return body.message || body.error || 'Save failed.';
+                            return '';
+                        });
+                }
+
                 var addBtn = document.getElementById(opts.addBtnId);
                 if (addBtn) {
                     addBtn.addEventListener('click', function() {
                         var last = bands.length ? bands[bands.length - 1] : null;
                         var lastTo = last ? parseFloat(last[toKey]) : NaN;
                         var from = isFinite(lastTo) ? lastTo : 0;
-                        if (opts.fillGaps && isFinite(lastTo)) from = +(lastTo + 0.01).toFixed(2);
                         var i = bands.length;
                         var row = { bgt: minBgt, label: labels[i] || ('Slab ' + (i + 1)), color: colors[i] || '#6c757d' };
                         row[fromKey] = from;
-                        row[toKey] = opts.fillGaps ? +(from + 0.49).toFixed(2) : 9999;
+                        row[toKey] = 9999;
                         bands.push(row);
                         render();
                     });
                 }
-                var saveBtn = document.getElementById(opts.saveBtnId);
-                if (saveBtn) {
-                    saveBtn.addEventListener('click', function() {
-                        var err = document.getElementById(opts.errId);
-                        if (err) { err.classList.add('d-none'); err.textContent = ''; }
-                        var cleaned = (bands || []).map(function(b) {
-                            var row = {
-                                bgt: (b.bgt === '' || b.bgt == null) ? NaN : parseInt(b.bgt, 10),
-                                label: (b.label || '').toString(),
-                                color: (b.color || '#6c757d').toString()
-                            };
-                            row[fromKey] = (b[fromKey] === '' || b[fromKey] == null) ? NaN : parseFloat(b[fromKey]);
-                            row[toKey] = (b[toKey] === '' || b[toKey] == null) ? NaN : parseFloat(b[toKey]);
-                            return row;
-                        });
-                        if (!cleaned.length) { if (err) { err.textContent = 'Add at least one slab before saving.'; err.classList.remove('d-none'); } return; }
-                        for (var i = 0; i < cleaned.length; i++) {
-                            var b = cleaned[i];
-                            if (!isFinite(b[fromKey]) || !isFinite(b[toKey]) || !isFinite(b.bgt)) { if (err) { err.textContent = 'Every slab needs numeric From, To, and Bgt values.'; err.classList.remove('d-none'); } return; }
-                            if (b[fromKey] > b[toKey]) { if (err) { err.textContent = 'Each slab needs From ≤ To.'; err.classList.remove('d-none'); } return; }
-                            if (b[fromKey] < 0) { if (err) { err.textContent = 'From must be 0 or more.'; err.classList.remove('d-none'); } return; }
-                            if (b.bgt < minBgt) { if (err) { err.textContent = 'Bgt must be ' + minBgt + ' or more.'; err.classList.remove('d-none'); } return; }
-                        }
-                        saveBtn.disabled = true;
-                        fetch(opts.saveUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': gacCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({ bands: cleaned })
-                        })
-                            .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
-                            .then(function(out) {
-                                var body = out.body || {};
-                                if (!out.ok || body.status === 422 || body.status === 500) { if (err) { err.textContent = body.message || body.error || 'Save failed.'; err.classList.remove('d-none'); } return; }
-                                if (typeof bootstrap !== 'undefined' && modalEl) { var inst = bootstrap.Modal.getInstance(modalEl); if (inst) inst.hide(); }
-                                return Promise.resolve(table.setData(dataUrl));
-                            })
-                            .then(function() { gacRawRefreshTableUiSoon(); })
-                            .catch(function() { if (err) { err.textContent = 'Network or server error.'; err.classList.remove('d-none'); } })
-                            .finally(function() { saveBtn.disabled = false; });
-                    });
-                }
+
+                var ctrl = { key: opts.key, errId: opts.errId, repaint: repaint, fetchAndLoad: fetchAndLoad, collect: collect, save: save };
+                gacBgtSlabCtrls[opts.key] = ctrl;
+                return ctrl;
             }
 
-            gacBindBgtSlabRule({
+            gacBgtBindSlab({
+                key: 'views',
                 defaults: [
                     { views_from: 351, views_to: 9999, bgt: 6, label: 'Purple', color: '#7c3aed' },
                     { views_from: 281, views_to: 350, bgt: 5, label: 'Pink', color: '#e83e8c' },
@@ -3840,12 +3910,13 @@
                 labels: ['Purple', 'Pink', 'Green', 'Blue', 'Yellow', 'Red'],
                 colors: ['#7c3aed', '#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
                 fromKey: 'views_from', toKey: 'views_to', step: '1', minBgt: 0,
-                modalId: 'gacRawBgtViewsRuleModal', tbodyId: 'gac-bgt-views-bands-body',
-                addBtnId: 'gac-bgt-views-add-band-btn', saveBtnId: 'gacRawBgtViewsRuleSaveBtn', errId: 'gacRawBgtViewsRuleErr',
+                tbodyId: 'gac-bgt-views-bands-body',
+                addBtnId: 'gac-bgt-views-add-band-btn', errId: 'gacRawBgtViewsRuleErr',
                 getUrl: gacBgtViewsRuleGetUrl, saveUrl: gacBgtViewsRuleSaveUrl,
                 valueOfRow: function(row) { var n = parseFloat(row && row.views_l7); return isFinite(n) ? n : 0; }
             });
-            gacBindBgtSlabRule({
+            gacBgtBindSlab({
+                key: 'cvr',
                 defaults: [
                     { cvr_from: 20, cvr_to: 9999, bgt: 6, label: 'Purple', color: '#7c3aed' },
                     { cvr_from: 16, cvr_to: 20, bgt: 5, label: 'Pink', color: '#e83e8c' },
@@ -3857,12 +3928,13 @@
                 labels: ['Purple', 'Pink', 'Green', 'Blue', 'Yellow', 'Red'],
                 colors: ['#7c3aed', '#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
                 fromKey: 'cvr_from', toKey: 'cvr_to', step: '0.01', minBgt: 0,
-                modalId: 'gacRawBgtCvrRuleModal', tbodyId: 'gac-bgt-cvr-bands-body',
-                addBtnId: 'gac-bgt-cvr-add-band-btn', saveBtnId: 'gacRawBgtCvrRuleSaveBtn', errId: 'gacRawBgtCvrRuleErr',
+                tbodyId: 'gac-bgt-cvr-bands-body',
+                addBtnId: 'gac-bgt-cvr-add-band-btn', errId: 'gacRawBgtCvrRuleErr',
                 getUrl: gacBgtCvrRuleGetUrl, saveUrl: gacBgtCvrRuleSaveUrl,
                 valueOfRow: function(row) { var n = parseFloat(row && (row.bgt_cvr_page_cvr != null ? row.bgt_cvr_page_cvr : row.cvr_l30)); return isFinite(n) ? n : 0; }
             });
-            gacBindBgtSlabRule({
+            gacBgtBindSlab({
+                key: 'prc',
                 defaults: [
                     { prc_from: 151, prc_to: 9999, bgt: 5, label: 'Pink', color: '#e83e8c' },
                     { prc_from: 101, prc_to: 150, bgt: 4, label: 'Green', color: '#28a745' },
@@ -3873,11 +3945,231 @@
                 labels: ['Pink', 'Green', 'Blue', 'Yellow', 'Red'],
                 colors: ['#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
                 fromKey: 'prc_from', toKey: 'prc_to', step: '0.01', minBgt: 0,
-                modalId: 'gacRawBgtPrcRuleModal', tbodyId: 'gac-bgt-prc-bands-body',
-                addBtnId: 'gac-bgt-prc-add-band-btn', saveBtnId: 'gacRawBgtPrcRuleSaveBtn', errId: 'gacRawBgtPrcRuleErr',
+                tbodyId: 'gac-bgt-prc-bands-body',
+                addBtnId: 'gac-bgt-prc-add-band-btn', errId: 'gacRawBgtPrcRuleErr',
                 getUrl: gacBgtPrcRuleGetUrl, saveUrl: gacBgtPrcRuleSaveUrl,
                 valueOfRow: function(row) { var n = parseFloat(row && row.bgt_prc_price); return isFinite(n) ? n : null; }
             });
+
+            // ---- Modal open: load every rule, then paint ----------------------------
+            var gacBgtModalEl = document.getElementById('gacRawBgtRulesModal');
+            var gacBgtSaveBtn = document.getElementById('gacRawBgtRulesSaveBtn');
+            var GAC_BGT_ERR_IDS = ['gacRawBgtRulesErr', 'gacRawSbgtRuleErr', 'gacRawSbidRuleErr'];
+
+            function gacBgtClearErrors() {
+                GAC_BGT_ERR_IDS.forEach(function(id) { gacBgtShowErr(id, ''); });
+                Object.keys(gacBgtSlabCtrls).forEach(function(k) { gacBgtShowErr(gacBgtSlabCtrls[k].errId, ''); });
+            }
+
+            if (gacBgtModalEl) {
+                gacBgtModalEl.addEventListener('show.bs.modal', function() {
+                    gacBgtClearErrors();
+                    gacBgtRulesLoaded = false;
+                    if (gacBgtSaveBtn) gacBgtSaveBtn.disabled = true;
+                    var loads = [
+                        new Promise(function(resolve) {
+                            gacRefreshRuleFromServer(function() {
+                                gacLoadSbgtBandsFromRule((window.gacRawRule && window.gacRawRule.sbgt) || {});
+                                gacFillSbidForm((window.gacRawRule && window.gacRawRule.sbid) || {});
+                                resolve();
+                            });
+                        })
+                    ];
+                    Object.keys(gacBgtSlabCtrls).forEach(function(k) { loads.push(gacBgtSlabCtrls[k].fetchAndLoad()); });
+                    Promise.all(loads).then(function() {
+                        gacBgtRulesLoaded = true;
+                        if (gacBgtSaveBtn) gacBgtSaveBtn.disabled = false;
+                        gacBgtPaintAll();
+                    });
+                });
+                gacBgtModalEl.addEventListener('shown.bs.modal', function() { gacBgtPaintAll(); });
+                gacBgtModalEl.addEventListener('hidden.bs.modal', function() {
+                    Object.keys(gacBgtCharts).forEach(function(k) {
+                        if (gacBgtCharts[k]) { try { gacBgtCharts[k].destroy(); } catch (e) {} gacBgtCharts[k] = null; }
+                    });
+                });
+            }
+
+            // ---- Save & apply: validate everything first, then write every rule ------
+            if (gacBgtSaveBtn) {
+                gacBgtSaveBtn.addEventListener('click', function() {
+                    if (!gacBgtRulesLoaded) return;
+                    gacBgtClearErrors();
+
+                    // 1) Validate every card before anything is written.
+                    var failed = false;
+                    var sbgtBands = gacCollectSbgtBandsPayload();
+                    if (!sbgtBands.length) {
+                        gacBgtShowErr('gacRawSbgtRuleErr', 'Add at least one band before saving.');
+                        failed = true;
+                    } else {
+                        for (var i = 0; i < sbgtBands.length; i++) {
+                            var sb = sbgtBands[i];
+                            if (!isFinite(sb.acos_from) || !isFinite(sb.acos_to) || !isFinite(sb.sbgt)) {
+                                gacBgtShowErr('gacRawSbgtRuleErr', 'Every band needs numeric From, To, and SBGT values.');
+                                failed = true;
+                                break;
+                            }
+                            if (sb.acos_from > sb.acos_to) {
+                                gacBgtShowErr('gacRawSbgtRuleErr', 'Each band needs From ≤ To.');
+                                failed = true;
+                                break;
+                            }
+                        }
+                    }
+                    var slabPayloads = {};
+                    Object.keys(gacBgtSlabCtrls).forEach(function(k) {
+                        var res = gacBgtSlabCtrls[k].collect();
+                        if (res.error) {
+                            gacBgtShowErr(gacBgtSlabCtrls[k].errId, res.error);
+                            failed = true;
+                        } else {
+                            slabPayloads[k] = res.cleaned;
+                        }
+                    });
+                    if (failed) {
+                        gacBgtShowErr('gacRawBgtRulesErr', 'Nothing was saved. Fix the highlighted rule(s) and try again.');
+                        return;
+                    }
+
+                    // 2) Write the ACOS + SBID rule, then each slab rule.
+                    var token = gacCsrfToken();
+                    gacBgtSaveBtn.disabled = true;
+                    var savedAny = false;
+                    fetch(gacRawRuleSaveUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': token,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ sbgt: { bands: sbgtBands }, sbid: gacCollectSbid() }),
+                    })
+                        .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+                        .then(function(out) {
+                            var b = out.body || {};
+                            if (!out.ok) {
+                                throw { slot: 'gacRawSbgtRuleErr', message: b.message || b.error || 'Save failed.' };
+                            }
+                            savedAny = true;
+                            window.gacRawRule = b.rule || window.gacRawRule;
+                            var chain = Promise.resolve();
+                            Object.keys(slabPayloads).forEach(function(k) {
+                                chain = chain.then(function() {
+                                    return gacBgtSlabCtrls[k].save(slabPayloads[k]).then(function(msg) {
+                                        if (msg) throw { slot: gacBgtSlabCtrls[k].errId, message: msg };
+                                        savedAny = true;
+                                    });
+                                });
+                            });
+                            return chain;
+                        })
+                        .then(function() {
+                            if (typeof bootstrap !== 'undefined' && gacBgtModalEl) {
+                                var inst = bootstrap.Modal.getInstance(gacBgtModalEl);
+                                if (inst) inst.hide();
+                            }
+                            return Promise.resolve(table.setData(dataUrl));
+                        })
+                        .then(function() { gacRawRefreshTableUiSoon(); })
+                        .catch(function(err) {
+                            var slot = (err && err.slot) || 'gacRawBgtRulesErr';
+                            var msg = (err && err.message) || 'Network or server error.';
+                            gacBgtShowErr(slot, msg);
+                            gacBgtShowErr('gacRawBgtRulesErr', savedAny
+                                ? 'Some rules were saved before this error. Fix it and Save & apply again.'
+                                : 'Nothing was saved.');
+                        })
+                        .finally(function() { gacBgtSaveBtn.disabled = false; });
+                });
+            }
+
+            // ---- Minimize / expand cards (same behaviour as /amazon-ads/all) ---------
+            (function() {
+                var minKey = 'gacBgtPanelMin';
+                var maxKey = null;
+                function minSet() {
+                    try {
+                        var raw = JSON.parse(localStorage.getItem(minKey) || '[]');
+                        return new Set(Array.isArray(raw) ? raw : []);
+                    } catch (e) { return new Set(); }
+                }
+                function saveMin(set) {
+                    try { localStorage.setItem(minKey, JSON.stringify(Array.from(set))); } catch (e) {}
+                }
+                function resizeCharts() {
+                    Object.keys(gacBgtCharts).forEach(function(k) {
+                        if (gacBgtCharts[k]) { try { gacBgtCharts[k].resize(); } catch (e) {} }
+                    });
+                }
+                function paintMin() {
+                    var min = minSet();
+                    var cols = document.querySelector('#gacRawBgtRulesModal .gac-bgt-cols');
+                    if (cols) cols.classList.toggle('is-expanded', !!maxKey);
+                    document.querySelectorAll('#gacRawBgtRulesModal [data-gac-bgt-panel]').forEach(function(el) {
+                        var key = el.getAttribute('data-gac-bgt-panel');
+                        var on = min.has(key);
+                        var expanded = key === maxKey;
+                        el.classList.toggle('is-min', on && !expanded);
+                        el.classList.toggle('is-max', expanded);
+                        var title = ((el.querySelector('.gac-bgt-title') || {}).textContent || 'rule').trim();
+                        var btn = el.querySelector('.gac-bgt-min-btn');
+                        if (btn) {
+                            btn.textContent = (on && !expanded) ? '+' : '−';
+                            btn.title = ((on && !expanded) ? 'Maximize ' : 'Minimize ') + title;
+                            btn.setAttribute('aria-label', btn.title);
+                        }
+                        var exp = el.querySelector('.gac-bgt-exp-btn');
+                        if (exp) {
+                            exp.textContent = expanded ? '⤡' : '⤢';
+                            exp.title = (expanded ? 'Restore ' : 'Expand ') + title;
+                            exp.setAttribute('aria-label', exp.title);
+                        }
+                    });
+                    resizeCharts();
+                }
+                document.addEventListener('click', function(e) {
+                    var t = e.target;
+                    if (!t || !t.closest) return;
+                    var expBtn = t.closest('#gacRawBgtRulesModal .gac-bgt-exp-btn');
+                    if (expBtn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var colX = expBtn.closest('[data-gac-bgt-panel]');
+                        if (!colX) return;
+                        var kx = colX.getAttribute('data-gac-bgt-panel');
+                        var minX = minSet();
+                        if (maxKey === kx) {
+                            maxKey = null;
+                        } else {
+                            maxKey = kx;
+                            minX.delete(kx);
+                            saveMin(minX);
+                        }
+                        paintMin();
+                        setTimeout(resizeCharts, 60);
+                        return;
+                    }
+                    var btn = t.closest('#gacRawBgtRulesModal .gac-bgt-min-btn');
+                    var col = btn
+                        ? btn.closest('[data-gac-bgt-panel]')
+                        : (t.closest('#gacRawBgtRulesModal [data-gac-bgt-panel].is-min'));
+                    if (!col) return;
+                    e.preventDefault();
+                    var key = col.getAttribute('data-gac-bgt-panel');
+                    var min = minSet();
+                    if (maxKey === key) maxKey = null;
+                    if (min.has(key)) min.delete(key); else min.add(key);
+                    saveMin(min);
+                    paintMin();
+                    setTimeout(resizeCharts, 60);
+                });
+                if (gacBgtModalEl) {
+                    gacBgtModalEl.addEventListener('show.bs.modal', function() { maxKey = null; paintMin(); });
+                }
+            })();
         });
     </script>
 @endsection
