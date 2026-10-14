@@ -106,6 +106,16 @@ class StdPrcVsDilPricer
     }
 
     /**
+     * Inv days clearance = YES (row flag, or the SKU is in inv_days_clearances).
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public function isClearanceRow(array $row): bool
+    {
+        return $this->rowIsClearance($row);
+    }
+
+    /**
      * NPFT% = ((price × margin − ship − LP) / price) × 100 − Ads%.
      * Raise to the cent that keeps NPFT at or above the saved floor. Clearance SKUs are unchanged.
      *

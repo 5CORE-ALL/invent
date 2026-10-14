@@ -910,6 +910,10 @@
                 const set = {};
                 ((res && res.skus) || []).forEach(function(sku) { set[amzStdClearanceKey(sku)] = true; });
                 amzStdClearanceSet = set;
+                // Clearance SKUs show "C" in S PRC instead of a price, so re-run the S PRC sync now.
+                if (typeof amzScheduleRuleSpriceSync === 'function') {
+                    amzScheduleRuleSpriceSync({ force: true, delay: 300 });
+                }
                 return set;
             }, function() {
                 amzStdClearanceSet = {};

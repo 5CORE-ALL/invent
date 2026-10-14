@@ -3318,8 +3318,14 @@
             return raised > base ? amzPefRound2(raised) : base;
         }
         /** Live S PRC from Dil / CVR Disc / 0 Sold. Ignores stored SPRICE. */
+        function amzIsClearanceSku(d) {
+            return typeof amzStdIsClearance === 'function' && !!d && amzStdIsClearance(d);
+        }
+        window.amzIsClearanceSku = amzIsClearanceSku;
         function amzLiveRuleSprice(d) {
             if (!d || !amzPefIsChildRow(d) || amzPefInv(d) === 0) return 0;
+            // Clearance SKUs have no S PRC. The column shows "C".
+            if (amzIsClearanceSku(d)) return 0;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
@@ -3377,6 +3383,7 @@
         }
         /** Visible S PRC = live discounted / LMP-capped rule price. Does not mutate stored SPRICE. */
         function amzDisplayedSprice(d) {
+            if (amzIsClearanceSku(d)) return 0;
             const live = amzLiveRuleSprice(d);
             if (live > 0) return live;
             const stored = parseFloat(d && d.SPRICE) || 0;
@@ -3510,6 +3517,7 @@
             return Math.abs((Number(stored) || 0) - live) > 0.009;
         }
         function amzRuleSpricePlanForRow(d) {
+            if (amzIsClearanceSku(d)) return null;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 const live = amzLiveRuleSprice(d);
                 if (!(live > 0)) return null;

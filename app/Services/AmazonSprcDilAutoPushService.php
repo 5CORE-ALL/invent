@@ -265,6 +265,10 @@ class AmazonSprcDilAutoPushService
         if (! ($inv > 0)) {
             return null;
         }
+        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them.
+        if ((new StdPrcVsDilPricer([], 'amazon'))->isClearanceRow($row)) {
+            return null;
+        }
 
         $dil = (float) ($row['dil'] ?? 0);
         $lp = (float) ($row['lp'] ?? 0);

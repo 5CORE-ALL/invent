@@ -343,6 +343,20 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         ]), 0.001);
     }
 
+    public function test_clearance_sku_gets_no_sprice(): void
+    {
+        $out = $this->compute([
+            'inv' => 5,
+            'dil' => 2.5,
+            'lp' => 28.18,
+            'ship' => 6,
+            'standard_price' => 65.99,
+            'clearance' => 'YES',
+        ], 13.79);
+
+        $this->assertNull($out);
+    }
+
     public function test_dil_uncapped_negative_npft_is_raised_to_min_10(): void
     {
         $svc = new class extends AmazonSprcDilAutoPushService

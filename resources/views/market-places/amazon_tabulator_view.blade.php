@@ -1485,6 +1485,7 @@
         /** S PRC the column paints: ON rule, then the same LMP / Std cap. */
         function amazonShownSprice(rowData) {
             if (!rowData || rowData.is_parent_summary) return 0;
+            if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData)) return 0;
             let raw = 0;
             if (typeof amzDisplayedSprice === 'function') {
                 raw = Number(amzDisplayedSprice(rowData)) || 0;
@@ -4860,6 +4861,9 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (rowData.is_parent_summary) return '';
+                            if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData)) {
+                                return '<span title="Clearance — no S PRC" style="font-weight:700;color:#dc3545;">C</span>';
+                            }
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const currentPrice = parseFloat(rowData.price) || 0;
                             let raw = 0;
