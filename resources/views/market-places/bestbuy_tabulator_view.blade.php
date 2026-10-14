@@ -142,6 +142,10 @@
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="C = Clearance SKUs (Inv days clearance = YES). They are exempt from the Min NPFT floor. Click to filter. Click again to clear."
                             aria-label="Clearance SKUs">C 0</span>
+                        <span class="badge fs-6 p-2" id="bestbuy-npft-mark-badge"
+                            style="background-color:#fff3cd;color:#dc3545;font-weight:800;cursor:pointer;border:1px solid #ffe69c;"
+                            title="! = S PRC was raised so SNPFT stays at or above Min NPFT %. Click to filter. Click again to clear."
+                            aria-label="S PRC raised to Min NPFT">! 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz</span>
@@ -496,6 +500,7 @@
     let blueTriangleFilterActive = false;
     let amzCapFilterActive = false;
     let clearanceFilterActive = false;
+    let npftMarkFilterActive = false;
 
     function isBbListed(rowData) {
         if (!rowData || isBestbuyParentRow(rowData)) return false;
@@ -702,6 +707,11 @@
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.bestbuyHasBlueTriangle = bestbuyHasBlueTriangle;
+    function bestbuyHasNpftMark(d) {
+        if (!d || isBestbuyParentRow(d)) return false;
+        if (!((parseFloat(d.SPRICE) || 0) > 0 || (parseFloat(d.sprice) || 0) > 0)) return false;
+        return typeof window.chStdMinNpftWasApplied === 'function' && !!window.chStdMinNpftWasApplied(d);
+    }
     function syncBestbuyTriangleBadgeState() {
         $('#bestbuy-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -714,6 +724,10 @@
         $('#bestbuy-clearance-badge').css({
             outline: clearanceFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: clearanceFilterActive ? '2px' : ''
+        });
+        $('#bestbuy-npft-mark-badge').css({
+            outline: npftMarkFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: npftMarkFilterActive ? '2px' : ''
         });
     }
 
@@ -2765,6 +2779,11 @@
                     return bestbuyHasAmzCap(data);
                 });
             }
+            if (npftMarkFilterActive) {
+                table.addFilter(function(data) {
+                    return bestbuyHasNpftMark(data);
+                });
+            }
             if (clearanceFilterActive) {
                 table.addFilter(function(data) {
                     return !isBestbuyParentRow(data) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data);
@@ -2785,6 +2804,7 @@
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
                         clearanceFilterActive = false;
+                        npftMarkFilterActive = false;
                         if (window.PriceLt80LmpBadge) {
                             PriceLt80LmpBadge.setOutline(document.getElementById('bestbuy-price-lt80-lmp-badge'), false);
                         }
@@ -2804,6 +2824,7 @@
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
                         clearanceFilterActive = false;
+                        npftMarkFilterActive = false;
                         if (window.PriceGtLmpBadge) {
                             PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
                         }
@@ -2824,6 +2845,7 @@
                 priceLt80LmpFilterActive = false;
                 amzCapFilterActive = false;
                 clearanceFilterActive = false;
+                npftMarkFilterActive = false;
                 if (window.PriceGtLmpBadge) {
                     PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
                 }
@@ -2833,6 +2855,20 @@
             }
             applyFilters();
         });
+        $('#bestbuy-npft-mark-badge').on('click', function() {
+            npftMarkFilterActive = !npftMarkFilterActive;
+            if (npftMarkFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                blueTriangleFilterActive = false;
+                amzCapFilterActive = false;
+                clearanceFilterActive = false;
+                if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
+                if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
+            }
+            applyFilters();
+        });
+
         $('#bestbuy-clearance-badge').on('click', function() {
             clearanceFilterActive = !clearanceFilterActive;
             if (clearanceFilterActive) {
@@ -2840,6 +2876,7 @@
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
                 amzCapFilterActive = false;
+                npftMarkFilterActive = false;
                 if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
                 if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
             }
@@ -2865,6 +2902,7 @@
             amzCapFilterActive = !amzCapFilterActive;
             if (amzCapFilterActive) {
                 clearanceFilterActive = false;
+                npftMarkFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
@@ -2967,16 +3005,19 @@
             let blueTriangleCount = 0;
             let amzCapCount = 0;
             let clearanceCount = 0;
+            let npftMarkCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (bestbuyHasBlueTriangle(row)) blueTriangleCount++;
                 if (bestbuyHasAmzCap(row)) amzCapCount++;
                 if (!isBestbuyParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) clearanceCount++;
+                if (bestbuyHasNpftMark(row)) npftMarkCount++;
             });
             $('#bestbuy-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             $('#bestbuy-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             $('#bestbuy-clearance-badge').text('C ' + clearanceCount.toLocaleString());
+            $('#bestbuy-npft-mark-badge').text('! ' + npftMarkCount.toLocaleString());
             if (typeof syncBestbuyTriangleBadgeState === 'function') syncBestbuyTriangleBadgeState();
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
             $('#missing-badge').text(`Miss: ${missingCount}`);

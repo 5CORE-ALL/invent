@@ -137,6 +137,10 @@
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                             title="C = Clearance SKUs (Inv days clearance = YES). They are exempt from the Min NPFT floor. Click to filter. Click again to clear."
                             aria-label="Clearance SKUs">C 0</span>
+                        <span class="badge fs-6 p-2" id="pp-npft-mark-badge"
+                            style="background-color:#fff3cd;color:#dc3545;font-weight:800;cursor:pointer;border:1px solid #ffe69c;"
+                            title="! = S PRC was raised so SNPFT stays at or above Min NPFT %. Click to filter. Click again to clear."
+                            aria-label="S PRC raised to Min NPFT">! 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'purchasingpower-price-gt-lmp-badge', 'pglChannelKey' => 'purchasingpower', 'pglPriceField' => 'PP Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'purchasingpower-price-lt80-lmp-badge', 'pltChannelKey' => 'purchasingpower', 'pltPriceField' => 'PP Price'])
                     </div>
@@ -279,6 +283,7 @@
         let blueTriangleFilterActive = false;
         let amzCapFilterActive = false;
         let clearanceFilterActive = false;
+    let npftMarkFilterActive = false;
 
         function ppIsParentRow(d) {
             return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
@@ -405,7 +410,12 @@
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         window.ppHasBlueTriangle = ppHasBlueTriangle;
-        function syncPpTriangleBadgeState() {
+        function ppHasNpftMark(d) {
+        if (!d || ppIsParentRow(d)) return false;
+        if (!((parseFloat(d.SPRICE) || 0) > 0 || (parseFloat(d.sprice) || 0) > 0)) return false;
+        return typeof window.chStdMinNpftWasApplied === 'function' && !!window.chStdMinNpftWasApplied(d);
+    }
+    function syncPpTriangleBadgeState() {
             $('#pp-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: blueTriangleFilterActive ? '2px' : ''
@@ -418,6 +428,10 @@
                 outline: clearanceFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: clearanceFilterActive ? '2px' : ''
             });
+        $('#pp-npft-mark-badge').css({
+            outline: npftMarkFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: npftMarkFilterActive ? '2px' : ''
+        });
         }
 
         $('#zero-sold-count-badge').on('click', function() {
@@ -928,6 +942,11 @@
                     return ppHasAmzCap(data);
                 });
             }
+            if (npftMarkFilterActive) {
+                table.addFilter(function(data) {
+                    return ppHasNpftMark(data);
+                });
+            }
             if (clearanceFilterActive) {
                 table.addFilter(function(data) {
                     return !ppIsParentRow(data) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data);
@@ -947,6 +966,7 @@
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
                         clearanceFilterActive = false;
+                        npftMarkFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -962,6 +982,7 @@
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
                         clearanceFilterActive = false;
+                        npftMarkFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -974,9 +995,24 @@
                 priceLt80LmpFilterActive = false;
                 amzCapFilterActive = false;
                 clearanceFilterActive = false;
+                npftMarkFilterActive = false;
             }
             applyFilters();
         });
+        $('#pp-npft-mark-badge').on('click', function() {
+            npftMarkFilterActive = !npftMarkFilterActive;
+            if (npftMarkFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                blueTriangleFilterActive = false;
+                amzCapFilterActive = false;
+                clearanceFilterActive = false;
+                if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
+                if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
+            }
+            applyFilters();
+        });
+
         $('#pp-clearance-badge').on('click', function() {
             clearanceFilterActive = !clearanceFilterActive;
             if (clearanceFilterActive) {
@@ -984,6 +1020,7 @@
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
                 amzCapFilterActive = false;
+                npftMarkFilterActive = false;
                 if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
                 if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
             }
@@ -1009,6 +1046,7 @@
             amzCapFilterActive = !amzCapFilterActive;
             if (amzCapFilterActive) {
                 clearanceFilterActive = false;
+                npftMarkFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
@@ -1068,16 +1106,19 @@
             let blueTriangleCount = 0;
             let amzCapCount = 0;
             let clearanceCount = 0;
+            let npftMarkCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (ppHasBlueTriangle(row)) blueTriangleCount++;
                 if (ppHasAmzCap(row)) amzCapCount++;
                 if (!ppIsParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) clearanceCount++;
+                if (ppHasNpftMark(row)) npftMarkCount++;
             });
             $('#pp-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             $('#pp-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             $('#pp-clearance-badge').text('C ' + clearanceCount.toLocaleString());
+            $('#pp-npft-mark-badge').text('! ' + npftMarkCount.toLocaleString());
             if (typeof syncPpTriangleBadgeState === 'function') syncPpTriangleBadgeState();
         
             if (window.AnalyticsDilBadge) {
