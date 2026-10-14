@@ -5644,7 +5644,7 @@
                 amzBgtUniverse.key = key;
                 amzBgtUniverse.rows = null;
                 amzBgtUniverse.failed = false;
-                if (!amzBgtHasSavedCounts()) amzBgtSetCountStatus('Counting all campaigns…');
+                amzBgtSetCountStatus('Counting all campaigns…');
                 var source = activeRawSourceKey || 'all_reports';
                 var body = new URLSearchParams();
                 body.set('draw', '1');
@@ -6294,7 +6294,8 @@
                         return { label: p.label, count: partCount[p.key], sum: partSum[p.key] };
                     })
                 };
-                if (!sumPartial) {
+                if (!sumPartial && !amzBgtDraftEdited) {
+                    // A sum built from unsaved draft amounts is never stored; it would show wrong totals after a reload.
                     amzBgtStaged.dirty = true;
                     amzBgtScheduleSaveCounts();
                 } else {
@@ -7818,11 +7819,19 @@
                 // Capture phase: runs before a slab input repaints, so stored sums are skipped once a rule is being edited.
                 var modal = document.getElementById('amazonAdsBgtRulesModal');
                 if (!modal) return;
+                // Editing a rule needs every campaign (not just this page) to recalc the counts and the DAILY BGT badge.
+                // The full set is fetched once, on the first edit, then every further edit recalcs instantly.
+                var universeTimer = null;
+                function draftTouched() {
+                    amzBgtDraftEdited = true;
+                    if (universeTimer) clearTimeout(universeTimer);
+                    universeTimer = setTimeout(function () { universeTimer = null; amzBgtEnsureUniverse(); }, 400);
+                }
                 modal.addEventListener('input', function (e) {
-                    if (e.target && e.target.matches && e.target.matches('.amz-bgt-cols input')) amzBgtDraftEdited = true;
+                    if (e.target && e.target.matches && e.target.matches('.amz-bgt-cols input')) draftTouched();
                 }, true);
                 modal.addEventListener('click', function (e) {
-                    if (e.target && e.target.closest && e.target.closest('.amz-bgt-add, [data-remove-idx]')) amzBgtDraftEdited = true;
+                    if (e.target && e.target.closest && e.target.closest('.amz-bgt-add, [data-remove-idx]')) draftTouched();
                 }, true);
             })();
             var autoPushPullBtn = document.getElementById('amazonAdsAutoPushPullBtn');
