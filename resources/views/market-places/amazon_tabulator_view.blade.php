@@ -1504,6 +1504,22 @@
         function amazonRowSprice(rowData) {
             return amazonShownSprice(rowData);
         }
+        /**
+         * Price the S PRC cell paints. Same as amazonShownSprice, except clearance SKUs
+         * (no saved S PRC) show their rule price next to "C". Used for sorting only.
+         */
+        function amazonDisplaySprice(rowData) {
+            if (!rowData || rowData.is_parent_summary) return 0;
+            if (typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData)
+                && typeof amzClearanceViewSprice === 'function') {
+                const raw = Number(amzClearanceViewSprice(rowData)) || 0;
+                if (!(raw > 0)) return 0;
+                const shown = (typeof amazonCapSpriceToLmp === 'function') ? amazonCapSpriceToLmp(rowData, raw) : raw;
+                return shown > 0 ? shown : raw;
+            }
+            return amazonShownSprice(rowData);
+        }
+        window.amazonDisplaySprice = amazonDisplaySprice;
         function amazonVisibleSprice(rowData) {
             return amazonShownSprice(rowData);
         }
@@ -4848,11 +4864,12 @@
                         hozAlign: "center",
                         headerSort: true,
                         sorter: function(a, b, aRow, bRow) {
-                            const av = (typeof amazonRowSprice === 'function')
-                                ? (amazonRowSprice(aRow.getData()) || 0)
+                            // Sort by the price the cell shows (clearance rows show their rule price next to "C").
+                            const av = (typeof amazonDisplaySprice === 'function')
+                                ? (amazonDisplaySprice(aRow.getData()) || 0)
                                 : (parseFloat(a) || 0);
-                            const bv = (typeof amazonRowSprice === 'function')
-                                ? (amazonRowSprice(bRow.getData()) || 0)
+                            const bv = (typeof amazonDisplaySprice === 'function')
+                                ? (amazonDisplaySprice(bRow.getData()) || 0)
                                 : (parseFloat(b) || 0);
                             return av - bv;
                         },
