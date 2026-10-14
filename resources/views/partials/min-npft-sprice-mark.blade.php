@@ -32,6 +32,10 @@
                 return (typeof window !== 'undefined' && window.table) ? window.table : null;
             }
             function pageSnpft(d) {
+                if (typeof ebay3ComputeSnpftFromSprice === 'function') {
+                    const v = ebay3ComputeSnpftFromSprice(d);
+                    if (v != null && isFinite(v)) return v;
+                }
                 if (typeof ebay2ComputeSgpftFromSprice === 'function' && typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined') {
                     const sgpft = ebay2ComputeSgpftFromSprice(d);
                     if (sgpft != null && isFinite(sgpft)) return sgpft - (parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0);

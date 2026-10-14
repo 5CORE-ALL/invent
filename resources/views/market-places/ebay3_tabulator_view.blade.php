@@ -1014,6 +1014,37 @@
         return ((price * margin - ship - lp) / price) * 100;
     }
 
+    /** SNROI = ((S PRC × take-home − Ship − LP) − S PRC × Ads%) / LP × 100. Same shape as eBay 1 / Amazon SNROI. */
+    function ebay3ComputeSnroiFromSprice(rowData) {
+        if (!rowData) return null;
+        const price = ebay3SpriceAmount(rowData);
+        const lp = parseFloat(rowData.LP_productmaster);
+        if (!isFinite(price) || price <= 0 || !isFinite(lp) || lp <= 0) return null;
+        const ship = parseFloat(rowData.Ship_productmaster) || 0;
+        const marginRaw = parseFloat(rowData.percentage);
+        const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : EBAY3_TAKEHOME;
+        const adsFrac = (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) / 100;
+        return (((price * margin - ship - lp) - price * adsFrac) / lp) * 100;
+    }
+    /** SNPFT% = S GPFT% − Ads% (channel TACOS). */
+    function ebay3ComputeSnpftFromSprice(rowData) {
+        const sgpft = ebay3ComputeSgpftFromSprice(rowData);
+        if (sgpft === null || !isFinite(sgpft)) return null;
+        return sgpft - (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0);
+    }
+    window.ebay3ComputeSnpftFromSprice = ebay3ComputeSnpftFromSprice;
+    /** Same "!" as eBay 2: only when the SNPFT cell rounds to Min NPFT 10%. */
+    function ebay3NpftMarkHtml(rowData) {
+        if (typeof window.chStdNpftMarkHtml === 'function') {
+            const shared = window.chStdNpftMarkHtml(rowData);
+            if (shared) return shared;
+        }
+        const snpft = ebay3ComputeSnpftFromSprice(rowData);
+        if (snpft == null || !isFinite(snpft)) return '';
+        if (Math.round(snpft) !== 10) return '';
+        return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT 10%">!</span>';
+    }
+
     /** True when S PRC has a saved/entered amount (including when it matches Price). */
     function ebay3HasDistinctSprice(rowData) {
         return ebay3SpriceAmount(rowData) > 0;
@@ -2895,8 +2926,7 @@
                                     + lmpNow.toFixed(2) + ' not applied — SGROI would be '
                                     + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
                             : '';
-                        const npftMark = (typeof window.chStdNpftMarkHtml === 'function')
-                            ? window.chStdNpftMarkHtml(rowData) : '';
+                        const npftMark = ebay3NpftMarkHtml(rowData);
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
                             + formattedValue + blueTri + redTri + npftMark + '</span>';
                     },
@@ -2953,6 +2983,44 @@
                         else color = '#e83e8c';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "SNROI%",
+                    field: "SNROI",
+                    hozAlign: "center",
+                    headerTooltip: "SNROI from S PRC: (gross PFT$ − S PRC × Ads%/100) / LP × 100.",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aVal = ebay3ComputeSnroiFromSprice(aRow.getData());
+                        const bVal = ebay3ComputeSnroiFromSprice(bRow.getData());
+                        return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                             - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
+                    },
+                    formatter: function(cell) {
+                        const percent = ebay3ComputeSnroiFromSprice(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
+                        const st = (window.MetricPctColors && MetricPctColors.styleForField('NROI', percent)) || '';
+                        return st ? `<span style="${st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
+                    },
+                    width: 80
+                },
+                {
+                    title: "SNPFT%",
+                    field: "SNPFT",
+                    hozAlign: "center",
+                    headerTooltip: "SNPFT = S GPFT − Ads%, with S GPFT from S PRC.",
+                    sorter: function(a, b, aRow, bRow) {
+                        const aVal = ebay3ComputeSnpftFromSprice(aRow.getData());
+                        const bVal = ebay3ComputeSnpftFromSprice(bRow.getData());
+                        return ((aVal == null || !isFinite(aVal)) ? 0 : aVal)
+                             - ((bVal == null || !isFinite(bVal)) ? 0 : bVal);
+                    },
+                    formatter: function(cell) {
+                        const percent = ebay3ComputeSnpftFromSprice(cell.getRow().getData());
+                        if (percent === null || !isFinite(percent)) return '';
+                        const st = (window.MetricPctColors && MetricPctColors.styleForField('GPFT%', percent)) || '';
+                        return st ? `<span style="${st}">${percent.toFixed(0)}%</span>` : `${percent.toFixed(0)}%`;
                     },
                     width: 80
                 },
@@ -4047,7 +4115,7 @@
             const tl = t.toLowerCase();
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SGROI|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SGROI|SNROI|SNPFT|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
                 /\b(prc|price|std\s*prc|gpft|groi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc|es\s*bid|c\s*bid|s\s*bid|alert)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {
@@ -4264,7 +4332,11 @@
             });
         });
 
+        window.table = table;
         table.on('renderComplete', function() {
+            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
+                window.minNpftSpriceMark.stamp(table);
+            }
             if (typeof ebay3UpdatePaginationCounter === 'function') ebay3UpdatePaginationCounter();
             reorderEbay3ParentRowsBelowSkus();
             setTimeout(function() {
