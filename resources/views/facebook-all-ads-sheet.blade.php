@@ -237,6 +237,52 @@
         #facebook-all-ads-table .tabulator-cell[tabulator-field="Campaign name"] {
             overflow: hidden;
         }
+        /* Fit everything on one screen — no horizontal scroll, tighter cells. */
+        #facebook-all-ads-table .tabulator-tableholder { overflow-x: hidden !important; }
+        #facebook-all-ads-table .tabulator-col-title { white-space: normal; font-size: 12px; }
+        #facebook-all-ads-table .tabulator-cell { padding: 4px 4px; font-size: 12px; }
+        #facebook-all-ads-table .tabulator-col .tabulator-col-content { padding: 4px 4px; }
+
+        /* Campaign name → green dot + hover popup */
+        .faas-name-dot {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #16a34a;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: transform 0.1s ease, background 0.1s ease;
+        }
+        .faas-name-dot.is-active   { background: #16a34a; }
+        .faas-name-dot.is-inactive { background: #dc2626; }
+        .faas-name-dot:hover { transform: scale(1.25); }
+        .faas-name-dot.copied { background: #0d6efd; }
+        #faasNamePopup.is-inactive { border-top-color: #dc2626; }
+        #faasNamePopup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2000;
+            width: max-content;
+            min-width: 220px;
+            max-width: min(480px, 90vw);
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+            border-top: 4px solid #16a34a;
+            padding: 12px 16px;
+            text-align: center;
+            pointer-events: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.12s ease;
+        }
+        #faasNamePopup.show { opacity: 1; visibility: visible; }
+        .faas-name-popup-title { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+        .faas-name-popup-text { font-size: 14px; font-weight: 600; color: #111827; word-break: break-word; }
+        .faas-name-popup-hint { font-size: 10px; color: #9ca3af; margin-top: 8px; }
 
         @media (max-width: 991.98px) {
             #faas-table-wrapper {
@@ -1755,20 +1801,20 @@
                     // Campaign name can be very long — truncate to 70
                     // chars in the cell but expose the full text on
                     // hover (and to header search) via a title tooltip.
+                    // Campaign name renders as a green dot; hovering shows the
+                    // full name in a small centred popup, clicking copies it.
                     function formatCampaignNameCell(cell) {
                         const v = (cell.getValue() ?? '').toString();
                         if (!v) return '';
-                        const safe = v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                        const attr = safe.replace(/'/g, '&#39;');
-                        const copy = `<i class="fas fa-copy faas-copy-name" role="button" tabindex="0"`
-                                   + ` title="Copy campaign name" data-copy="${attr}"`
-                                   + ` style="margin-left:6px;color:#94a3b8;cursor:pointer;flex-shrink:0;"></i>`;
-                        const text = v.length <= 70
-                            ? safe
-                            : `<span title="${safe}">${v.slice(0, 70).replace(/&/g, '&amp;').replace(/</g, '&lt;')}…</span>`;
-                        return `<span style="display:inline-flex;align-items:center;gap:2px;max-width:100%;">`
-                             + `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${text}</span>`
-                             + `${copy}</span>`;
+                        const attr = v.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                        // Green = active, red = anything else (paused, archived, …).
+                        const status = ((cell.getRow().getData() || {})['Status'] ?? '').toString()
+                            .trim().toLowerCase().replace(/[\s_-]+/g, '_');
+                        const isActive = status === 'active';
+                        return `<span class="faas-name-dot ${isActive ? 'is-active' : 'is-inactive'}"`
+                             + ` role="button" tabindex="0"`
+                             + ` data-name="${attr}" data-active="${isActive ? 1 : 0}" aria-label="${attr}"></span>`;
                     }
                     function formatAuditReqCell(cell) {
                         const row = cell.getRow().getData();
@@ -1776,7 +1822,7 @@
                         if (!cid || !/^\d{6,}$/.test(cid)) return '';
                         if (faasRowNeedsAudit(row) && !row._audit_at) {
                             return `<button type="button" class="faas-audit-now" data-audit-cid="${cid}"
-                                        title="Spend is above $15 and ACOS is red (above 40%). Record the audit — the date and time are saved automatically.">AUDIT NOW</button>`;
+                                        title="AUDIT NOW — Spend is above $15 and ACOS is red (above 40%). Record the audit — the date and time are saved automatically.">AN</button>`;
                         }
                         if (row._audit_at) {
                             const when = faasAuditStamp(row._audit_at);
@@ -1866,8 +1912,8 @@
                                 field:        c.field,
                                 headerSort:   true,
                                 widthGrow:    0,
-                                width:        90,
-                                minWidth:     80,
+                                width:        60,
+                                minWidth:     50,
                                 hozAlign:     'center',
                                 headerFilter: false,
                                 formatter:    formatStatusCell,
@@ -1933,18 +1979,18 @@
                         const NARROW = new Set([
                             'Acos','Sbgt','IMPR','CLK','CTR','SPEND','SALES','SOLD','CVR','CPS',
                         ]);
-                        const minWidth = NARROW.has(c.field) ? 70
-                                       : (c.field === 'Campaign name' ? 160
-                                       : (c.field === 'CAMPAIGN ID'  ? 150
-                                       : (c.field === 'Link'         ? 60
-                                       : (c.field === 'Audit Req'   ? 110
-                                       : (c.field === 'History'      ? 140 : 100)))));
-                        const maxWidth = c.field === 'Campaign name' ? 280 : undefined;
-                        const widthGrow = NARROW.has(c.field) ? 0
-                                       : (c.field === 'Campaign name' ? 3
+                        const minWidth = NARROW.has(c.field) ? 48
+                                       : (c.field === 'Campaign name' ? 50
+                                       : (c.field === 'CAMPAIGN ID'  ? 50
+                                       : (c.field === 'Link'         ? 40
+                                       : (c.field === 'Audit Req'   ? 80
+                                       : (c.field === 'History'      ? 90 : 60)))));
+                        const maxWidth = c.field === 'Campaign name' ? 60 : undefined;
+                        const widthGrow = NARROW.has(c.field) ? 1
+                                       : (c.field === 'Campaign name' ? 0
                                        : (c.field === 'Link'         ? 0
                                        : (c.field === 'Audit Req'   ? 0
-                                       : (c.field === 'History'      ? 0 : 1))));
+                                       : (c.field === 'History'      ? 1 : 1))));
                         // Link header — show just the icon, no word.
                         const title = c.field === 'Link'
                             ? '<i class="fas fa-link" title="Link"></i>'
@@ -1990,7 +2036,7 @@
                             // CH = channel the campaign runs on (FB / Insta).
                             title:        'CH',
                             field:        'ch',
-                            width:        90,
+                            width:        80,
                             headerFilter: false,
                             editor:       'list',
                             editorParams: {
@@ -2011,7 +2057,7 @@
                             // ad_type so all backend code is unchanged.
                             title:        'Type',
                             field:        'ad_type',
-                            width:        130,
+                            width:        110,
                             headerFilter: false,
                             editor:       'list',
                             editorParams: {
@@ -2029,7 +2075,7 @@
                         {
                             title:        'B2B / B2C',
                             field:        'b2b_b2c',
-                            width:        130,
+                            width:        100,
                             headerFilter: false,
                             editor:       'list',
                             editorParams: {
@@ -2071,7 +2117,7 @@
                     tabulator = new Tabulator('#facebook-all-ads-table', {
                         data:                   resp.data || [],
                         columns:                cols,
-                        layout:                 'fitDataStretch',
+                        layout:                 'fitColumns',
                         // Let the table fill #faas-table-wrapper which itself
                         // is sized to the viewport. Same pattern as
                         // /topdawg/sales-dashboard.
@@ -3710,18 +3756,47 @@
                 } catch (err) { reject(err); }
             });
         }
+        // Hover on the green dot → small centred popup with the full name.
+        function faasNamePopup() {
+            let el = document.getElementById('faasNamePopup');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'faasNamePopup';
+                el.innerHTML = '<div class="faas-name-popup-title">Campaign name</div>'
+                             + '<div class="faas-name-popup-text"></div>'
+                             + '<div class="faas-name-popup-hint">Click the dot to copy</div>';
+                document.body.appendChild(el);
+            }
+            return el;
+        }
+        function faasDotName(dot) {
+            const tmp = document.createElement('textarea');
+            tmp.innerHTML = dot.getAttribute('data-name') || '';
+            return tmp.value;
+        }
+        document.addEventListener('mouseover', function (e) {
+            const dot = e.target.closest && e.target.closest('.faas-name-dot');
+            if (!dot) return;
+            const el = faasNamePopup();
+            el.querySelector('.faas-name-popup-text').textContent = faasDotName(dot);
+            el.classList.toggle('is-inactive', dot.getAttribute('data-active') !== '1');
+            el.classList.add('show');
+        });
+        document.addEventListener('mouseout', function (e) {
+            const dot = e.target.closest && e.target.closest('.faas-name-dot');
+            if (!dot) return;
+            if (e.relatedTarget && dot.contains(e.relatedTarget)) return;
+            const el = document.getElementById('faasNamePopup');
+            if (el) el.classList.remove('show');
+        });
         document.addEventListener('click', function (e) {
-            const icon = e.target.closest && e.target.closest('.faas-copy-name');
-            if (!icon) return;
+            const dot = e.target.closest && e.target.closest('.faas-name-dot');
+            if (!dot) return;
             e.stopPropagation();
             e.preventDefault();
-            const tmp = document.createElement('textarea');
-            tmp.innerHTML = icon.getAttribute('data-copy') || '';
-            faasCopyText(tmp.value).then(() => {
-                const prev = icon.className;
-                icon.className = 'fas fa-check faas-copy-name';
-                icon.style.color = '#22c55e';
-                setTimeout(() => { icon.className = prev; icon.style.color = '#94a3b8'; }, 1000);
+            faasCopyText(faasDotName(dot)).then(() => {
+                dot.classList.add('copied');
+                setTimeout(() => dot.classList.remove('copied'), 1000);
             }).catch(() => {});
         });
 
