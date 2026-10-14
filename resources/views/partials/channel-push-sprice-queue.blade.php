@@ -160,10 +160,12 @@
                 return Math.abs(Number(a) - Number(b)) < 0.005;
             }
             function chPushSpriceToast(type, msg) {
-                if (typeof showToast === 'function') {
-                    try { showToast(type, msg); } catch (e) { showToast(msg, type); }
-                } else if (typeof chPromoToast === 'function') {
+                // chPromoToast knows each page's showToast argument order. Calling showToast(type, msg) directly
+                // printed just the type word ("warning") on pages whose showToast is (message, type).
+                if (typeof chPromoToast === 'function') {
                     chPromoToast(type, msg);
+                } else if (typeof showToast === 'function') {
+                    try { showToast(msg, type); } catch (e) { showToast(type, msg); }
                 } else {
                     console.log(type, msg);
                 }

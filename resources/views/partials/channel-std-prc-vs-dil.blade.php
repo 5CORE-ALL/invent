@@ -1458,7 +1458,9 @@
                     if (!el) return;
                     const row = cell.getRow ? cell.getRow() : null;
                     const d = row && row.getData ? row.getData() : null;
-                    const on = !!(d && chStdMinNpftWasApplied(d));
+                    // The "!" sits inside the S PRC cell, so only draw it when the row has an S PRC to explain.
+                    const hasSprice = !!(d && ((parseFloat(d.SPRICE) || 0) > 0 || (parseFloat(d.sprice) || 0) > 0));
+                    const on = !!(d && hasSprice && chStdMinNpftWasApplied(d));
                     let mark = el.querySelector('.ch-npft-mark');
                     if (!on) {
                         if (mark) mark.remove();
