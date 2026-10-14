@@ -105,6 +105,10 @@ class PurchasingPowerSprcDilAutoPushService
             foreach ($rows as $i => $row) {
                 try {
                     $computed = $this->computeTarget($row, $pricer);
+                    if ($onlySkus !== null && $onlySkus !== []) {
+                        // Single-SKU run: show the inputs and the result, so a row that looks wrong can be traced.
+                        $this->log($logger, $this->explainRow($row, $computed));
+                    }
                     if ($computed === null) {
                         $stats['skipped']++;
                         continue;
@@ -201,6 +205,48 @@ class PurchasingPowerSprcDilAutoPushService
         } finally {
             optional($lock)->release();
         }
+    }
+
+    /**
+     * One line with the numbers behind a row's S PRC (used by --sku runs).
+     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, mixed>|null  $computed
+     */
+    protected function explainRow(array $row, ?array $computed): string
+    {
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        $lp = (float) ($row['lp'] ?? 0);
+        $ship = (float) ($row['ship'] ?? 0);
+        $line = sprintf(
+            '%s: live=%.2f saved=%.2f std=%.2f amz=%.2f lmp=%.2f lp=%.2f ship=%.2f margin=%.2f inv=%s',
+            (string) ($row['sku'] ?? ''),
+            (float) ($row['price'] ?? 0),
+            (float) ($row['sprice'] ?? 0),
+            (float) ($row['standard_price'] ?? 0),
+            (float) ($row['amz'] ?? 0),
+            (float) ($row['lmp'] ?? 0),
+            $lp,
+            $ship,
+            $margin,
+            (string) ($row['inv'] ?? 0)
+        );
+        if ($computed === null) {
+            return $line.' → no target (INV or Std Prc missing)';
+        }
+        $sp = (float) $computed['sprice'];
+        $snpft = $sp > 0 ? (($sp * ($margin > 0 ? $margin : 0.80) - $ship - $lp) / $sp) * 100 : 0.0;
+
+        return $line.sprintf(
+            ' → target=%.2f snpft=%.1f%% npft_floor=%s amz_capped=%s',
+            $sp,
+            $snpft,
+            ! empty($computed['npft_floor']) ? 'yes' : 'no',
+            ! empty($computed['amz_capped']) ? 'yes' : 'no'
+        );
     }
 
     /**

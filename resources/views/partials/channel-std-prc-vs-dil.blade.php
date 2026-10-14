@@ -493,6 +493,7 @@
             return chStdClearanceLoading;
         }
         window.chStdIsClearance = chStdIsClearance;
+        window.chStdMinNpftNow = chStdMinNpftNow;
         window.chStdLoadClearance = chStdLoadClearance;
         function chStdAdsFrac() {
             if (typeof chPromoAdsFrac !== 'function') return 0;

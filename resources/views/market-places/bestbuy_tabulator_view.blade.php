@@ -608,6 +608,83 @@
         return bestbuyDisplayedSprice(data);
     }
     window.bestbuyDisplayedSprice = bestbuyDisplayedSprice;
+
+    /**
+     * Min NPFT on SNPFT, shown right away. The server job saves the same price; until it re-saves a SKU, this keeps the
+     * page from showing a S PRC whose SNPFT is under the floor. Same math as the server (Ship BB, no ads, clearance exempt).
+     * Returns the fields to write on the row, or null when nothing changes.
+     */
+    function bestbuyFloorPatch(row) {
+        if (!row || isBestbuyParentRow(row)) return null;
+        if (typeof window.chStdMinNpftNow !== 'function') return null;
+        const minNpft = Number(window.chStdMinNpftNow()) || 0;
+        if (!(minNpft > 0)) return null;
+        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) return null;
+        const shown = bestbuyDisplayedSprice(row);
+        if (!(shown > 0)) return null;
+        const lp = parseFloat(row.LP_productmaster) || 0;
+        const ship = parseFloat(row.Ship_productmaster) || 0;
+        let margin = parseFloat(row.percentage) || 0;
+        if (margin > 1) margin = margin / 100;
+        if (!(margin > 0 && margin <= 1)) margin = 0.80;
+        if (!(lp > 0)) return null;
+        const denom = margin - minNpft / 100;
+        if (!(denom > 0.0001)) return null;
+        const npftAt = function(p) { return ((p * margin - ship - lp) / p) * 100; };
+        let target = shown;
+        if (npftAt(shown) < minNpft - 0.001) {
+            let floor = Math.ceil(((lp + ship) / denom) * 100 - 1e-6) / 100;
+            if (npftAt(floor) + 1e-6 < minNpft) floor = Math.round((floor + 0.01) * 100) / 100;
+            if (floor > shown) target = floor;
+        }
+        const sgpft = Math.round(npftAt(target) * 100) / 100;
+        const sroi = Math.round((((target * margin - ship - lp) / lp) * 100) * 100) / 100;
+        const raw = bestbuyRawSavedSprice(row);
+        const storedGpft = parseFloat(row.SGPFT);
+        const same = Math.abs(target - raw) < 0.005 && isFinite(storedGpft) && Math.abs(storedGpft - sgpft) < 0.5;
+        if (same) return null;
+        const patch = {
+            SPRICE: target, sprice: target,
+            SGPFT: sgpft, SPFT: sgpft,
+            SROI: sroi, SNROI: sroi, SGROI: sroi
+        };
+        const amz = bestbuyAmazonPrice(row);
+        if (target > shown + 0.004 || (amz > 0 && target > amz + 0.005)) patch.AMZ_CAPPED = false;
+        return patch;
+    }
+    function bestbuyApplySnpftFloor() {
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
+        const bySku = {};
+        let changed = 0;
+        try {
+            table.getRows().forEach(function(r) {
+                const d = r.getData();
+                const patch = bestbuyFloorPatch(d);
+                if (!patch) return;
+                bySku[String(d['(Child) sku'] || d.sku || '').trim().toUpperCase()] = patch;
+                try { r.update(patch); } catch (e) { /* ignore */ }
+                changed++;
+            });
+        } catch (e) { /* ignore */ }
+        if (!changed) return;
+        const walk = function(arr) {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(function(d) {
+                if (!d) return;
+                const patch = bySku[String(d['(Child) sku'] || d.sku || '').trim().toUpperCase()];
+                if (patch) Object.assign(d, patch);
+                if (Array.isArray(d._children)) walk(d._children);
+            });
+        };
+        walk(allTableData);
+        if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
+            try { ParentExpand.captureDataset(allTableData); } catch (e) { /* ignore */ }
+        }
+        if (typeof updateSummary === 'function') {
+            try { updateSummary(); } catch (e) { /* ignore */ }
+        }
+    }
+    window.bestbuyApplySnpftFloor = bestbuyApplySnpftFloor;
     /** Amz rule: S PRC was raised to A Price (server flag AMZ_CAPPED, or a saved S PRC still under A Price). */
     function bestbuyHasAmzCap(data) {
         if (isBestbuyParentRow(data)) return false;
@@ -2771,6 +2848,9 @@
                 return;
             }
             window.chStdLoadClearance().always(function() {
+                // Clearance list is in: apply the Min NPFT floor on SNPFT, again once the saved rule has loaded.
+                try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ }
+                setTimeout(function() { try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ } }, 2500);
                 try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
             });
         })(0);
@@ -3015,6 +3095,7 @@
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
             setTimeout(function() {
+                bestbuyApplySnpftFloor();
                 applyFilters();
                 updateSummary();
             }, 100);

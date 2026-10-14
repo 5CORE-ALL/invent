@@ -21,6 +21,7 @@ class PurchasingPowerSprcDilAutoPushCommand extends Command
         {--dry-run : Compute only. Do NOT save SPRICE and do NOT push to Purchasing Power}
         {--skip-push : Save SPRICE, but skip the Purchasing Power push}
         {--push-all : Push every eligible SKU (ignore the last-pushed match and cooldown)}
+        {--sku=* : Only these SKUs (repeat the option). Prints the inputs and the S PRC result per SKU}
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Purchasing Power price pushes (ms)}';
 
@@ -60,7 +61,7 @@ class PurchasingPowerSprcDilAutoPushCommand extends Command
             skipPush: $skipPush,
             limit: $limit,
             sleepMs: $sleepMs,
-            onlySkus: null,
+            onlySkus: array_values(array_filter((array) $this->option('sku'))) ?: null,
             logger: fn (string $msg) => $this->line($msg),
             pushAll: $pushAll
         );
