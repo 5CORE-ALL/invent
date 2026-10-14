@@ -353,12 +353,21 @@
                 s60: chStdNum(d, ['sessions_l60', 'sess60']),
             };
         }
+        function chStdSkipsCvr() {
+            const ch = (typeof CHANNEL_PROMO_CHANNEL === 'string') ? CHANNEL_PROMO_CHANNEL : '';
+            return ch === 'bestbuy';
+        }
+        if (chStdSkipsCvr()) {
+            $('[data-ch-sp-panel="cvr"]').hide();
+        }
         function chStdCvrLive(d) {
+            if (chStdSkipsCvr()) return 0;
             if (chStdIsEbay()) return chStdNum(d, ['SCVR']);
             const inp = chStdCvrInputs(d);
             return inp.s30 > 0 ? (inp.a30 / inp.s30) * 100 : 0;
         }
         function chStdCvrTrend(d) {
+            if (chStdSkipsCvr()) return 'flat';
             if (chStdIsEbay()) {
                 const cvr30 = chStdNum(d, ['SCVR']);
                 const cvr45 = chStdEbayCvr45(d);
@@ -906,13 +915,6 @@
                 chStdStampNpftMarks();
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
-                if (res.rules_from === 'amazon') {
-                    // Best Buy uses the Amazon discount rules (Age, Dil, CVR, B Disc, 0 Sold). Edit them on /amazon-tabulator-view.
-                    window.CH_STD_RULES_FROM_AMAZON = true;
-                    if (!$('#ch-sp-amazon-note').length) {
-                        $('#chStdPrcModal .ch-sp-sub').first().after('<div id="ch-sp-amazon-note" class="ch-sp-sub" style="color:#b45309;font-weight:600">Age, Dil, CVR, B Disc and 0 Sold use the same rules as /amazon-tabulator-view. Change them there. Only Min NPFT is saved on this page.</div>');
-                    }
-                }
                 if (!chStdDil.length) chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdAge.length) chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdRev.length) chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1070,6 +1072,7 @@
             return chStdScaleDisc(chStdRowStd(d), chStdRangeDisc(chStdDilPct(d), chStdDil));
         }
         function chStdCvrDiscPct(d, draft) {
+            if (chStdSkipsCvr()) return 0;
             if (!(chStdStockForAge(d) > 0)) return 0;
             const cfg = (draft && draft.cvr) ? draft.cvr : chStdCvr;
             const hit = chStdCvrMatch(d, cfg);
@@ -1202,7 +1205,8 @@
                     },
                 }),
                 Object.assign(chStdDiscCol('0 Sold', 'zero_sold_discount', '0 Sold discount from Std prc vs dil. Applies only when this page sold qty is 0. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdZeroSoldDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
-                Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
+                Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', chStdSkipsCvr() ? 'Best Buy has no session CVR. CVR Disc is off (Amazon A L30 / Sess30 is not used).' : 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
+                    visible: !chStdSkipsCvr(),
                     formatter: function(cell) {
                         const d = cell.getRow().getData() || {};
                         if (chStdIsParentRow(d)) {

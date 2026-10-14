@@ -315,10 +315,34 @@ class StdPrcVsDilPricerTest extends TestCase
         }
     }
 
-    public function test_best_buy_uses_the_amazon_discount_rules_and_others_do_not(): void
+    public function test_best_buy_skips_cvr_and_other_pages_do_not(): void
     {
-        $this->assertTrue(StdPrcVsDilPricer::usesAmazonRules('bestbuy'));
-        $this->assertFalse(StdPrcVsDilPricer::usesAmazonRules('amazon'));
-        $this->assertFalse(StdPrcVsDilPricer::usesAmazonRules('purchasing_power'));
+        $this->assertTrue(StdPrcVsDilPricer::skipsCvr('bestbuy'));
+        $this->assertFalse(StdPrcVsDilPricer::skipsCvr('amazon'));
+        $this->assertFalse(StdPrcVsDilPricer::skipsCvr('purchasing_power'));
+    }
+
+    public function test_best_buy_does_not_apply_amazon_cvr_when_cvr_is_missing(): void
+    {
+        $rules = [
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 6, 'down_lt' => 7, 'down_disc' => 4,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'min_npft' => 0,
+        ];
+        $row = ['inv' => 2, 'std' => 100, 'cvr' => 0, 'lp' => 10, 'ship' => 0, 'margin' => 0.9];
+
+        // Same missing CVR on Amazon is "down" → 6% off.
+        $amazon = new StdPrcVsDilPricer($rules, 'amazon');
+        $this->assertSame(94.0, $amazon->priceFromRow($row));
+
+        // Best Buy has no session CVR, so the slab does not fire.
+        $bestbuy = new StdPrcVsDilPricer($rules, 'bestbuy');
+        $this->assertSame(100.0, $bestbuy->priceFromRow($row));
     }
 }

@@ -18,7 +18,8 @@ use Throwable;
  * Best Buy Std prc vs dil stack → SPRICE → Best Buy MCM price import (page not required).
  *
  * Same steps as AmazonSprcDilAutoPushService, with Best Buy as the source:
- *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
+ *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + Rev Disc) / 100)
+ *  CVR Disc is off: Best Buy has no session CVR (Amazon A L30 / Sess30 is not used).
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  Then raised to Min NPFT % (saved in bestbuy_std_prc_vs_dil, default 10). Clearance SKUs keep the discount price.
  *  Std Prc is the maximum, then the LMP cap (SGROI at LMP ≥ 20%). Min NPFT wins over the LMP cap.
@@ -63,7 +64,7 @@ class BestBuySprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('bestbuy');
 
-        $this->log($logger, 'Loaded Best Buy Std prc vs dil (bestbuy_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Min NPFT + LMP cap + Amz rule');
+        $this->log($logger, 'Loaded Best Buy Std prc vs dil (bestbuy_std_prc_vs_dil) → Age/Dil/B/0 Sold/Rev Disc + Min NPFT + LMP cap + Amz rule (CVR off)');
 
         $stats = [
             'candidates' => 0,
@@ -299,7 +300,7 @@ class BestBuySprcDilAutoPushService
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $pricer ??= StdPrcVsDilPricer::forChannel('bestbuy');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then Min NPFT (clearance exempt, Ship BB included).
+        // Age / Dil / B / 0 Sold / Rev discounts, then Min NPFT (clearance exempt, Ship BB included). CVR is off.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,

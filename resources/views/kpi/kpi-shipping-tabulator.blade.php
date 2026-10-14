@@ -79,6 +79,38 @@
             border: none;
         }
 
+        #avg-pct-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .kpi-ship-pct-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .kpi-ship-hist-dot {
+            width: 8px;
+            height: 8px;
+            min-width: 8px;
+            border: 0;
+            padding: 0;
+            border-radius: 50%;
+            background: #9ca3af;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .kpi-ship-hist-dot.is-up { background: #28a745; }
+        .kpi-ship-hist-dot.is-down { background: #dc3545; }
+        .kpi-ship-hist-dot.is-flat,
+        .kpi-ship-hist-dot.is-none { background: #9ca3af; }
+        .kpi-ship-hist-dot:hover { transform: scale(1.35); }
+
         #incentive-modal .modal-content {
             border: none;
             border-radius: 12px;
@@ -125,7 +157,10 @@
             <div class="card-body py-3">
                 <h4>Label Created & Uploaded On time.</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
-                    <span class="badge bg-primary fs-6 p-2" id="avg-pct-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="View history">Avg: <span id="avg-pct-value">0.00%</span> <i class="fas fa-chart-line ms-1"></i></span>
+                    <span class="badge bg-primary fs-6 p-2" id="avg-pct-badge" style="color: #fff; font-weight: bold; cursor: pointer;" title="Click for On Time % history">
+                        <span class="summary-trend-dot none" id="avg-history-dot" role="button" tabindex="0" title="Click for rolling history" aria-label="Avg On Time % history"></span>
+                        Avg: <span id="avg-pct-value">0.00%</span>
+                    </span>
                     <span class="badge bg-danger fs-6 p-2" id="critical-count-badge" style="color: #fff; font-weight: bold;" title="Channels below 99%">Critical count: <span id="critical-count-value">0</span></span>
                     <span class="badge bg-warning text-dark fs-6 p-2" id="incentive-badge" style="font-weight: bold; cursor: pointer;" title="Incentive">
                         <i class="fas fa-shopping-bag"></i> <i class="fas fa-indian-rupee-sign"></i> Incentive<span id="incentive-summary"></span>
@@ -192,12 +227,15 @@
                 <div class="modal-header bg-info text-white py-1 px-3">
                     <h6 class="modal-title mb-0" style="font-size: 13px;" id="avg-history-modal-label">
                         <i class="fas fa-chart-area me-1"></i>
-                        Avg On Time % - History
+                        Avg - On Time % (Rolling 30 Days)
                     </h6>
                     <div class="d-flex align-items-center gap-2">
                         <select id="avg-history-range" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
                             <option value="7">7 Days</option>
                             <option value="30" selected>30 Days</option>
+                            <option value="31">31 Days</option>
+                            <option value="32">32 Days</option>
+                            <option value="35">35 Days</option>
                             <option value="60">60 Days</option>
                             <option value="90">90 Days</option>
                             <option value="0">Lifetime</option>
@@ -206,22 +244,22 @@
                     </div>
                 </div>
                 <div class="modal-body p-2">
-                    <div id="avg-history-chart-wrapper" style="height: 20vh; display: flex; align-items: stretch;">
+                    <div id="avg-history-chart-wrapper" style="height: 34vh; min-height: 220px; display: flex; align-items: stretch;">
                         <div style="flex: 1; min-width: 0; position: relative;">
                             <canvas id="avg-history-chart"></canvas>
                         </div>
-                        <div style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                        <div style="width: 118px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
                             <div style="text-align: center;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
-                                <div id="avg-history-high" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                                <div id="avg-history-high" style="font-size: 13px; font-weight: 700; color: #dc3545; white-space: nowrap;">-</div>
                             </div>
                             <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
-                                <div id="avg-history-median" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                                <div id="avg-history-median" style="font-size: 13px; font-weight: 700; color: #6c757d; white-space: nowrap;">-</div>
                             </div>
                             <div style="text-align: center;">
                                 <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
-                                <div id="avg-history-low" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                                <div id="avg-history-low" style="font-size: 13px; font-weight: 700; color: #198754; white-space: nowrap;">-</div>
                             </div>
                         </div>
                     </div>
@@ -297,6 +335,40 @@
     let incentiveData = { incentives: [], can_edit: false, users: [] };
     let incentiveTable = null;
 
+    function escAttr(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function onTimeHistoryTip(trend, prev, current) {
+        const prevMissing = prev === null || prev === undefined || prev === '';
+        const nowTxt = (current === null || current === undefined || current === '') ? '—' : (Number(current).toFixed(2) + '%');
+        if (trend === 'up' && prevMissing) return 'On Time % history · First day saved';
+        if (trend === 'none' || trend === 'na' || prevMissing) return 'On Time % history · No previous day saved yet';
+        const prevTxt = Number(prev).toFixed(2) + '%';
+        if (trend === 'up') return 'Up vs previous day ' + prevTxt + ' → ' + nowTxt + '. Click for history.';
+        if (trend === 'down') return 'Down vs previous day ' + prevTxt + ' → ' + nowTxt + '. Click for history.';
+        return 'Same as previous day ' + prevTxt + '. Click for history.';
+    }
+
+    function setAvgHistoryDot(trend) {
+        const dot = document.getElementById('avg-history-dot');
+        if (!dot) return;
+        const cls = (trend === 'up' || trend === 'down' || trend === 'flat') ? trend : 'none';
+        dot.classList.remove('up', 'down', 'flat', 'none');
+        dot.classList.add(cls);
+        const labels = {
+            up: 'Avg On Time % is up vs the previous day. Click for history.',
+            down: 'Avg On Time % is down vs the previous day. Click for history.',
+            flat: 'Avg On Time % is unchanged vs the previous day. Click for history.',
+            none: 'Click for On Time % history.'
+        };
+        dot.title = labels[cls];
+    }
+
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
         if (!toastContainer) return;
@@ -340,6 +412,9 @@
                 vertAlign: "middle"
             },
             ajaxResponse: function(url, params, response) {
+                if (response && !Array.isArray(response)) {
+                    setAvgHistoryDot(response.avg_trend);
+                }
                 return Array.isArray(response) ? response : (response.data || []);
             },
             columns: [
@@ -347,22 +422,28 @@
                 {
                     title: "Label Created & Uploaded On Time %",
                     field: "on_time_pct",
-                    width: 260,
+                    width: 290,
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
+                        const row = cell.getRow().getData();
                         const raw = cell.getValue();
-                        if (raw === null || raw === undefined || raw === '') {
-                            return `<span style="color: #adb5bd;">&mdash;</span>`;
+                        let valueHtml = `<span style="color: #adb5bd;">&mdash;</span>`;
+                        if (raw !== null && raw !== undefined && raw !== '') {
+                            const value = parseFloat(raw) || 0;
+                            const text = value.toFixed(2) + '%';
+                            if (value >= 98 && value < 99) {
+                                valueHtml = `<span style="background-color: #ffc107; color: #111; font-weight: bold; padding: 2px 6px; border-radius: 4px;">${text}</span>`;
+                            } else if (value < 98) {
+                                valueHtml = `<span style="background-color: #dc3545; color: #000; font-weight: bold; padding: 2px 6px; border-radius: 4px;">${text}</span>`;
+                            } else {
+                                valueHtml = `<span style="color: #28a745; font-weight: bold;">${text}</span>`;
+                            }
                         }
-                        const value = parseFloat(raw) || 0;
-                        if (value >= 98 && value < 99) {
-                            return `<span style="background-color: #ffc107; color: #111; font-weight: bold; padding: 2px 6px; border-radius: 4px;">${value.toFixed(2)}%</span>`;
-                        }
-                        if (value < 98) {
-                            return `<span style="background-color: #dc3545; color: #000; font-weight: bold; padding: 2px 6px; border-radius: 4px;">${value.toFixed(2)}%</span>`;
-                        }
-                        return `<span style="color: #28a745; font-weight: bold;">${value.toFixed(2)}%</span>`;
+                        const trend = row.on_time_trend || 'none';
+                        const cls = trend === 'up' ? 'is-up' : (trend === 'down' ? 'is-down' : 'is-flat');
+                        const tip = onTimeHistoryTip(trend, row.on_time_prev, raw);
+                        return `<span class="kpi-ship-pct-cell"><button type="button" class="kpi-ship-hist-dot ${cls}" data-channel="${escAttr(row.channel || '')}" title="${escAttr(tip)}" aria-label="${escAttr(tip)}"></button>${valueHtml}</span>`;
                     }
                 },
                 {
@@ -543,11 +624,14 @@
                 success: function(res) {
                     valueModalRow.update({
                         on_time_pct: res.on_time_pct,
+                        on_time_prev: res.on_time_prev,
+                        on_time_trend: res.on_time_trend,
                         updated_by: res.updated_by,
                         updated_at_ts: res.updated_at_ts,
                         updated_display: res.updated_display,
                         is_stale: res.is_stale
                     });
+                    setAvgHistoryDot(res.avg_trend);
                     bootstrap.Modal.getInstance(document.getElementById('value-modal')).hide();
                     updateAvgBadge();
                     showToast('Value saved.', 'success');
@@ -563,13 +647,49 @@
             });
         });
 
-        $('#avg-pct-badge').on('click', function() {
-            const modal = new bootstrap.Modal(document.getElementById('avg-history-modal'));
-            modal.show();
+        function openAvgHistory() {
+            historyChartChannel = '';
+            $('#avg-history-range').val('30');
+            setHistoryTitle();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('avg-history-modal')).show();
             loadAvgHistory();
+        }
+
+        function openChannelHistory(channel) {
+            historyChartChannel = channel || '';
+            $('#avg-history-range').val('30');
+            setHistoryTitle();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('avg-history-modal')).show();
+            loadAvgHistory();
+        }
+
+        $('#avg-pct-badge').on('click', function(e) {
+            if (e.target.closest && e.target.closest('.summary-trend-dot')) return;
+            openAvgHistory();
         });
 
-        $('#avg-history-range').on('change', loadAvgHistory);
+        $('#avg-history-dot').on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openAvgHistory();
+        });
+
+        $('#avg-history-dot').on('keydown', function(e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            openAvgHistory();
+        });
+
+        $(document).on('click', '.kpi-ship-hist-dot', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openChannelHistory($(this).attr('data-channel') || '');
+        });
+
+        $('#avg-history-range').on('change', function() {
+            setHistoryTitle();
+            loadAvgHistory();
+        });
 
         loadIncentive();
 
@@ -766,13 +886,56 @@
     }
 
     let avgHistoryChart = null;
+    let historyChartChannel = '';
+
+    function historyRangeLabel(days) {
+        const n = parseInt(days, 10);
+        return n ? (n + ' Days') : 'Lifetime';
+    }
+
+    function setHistoryTitle() {
+        const name = historyChartChannel || 'Avg';
+        const range = historyRangeLabel($('#avg-history-range').val());
+        const title = document.getElementById('avg-history-modal-label');
+        if (!title) return;
+        title.textContent = '';
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-chart-area me-1';
+        title.appendChild(icon);
+        title.appendChild(document.createTextNode(name + ' - On Time % (Rolling ' + range + ')'));
+    }
+
+    function fmtOnTimePct(value) {
+        const n = Number(value);
+        return (isFinite(n) ? n.toFixed(2) : '0.00') + '%';
+    }
+
+    function onTimeDotColors(values) {
+        const gray = '#6c757d';
+        const green = '#28a745';
+        const red = '#dc3545';
+        return values.map(function(v, i) {
+            if (i === 0) return gray;
+            if (Math.abs(v - values[i - 1]) <= 0.005) return gray;
+            return v > values[i - 1] ? green : red;
+        });
+    }
 
     function loadAvgHistory() {
         const days = $('#avg-history-range').val();
+        const channel = historyChartChannel;
+        const data = { days: days };
+        if (channel) data.channel = channel;
+
+        $('#avg-history-chart-wrapper').hide();
+        $('#avg-history-empty').hide();
+
         $.ajax({
-            url: "{{ route('kpi.shipping.avg.history') }}",
+            url: channel
+                ? "{{ route('kpi.shipping.value.history') }}"
+                : "{{ route('kpi.shipping.avg.history') }}",
             method: 'GET',
-            data: { days: days },
+            data: data,
             success: function(response) {
                 if (response.success && response.data && response.data.length > 0) {
                     $('#avg-history-chart-wrapper').show();
@@ -791,96 +954,165 @@
     }
 
     function renderAvgHistoryChart(data) {
-        const ctx = document.getElementById('avg-history-chart').getContext('2d');
+        const canvas = document.getElementById('avg-history-chart');
+        const ctx = canvas.getContext('2d');
         if (avgHistoryChart) avgHistoryChart.destroy();
 
-        const labels = data.map(d => d.date);
-        const values = data.map(d => d.value);
+        const labels = data.map(function(d) { return d.date; });
+        const values = data.map(function(d) { return Number(d.value); });
+        const dotColors = onTimeDotColors(values);
 
-        // Point colors based on trend direction (green up, red down, gray flat).
-        const pointColors = values.map(function(v, i) {
-            if (i === 0) return '#6c757d';
-            if (v > values[i - 1]) return '#28a745';
-            if (v < values[i - 1]) return '#dc3545';
-            return '#6c757d';
+        const sorted = values.slice().sort(function(a, b) { return a - b; });
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        const dataMin = Math.min.apply(null, values);
+        const dataMax = Math.max.apply(null, values);
+        const range = dataMax - dataMin || 1;
+        const yPad = Math.max(range * 0.28, Math.abs(dataMax) * 0.08, range * 0.1);
+        const yMin = Math.max(0, dataMin - range * 0.12);
+        const yMax = dataMax + yPad;
+
+        let maxIdx = 0;
+        let minIdx = 0;
+        values.forEach(function(v, i) {
+            if (v >= values[maxIdx]) maxIdx = i;
+            if (v <= values[minIdx]) minIdx = i;
         });
-
-        const sorted = [...values].sort((a, b) => a - b);
-        const median = sorted.length % 2 === 0
-            ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
-            : sorted[(sorted.length - 1) / 2];
-        const highest = Math.max(...values);
-        const lowest = Math.min(...values);
-
-        $('#avg-history-high').text(highest.toFixed(2) + '%');
-        $('#avg-history-median').text(median.toFixed(2) + '%');
-        $('#avg-history-low').text(lowest.toFixed(2) + '%');
-
-        const pad = Math.max((highest - lowest) * 0.1, 1);
-        const yMin = Math.max(0, lowest - pad);
-        const yMax = Math.min(100, highest + pad);
+        const refGray = '#6c757d';
+        const highestEl = document.getElementById('avg-history-high');
+        const medianEl = document.getElementById('avg-history-median');
+        const lowestEl = document.getElementById('avg-history-low');
+        highestEl.textContent = fmtOnTimePct(dataMax);
+        highestEl.style.color = dotColors[maxIdx] || refGray;
+        if (highestEl.previousElementSibling) highestEl.previousElementSibling.style.color = highestEl.style.color;
+        medianEl.textContent = fmtOnTimePct(median);
+        medianEl.style.color = refGray;
+        if (medianEl.previousElementSibling) medianEl.previousElementSibling.style.color = refGray;
+        lowestEl.textContent = fmtOnTimePct(dataMin);
+        lowestEl.style.color = dotColors[minIdx] || refGray;
+        if (lowestEl.previousElementSibling) lowestEl.previousElementSibling.style.color = lowestEl.style.color;
 
         const medianLinePlugin = {
             id: 'medianLine',
             afterDraw: function(chart) {
                 const yScale = chart.scales.y;
-                const y = yScale.getPixelForValue(median);
-                const ctx2 = chart.ctx;
-                ctx2.save();
-                ctx2.strokeStyle = 'rgba(13,110,253,0.6)';
-                ctx2.setLineDash([5, 4]);
-                ctx2.lineWidth = 1;
-                ctx2.beginPath();
-                ctx2.moveTo(chart.chartArea.left, y);
-                ctx2.lineTo(chart.chartArea.right, y);
-                ctx2.stroke();
-                ctx2.restore();
+                const xScale = chart.scales.x;
+                const draw = chart.ctx;
+                const yPixel = yScale.getPixelForValue(median);
+                draw.save();
+                draw.setLineDash([6, 4]);
+                draw.strokeStyle = '#6c757d';
+                draw.lineWidth = 1.2;
+                draw.beginPath();
+                draw.moveTo(xScale.left, yPixel);
+                draw.lineTo(xScale.right, yPixel);
+                draw.stroke();
+                draw.restore();
             }
         };
 
         const valueLabelsPlugin = {
             id: 'valueLabels',
-            afterDatasetsDraw: function(chart) {
-                const ctx2 = chart.ctx;
+            afterDraw: function(chart) {
+                const dataset = chart.data.datasets[0];
                 const meta = chart.getDatasetMeta(0);
-                ctx2.save();
-                ctx2.font = '10px sans-serif';
-                ctx2.fillStyle = values[i] === 0 ? '#198754' : values[i] > 0 ? '#dc3545' : '#6c757d';
-                ctx2.textAlign = 'center';
+                const draw = chart.ctx;
+                const lastIdx = meta.data.length - 1;
+                const anchors = [];
+                const angle = Math.PI / 5;
+                const sinA = Math.sin(angle);
+                const cosA = Math.cos(angle);
+                const minGap = 13;
+
+                draw.save();
+                draw.font = 'bold 10px Inter, system-ui, sans-serif';
+                draw.textAlign = 'left';
+                draw.textBaseline = 'middle';
+
                 meta.data.forEach(function(point, i) {
-                    ctx2.fillText(values[i].toFixed(1) + '%', point.x, point.y - 8);
+                    const text = fmtOnTimePct(dataset.data[i]);
+                    const textW = draw.measureText(text).width;
+                    let offsetY = (i % 2 === 0) ? -12 : -26;
+                    if (i === lastIdx) offsetY = (lastIdx % 2 === 0) ? -26 : -12;
+
+                    const sx = point.x;
+                    const sy = point.y + offsetY;
+                    for (let k = anchors.length - 1; k >= Math.max(0, anchors.length - 3); k--) {
+                        const prev = anchors[k];
+                        const dx = sx - prev.x;
+                        const dy = sy - prev.y;
+                        const along = dx * cosA - dy * sinA;
+                        if (!(along < prev.w && along + textW > 0)) continue;
+                        const dist = dx * sinA + dy * cosA;
+                        if (Math.abs(dist) >= minGap) continue;
+                        offsetY += (dist >= 0 ? -1 : 1) * ((minGap - Math.abs(dist)) / cosA);
+                        break;
+                    }
+                    anchors.push({ x: point.x, y: point.y + offsetY, w: textW });
+
+                    draw.save();
+                    draw.fillStyle = dotColors[i] || refGray;
+                    draw.translate(point.x, point.y + offsetY);
+                    draw.rotate(-angle);
+                    draw.fillText(text, 2, 0);
+                    draw.restore();
                 });
-                ctx2.restore();
+                draw.restore();
             }
         };
+
+        ctx.save();
+        ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+        const tailLabelWidth = Math.max.apply(null, values.slice(-2).map(function(v) {
+            return ctx.measureText(fmtOnTimePct(v)).width;
+        }));
+        ctx.restore();
+        const chartRightPad = Math.max(22, Math.ceil(tailLabelWidth * Math.cos(Math.PI / 5)) + 12);
 
         avgHistoryChart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Avg On Time %',
+                    label: 'On Time %',
                     data: values,
-                    backgroundColor: 'rgba(13,110,253,0.08)',
-                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(108,117,125,0.08)',
+                    borderColor: '#adb5bd',
                     borderWidth: 1.5,
                     fill: true,
                     tension: 0.3,
                     pointRadius: 3,
-                    pointBackgroundColor: pointColors,
-                    pointBorderColor: pointColors
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: dotColors,
+                    pointBorderColor: dotColors,
+                    pointHoverBackgroundColor: dotColors,
+                    pointHoverBorderColor: dotColors,
+                    pointBorderWidth: 1.5
                 }]
             },
             plugins: [medianLinePlugin, valueLabelsPlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                clip: false,
+                layout: { padding: { top: 44, left: 4, right: chartRightPad, bottom: 8 } },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
+                            labelColor: function(context) {
+                                const color = dotColors[context.dataIndex] || refGray;
+                                return { borderColor: color, backgroundColor: color, borderWidth: 2, borderRadius: 8 };
+                            },
                             label: function(context) {
-                                return 'Avg: ' + context.parsed.y.toFixed(2) + '%';
+                                const idx = context.dataIndex;
+                                const parts = ['Value: ' + fmtOnTimePct(context.raw)];
+                                if (idx > 0) {
+                                    const diff = context.raw - values[idx - 1];
+                                    const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '▬';
+                                    parts.push('vs Yesterday: ' + arrow + ' ' + fmtOnTimePct(Math.abs(diff)));
+                                }
+                                return parts;
                             }
                         }
                     }
@@ -889,10 +1121,18 @@
                     y: {
                         min: yMin,
                         max: yMax,
-                        ticks: { callback: function(v) { return v.toFixed(0) + '%'; } }
+                        ticks: {
+                            font: { size: 9 },
+                            callback: function(value) { return fmtOnTimePct(value); }
+                        }
                     },
                     x: {
-                        ticks: { maxRotation: 45, minRotation: 45, autoSkip: labels.length > 20 }
+                        ticks: {
+                            maxRotation: 60,
+                            minRotation: 60,
+                            autoSkip: false,
+                            font: { size: 8 }
+                        }
                     }
                 }
             }

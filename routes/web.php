@@ -1083,6 +1083,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/kpi-shipping/link/save', 'saveLink')->name('kpi.shipping.link.save');
         Route::post('/kpi-shipping/value/save', 'saveValue')->name('kpi.shipping.value.save');
         Route::get('/kpi-shipping/avg-history', 'avgHistory')->name('kpi.shipping.avg.history');
+        Route::get('/kpi-shipping/value-history', 'valueHistory')->name('kpi.shipping.value.history');
         Route::get('/kpi-shipping/incentive', 'incentive')->name('kpi.shipping.incentive');
         Route::post('/kpi-shipping/incentive/save', 'saveIncentive')->name('kpi.shipping.incentive.save');
     });

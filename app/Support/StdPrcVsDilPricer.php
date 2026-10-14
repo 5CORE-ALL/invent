@@ -29,43 +29,12 @@ class StdPrcVsDilPricer
     /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss?:list<array<string,float>>,zero_sold_disc?:float} $rules */
     public function __construct(private array $rules, private string $channel = '') {}
 
-    /**
-     * Channels whose Age / Dil / CVR / B Disc / 0 Sold discount rules are the Amazon rules
-     * (the amazon_std_prc_vs_dil panel on /amazon-tabulator-view). Min NPFT stays per channel.
-     */
-    public const RULES_FROM_AMAZON = ['bestbuy'];
+    /** Channels with no session CVR. CVR Disc is always 0 (Amazon A L30 / Sess30 is not used). */
+    public const SKIP_CVR = ['bestbuy'];
 
-    public static function usesAmazonRules(string $channel): bool
+    public static function skipsCvr(string $channel): bool
     {
-        return in_array($channel, self::RULES_FROM_AMAZON, true);
-    }
-
-    /**
-     * Saved Std prc vs dil rules for a channel (raw saved array, may be empty).
-     * For an Amazon-rule channel the discount rules come from amazon_std_prc_vs_dil, the same row Amazon prices from.
-     *
-     * @return array<string, mixed>
-     */
-    public static function savedRules(string $channel): array
-    {
-        $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', $channel.'_std_prc_vs_dil')
-            ->first();
-        $saved = is_array($row?->visibility) ? $row->visibility : [];
-        if (! self::usesAmazonRules($channel)) {
-            return $saved;
-        }
-        $amazonRow = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', 'amazon_std_prc_vs_dil')
-            ->first();
-        $amazon = is_array($amazonRow?->visibility) ? $amazonRow->visibility : [];
-        foreach (['dil', 'age', 'cvr', 'buss', 'zero_sold_disc'] as $key) {
-            if (array_key_exists($key, $amazon)) {
-                $saved[$key] = $amazon[$key];
-            }
-        }
-
-        return $saved;
+        return in_array($channel, self::SKIP_CVR, true);
     }
 
     public static function forChannel(string $channel): self
@@ -74,7 +43,10 @@ class StdPrcVsDilPricer
             return self::$cache[$channel];
         }
         $defaults = self::defaults();
-        $saved = self::savedRules($channel);
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_std_prc_vs_dil')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : [];
         $rules = [
             'dil' => self::ranges($saved['dil'] ?? null, $defaults['dil']),
             'age' => self::ranges($saved['age'] ?? null, $defaults['age']),
@@ -111,7 +83,11 @@ class StdPrcVsDilPricer
         $ageDisc = self::scaleRuleDisc($this->ageDisc($age), $std);
         $dilDisc = self::scaleRuleDisc($this->rangeDisc($dil, $this->rules['dil']), $std);
         $trend = in_array($row['cvr_trend'] ?? null, ['down', 'up', 'flat'], true) ? $row['cvr_trend'] : null;
-        $cvrDisc = self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60, $trend), $std);
+        // Best Buy has no session CVR. A missing CVR is "down" in cvrDisc() and would take
+        // Amazon's 6% slab. Skip the slab instead of reading Amazon A L30 / Sess30.
+        $cvrDisc = self::skipsCvr($this->channel)
+            ? 0.0
+            : self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60, $trend), $std);
         $reviewDisc = self::scaleRuleDisc($this->reviewDisc($reviews), $std);
         $bussDisc = $this->rangeDisc($std, $this->rules['buss'] ?? []);
         $zeroSoldDisc = $this->isZeroSold($row)

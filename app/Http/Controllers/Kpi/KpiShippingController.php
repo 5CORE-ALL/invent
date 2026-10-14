@@ -7,10 +7,12 @@ use App\Models\ChannelMaster;
 use App\Models\KpiShippingLink;
 use App\Models\KpiShippingAvgHistory;
 use App\Models\KpiShippingIncentive;
+use App\Models\KpiShippingValueHistory;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class KpiShippingController extends Controller
 {
@@ -43,6 +45,10 @@ class KpiShippingController extends Controller
                 ->get(['channel', 'link', 'on_time_pct', 'updated_by', 'updated_at'])
                 ->keyBy('channel');
 
+            $today = Carbon::now('America/Los_Angeles')->toDateString();
+            $this->snapshotAllChannels($records, $today);
+            $previous = $this->previousValuesByChannel($today);
+
             $data = [];
             foreach ($channels as $channel) {
                 $name = trim((string) $channel->channel);
@@ -51,17 +57,24 @@ class KpiShippingController extends Controller
                 }
 
                 $record = $records->get($name);
+                $pct = $record && $record->on_time_pct !== null ? (float) $record->on_time_pct : null;
+                $prev = array_key_exists($name, $previous) ? $previous[$name] : null;
 
-                $data[] = array_merge([                                                                                                                                                                                                                                                                       
+                $data[] = array_merge([
                     'channel' => $name,
-                    'on_time_pct' => $record && $record->on_time_pct !== null ? (float) $record->on_time_pct : null,
+                    'on_time_pct' => $pct,
+                    'on_time_prev' => $prev,
+                    'on_time_trend' => $this->onTimeTrend($pct, $prev),
                     'link' => $record->link ?? null,
                 ], $this->updatedPayload($record));
             }
 
             $this->snapshotAverage();
 
-            return response()->json(['data' => $data]);
+            return response()->json([
+                'data' => $data,
+                'avg_trend' => $this->avgTrend(),
+            ]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
         }   
@@ -109,6 +122,116 @@ class KpiShippingController extends Controller
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Daily On Time % history for one channel.
+     */
+    public function valueHistory(Request $request)
+    {
+        try {
+            $channel = trim((string) $request->input('channel', ''));
+            $days = (int) $request->input('days', 30);
+
+            $query = KpiShippingValueHistory::query()
+                ->where('channel', $channel)
+                ->whereNotNull('on_time_pct')
+                ->orderBy('snapshot_date', 'asc');
+
+            if ($days > 0) {
+                $start = Carbon::now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $start);
+            }
+
+            $data = $query->get()->map(function ($row) {
+                return [
+                    'date' => Carbon::parse($row->snapshot_date)->format('M d'),
+                    'value' => round((float) $row->on_time_pct, 2),
+                ];
+            })->values();
+
+            return response()->json(['success' => true, 'data' => $data]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Write today's On Time % for every channel that has a value.
+     *
+     * @param \Illuminate\Support\Collection<string, KpiShippingLink> $records
+     */
+    private function snapshotAllChannels($records, string $today): void
+    {
+        $now = now();
+        $payload = [];
+
+        foreach ($records as $record) {
+            if ($record->on_time_pct === null) {
+                continue;
+            }
+
+            $payload[] = [
+                'channel' => $record->channel,
+                'snapshot_date' => $today,
+                'on_time_pct' => round((float) $record->on_time_pct, 2),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if ($payload === []) {
+            return;
+        }
+
+        KpiShippingValueHistory::query()->upsert(
+            $payload,
+            ['channel', 'snapshot_date'],
+            ['on_time_pct', 'updated_at']
+        );
+    }
+
+    /**
+     * Latest saved On Time % before today, keyed by channel.
+     *
+     * @return array<string, float|null>
+     */
+    private function previousValuesByChannel(string $today): array
+    {
+        $latest = DB::table('kpi_shipping_value_history')
+            ->select('channel', DB::raw('MAX(snapshot_date) as snapshot_date'))
+            ->where('snapshot_date', '<', $today)
+            ->groupBy('channel');
+
+        $rows = DB::table('kpi_shipping_value_history as h')
+            ->joinSub($latest, 'prev', function ($join) {
+                $join->on('h.channel', '=', 'prev.channel')
+                    ->on('h.snapshot_date', '=', 'prev.snapshot_date');
+            })
+            ->get(['h.channel', 'h.on_time_pct']);
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row->channel] = $row->on_time_pct !== null ? (float) $row->on_time_pct : null;
+        }
+
+        return $map;
+    }
+
+    /**
+     * Higher On Time % is up (green). No prior day is none (gray).
+     */
+    private function onTimeTrend(?float $current, ?float $previous): string
+    {
+        if ($current === null || $previous === null) {
+            return 'none';
+        }
+
+        if (abs($current - $previous) <= 0.005) {
+            return 'flat';
+        }
+
+        return $current > $previous ? 'up' : 'down';
     }
 
     /**
@@ -187,11 +310,51 @@ class KpiShippingController extends Controller
 
         $this->snapshotAverage();
 
+        $today = Carbon::now('America/Los_Angeles')->toDateString();
+        KpiShippingValueHistory::query()->updateOrCreate(
+            ['channel' => $channel, 'snapshot_date' => $today],
+            ['on_time_pct' => $value === null ? null : round($value, 2)]
+        );
+        $previous = $this->previousValuesByChannel($today);
+        $prev = array_key_exists($channel, $previous) ? $previous[$channel] : null;
+
         return response()->json(array_merge([
             'success' => true,
             'channel' => $channel,
             'on_time_pct' => $value,
+            'on_time_prev' => $prev,
+            'on_time_trend' => $this->onTimeTrend($value, $prev),
+            'avg_trend' => $this->avgTrend(),
         ], $this->updatedPayload($record)));
+    }
+
+    /**
+     * Compare today's stored average with the previous snapshot.
+     * Higher On Time % is up (green); lower is down (red).
+     */
+    private function avgTrend(): string
+    {
+        $recent = KpiShippingAvgHistory::query()
+            ->orderByDesc('snapshot_date')
+            ->limit(2)
+            ->pluck('avg_pct')
+            ->values();
+
+        if ($recent->count() < 2) {
+            return 'none';
+        }
+
+        $current = round((float) $recent[0], 2);
+        $previous = round((float) $recent[1], 2);
+
+        if ($current > $previous) {
+            return 'up';
+        }
+        if ($current < $previous) {
+            return 'down';
+        }
+
+        return 'flat';
     }
 
     /**
