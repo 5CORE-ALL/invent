@@ -224,6 +224,7 @@ use App\Http\Controllers\MarketPlace\PurchasingPowerListingVariationVerifyContro
 use App\Http\Controllers\MarketPlace\PlsListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\NeweggListingVariationVerifyController;
 use App\Http\Controllers\MarketPlace\ChannelPromoPricingController;
+use App\Http\Controllers\MarketPlace\MarketplacePercentageController;
 use App\Http\Controllers\MarketPlace\MasterDilRuleController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\OverallAmazonFbaController;
@@ -6034,6 +6035,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-promo-pricing/{channel}/zero-sold-prc', [ChannelPromoPricingController::class, 'saveZeroSoldPrcRules'])->name('channel.promo.zero-sold-prc.save');
     Route::get('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'dilSgroiRules'])->name('channel.promo.dil-sgroi.get');
     Route::post('/channel-promo-pricing/{channel}/dil-sgroi', [ChannelPromoPricingController::class, 'saveDilSgroiRules'])->name('channel.promo.dil-sgroi.save');
+    Route::get('/marketplace-percentage', [MarketplacePercentageController::class, 'index'])->name('marketplace.percentage');
+    Route::post('/marketplace-percentage', [MarketplacePercentageController::class, 'store'])->name('marketplace.percentage.store');
+    Route::post('/marketplace-percentage/{id}', [MarketplacePercentageController::class, 'update'])->name('marketplace.percentage.update');
+    Route::delete('/marketplace-percentage/{id}', [MarketplacePercentageController::class, 'destroy'])->name('marketplace.percentage.destroy');
     Route::get('/master-dil-rules', [MasterDilRuleController::class, 'index'])->name('master.dil.rules');
     Route::get('/master-dil-rules/data', [MasterDilRuleController::class, 'data'])->name('master.dil.rules.data');
     Route::post('/master-dil-rules', [MasterDilRuleController::class, 'save'])->name('master.dil.rules.save');

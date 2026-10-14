@@ -1401,6 +1401,9 @@
                 </a>
                 <div class="collapse" id="sidebarLayouts">
                     <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('marketplace.percentage') }}">Marketplace %</a>
+                        </li>
 
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarSecondLevel" aria-expanded="false"
@@ -2806,6 +2809,13 @@
                 <a href="{{ route('master.dil.rules') }}" class="side-nav-link">
                     <i class="ri-equalizer-line"></i>
                     <span>Master Dil Rule</span>
+                </a>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ route('marketplace.percentage') }}" class="side-nav-link">
+                    <i class="ri-percent-line"></i>
+                    <span>Marketplace %</span>
                 </a>
             </li>
 

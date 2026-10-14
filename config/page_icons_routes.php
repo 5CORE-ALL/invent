@@ -174,6 +174,7 @@ return [
     'outgoing.*' => 'sidebar_orders',
 
     'expenses.*' => 'sidebar_finance',
+    'marketplace.percentage' => 'marketplace',
     'new.marketplaces.*' => 'marketplace',
     'shopify' => 'sidebar_shopify',
     'traffic.*' => 'sidebar_channel',
