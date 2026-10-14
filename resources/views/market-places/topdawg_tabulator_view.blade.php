@@ -270,7 +270,10 @@
     function tdIsParentRow(d) {
         return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
     }
-    function tdDisplayedSprice(data) {
+    function tdAmzPrice(data) {
+        return Math.round((parseFloat(data && data['A Price']) || 0) * 100) / 100;
+    }
+    function tdRawSprice(data) {
         if (!data || tdIsParentRow(data)) return 0;
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
@@ -280,6 +283,21 @@
             return Number(chPromoSavedOrLiveSprice(data)) || 0;
         }
         return parseFloat(data.SPRICE) || 0;
+    }
+    /** Amz rule on display: a saved S PRC under A Price shows A Price right away, before the next server run re-saves it. */
+    function tdDisplayedSprice(data) {
+        const v = tdRawSprice(data);
+        const amz = tdAmzPrice(data);
+        if (v > 0 && amz > 0 && v + 0.0001 < amz) return amz;
+        return v;
+    }
+    function tdHasAmzCap(data) {
+        if (!data || tdIsParentRow(data)) return false;
+        const amz = tdAmzPrice(data);
+        const shown = tdDisplayedSprice(data);
+        if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
+        const flag = data.AMZ_CAPPED === true || data.AMZ_CAPPED === 1 || data.AMZ_CAPPED === '1';
+        return flag || tdRawSprice(data) + 0.0001 < amz;
     }
     function tdRowSpriceForAlert(data) {
         return tdDisplayedSprice(data);
@@ -1079,9 +1097,8 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        const amzOn = rowData.AMZ_CAPPED === true || rowData.AMZ_CAPPED === 1 || rowData.AMZ_CAPPED === '1';
-                        const amzPrice = parseFloat(rowData['A Price']) || 0;
-                        const amzLbl = (amzOn && amzPrice > 0)
+                        const amzPrice = tdAmzPrice(rowData);
+                        const amzLbl = (tdHasAmzCap(rowData) && amzPrice > 0)
                             ? '<span class="td-sprice-amz-lbl" style="font-size:9px;font-weight:700;color:#fd7e14;border:1px solid #fd7e14;border-radius:3px;padding:0 3px;" title="S PRC raised to Amazon $'
                                 + amzPrice.toFixed(2) + '">Amz</span>'
                             : '';

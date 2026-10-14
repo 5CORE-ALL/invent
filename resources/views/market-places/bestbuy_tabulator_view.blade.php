@@ -569,11 +569,18 @@
         const raw = parseFloat(data && data.lmp_price) || 0;
         return raw > 0 ? Math.round(raw * 100) / 100 : 0;
     }
-    /** Saved S PRC from the server job (Std prc vs dil → Min NPFT → Std max → LMP cap → Amz rule). */
-    function bestbuySavedSprice(data) {
+    /** Saved S PRC (server job). */
+    function bestbuyRawSavedSprice(data) {
         if (!data || isBestbuyParentRow(data)) return 0;
         const v = parseFloat(data.SPRICE);
         return isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : 0;
+    }
+    /** Amz rule on display: a saved S PRC under A Price shows A Price right away, before the next server run re-saves it. */
+    function bestbuySavedSprice(data) {
+        const v = bestbuyRawSavedSprice(data);
+        const amz = bestbuyAmazonPrice(data);
+        if (v > 0 && amz > 0 && v + 0.0001 < amz) return amz;
+        return v;
     }
     function bestbuyDisplayedSprice(data) {
         return bestbuySavedSprice(data);
@@ -582,13 +589,14 @@
         return bestbuyDisplayedSprice(data);
     }
     window.bestbuyDisplayedSprice = bestbuyDisplayedSprice;
-    /** Set by the server job when the Amz rule raised S PRC to A Price (AMZ_CAPPED on the saved row). */
+    /** Amz rule: S PRC was raised to A Price (server flag AMZ_CAPPED, or a saved S PRC still under A Price). */
     function bestbuyHasAmzCap(data) {
         if (isBestbuyParentRow(data)) return false;
-        if (!(data && (data.AMZ_CAPPED === true || data.AMZ_CAPPED === 1 || data.AMZ_CAPPED === '1'))) return false;
         const amz = bestbuyAmazonPrice(data);
         const shown = bestbuyDisplayedSprice(data);
-        return amz > 0 && shown > 0 && Math.abs(shown - amz) <= 0.015;
+        if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
+        const flag = data && (data.AMZ_CAPPED === true || data.AMZ_CAPPED === 1 || data.AMZ_CAPPED === '1');
+        return flag || bestbuyRawSavedSprice(data) + 0.0001 < amz;
     }
     function bestbuyHasBlueTriangle(data) {
         if (isBestbuyParentRow(data) || !isBbListed(data)) return false;
