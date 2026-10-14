@@ -1118,6 +1118,34 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Best Buy Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap, Amz rule) → S PRC → Best Buy MCM.
+        // Same twice-daily idea as Amazon, offset 40 min. /bestbuy-pricing does not need to be open.
+        // Do NOT wrap 20:40 in $ist() — IST window ends at 20:00.
+        $schedule->command('bestbuy:sprc-dil-auto-push')
+            ->dailyAt('04:40')
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('bestbuy:sprc-dil-auto-push')
+            ->dailyAt('20:40')
+            ->timezone('Asia/Kolkata')
+            ->name('bestbuy-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Headless "Push on reload" for /bestbuy-pricing (same as amazon:push-blue-prices): blue-triangle SKUs
+        // (INV > 0, BB Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()).
+        $schedule->command('bestbuy:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('bestbuy-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload": blue-triangle SKUs (INV > 0, Price ≠ S PRC) keep getting
         // pushed + pulled all day with the page closed. The two daily runs above skip a SKU whose
         // last pushed offer already equals the target, so a drifted Price stayed stale until the
@@ -1162,7 +1190,6 @@ class Kernel extends ConsoleKernel
 
         // Std prc vs dil → S PRC, then push. The analytics page does not need to be open.
         foreach ([
-            ['05:05', '21:05', 'dil:rule-sprice-apply bestbuy --push', 'bestbuy-sprc-dil'],
             ['05:25', '21:25', 'dil:rule-sprice-apply newegg --push', 'newegg-sprc-dil'],
             ['05:35', '21:35', 'dil:rule-sprice-apply temu --push', 'temu-sprc-dil'],
             ['05:45', '21:45', 'dil:rule-sprice-apply temu2 --push', 'temu2-sprc-dil'],

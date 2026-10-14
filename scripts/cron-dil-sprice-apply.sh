@@ -5,7 +5,7 @@
 # /etc/cron.d/dil-sprice-apply (server TZ Asia/Kolkata):
 #   0 4,20 * * *  ... cron-dil-sprice-apply.sh amazon
 #   10 4,20 * * * ... cron-dil-sprice-apply.sh newtemuone
-#   5 5,21 * * *  ... cron-dil-sprice-apply.sh bestbuy
+#   40 4,20 * * * ... cron-dil-sprice-apply.sh bestbuy
 #   15 4,20 * * * ... cron-dil-sprice-apply.sh aliexpress
 #   25 5,21 * * * ... cron-dil-sprice-apply.sh newegg
 #   35 5,21 * * * ... cron-dil-sprice-apply.sh temu
@@ -67,7 +67,7 @@ case "$MODE" in
     CMD=(purchasing-power:sprc-dil-auto-push)
     MODE=purchasing_power
     ;;
-  bestbuy|newegg|temu|temu2|temu3|tiktok|tiktok2|faire|shein|wayfair|walmart|pls)
+  newegg|temu|temu2|temu3|tiktok|tiktok2|faire|shein|wayfair|walmart|pls)
     CMD=(dil:rule-sprice-apply "$MODE" --push)
     ;;
   reverb)
@@ -77,6 +77,10 @@ case "$MODE" in
   topdawg|td)
     CMD=(topdawg:sprc-dil-auto-push)
     MODE=topdawg
+    ;;
+  bestbuy|bb)
+    CMD=(bestbuy:sprc-dil-auto-push)
+    MODE=bestbuy
     ;;
   aliexpress|ae)
     CMD=(aliexpress:sprc-dil-auto-push)

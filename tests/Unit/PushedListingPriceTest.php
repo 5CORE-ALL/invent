@@ -127,7 +127,7 @@ class PushedListingPriceTest extends TestCase
     {
         $m = new \ReflectionMethod(DilRuleSpriceApplyService::class, 'shouldEnqueuePush');
         $m->setAccessible(true);
-        $svc = DilRuleSpriceApplyService::for('bestbuy');
+        $svc = DilRuleSpriceApplyService::for('newegg');
 
         $this->assertFalse($m->invoke($svc, ['sku' => 'X', 'live' => 37.50], 37.50, true));
     }
@@ -136,7 +136,7 @@ class PushedListingPriceTest extends TestCase
     {
         $m = new \ReflectionMethod(DilRuleSpriceApplyService::class, 'shouldEnqueuePush');
         $m->setAccessible(true);
-        $svc = DilRuleSpriceApplyService::for('bestbuy');
+        $svc = DilRuleSpriceApplyService::for('newegg');
 
         $this->assertTrue($m->invoke($svc, ['sku' => 'X', 'live' => 49.99], 37.50, true));
     }
@@ -145,7 +145,7 @@ class PushedListingPriceTest extends TestCase
     {
         $m = new \ReflectionMethod(DilRuleSpriceApplyService::class, 'shouldEnqueuePush');
         $m->setAccessible(true);
-        $svc = DilRuleSpriceApplyService::for('bestbuy');
+        $svc = DilRuleSpriceApplyService::for('newegg');
 
         $this->assertFalse($m->invoke($svc, [
             'sku' => 'X',

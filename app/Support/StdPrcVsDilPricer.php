@@ -603,6 +603,7 @@ class StdPrcVsDilPricer
             'shopify_b2c' => 'b2c_l30',
             'macys', 'macy' => 'mc_l30',
             'purchasing_power' => 'pp_l30',
+            'bestbuy' => 'bb_l30',
             'temu', 'temu2', 'temu3' => 'temu_l30',
             'aliexpress', 'shein', 'faire' => 'al30',
             'amazon' => 'a_l30',
@@ -612,7 +613,7 @@ class StdPrcVsDilPricer
         if ($key !== null && array_key_exists($key, $row) && is_numeric($row[$key])) {
             return (float) $row[$key];
         }
-        foreach (['sold', 'a_l30', 'A_L30', 'ebay_l30', 'b2c_l30', 'mc_l30', 'pp_l30'] as $fallback) {
+        foreach (['sold', 'a_l30', 'A_L30', 'ebay_l30', 'b2c_l30', 'mc_l30', 'pp_l30', 'bb_l30'] as $fallback) {
             if (array_key_exists($fallback, $row) && is_numeric($row[$fallback])) {
                 return (float) $row[$fallback];
             }

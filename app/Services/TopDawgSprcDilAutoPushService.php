@@ -22,7 +22,8 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  Then raised to Min NPFT % (saved in topdawg_std_prc_vs_dil, default 10). Clearance SKUs keep the discount price.
- *  Std Prc is the maximum. No LMP cap (TopDawg has no LMP).
+ *  Std Prc is the maximum, then the Amz rule: S PRC never sits below the Amazon price (A Price).
+ *  No LMP cap (TopDawg has no LMP).
  *  TopDawg profit has no Ship (same as /topdawg/sales-dashboard).
  *
  * Same flow as Amazon, except Ship (TopDawg profit has none) and LMP (no LMP cap, only Std caps):
@@ -119,7 +120,7 @@ class TopDawgSprcDilAutoPushService
 
                     if (PushedListingPrice::same($row['price'] ?? 0, $sprice)) {
                         // Live TD Price already equals the target. Keep the saved S PRC in step, no push.
-                        if (! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
+                        if (! $dryRun && (! PushedListingPrice::same($row['sprice'] ?? 0, $sprice) || ! empty($row['amz_capped']) !== ! empty($computed['amz_capped']))) {
                             $this->saveSprice((string) $row['sku'], $computed, 'pushed');
                             $stats['applied']++;
                         }
@@ -231,7 +232,7 @@ class TopDawgSprcDilAutoPushService
      * TopDawg profit has no Ship. Ads % is the Channel Master value (row key ads_pct).
      *
      * @param  array<string, mixed>  $row
-     * @return array{sprice:float,base:float,margin:float,lp:float,ads:float}|null
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,base:float,margin:float,lp:float,ads:float}|null
      */
     public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
     {
@@ -278,7 +279,12 @@ class TopDawgSprcDilAutoPushService
         }
 
         // No LMP cap and no eBay / Amazon caps. Std Prc is the maximum.
-        $capped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
+        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
+
+        // Amz rule: S PRC is never below the Amazon price (A Price).
+        $amz = round((float) ($row['amz'] ?? 0), 2);
+        $amzCapped = $amz > 0 && $uncapped + 0.0001 < $amz;
+        $capped = $amzCapped ? $amz : $uncapped;
 
         if (! is_finite($capped) || $capped < 0.01) {
             return null;
@@ -286,6 +292,8 @@ class TopDawgSprcDilAutoPushService
 
         return [
             'sprice' => round($capped, 2),
+            'uncapped' => round($uncapped, 2),
+            'amz_capped' => $amzCapped,
             'base' => round($std, 2),
             'margin' => $margin,
             'lp' => $lp,
@@ -363,6 +371,8 @@ class TopDawgSprcDilAutoPushService
                 'margin' => (float) ($r['percentage'] ?? 0),
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
+                'amz' => (float) ($r['A Price'] ?? 0),
+                'amz_capped' => ! empty($r['AMZ_CAPPED']),
                 'sprice' => (float) ($r['SPRICE'] ?? 0),
                 'pushed_value' => isset($r['SPRICE_PUSHED_VALUE']) && is_numeric($r['SPRICE_PUSHED_VALUE'])
                     ? (float) $r['SPRICE_PUSHED_VALUE']
@@ -410,7 +420,7 @@ class TopDawgSprcDilAutoPushService
      * Save S PRC the way the page does (topdawg_data_views.value: sprice + SPRICE_STATUS + PUSH_STATUS).
      * SGPFT / SROI are recomputed from sprice when the page loads.
      *
-     * @param  array{sprice:float}  $computed
+     * @param  array{sprice:float,uncapped?:float,amz_capped?:bool}  $computed
      */
     protected function saveSprice(string $sku, array $computed, string $status = 'applied'): void
     {
@@ -422,6 +432,8 @@ class TopDawgSprcDilAutoPushService
 
         $existing['sprice'] = $sprice;
         $existing['SPRICE'] = $sprice;
+        $existing['AMZ_CAPPED'] = (bool) ($computed['amz_capped'] ?? false);
+        $existing['SPRICE_UNCAPPED'] = round((float) ($computed['uncapped'] ?? $sprice), 2);
         $existing['SPRICE_STATUS'] = $status;
         $existing['SPRICE_STATUS_UPDATED_AT'] = $now;
         if ($status === 'pushed') {

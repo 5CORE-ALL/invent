@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Remaining Dil pages (not eBay / Amazon / Shopify B2C / Macys / PP).
+# Remaining Dil pages (not eBay / Amazon / Shopify B2C / Macys / PP / Best Buy).
 # apply: each page saves S PRC, then pushes its live price (FB saves only).
 # push: catch-up for any listing still different after apply.
 # Direct crontab — schedule:run is overloaded and has missed IST slots.
@@ -50,7 +50,7 @@ trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT INT TERM HUP
 set +e
 if [[ "$MODE" == "apply" ]]; then
   code=0
-  for ch in bestbuy newegg temu temu2 temu3 tiktok tiktok2 doba faire shein wayfair fb_marketplace walmart pls; do
+  for ch in newegg temu temu2 temu3 tiktok tiktok2 doba faire shein wayfair fb_marketplace walmart pls; do
     if [[ "$ch" == "fb_marketplace" || "$ch" == "doba" ]]; then
       # Save-only: FB has no push, Doba auto push is disabled.
       cmd=(dil:rule-sprice-apply "$ch")

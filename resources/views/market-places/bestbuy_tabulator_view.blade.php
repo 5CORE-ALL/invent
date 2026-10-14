@@ -454,6 +454,8 @@
 
 @section('script-bottom')
 <script>
+    // S PRC is saved + pushed by the server (bestbuy:sprc-dil-auto-push). The page only shows it.
+    window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     let table = null;
@@ -489,25 +491,6 @@
         if (rowData.is_bb_inactive === true) return true;
         const flag = String(rowData.live_inactive || rowData.listing_status || '').toLowerCase();
         return ['inactive', 'offline', 'ended', 'disabled'].indexOf(flag) !== -1;
-    }
-    function bestbuyRuleSprice(d) {
-        if (!d || isBestbuyParentRow(d)) return 0;
-        if (typeof chStdUsesMinNpft === 'function' && !chStdUsesMinNpft()) return 0;
-        if (typeof chStdMinNpftNow === 'function' && !(Number(chStdMinNpftNow()) > 0)) return 0;
-        if (typeof chStdIsClearance === 'function' && chStdIsClearance(d)) return 0;
-        if (typeof chStdPriceForRow !== 'function') return 0;
-        const rule = Number(chStdPriceForRow(d)) || 0;
-        return rule > 0 ? Math.round(rule * 100) / 100 : 0;
-    }
-    function bestbuyPushPriceValue(d) {
-        let p = bestbuyDisplayedSprice(d);
-        const rule = bestbuyRuleSprice(d);
-        if (rule > p) p = rule;
-        if (typeof chPromoFinalSpriceToSave === 'function' && p > 0) {
-            const saved = Number(chPromoFinalSpriceToSave(d, p)) || 0;
-            if (saved > p) p = saved;
-        }
-        return Math.round((Number(p) || 0) * 100) / 100;
     }
     function bestbuyFindRowBySku(sku) {
         const want = String(sku || '').trim().toUpperCase();
@@ -559,74 +542,6 @@
     }
     window.bestbuyApplyLivePriceToRow = bestbuyApplyLivePriceToRow;
 
-    function bestbuyApplyPushResults(results) {
-        (results || []).forEach(function(r) {
-            if (!r || !r.sku) return;
-            const row = bestbuyFindRowBySku(r.sku);
-            if (!row) return;
-            const ok = !!r.success;
-            const live = Number(r.price) || 0;
-            if (ok && live > 0) {
-                bestbuyApplyLivePriceToRow(row, live);
-                return;
-            }
-            const patch = {
-                SPRICE_STATUS: 'error',
-                push_status: 'error',
-            };
-            try { row.update(patch); } catch (e) { /* ignore */ }
-            try { if (row.reformat) row.reformat(); } catch (e) { /* ignore */ }
-        });
-        if (typeof updateSummary === 'function') updateSummary();
-    }
-    function bestbuyPushPriceForRow(row) {
-        if (!row || typeof row.getData !== 'function') return;
-        const d = row.getData() || {};
-        if (isBestbuyParentRow(d)) return;
-        const sku = String(d['(Child) sku'] || '').trim();
-        const price = bestbuyPushPriceValue(d);
-        const status = String(d.push_status || d.SPRICE_STATUS || '');
-        if (!sku || !(price > 0)) {
-            showToast('Set a valid SPRICE before pushing', 'error');
-            return;
-        }
-        if (isBbInactive(d) || !isBbListed(d)) {
-            showToast('Inactive / not listed — skip push', 'warning');
-            return;
-        }
-        if (status === 'pushing' || status === 'processing' || status === 'queued') return;
-        try { row.update({ SPRICE_STATUS: 'queued', push_status: 'queued' }); } catch (e) { /* ignore */ }
-        if (typeof enqueueChannelPushSpriceAfterSave === 'function'
-            && typeof chPushSpriceAutoPushAllowed === 'function'
-            && chPushSpriceAutoPushAllowed()) {
-            enqueueChannelPushSpriceAfterSave(sku, price, row, { force: true });
-            return;
-        }
-        $.ajax({
-            url: '/bestbuy-push-price',
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
-                'Accept': 'application/json'
-            },
-            data: { sku: sku, price: price }
-        }).done(function(resp) {
-            bestbuyApplyPushResults([{
-                sku: sku,
-                success: !!(resp && resp.success),
-                price: (resp && resp.price != null) ? resp.price : price,
-                message: (resp && resp.message) || ''
-            }]);
-            if (resp && resp.success) {
-                showToast(sku + ': price pushed', 'success');
-            } else {
-                showToast((resp && resp.message) || 'Best Buy price push failed', 'error');
-            }
-        }).fail(function(xhr) {
-            bestbuyApplyPushResults([{ sku: sku, success: false, price: price }]);
-            showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Best Buy price push failed', 'error');
-        });
-    }
     function isBestbuyParentRow(row) {
         if (!row) return false;
         if (row.is_parent_summary || row.is_parent) return true;
@@ -635,12 +550,6 @@
     }
     function bestbuyAmazonPrice(data) {
         return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
-    }
-    function bestbuyApplyAmzFloor(data, sprice) {
-        const s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
-        const amz = bestbuyAmazonPrice(data);
-        if (s > 0 && amz > 0 && s < amz - 0.0001) return amz;
-        return s > 0 ? s : 0;
     }
     function bestbuyRowLmp(data) {
         const entries = data && Array.isArray(data.lmp_entries) ? data.lmp_entries : [];
@@ -660,82 +569,26 @@
         const raw = parseFloat(data && data.lmp_price) || 0;
         return raw > 0 ? Math.round(raw * 100) / 100 : 0;
     }
-    function bestbuyPriceIsIgnoredLmp(data, price) {
-        const p = Math.round((parseFloat(price) || 0) * 100) / 100;
-        if (!(p > 0) || !data || !Array.isArray(data.lmp_entries) || !window.LmpIgnore) return false;
-        const active = bestbuyRowLmp(data);
-        if (active > 0 && Math.abs(active - p) < 0.02) return false;
-        return data.lmp_entries.some(function(item) {
-            if (!LmpIgnore.isIgnored(item)) return false;
-            const total = Math.round((parseFloat(item.total_price)
-                || ((parseFloat(item.price) || 0) + (parseFloat(item.shipping_cost) || 0))) * 100) / 100;
-            return total > 0 && Math.abs(total - p) < 0.02;
-        });
-    }
-    /** Amazon floor first, then LMP. If LMP is below A Price, keep A Price. */
-    function bestbuyCapAfterAmz(data, sprice) {
-        let s = bestbuyApplyAmzFloor(data, sprice);
-        if (!(s > 0)) return 0;
-        const amz = bestbuyAmazonPrice(data);
-        const lmp = bestbuyRowLmp(data);
-        if (!(lmp > 0) || s + 0.0001 < lmp) return s;
-        if (amz > 0 && lmp + 0.0001 < amz) return amz;
-        return lmp;
-    }
-    function bestbuyUncappedDil(data) {
-        if (data && !isBestbuyParentRow(data) && typeof ebayDilGroiMetaForRow === 'function') {
-            const meta = ebayDilGroiMetaForRow(data);
-            const raw = Number(meta && meta.rawSprc);
-            if (raw > 0) return Math.round(raw * 100) / 100;
-        }
-        if (typeof ebaySprcDilForRow === 'function' && data && !isBestbuyParentRow(data)) {
-            const dil = Number(ebaySprcDilForRow(data));
-            if (dil > 0) return Math.round(dil * 100) / 100;
-        }
-        return 0;
-    }
+    /** Saved S PRC from the server job (Std prc vs dil → Min NPFT → Std max → LMP cap → Amz rule). */
     function bestbuySavedSprice(data) {
         if (!data || isBestbuyParentRow(data)) return 0;
-        if (typeof chPromoTableSprice === 'function') {
-            const saved = Number(chPromoTableSprice(data)) || 0;
-            if (saved > 0) return saved;
-        }
-        return parseFloat(data.SPRICE) || 0;
+        const v = parseFloat(data.SPRICE);
+        return isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : 0;
     }
     function bestbuyDisplayedSprice(data) {
-        if (!data || isBestbuyParentRow(data)) return 0;
-        const amz = bestbuyAmazonPrice(data);
-        const lmp = bestbuyRowLmp(data);
-        // Ignored competitors are not LMP. A live LMP below Amazon stays at A Price,
-        // unless Min NPFT % needs a higher S PRC.
-        if (amz > 0 && lmp > 0 && lmp + 0.0001 < amz) {
-            const ruleEarly = bestbuyRuleSprice(data);
-            return ruleEarly > amz ? ruleEarly : amz;
-        }
-        let base = 0;
-        const saved = bestbuySavedSprice(data);
-        if (saved > 0 && !bestbuyPriceIsIgnoredLmp(data, saved)) base = saved;
-        if (!(base > 0)) return bestbuyRuleSprice(data);
-        const capped = bestbuyCapAfterAmz(data, base);
-        let shown = bestbuyPriceIsIgnoredLmp(data, capped) ? (amz > 0 ? amz : 0) : capped;
-        const rule = bestbuyRuleSprice(data);
-        if (rule > shown) shown = rule;
-        return shown;
+        return bestbuySavedSprice(data);
     }
     function bestbuyRowSpriceForAlert(data) {
         return bestbuyDisplayedSprice(data);
     }
     window.bestbuyDisplayedSprice = bestbuyDisplayedSprice;
+    /** Set by the server job when the Amz rule raised S PRC to A Price (AMZ_CAPPED on the saved row). */
     function bestbuyHasAmzCap(data) {
         if (isBestbuyParentRow(data)) return false;
+        if (!(data && (data.AMZ_CAPPED === true || data.AMZ_CAPPED === 1 || data.AMZ_CAPPED === '1'))) return false;
         const amz = bestbuyAmazonPrice(data);
         const shown = bestbuyDisplayedSprice(data);
-        if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
-        const discounted = bestbuyUncappedDil(data);
-        const saved = bestbuySavedSprice(data);
-        if ((discounted > 0 && discounted < amz - 0.0001) || (saved > 0 && saved < amz - 0.0001)) return true;
-        const lmp = bestbuyRowLmp(data);
-        return lmp > 0 && lmp + 0.0001 < amz;
+        return amz > 0 && shown > 0 && Math.abs(shown - amz) <= 0.015;
     }
     function bestbuyHasBlueTriangle(data) {
         if (isBestbuyParentRow(data) || !isBbListed(data)) return false;
@@ -1290,29 +1143,6 @@
                         if (response.errors && response.errors.length > 0) {
                             console.warn('Some updates had errors:', response.errors);
                         }
-                        if (response.price_push_success_count !== undefined || response.price_push_failed_count !== undefined) {
-                            const pushOk = Number(response.price_push_success_count || 0);
-                            const pushFail = Number(response.price_push_failed_count || 0);
-                            if (pushFail > 0) {
-                                let pushMsg = `BestBuy price push: ${pushOk} success, ${pushFail} failed`;
-                                if (response.price_push_errors && response.price_push_errors.length > 0) {
-                                    pushMsg += ` (${response.price_push_errors[0]})`;
-                                }
-                                showToast(pushMsg, 'warning');
-                            } else if (pushOk > 0) {
-                                showToast(`BestBuy price push successful for ${pushOk} SKU(s)`, 'success');
-                            }
-                            if (Array.isArray(response.price_push_results) && response.price_push_results.length) {
-                                bestbuyApplyPushResults(response.price_push_results);
-                            } else if (typeof table !== 'undefined' && table && pushOk > 0 && pushFail === 0) {
-                                (updates || []).forEach(function(u) {
-                                    const price = Number(u && u.sprice);
-                                    if (!u || !u.sku || !(price > 0)) return;
-                                    const row = bestbuyFindRowBySku(u.sku);
-                                    if (row) bestbuyApplyLivePriceToRow(row, price);
-                                });
-                            }
-                        }
                         if (typeof updateSummary === 'function') {
                             try { updateSummary(); } catch (e) { /* ignore */ }
                         }
@@ -1769,33 +1599,10 @@
             $('#lmpDataList').html(html);
         }
         function refreshBestbuySpriceAfterLmpIgnore() {
+            // S PRC is server-owned: the next bestbuy:sprc-dil-auto-push run re-prices with the new LMP.
             if (typeof table === 'undefined' || !table || !table.getRows) return;
-            const targets = {};
-            const add = function(s) {
-                const k = String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
-                if (k) targets[k] = true;
-            };
-            add(currentLmpData.sku);
-            (currentLmpData.linkedLmpSkus || []).forEach(add);
             (table.getRows('all') || table.getRows() || []).forEach(function(row) {
-                const d = row.getData();
-                if (!d || isBestbuyParentRow(d)) return;
-                const key = String(d['(Child) sku'] || '').replace(/\s+/g, ' ').trim().toUpperCase();
-                if (!targets[key]) return;
-                const next = Math.round((bestbuyDisplayedSprice(d) || 0) * 100) / 100;
-                const saved = Math.round((bestbuySavedSprice(d) || 0) * 100) / 100;
                 try { row.reformat(); } catch (e) { /* ignore */ }
-                const clearIgnored = !(next > 0) && bestbuyPriceIsIgnoredLmp(d, saved);
-                if (!clearIgnored && (!(next > 0) || Math.abs(saved - next) < 0.005)) return;
-                const stored = clearIgnored ? 0 : next;
-                try { row.update({ SPRICE: stored, sprice: stored, has_custom_sprice: stored > 0 }); } catch (e) { /* ignore */ }
-                if (typeof saveChannelSprice === 'function') {
-                    saveChannelSprice(d['(Child) sku'], stored, true, {
-                        skip_push: true,
-                        queue_push: false,
-                        row: row
-                    });
-                }
             });
         }
         function patchBestbuyGridLmp() {
@@ -2494,7 +2301,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Std prc vs dil. If that price is under Min NPFT %, it is raised. If it is under A Price, S PRC = A Price, then cap at LMP. If LMP is below A Price, keep A Price. Blue triangle = S PRC ≠ BB Price. Red text = S PRC capped at LMP.",
+                    headerTooltip: "Not editable. S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (BB L30 = 0) − CVR − Reviews, raised to Min NPFT % (default 10, clearance exempt), Std Prc is the maximum, capped at LMP (Min NPFT wins), then never below A Price (Amz). Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
@@ -2517,7 +2324,7 @@
                         const lmpBelowAmz = amzNow > 0 && lmp > 0 && lmp + 0.0001 < amzNow;
                         const overLmp = !lmpBelowAmz && lmp > 0 && value + 0.0001 >= lmp;
                         const redTri = overLmp
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $' + lmp.toFixed(2) + '"></i>'
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC at LMP $' + lmp.toFixed(2) + '"></i>'
                             : '';
                         const formatted = '$' + value.toFixed(2);
                         const priceHtml = overLmp
@@ -2535,75 +2342,6 @@
                         return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
                     },
                     width: 110
-                },
-                {
-                    title: 'Push',
-                    field: 'push_status',
-                    hozAlign: 'center',
-                    headerSort: true,
-                    width: 52,
-                    headerTooltip: 'Price push status. Double tick = pushed to Best Buy. Cross = failed or not listed. Click to push or retry. If S PRC is below A Price, push uses A Price.',
-                    sorter: function(a, b, aRow, bRow) {
-                        const rank = function(d) {
-                            const status = String((d && (d.push_status || d.SPRICE_STATUS)) || '');
-                            if (status === 'pushed') return 4;
-                            if (status === 'queued' || status === 'pushing' || status === 'processing') return 3;
-                            if (status === 'error' || status === 'failed') return 2;
-                            return bestbuyPushPriceValue(d) > 0 ? 1 : 0;
-                        };
-                        return rank(aRow.getData()) - rank(bRow.getData());
-                    },
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (isBestbuyParentRow(rowData)) return '';
-                        const sku = String(rowData['(Child) sku'] || '');
-                        const price = bestbuyPushPriceValue(rowData);
-                        if (!sku || !(price > 0)) return '';
-                        const status = String(rowData.push_status || rowData.SPRICE_STATUS || '');
-                        const pushedValue = rowData.SPRICE_PUSHED_VALUE;
-                        const updatedAt = rowData.SPRICE_STATUS_UPDATED_AT || '';
-                        const pushedBy = rowData.SPRICE_PUSHED_BY || '';
-                        let icon = '<i class="fas fa-upload"></i>';
-                        let color = '#0d6efd';
-                        let tip = 'Push $' + price.toFixed(2) + ' to Best Buy';
-                        if (isBbInactive(rowData) || !isBbListed(rowData)) {
-                            icon = '<i class="fa-solid fa-x"></i>';
-                            color = '#dc3545';
-                            tip = 'Not listed — cannot push';
-                        } else if (status === 'pushing' || status === 'processing' || status === 'queued') {
-                            icon = '<i class="fas fa-spinner fa-spin"></i>';
-                            color = '#ffc107';
-                            tip = 'Pushing to Best Buy…';
-                        } else if (status === 'pushed') {
-                            icon = '<i class="fa-solid fa-check-double"></i>';
-                            color = '#28a745';
-                            tip = 'Pushed to Best Buy';
-                        } else if (status === 'error' || status === 'failed') {
-                            icon = '<i class="fa-solid fa-x"></i>';
-                            color = '#dc3545';
-                            tip = 'Push failed — click to retry';
-                        }
-                        if (pushedValue != null && pushedValue !== '') {
-                            tip += ' | Last $' + (parseFloat(pushedValue) || 0).toFixed(2);
-                        }
-                        if (updatedAt) tip += ' | ' + updatedAt;
-                        if (pushedBy) tip += ' | by ' + pushedBy;
-                        return '<button type="button" class="bb-push-single-btn" data-sku="'
-                            + sku.replace(/"/g, '&quot;') + '" data-price="' + price.toFixed(2)
-                            + '" data-status="' + status.replace(/"/g, '&quot;')
-                            + '" title="' + String(tip).replace(/"/g, '&quot;')
-                            + '" style="border:none;background:none;color:' + color
-                            + ';padding:0;cursor:pointer;font-size:16px;">' + icon + '</button>';
-                    },
-                    cellClick: function(e, cell) {
-                        const t = e.target;
-                        if (!t || typeof t.closest !== 'function') return;
-                        const btn = t.closest('.bb-push-single-btn');
-                        if (!btn) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        bestbuyPushPriceForRow(cell.getRow());
-                    }
                 },
                 {
                     title: "SGROI%",

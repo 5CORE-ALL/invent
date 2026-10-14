@@ -47,6 +47,7 @@ class StdPrcVsDilDailyCommand extends Command
                 ['reverb:sprc-dil-auto-push', $save],
                 ['topdawg:sprc-dil-auto-push', $save],
                 ['purchasing-power:sprc-dil-auto-push', $save],
+                ['bestbuy:sprc-dil-auto-push', $save],
                 ['dil:rule-sprice-apply', ['channel' => 'all'] + $saveAndPush],
                 ['shopify-b2c:rule-sprice-apply', $saveAndPush],
                 ['macys:rule-sprice-apply', $saveAndPush],

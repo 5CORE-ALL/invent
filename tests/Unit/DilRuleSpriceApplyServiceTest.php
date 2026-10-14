@@ -10,7 +10,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
 {
     public function test_dil_in_slab_uses_target_groi_and_takehome(): void
     {
-        $out = $this->compute('bestbuy', [
+        $out = $this->compute('newegg', [
             'inv' => 10,
             'dil' => 3,
             'ov_l30' => 2,
@@ -71,7 +71,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
             AmazonDilGroiRule::make(0.1, 5.0, 80),
             AmazonDilGroiRule::make(5.0, 10.0, 40),
         ];
-        $out = DilRuleSpriceApplyService::for('bestbuy')->computeTarget(
+        $out = DilRuleSpriceApplyService::for('newegg')->computeTarget(
             [
                 'inv' => 8,
                 'dil' => 0,
@@ -254,57 +254,6 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
     }
 
-    public function test_bestbuy_raises_to_amz_floor(): void
-    {
-        $out = $this->compute('bestbuy', [
-            'inv' => 10,
-            'dil' => 3,
-            'ov_l30' => 2,
-            'cvr' => 8,
-            'lp' => 20,
-            'ship' => 0,
-            'lmp' => 0,
-            'amz_price' => 45,
-        ]);
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(45.0, $out['sprice'], 0.01);
-    }
-
-    public function test_bestbuy_caps_at_lmp_after_amz_floor(): void
-    {
-        $out = $this->compute('bestbuy', [
-            'inv' => 10,
-            'dil' => 3,
-            'ov_l30' => 2,
-            'cvr' => 8,
-            'lp' => 20,
-            'ship' => 0,
-            'lmp' => 40,
-            'amz_price' => 45,
-        ]);
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(40.0, $out['sprice'], 0.01);
-    }
-
-    public function test_bestbuy_keeps_dil_when_at_or_above_amz(): void
-    {
-        $out = $this->compute('bestbuy', [
-            'inv' => 10,
-            'dil' => 3,
-            'ov_l30' => 2,
-            'cvr' => 8,
-            'lp' => 20,
-            'ship' => 0,
-            'lmp' => 0,
-            'amz_price' => 30,
-        ]);
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
-    }
-
     public function test_newegg_raises_to_amz_floor(): void
     {
         $out = $this->compute('newegg', [
@@ -324,7 +273,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
 
     public function test_inv_zero_skips(): void
     {
-        $this->assertNull($this->compute('bestbuy', [
+        $this->assertNull($this->compute('newegg', [
             'inv' => 0,
             'dil' => 3,
             'ov_l30' => 2,
@@ -335,7 +284,7 @@ class DilRuleSpriceApplyServiceTest extends TestCase
 
     public function test_sold_out_of_slab_skips_on_min_groi_channels(): void
     {
-        $this->assertNull($this->compute('bestbuy', [
+        $this->assertNull($this->compute('newegg', [
             'inv' => 10,
             'dil' => 80,
             'ov_l30' => 5,
@@ -502,7 +451,6 @@ class DilRuleSpriceApplyServiceTest extends TestCase
     public function test_channels_from_arg(): void
     {
         $this->assertSame(DilRuleSpriceApplyService::CHANNELS, DilRuleSpriceApplyService::channelsFromArg('all'));
-        $this->assertSame(['bestbuy'], DilRuleSpriceApplyService::channelsFromArg('bb'));
         $this->assertSame(['fb_marketplace'], DilRuleSpriceApplyService::channelsFromArg('fb'));
         $this->assertSame(['walmart'], DilRuleSpriceApplyService::channelsFromArg('wm'));
         $this->assertSame(['pls'], DilRuleSpriceApplyService::channelsFromArg('pls'));
@@ -515,6 +463,8 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertNotContains('reverb', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertNotContains('topdawg', DilRuleSpriceApplyService::CHANNELS);
         $this->assertNotContains('topdawg', DilRuleSpriceApplyService::PUSH_CHANNELS);
+        $this->assertNotContains('bestbuy', DilRuleSpriceApplyService::CHANNELS);
+        $this->assertNotContains('bestbuy', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertContains('walmart', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertContains('pls', DilRuleSpriceApplyService::PUSH_CHANNELS);
     }

@@ -1359,7 +1359,7 @@
                 label: 'Best Buy',
                 saveSpriceUrl: '/bestbuy-save-sprice',
                 saveSpriceBatchUrl: '/bestbuy-save-sprice',
-                pushPriceUrl: '/bestbuy-push-price',
+                pushPriceUrl: null,
                 priceField: 'BB Price',
                 dilField: 'BB Dil%',
                 invField: 'INV',

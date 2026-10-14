@@ -23,7 +23,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use App\Services\BestBuyApiService;
 use App\Support\MacysAmazonPriceCap;
 use App\Support\ProductMasterShipBb;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -251,6 +250,8 @@ class BestBuyPricingController extends Controller
             );
             $row["BB L30"] = $bestbuyMetric ? ($bestbuyMetric->m_l30 ?? 0) : 0;
             $row["BB Price"] = $resolvedPrice['price'];
+            // Live MCM price, kept even when BB Price below is replaced by the last pushed value.
+            $row["BB Price MCM"] = $resolvedPrice['price'];
             $row["BB INV"] = $resolvedPrice['listed'] && $bestbuyMetric && $bestbuyMetric->stock !== null
                 ? (int) $bestbuyMetric->stock
                 : 0;
@@ -351,13 +352,19 @@ class BestBuyPricingController extends Controller
                 }
             }
 
-            // SPRICE calculation (no CVR for Best Buy, just use price directly)
-            $calculatedSprice = $price > 0 ? round($price * 0.99, 2) : null;
-            
-            // Check for saved SPRICE
-            $savedSprice = null;
-            $savedStatus = null;
-            $hasSavedSprice = false;
+            // S PRC is saved + pushed by the server (bestbuy:sprc-dil-auto-push). The page only shows it.
+            $row['SPRICE'] = null;
+            $row['has_custom_sprice'] = false;
+            $row['SPRICE_STATUS'] = null;
+            $row['push_status'] = null;
+            $row['SPRICE_PUSHED_VALUE'] = null;
+            $row['SPRICE_STATUS_UPDATED_AT'] = null;
+            $row['SPRICE_PUSHED_BY'] = null;
+            $row['SPRICE_PUSHED_AT'] = null;
+            // Set by the server job when the Amz rule raised S PRC to A Price.
+            $row['AMZ_CAPPED'] = false;
+            $row['SPRICE_UNCAPPED'] = null;
+
             $raw = null;
             if (isset($dataViews[$pm->sku])) {
                 $raw = $dataViews[$pm->sku];
@@ -366,34 +373,25 @@ class BestBuyPricingController extends Controller
                 }
                 if (is_array($raw)) {
                     if (isset($raw['SPRICE'])) {
-                        $savedSprice = floatval($raw['SPRICE']);
-                        $hasSavedSprice = true;
+                        $row['SPRICE'] = floatval($raw['SPRICE']);
+                        $row['has_custom_sprice'] = true;
+                        $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? 'saved';
+                    } else {
+                        // Record exists but no SPRICE: it was cleared, show 0.
+                        $row['SPRICE'] = 0;
+                        $row['SPRICE_STATUS'] = $raw['SPRICE_STATUS'] ?? null;
                     }
-                    if (isset($raw['SPRICE_STATUS'])) {
-                        $savedStatus = $raw['SPRICE_STATUS'];
-                    }
+                    $row['push_status'] = $row['SPRICE_STATUS'];
+                    $row['SPRICE_PUSHED_VALUE'] = isset($raw['SPRICE_PUSHED_VALUE'])
+                        ? floatval($raw['SPRICE_PUSHED_VALUE'])
+                        : null;
+                    $row['SPRICE_STATUS_UPDATED_AT'] = $raw['SPRICE_STATUS_UPDATED_AT'] ?? $raw['SPRICE_PUSHED_AT'] ?? null;
+                    $row['SPRICE_PUSHED_BY'] = $raw['SPRICE_PUSHED_BY'] ?? null;
+                    $row['SPRICE_PUSHED_AT'] = $raw['SPRICE_PUSHED_AT'] ?? null;
+                    $row['AMZ_CAPPED'] = filter_var($raw['AMZ_CAPPED'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                    $row['SPRICE_UNCAPPED'] = isset($raw['SPRICE_UNCAPPED']) ? floatval($raw['SPRICE_UNCAPPED']) : null;
                 }
             }
-
-            // Use saved SPRICE if exists, otherwise use calculated or 0 if record exists without SPRICE
-            if ($hasSavedSprice) {
-                $row['SPRICE'] = $savedSprice;
-                $row['has_custom_sprice'] = true;
-                $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
-            } else {
-                // If record exists but no SPRICE, it was cleared - show 0
-                $row['SPRICE'] = isset($dataViews[$pm->sku]) ? 0 : $calculatedSprice;
-                $row['has_custom_sprice'] = false;
-                $row['SPRICE_STATUS'] = $savedStatus;
-            }
-            $row['push_status'] = $row['SPRICE_STATUS'];
-            $row['SPRICE_PUSHED_VALUE'] = (is_array($raw ?? null) && isset($raw['SPRICE_PUSHED_VALUE']))
-                ? floatval($raw['SPRICE_PUSHED_VALUE'])
-                : null;
-            $row['SPRICE_STATUS_UPDATED_AT'] = is_array($raw ?? null)
-                ? ($raw['SPRICE_STATUS_UPDATED_AT'] ?? $raw['SPRICE_PUSHED_AT'] ?? null)
-                : null;
-            $row['SPRICE_PUSHED_BY'] = is_array($raw ?? null) ? ($raw['SPRICE_PUSHED_BY'] ?? null) : null;
 
             $pushedVal = (float) ($row['SPRICE_PUSHED_VALUE'] ?? 0);
             $savedForPush = (float) ($row['SPRICE'] ?? 0);
@@ -1144,7 +1142,6 @@ class BestBuyPricingController extends Controller
 
             $updated = 0;
             $errors = [];
-            $pricePushQueue = [];
 
             DB::beginTransaction();
             
@@ -1176,6 +1173,8 @@ class BestBuyPricingController extends Controller
                         unset($existingValue['SPFT']);
                         unset($existingValue['SROI']);
                         unset($existingValue['SGPFT']);
+                        unset($existingValue['AMZ_CAPPED']);
+                        unset($existingValue['SPRICE_UNCAPPED']);
                         unset($existingValue['sprice_updated_at']);
                         
                         // Update the record without SPRICE data
@@ -1259,7 +1258,6 @@ class BestBuyPricingController extends Controller
                     ]);
                 }
                 $updated++;
-                $pricePushQueue[] = ['sku' => $sku, 'sprice' => (float) $sprice];
                 
                 // Store last calculated metrics for single update response
                 if (count($updates) === 1) {
@@ -1273,41 +1271,12 @@ class BestBuyPricingController extends Controller
 
             DB::commit();
 
-            $pricePushSuccess = 0;
-            $pricePushFailed = 0;
-            $pricePushErrors = [];
-            $pricePushResults = [];
-            $singlePushResult = null;
-            $skipPush = $request->boolean('skip_push');
-            foreach ($skipPush ? [] : $pricePushQueue as $pushItem) {
-                $pushResult = $this->pushPriceToBestBuy($pushItem['sku'], (float) $pushItem['sprice']);
-                $pricePushResults[] = [
-                    'sku' => $pushItem['sku'],
-                    'success' => (bool) ($pushResult['success'] ?? false),
-                    'price' => $pushResult['price'] ?? null,
-                    'capped' => (bool) ($pushResult['capped'] ?? false),
-                    'amazon_price' => $pushResult['amazon_price'] ?? null,
-                    'message' => (string) ($pushResult['message'] ?? ''),
-                ];
-                if (count($pricePushQueue) === 1) {
-                    $singlePushResult = $pushResult;
-                }
-                if (($pushResult['success'] ?? false) === true) {
-                    $pricePushSuccess++;
-                } else {
-                    $pricePushFailed++;
-                    $pricePushErrors[] = $pushItem['sku'] . ': ' . ($pushResult['message'] ?? 'Price push failed');
-                }
-            }
-
+            // S PRC is pushed by the server (bestbuy:sprc-dil-auto-push), never from this page.
             $response = [
                 'success' => true,
                 'updated' => $updated,
                 'message' => "Successfully saved {$updated} SPRICE update(s)",
-                'price_push_success_count' => $pricePushSuccess,
-                'price_push_failed_count' => $pricePushFailed,
-                'price_push_skipped' => $skipPush,
-                'price_push_results' => $pricePushResults,
+                'price_push_skipped' => true,
             ];
 
             // Include calculated metrics for single updates (manual cell edits)
@@ -1319,14 +1288,6 @@ class BestBuyPricingController extends Controller
                 $response['errors'] = $errors;
                 $response['message'] .= ' with ' . count($errors) . ' error(s)';
             }
-            if (!empty($pricePushErrors)) {
-                $response['price_push_errors'] = $pricePushErrors;
-            }
-            if (is_array($singlePushResult)) {
-                $response['price_push_success'] = (bool) ($singlePushResult['success'] ?? false);
-                $response['price_push_message'] = (string) ($singlePushResult['message'] ?? '');
-                $response['price_push_status_code'] = $singlePushResult['status_code'] ?? null;
-            }
 
             Log::info("BestBuy SPRICE updates saved to bestbuy_usa_data_view: {$updated} records updated");
 
@@ -1336,107 +1297,6 @@ class BestBuyPricingController extends Controller
             DB::rollBack();
             Log::error('Error saving SPRICE updates: ' . $e->getMessage());
             return response()->json(['error' => 'Error saving updates: ' . $e->getMessage()], 500);
-        }
-    }
-
-    public function pushPriceTabulator(Request $request)
-    {
-        $sku = strtoupper(trim((string) $request->input('sku', '')));
-        $price = $request->input('price', $request->input('sprice'));
-        if ($sku === '' || ! is_numeric($price) || (float) $price <= 0) {
-            return response()->json(['success' => false, 'message' => 'SKU and price required'], 422);
-        }
-
-        $applied = MacysAmazonPriceCap::applyForSku($sku, (float) $price);
-        $price = (float) $applied['price'];
-        $result = $this->pushPriceToBestBuy($sku, $price);
-        $message = (string) ($result['message'] ?? '');
-        if (($result['success'] ?? false) && ($applied['capped'] ?? false)) {
-            $message = trim($message.' (raised to Amazon $'.number_format($price, 2).')');
-        }
-
-        return response()->json([
-            'success' => (bool) ($result['success'] ?? false),
-            'message' => $message,
-            'status_code' => $result['status_code'] ?? null,
-            'price' => $price,
-            'amazon_price' => $applied['amazon_price'] ?? null,
-            'capped' => (bool) ($applied['capped'] ?? false),
-            'push_status' => (($result['success'] ?? false) === true) ? 'pushed' : 'error',
-        ], ($result['success'] ?? false) ? 200 : 422);
-    }
-
-    /**
-     * Push saved SPRICE to Best Buy marketplace API.
-     *
-     * @return array{success:bool,message:string,status_code?:int|null,skipped?:bool}
-     */
-    private function pushPriceToBestBuy(string $sku, float $sprice): array
-    {
-        $applied = MacysAmazonPriceCap::applyForSku($sku, $sprice);
-        $sprice = (float) $applied['price'];
-        if ($sprice <= 0) {
-            return ['success' => false, 'message' => 'Skipping push for non-positive price'];
-        }
-
-        $block = self::pricePushBlockReason($sku);
-        if ($block !== null) {
-            return ['success' => false, 'message' => $block, 'skipped' => true, 'status_code' => 422];
-        }
-
-        try {
-            $result = app(BestBuyApiService::class)->updatePrice($sku, $sprice);
-            $this->persistBestBuyPushStatus(
-                $sku,
-                (($result['success'] ?? false) === true) ? 'pushed' : 'error',
-                $sprice
-            );
-            $result['price'] = $sprice;
-            $result['capped'] = (bool) ($applied['capped'] ?? false);
-            $result['amazon_price'] = $applied['amazon_price'] ?? null;
-
-            return $result;
-        } catch (\Throwable $e) {
-            $this->persistBestBuyPushStatus($sku, 'error', $sprice);
-            Log::error('Best Buy price push call failed', ['sku' => $sku, 'error' => $e->getMessage()]);
-
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
-    }
-
-    private function persistBestBuyPushStatus(string $sku, string $status, ?float $price = null): void
-    {
-        try {
-            $skuKey = strtoupper(trim($sku));
-            $dataView = BestbuyUSADataView::query()
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [$skuKey])
-                ->first()
-                ?: BestbuyUSADataView::firstOrNew(['sku' => $skuKey]);
-            $existing = is_array($dataView->value)
-                ? $dataView->value
-                : (json_decode((string) ($dataView->value ?? ''), true) ?: []);
-            if (! is_array($existing)) {
-                $existing = [];
-            }
-            $existing['SPRICE_STATUS'] = $status;
-            $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
-            $existing['SPRICE_PUSHED_AT'] = now()->toDateTimeString();
-            if ($price !== null) {
-                $existing['SPRICE_PUSHED_VALUE'] = round((float) $price, 2);
-            }
-            if (auth()->check()) {
-                $existing['SPRICE_PUSHED_BY'] = auth()->user()->name ?? auth()->user()->email;
-                $existing['SPRICE_PUSHED_BY_ID'] = auth()->id();
-            }
-            $dataView->sku = $dataView->sku ?: $skuKey;
-            $dataView->value = $existing;
-            $dataView->save();
-        } catch (\Throwable $e) {
-            Log::warning('Best Buy persist push status failed', [
-                'sku' => $sku,
-                'status' => $status,
-                'error' => $e->getMessage(),
-            ]);
         }
     }
 

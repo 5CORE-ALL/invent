@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Models\AmazonDataView;
 use App\Models\AmazonDatasheet;
-use App\Models\BestbuyUsaProduct;
-use App\Models\BestbuyUSADataView;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\DobaDataView;
 use App\Models\DobaMetric;
@@ -41,7 +39,6 @@ use App\Models\WalmartMetrics;
 use App\Models\WayfairDataView;
 use App\Models\WayfairPricingPrice;
 use App\Support\AmazonDilGroiRule;
-use App\Support\ProductMasterShipBb;
 use App\Support\ProductMasterTemuShip;
 use App\Support\PushedListingPrice;
 use Illuminate\Support\Facades\Log;
@@ -50,13 +47,13 @@ use Throwable;
 
 /**
  * Page-less Sprc Dil → S PRC for Dil tabulator pages that do not have
- * their own nightly save cron (eBay / Amazon / Shopify B2C / Macys / PP do).
+ * their own nightly save cron (eBay / Amazon / Shopify B2C / Macys / PP / Best Buy do).
  *
  * Same cell math as ebay-sprc-dil: listing Dil, Target NROI (Ads%=0 → GROI), 0-sold min (except
  * Temu 2/3). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
- * Wayfair / Faire / FB, Newegg / Best Buy Amz floor, LMP cap at SGROI ≥ 20%.
+ * Wayfair / Faire / FB, Newegg Amz floor, LMP cap at SGROI ≥ 20%.
  * Shein: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab or nearest slab. Dil is Shopify OV L30 ÷ INV.
  * Level-only CVR overlay when views > 0.
  */
@@ -65,7 +62,6 @@ class DilRuleSpriceApplyService
     public const LMP_SGROI_MIN = AmazonDilGroiRule::LMP_SGROI_MIN;
 
     public const CHANNELS = [
-        'bestbuy',
         'newegg',
         'temu',
         'temu2',
@@ -83,7 +79,6 @@ class DilRuleSpriceApplyService
 
     /** Channels the shared push runner can actually send. FB and Doba are save-only (no auto push). */
     public const PUSH_CHANNELS = [
-        'bestbuy',
         'newegg',
         'temu',
         'temu2',
@@ -101,7 +96,7 @@ class DilRuleSpriceApplyService
 
     private bool $applyStdPrcVsDil = false;
 
-    public function __construct(string $channel = 'bestbuy')
+    public function __construct(string $channel = 'newegg')
     {
         $this->channel = self::normalizeChannel($channel);
     }
@@ -116,7 +111,6 @@ class DilRuleSpriceApplyService
         $channel = strtolower(trim($channel));
 
         return match ($channel) {
-            'bb', 'best_buy', 'bestbuyusa' => 'bestbuy',
             'tt', 'tiktokshop' => 'tiktok',
             'tiktok_2', 'tiktoktwo' => 'tiktok2',
             'fb', 'facebook', 'fbmarketplace' => 'fb_marketplace',
@@ -360,13 +354,6 @@ class DilRuleSpriceApplyService
             $amz = (float) ($row['amz_price'] ?? 0);
             if ($amz > 0 && $sprice + 0.0001 < $amz) {
                 $sprice = round($amz, 2);
-            }
-        }
-
-        if ($this->channel === 'bestbuy') {
-            $lmp = (float) ($row['lmp'] ?? 0);
-            if ($lmp > 0 && $sprice + 0.0001 >= $lmp) {
-                $sprice = round($lmp, 2);
             }
         }
 
@@ -933,9 +920,6 @@ class DilRuleSpriceApplyService
         }
         if (in_array($this->channel, ['temu', 'temu2', 'temu3'], true)) {
             $ship = ProductMasterTemuShip::forPricing(is_array($values) ? $values : [], $master);
-        } elseif ($this->channel === 'bestbuy') {
-            // /bestbuy-pricing prices with Ship BB (slab + handling + o-size), not Ship.
-            $ship = ProductMasterShipBb::forPricing(is_array($values) ? $values : [], $master);
         } else {
             $ship = isset($values['ship']) ? (float) $values['ship'] : (float) ($master->ship ?? 0);
         }
@@ -1111,13 +1095,6 @@ class DilRuleSpriceApplyService
         ];
 
         $specific = match ($this->channel) {
-            'bestbuy' => [
-                'metric' => BestbuyUsaProduct::class,
-                'view' => BestbuyUSADataView::class,
-                'price' => 'price',
-                'l30' => 'm_l30',
-                'amz_floor' => true,
-            ],
             'newegg' => [
                 'metric' => NeweggMetric::class,
                 'view' => NeweggDataView::class,
