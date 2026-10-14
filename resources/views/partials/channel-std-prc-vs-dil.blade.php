@@ -492,6 +492,8 @@
             });
             return chStdClearanceLoading;
         }
+        window.chStdIsClearance = chStdIsClearance;
+        window.chStdLoadClearance = chStdLoadClearance;
         function chStdAdsFrac() {
             if (typeof chPromoAdsFrac !== 'function') return 0;
             const n = Number(chPromoAdsFrac());

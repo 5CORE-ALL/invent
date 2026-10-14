@@ -133,6 +133,10 @@
                             style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
                             title="Amz: Dil S PRC was below A Price and was raised to Amz. Click to filter. Click again to clear."
                             aria-label="S PRC raised to Amazon">Amz 0</span>
+                        <span class="badge fs-6 p-2" id="pp-clearance-badge"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                            title="C = Clearance SKUs (Inv days clearance = YES). They are exempt from the Min NPFT floor. Click to filter. Click again to clear."
+                            aria-label="Clearance SKUs">C 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'purchasingpower-price-gt-lmp-badge', 'pglChannelKey' => 'purchasingpower', 'pglPriceField' => 'PP Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'purchasingpower-price-lt80-lmp-badge', 'pltChannelKey' => 'purchasingpower', 'pltPriceField' => 'PP Price'])
                     </div>
@@ -274,6 +278,7 @@
         let priceLt80LmpFilterActive = false;
         let blueTriangleFilterActive = false;
         let amzCapFilterActive = false;
+        let clearanceFilterActive = false;
 
         function ppIsParentRow(d) {
             return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
@@ -343,6 +348,10 @@
             $('#pp-amz-cap-badge').css({
                 outline: amzCapFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: amzCapFilterActive ? '2px' : ''
+            });
+            $('#pp-clearance-badge').css({
+                outline: clearanceFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: clearanceFilterActive ? '2px' : ''
             });
         }
 
@@ -849,6 +858,11 @@
                     return ppHasAmzCap(data);
                 });
             }
+            if (clearanceFilterActive) {
+                table.addFilter(function(data) {
+                    return !ppIsParentRow(data) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data);
+                });
+            }
 
             updateSummary();
         }
@@ -862,6 +876,7 @@
                     if (on) {
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
+                        clearanceFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -876,6 +891,7 @@
                     if (on) {
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
+                        clearanceFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -887,12 +903,37 @@
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 amzCapFilterActive = false;
+                clearanceFilterActive = false;
             }
             applyFilters();
         });
+        $('#pp-clearance-badge').on('click', function() {
+            clearanceFilterActive = !clearanceFilterActive;
+            if (clearanceFilterActive) {
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                blueTriangleFilterActive = false;
+                amzCapFilterActive = false;
+                if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
+                if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
+            }
+            applyFilters();
+        });
+
+        // Clearance SKU list (Inv days clearance = YES) loads once, then the C badge count refreshes.
+        (function loadClearanceForBadge(tries) {
+            if (typeof window.chStdLoadClearance !== 'function') {
+                if (tries < 40) setTimeout(function() { loadClearanceForBadge(tries + 1); }, 250);
+                return;
+            }
+            window.chStdLoadClearance().always(function() {
+                try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
+            });
+        })(0);
         $('#pp-amz-cap-badge').on('click', function() {
             amzCapFilterActive = !amzCapFilterActive;
             if (amzCapFilterActive) {
+                clearanceFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
@@ -951,14 +992,17 @@
             }
             let blueTriangleCount = 0;
             let amzCapCount = 0;
+            let clearanceCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (ppHasBlueTriangle(row)) blueTriangleCount++;
                 if (ppHasAmzCap(row)) amzCapCount++;
+                if (!ppIsParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) clearanceCount++;
             });
             $('#pp-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             $('#pp-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
+            $('#pp-clearance-badge').text('C ' + clearanceCount.toLocaleString());
             if (typeof syncPpTriangleBadgeState === 'function') syncPpTriangleBadgeState();
         
             if (window.AnalyticsDilBadge) {
