@@ -460,7 +460,8 @@ class ListingManagerPublishDispatcher
                 'sku' => $sku,
                 'price' => $price,
                 'quantity' => $qty,
-                'variation_label' => (string) ($child['variation_label'] ?? $sku),
+                'variation_label' => (string) ($child['variation_label'] ?? ListingManagerFamily::variationLabel($sku, $parentGroup)),
+                'variation_type' => (string) ($child['variation_type'] ?? ListingManagerFamily::variationType($sku)),
                 'upc' => '',
             ];
         }

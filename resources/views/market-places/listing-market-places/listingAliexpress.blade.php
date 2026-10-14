@@ -1146,5 +1146,5 @@
             publishUrl: '/listing_aliexpress/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=17"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261015-vm"></script>
 @endsection

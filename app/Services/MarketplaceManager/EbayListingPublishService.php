@@ -639,6 +639,7 @@ class EbayListingPublishService
      */
     private function variationRows(array $skus, string $parent): array
     {
+        ListingManagerFamily::warmAttributes($skus);
         $rows = [];
         foreach ($skus as $sku) {
             $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false);
@@ -651,6 +652,7 @@ class EbayListingPublishService
                 'price' => $price,
                 'quantity' => $this->resolveQuantity($sku, $hydrated),
                 'variation_label' => ListingManagerFamily::variationLabel($sku, $parent),
+                'variation_type' => ListingManagerFamily::variationType($sku),
                 'images' => ListingManagerAmazonHydrator::publishImageUrls($sku, $parent, 12),
                 'upc' => '',
             ];

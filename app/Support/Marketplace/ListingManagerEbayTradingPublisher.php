@@ -451,6 +451,7 @@ class ListingManagerEbayTradingPublisher
                 'price' => (float) ($row['price'] ?? 0),
                 'quantity' => (int) ($row['quantity'] ?? 0),
                 'variation_label' => $label,
+                'variation_type' => trim((string) ($row['variation_type'] ?? '')),
                 'images' => array_values(array_filter(array_map(static fn ($u) => trim((string) $u), $images), static fn ($u) => preg_match('#^https?://#i', $u) === 1)),
                 'upc' => '',
             ];
@@ -506,6 +507,19 @@ class ListingManagerEbayTradingPublisher
      */
     private static function variationAspectName(array $variations): string
     {
+        $types = [];
+        foreach ($variations as $row) {
+            $type = trim((string) ($row['variation_type'] ?? ''));
+            if ($type !== '') {
+                $types[$type] = ($types[$type] ?? 0) + 1;
+            }
+        }
+        if ($types !== []) {
+            arsort($types);
+
+            return (string) array_key_first($types);
+        }
+
         $packish = 0;
         foreach ($variations as $row) {
             if (preg_match('/\d+\s*(?:pcs?|pieces?|pack|pk)\b/i', (string) ($row['variation_label'] ?? ''))) {

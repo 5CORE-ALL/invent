@@ -10,6 +10,7 @@ use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
 use App\Support\Marketplace\AliexpressListingCounts;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +24,20 @@ class AliexpressListingPublishService
 {
     public function __construct(private AliExpressApiService $api)
     {
+    }
+
+    /**
+     * @return array{name: string, value: string}
+     */
+    private function variationAttribute(string $sku): array
+    {
+        $type = ListingManagerFamily::variationType($sku, 'Color');
+        $name = ListingManagerFamily::variationLabel($sku);
+
+        return [
+            'name' => $type,
+            'value' => mb_substr($name !== '' ? $name : $sku, 0, 70),
+        ];
     }
 
     /**
@@ -234,9 +249,10 @@ class AliexpressListingPublishService
                 'price' => number_format((float) $row['price'], 2, '.', ''),
                 'inventory' => max(1, (int) $row['inv']),
             ], $this->skuPackageFields($pkg));
+            $variation = $this->variationAttribute((string) $row['sku']);
             $skuRow['sku_attributes_list'] = [[
-                'sku_attribute_name' => 'Color',
-                'sku_attribute_value' => mb_substr((string) $row['sku'], 0, 70),
+                'sku_attribute_name' => $variation['name'],
+                'sku_attribute_value' => $variation['value'],
                 'sku_image_url' => $row['images'][0] ?? ($gallery[0] ?? ''),
             ]];
             $skuInfoList[] = $skuRow;
@@ -1017,13 +1033,14 @@ class AliexpressListingPublishService
 
         $newRows = [];
         foreach ($prepared as $row) {
+            $variation = $this->variationAttribute((string) $row['sku']);
             $newRows[] = [
                 'sku_code' => $row['sku'],
                 'price' => number_format((float) $row['price'], 2, '.', ''),
                 'inventory' => max(1, (int) $row['inv']),
                 'sku_attributes_list' => [[
-                    'sku_attribute_name' => 'Color',
-                    'sku_attribute_value' => mb_substr((string) $row['sku'], 0, 70),
+                    'sku_attribute_name' => $variation['name'],
+                    'sku_attribute_value' => $variation['value'],
                     'sku_image' => $row['images'][0] ?? '',
                 ]],
             ];

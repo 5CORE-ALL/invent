@@ -159,8 +159,9 @@ class TikTokListingPublishService
                 'inventory' => [['warehouse_id' => $warehouseId, 'quantity' => $qty]],
             ];
             if (count($skuRows) > 1) {
+                $type = ListingManagerFamily::variationType($sku);
                 $row['sales_attributes'] = [[
-                    'name' => 'Variation',
+                    'name' => $type !== '' ? $type : 'Variation',
                     'value_name' => ListingManagerFamily::variationLabel($sku, $parentHint !== '' ? $parentHint : $this->groupKey($product)),
                 ]];
             }

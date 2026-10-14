@@ -1118,5 +1118,5 @@
             publishUrl: '/listing_tiktokshop2/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=19"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261015-vm"></script>
 @endsection

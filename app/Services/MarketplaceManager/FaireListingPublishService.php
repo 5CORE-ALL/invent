@@ -11,6 +11,7 @@ use App\Services\FaireApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -287,14 +288,29 @@ class FaireListingPublishService
         $values = [];
         $gallery = [];
         $variants = [];
-        foreach ($prepared as $row) {
-            $values[] = $row['sku'];
+        $types = [];
+        $usedNames = [];
+        foreach ($prepared as $index => $row) {
+            $type = ListingManagerFamily::variationType((string) $row['sku']);
+            if ($type !== '') {
+                $types[$type] = ($types[$type] ?? 0) + 1;
+            }
+            $value = $this->optionValueForSku((string) $row['sku'], $usedNames);
+            $usedNames[] = $value;
+            $values[] = $value;
+            $prepared[$index]['variation_value'] = $value;
             foreach ($row['images'] as $url) {
                 if (! in_array($url, $gallery, true)) {
                     $gallery[] = $url;
                 }
             }
-            $variants[] = $this->variantPayload($row);
+        }
+        if ($types !== []) {
+            arsort($types);
+        }
+        $optionName = $types !== [] ? (string) array_key_first($types) : 'Variation';
+        foreach ($prepared as $row) {
+            $variants[] = $this->variantPayload($row, $optionName);
         }
 
         $description = trim((string) ($primary->product_description ?? $primary->description_800 ?? $primary->description_600 ?? ''));
@@ -315,7 +331,7 @@ class FaireListingPublishService
             'minimum_order_quantity' => 1,
             'taxonomy_type' => $taxonomy,
             'variant_option_sets' => [
-                ['name' => 'Variation', 'values' => $values],
+                ['name' => $optionName, 'values' => $values],
             ],
             'variants' => $variants,
             'made_in_country' => 'CHN',
@@ -580,7 +596,8 @@ class FaireListingPublishService
         $copied = $this->firstVariantOptionValues($productData);
         $primaryName = (string) ($sets[0]['name'] ?? 'Variation');
         $used = $this->existingOptionValuesForSet($productData, $primaryName);
-        $primaryValue = $this->optionValueForSku($row['sku'], $used);
+        $forced = trim((string) ($row['variation_value'] ?? ''));
+        $primaryValue = $forced !== '' ? $forced : $this->optionValueForSku($row['sku'], $used);
 
         $options = [];
         foreach ($sets as $index => $set) {
@@ -620,6 +637,18 @@ class FaireListingPublishService
     private function optionValueForSku(string $sku, array $used = []): string
     {
         $sku = trim($sku);
+        $stored = ListingManagerFamily::attributesForSku($sku)['name'];
+        if ($stored !== '') {
+            $candidate = $stored;
+            $base = $candidate;
+            $n = 2;
+            while (in_array($candidate, $used, true)) {
+                $candidate = $base.' '.$n;
+                $n++;
+            }
+
+            return mb_substr($candidate, 0, 80);
+        }
         $looksLikeSku = false;
         foreach ($used as $value) {
             if (stripos($value, 'KS ') !== false || preg_match('/\s/', $value)) {

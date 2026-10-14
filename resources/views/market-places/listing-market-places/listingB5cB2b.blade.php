@@ -1135,6 +1135,6 @@
     @if($listingPageToolsJs)
         <script>{!! $listingPageToolsJs !!}</script>
     @else
-        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261010-1"></script>
+        <script src="{{ asset('js/listing-page-tools.js') }}?v=20261015-vm"></script>
     @endif
 @endsection

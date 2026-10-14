@@ -1318,6 +1318,11 @@ class WayfairListingPublishService
         if ($override !== '') {
             $out[] = $override;
         }
+        $variationType = strtolower(trim((string) ($values['variation_type'] ?? '')));
+        $variationName = trim((string) ($values['variation_name'] ?? ''));
+        if ($variationName !== '' && ($variationType === '' || $variationType === 'color' || $variationType === 'colour')) {
+            $out[] = $variationName;
+        }
         foreach (['color', 'Color', 'colour'] as $key) {
             $value = trim((string) ($values[$key] ?? ''));
             if ($value !== '') {

@@ -1154,7 +1154,9 @@
                 (single
                     ? ' selected for single listing' + (selectedCount === 1 ? '' : 's')
                     : ' selected for this variation') + '</div>';
-            html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th><th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
+            html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th>';
+            if (!single) html += '<th>Variation Type</th><th>Variation Name</th>';
+            html += '<th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
             children.forEach(function (child) {
                 const sku = String(child.sku || '');
                 const publishable = child.status === 'will_publish';
@@ -1165,7 +1167,14 @@
                     : '<span class="listing-publish-role is-suggested">Suggested sibling</span>';
                 html += '<tr><td><input type="checkbox" class="listing-publish-sku-check" data-sku="' +
                     escapeHtml(sku) + '"' + (checked ? ' checked' : '') + (publishable ? '' : ' disabled') + '></td>';
-                html += '<td>' + escapeHtml(sku) + '</td><td>' + escapeHtml(String(child.inv ?? 0)) + '</td>';
+                html += '<td>' + escapeHtml(sku) + '</td>';
+                if (!single) {
+                    const type = String(child.variation_type || '').trim();
+                    const name = String(child.variation_name || '').trim();
+                    html += '<td>' + (type ? escapeHtml(type) : '—') + '</td>';
+                    html += '<td>' + (name ? escapeHtml(name) : '—') + '</td>';
+                }
+                html += '<td>' + escapeHtml(String(child.inv ?? 0)) + '</td>';
                 html += '<td>' + role + '</td>';
                 html += '<td>' + statusLabel(child.status, child.reason) + '</td></tr>';
             });

@@ -1121,5 +1121,5 @@
             publishUrl: '/listing_bestbuyusa/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=6"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261015-vm"></script>
 @endsection

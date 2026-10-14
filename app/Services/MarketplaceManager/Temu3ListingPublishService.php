@@ -14,6 +14,7 @@ use App\Services\LmpSkuGroupService;
 use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\Temu3ApiService;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\ListingCountsEngine;
 use Illuminate\Support\Facades\Cache;
@@ -1040,7 +1041,7 @@ class Temu3ListingPublishService
      */
     private function uniqueSpecDetails(int $catId, string $sku): array
     {
-        $parentSpecId = $this->parentSpecIdForCat($catId) ?? 1001;
+        $parentSpecId = $this->parentSpecIdForCat($catId, ListingManagerFamily::variationType($sku)) ?? 1001;
         $specId = $this->createSpecId($catId, (int) $parentSpecId, $sku);
         if ($specId === null) {
             return [];
@@ -1052,10 +1053,14 @@ class Temu3ListingPublishService
         ]];
     }
 
-    private function parentSpecIdForCat(int $catId): ?int
+    private function parentSpecIdForCat(int $catId, string $preferName = ''): ?int
     {
-        if (isset($this->parentSpecIdByCat[$catId])) {
-            return $this->parentSpecIdByCat[$catId];
+        $preferName = strtolower(trim($preferName));
+        $cacheKey = $catId.'|'.$preferName;
+        if (array_key_exists($cacheKey, $this->parentSpecIdByCat)) {
+            $cached = (int) $this->parentSpecIdByCat[$cacheKey];
+
+            return $cached > 0 ? $cached : null;
         }
 
         $data = $this->temuCallBody([
@@ -1072,6 +1077,18 @@ class Temu3ListingPublishService
             $parents = [];
         }
 
+        $matched = $this->matchParentSpecId($parents, $preferName);
+        $this->parentSpecIdByCat[$cacheKey] = $matched ?? 0;
+
+        return $matched;
+    }
+
+    /**
+     * @param  list<mixed>  $parents
+     */
+    private function matchParentSpecId(array $parents, string $preferName): ?int
+    {
+        $fallback = null;
         foreach ($parents as $parent) {
             if (! is_array($parent)) {
                 continue;
@@ -1080,12 +1097,34 @@ class Temu3ListingPublishService
             if ($parentSpecId === null || $parentSpecId === '') {
                 continue;
             }
-            $this->parentSpecIdByCat[$catId] = (int) $parentSpecId;
-
-            return $this->parentSpecIdByCat[$catId];
+            $id = (int) $parentSpecId;
+            if ($id <= 0) {
+                continue;
+            }
+            if ($fallback === null) {
+                $fallback = $id;
+            }
+            if ($preferName !== '' && strcasecmp($this->parentSpecLabel($parent), $preferName) === 0) {
+                return $id;
+            }
         }
 
-        return null;
+        return $fallback;
+    }
+
+    /**
+     * @param  array<string, mixed>  $parent
+     */
+    private function parentSpecLabel(array $parent): string
+    {
+        foreach (['parentSpecName', 'specName', 'name', 'parentName', 'variationName'] as $key) {
+            $label = trim((string) ($parent[$key] ?? ''));
+            if ($label !== '') {
+                return $label;
+            }
+        }
+
+        return '';
     }
 
     private function localGoodsId(string $sku): string
@@ -2195,6 +2234,16 @@ class Temu3ListingPublishService
             $parents = [];
         }
 
+        $prefer = strtolower(ListingManagerFamily::variationType($sku));
+        if ($prefer !== '') {
+            usort($parents, function ($a, $b) use ($prefer) {
+                $aHit = is_array($a) && strcasecmp($this->parentSpecLabel($a), $prefer) === 0 ? 0 : 1;
+                $bHit = is_array($b) && strcasecmp($this->parentSpecLabel($b), $prefer) === 0 ? 0 : 1;
+
+                return $aHit <=> $bHit;
+            });
+        }
+
         $details = [];
         foreach ($parents as $parent) {
             if (! is_array($parent)) {
@@ -2250,7 +2299,8 @@ class Temu3ListingPublishService
 
     private function createSpecId(int $catId, int $parentSpecId, string $sku): ?int
     {
-        $name = $this->sanitizeGoodsName($sku);
+        $storedName = ListingManagerFamily::attributesForSku($sku)['name'];
+        $name = $this->sanitizeGoodsName($storedName !== '' ? $storedName : $sku);
         if ($name === '') {
             $name = 'Default';
         }

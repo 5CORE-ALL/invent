@@ -870,12 +870,12 @@
                             <input type="radio" name="lc-publish-mode" value="variation">
                             <span>
                                 <strong>Variation listing</strong>
-                                <em>One listing under the selected parent, with the child SKUs checked below.</em>
+                                <em>One listing under the selected parent. Variation Type and Variation Name come from Variation Master.</em>
                             </span>
                         </label>
                     </div>
                     <table class="lm-list-table" id="lc-family-table">
-                        <thead><tr><th class="lm-var-include">Include</th><th>SKU</th><th>Pack</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th></tr></thead>
+                        <thead><tr><th class="lm-var-include">Include</th><th>SKU</th><th>Variation Type</th><th>Variation Name</th><th>Title</th><th>ASIN</th><th>Qty</th><th>Price</th></tr></thead>
                         <tbody id="lc-family-rows"></tbody>
                     </table>
                 </div>
@@ -4077,16 +4077,19 @@
             const sku = String(v.sku || '').trim();
             const isCurrent = !!v.is_current || (currentSku && sku.toUpperCase() === currentSku.toUpperCase());
             const checked = isCurrent || defaultAll || !!picked[sku.toUpperCase()];
+            const type = String(v.variation_type || '').trim();
+            const name = String(v.variation_name || v.variation_label || '').trim();
             return `<tr class="${isCurrent ? 'lm-var-current' : ''}">
             <td class="lm-var-include"><input type="checkbox" class="form-check-input lc-var-sku" value="${escapeHtml(sku)}" ${checked ? 'checked' : ''} ${isCurrent ? 'disabled' : ''}></td>
             <td>${escapeHtml(sku)}</td>
-            <td><span class="lm-var-label">${escapeHtml(v.variation_label || '')}</span></td>
+            <td>${type ? escapeHtml(type) : '—'}</td>
+            <td><span class="lm-var-label">${name ? escapeHtml(name) : '—'}</span></td>
             <td>${escapeHtml(v.title || '')}</td>
             <td>${escapeHtml(v.asin || '—')}</td>
             <td>${v.quantity != null ? escapeHtml(String(v.quantity)) : '—'}</td>
             <td>${money(v.price)}</td>
         </tr>`;
-        }).join('') : '<tr><td colspan="7" class="text-muted">This SKU has no siblings on the same Product Master parent.</td></tr>');
+        }).join('') : '<tr><td colspan="8" class="text-muted">This SKU has no siblings on the same Product Master parent. Set Variation Type and Variation Name on Variation Master.</td></tr>');
         updatePublishModeUi();
     }
 

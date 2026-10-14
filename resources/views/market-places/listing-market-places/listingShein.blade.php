@@ -1157,5 +1157,5 @@
             categorySearchUrl: '/listing-manager/ebay/categories'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261015-vm"></script>
 @endsection

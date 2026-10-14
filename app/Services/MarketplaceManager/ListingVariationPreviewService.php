@@ -7,6 +7,7 @@ use App\Models\ShopifySku;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\ListingManagerFamily;
 use Illuminate\Support\Collection;
 
 class ListingVariationPreviewService
@@ -269,6 +270,7 @@ class ListingVariationPreviewService
             }
         }
 
+        ListingManagerFamily::warmAttributes($skus);
         $rows = [];
         $publishSkus = [];
         foreach ($children as $product) {
@@ -277,9 +279,12 @@ class ListingVariationPreviewService
             $shopifyRow = $shopify->get($sku);
             $selected = $classified['status'] === 'will_publish'
                 && isset($seedLookup[strtoupper($sku)]);
+            $attr = ListingManagerFamily::attributesForSku($sku);
             $rows[] = [
                 'sku' => $sku,
-                'spec' => $sku,
+                'spec' => $attr['name'] !== '' ? $attr['name'] : $sku,
+                'variation_type' => $attr['type'],
+                'variation_name' => $attr['name'],
                 'inv' => (int) ($shopifyRow?->available_to_sell ?? $shopifyRow?->inv ?? 0),
                 'status' => $classified['status'],
                 'reason' => $classified['reason'],

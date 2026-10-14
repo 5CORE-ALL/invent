@@ -1412,6 +1412,8 @@ class ListingManagerController extends Controller
                 'asin' => $hydrated['asin'] ?? $listing?->asin1,
                 'is_current' => (bool) $child['is_current'],
                 'variation_label' => $child['variation_label'],
+                'variation_type' => (string) ($child['variation_type'] ?? ''),
+                'variation_name' => (string) ($child['variation_name'] ?? ''),
                 'parent' => $family['parent'],
             ];
         }

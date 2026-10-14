@@ -10,13 +10,15 @@ use Illuminate\Support\Facades\Schema;
  */
 class ListingManagerFamily
 {
+    /** @var array<string, array{type: string, name: string}> */
+    private static array $attributes = [];
     /**
      * @return array{
      *   parent: string,
      *   parent_label: string,
      *   parent_sku: string|null,
      *   skus: list<string>,
-     *   children: list<array{sku: string, parent: string, is_current: bool, variation_label: string}>
+     *   children: list<array{sku: string, parent: string, is_current: bool, variation_label: string, variation_type: string, variation_name: string}>
      * }
      */
     public static function forSku(string $sku): array
@@ -32,7 +34,7 @@ class ListingManagerFamily
      *   parent_label: string,
      *   parent_sku: string|null,
      *   skus: list<string>,
-     *   children: list<array{sku: string, parent: string, is_current: bool, variation_label: string}>
+     *   children: list<array{sku: string, parent: string, is_current: bool, variation_label: string, variation_type: string, variation_name: string}>
      * }
      */
     public static function forParent(string $parent, string $currentSku = ''): array
@@ -56,12 +58,16 @@ class ListingManagerFamily
             }
         }
 
+        self::warmAttributes($skus);
         $children = [];
         foreach ($skus as $child) {
+            $attr = self::attributesForSku($child);
             $children[] = [
                 'sku' => $child,
                 'parent' => $parent,
                 'is_current' => $currentSku !== '' && strcasecmp($child, $currentSku) === 0,
+                'variation_type' => $attr['type'],
+                'variation_name' => $attr['name'],
                 'variation_label' => self::variationLabel($child, $parent),
             ];
         }
@@ -273,12 +279,81 @@ class ListingManagerFamily
         return array_values(array_unique($skus));
     }
 
+    /**
+     * Variation Type and Variation Name saved on Variation Master (product_master.Values).
+     *
+     * @return array{type: string, name: string}
+     */
+    public static function attributesForSku(string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['type' => '', 'name' => ''];
+        }
+        self::warmAttributes([$sku]);
+
+        return self::$attributes[strtoupper($sku)] ?? ['type' => '', 'name' => ''];
+    }
+
+    public static function variationType(string $sku, string $fallback = ''): string
+    {
+        $type = self::attributesForSku($sku)['type'];
+
+        return $type !== '' ? $type : $fallback;
+    }
+
+    /**
+     * @param  list<string>  $skus
+     */
+    public static function warmAttributes(array $skus): void
+    {
+        if (! Schema::hasTable('product_master')) {
+            return;
+        }
+
+        $need = [];
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '') {
+                continue;
+            }
+            $key = strtoupper($sku);
+            if (! isset(self::$attributes[$key])) {
+                $need[$key] = $sku;
+            }
+        }
+        if ($need === []) {
+            return;
+        }
+
+        $query = DB::table('product_master')->whereIn('sku', array_values($need));
+        if (Schema::hasColumn('product_master', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+        $rows = $query->get(['sku', 'Values']);
+        foreach ($rows as $row) {
+            $key = strtoupper(trim((string) ($row->sku ?? '')));
+            if ($key === '') {
+                continue;
+            }
+            self::$attributes[$key] = self::attributesFromValues($row->Values ?? null);
+        }
+        foreach ($need as $key => $_sku) {
+            self::$attributes[$key] ??= ['type' => '', 'name' => ''];
+        }
+    }
+
     public static function variationLabel(string $sku, string $parent = ''): string
     {
         $sku = trim($sku);
         $parent = trim($parent);
         if ($sku === '') {
             return 'Variation';
+        }
+
+        $stored = self::attributesForSku($sku)['name'];
+        if ($stored !== '') {
+            return $stored;
         }
 
         $rest = $parent !== '' && strncasecmp($sku, $parent, strlen($parent)) === 0
@@ -293,5 +368,24 @@ class ListingManagerFamily
         }
 
         return $sku;
+    }
+
+    /**
+     * @return array{type: string, name: string}
+     */
+    private static function attributesFromValues(mixed $raw): array
+    {
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        return [
+            'type' => trim((string) ($raw['variation_type'] ?? '')),
+            'name' => trim((string) ($raw['variation_name'] ?? '')),
+        ];
     }
 }
