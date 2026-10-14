@@ -32,6 +32,14 @@
                 return (typeof window !== 'undefined' && window.table) ? window.table : null;
             }
             function pageSnpft(d) {
+                if (typeof frSnpftAt === 'function') {
+                    const v = frSnpftAt(d);
+                    if (v != null && isFinite(v)) return v;
+                }
+                if (typeof abSnpftAt === 'function') {
+                    const v = abSnpftAt(d);
+                    if (v != null && isFinite(v)) return v;
+                }
                 if (typeof aeSpriceMetrics === 'function') {
                     const m = aeSpriceMetrics(d);
                     if (m && m.sgpftRaw != null && isFinite(m.sgpftRaw)) return m.sgpftRaw;

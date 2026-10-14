@@ -502,6 +502,27 @@
             if (!(sprice > 0)) return parseFloat(d && d.sroi) || 0;
             return frFaireSpriceMetrics(d, sprice).sroi;
         }
+        /** SGPFT of the Sprice column. Faire Ads% = 0, so SNPFT = SGPFT. Ship not used. */
+        function frFaireShownSgpft(d) {
+            const sprice = (typeof frRowSpriceForAlert === 'function') ? frRowSpriceForAlert(d) : 0;
+            if (!(sprice > 0)) return parseFloat(d && d.sgpft) || 0;
+            return frFaireSpriceMetrics(d, sprice).sgpft;
+        }
+        function frSnpftAt(d) {
+            if (!d || d.is_parent) return null;
+            const v = frFaireShownSgpft(d);
+            return isFinite(v) ? v : null;
+        }
+        function frNpftMarkHtml(d) {
+            if (typeof window.chStdNpftMarkHtml === 'function') {
+                const shared = window.chStdNpftMarkHtml(d);
+                if (shared) return shared;
+            }
+            const v = frSnpftAt(d);
+            if (v == null || !isFinite(v)) return '';
+            if (Math.round(v) !== 10) return '';
+            return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT 10%">!</span>';
+        }
         function frFaireRoiHtml(v) {
             const n = Math.round(Number(v) || 0);
             if (!n) return '<span style="font-weight:700;">0%</span>';
@@ -2227,7 +2248,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + blueTri + frNpftMarkHtml(d) + '</span>';
                         }
                     },
                     {
@@ -2255,13 +2276,30 @@
                         }
                     },
                     {
-                        title: 'SGPFT%', field: 'sgpft', sorter: 'number', headerSort: true, hozAlign: 'right',
+                        title: 'SGPFT%', field: 'sgpft', headerSort: true, hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            return (frFaireShownSgpft(aRow.getData()) || 0) - (frFaireShownSgpft(bRow.getData()) || 0);
+                        },
+                        headerTooltip: 'SGPFT of the Sprice column. ((S PRC × margin − LP) / S PRC) × 100. Ship not used. Faire Ads% = 0, so SNPFT = SGPFT.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
-                            const sprice = frRowSpriceForAlert(d);
-                            const metrics = frFaireSpriceMetrics(d, sprice);
-                            const v = sprice > 0 ? metrics.sgpft : (parseFloat(cell.getValue()) || 0);
+                            const v = frFaireShownSgpft(d);
+                            if (isNaN(v) || v === 0) return '0%';
+                            let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
+                            return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
+                        }
+                    },
+                    {
+                        title: 'SNPFT%', field: 'SNPFT', headerSort: true, hozAlign: 'right',
+                        sorter: function(a, b, aRow, bRow) {
+                            return (frFaireShownSgpft(aRow.getData()) || 0) - (frFaireShownSgpft(bRow.getData()) || 0);
+                        },
+                        headerTooltip: 'SNPFT of the Sprice column. Faire Ads% = 0, so SNPFT = SGPFT. Ship not used.',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = frFaireShownSgpft(d);
                             if (isNaN(v) || v === 0) return '0%';
                             let color = v < 10 ? '#a00211' : v < 15 ? '#ffc107' : v < 20 ? '#3591dc' : v <= 40 ? '#28a745' : '#e83e8c';
                             return '<span style="color:' + color + ';font-weight:600;">' + Math.round(v) + '%</span>';
@@ -2331,7 +2369,13 @@
                 },
                 dataFiltered: function(filters, rows) { updateSummary(rows); },
                 dataProcessed: function() { updateSummary(); },
-                renderComplete: function() { updateSummary(); }
+                renderComplete: function() {
+                    window.table = table;
+                    if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
+                        window.minNpftSpriceMark.stamp(table);
+                    }
+                    updateSummary();
+                }
             });
 
             if (window.ParentExpand) {
