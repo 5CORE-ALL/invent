@@ -1556,7 +1556,7 @@
 
         /** Min and Business are 5% below the shown Sale (S PRC), not Your Price. */
         function amazonMinBusinessPrice(rowData) {
-            const sprice = amazonShownSprice(rowData);
+            const sprice = amazonDisplaySprice(rowData);
             if (!(sprice > 0)) return 0;
             if (typeof amzMinBusinessFromSprc === 'function') return amzMinBusinessFromSprc(sprice);
             const rounded = +Number(sprice).toFixed(2);
@@ -1567,7 +1567,7 @@
 
         /** Max is 10% above the shown S PRC. */
         function amazonMaxPrice(rowData) {
-            const sprice = amazonShownSprice(rowData);
+            const sprice = amazonDisplaySprice(rowData);
             if (!(sprice > 0)) return 0;
             if (typeof amzMaxFromSale === 'function') return amzMaxFromSale(sprice);
             return +Number(sprice * 1.10).toFixed(2);
@@ -1575,7 +1575,8 @@
 
         function amazonComputeNetSroi(rowData) {
             if (!rowData) return null;
-            const sprice = amazonRowSprice(rowData);
+            // Displayed price, so clearance rows ("C $x") get their margins too.
+            const sprice = amazonDisplaySprice(rowData);
             const lp = parseFloat(rowData.LP_productmaster);
             if (!isFinite(sprice) || sprice <= 0 || !isFinite(lp) || lp <= 0) return null;
             const ship = parseFloat(rowData.Ship_productmaster) || 0;
@@ -1593,7 +1594,7 @@
          * Returns null when SPRICE/LP are missing.
          */
         function amazonComputeSroi(rowData) {
-            return amazonComputeGroiAt(amazonShownSprice(rowData), rowData);
+            return amazonComputeGroiAt(amazonDisplaySprice(rowData), rowData);
         }
 
         /**
@@ -1601,7 +1602,7 @@
          *   ((SPRICE × 0.80 − ship − lp) / SPRICE) × 100
          */
         function amazonComputeSgpft(rowData) {
-            return amazonComputeGpftAt(amazonShownSprice(rowData), rowData);
+            return amazonComputeGpftAt(amazonDisplaySprice(rowData), rowData);
         }
 
         /** SNPFT = live S GPFT − Ads% */
