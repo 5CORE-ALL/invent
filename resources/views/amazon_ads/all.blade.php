@@ -5705,13 +5705,21 @@
                     }).then(function (r) { return r.json(); }).then(function (body) {
                         var next = body && body.counts;
                         var stamp = body && body.updated_at ? String(body.updated_at) : '';
+                        var running = !!(body && body.running);
                         if (next && next.columns && stamp !== amzBgtCountsStamp) {
+                            var firstLoad = amzBgtCountsStamp === '';
                             amzBgtCountsStamp = stamp;
                             amzBgtSaved = next;
                             window.amazonAdsBgtCounts = next;
+                            // A recount that was requested after a save has landed (the job writes once, at the end).
+                            if (!running && !firstLoad && amzBgtAwaitingRecount) {
+                                amzBgtAwaitingRecount = false;
+                                amzBgtPollStoredCounts.fastUntil = 0;
+                            }
                             if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
                         }
-                        var wait = (body && body.running) || !amzBgtHasSavedCounts() ? 3000 : 30000;
+                        var fast = Date.now() < (amzBgtPollStoredCounts.fastUntil || 0);
+                        var wait = running || fast || !amzBgtHasSavedCounts() ? 2500 : 30000;
                         amzBgtPollStoredCounts.timer = setTimeout(function () {
                             amzBgtPollStoredCounts.timer = null;
                             tick();
@@ -5726,6 +5734,12 @@
                 tick();
             }
             function amzBgtRequestRecount() {
+                // Poll every couple of seconds for a few minutes. The job can start a moment after this request returns.
+                amzBgtPollStoredCounts.fastUntil = Date.now() + 240000;
+                if (amzBgtPollStoredCounts.timer) {
+                    clearTimeout(amzBgtPollStoredCounts.timer);
+                    amzBgtPollStoredCounts.timer = null;
+                }
                 fetch(bgtCountsRefreshUrl, {
                     method: 'POST',
                     headers: {
@@ -5734,12 +5748,9 @@
                         'Accept': 'application/json'
                     },
                     credentials: 'same-origin'
-                }).catch(function () {});
-                if (amzBgtPollStoredCounts.timer) {
-                    clearTimeout(amzBgtPollStoredCounts.timer);
-                    amzBgtPollStoredCounts.timer = null;
-                }
-                amzBgtPollStoredCounts();
+                }).catch(function () {}).then(function () {
+                    amzBgtPollStoredCounts();
+                });
             }
             function amzBgtGridRows() {
                 if (!table || typeof table.getData !== 'function') return [];
@@ -5771,11 +5782,54 @@
                     : 'campaigns';
                 return '<div class="amz-bgt-leg-row"><span class="spinner-border spinner-border-sm text-primary me-1" role="status"></span><span>Counting ' + n + '…</span></div>';
             }
+            // Full set when the universe is loaded, otherwise the rows already on the grid (instant).
+            // A page-only set is tagged _partial so it is shown but never saved over the real counts.
             function amzBgtCountRows() {
                 amzBgtSeedRuleBands();
                 var key = amzBgtFilterKey();
                 if (amzBgtUniverse.key === key && Array.isArray(amzBgtUniverse.rows)) return amzBgtUniverse.rows;
-                return null;
+                var page = amzBgtGridRows();
+                if (!page.length) return null;
+                var rows = page.slice();
+                var total = (typeof amzDistinctCampaignCount === 'number' && isFinite(amzDistinctCampaignCount)) ? amzDistinctCampaignCount : null;
+                rows._partial = !(total !== null && rows.length >= total);
+                return rows;
+            }
+            var amzBgtBandRangePairs = [
+                ['acos_from', 'acos_to'], ['views_from', 'views_to'], ['cvr_from', 'cvr_to'], ['prc_from', 'prc_to'],
+                ['rev_from', 'rev_to'], ['dil_from', 'dil_to'], ['inv_from', 'inv_to'], ['spend_from', 'spend_to']
+            ];
+            function amzBgtRangesOf(bands) {
+                return (bands || []).map(function (b) {
+                    for (var i = 0; i < amzBgtBandRangePairs.length; i++) {
+                        var p = amzBgtBandRangePairs[i];
+                        if (b && b[p[0]] !== undefined) return [parseFloat(b[p[0]]), parseFloat(b[p[1]])];
+                    }
+                    return [NaN, NaN];
+                });
+            }
+            function amzBgtSameRanges(a, b) {
+                if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+                for (var i = 0; i < a.length; i++) {
+                    if (!Array.isArray(a[i]) || !Array.isArray(b[i])) return false;
+                    for (var j = 0; j < 2; j++) {
+                        var x = a[i][j] === null ? NaN : Number(a[i][j]);
+                        var y = b[i][j] === null ? NaN : Number(b[i][j]);
+                        if (isFinite(x) !== isFinite(y)) return false;
+                        if (isFinite(x) && Math.abs(x - y) > 0.0001) return false;
+                    }
+                }
+                return true;
+            }
+            // Set when the rules are edited or saved. Stored sums no longer match until a recount lands.
+            var amzBgtDraftEdited = false;
+            var amzBgtAwaitingRecount = false;
+            function amzBgtMarkRulesSaved() {
+                amzBgtDraftEdited = false;
+                amzBgtAwaitingRecount = true;
+            }
+            function amzBgtSumIsStale() {
+                return amzBgtDraftEdited || amzBgtAwaitingRecount;
             }
             function amzBgtFirstBandIndex(value, bands, fromKey, toKey) {
                 if (value == null || !isFinite(value) || !Array.isArray(bands)) return -1;
@@ -5799,7 +5853,8 @@
                 });
                 counts.unmatched = unmatched;
                 counts.campaigns = rows.length;
-                counts._live = true;
+                counts._live = !rows._partial;
+                counts._partial = !!rows._partial;
                 return counts;
             }
             function amzBgtHasSavedCounts() {
@@ -5809,16 +5864,19 @@
                 var saved = amzBgtSaved && amzBgtSaved.columns ? amzBgtSaved.columns[key] : null;
                 if (!saved || !Array.isArray(saved.counts) || !saved.counts.length) return null;
                 if (bands && saved.counts.length !== bands.length) return null;
+                // Counts saved with their slab ranges are only valid for those exact ranges.
+                if (bands && Array.isArray(saved.ranges) && !amzBgtSameRanges(saved.ranges, amzBgtRangesOf(bands))) return null;
                 var counts = saved.counts.map(function (n) { return Number(n) || 0; });
                 counts.unmatched = Number(saved.unmatched) || 0;
                 counts.campaigns = Number(saved.campaigns) || 0;
                 return counts;
             }
-            function amzBgtStageColumn(key, counts) {
+            function amzBgtStageColumn(key, counts, bands) {
                 var list = [];
                 for (var i = 0; i < counts.length; i++) list.push(Number(counts[i]) || 0);
                 amzBgtStaged.columns[key] = {
                     counts: list,
+                    ranges: amzBgtRangesOf(bands),
                     unmatched: Number(counts.unmatched) || 0,
                     campaigns: Number(counts.campaigns) || 0
                 };
@@ -5969,10 +6027,12 @@
                 var legend = document.getElementById('amz-bgt-leg-' + key);
                 var canvas = document.getElementById('amz-bgt-chart-' + key);
                 if (!legend || !canvas || typeof Chart === 'undefined') return;
-                if (!counts) counts = amzBgtStoredColumn(key, bands);
+                // Stored counts only when they match these exact slabs. Otherwise count the rows on the page now.
+                var stored = amzBgtStoredColumn(key, bands);
+                if (stored && !(counts && counts._live)) counts = stored;
                 if (!counts) { legend.innerHTML = amzBgtCountingNote(); return; }
                 if (counts._live) {
-                    amzBgtStageColumn(key, counts);
+                    amzBgtStageColumn(key, counts, bands);
                     amzBgtScheduleSaveCounts();
                 }
                 var rows = (bands || []).map(function (b, i) {
@@ -5990,7 +6050,8 @@
                 legend.innerHTML = rows.map(function (r) {
                     var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
                     return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span></div>';
-                }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + total + '</strong><span class="amz-bgt-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>' : '');
+                }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + total + '</strong><span class="amz-bgt-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>' : '')
+                    + (counts._partial ? '<div class="amz-bgt-leg-row text-muted"><span>This page only. Full count updating…</span></div>' : '');
                 if (amzBgtColCharts[key]) {
                     try { amzBgtColCharts[key].destroy(); } catch (e) {}
                     amzBgtColCharts[key] = null;
@@ -6057,8 +6118,16 @@
                 var r = Math.round(n * 100) / 100;
                 return r === Math.floor(r) ? String(r) : r.toFixed(2);
             }
-            function amzBgtPaintBudgetBadges(rows, totalN, sbgtTotal) {
+            function amzBgtPaintBudgetBadges(rows, totalN, sbgtTotal, modalOnly) {
                 var box = document.getElementById('amz-bgt-budget-badges');
+                if (modalOnly) {
+                    // A page-only total must not replace the page-wide DAILY BGT badge.
+                    var d = Math.round(sbgtTotal);
+                    if (box) {
+                        box.innerHTML = '<span class="amz-bgt-budget-badge amz-bgt-budget-badge--total"><span class="amz-bgt-budget-amt">Daily budget (this page)</span><span class="amz-bgt-budget-n">$' + d.toLocaleString('en-US') + '</span><span class="amz-bgt-budget-day">' + totalN.toLocaleString('en-US') + ' campaigns</span></span>';
+                    }
+                    return;
+                }
                 var dailyEl = document.getElementById('amazonAdsDailyBudgetBadgeValue');
                 var dailyWrap = document.getElementById('amazonAdsDailyBudgetBadgeWrap');
                 var monthlyEl = document.getElementById('amazonAdsMonthlyBudgetBadgeValue');
@@ -6119,11 +6188,14 @@
                 var campaigns = 0;
                 var sbgtTotal = 0;
                 var sumRows = amzBgtCountRows();
+                var savedSum = amzBgtSaved && amzBgtSaved.sum ? amzBgtSaved.sum : null;
+                // Full stored sum is exact while the rules are unchanged. Prefer it over a page-only count.
+                if ((!sumRows || sumRows._partial) && savedSum && !amzBgtSumIsStale() && amzBgtApplySavedSum(savedSum)) return;
                 if (!sumRows) {
-                    if (amzBgtSaved && amzBgtSaved.sum && amzBgtApplySavedSum(amzBgtSaved.sum)) return;
                     if (legend) legend.innerHTML = amzBgtCountingNote();
                     return;
                 }
+                var sumPartial = !!sumRows._partial;
                 sumRows.forEach(function (row) {
                     var parts;
                     try { parts = amzBgtDraftParts(row); } catch (e) { return; }
@@ -6148,12 +6220,13 @@
                     };
                 });
                 var totalN = rows.reduce(function (s, r) { return s + r.n; }, 0);
-                amzBgtPaintBudgetBadges(rows, totalN, sbgtTotal);
+                amzBgtPaintBudgetBadges(rows, totalN, sbgtTotal, sumPartial);
                 if (legend) {
                     legend.innerHTML = rows.map(function (r) {
                         var pct = totalN > 0 ? Math.round((r.n / totalN) * 100) : 0;
                         return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span></div>';
-                    }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + totalN + '</strong><span class="amz-bgt-leg-pct">' + (totalN > 0 ? '100%' : '0%') + '</span></div>' : '');
+                    }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + totalN + '</strong><span class="amz-bgt-leg-pct">' + (totalN > 0 ? '100%' : '0%') + '</span></div>' : '')
+                        + (sumPartial ? '<div class="amz-bgt-leg-row text-muted"><span>This page only. Full count updating…</span></div>' : '');
                 }
                 if (canvas && typeof Chart !== 'undefined') {
                     if (amzBgtColCharts.sum) { try { amzBgtColCharts.sum.destroy(); } catch (e) {} amzBgtColCharts.sum = null; }
@@ -6221,8 +6294,12 @@
                         return { label: p.label, count: partCount[p.key], sum: partSum[p.key] };
                     })
                 };
-                amzBgtStaged.dirty = true;
-                amzBgtScheduleSaveCounts();
+                if (!sumPartial) {
+                    amzBgtStaged.dirty = true;
+                    amzBgtScheduleSaveCounts();
+                } else {
+                    amzBgtStaged.sum = null;
+                }
                 if (tbody) {
                     var html = order.map(function (p) {
                         return '<tr><td>' + amzEsc(p.label) + '</td><td class="text-center">' + partCount[p.key].toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(partSum[p.key]) + '</td></tr>';
@@ -6953,7 +7030,7 @@
                     out.push({
                         rev_from: isFinite(from) ? from : '',
                         rev_to: isFinite(to) ? to : '',
-                        bgt: isFinite(bgt) && bgt >= 1 ? bgt : '',
+                        bgt: isFinite(bgt) ? bgt : '',
                         label: keep.label != null ? String(keep.label) : '',
                         color: keep.color || '#6c757d'
                     });
@@ -6989,7 +7066,8 @@
                 });
                 counts.unmatched = unmatched;
                 counts.campaigns = rows.length;
-                counts._live = true;
+                counts._live = !rows._partial;
+                counts._partial = !!rows._partial;
                 return counts;
             }
             function amzBgtReviewsRefreshCounts() {
@@ -7653,15 +7731,16 @@
                     var collected = amzBgtCollectSaveJobs();
                     amzBgtPendingSave = null;
                     jobs = collected.jobs || [];
-                    if (!jobs.length) {
+                    if (!jobs.length || collected.error) {
+                        // Never save only some of the rules: stop and show what is wrong.
                         var msg = collected.error || 'Nothing to save.';
-                        if (st) { st.textContent = msg; st.className = 'small text-danger fw-semibold me-auto'; }
-                        window.alert(msg);
+                        if (st) {
+                            delete st.dataset.phase;
+                            st.textContent = 'Not saved. ' + msg.replace(/\n/g, ' ');
+                            st.className = 'small text-danger fw-semibold me-auto';
+                        }
+                        window.alert('Nothing was saved.\n' + msg);
                         return;
-                    }
-                    if (collected.error && st) {
-                        st.textContent = collected.error;
-                        st.className = 'small text-danger fw-semibold me-auto';
                     }
                 } catch (err) {
                     window.alert((err && err.message) ? err.message : 'Save failed.');
@@ -7689,14 +7768,30 @@
                         amzSbgtAutoPushedKey = {};
                         if (st) st.dataset.phase = 'apply';
                         amzBgtWriteStatus('Applying to the page…', true);
+                        amzBgtMarkRulesSaved();
                         if (typeof amzBgtRefreshAllRuleCounts === 'function') amzBgtRefreshAllRuleCounts();
                         if (typeof amzBgtRequestRecount === 'function') amzBgtRequestRecount();
+                        // The rules are saved at this point. Do not keep the button locked on a slow grid reload.
                         var reloaded = table ? Promise.resolve(table.setData()).catch(function () { return null; }) : Promise.resolve();
-                        return reloaded;
+                        var slow = new Promise(function (resolve) { setTimeout(function () { resolve('slow'); }, 6000); });
+                        reloaded.then(function () {
+                            amzRefreshUiSoon();
+                            var cur = document.getElementById('amz-bgt-status');
+                            if (cur && cur.dataset.refreshing === '1') {
+                                delete cur.dataset.refreshing;
+                                amzBgtWriteStatus('Saved and applied.', false);
+                            }
+                        });
+                        return Promise.race([reloaded.then(function () { return 'done'; }), slow]);
                     })
-                    .then(function () {
+                    .then(function (how) {
                         amzRefreshUiSoon();
                         if (st) delete st.dataset.phase;
+                        if (how === 'slow') {
+                            if (st) st.dataset.refreshing = '1';
+                            amzBgtWriteStatus('Saved. The grid is still refreshing…', true);
+                            return;
+                        }
                         amzBgtWriteStatus(amzAutoPushPullOn()
                             ? 'Saved and applied. Auto Push & Pull is on.'
                             : 'Saved and applied.', false);
@@ -7718,6 +7813,17 @@
             amzLoadBgtInvBandsFromRule(window.amazonAdsBgtInvRule || {});
             amzLoadBgtSpendBandsFromRule(window.amazonAdsBgtSpendRule || {});
             amzBgtPollStoredCounts();
+            (function () {
+                // Capture phase: runs before a slab input repaints, so stored sums are skipped once a rule is being edited.
+                var modal = document.getElementById('amazonAdsBgtRulesModal');
+                if (!modal) return;
+                modal.addEventListener('input', function (e) {
+                    if (e.target && e.target.matches && e.target.matches('.amz-bgt-cols input')) amzBgtDraftEdited = true;
+                }, true);
+                modal.addEventListener('click', function (e) {
+                    if (e.target && e.target.closest && e.target.closest('.amz-bgt-add, [data-remove-idx]')) amzBgtDraftEdited = true;
+                }, true);
+            })();
             var autoPushPullBtn = document.getElementById('amazonAdsAutoPushPullBtn');
             if (autoPushPullBtn) {
                 amzPaintAutoPushPullBtn();

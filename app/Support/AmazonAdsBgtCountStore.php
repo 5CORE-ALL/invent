@@ -68,11 +68,16 @@ final class AmazonAdsBgtCountStore
             if ($list === []) {
                 continue;
             }
-            $columns[$key] = [
+            $entry = [
                 'counts' => $list,
                 'unmatched' => max(0, (int) ($col['unmatched'] ?? 0)),
                 'campaigns' => max(0, (int) ($col['campaigns'] ?? 0)),
             ];
+            $ranges = self::normalizeRanges($col['ranges'] ?? null, count($list));
+            if ($ranges !== null) {
+                $entry['ranges'] = $ranges;
+            }
+            $columns[$key] = $entry;
         }
 
         $sum = null;
@@ -119,6 +124,30 @@ final class AmazonAdsBgtCountStore
             'columns' => $columns,
             'sum' => $sum,
         ];
+    }
+
+    /**
+     * One [from, to] pair per count. Null when missing or the wrong length, so the page falls back to its own count.
+     *
+     * @return list<array{0: float|null, 1: float|null}>|null
+     */
+    private static function normalizeRanges(mixed $raw, int $expected): ?array
+    {
+        if (! is_array($raw) || count($raw) !== $expected) {
+            return null;
+        }
+        $out = [];
+        foreach (array_values($raw) as $pair) {
+            if (! is_array($pair)) {
+                return null;
+            }
+            $pair = array_values($pair);
+            $from = isset($pair[0]) && is_numeric($pair[0]) && is_finite((float) $pair[0]) ? (float) $pair[0] : null;
+            $to = isset($pair[1]) && is_numeric($pair[1]) && is_finite((float) $pair[1]) ? (float) $pair[1] : null;
+            $out[] = [$from, $to];
+        }
+
+        return $out;
     }
 
     private static function finiteNumber(mixed $value): float

@@ -105,9 +105,28 @@ final class AmazonAdsBgtCountCalculator
 
         return [
             'counts' => $counts,
+            'ranges' => $this->ranges($bands, $fromKey, $toKey),
             'unmatched' => $unmatched,
             'campaigns' => count($rows),
         ];
+    }
+
+    /**
+     * Slab ranges these counts were made for. The page uses them to tell fresh counts from stale ones.
+     *
+     * @param  list<array<string, mixed>>  $bands
+     * @return list<array{0: float|null, 1: float|null}>
+     */
+    private function ranges(array $bands, string $fromKey, string $toKey): array
+    {
+        $out = [];
+        foreach ($bands as $band) {
+            $from = is_array($band) && isset($band[$fromKey]) && is_numeric($band[$fromKey]) ? (float) $band[$fromKey] : null;
+            $to = is_array($band) && isset($band[$toKey]) && is_numeric($band[$toKey]) ? (float) $band[$toKey] : null;
+            $out[] = [$from, $to];
+        }
+
+        return $out;
     }
 
     /**
@@ -130,6 +149,7 @@ final class AmazonAdsBgtCountCalculator
 
         return [
             'counts' => $counts,
+            'ranges' => $this->ranges($bands, 'rev_from', 'rev_to'),
             'unmatched' => $unmatched,
             'campaigns' => count($rows),
         ];

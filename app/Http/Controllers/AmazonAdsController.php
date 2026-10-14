@@ -3944,8 +3944,16 @@ class AmazonAdsController extends Controller
         // (otherwise the grid would filter to only negatives whose created_at matches that day).
         $defaultReportRangeDates['sp_negatives'] = null;
 
+        // The scheduler recounts every 30 minutes and saving rules recounts at once.
+        // Opening the page only needs a recount when there are none yet or they are old.
         try {
-            AmazonAdsBgtCountRunner::startInBackground();
+            $countedAt = AmazonAdsBgtCountStore::updatedAt();
+            $fresh = $countedAt !== null
+                && AmazonAdsBgtCountStore::read() !== null
+                && Carbon::parse($countedAt)->gt(Carbon::now()->subMinutes(15));
+            if (! $fresh) {
+                AmazonAdsBgtCountRunner::startInBackground();
+            }
         } catch (\Throwable) {
         }
 
