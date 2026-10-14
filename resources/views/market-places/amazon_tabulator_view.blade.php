@@ -863,6 +863,10 @@
                             title="Blue alert: INV > 0 and Price ≠ S PRC (needs push). Click to show only those SKUs. Cron and Push on reload skip Price = S PRC.">
                             <i class="fas fa-exclamation-triangle"></i> 0
                         </span>
+                        <span class="badge fs-6 p-2" id="amazon-clearance-badge"
+                            style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                            title="C = Clearance SKUs (Inv days clearance = YES). S PRC shows the rule price only, nothing is saved or pushed. Click to show only those SKUs. Click again to clear."
+                            aria-label="Clearance SKUs">C 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'amazon-lmp-missing-badge', 'lmpChannelKey' => 'amazon'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'amazon-price-gt-lmp-badge', 'pglChannelKey' => 'amazon', 'pglPriceField' => 'price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'amazon-price-lt80-lmp-badge', 'pltChannelKey' => 'amazon', 'pltPriceField' => 'price'])
@@ -1267,6 +1271,7 @@
         let priceGtLmpFilterActive = false;
         let priceLt80LmpFilterActive = false;
         let blueTriangleFilterActive = false;
+        let clearanceFilterActive = false;
 
         // Escape string for safe use in HTML attribute (fixes SKUs with " e.g. WF 8"-890 1PC)
         function escAttr(s) {
@@ -1722,6 +1727,16 @@
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: blueTriangleFilterActive ? '2px' : ''
             });
+            $('#amazon-clearance-badge').css({
+                outline: clearanceFilterActive ? '3px solid #ffc107' : '',
+                outlineOffset: clearanceFilterActive ? '2px' : ''
+            });
+        }
+        function amazonIsClearanceChildRow(data) {
+            if (!data || data.is_parent_summary) return false;
+            const sku = String(data['(Child) sku'] || data.Parent || '').trim().toUpperCase();
+            if (sku.indexOf('PARENT') === 0) return false;
+            return typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(data);
         }
         function amazonSpriceChangeDotMeta(sprice, amazonPrice) {
             const sp = parseFloat(sprice) || 0;
@@ -3445,6 +3460,27 @@
                     lmpMissingFilterActive = false;
                     priceGtLmpFilterActive = false;
                     priceLt80LmpFilterActive = false;
+                    clearanceFilterActive = false;
+                }
+                applyFilters();
+                syncAmazonBlueTriangleBadgeState();
+            });
+            $('#amazon-clearance-badge').on('click', function() {
+                clearanceFilterActive = !clearanceFilterActive;
+                if (clearanceFilterActive) {
+                    blueTriangleFilterActive = false;
+                    lmpMissingFilterActive = false;
+                    priceGtLmpFilterActive = false;
+                    priceLt80LmpFilterActive = false;
+                    if (window.LmpMissingBadge && typeof LmpMissingBadge.setOutline === 'function') {
+                        LmpMissingBadge.setOutline(document.getElementById('amazon-lmp-missing-badge'), false);
+                    }
+                    if (window.PriceGtLmpBadge && typeof PriceGtLmpBadge.setOutline === 'function') {
+                        PriceGtLmpBadge.setOutline(document.getElementById('amazon-price-gt-lmp-badge'), false);
+                    }
+                    if (window.PriceLt80LmpBadge && typeof PriceLt80LmpBadge.setOutline === 'function') {
+                        PriceLt80LmpBadge.setOutline(document.getElementById('amazon-price-lt80-lmp-badge'), false);
+                    }
                 }
                 applyFilters();
                 syncAmazonBlueTriangleBadgeState();
@@ -3455,7 +3491,7 @@
                     getActive: function() { return lmpMissingFilterActive; },
                     onToggle: function(on) {
                         lmpMissingFilterActive = on;
-                        if (on) blueTriangleFilterActive = false;
+                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; }
                         applyFilters();
                         syncAmazonBlueTriangleBadgeState();
                     }
@@ -3467,7 +3503,7 @@
                     getActive: function() { return priceGtLmpFilterActive; },
                     onToggle: function(on) {
                         priceGtLmpFilterActive = on;
-                        if (on) blueTriangleFilterActive = false;
+                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; }
                         applyFilters();
                         syncAmazonBlueTriangleBadgeState();
                     }
@@ -3479,7 +3515,7 @@
                     getActive: function() { return priceLt80LmpFilterActive; },
                     onToggle: function(on) {
                         priceLt80LmpFilterActive = on;
-                        if (on) blueTriangleFilterActive = false;
+                        if (on) { blueTriangleFilterActive = false; clearanceFilterActive = false; }
                         applyFilters();
                         syncAmazonBlueTriangleBadgeState();
                     }
@@ -4883,7 +4919,7 @@
                             // no S PRC is saved or pushed for them.
                             const isClearance = typeof amzIsClearanceSku === 'function' && amzIsClearanceSku(rowData);
                             const clearanceBadge = isClearance
-                                ? '<span title="Clearance — price shown only, not saved or pushed" style="font-weight:700;color:#dc3545;margin-right:2px;">C</span>'
+                                ? '<span class="amazon-sprice-clearance" title="Clearance — price shown only, not saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>'
                                 : '';
                             const hasCustomSprice = rowData.has_custom_sprice;
                             const currentPrice = parseFloat(rowData.price) || 0;
@@ -4955,7 +4991,7 @@
                             }
 
                             return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;">' +
-                                clearanceBadge + dot + formattedValue + blueTri + redTri + reviewTri + stdTri + '</span>';
+                                dot + formattedValue + clearanceBadge + blueTri + redTri + reviewTri + stdTri + '</span>';
                         },
                         cellClick: function(e) {
                             if (e.target.closest('.view-sku-chart') || e.target.closest('.sprice-change-dot')) {
@@ -5671,6 +5707,19 @@
                     return;
                 }
 
+                // Clearance "C" badge click = only clearance SKUs (same isolation as the blue triangle).
+                if (clearanceFilterActive) {
+                    table.addFilter(function(data) {
+                        return amazonIsClearanceChildRow(data);
+                    });
+                    updateSummary();
+                    amazonTabulatorFinalizeFilterApply(sortSnapshot);
+                    setTimeout(function() {
+                        updateRowSelectAllCheckbox();
+                    }, 100);
+                    return;
+                }
+
                 // When Play is active: apply ONLY playback filter so parent summary row always shows (no other filter can hide it)
                 if (isProductNavigationActive && productUniqueParents.length > 0 && currentProductParentIndex >= 0) {
                     var currentKey = productUniqueParents[currentProductParentIndex];
@@ -5988,6 +6037,7 @@
 
                 let totalViewsAll = 0;
                 let blueTriangleCount = 0;
+                let clearanceCount = 0;
                 allData.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalViewsAll += parseFloat(row['Sess30'] || 0);
@@ -5998,7 +6048,13 @@
                         }
                     }
                     if (amazonHasBlueTriangle(row)) blueTriangleCount++;
+                    if (amazonIsClearanceChildRow(row)) clearanceCount++;
                 });
+                $('#amazon-clearance-badge').text(
+                    (typeof amzStdClearanceSet !== 'undefined' && !amzStdClearanceSet)
+                        ? 'C …'
+                        : 'C ' + clearanceCount.toLocaleString()
+                );
                 const avgCVR = totalViewsAll > 0 ? (SERVER_AMZ_QTY_L30 / totalViewsAll * 100) : 0;
                 setAmzSummaryBadge($('#avg-cvr-badge'), 'CVR: ' + avgCVR.toFixed(1) + '%');
                 setAmzSummaryBadge($('#total-views-badge'), 'Views: ' + totalViews.toLocaleString());

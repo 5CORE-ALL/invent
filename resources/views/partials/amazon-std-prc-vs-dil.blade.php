@@ -910,6 +910,10 @@
                 const set = {};
                 ((res && res.skus) || []).forEach(function(sku) { set[amzStdClearanceKey(sku)] = true; });
                 amzStdClearanceSet = set;
+                // Refresh the top "C" badge count as soon as the clearance list is known.
+                if (typeof window.updateAmazonSummary === 'function') {
+                    try { window.updateAmazonSummary(); } catch (e) { /* table not ready yet */ }
+                }
                 // Clearance SKUs show "C" in S PRC instead of a price, so re-run the S PRC sync now.
                 if (typeof amzScheduleRuleSpriceSync === 'function') {
                     amzScheduleRuleSpriceSync({ force: true, delay: 300 });
