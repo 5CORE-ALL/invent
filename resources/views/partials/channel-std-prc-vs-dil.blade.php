@@ -452,6 +452,10 @@
                 const n = Number(d['BB L30']);
                 return isFinite(n) && n > 0 ? n : 0;
             }
+            if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'purchasing_power') {
+                const n = Number(d['PP L30']);
+                return isFinite(n) && n > 0 ? n : 0;
+            }
             return (typeof chPromoOvL30 === 'function') ? (Number(chPromoOvL30(d)) || 0) : 0;
         }
         function chStdMinNpftNow() {
