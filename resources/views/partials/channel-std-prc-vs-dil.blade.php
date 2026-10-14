@@ -75,7 +75,7 @@
         #chStdPrcModal .ch-sp-when-up::before { background: #198754; }
         #chStdPrcModal .ch-sp-when-up2::before { background: #14532d; }
         #chStdPrcModal .ch-sp-npft { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border: 1px solid #e6edf5; border-radius: 14px; background: #fff; font-size: 13px; color: #334155; }
-        .ch-npft-mark { color: #dc3545; font-weight: 800; margin-left: 3px; font-size: 14px; line-height: 1; }
+        @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'css'])
         #chStdPrcModal .ch-sp-npft .ch-sp-input { width: 64px; min-width: 64px; max-width: 64px; margin: 0; }
         #chStdPrcModal .ch-sp-margins { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
         #chStdPrcModal .ch-sp-margin { display: flex; justify-content: space-between; gap: 16px; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px 16px; background: #fff; }
@@ -575,6 +575,10 @@
         /** Same SNPFT% the table cell paints (0 decimals). */
         function chStdShownSnpftForMark(d) {
             if (!d) return null;
+            if (typeof ebayDilComputedSnpft === 'function') {
+                const dil = ebayDilComputedSnpft(d);
+                if (dil != null && isFinite(dil)) return dil;
+            }
             if (typeof ebayComputeSgpftFromSprice === 'function') {
                 const sgpft = ebayComputeSgpftFromSprice(d);
                 if (sgpft == null || !isFinite(sgpft)) return null;
@@ -598,12 +602,14 @@
             return chStdNpftAt(shown, d);
         }
         function chStdMinNpftWasApplied(d, draft) {
+            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.shouldMark === 'function') {
+                return window.minNpftSpriceMark.shouldMark(d);
+            }
             if (!chStdUsesMinNpft() || !d || chStdIsClearance(d)) return false;
             const floor = (draft && draft.minNpft != null) ? Number(draft.minNpft) : Number(chStdMinNpft);
             if (!(floor > 0)) return false;
             const snpft = chStdShownSnpftForMark(d);
             if (snpft == null || !isFinite(snpft)) return false;
-            // "!" only when the SNPFT cell shows the floor (10%), not when it is under or well above.
             return Math.round(snpft) === Math.round(floor);
         }
         window.chStdMinNpftWasApplied = chStdMinNpftWasApplied;
@@ -1507,6 +1513,10 @@
         }
         let chStdNpftMarksBound = false;
         function chStdStampNpftMarks() {
+            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
+                window.minNpftSpriceMark.stamp();
+                return;
+            }
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
             ['SPRICE', 'sprice'].forEach(function(field) {
                 let col = null;
@@ -1861,9 +1871,13 @@
             else redraw();
             });
         };
+        @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'script'])
         $(function() {
             bindChStdPrcUi();
             chStdScheduleAutoApply();
+            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.bind === 'function') {
+                window.minNpftSpriceMark.bind(0);
+            }
             setTimeout(chStdApplyPanelColumns, 800);
             setTimeout(chStdApplyPanelColumns, 2200);
         });

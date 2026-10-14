@@ -175,7 +175,7 @@
         }
         #amzStdPrcModal .amz-sp-col .table-responsive { margin-bottom: 8px; }
         #amzStdPrcModal .amz-sp-npft { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border: 1px solid #e6edf5; border-radius: 14px; background: #fff; font-size: 13px; color: #334155; }
-        .ch-npft-mark { color: #dc3545; font-weight: 800; margin-left: 3px; font-size: 14px; line-height: 1; }
+        @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'css'])
         #amzStdPrcModal .amz-sp-npft .amz-sp-input { width: 64px; min-width: 64px; max-width: 64px; margin: 0; }
         #amzStdPrcModal .amz-sp-margins {
             display: grid;
@@ -977,6 +977,9 @@
             return saved > 0 ? saved : 0;
         }
         function amzStdMinNpftWasApplied(d, minNpft) {
+            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.shouldMark === 'function') {
+                return window.minNpftSpriceMark.shouldMark(d);
+            }
             if (!d || amzStdIsClearance(d)) return false;
             const floor = minNpft == null ? Number(amzStdMinNpft) : Number(minNpft);
             if (!(floor > 0)) return false;
@@ -994,6 +997,10 @@
         window.amzStdMinNpftWasApplied = amzStdMinNpftWasApplied;
         let amzStdNpftMarksBound = false;
         function amzStdStampNpftMarks() {
+            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
+                window.minNpftSpriceMark.stamp();
+                return;
+            }
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
             ['SPRICE', 'sprice'].forEach(function(field) {
                 let col = null;
@@ -1808,10 +1815,15 @@
                 $('#amz-sp-hist-wrap').removeClass('is-open');
             });
         }
+        @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'script'])
         $(function() {
             bindAmzStdPrcUi();
             amzStdLoadClearance();
-            amzStdBindNpftMarks(0);
+            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.bind === 'function') {
+                window.minNpftSpriceMark.bind(0);
+            } else {
+                amzStdBindNpftMarks(0);
+            }
             setTimeout(amzStdApplyPanelColumns, 800);
             setTimeout(amzStdApplyPanelColumns, 2200);
         });
