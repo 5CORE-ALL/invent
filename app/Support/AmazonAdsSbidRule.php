@@ -55,7 +55,39 @@ final class AmazonAdsSbidRule
      */
     public static function resolvedRule(): array
     {
-        if (! Schema::hasTable('amazon_ads_sbid_rule_settings')) {
+        // Called for every grid row. Keep it to one lookup per few seconds, not one per row.
+        $memo = ! app()->runningUnitTests();
+        $now = microtime(true);
+        if ($memo && self::$resolvedMemo !== null && self::$resolvedMemo[0] > $now) {
+            return self::$resolvedMemo[1];
+        }
+
+        $rule = self::loadResolvedRule();
+        if ($memo) {
+            self::$resolvedMemo = [$now + 5, $rule];
+        }
+
+        return $rule;
+    }
+
+    /** @var array{0: float, 1: array<string, float>}|null */
+    private static ?array $resolvedMemo = null;
+
+    private static ?bool $settingsTableKnown = null;
+
+    private static function settingsTableExists(): bool
+    {
+        if (self::$settingsTableKnown === true && ! app()->runningUnitTests()) {
+            return true;
+        }
+        self::$settingsTableKnown = Schema::hasTable('amazon_ads_sbid_rule_settings');
+
+        return self::$settingsTableKnown;
+    }
+
+    private static function loadResolvedRule(): array
+    {
+        if (! self::settingsTableExists()) {
             return self::defaults();
         }
         $row = AmazonAdsSbidRuleSetting::query()->orderBy('id')->first();
@@ -68,6 +100,7 @@ final class AmazonAdsSbidRule
 
     public static function forgetResolvedCache(): void
     {
+        self::$resolvedMemo = null;
         Cache::forget(self::CACHE_KEY);
     }
 
@@ -170,7 +203,7 @@ final class AmazonAdsSbidRule
      */
     public static function persistRule(array $rule): void
     {
-        if (! Schema::hasTable('amazon_ads_sbid_rule_settings')) {
+        if (! self::settingsTableExists()) {
             throw new \RuntimeException('Table amazon_ads_sbid_rule_settings does not exist. Run migrations.');
         }
         $row = AmazonAdsSbidRuleSetting::query()->orderBy('id')->first();

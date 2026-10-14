@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\SchemaMemo;
 use App\Http\Controllers\Campaigns\AmazonSbBudgetController;
 use App\Http\Controllers\Campaigns\AmazonSpBudgetController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
@@ -157,11 +158,11 @@ class AmazonAdsController extends Controller
      */
     private static function orderedColumnsForTable(string $table): array
     {
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return [];
         }
 
-        $cols = Schema::getColumnListing($table);
+        $cols = SchemaMemo::getColumnListing($table);
 
         $priority = [
             'id',
@@ -204,10 +205,10 @@ class AmazonAdsController extends Controller
         // Keyword performance / negative keyword sources use a fixed keyword-level column set
         // (not the campaign-report overlays). Only keep columns that actually exist on the table.
         if (isset(self::KEYWORD_SOURCE_DISPLAY_COLUMNS[$table])) {
-            if (! Schema::hasTable($table)) {
+            if (! SchemaMemo::hasTable($table)) {
                 return [];
             }
-            $existing = Schema::getColumnListing($table);
+            $existing = SchemaMemo::getColumnListing($table);
 
             return array_values(array_filter(
                 self::KEYWORD_SOURCE_DISPLAY_COLUMNS[$table],
@@ -1664,7 +1665,7 @@ class AmazonAdsController extends Controller
         if (array_key_exists($table, self::$latestDailyReportYmdCache)) {
             return self::$latestDailyReportYmdCache[$table];
         }
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return self::$latestDailyReportYmdCache[$table] = null;
         }
         // Date labels sort before L1/L7/L30, so this range uses the report_date_range index.
@@ -2946,7 +2947,7 @@ class AmazonAdsController extends Controller
      */
     private static function applyDateFilters(Builder $query, string $table, Request $request): void
     {
-        $cols = Schema::getColumnListing($table);
+        $cols = SchemaMemo::getColumnListing($table);
         $hasReportRange = in_array('report_date_range', $cols, true);
 
         $summaryRange = self::normalizeSummaryReportRange($request->input('summary_report_range'));
@@ -3069,7 +3070,7 @@ class AmazonAdsController extends Controller
      */
     private static function applyUtilizationPercentRangeFilters(Builder $query, string $table, Request $request, bool $includeU7Filter = true): void
     {
-        $cols = Schema::getColumnListing($table);
+        $cols = SchemaMemo::getColumnListing($table);
         if (! in_array('campaignBudgetAmount', $cols, true)) {
             return;
         }
@@ -3175,11 +3176,11 @@ class AmazonAdsController extends Controller
      */
     private static function targetCountsFromKeywordReports(array $campaignIds): array
     {
-        if ($campaignIds === [] || ! Schema::hasTable('amazon_sp_keyword_reports')) {
+        if ($campaignIds === [] || ! SchemaMemo::hasTable('amazon_sp_keyword_reports')) {
             return [];
         }
 
-        $cols = Schema::getColumnListing('amazon_sp_keyword_reports');
+        $cols = SchemaMemo::getColumnListing('amazon_sp_keyword_reports');
         if (! in_array('campaign_id', $cols, true) || ! in_array('keyword_id', $cols, true) || ! in_array('report_date_range', $cols, true)) {
             return [];
         }
@@ -3219,11 +3220,11 @@ class AmazonAdsController extends Controller
 
             return $out;
         }
-        if ($ids === [] || ! Schema::hasTable('amazon_sp_negative_keywords')) {
+        if ($ids === [] || ! SchemaMemo::hasTable('amazon_sp_negative_keywords')) {
             return array_fill_keys($ids, 0);
         }
 
-        $cols = Schema::getColumnListing('amazon_sp_negative_keywords');
+        $cols = SchemaMemo::getColumnListing('amazon_sp_negative_keywords');
         if (! in_array('campaign_id', $cols, true) || ! in_array('keyword_id', $cols, true)) {
             return array_fill_keys($ids, 0);
         }
@@ -3282,7 +3283,7 @@ class AmazonAdsController extends Controller
         if ($band === null || self::targetCountAdProduct($table) === null) {
             return;
         }
-        $cols = Schema::getColumnListing($table);
+        $cols = SchemaMemo::getColumnListing($table);
         if (! in_array('campaign_id', $cols, true)) {
             return;
         }
@@ -3422,7 +3423,7 @@ class AmazonAdsController extends Controller
      */
     private static function applyCampaignStatusFilter(Builder $query, string $table, Request $request): void
     {
-        $cols = Schema::getColumnListing($table);
+        $cols = SchemaMemo::getColumnListing($table);
         if (! in_array('campaignStatus', $cols, true)) {
             return;
         }
@@ -3449,7 +3450,7 @@ class AmazonAdsController extends Controller
             return;
         }
 
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         if (! in_array('campaign_id', $dbColumns, true)) {
             return;
         }
@@ -3523,7 +3524,7 @@ class AmazonAdsController extends Controller
             return;
         }
 
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         $cvrExpr = self::sqlExpressionForAdsCvrPercent($table, $dbColumns);
         if ($cvrExpr === null) {
             return;
@@ -3578,7 +3579,7 @@ class AmazonAdsController extends Controller
             $otherInput = $otherField === 'bgt' ? 'filter_bgt_sync' : 'filter_bid_sync';
             self::applyOneLiveSyncStatusFilter($q, $table, $request, $otherField, $otherInput);
 
-            if (! Schema::hasTable('amazon_ads_live_sync_states')) {
+            if (! SchemaMemo::hasTable('amazon_ads_live_sync_states')) {
                 $total = (int) $q->clone()->count();
 
                 return $total < 1
@@ -3589,15 +3590,15 @@ class AmazonAdsController extends Controller
             $inner = $q->clone()->select($table.'.campaign_id');
             if ($field === 'bid') {
                 $inner->addSelect([$table.'.last_sbid', $table.'.sbid']);
-            } elseif (in_array('campaignBudgetAmount', Schema::getColumnListing($table), true)) {
+            } elseif (in_array('campaignBudgetAmount', SchemaMemo::getColumnListing($table), true)) {
                 $budgetSelect = [$table.'.campaignBudgetAmount'];
-                if (Schema::hasColumn($table, 'sbgt')) {
+                if (SchemaMemo::hasColumn($table, 'sbgt')) {
                     $budgetSelect[] = $table.'.sbgt';
                 }
                 $inner->addSelect($budgetSelect);
             }
             $channel = self::liveSyncChannelForTable($table);
-            $colorSql = self::liveSyncColorSql('r', $field, Schema::hasColumn($table, 'sbgt'));
+            $colorSql = self::liveSyncColorSql('r', $field, SchemaMemo::hasColumn($table, 'sbgt'));
             $row = DB::query()
                 ->fromSub($inner, 'r')
                 ->leftJoin('amazon_ads_live_sync_states as s', function ($join) use ($channel, $field) {
@@ -3645,7 +3646,7 @@ class AmazonAdsController extends Controller
         if ($color === null) {
             return;
         }
-        if (! Schema::hasTable('amazon_ads_live_sync_states')) {
+        if (! SchemaMemo::hasTable('amazon_ads_live_sync_states')) {
             if ($color !== AmazonAdsLiveSyncStatus::YELLOW) {
                 $query->whereRaw('0 = 1');
             }
@@ -3688,7 +3689,7 @@ class AmazonAdsController extends Controller
         $field = $field === 'bid' ? 'bid' : 'bgt';
         $channel = self::liveSyncChannelForTable($table);
         $t = str_replace('`', '', $table);
-        $colorSql = self::liveSyncColorSql($t, $field, Schema::hasColumn($table, 'sbgt'));
+        $colorSql = self::liveSyncColorSql($t, $field, SchemaMemo::hasColumn($table, 'sbgt'));
         $query->whereRaw(
             '(SELECT '.$colorSql.' FROM (SELECT 1) AS amz_sync_one'
             .' LEFT JOIN amazon_ads_live_sync_states AS s'
@@ -3767,7 +3768,7 @@ class AmazonAdsController extends Controller
         }
         $states = ['bgt' => [], 'bid' => []];
         try {
-            if (Schema::hasTable('amazon_ads_live_sync_states')) {
+            if (SchemaMemo::hasTable('amazon_ads_live_sync_states')) {
                 $channel = self::liveSyncChannelForTable($table);
                 $ids = [];
                 foreach ($data as $row) {
@@ -3880,10 +3881,10 @@ class AmazonAdsController extends Controller
      */
     private static function latestAvailableReportDayYmd(string $table): ?string
     {
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return null;
         }
-        $cols = Schema::getColumnListing($table);
+        $cols = SchemaMemo::getColumnListing($table);
         $best = null;
         try {
             if (in_array('report_date_range', $cols, true)) {
@@ -4424,7 +4425,7 @@ class AmazonAdsController extends Controller
         if ($cid === '') {
             return response()->json(['message' => 'Provide campaign_id.', 'skus' => []], 422);
         }
-        if (! Schema::hasTable('amazon_ads_campaign_skus')) {
+        if (! SchemaMemo::hasTable('amazon_ads_campaign_skus')) {
             return response()->json(['message' => 'Campaign SKU table is missing. Run amazon:ads-pull-product-ads.', 'skus' => []], 404);
         }
 
@@ -4560,7 +4561,7 @@ class AmazonAdsController extends Controller
         $names = array_column($skus, 'sku');
         $reviews = AmazonAdsCampaignSkuMetrics::reviewsBySkus($names);
         $priceLmp = AmazonAdsCampaignSkuMetrics::priceAndLmpBySkus($names);
-        $shopify = Schema::hasTable('shopify_skus')
+        $shopify = SchemaMemo::hasTable('shopify_skus')
             ? ShopifySku::mapByProductSkus($names)
             : collect();
         foreach ($skus as $i => $skuRow) {
@@ -4613,11 +4614,11 @@ class AmazonAdsController extends Controller
         }
 
         $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
-        if ($table === null || ! Schema::hasTable($table)) {
+        if ($table === null || ! SchemaMemo::hasTable($table)) {
             return response()->json(['ok' => false, 'message' => 'No daily CPC table for this row.', 'points' => []], 404);
         }
 
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         $costCol = in_array('cost', $dbColumns, true) ? 'cost' : (in_array('spend', $dbColumns, true) ? 'spend' : null);
         $hasClicks = in_array('clicks', $dbColumns, true);
         $hasCpc = in_array('costPerClick', $dbColumns, true);
@@ -4693,10 +4694,10 @@ class AmazonAdsController extends Controller
             return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
         }
         $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
-        if ($table === null || ! Schema::hasTable($table)) {
+        if ($table === null || ! SchemaMemo::hasTable($table)) {
             return response()->json(['ok' => false, 'message' => 'No daily report table for this row.', 'points' => []], 404);
         }
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         $latest = self::latestDailyReportYmdInTable($table);
         if ($latest === null || $latest === '') {
             $latest = Carbon::now(config('app.timezone'))->subDay()->format('Y-m-d');
@@ -4827,7 +4828,7 @@ class AmazonAdsController extends Controller
                 $byDate,
                 self::dailySpendSalesForFilteredCampaigns($request, $table, $start, $end)
             );
-            if (! Schema::hasTable($table)) {
+            if (! SchemaMemo::hasTable($table)) {
                 continue;
             }
             $dbColumns = self::orderedColumnsForTable($table);
@@ -4888,7 +4889,7 @@ class AmazonAdsController extends Controller
      */
     private static function dailySpendSalesForFilteredCampaigns(Request $request, string $table, string $from, string $to): array
     {
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return [];
         }
         $dbColumns = self::orderedColumnsForTable($table);
@@ -5003,14 +5004,14 @@ class AmazonAdsController extends Controller
             return response()->json(['ok' => false, 'message' => 'Provide campaign_id.', 'points' => []], 422);
         }
         $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
-        if ($table === null || ! Schema::hasTable($table)) {
+        if ($table === null || ! SchemaMemo::hasTable($table)) {
             return response()->json(['ok' => false, 'message' => 'No daily report table for this row.', 'points' => []], 404);
         }
         $days = (int) $request->query('days', 30);
         if (! in_array($days, [0, 7, 30, 31, 32, 35, 60, 90], true)) {
             $days = 30;
         }
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         $select = self::lRangeMetricSelectColumns($dbColumns, false);
         $adType = trim((string) $request->query('ad_type', ''));
         $q = DB::table($table)
@@ -5087,11 +5088,11 @@ class AmazonAdsController extends Controller
         }
 
         $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
-        if ($table === null || ! Schema::hasTable($table)) {
+        if ($table === null || ! SchemaMemo::hasTable($table)) {
             return response()->json(['ok' => false, 'message' => 'No daily CVR table for this row.', 'points' => []], 404);
         }
 
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         $purchCol = in_array('purchases30d', $dbColumns, true)
             ? 'purchases30d'
             : (in_array('purchases', $dbColumns, true) ? 'purchases' : null);
@@ -5146,11 +5147,11 @@ class AmazonAdsController extends Controller
         }
 
         $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
-        if ($table === null || ! Schema::hasTable($table)) {
+        if ($table === null || ! SchemaMemo::hasTable($table)) {
             return response()->json(['ok' => false, 'message' => 'No daily ACOS table for this row.', 'points' => []], 404);
         }
 
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         $costCol = in_array('cost', $dbColumns, true) ? 'cost' : (in_array('spend', $dbColumns, true) ? 'spend' : null);
         $salesCol = in_array('sales30d', $dbColumns, true) ? 'sales30d' : (in_array('sales', $dbColumns, true) ? 'sales' : null);
         if ($costCol === null || $salesCol === null) {
@@ -5244,7 +5245,7 @@ class AmazonAdsController extends Controller
         }
 
         $table = self::cpcHistoryTable($request->query('source'), $request->query('ad_type'));
-        if ($table === null || ! Schema::hasTable($table) || ! Schema::hasColumn($table, $column)) {
+        if ($table === null || ! SchemaMemo::hasTable($table) || ! SchemaMemo::hasColumn($table, $column)) {
             return response()->json(['ok' => false, 'message' => 'No daily '.$label.' table for this row.', 'points' => []], 404);
         }
 
@@ -5253,7 +5254,7 @@ class AmazonAdsController extends Controller
             $days = 30;
         }
 
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         $q = DB::table($table)
             ->where('campaign_id', $cid)
             ->whereRaw('CHAR_LENGTH(report_date_range) = 10')
@@ -5358,7 +5359,7 @@ class AmazonAdsController extends Controller
     private static function moneyHistoryPushesByDate(string $table, string $column, string $campaignId): array
     {
         $types = self::moneyHistoryPushTypes($table, $column);
-        if ($types === [] || ! Schema::hasTable('amazon_ads_push_logs')) {
+        if ($types === [] || ! SchemaMemo::hasTable('amazon_ads_push_logs')) {
             return [];
         }
 
@@ -5525,7 +5526,7 @@ class AmazonAdsController extends Controller
      */
     private static function previousDailyMoneyMap(string $table, array $campaignIds, string $column): array
     {
-        if ($campaignIds === [] || ! Schema::hasTable($table) || ! Schema::hasColumn($table, $column)) {
+        if ($campaignIds === [] || ! SchemaMemo::hasTable($table) || ! SchemaMemo::hasColumn($table, $column)) {
             return [];
         }
         $today = Carbon::now(config('app.timezone'))->toDateString();
@@ -5791,11 +5792,11 @@ class AmazonAdsController extends Controller
             'total' => 0,
         ];
 
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return response()->json($empty + ['reason' => 'missing_table']);
         }
 
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         if (! in_array('campaignBudgetAmount', $dbColumns, true)) {
             return response()->json($empty + ['reason' => 'no_budget']);
         }
@@ -5840,11 +5841,11 @@ class AmazonAdsController extends Controller
         }
 
         $table = self::RAW_TABLE_SOURCES[$source];
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return response()->json(['ok' => false, 'days' => [], 'reason' => 'missing_table']);
         }
 
-        $dbColumns = Schema::getColumnListing($table);
+        $dbColumns = SchemaMemo::getColumnListing($table);
         if (! in_array('campaignBudgetAmount', $dbColumns, true)) {
             return response()->json(['ok' => false, 'days' => [], 'reason' => 'no_budget']);
         }
@@ -5953,7 +5954,7 @@ class AmazonAdsController extends Controller
      */
     private function rawDataSingleSourcePayload(Request $request, string $table, ?int $forceStart = null, ?int $forceLength = null): array
     {
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return [
                 'draw' => (int) $request->input('draw', 0),
                 'recordsTotal' => 0,
@@ -6773,7 +6774,8 @@ class AmazonAdsController extends Controller
         if (! $forBgtUniverse && self::tableSupportsLiveSyncStatus($table, $dbColumns)) {
             $data = AmazonAdsStoredLiveBid::fillRows($table, $data);
             $data = self::attachLiveSyncStatusesToRows($data, $table);
-            AmazonAdsLiveSyncFollowUp::requestFromGrid($data, $table);
+            // Loading or reloading the grid only reads. It must not start a live pull/push; that runs from
+            // the schedule or when someone presses Push / turns Auto Push & Pull on.
         }
         if (! $forBgtUniverse && (in_array('targets', $columns, true) || in_array('nTargets', $columns, true))) {
             $data = self::attachTargetCountsToRows(
@@ -7639,7 +7641,7 @@ class AmazonAdsController extends Controller
         if ($cids === []) {
             return [];
         }
-        if (! Schema::hasTable($table) || ! in_array('sbid', Schema::getColumnListing($table), true)) {
+        if (! SchemaMemo::hasTable($table) || ! in_array('sbid', SchemaMemo::getColumnListing($table), true)) {
             return [];
         }
 
@@ -7686,7 +7688,7 @@ class AmazonAdsController extends Controller
         if ($cids === []) {
             return [];
         }
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return [];
         }
 
@@ -8475,7 +8477,7 @@ class AmazonAdsController extends Controller
         }
 
         $table = self::RAW_TABLE_SOURCES[$source];
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return $empty;
         }
 
@@ -8526,7 +8528,7 @@ class AmazonAdsController extends Controller
             return 0;
         }
         $table = self::RAW_TABLE_SOURCES[$source];
-        if (! Schema::hasTable($table)) {
+        if (! SchemaMemo::hasTable($table)) {
             return 0;
         }
         $dbColumns = self::orderedColumnsForTable($table);
@@ -8578,7 +8580,7 @@ class AmazonAdsController extends Controller
      */
     private static function applyAdvertisementMasterL30SummaryFilter(Builder $query, string $table): void
     {
-        $cols = Schema::getColumnListing($table);
+        $cols = SchemaMemo::getColumnListing($table);
         if (! in_array('report_date_range', $cols, true)) {
             return;
         }

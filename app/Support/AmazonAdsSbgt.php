@@ -127,7 +127,7 @@ public static function sumFromParts(mixed $bgtViews, mixed $bgtCvr, mixed $bgtAc
         if (! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
             return;
         }
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sbgt')) {
+        if (! SchemaMemo::hasTable($table) || ! SchemaMemo::hasColumn($table, 'sbgt')) {
             return;
         }
         if ($sbgtByCampaignId !== []) {

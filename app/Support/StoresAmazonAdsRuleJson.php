@@ -12,13 +12,43 @@ use Illuminate\Support\Facades\Schema;
  */
 trait StoresAmazonAdsRuleJson
 {
+    /**
+     * Rules are read once per grid row (views, cvr, acos, prc, reviews, dil, inv). Without a memo that is
+     * hundreds of identical SELECTs plus an information_schema lookup each time, which dominated the load.
+     * A few seconds is long enough to cover one request and short enough that other processes' saves show up.
+     */
+    private static int $ruleMemoSeconds = 5;
+
+    private static function ruleMemoOn(): bool
+    {
+        // Unit tests reset tables and rows between cases, so they always read through.
+        return ! app()->runningUnitTests();
+    }
+
+    /** @var array<string, array{0: float, 1: ?array}> */
+    private static array $ruleMemo = [];
+
+    private static bool $rulesTableKnown = false;
+
     private static function readStoredRule(string $key): ?array
     {
+        $memo = self::ruleMemoOn();
+        $now = microtime(true);
+        $hit = $memo ? (self::$ruleMemo[$key] ?? null) : null;
+        if ($hit !== null && $hit[0] > $now) {
+            return $hit[1];
+        }
+
         self::ensureRulesTable();
 
-        return self::decodeStoredRule(
+        $decoded = self::decodeStoredRule(
             DB::table('amazon_ads_rules')->where('key', $key)->value('rule')
         );
+        if ($memo) {
+            self::$ruleMemo[$key] = [$now + self::$ruleMemoSeconds, $decoded];
+        }
+
+        return $decoded;
     }
 
     private static function decodeStoredRule(mixed $raw): ?array
@@ -43,6 +73,7 @@ trait StoresAmazonAdsRuleJson
     private static function storeRuleJson(string $key, array $rule): void
     {
         self::ensureRulesTable();
+        unset(self::$ruleMemo[$key]);
         $exists = DB::table('amazon_ads_rules')->where('key', $key)->exists();
         $payload = [
             'rule' => json_encode($rule),
@@ -60,7 +91,12 @@ trait StoresAmazonAdsRuleJson
 
     private static function ensureRulesTable(): void
     {
-        if (Schema::hasTable('amazon_ads_rules')) {
+        if (self::$rulesTableKnown && self::ruleMemoOn()) {
+            return;
+        }
+        if (SchemaMemo::hasTable('amazon_ads_rules')) {
+            self::$rulesTableKnown = true;
+
             return;
         }
         try {
@@ -75,5 +111,6 @@ trait StoresAmazonAdsRuleJson
                 throw $e;
             }
         }
+        self::$rulesTableKnown = true;
     }
 }

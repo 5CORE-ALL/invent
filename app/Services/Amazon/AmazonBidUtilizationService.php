@@ -2,6 +2,7 @@
 
 namespace App\Services\Amazon;
 
+use App\Support\SchemaMemo;
 use App\Models\AmazonUtilizationCount;
 use App\Support\AmazonAdsSbidRule;
 use Illuminate\Support\Facades\DB;
@@ -63,17 +64,17 @@ class AmazonBidUtilizationService
     public static function lifetimeAvgCpcFromDaily(string $table, string $campaignId, ?string $adType = null): float
     {
         $campaignId = trim($campaignId);
-        if ($campaignId === '' || ! Schema::hasTable($table)) {
+        if ($campaignId === '' || ! SchemaMemo::hasTable($table)) {
             return 0.0;
         }
-        $costCol = Schema::hasColumn($table, 'cost') ? 'cost' : (Schema::hasColumn($table, 'spend') ? 'spend' : null);
-        if ($costCol === null || ! Schema::hasColumn($table, 'clicks')) {
+        $costCol = SchemaMemo::hasColumn($table, 'cost') ? 'cost' : (SchemaMemo::hasColumn($table, 'spend') ? 'spend' : null);
+        if ($costCol === null || ! SchemaMemo::hasColumn($table, 'clicks')) {
             return 0.0;
         }
         $q = DB::table($table)
             ->where('campaign_id', $campaignId)
             ->whereRaw('CHAR_LENGTH(report_date_range) = 10');
-        if ($adType !== null && $adType !== '' && Schema::hasColumn($table, 'ad_type')) {
+        if ($adType !== null && $adType !== '' && SchemaMemo::hasColumn($table, 'ad_type')) {
             $q->where('ad_type', $adType);
         }
         $row = $q->selectRaw('SUM(`'.$costCol.'`) as life_cost, SUM(`clicks`) as life_clicks')->first();
@@ -99,13 +100,13 @@ class AmazonBidUtilizationService
     {
         $campaignId = trim($campaignId);
         $empty = [0.0, 0.0, 0.0];
-        if ($campaignId === '' || ! Schema::hasTable($table) || ! Schema::hasColumn($table, 'costPerClick') || ! Schema::hasColumn($table, 'report_date_range')) {
+        if ($campaignId === '' || ! SchemaMemo::hasTable($table) || ! SchemaMemo::hasColumn($table, 'costPerClick') || ! SchemaMemo::hasColumn($table, 'report_date_range')) {
             return $empty;
         }
         $anchorQuery = DB::table($table)
             ->where('campaign_id', $campaignId)
             ->whereRaw('CHAR_LENGTH(report_date_range) = 10');
-        if ($adType !== null && $adType !== '' && Schema::hasColumn($table, 'ad_type')) {
+        if ($adType !== null && $adType !== '' && SchemaMemo::hasColumn($table, 'ad_type')) {
             $anchorQuery->where('ad_type', $adType);
         }
         $anchor = $anchorQuery->max('report_date_range');
@@ -120,7 +121,7 @@ class AmazonBidUtilizationService
         $rowsQuery = DB::table($table)
             ->where('campaign_id', $campaignId)
             ->whereIn('report_date_range', $days);
-        if ($adType !== null && $adType !== '' && Schema::hasColumn($table, 'ad_type')) {
+        if ($adType !== null && $adType !== '' && SchemaMemo::hasColumn($table, 'ad_type')) {
             $rowsQuery->where('ad_type', $adType);
         }
         $byDay = [];
@@ -171,7 +172,7 @@ class AmazonBidUtilizationService
         if (! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
             return;
         }
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sbid')) {
+        if (! SchemaMemo::hasTable($table) || ! SchemaMemo::hasColumn($table, 'sbid')) {
             return;
         }
         if ($sbidByCampaignId !== []) {
@@ -265,7 +266,7 @@ class AmazonBidUtilizationService
         if ($campaignId === '' || $stored === null || ! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
             return;
         }
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sbid')) {
+        if (! SchemaMemo::hasTable($table) || ! SchemaMemo::hasColumn($table, 'sbid')) {
             return;
         }
         $latest = DB::table($table)

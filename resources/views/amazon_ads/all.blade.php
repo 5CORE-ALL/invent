@@ -1261,11 +1261,11 @@
                             <div class="amz-raw-filter-field">
                                 <label class="amz-raw-filter-label mb-0" id="amazonAdsFilterCampaignStatusLabel">Stat</label>
                                 <div class="dropdown amz-stat-filter" id="amazonAdsFilterCampaignStatus" data-bs-auto-close="outside">
-                                    <button type="button" class="form-select form-select-sm amz-raw-filter-select amz-stat-filter-btn text-start" id="amazonAdsFilterCampaignStatusBtn" data-bs-toggle="dropdown" aria-expanded="false" aria-labelledby="amazonAdsFilterCampaignStatusLabel">Enabled, Paused</button>
+                                    <button type="button" class="form-select form-select-sm amz-raw-filter-select amz-stat-filter-btn text-start" id="amazonAdsFilterCampaignStatusBtn" data-bs-toggle="dropdown" aria-expanded="false" aria-labelledby="amazonAdsFilterCampaignStatusLabel">Enabled</button>
                                     <div class="dropdown-menu amz-stat-filter-menu">
                                         <label class="amz-stat-filter-opt"><input class="form-check-input" type="checkbox" value="" data-stat-all> All</label>
                                         <label class="amz-stat-filter-opt is-on"><input class="form-check-input" type="checkbox" value="ENABLED" data-stat data-label="Enabled" checked> Enabled</label>
-                                        <label class="amz-stat-filter-opt is-on"><input class="form-check-input" type="checkbox" value="PAUSED" data-stat data-label="Paused" checked> Paused</label>
+                                        <label class="amz-stat-filter-opt"><input class="form-check-input" type="checkbox" value="PAUSED" data-stat data-label="Paused"> Paused</label>
                                         <label class="amz-stat-filter-opt"><input class="form-check-input" type="checkbox" value="ARCHIVED" data-stat data-label="Archived"> Archived</label>
                                     </div>
                                 </div>
@@ -3471,7 +3471,7 @@
             }
             function amzStatFilterValue() {
                 var s = amzStatFilterParts();
-                if (!s) return 'ENABLED,PAUSED';
+                if (!s) return 'ENABLED';
                 if (s.all && s.all.checked) return '';
                 var vals = s.boxes.filter(function (b) { return b.checked; }).map(function (b) { return b.value; });
                 return vals.length ? vals.join(',') : '__none__';
@@ -3480,7 +3480,7 @@
                 var s = amzStatFilterParts();
                 if (!s) return;
                 if (s.all) s.all.checked = false;
-                s.boxes.forEach(function (b) { b.checked = b.value === 'ENABLED' || b.value === 'PAUSED'; });
+                s.boxes.forEach(function (b) { b.checked = b.value === 'ENABLED'; });
                 amzSyncStatFilterLabel();
             }
             function amzEnsureStatIncludesPaused() {
@@ -7633,9 +7633,10 @@
             }
 
             var AMZ_AUTO_PUSH_PULL_KEY = 'amzAutoPushPull';
-            function amzAutoPushPullOn() {
-                try { return localStorage.getItem(AMZ_AUTO_PUSH_PULL_KEY) === '1'; } catch (e) { return false; }
-            }
+            // Held in memory only: a reload always starts OFF, so opening or reloading the page never pulls or pushes.
+            var amzAutoPushPullFlag = false;
+            try { localStorage.removeItem(AMZ_AUTO_PUSH_PULL_KEY); } catch (e) {}
+            function amzAutoPushPullOn() { return amzAutoPushPullFlag; }
             function amzPaintAutoPushPullBtn() {
                 var btn = document.getElementById('amazonAdsAutoPushPullBtn');
                 if (!btn) return;
@@ -7829,7 +7830,7 @@
                 amzPaintAutoPushPullBtn();
                 autoPushPullBtn.addEventListener('click', function () {
                     var next = !amzAutoPushPullOn();
-                    try { localStorage.setItem(AMZ_AUTO_PUSH_PULL_KEY, next ? '1' : '0'); } catch (e) {}
+                    amzAutoPushPullFlag = next;
                     amzPaintAutoPushPullBtn();
                     var st = document.getElementById('amz-bgt-status');
                     if (!next) {

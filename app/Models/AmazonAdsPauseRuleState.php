@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SchemaMemo;
 use App\Support\AmazonAdsPauseRule;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Log;
@@ -29,7 +30,7 @@ class AmazonAdsPauseRuleState extends Model
 
     public static function ensureTable(): void
     {
-        if (Schema::hasTable('amazon_ads_pause_rule_states')) {
+        if (SchemaMemo::hasTable('amazon_ads_pause_rule_states')) {
             return;
         }
         try {

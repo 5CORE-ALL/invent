@@ -100,7 +100,7 @@ final class AmazonAdsCampaignSkuMetrics
     public static function childSkusForParentFamily(string $family): array
     {
         $fam = strtoupper(trim(str_replace("\xC2\xA0", ' ', $family)));
-        if ($fam === '' || ! Schema::hasTable('product_master')) {
+        if ($fam === '' || ! SchemaMemo::hasTable('product_master')) {
             return [];
         }
 
@@ -327,7 +327,7 @@ final class AmazonAdsCampaignSkuMetrics
                 $childKeys[] = $key;
             }
         }
-        if ($childKeys === [] || ! Schema::hasTable('product_master')) {
+        if ($childKeys === [] || ! SchemaMemo::hasTable('product_master')) {
             return $familyByKey;
         }
 
@@ -404,7 +404,7 @@ final class AmazonAdsCampaignSkuMetrics
             [self::class, 'normalizeParentFamily'],
             $families
         ), static fn (string $f): bool => $f !== ''));
-        if ($families === [] || ! Schema::hasTable('product_master')) {
+        if ($families === [] || ! SchemaMemo::hasTable('product_master')) {
             return [];
         }
 
@@ -495,7 +495,7 @@ final class AmazonAdsCampaignSkuMetrics
             static fn ($s) => is_string($s) ? trim($s) : '',
             $skus
         ), static fn (string $s): bool => $s !== ''));
-        if ($skus === [] || ! Schema::hasTable('amazon_datsheets')) {
+        if ($skus === [] || ! SchemaMemo::hasTable('amazon_datsheets')) {
             return [];
         }
 
@@ -652,7 +652,7 @@ final class AmazonAdsCampaignSkuMetrics
         $list = array_keys($keys);
         $sheets = self::datasheetByCompactSku($list);
         $byCompact = [];
-        if (Schema::hasTable('amazon_sku_competitors')) {
+        if (SchemaMemo::hasTable('amazon_sku_competitors')) {
             $spaceKeys = [];
             $compactKeys = [];
             foreach ($list as $key) {
@@ -750,7 +750,7 @@ final class AmazonAdsCampaignSkuMetrics
                 $want[$k] = true;
             }
         }
-        if ($want === [] || ! Schema::hasTable('amazon_product_reviews')) {
+        if ($want === [] || ! SchemaMemo::hasTable('amazon_product_reviews')) {
             return [];
         }
 
@@ -819,7 +819,7 @@ final class AmazonAdsCampaignSkuMetrics
                 $cids[$id] = true;
             }
         }
-        if ($cids === [] || ! Schema::hasTable('amazon_ads_campaign_skus')) {
+        if ($cids === [] || ! SchemaMemo::hasTable('amazon_ads_campaign_skus')) {
             return [];
         }
 
@@ -898,7 +898,7 @@ final class AmazonAdsCampaignSkuMetrics
                 $cids[$id] = true;
             }
         }
-        if ($cids === [] || ! Schema::hasTable('amazon_ads_campaign_skus')) {
+        if ($cids === [] || ! SchemaMemo::hasTable('amazon_ads_campaign_skus')) {
             return [];
         }
 
@@ -937,7 +937,7 @@ final class AmazonAdsCampaignSkuMetrics
             return [];
         }
 
-        $shopify = Schema::hasTable('shopify_skus')
+        $shopify = SchemaMemo::hasTable('shopify_skus')
             ? ShopifySku::mapByProductSkus($skus)
             : collect();
 
@@ -1186,7 +1186,7 @@ final class AmazonAdsCampaignSkuMetrics
         $compactKeys = array_values(array_unique(array_filter($compactKeys)));
 
         $sheetByCompact = [];
-        if (Schema::hasTable('amazon_datsheets') && ($spaceKeys !== [] || $compactKeys !== [])) {
+        if (SchemaMemo::hasTable('amazon_datsheets') && ($spaceKeys !== [] || $compactKeys !== [])) {
             $rows = AmazonDatasheet::query()
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
@@ -1233,7 +1233,7 @@ final class AmazonAdsCampaignSkuMetrics
         }
         $childSkusByFamily = [];
         $childSkusByCompact = [];
-        if ($parentFamilyKeys !== [] && Schema::hasTable('product_master')) {
+        if ($parentFamilyKeys !== [] && SchemaMemo::hasTable('product_master')) {
             $families = [];
             foreach (array_values(array_unique(array_values($parentFamilyKeys))) as $fam) {
                 $families[$fam] = true;
@@ -1291,7 +1291,7 @@ final class AmazonAdsCampaignSkuMetrics
             }
         }
         $lookupSkus = array_values(array_unique($lookupSkus));
-        $shopifyByPm = Schema::hasTable('shopify_skus')
+        $shopifyByPm = SchemaMemo::hasTable('shopify_skus')
             ? ShopifySku::mapByProductSkus($lookupSkus)
             : collect();
         $lmpByCompact = self::lmpLandedBySkuKeys($lookupSkus);
@@ -1434,7 +1434,7 @@ final class AmazonAdsCampaignSkuMetrics
      */
     private static function lmpLandedBySkuKeys(array $skuKeys): array
     {
-        if ($skuKeys === [] || ! Schema::hasTable('amazon_sku_competitors')) {
+        if ($skuKeys === [] || ! SchemaMemo::hasTable('amazon_sku_competitors')) {
             return [];
         }
 

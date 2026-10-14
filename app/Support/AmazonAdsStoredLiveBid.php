@@ -58,7 +58,7 @@ final class AmazonAdsStoredLiveBid
         if (! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
             return $rows;
         }
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'last_sbid') || ! Schema::hasColumn($table, 'campaign_id')) {
+        if (! SchemaMemo::hasTable($table) || ! SchemaMemo::hasColumn($table, 'last_sbid') || ! SchemaMemo::hasColumn($table, 'campaign_id')) {
             return $rows;
         }
         $need = [];

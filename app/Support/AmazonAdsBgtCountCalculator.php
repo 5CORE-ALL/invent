@@ -11,6 +11,9 @@ use ReflectionMethod;
  */
 final class AmazonAdsBgtCountCalculator
 {
+    /** Active campaigns only, the same default the page opens with. */
+    private const STATUS = 'ENABLED';
+
     private const COLORS = ['#7c3aed', '#2563eb', '#16a34a', '#f59e0b', '#f97316', '#dc2626', '#64748b', '#0ea5e9'];
 
     /**
@@ -41,7 +44,7 @@ final class AmazonAdsBgtCountCalculator
         ];
 
         $saved = [
-            'filter' => 'ENABLED,PAUSED',
+            'filter' => self::STATUS,
             'columns' => $columns,
             'sum' => $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $inv),
         ];
@@ -65,7 +68,7 @@ final class AmazonAdsBgtCountCalculator
             'date_from' => $day ?? '',
             'date_to' => $day ?? '',
             'summary_report_range' => '',
-            'filter_campaign_status' => 'ENABLED,PAUSED',
+            'filter_campaign_status' => self::STATUS,
         ]);
         $response = app(AmazonAdsController::class)->rawData($request, 'all_reports');
         $json = json_decode($response->getContent(), true);
