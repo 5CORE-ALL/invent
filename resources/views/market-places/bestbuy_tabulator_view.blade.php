@@ -2467,7 +2467,9 @@
                         const clearanceMark = isClearance
                             ? '<span class="bestbuy-sprice-clearance" title="Clearance — Min NPFT not applied" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
+                        // Min NPFT raised this S PRC: red "!" (same mark as the header badge count).
+                        const npftMark = (bestbuyHasNpftMark(rowData) && typeof window.chStdNpftMarkHtml === 'function') ? window.chStdNpftMarkHtml(rowData) : '';
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${npftMark}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
                     },
                     width: 120
                 },
@@ -2894,7 +2896,11 @@
                 try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ }
                 // The S PRC cells painted before the clearance list arrived: repaint so the "C" shows.
                 try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
-                setTimeout(function() { try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ } }, 2500);
+                setTimeout(function() {
+                    try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ }
+                    try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
+                    try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
+                }, 2500);
                 try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
             });
         })(0);
