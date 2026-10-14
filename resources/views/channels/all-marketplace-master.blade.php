@@ -7084,6 +7084,17 @@
                     }
                 };
 
+                // The last point's label is drawn rotated up-and-right, so a fixed
+                // right padding clipped long values ("$317,xxx" -> "$317"). Size the
+                // padding from the real text width of the widest recent labels.
+                ctx.save();
+                ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+                const tailLabelWidth = Math.max.apply(null, values.slice(-2).map(function(v) {
+                    return ctx.measureText(fmtVal(v)).width;
+                }));
+                ctx.restore();
+                const chartRightPad = Math.max(22, Math.ceil(tailLabelWidth * Math.cos(Math.PI / 5)) + 12);
+
                 adBreakdownChartInstance = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -7114,7 +7125,7 @@
                         maintainAspectRatio: false,
                         clip: false,
                         layout: {
-                            padding: { top: 44, left: 4, right: 22, bottom: 8 }
+                            padding: { top: 44, left: 4, right: chartRightPad, bottom: 8 }
                         },
                         plugins: {
                             legend: { display: false },
