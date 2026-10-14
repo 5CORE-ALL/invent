@@ -794,6 +794,17 @@
                 sroiRaw: sroiRaw
             };
         }
+        /** Same "!" as eBay: only when the SNPFT cell (SGPFT, no Ads%) rounds to Min NPFT 10%. */
+        function aeNpftMarkHtml(d) {
+            if (typeof window.chStdNpftMarkHtml === 'function') {
+                const shared = window.chStdNpftMarkHtml(d);
+                if (shared) return shared;
+            }
+            const v = aeSpriceMetrics(d).sgpftRaw;
+            if (v == null || !isFinite(v)) return '';
+            if (Math.round(v) !== 10) return '';
+            return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT 10%">!</span>';
+        }
         /** Live GROI / GPFT at a price — same formula as amazonComputeGroiAt / amazonComputeGpftAt. */
         function aeComputeAt(price, data) {
             const p = parseFloat(price);
@@ -2437,7 +2448,7 @@
                                 ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
                                 : '<span style="font-weight:600;">' + formatted + '</span>';
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + priceHtml + blueTri + redTri + '</span>';
+                                + priceHtml + blueTri + redTri + aeNpftMarkHtml(d) + '</span>';
                         }
                     },
                     {
@@ -2600,6 +2611,10 @@
                     updateSummary();
                 },
                 renderComplete: function() {
+                    window.table = table;
+                    if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
+                        window.minNpftSpriceMark.stamp(table);
+                    }
                     updateSummary();
                     // #region agent log
                     try {
