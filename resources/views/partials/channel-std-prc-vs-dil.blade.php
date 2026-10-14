@@ -572,24 +572,45 @@
             const saved = Number(d.SPRICE_SERVER != null ? d.SPRICE_SERVER : (d.SPRICE || d.sprice));
             return saved > 0 ? saved : 0;
         }
+        /** Same SNPFT% the table cell paints (0 decimals). */
+        function chStdShownSnpftForMark(d) {
+            if (!d) return null;
+            if (typeof ebayComputeSgpftFromSprice === 'function') {
+                const sgpft = ebayComputeSgpftFromSprice(d);
+                if (sgpft == null || !isFinite(sgpft)) return null;
+                const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : (chStdAdsFrac() * 100);
+                return sgpft - ads;
+            }
+            if (typeof ebay2ComputeSgpftFromSprice === 'function') {
+                const sgpft = ebay2ComputeSgpftFromSprice(d);
+                if (sgpft == null || !isFinite(sgpft)) return null;
+                const ads = (typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0) : (chStdAdsFrac() * 100);
+                return sgpft - ads;
+            }
+            if (typeof ebay3ComputeSgpftFromSprice === 'function') {
+                const sgpft = ebay3ComputeSgpftFromSprice(d);
+                if (sgpft == null || !isFinite(sgpft)) return null;
+                const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : (chStdAdsFrac() * 100);
+                return sgpft - ads;
+            }
+            const shown = chStdShownSpriceForMark(d);
+            if (!(shown > 0)) return null;
+            return chStdNpftAt(shown, d);
+        }
         function chStdMinNpftWasApplied(d, draft) {
             if (!chStdUsesMinNpft() || !d || chStdIsClearance(d)) return false;
             const floor = (draft && draft.minNpft != null) ? Number(draft.minNpft) : Number(chStdMinNpft);
             if (!(floor > 0)) return false;
-            const before = chStdPriceBeforeMinNpft(d, draft);
-            if (!(before > 0)) return false;
-            // A raise was needed on the discount price…
-            if (!(chStdRaiseToMinNpft(before, d, floor) > before + 0.009)) return false;
-            // …and the S PRC the cell shows actually reached the floor. Do not paint "!" when
-            // Std / LMP pulled the price back under Min NPFT (SNPFT still below 10%).
-            const shown = chStdShownSpriceForMark(d);
-            return shown > 0 && chStdNpftAt(shown, d) >= floor - 0.001;
+            const snpft = chStdShownSnpftForMark(d);
+            if (snpft == null || !isFinite(snpft)) return false;
+            // "!" only when the SNPFT cell shows the floor (10%), not when it is under or well above.
+            return Math.round(snpft) === Math.round(floor);
         }
         window.chStdMinNpftWasApplied = chStdMinNpftWasApplied;
         function chStdNpftMarkHtml(d) {
             if (!chStdMinNpftWasApplied(d)) return '';
             const pct = Number(chStdMinNpft);
-            return '<span class="ch-npft-mark" title="Raised so NPFT stays at or above ' + pct + '%">!</span>';
+            return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT ' + pct + '%">!</span>';
         }
         window.chStdNpftMarkHtml = chStdNpftMarkHtml;
         function chStdExcludesShip() {
@@ -1510,7 +1531,7 @@
                         mark.textContent = '!';
                         el.appendChild(mark);
                     }
-                    mark.title = 'Raised so NPFT stays at or above ' + Number(chStdMinNpft) + '%';
+                    mark.title = 'SNPFT is at Min NPFT ' + Number(chStdMinNpft) + '%';
                 });
             });
         }

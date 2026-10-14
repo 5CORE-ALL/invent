@@ -980,23 +980,16 @@
             if (!d || amzStdIsClearance(d)) return false;
             const floor = minNpft == null ? Number(amzStdMinNpft) : Number(minNpft);
             if (!(floor > 0)) return false;
-            const std = Number(d.STANDARD_PRICE) || 0;
-            if (!(std > 0)) return false;
-            let pre = std;
-            if (typeof computeAmzRuleStack === 'function') {
-                const stack = computeAmzRuleStack(d);
-                const total = Number(stack && stack.totalDisc) || 0;
-                if (Math.abs(total) >= 0.01 && total < 100) {
-                    pre = Math.round(std * (1 - total / 100) * 100) / 100;
-                }
+            let snpft = null;
+            if (typeof amazonComputeSpft === 'function') {
+                snpft = amazonComputeSpft(d);
+            } else {
+                const shown = amzStdShownSpriceForMark(d);
+                if (shown > 0) snpft = amzStdNpftAt(shown, d);
             }
-            if (!(pre > 0)) return false;
-            // A raise was needed on the discount price…
-            if (!(amzStdRaiseToMinNpft(pre, d, floor) > pre + 0.009)) return false;
-            // …and the S PRC the cell shows actually reached the floor. Do not paint "!" when
-            // Std / LMP pulled the price back under Min NPFT (SNPFT still below 10%).
-            const shown = amzStdShownSpriceForMark(d);
-            return shown > 0 && amzStdNpftAt(shown, d) >= floor - 0.001;
+            if (snpft == null || !isFinite(snpft)) return false;
+            // "!" only when the SNPFT cell shows the floor (10%), not when it is under or well above.
+            return Math.round(snpft) === Math.round(floor);
         }
         window.amzStdMinNpftWasApplied = amzStdMinNpftWasApplied;
         let amzStdNpftMarksBound = false;
@@ -1023,7 +1016,7 @@
                         mark.textContent = '!';
                         el.appendChild(mark);
                     }
-                    mark.title = 'Raised so NPFT stays at or above ' + Number(amzStdMinNpft) + '%';
+                    mark.title = 'SNPFT is at Min NPFT ' + Number(amzStdMinNpft) + '%';
                 });
             });
         }
