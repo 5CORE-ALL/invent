@@ -505,13 +505,6 @@
             justify-self: end; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
         }
         .amz-hist-dot:hover { transform: scale(1.35); }
-        .amz-count-hist {
-            display: none; margin: 0 0 12px; padding: 8px 10px 6px;
-            border: 1px solid #e6edf5; border-radius: 12px; background: #fff;
-        }
-        .amz-count-hist.is-open { display: block; }
-        .amz-count-hist-canvas { position: relative; height: 180px; }
-        .amz-count-hist-empty { font-size: 11px; color: #94a3b8; margin: 2px 0 0; }
         .amz-metric-blocks {
             display: flex; flex-wrap: wrap; gap: 8px; flex: 1 1 720px; min-width: 0;
         }
@@ -1554,14 +1547,6 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="amz-count-hist" id="amz-count-hist-bgt" data-scope="bgt">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small fw-semibold amz-count-hist-title">Daily history</span>
-                            <button type="button" class="btn-close amz-count-hist-close" aria-label="Close history" style="font-size:10px;"></button>
-                        </div>
-                        <div class="amz-count-hist-canvas"><canvas id="amz-count-hist-canvas-bgt"></canvas></div>
-                        <p class="amz-count-hist-empty d-none">No history yet. One count is saved per day.</p>
-                    </div>
                     <div class="amz-bgt-col amz-bgt-sumbar" data-amz-bgt-panel="sum">
                             <div class="amz-bgt-col-head">
                                 <div>
@@ -1837,14 +1822,6 @@
                         <input type="number" step="0.1" class="form-control form-control-sm" id="amazonAdsSbidRuleUtilHigh" name="util_high" required title="Both U7% and U1% must be above this">
                         <span class="text-muted">Counts are every campaign in the current filters, the same set as the CAMPAIGN badge.</span>
                         <span class="amz-sbid-sum-all">Sum of counts: <span id="amazonAdsSbidSumAll">0</span></span>
-                    </div>
-                    <div class="amz-count-hist" id="amz-count-hist-sbid" data-scope="sbid">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="small fw-semibold amz-count-hist-title">Daily history</span>
-                            <button type="button" class="btn-close amz-count-hist-close" aria-label="Close history" style="font-size:10px;"></button>
-                        </div>
-                        <div class="amz-count-hist-canvas"><canvas id="amz-count-hist-canvas-sbid"></canvas></div>
-                        <p class="amz-count-hist-empty d-none">No history yet. One count is saved per day.</p>
                     </div>
                     <div class="amz-sbid-cols">
                         <div class="amz-sbid-col" data-amz-sbid-panel="below">
@@ -4735,7 +4712,10 @@
             }
             function amzHistoryIsCvr() { return amzHistoryKind === 'cvr'; }
             function amzHistoryIsPercent() { return amzHistoryKind === 'cvr' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos'; }
-            function amzHistoryLowerIsBetter() { return amzHistoryKind === 'cpc' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos'; }
+            function amzHistoryLowerIsBetter() {
+                if (amzHistoryKind === 'count') return !!(amzCpcAvgRow && amzCpcAvgRow.lowerIsBetter);
+                return amzHistoryKind === 'cpc' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos';
+            }
             function amzHistoryMetricLabel() {
                 if (amzCpcAvgRow && amzCpcAvgRow.metricLabel) return String(amzCpcAvgRow.metricLabel);
                 if (amzHistoryKind === 'cvr') return 'CVR';
@@ -4751,6 +4731,7 @@
             function amzHistoryFmt(v) {
                 var n = Number(v);
                 if (!isFinite(n)) return '-';
+                if (amzHistoryKind === 'count') return Math.round(n).toLocaleString('en-US');
                 if (amzCpcAvgRow && amzCpcAvgRow.badgeHistory) {
                     if (amzHistoryIsPercent()) return Math.round(n) + '%';
                     return '$' + Math.round(n).toLocaleString('en-US');
@@ -4760,7 +4741,7 @@
             }
             function amzCpcDotColors(values) {
                 var gray = '#6c757d', green = '#28a745', red = '#dc3545';
-                var eps = amzHistoryIsPercent() ? 0.05 : 0.005;
+                var eps = amzHistoryKind === 'count' ? 0.5 : (amzHistoryIsPercent() ? 0.05 : 0.005);
                 return values.map(function (v, i) {
                     if (i === 0) return gray;
                     var diff = v - values[i - 1];
@@ -4783,6 +4764,7 @@
                     if (amzHistoryKind === 'yspend') return Number(p.yspend);
                     if (amzHistoryKind === 'ysales') return Number(p.ysales);
                     if (amzHistoryKind === 'yacos') return Number(p.yacos);
+                    if (amzHistoryKind === 'count') return Number(p.count);
                     return Number(p.cpc);
                 });
                 var dataMin = Math.min.apply(null, values);
@@ -4913,7 +4895,7 @@
                             y: {
                                 min: yMin,
                                 max: yMax,
-                                ticks: { font: { size: 9 }, callback: function (value) { return amzHistoryFmt(value); } }
+                                ticks: { font: { size: 9 }, precision: 0, callback: function (value) { return (amzHistoryKind === 'count' && Math.floor(value) !== value) ? '' : amzHistoryFmt(value); } }
                             },
                             x: {
                                 ticks: {
@@ -4943,6 +4925,32 @@
                 if (empty) empty.style.display = 'none';
                 if (load) load.style.display = 'block';
                 if (amzCpcAvgChart) { amzCpcAvgChart.destroy(); amzCpcAvgChart = null; }
+                if (amzHistoryKind === 'count') {
+                    fetch(countHistoryUrl + '?days=' + encodeURIComponent(String(amzCpcAvgDays > 0 ? amzCpcAvgDays : 90)), {
+                        method: 'GET',
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        cache: 'no-store'
+                    }).then(function (r) { return r.json(); }).then(function (b) {
+                        if (load) load.style.display = 'none';
+                        var points = [];
+                        ((b && Array.isArray(b.data)) ? b.data : []).forEach(function (d) {
+                            if (d && d[row.countKey] != null) points.push({ date: d.date, count: Number(d[row.countKey]) });
+                        });
+                        if (!points.length) {
+                            if (emptyText) emptyText.textContent = 'No history yet. One count is saved per day.';
+                            if (empty) empty.style.display = 'block';
+                            return;
+                        }
+                        if (box) box.style.display = 'flex';
+                        amzRenderCpcAvgChart(points);
+                    }).catch(function () {
+                        if (load) load.style.display = 'none';
+                        if (emptyText) emptyText.textContent = 'Network or server error.';
+                        if (empty) empty.style.display = 'block';
+                    });
+                    return;
+                }
                 if (row.badgeHistory) {
                     var params = new URLSearchParams();
                     var filters = {};
@@ -5024,7 +5032,7 @@
             }
             function amzOpenCpcAvgHistory(row) {
                 amzCpcAvgRow = row || {};
-                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt', 'yspend', 'ysales', 'yacos'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
+                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt', 'yspend', 'ysales', 'yacos', 'count'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
                 amzCpcAvgDays = 30;
                 var range = document.getElementById('amazonAdsCpcAvgRange');
                 if (range) range.value = '30';
@@ -6081,7 +6089,7 @@
                     : rows.reduce(function (s, r) { return s + r.n; }, 0);
                 legend.innerHTML = rows.map(function (r) {
                     var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
-                    return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span>' + amzHistDot('bgt_' + key + ':' + amzHistSlug(r.label), r.label, r.color) + '</div>';
+                    return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span>' + amzHistDot('bgt_' + key + ':' + amzHistSlug(r.label), r.label, r.color, 'BGT ' + String(key).toUpperCase(), r.label === 'No match') + '</div>';
                 }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + total + '</strong><span class="amz-bgt-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>' : '')
                     + (counts._partial ? '<div class="amz-bgt-leg-row text-muted"><span>This page only. Full count updating…</span></div>' : '');
                 if (!counts._partial && !amzBgtDraftEdited && rows.length) {
@@ -6156,7 +6164,6 @@
                 return r === Math.floor(r) ? String(r) : r.toFixed(2);
             }
             // ---- Count history dots (daily snapshots, last 30 days) ----
-            var amzHistChartByScope = {};
             var amzHistPending = {};
             var amzHistSent = {};
             var amzHistTimer = null;
@@ -6168,9 +6175,10 @@
                 try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date()); }
                 catch (e) { return new Date().toISOString().slice(0, 10); }
             }
-            function amzHistDot(key, label, color) {
+            function amzHistDot(key, label, color, group, lower) {
                 return '<button type="button" class="amz-hist-dot" data-hkey="' + amzEsc(key) + '" data-label="' + amzEsc(label)
-                    + '" data-color="' + amzEsc(color) + '" style="background:' + amzEsc(color) + ';" title="' + amzEsc(label) + ' daily history"></button>';
+                    + '" data-group="' + amzEsc(group || 'Count') + '"' + (lower ? ' data-lower="1"' : '')
+                    + ' data-color="' + amzEsc(color) + '" style="background:' + amzEsc(color) + ';" title="' + amzEsc(label) + ' daily history"></button>';
             }
             // prefix: the group (for example bgt_reviews); map: slug -> count. Only full, saved-rule counts are recorded.
             function amzHistRecord(prefix, map) {
@@ -6197,84 +6205,38 @@
                     }).catch(function () {});
                 }, 2500);
             }
-            function amzHistOpen(scope, key, label, color) {
-                var wrap = document.getElementById('amz-count-hist-' + scope);
-                var canvas = document.getElementById('amz-count-hist-canvas-' + scope);
-                if (!wrap || !canvas) return;
-                var title = wrap.querySelector('.amz-count-hist-title');
-                var empty = wrap.querySelector('.amz-count-hist-empty');
-                if (title) title.textContent = label + ' count · last 30 days';
-                wrap.classList.add('is-open');
-                if (empty) empty.classList.add('d-none');
-                fetch(countHistoryUrl + '?days=30', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin', cache: 'no-store' })
-                    .then(function (r) { return r.json(); })
-                    .then(function (b) {
-                        var rows = (b && b.success && Array.isArray(b.data)) ? b.data : [];
-                        var any = rows.some(function (r) { return r[key] != null; });
-                        if (empty) empty.classList.toggle('d-none', any);
-                        var draw = function () {
-                            if (typeof Chart === 'undefined') return;
-                            if (amzHistChartByScope[scope]) { try { amzHistChartByScope[scope].destroy(); } catch (e) {} amzHistChartByScope[scope] = null; }
-                            amzHistChartByScope[scope] = new Chart(canvas.getContext('2d'), {
-                                type: 'line',
-                                data: {
-                                    labels: rows.map(function (r) { return r.label || r.date; }),
-                                    datasets: [{
-                                        data: rows.map(function (r) { return r[key] != null ? Number(r[key]) : null; }),
-                                        borderColor: color, backgroundColor: color + '22', fill: true, tension: 0.3, borderWidth: 1.5,
-                                        pointRadius: 3, pointHoverRadius: 5, pointBackgroundColor: color, pointBorderColor: color, spanGaps: true
-                                    }]
-                                },
-                                options: {
-                                    responsive: true, maintainAspectRatio: false, animation: false, clip: false,
-                                    layout: { padding: { top: 16, right: 8, bottom: 2 } },
-                                    plugins: {
-                                        legend: { display: false },
-                                        tooltip: { callbacks: { label: function (c) { return ' Count: ' + Math.round(Number(c.raw) || 0); } } }
-                                    },
-                                    scales: {
-                                        y: { beginAtZero: true, ticks: { font: { size: 9 }, precision: 0 } },
-                                        x: { offset: true, ticks: { maxRotation: 90, minRotation: 90, autoSkip: false, font: { size: 8, weight: '600' } } }
-                                    }
-                                },
-                                plugins: [{
-                                    id: 'amzHistCountLabels',
-                                    afterDraw: function (chart) {
-                                        var ds = chart.data.datasets[0], meta = chart.getDatasetMeta(0), c = chart.ctx;
-                                        if (!ds || !meta || !meta.data) return;
-                                        meta.data.forEach(function (pt, i) {
-                                            var v = ds.data[i];
-                                            if (v == null || !pt) return;
-                                            c.save();
-                                            c.font = 'bold 10px Inter, system-ui, sans-serif';
-                                            c.fillStyle = '#111';
-                                            c.strokeStyle = 'rgba(255,255,255,0.95)';
-                                            c.lineWidth = 3; c.lineJoin = 'round'; c.textAlign = 'center'; c.textBaseline = 'bottom';
-                                            c.strokeText(String(Math.round(Number(v) || 0)), pt.x, pt.y - 5);
-                                            c.fillText(String(Math.round(Number(v) || 0)), pt.x, pt.y - 5);
-                                            c.restore();
-                                        });
-                                    }
-                                }]
-                            });
-                        };
-                        if (typeof window.loadChartJs === 'function') window.loadChartJs().then(draw).catch(draw); else draw();
-                    })
-                    .catch(function () { if (empty) { empty.textContent = 'Could not load history.'; empty.classList.remove('d-none'); } });
+            // Opens the standard history modal (the same one the CPC and badge dots use): green = up, red = down.
+            function amzHistOpen(dot) {
+                var key = String(dot.getAttribute('data-hkey') || '');
+                var label = String(dot.getAttribute('data-label') || '');
+                var group = String(dot.getAttribute('data-group') || 'Count');
+                var parent = dot.closest ? dot.closest('.modal') : null;
+                var histModal = document.getElementById('amazonAdsCpcAvgHistoryModal');
+                // The rules modal traps focus; release it while the history modal is open so its range menu works.
+                try {
+                    var inst = parent && window.bootstrap && bootstrap.Modal ? bootstrap.Modal.getInstance(parent) : null;
+                    if (inst && inst._focustrap && typeof inst._focustrap.deactivate === 'function' && histModal) {
+                        inst._focustrap.deactivate();
+                        histModal.addEventListener('hidden.bs.modal', function () {
+                            try { if (inst._focustrap && typeof inst._focustrap.activate === 'function' && parent.classList.contains('show')) inst._focustrap.activate(); } catch (e) {}
+                            if (parent.classList.contains('show')) document.body.classList.add('modal-open');
+                        }, { once: true });
+                    }
+                } catch (e) {}
+                amzOpenCpcAvgHistory({
+                    historyKind: 'count',
+                    countKey: key,
+                    campaignName: group,
+                    metricLabel: label + ' count',
+                    lowerIsBetter: dot.getAttribute('data-lower') === '1'
+                });
             }
             document.addEventListener('click', function (e) {
                 var dot = e.target && e.target.closest ? e.target.closest('.amz-hist-dot') : null;
-                if (dot) {
-                    e.preventDefault();
-                    var modalEl = dot.closest('#amazonAdsSbidRuleModal') ? 'sbid' : 'bgt';
-                    amzHistOpen(modalEl, String(dot.getAttribute('data-hkey') || ''), String(dot.getAttribute('data-label') || ''), String(dot.getAttribute('data-color') || '#0f172a'));
-                    return;
-                }
-                var close = e.target && e.target.closest ? e.target.closest('.amz-count-hist-close') : null;
-                if (close) {
-                    var w = close.closest('.amz-count-hist');
-                    if (w) w.classList.remove('is-open');
-                }
+                if (!dot) return;
+                e.preventDefault();
+                e.stopPropagation();
+                amzHistOpen(dot);
             });
             function amzBgtPaintBudgetBadges(rows, totalN, sbgtTotal, modalOnly) {
                 var box = document.getElementById('amz-bgt-budget-badges');
@@ -6382,7 +6344,7 @@
                 if (legend) {
                     legend.innerHTML = rows.map(function (r) {
                         var pct = totalN > 0 ? Math.round((r.n / totalN) * 100) : 0;
-                        return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span>' + amzHistDot('bgt_sum:' + amzHistSlug(r.label), '$' + r.label + ' budget', r.color) + '</div>';
+                        return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span>' + amzHistDot('bgt_sum:' + amzHistSlug(r.label), '$' + r.label + ' budget', r.color, 'BGT Sum') + '</div>';
                     }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + totalN + '</strong><span class="amz-bgt-leg-pct">' + (totalN > 0 ? '100%' : '0%') + '</span></div>' : '')
                         + (sumPartial ? '<div class="amz-bgt-leg-row text-muted"><span>This page only. Full count updating…</span></div>' : '');
                 }
@@ -6486,7 +6448,7 @@
                 if (legend) {
                     legend.innerHTML = rows.map(function (r) {
                         var pct = totalN > 0 ? Math.round((r.n / totalN) * 100) : 0;
-                        return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span>' + amzHistDot('bgt_sum:' + amzHistSlug(r.label), '$' + r.label + ' budget', r.color) + '</div>';
+                        return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span>' + amzHistDot('bgt_sum:' + amzHistSlug(r.label), '$' + r.label + ' budget', r.color, 'BGT Sum') + '</div>';
                     }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + totalN + '</strong><span class="amz-bgt-leg-pct">' + (totalN > 0 ? '100%' : '0%') + '</span></div>' : '');
                 }
                 if (!amzBgtDraftEdited && !amzBgtSumIsStale() && rows.length) {
@@ -8251,7 +8213,7 @@
                     var head = '<div class="amz-sbid-leg-head"><span></span><span></span><span>Count</span><span>%</span></div>';
                     legend.innerHTML = head + rows.map(function (r) {
                         var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
-                        return '<div class="amz-sbid-leg-row"><span class="amz-sbid-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-sbid-leg-pct">' + pct + '%</span>' + (r.hid ? amzHistDot('sbid:' + r.hid, r.label, r.color) : '') + '</div>';
+                        return '<div class="amz-sbid-leg-row"><span class="amz-sbid-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-sbid-leg-pct">' + pct + '%</span>' + (r.hid ? amzHistDot('sbid:' + r.hid, r.label, r.color, 'SBID ' + (key === 'below' ? '< Utilized' : (key === 'above' ? '> Utilized' : 'Between')), r.hid === 'above_none' || r.hid === 'below_fb') : '') + '</div>';
                     }).join('') + '<div class="amz-sbid-leg-row amz-sbid-leg-total"><span></span><span>Sum</span><strong>' + total.toLocaleString('en-US') + '</strong><span class="amz-sbid-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>';
                 }
                 if (!canvas || typeof Chart === 'undefined') return;
