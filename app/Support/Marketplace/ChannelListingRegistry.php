@@ -382,7 +382,7 @@ class ChannelListingRegistry
             'alibaba' => [
                 'dataView' => null,
                 'status' => null,
-                'listed' => ['type' => 'column', 'model' => AlibabaMetric::class, 'column' => 'product_id', 'reject_sku' => true],
+                'listed' => ['type' => 'custom', 'method' => 'listedAlibaba'],
                 'id_field' => 'product_id',
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
@@ -1203,6 +1203,88 @@ class ChannelListingRegistry
             });
 
         return self::listedMapFromByNorm($skus, $byNorm);
+    }
+
+    /**
+     * Alibaba Listed = product id on alibaba_metrics or the analytics sheet.
+     * Offline / pending rows, and SKUs that are only in the price catalog, are
+     * pages created (neither Listed nor Missing L). Color and 06/6 aliases match.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, string>
+     */
+    public static function listedAlibaba(array $skus): array
+    {
+        $wanted = ListingCountsEngine::wantedSkuKeySet($skus, true);
+        if ($wanted === []) {
+            return [];
+        }
+
+        $byNorm = [];
+        $offline = ['offline', 'inactive', 'disabled', 'rejected', 'pending', 'auditing', 'editingrequired'];
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_metrics')) {
+            AlibabaMetric::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm, $wanted) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) $row->sku);
+                        $id = trim((string) ($row->product_id ?? ''));
+                        if ($sku === '') {
+                            continue;
+                        }
+                        $value = ($id !== '' && strcasecmp($id, $sku) !== 0)
+                            ? $id
+                            : ListingCountsEngine::pageCreatedId($sku);
+                        ListingCountsEngine::putListedForSku($byNorm, $wanted, $sku, $value, true);
+                    }
+                });
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_sheet_prices')) {
+            \App\Models\AlibabaSheetPrice::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm, $wanted, $offline) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) $row->sku);
+                        $id = trim((string) ($row->product_id ?? ''));
+                        if ($sku === '') {
+                            continue;
+                        }
+                        $status = strtolower(trim((string) ($row->status ?? '')));
+                        $real = $id !== '' && strcasecmp($id, $sku) !== 0;
+                        $value = (in_array($status, $offline, true) || ! $real)
+                            ? ListingCountsEngine::pageCreatedId($real ? $id : $sku)
+                            : $id;
+                        ListingCountsEngine::putListedForSku($byNorm, $wanted, $sku, $value, true);
+                    }
+                });
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_pricing_prices')) {
+            \App\Models\AlibabaPricingPrice::query()
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->where(function ($query) {
+                    $query->where('price', '>', 0)->orWhereNotNull('ab_stock');
+                })
+                ->orderBy('id')
+                ->chunkById(500, function ($rows) use (&$byNorm, $wanted) {
+                    foreach ($rows as $row) {
+                        $sku = trim((string) $row->sku);
+                        if ($sku === '') {
+                            continue;
+                        }
+                        ListingCountsEngine::putListedForSku($byNorm, $wanted, $sku, ListingCountsEngine::pageCreatedId($sku), true);
+                    }
+                });
+        }
+
+        return ListingCountsEngine::listedMapForProductSkus($skus, $byNorm, true);
     }
 
     /**

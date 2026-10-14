@@ -154,10 +154,7 @@ class AliexpressListingCounts
                         if ($norm !== '' && ! isset($byNorm[$norm])) {
                             $byNorm[$norm] = $marker;
                         }
-                        $compact = self::compactSku($skuText);
-                        if ($compact !== '' && ! isset($byNorm['c:'.$compact])) {
-                            $byNorm['c:'.$compact] = $marker;
-                        }
+                        self::rememberCompact($byNorm, self::compactSku($skuText), $marker);
 
                         continue;
                     }
@@ -167,10 +164,7 @@ class AliexpressListingCounts
                     if ($status === 'onselling' && $norm !== '' && $id !== '') {
                         $byNorm[$norm] = $id;
                     }
-                    $compact = self::compactSku($skuText);
-                    if ($compact !== '' && $id !== '' && ! isset($byNorm['c:'.$compact])) {
-                        $byNorm['c:'.$compact] = $id;
-                    }
+                    self::rememberCompact($byNorm, self::compactSku($skuText), $id);
                 }
             });
 
@@ -200,10 +194,7 @@ class AliexpressListingCounts
                     if ($norm !== '' && ! isset($byNorm[$norm])) {
                         $byNorm[$norm] = trim((string) $row->sku);
                     }
-                    $compact = self::compactSku((string) $row->sku);
-                    if ($compact !== '' && ! isset($byNorm['c:'.$compact])) {
-                        $byNorm['c:'.$compact] = trim((string) $row->sku);
-                    }
+                    self::rememberCompact($byNorm, self::compactSku((string) $row->sku), trim((string) $row->sku));
                 }
             });
 
@@ -215,13 +206,17 @@ class AliexpressListingCounts
      */
     public static function productIdForSku(string $sku, array $metricsByNorm): string
     {
-        $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
-        if ($norm !== '' && isset($metricsByNorm[$norm])) {
-            return $metricsByNorm[$norm];
+        $keys = ListingCountsEngine::skuAliasIndexKeys($sku);
+        foreach (ListingCountsEngine::colorDroppedBases($sku) as $base) {
+            foreach (ListingCountsEngine::skuAliasIndexKeys($base) as $key) {
+                $keys[] = $key;
+            }
         }
-        $compact = self::compactSku($sku);
-        if ($compact !== '' && isset($metricsByNorm['c:'.$compact])) {
-            return $metricsByNorm['c:'.$compact];
+        foreach (array_unique($keys) as $key) {
+            $id = trim((string) ($metricsByNorm[$key] ?? ''));
+            if ($id !== '') {
+                return $id;
+            }
         }
 
         return '';
@@ -333,12 +328,26 @@ class AliexpressListingCounts
                     $byNorm[$norm] = $value;
                 }
             }
-            $compact = self::compactSku($sku);
-            if ($compact !== '') {
-                $existing = $byNorm['c:'.$compact] ?? '';
+            foreach (ListingCountsEngine::compactIndexKeys(self::compactSku($sku)) as $key) {
+                $existing = $byNorm[$key] ?? '';
                 if ($existing === '' || (ListingCountsEngine::isPageCreatedId($existing) && ! ListingCountsEngine::isPageCreatedId($value))) {
-                    $byNorm['c:'.$compact] = $value;
+                    $byNorm[$key] = $value;
                 }
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $byNorm
+     */
+    private static function rememberCompact(array &$byNorm, string $compact, string $id): void
+    {
+        if ($compact === '' || $id === '') {
+            return;
+        }
+        foreach (ListingCountsEngine::compactIndexKeys($compact) as $key) {
+            if (! isset($byNorm[$key])) {
+                $byNorm[$key] = $id;
             }
         }
     }

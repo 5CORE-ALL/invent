@@ -225,16 +225,13 @@ class TopDawgApiService
             if ($updatedSince) {
                 $body['updated_since'] = $updatedSince;
             }
-            $url = $this->baseUrl . '/SupplierProduct/list';
-            $response = Http::withHeaders($this->headers())
-                ->timeout(60)
-                ->post($url, $body);
+            $response = $this->postTopDawgEndpoint('/SupplierProduct/list', $body, 60);
 
-            Log::debug('TopDawg API response', ['url' => $url, 'page' => $page, 'response' => $response->json()]);
+            Log::debug('TopDawg API response', ['path' => '/SupplierProduct/list', 'page' => $page, 'response' => $response->json()]);
 
             if (!$response->successful()) {
                 Log::warning('TopDawgApiService: products request failed', [
-                    'url' => $url,
+                    'path' => '/SupplierProduct/list',
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
@@ -338,7 +335,7 @@ class TopDawgApiService
         $this->assertConfigured();
 
         $body = $this->buildPushPriceBody($sku, $price, $tdid, $bodyShape);
-        $url  = $this->baseUrl . '/' . ltrim($endpoint, '/');
+        $url = $this->topDawgUrl($endpoint, $body);
 
         $request = Http::withHeaders($this->headers())->timeout(45);
         $response = match (strtoupper($method)) {
@@ -418,17 +415,13 @@ class TopDawgApiService
             if ($updatedSince) {
                 $body['updated_since'] = $updatedSince;
             }
-            $url = $this->baseUrl . '/SupplierOrder/list';
-            $response = Http::withHeaders($this->headers())
-                ->timeout(45)
-                ->connectTimeout(10)
-                ->post($url, $body);
+            $response = $this->postTopDawgEndpoint('/SupplierOrder/list', $body, 45);
 
-            Log::debug('TopDawg API response', ['url' => $url, 'page' => $page, 'response' => $response->json()]);
+            Log::debug('TopDawg API response', ['path' => '/SupplierOrder/list', 'page' => $page, 'response' => $response->json()]);
 
             if (!$response->successful()) {
                 Log::warning('TopDawgApiService: orders request failed', [
-                    'url' => $url,
+                    'path' => '/SupplierOrder/list',
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
@@ -562,14 +555,38 @@ class TopDawgApiService
     }
 
     /**
-     * @param  array<string, mixed>  $body
-     * @return array{success: bool, message: string}
+     * TopDawg's TDApi reads per_page, product_code and qty_available from the URL.
+     * The same fields in a JSON body come back as "field is required", so the
+     * update never reaches review and the listing qty never changes.
+     *
+     * @param  array<string, mixed>  $params
      */
+    protected function topDawgUrl(string $path, array $params): string
+    {
+        $url = $this->baseUrl.'/'.ltrim($path, '/');
+        $query = http_build_query($params);
+        if ($query === '') {
+            return $url;
+        }
+
+        return $url.(str_contains($url, '?') ? '&' : '?').$query;
+    }
+
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    protected function postTopDawgEndpoint(string $path, array $params, int $timeout = 45): \Illuminate\Http\Client\Response
+    {
+        return Http::withHeaders($this->headers())
+            ->timeout($timeout)
+            ->connectTimeout(10)
+            ->post($this->topDawgUrl($path, $params), $params);
+    }
+
     protected function postTopDawgProductUpdate(string $path, array $body): array
     {
-        $url = $this->baseUrl.$path;
         try {
-            $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+            $response = $this->postTopDawgEndpoint($path, $body);
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -609,7 +626,7 @@ class TopDawgApiService
                 array_merge(['sku' => $productCode], $fields),
             ];
             foreach ($attempts as $body) {
-                $response = Http::withHeaders($this->headers())->timeout(45)->post($url, $body);
+                $response = $this->postTopDawgEndpoint('/SupplierProduct/update', $body);
                 $payload = $response->json();
                 $accepted = $this->topDawgUpdateAccepted($response->status(), is_array($payload) ? $payload : null, (string) $response->body());
                 if ($accepted['success']) {
@@ -844,10 +861,7 @@ class TopDawgApiService
     protected function firstMatchingTopDawgListRow(string $url, array $body, array $codes, int $timeout = 45): ?array
     {
         try {
-            $response = Http::withHeaders($this->headers())
-                ->timeout(max(5, $timeout))
-                ->connectTimeout(8)
-                ->post($url, $body);
+            $response = $this->postTopDawgEndpoint('/SupplierProduct/list', $body, max(5, $timeout));
         } catch (\Throwable $e) {
             return null;
         }
@@ -1615,10 +1629,6 @@ class TopDawgApiService
             $pushed = $this->postTopDawgProductUpdate('/SupplierProduct/update', [
                 'product_code' => $productCode,
                 'qty_available' => $qty,
-                'remaining_inventory' => $qty,
-                'inventory' => $qty,
-                'quantity' => $qty,
-                'stock' => $qty,
             ]);
             if (! empty($pushed['success'])) {
                 return [
