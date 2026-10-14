@@ -203,167 +203,12 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         ]));
     }
 
-    public function test_shein_zero_sold_uses_min_nroi_not_dil_slab(): void
-    {
-        $rules = [
-            AmazonDilGroiRule::make(0.1, 5.0, 80),
-            AmazonDilGroiRule::make(5.0, 10.0, 40),
-        ];
-        $out = DilRuleSpriceApplyService::for('shein')->computeTarget(
-            [
-                'inv' => 8,
-                'dil' => 0,
-                'ov_l30' => 0,
-                'al30' => 0,
-                'cvr' => 0,
-                'views' => 0,
-                'lp' => 20,
-                'ship' => 0,
-                'lmp' => 0,
-            ],
-            $rules,
-            AmazonDilGroiRule::defaultCvrAdj(),
-            0.80
-        );
-
-        $this->assertNotNull($out);
-        // AL30 = 0 → min Target NROI 40, not the Dil 0 / first-slab 80. No views → no CVR adj.
-        // (20 * 1.40) / 0.80 = 35.00
-        $this->assertEqualsWithDelta(35.00, $out['sprice'], 0.01);
-        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
-    }
-
-    public function test_shein_zero_sold_uses_min_nroi_even_when_dil_matches(): void
-    {
-        $rules = [
-            AmazonDilGroiRule::make(0.1, 5.0, 40),
-            AmazonDilGroiRule::make(5.0, 25.0, 80),
-        ];
-        $out = DilRuleSpriceApplyService::for('shein')->computeTarget(
-            [
-                'inv' => 9,
-                'dil' => 22,
-                'ov_l30' => 2,
-                'al30' => 0,
-                'cvr' => 0,
-                'views' => 0,
-                'lp' => 10,
-                'ship' => 6,
-                'lmp' => 40,
-            ],
-            $rules,
-            AmazonDilGroiRule::defaultCvrAdj(),
-            0.80
-        );
-
-        $this->assertNotNull($out);
-        // Shopify Dil 22% would be the 80 slab, but AL30 = 0 uses min NROI 40.
-        // (10 * 1.40 + 6) / 0.80 = 25.00
-        $this->assertEqualsWithDelta(25.00, $out['sprice'], 0.01);
-        $this->assertEqualsWithDelta(40.0, $out['groi'], 0.01);
-    }
-
-    public function test_shein_sold_uses_dil_slab(): void
-    {
-        $out = $this->compute('shein', [
-            'inv' => 9,
-            'dil' => 22,
-            'ov_l30' => 2,
-            'al30' => 2,
-            'cvr' => 8,
-            'views' => 0,
-            'lp' => 20,
-            'ship' => 0,
-            'lmp' => 0,
-        ]);
-
-        $this->assertNotNull($out);
-        // AL30 > 0 → 20–25 slab NROI 70. No views → no CVR adj.
-        // (20 * 1.70) / 0.80 = 42.50
-        $this->assertEqualsWithDelta(42.50, $out['sprice'], 0.01);
-        $this->assertEqualsWithDelta(70.0, $out['groi'], 0.01);
-    }
-
-    public function test_shein_high_dil_clamps_to_last_slab(): void
-    {
-        $out = $this->compute('shein', [
-            'inv' => 10,
-            'dil' => 80,
-            'ov_l30' => 5,
-            'al30' => 5,
-            'cvr' => 8,
-            'views' => 100,
-            'lp' => 20,
-            'ship' => 0,
-            'lmp' => 0,
-        ]);
-
-        $this->assertNotNull($out);
-        // last default slab 20–25 GROI 70; CVR 8 is mid-band so no adj.
-        // (20 * 1.70) / 0.80 = 42.50
-        $this->assertEqualsWithDelta(42.50, $out['sprice'], 0.01);
-        $this->assertEqualsWithDelta(70.0, $out['groi'], 0.01);
-    }
-
-    public function test_shein_cvr_overlay_skips_without_views(): void
-    {
-        $out = $this->compute('shein', [
-            'inv' => 10,
-            'dil' => 3,
-            'ov_l30' => 1,
-            'al30' => 1,
-            'cvr' => 0,
-            'views' => 0,
-            'lp' => 20,
-            'ship' => 0,
-            'lmp' => 0,
-        ]);
-
-        $this->assertNotNull($out);
-        // AL30 > 0 → 0.1–5 slab GROI 50. CVR 0 would be −10 if views existed.
-        $this->assertEqualsWithDelta(50.0, $out['groi'], 0.01);
-        $this->assertEqualsWithDelta(37.50, $out['sprice'], 0.01);
-    }
-
-    public function test_shein_cvr_overlay_applies_when_views_exist(): void
-    {
-        $down = $this->compute('shein', [
-            'inv' => 10,
-            'dil' => 3,
-            'ov_l30' => 1,
-            'al30' => 1,
-            'cvr' => 3,
-            'views' => 40,
-            'lp' => 20,
-            'ship' => 0,
-            'lmp' => 0,
-        ]);
-        $this->assertNotNull($down);
-        $this->assertEqualsWithDelta(40.0, $down['groi'], 0.01);
-        $this->assertEqualsWithDelta(35.00, $down['sprice'], 0.01);
-
-        $up = $this->compute('shein', [
-            'inv' => 10,
-            'dil' => 3,
-            'ov_l30' => 6,
-            'al30' => 6,
-            'cvr' => 15,
-            'views' => 40,
-            'lp' => 20,
-            'ship' => 0,
-            'lmp' => 0,
-        ]);
-        $this->assertNotNull($up);
-        $this->assertEqualsWithDelta(60.0, $up['groi'], 0.01);
-        $this->assertEqualsWithDelta(40.00, $up['sprice'], 0.01);
-    }
-
     public function test_channels_from_arg(): void
     {
         $this->assertSame(DilRuleSpriceApplyService::CHANNELS, DilRuleSpriceApplyService::channelsFromArg('all'));
         $this->assertSame(['fb_marketplace'], DilRuleSpriceApplyService::channelsFromArg('fb'));
         $this->assertSame(['walmart'], DilRuleSpriceApplyService::channelsFromArg('wm'));
-        $this->assertSame(['pls'], DilRuleSpriceApplyService::channelsFromArg('pls'));
+        $this->assertSame([], DilRuleSpriceApplyService::channelsFromArg('pls'));
         $this->assertSame([], DilRuleSpriceApplyService::channelsFromArg('ebay3'));
         $this->assertNotContains('fb_marketplace', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertNotContains('doba', DilRuleSpriceApplyService::PUSH_CHANNELS);
@@ -376,7 +221,10 @@ class DilRuleSpriceApplyServiceTest extends TestCase
         $this->assertNotContains('bestbuy', DilRuleSpriceApplyService::CHANNELS);
         $this->assertNotContains('bestbuy', DilRuleSpriceApplyService::PUSH_CHANNELS);
         $this->assertContains('walmart', DilRuleSpriceApplyService::PUSH_CHANNELS);
-        $this->assertContains('pls', DilRuleSpriceApplyService::PUSH_CHANNELS);
+        foreach (['pls', 'tiktok', 'tiktok2', 'shein'] as $moved) {
+            $this->assertNotContains($moved, DilRuleSpriceApplyService::CHANNELS);
+            $this->assertNotContains($moved, DilRuleSpriceApplyService::PUSH_CHANNELS);
+        }
     }
 
     /**

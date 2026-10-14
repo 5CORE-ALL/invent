@@ -12,12 +12,7 @@ use App\Models\FbMarketplacePriceSoldData;
 use App\Models\MarketplacePercentage;
 use App\Models\NeweggDataView;
 use App\Models\NeweggMetric;
-use App\Models\PLSDataView;
-use App\Models\PLSProduct;
 use App\Models\ProductMaster;
-use App\Models\SheinDataView;
-use App\Models\SheinMetric;
-use App\Models\SheinOrderMetric;
 use App\Models\ShopifySku;
 use App\Models\Temu2DataView;
 use App\Models\Temu2Metric;
@@ -46,7 +41,6 @@ use Throwable;
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
  * Wayfair / FB, Newegg Amz floor, LMP cap at SGROI ≥ 20%.
- * Shein: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab or nearest slab. Dil is Shopify OV L30 ÷ INV.
  * Level-only CVR overlay when views > 0.
  */
 class DilRuleSpriceApplyService
@@ -59,11 +53,9 @@ class DilRuleSpriceApplyService
         'temu2',
         'temu3',
         'doba',
-        'shein',
         'wayfair',
         'fb_marketplace',
         'walmart',
-        'pls',
     ];
 
     /** Channels the shared push runner can actually send. FB and Doba are save-only (no auto push). */
@@ -72,10 +64,8 @@ class DilRuleSpriceApplyService
         'temu',
         'temu2',
         'temu3',
-        'shein',
         'wayfair',
         'walmart',
-        'pls',
     ];
 
     private readonly string $channel;
@@ -279,11 +269,9 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        $sold = $this->channel === 'shein'
-            ? (float) ($row['al30'] ?? $row['ov_l30'] ?? 0)
-            : (array_key_exists('temu_l30', $row)
-                ? (float) $row['temu_l30']
-                : (float) ($row['ov_l30'] ?? 0));
+        $sold = array_key_exists('temu_l30', $row)
+            ? (float) $row['temu_l30']
+            : (float) ($row['ov_l30'] ?? 0);
         $dil = (float) ($row['dil'] ?? 0);
         $groi = null;
 
@@ -305,14 +293,12 @@ class DilRuleSpriceApplyService
             $views = (float) ($row['views'] ?? 0);
             if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
                 $cvr = (float) ($row['cvr'] ?? 0);
-                $groi = $this->channel === 'shein'
-                    ? AmazonDilGroiRule::adjustGroiForCvrLevel($groi, $cvr, $cvrAdj)
-                    : AmazonDilGroiRule::adjustGroiForCvrArrow(
-                        $groi,
-                        $cvr,
-                        (float) ($row['cvr_60'] ?? $row['cvr60'] ?? 0),
-                        $cvrAdj
-                    );
+                $groi = AmazonDilGroiRule::adjustGroiForCvrArrow(
+                    $groi,
+                    $cvr,
+                    (float) ($row['cvr_60'] ?? $row['cvr60'] ?? 0),
+                    $cvrAdj
+                );
             }
         }
 
@@ -460,8 +446,6 @@ class DilRuleSpriceApplyService
             $l30Overlay = $this->temu3L30BySku($skus);
         } elseif ($this->channel === 'temu' || $this->channel === 'temu2') {
             $l30Overlay = $this->temuOrdersL30BySku($skus, $this->channel === 'temu2');
-        } elseif ($this->channel === 'shein') {
-            $l30Overlay = $this->sheinL30BySku($skus);
         }
 
         $draft = [];
@@ -476,10 +460,7 @@ class DilRuleSpriceApplyService
 
             $ov = 0.0;
             $al30 = 0.0;
-            if ($this->channel === 'shein') {
-                $ov = (float) ($shopify->quantity ?? 0);
-                $al30 = (float) ($l30Overlay[$sku] ?? 0);
-            } elseif ($this->channel === 'temu' || $this->channel === 'temu2') {
+            if ($this->channel === 'temu' || $this->channel === 'temu2') {
                 // Dil = Shopify OV L30, same as /temu1-data. Do not use temu_metrics sales.
                 $ov = (float) ($shopify->quantity ?? 0);
             } elseif ($this->channel === 'doba') {
@@ -522,7 +503,7 @@ class DilRuleSpriceApplyService
                 'cvr' => $views > 0
                     ? round(((($this->channel === 'temu' || $this->channel === 'temu2')
                         ? (float) ($l30Overlay[$sku] ?? 0)
-                        : ($this->channel === 'shein' ? $al30 : $ov)) / $views) * 100, 2)
+                        : $ov) / $views) * 100, 2)
                     : 0.0,
                 'lmp' => $lmpBySku[$sku] ?? 0.0,
                 'std_price' => $stdBySku[$sku] ?? 0.0,
@@ -699,40 +680,6 @@ class DilRuleSpriceApplyService
             return $out;
         } catch (Throwable $e) {
             Log::warning('[DilRuleSpriceApply] temu3 L30 overlay failed', ['error' => $e->getMessage()]);
-
-            return [];
-        }
-    }
-
-    /**
-     * @param  list<string>  $skus
-     * @return array<string, float>
-     */
-    protected function sheinL30BySku(array $skus): array
-    {
-        if ($skus === [] || ! Schema::hasTable('shein_order_metrics')) {
-            return [];
-        }
-        try {
-            $out = [];
-            foreach (
-                SheinOrderMetric::query()
-                    ->whereIn('sku', $skus)
-                    ->where('order_date', '>=', now()->subDays(30)->startOfDay())
-                    ->selectRaw('sku, SUM(quantity) as qty')
-                    ->groupBy('sku')
-                    ->get() as $row
-            ) {
-                $sku = strtoupper(trim((string) $row->sku));
-                if ($sku === '') {
-                    continue;
-                }
-                $out[$sku] = (float) ($row->qty ?? 0);
-            }
-
-            return $out;
-        } catch (Throwable $e) {
-            Log::warning('[DilRuleSpriceApply] shein L30 overlay failed', ['error' => $e->getMessage()]);
 
             return [];
         }
@@ -1030,17 +977,6 @@ class DilRuleSpriceApplyService
                 'views' => 'impressions',
                 'group' => 'item_id',
             ],
-            'shein' => [
-                'metric' => SheinMetric::class,
-                'view' => SheinDataView::class,
-                'price' => 'price',
-                'l30' => null,
-                'views' => 'views',
-                'zero_sold_min_groi' => true,
-                'match_or_nearest' => true,
-                'cvr_adj' => true,
-                'cvr_adj_requires_views' => true,
-            ],
             'wayfair' => [
                 'metric' => WayfairPricingPrice::class,
                 'view' => WayfairDataView::class,
@@ -1054,13 +990,6 @@ class DilRuleSpriceApplyService
                 'view' => WalmartDataView::class,
                 'price' => 'price',
                 'l30' => 'l30',
-            ],
-            'pls' => [
-                'metric' => PLSProduct::class,
-                'view' => PLSDataView::class,
-                'price' => 'price',
-                'l30' => 'p_l30',
-                'views' => 'views',
             ],
             default => [
                 'metric' => FbMarketplacePriceSoldData::class,

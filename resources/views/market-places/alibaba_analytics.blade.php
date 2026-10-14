@@ -160,7 +160,6 @@
             }
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'alibaba'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'alibaba'])
         .card-loader-overlay {
             position: absolute;
             inset: 0;
@@ -271,7 +270,6 @@
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" id="ab-column-dropdown-menu"></ul>
                         </div>
-                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'alibaba'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'alibaba'])
                         <a href="{{ route('alibaba.analytics.export') }}" class="btn btn-sm btn-success" id="ab-export-btn">
                             <i class="fas fa-file-export me-1"></i> Export
@@ -296,14 +294,14 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'alibaba'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'alibaba'])
 @endsection
 
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
+        // S PRC is saved + pushed by the server (alibaba:sprc-dil-auto-push). The page only shows it.
+        window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'alibaba'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'alibaba'])
         document.body.style.zoom = "90%";
 
         const AB_MARGIN = {{ (float) ($marginPercent ?? 95) }} / 100;
@@ -331,6 +329,10 @@
         window.abApplyPushPatch = function (sku, patch) {
             const key = String(sku || '').trim().toUpperCase();
             if (!key || !patch) return;
+            // Alibaba reviews a price change: Price stays at the live value until a pull / sync reads the new one.
+            patch = Object.assign({}, patch);
+            delete patch.price;
+            delete patch.sku_price;
             (abAllRows || []).forEach(function (row) {
                 if (String(row.sku || '').trim().toUpperCase() !== key) return;
                 Object.assign(row, patch);
@@ -684,9 +686,6 @@
                     paginationSize: 50,
                     paginationSizeSelector: [25, 50, 100, 250],
                     initialSort: [{ column: 'al30', dir: 'desc' }],
-                    dataLoaded: function () {
-                        if (typeof ebayScheduleSprcDilAutoApply === 'function') ebayScheduleSprcDilAutoApply();
-                    },
                     rowFormatter: function (row) {
                         if (isAbParentRow(row.getData())) {
                             row.getElement().style.backgroundColor = '#fffef2';
@@ -772,7 +771,7 @@
                         },
                         {
                             title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: 'number',
-                            headerTooltip: 'Suggested price from the Sprc Dil rule. When S PRC differs from Price it is pushed to the Alibaba listing. Ship is not used.',
+                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), raised to Min NPFT % (with Ads%, no Ship). Std Prc is the maximum, no LMP. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
@@ -810,18 +809,6 @@
                                 const lp = parseFloat(row.lp) || 0;
                                 const profit = (sprice * AB_MARGIN) - lp;
                                 return abPct((profit / sprice) * 100, 'gpft');
-                            }
-                        },
-                        {
-                            title: 'Sprc Dil', field: 'SPRC_DIL', hozAlign: 'center', width: 70, headerSort: false,
-                            headerTooltip: 'S PRC from Dil → Target SGROI. Dil = OV L30 ÷ INV, including when AB L30 = 0. Dil = 0 uses the 0–0 slab.',
-                            formatter: function (cell) {
-                                const row = cell.getRow().getData();
-                                if (isAbParentRow(row) || typeof ebayDilGroiMetaForRow !== 'function') return '';
-                                const meta = ebayDilGroiMetaForRow(row);
-                                if (!meta || !(meta.sprc > 0)) return '<span style="color:#adb5bd;">–</span>';
-                                const tip = (typeof ebayDilGroiTipText === 'function') ? ebayDilGroiTipText(meta) : '';
-                                return '<span style="font-weight:600;color:#6f42c1;" title="' + tip.replace(/"/g, '&quot;') + '">$' + meta.sprc.toFixed(2) + '</span>';
                             }
                         },
                         (function () {

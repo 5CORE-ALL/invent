@@ -95,7 +95,6 @@
             white-space: nowrap;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'pls'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'pls'])
     </style>
 @endsection
 
@@ -164,7 +163,6 @@
                         title="Cycle: Off → Decrease → Increase → Same Price → Amz Prc → Off">
                         <i class="fas fa-exchange-alt"></i> Price %
                     </button>
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'pls'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'pls'])
 
                     <button id="pls-clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
@@ -288,13 +286,13 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'pls'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'pls'])
 @endsection
 
 @section('script-bottom')
 <script>
+    // S PRC is saved + pushed by the server (pls:sprc-dil-auto-push). The page only shows it.
+    window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'pls'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'pls'])
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
     const PLS_PERCENTAGE = {{ (float) ($plsTakeHome ?? (($plsPercentage ?? 100) / 100)) }};
     let table = null;
@@ -315,13 +313,9 @@
     function plsIsParentRow(d) {
         return !!(d && (d.is_parent || d.is_parent_summary || (d.parent && String(d.parent).toUpperCase().indexOf('PARENT') === 0 && String(d.sku || '').toUpperCase().indexOf('PARENT') !== -1)));
     }
-    /** Same as Amazon analytics: live Sprc Dil, then saved S PRC. Shown even when it equals Price. */
+    /** Saved S PRC (written by the server job). Shown even when it equals Price. */
     function plsVisibleSprice(data) {
         if (!data || plsIsParentRow(data)) return 0;
-        if (typeof window.chStdPriceForRow === 'function') {
-            const stdRule = Number(window.chStdPriceForRow(data)) || 0;
-            if (stdRule > 0) return stdRule;
-        }
         if (typeof chPromoTableSprice === 'function') {
             const saved = Number(chPromoTableSprice(data)) || 0;
             if (saved > 0) return saved;
@@ -329,7 +323,7 @@
         const stored = parseFloat(data.sprice != null ? data.sprice : data.SPRICE) || 0;
         return stored > 0 ? stored : 0;
     }
-    /** Background Dil save persists this exact cell dollar. */
+    /** The cell dollar. */
     function ebayDisplayedSprice(data) {
         return plsVisibleSprice(data);
     }
@@ -337,7 +331,7 @@
     function plsRowSpriceForAlert(data) {
         return plsVisibleSprice(data);
     }
-    /** Live SGROI / SGPFT from the same S PRC the cell paints. Dil target is SNROI. */
+    /** Live SGROI / SGPFT from the same S PRC the cell paints.  */
     function plsSMetrics(data) {
         const sprice = plsVisibleSprice(data);
         if (!(sprice > 0) || !data) return { sroi: null, sgpft: null };
@@ -979,44 +973,13 @@
                 },
                 ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                 {
-                    title: "Sprc Dil",
-                    field: "SPRC_DIL",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. P L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (typeof plsIsParentRow === 'function' && plsIsParentRow(rowData)) return '';
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta || !(meta.sprc > 0)) return '';
-                        const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold P L30 → min Target NROI' })
-                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → NROI ' + meta.groi + '%'
-                                + ' → $' + meta.sprc.toFixed(2));
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + meta.sprc.toFixed(2) + '</span>';
-                    },
-                    width: 78
-                },
-                {
                     title: "S PRC",
                     field: "sprice",
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
                     visible: true,
-                    headerTooltip: "Saved S PRC, or Std prc vs dil. Sprc Dil does not write this cell. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                    headerTooltip: "S PRC = Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), raised to Min NPFT % (with Ship, no ads), Std Prc is the maximum. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';
@@ -1046,7 +1009,7 @@
                     field: "sroi",
                     hozAlign: "center",
                     visible: true,
-                    headerTooltip: "Live from the S PRC cell: ((S PRC × PLS% − ship − LP) / LP) × 100. The Dil slab sets SNROI, not this column.",
+                    headerTooltip: "Live from the S PRC cell: ((S PRC × PLS% − ship − LP) / LP) × 100.",
                     sorter: function(a, b, aRow, bRow) {
                         const av = plsSMetrics(aRow.getData()).sroi;
                         const bv = plsSMetrics(bRow.getData()).sroi;

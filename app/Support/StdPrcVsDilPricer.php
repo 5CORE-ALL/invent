@@ -618,6 +618,7 @@ class StdPrcVsDilPricer
             'aliexpress', 'shein', 'faire' => 'al30',
             'amazon' => 'a_l30',
             'tiktok', 'tiktok2' => 'tt_l30',
+            'pls' => 'pls_l30',
             default => null,
         };
         if ($key !== null && array_key_exists($key, $row) && is_numeric($row[$key])) {

@@ -44,6 +44,9 @@ class TopDawgSprcDilAutoPushService
 {
     public const LOCK_KEY = 'topdawg-sprc-dil-auto-push-run';
 
+    /** Minutes the pushed price stays in the Price column while TopDawg reviews it (same as the blue-run cooldown). */
+    public const REVIEW_HOLD_MINUTES = 1440;
+
     /**
      * @param  list<string>|null  $onlySkus  Uppercase SKUs; null = all listed candidates
      * @param  callable(string): void|null  $logger
@@ -465,12 +468,12 @@ class TopDawgSprcDilAutoPushService
             $stats['pushed']++;
             $this->savePushMeta($sku, 'pushed', $price);
             try {
-                // Stamps the saved S PRC on the data view. TD Price itself stays the site cost until TopDawg approves.
+                // Stamps the saved S PRC and writes it into TD Price (kept for the review window).
                 ChannelLivePriceSync::confirmAfterPush('topdawg', $sku, $price);
             } catch (Throwable $e) {
                 Log::warning('[TopDawgSprcDilAutoPush] confirmAfterPush failed', ['sku' => $sku, 'error' => $e->getMessage()]);
             }
-            // Immediate live pull (same as Amazon): the Price column keeps the site cost until TopDawg approves.
+            // Live pull (same as Amazon): inside the review window it keeps the pushed price in TD Price.
             $this->pullLive($sku, $price);
 
             return;

@@ -30,6 +30,20 @@ class FetchTopDawgData extends Command
         return $this->pushedPriceLookup ??= ChannelLivePriceSync::lookupMap('topdawg');
     }
 
+    /** @var array<string, float>|null */
+    private ?array $holdLookup = null;
+
+    /**
+     * @return array<string, float>
+     */
+    private function topdawgHoldLookup(): array
+    {
+        return $this->holdLookup ??= ChannelLivePriceSync::reviewHoldMap(
+            'topdawg',
+            \App\Services\TopDawgSprcDilAutoPushService::REVIEW_HOLD_MINUTES
+        );
+    }
+
     public function handle(): int
     {
         $startTime = microtime(true);
@@ -89,6 +103,13 @@ class FetchTopDawgData extends Command
                 $incomingPrice,
                 $this->topdawgPushedLookup()
             );
+            // Pushed within the review window: keep the pushed price instead of the old site cost.
+            foreach (ChannelLivePriceSync::skuLookupKeys((string) $sku) as $holdKey) {
+                if (isset($this->topdawgHoldLookup()[$holdKey])) {
+                    $price = $this->topdawgHoldLookup()[$holdKey];
+                    break;
+                }
+            }
             $msrp = TopDawgApiService::positiveMoneyValue($item['msrp'] ?? null);
 
             $row = [

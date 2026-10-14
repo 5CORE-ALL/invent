@@ -161,7 +161,6 @@
             max-width: 100%;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shein'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'shein'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css', 'lmpIgnoreModal' => '#sheinLmpModal'])
     </style>
 @endsection
@@ -264,7 +263,6 @@
                         <button type="button" id="export-pricing-btn" class="btn btn-sm btn-success pricing-filter-item" title="Export">
                             <i class="fas fa-file-excel"></i>
                         </button>
-                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shein'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shein'])
 
                         {{-- Target ROI% (compact — same UX as /ebay2-tabulator-view) --}}
@@ -536,7 +534,6 @@
         </div>
     </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shein'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'shein'])
 @endsection
 
 @section('script-bottom')
@@ -544,11 +541,12 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        // S PRC is saved + pushed by the server (shein:sprc-dil-auto-push). The page only shows it.
+        window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shein'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
         let allTableData = [];
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shein'])
         let summaryDataCache = [];
         // Sales / GPFT / GROI from /shein-tabulator API orders (product_price × qty) — not special_offer
         let salesPageTotals = null;
@@ -621,24 +619,9 @@
             const color = kind === 'gpft' ? sheinGpftColor(v) : sheinRoiColor(v);
             return '<span style="' + sheinPctStyle(color) + '">' + Math.round(v) + '%</span>';
         }
-        /** Live Sprc Dil $, LMP-capped the same way Apply persists it. Saved SPRICE is only a fallback when the rule has no price. */
+        /** Saved S PRC (written by the server job). Shown even when it equals Sp. Price. */
         function sheinRuleSpriceRaw(data) {
             if (!data || data.is_parent) return 0;
-            let live = 0;
-            const dilRuleOn = typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil';
-            if (dilRuleOn) {
-                // Sprc Dil switch ON: S PRC is the Dil slab price. Std prc vs dil must not override it.
-                if (typeof window.ebaySprcDilForRow === 'function') {
-                    live = Number(window.ebaySprcDilForRow(data)) || 0;
-                }
-            } else if (typeof window.chStdPriceForRow === 'function') {
-                live = Number(window.chStdPriceForRow(data)) || 0;
-            }
-            if (live > 0 && typeof chPromoCapSpriceToLmp === 'function') {
-                const capped = Number(chPromoCapSpriceToLmp(data, live));
-                if (capped > 0) live = capped;
-            }
-            if (live > 0) return Math.round(live * 100) / 100;
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
                 if (saved > 0) return saved;
@@ -699,8 +682,10 @@
             if (!want || !patch) return;
             const price = parseFloat(patch.price != null ? patch.price : patch.SPRICE_PUSHED_VALUE);
             const full = Object.assign({}, patch);
+            // Shein reviews a price change: the Sp. Price column keeps the live price until a pull / sync reads the new one.
+            delete full.special_offer;
+            delete full.price;
             if (full.SPRICE_STATUS === 'pushed' && price > 0) {
-                if (full.special_offer == null) full.special_offer = price;
                 if (full.SPRICE_PUSHED_VALUE == null) full.SPRICE_PUSHED_VALUE = price;
             }
             full._push = String(full.SPRICE_STATUS || 'updated') + ':' + (price > 0 ? price : Date.now());
@@ -1909,7 +1894,7 @@
                         sorter: "number",
                         hozAlign: "center",
                         width: 55,
-                        headerTooltip: "SKU Dil (OV L30 ÷ INV). Red <25% · Green 25–50% · Pink 50%+. Same Dil Sprc Dil uses.",
+                        headerTooltip: "SKU Dil (OV L30 ÷ INV). Red <25% · Green 25–50% · Pink 50%+. ",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const inv   = parseFloat(row.inv)    || 0;
@@ -2156,37 +2141,6 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
-                        title: "Sprc Dil",
-                        field: "SPRC_DIL",
-                        hozAlign: "center",
-                        headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof ebaySprcDilForRow === 'function')
-                                    ? (ebaySprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
-                        headerTooltip: "Suggested price from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab; Dil outside the table uses the nearest slab. CVR overlay is level-only (CVR < 7% −10; CVR > 10% +10) and only when the SKU has views. Formula: (LP × (1 + NROI%/100) + Ship) / margin.",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (rowData && rowData.is_parent) return '';
-                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                            const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = (typeof ebayDilGroiTipText === 'function')
-                                ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold AL30 → min Target NROI' })
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                    + ' → ' + meta.label
-                                    + ' → GROI ' + meta.groi + '%'
-                                    + ' → $' + meta.sprc.toFixed(2));
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
-                        },
-                        width: 78
-                    },
-                    {
                         title: "Sprice",
                         field: "sprice",
                         download: true,
@@ -2199,7 +2153,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC from Sprc Dil. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab; Dil outside the table uses the nearest slab. CVR overlay adjusts Target NROI when the SKU has views. Dil below LMP stays Dil; Dil at/above LMP becomes LMP only when SGROI at LMP ≥ 20%. When LMP is missing, Std Prc is the maximum. Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC = Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), raised to Min NPFT % (with Ship and Ads%), then capped to LMP when SGROI at LMP ≥ 20%. Std Prc is the maximum. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Sp. Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2274,7 +2228,7 @@
                     {
                         title: "SGROI",
                         field: "sroi",
-                        headerTooltip: "SGROI from Sprc Dil S PRC. AL30 = 0 still uses the Dil slab. Shein has no Ads%.",
+                        headerTooltip: "SGROI at the saved S PRC (with Ship).",
                         sorter: function(a, b, aRow, bRow) {
                             const av = sheinSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = sheinSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2498,10 +2452,8 @@
                             totalFailed += (res.failed || 0);
                             (res.results || []).filter(r => r.success).forEach(r => {
                                 sheinApplyPushPatchToSku(r.sku, {
-                                    special_offer: r.price,
                                     SPRICE_STATUS: 'pushed',
-                                    SPRICE_PUSHED_VALUE: r.price,
-                                    price: r.price
+                                    SPRICE_PUSHED_VALUE: r.price
                                 });
                             });
                             (res.results || []).filter(r => !r.success).forEach(r => {

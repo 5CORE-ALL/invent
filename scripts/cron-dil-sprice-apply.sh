@@ -18,7 +18,7 @@
 #   40 5,21 * * * ... cron-dil-sprice-apply.sh shopify_b2c push
 #   45 4,20 * * * ... cron-dil-sprice-apply.sh faire
 #   50 5,21 * * * ... cron-dil-sprice-apply.sh macys push
-#   55 6,22 * * * ... cron-dil-sprice-apply.sh shein
+#   55 6,22 * * * ... cron-dil-sprice-apply.sh shein   (now shein:sprc-dil-auto-push)
 #   35 4,20 * * * ... cron-dil-sprice-apply.sh purchasing_power
 #   5 7,23 * * *  ... cron-dil-sprice-apply.sh wayfair
 #   30 4,20 * * * ... cron-dil-sprice-apply.sh topdawg
@@ -67,12 +67,24 @@ case "$MODE" in
     CMD=(purchasing-power:sprc-dil-auto-push)
     MODE=purchasing_power
     ;;
-  newegg|temu|temu2|temu3|shein|wayfair|walmart|pls)
+  newegg|temu|temu2|temu3|wayfair|walmart)
     CMD=(dil:rule-sprice-apply "$MODE" --push)
     ;;
   faire)
     CMD=(faire:sprc-dil-auto-push)
     MODE=faire
+    ;;
+  alibaba)
+    CMD=(alibaba:sprc-dil-auto-push)
+    MODE=alibaba
+    ;;
+  shein)
+    CMD=(shein:sprc-dil-auto-push)
+    MODE=shein
+    ;;
+  pls)
+    CMD=(pls:sprc-dil-auto-push)
+    MODE=pls
     ;;
   tiktok)
     CMD=(tiktok:sprc-dil-auto-push --channel=tiktok)
@@ -107,7 +119,7 @@ case "$MODE" in
     MODE=fb_marketplace
     ;;
   *)
-    echo "usage: $0 amazon|newtemuone|ebay1|ebay2|ebay3|shopify_b2c|macys|purchasing_power|bestbuy|aliexpress|newegg|temu|temu2|temu3|reverb|tiktok|tiktok2|doba|faire|shein|wayfair|topdawg|fb_marketplace|walmart|pls [push]" >&2
+    echo "usage: $0 amazon|newtemuone|ebay1|ebay2|ebay3|shopify_b2c|macys|purchasing_power|bestbuy|aliexpress|newegg|temu|temu2|temu3|reverb|tiktok|tiktok2|doba|faire|shein|wayfair|topdawg|fb_marketplace|walmart|pls|alibaba [push]" >&2
     exit 2
     ;;
 esac

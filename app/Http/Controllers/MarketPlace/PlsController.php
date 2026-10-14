@@ -357,6 +357,8 @@ class PlsController extends Controller
             $sgpft = null;
             $sroi = null;
             $hasCustomSprice = false;
+            $spricePushedValue = null;
+            $spricePushedAt = null;
             
             if ($plsDataView) {
                 $dataValue = is_array($plsDataView->value) 
@@ -368,6 +370,10 @@ class PlsController extends Controller
                     $sgpft = isset($dataValue['sgpft']) ? floatval($dataValue['sgpft']) : null;
                     $sroi = isset($dataValue['sroi']) ? floatval($dataValue['sroi']) : null;
                     $hasCustomSprice = $sprice !== null && $sprice > 0;
+                    $spricePushedValue = isset($dataValue['SPRICE_PUSHED_VALUE']) && is_numeric($dataValue['SPRICE_PUSHED_VALUE'])
+                        ? floatval($dataValue['SPRICE_PUSHED_VALUE'])
+                        : null;
+                    $spricePushedAt = $dataValue['SPRICE_PUSHED_AT'] ?? null;
                 }
             }
             
@@ -410,11 +416,15 @@ class PlsController extends Controller
             $row['sgpft'] = $sgpft;
             $row['sroi'] = $sroi;
             $row['has_custom_sprice'] = $hasCustomSprice;
+            // Push meta the server auto push (pls:sprc-dil-auto-push) reads for its unchanged / cooldown checks.
+            $row['sprice_pushed_value'] = $spricePushedValue;
+            $row['sprice_pushed_at'] = $spricePushedAt;
             
             // Get PLS_STATUS from amazon_data_views
             $amazonDataView = $amazonDataViews[$skuNorm] ?? null;
             $plsStatus = null;
             $stdPrc = null;
+            $plsStatusAt = null;
             
             if ($amazonDataView) {
                 $amazonValue = is_array($amazonDataView->value) 
@@ -423,6 +433,7 @@ class PlsController extends Controller
                 
                 if (is_array($amazonValue)) {
                     $plsStatus = isset($amazonValue['PLS_STATUS']) ? $amazonValue['PLS_STATUS'] : null;
+                    $plsStatusAt = $amazonValue['PLS_STATUS_UPDATED_AT'] ?? null;
                     $stdRaw = $amazonValue['STANDARD_PRICE'] ?? null;
                     if (is_numeric($stdRaw) && (float) $stdRaw > 0) {
                         $stdPrc = round((float) $stdRaw, 2);
@@ -431,6 +442,7 @@ class PlsController extends Controller
             }
             
             $row['pls_status'] = $plsStatus;
+            $row['pls_status_at'] = $plsStatusAt;
 
             // Buyer / Seller links
             $linkRecord = $plsLinkBySku[$skuNorm] ?? null;

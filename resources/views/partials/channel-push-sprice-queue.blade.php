@@ -84,6 +84,16 @@
                 tiktok: 1, tiktok2: 1, topdawg: 1, purchasing_power: 1,
                 faire: 1, pls: 1, newegg: 1, wayfair: 1, aliexpress: 1, shein: 1, alibaba: 1,
             })[CH_PUSH_SPRICE_CHANNEL] === 1;
+            // Shein / Alibaba put a price change under review: a push must not overwrite the Price column.
+            // It only moves when a live pull / sync reads the new price.
+            const CH_PUSH_SPRICE_UNDER_REVIEW = /^(shein|alibaba)$/.test(CH_PUSH_SPRICE_CHANNEL);
+            function chPushStripPriceKeys(patch) {
+                if (!patch || !CH_PUSH_SPRICE_UNDER_REVIEW) return patch;
+                [CH_PUSH_SPRICE_PRICE_FIELD, 'eBay Price', 'price', 'special_offer', 'sku_price', 'base_price', 'temu_price'].forEach(function(k) {
+                    delete patch[k];
+                });
+                return patch;
+            }
             const CH_PUSH_SPRICE_CAN_PULL = /^(ebay1|ebay2|ebay2op|ebay3|shopify_b2b|shopify_b2c|tiktok|tiktok2|doba|doba_withoutship|topdawg|alibaba)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_TIKTOK = /^(tiktok|tiktok2)$/.test(CH_PUSH_SPRICE_CHANNEL);
             const CH_PUSH_SPRICE_IS_MACYS = /^(macys|macy)$/.test(CH_PUSH_SPRICE_CHANNEL);
@@ -390,10 +400,8 @@
                     const pushed = Number(t.price);
                     const pulled = Number(t.ebay_price != null ? t.ebay_price : 0);
                     // TopDawg Price is the site cost. S PRC stays in SPRICE until the site matches.
-                    const live = CH_PUSH_SPRICE_IS_TOPDAWG
-                        ? (pulled > 0 ? pulled : 0)
-                        : ((st === 'ok' && pushed > 0) ? pushed : (pulled > 0 ? pulled : pushed));
-                    const pushedMark = CH_PUSH_SPRICE_IS_TOPDAWG ? pushed : live;
+                    const live = (st === 'ok' && pushed > 0) ? pushed : (pulled > 0 ? pulled : pushed);
+                    const pushedMark = live;
                     const patch = {};
                     let priceChanged = false;
                     if (st === 'ok') {
@@ -452,6 +460,8 @@
                     } else {
                         return false;
                     }
+                    chPushStripPriceKeys(patch);
+                    if (CH_PUSH_SPRICE_UNDER_REVIEW) priceChanged = false;
                     const keys = Object.keys(patch);
                     if (!keys.length) return null;
                     Object.assign(d, patch);
@@ -1052,6 +1062,7 @@
                         patch.listing_ended = true;
                     }
                 }
+                chPushStripPriceKeys(patch);
                 const row = item.row;
                 const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : (item.data || {});
                 if (typeof window.aeApplyPushPatchToSku === 'function' && CH_PUSH_SPRICE_CHANNEL === 'aliexpress') {

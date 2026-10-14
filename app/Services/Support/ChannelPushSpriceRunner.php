@@ -339,10 +339,8 @@ class ChannelPushSpriceRunner
                         ChannelLivePriceSync::confirmAfterPush($this->channel, $sku, $stamp);
                     }
                     if ($this->channel === 'topdawg') {
-                        $pulled = $this->pullLivePriceAfterPush($sku, $stamp);
-                        if ($pulled > 0) {
-                            $live = $pulled;
-                        }
+                        // TopDawg shows the pushed price in TD Price for the review window.
+                        $live = $stamp;
                     }
                 }
                 }

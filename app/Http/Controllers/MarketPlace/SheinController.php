@@ -875,6 +875,13 @@ class SheinController extends Controller
                     'lmp_entries'  => $lmpEntries,
                     'linked_lmp_skus' => $linkedLmpSkus,
                     'STANDARD_PRICE' => $stdPrc,
+                    // Push meta written by the server auto push (shein:sprc-dil-auto-push) and the page push.
+                    'SPRICE_STATUS' => $meta['SPRICE_STATUS'] ?? null,
+                    'SPRICE_STATUS_UPDATED_AT' => $meta['SPRICE_STATUS_UPDATED_AT'] ?? null,
+                    'SPRICE_PUSHED_VALUE' => isset($meta['SPRICE_PUSHED_VALUE']) && is_numeric($meta['SPRICE_PUSHED_VALUE'])
+                        ? (float) $meta['SPRICE_PUSHED_VALUE']
+                        : null,
+                    'SPRICE_PUSHED_AT' => $meta['SPRICE_PUSHED_AT'] ?? null,
                 ];
                 $rows[] = $promoService->applyToRow($row, $promoMap, (string) $displaySku);
             }
@@ -1307,7 +1314,8 @@ class SheinController extends Controller
             ], 422, [], JSON_INVALID_UTF8_SUBSTITUTE);
         }
 
-        $bulk = $sheinApi->updateItemPriceBulk($items);
+        // Shein reviews price changes, so the Sp. Price column is not overwritten here. A live pull / sync does it.
+        $bulk = $sheinApi->updateItemPriceBulk($items, null, false);
         $results = array_merge($prefail, $bulk['results'] ?? []);
         $pushed = (int) ($bulk['pushed'] ?? 0);
         $failed = (int) ($bulk['failed'] ?? 0) + count($prefail);

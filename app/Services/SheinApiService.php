@@ -3467,9 +3467,10 @@ class SheinApiService
      * Bulk price push (up to 100 SKUs per Shein API request).
      *
      * @param  list<array{sku?: string, seller_part_number?: string, price: float|int|string, shop_price?: float|int|string|null}>  $items
+     * @param  bool  $persistLocal  Write the pushed price into shein_pricing_prices / shein_metrics right away.
      * @return array{ok: bool, pushed: int, failed: int, error_message: ?string, results: list<array<string, mixed>>}
      */
-    public function updateItemPriceBulk(array $items, ?string $defaultCountry = null): array
+    public function updateItemPriceBulk(array $items, ?string $defaultCountry = null, bool $persistLocal = true): array
     {
         $results = [];
         $pushed = 0;
@@ -3570,7 +3571,11 @@ class SheinApiService
                 }
 
                 foreach ($chunk as $row) {
-                    $this->persistLocalSheinPushedPrice($row['sku'], $row['sale'], $row['shop']);
+                    // Shein puts a price change under review. Callers that show the Price column pass false so it only
+                    // moves when a live pull / sync reads the new price.
+                    if ($persistLocal) {
+                        $this->persistLocalSheinPushedPrice($row['sku'], $row['sale'], $row['shop']);
+                    }
                     $pushed++;
                     $results[] = [
                         'sku' => $row['sku'],

@@ -104,7 +104,9 @@ class ChannelLivePriceSync
         // eBay Price is CurrentPrice from GetItem / inventory reports.
         // TopDawg Price is SupplierProduct cost on the site.
         // Do not stamp Dil S PRC over a listing that is still at another amount.
-        if ($channel === 'doba_withoutship' || $channel === 'topdawg' || self::isEbayChannel($channel)) {
+        // Shein / Alibaba price changes go under review: the Price column only moves from a live pull / sync.
+        // TopDawg shows the pushed price in Price right away and keeps it for the review window (see reviewHoldPrice()).
+        if (in_array($channel, ['doba_withoutship', 'shein', 'alibaba'], true) || self::isEbayChannel($channel)) {
             return;
         }
 
@@ -212,6 +214,78 @@ class ChannelLivePriceSync
         ShopifySku::query()
             ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
             ->update($payload);
+    }
+
+    /**
+     * Pushed price still inside its review window (SPRICE_PUSHED_AT newer than $minutes), else null.
+     * While it is set, a live pull / sync must not replace the Price column with the old site price.
+     */
+    public static function reviewHoldPrice(string $channel, string $sku, int $minutes): ?float
+    {
+        $viewClass = self::viewClass(self::normalize($channel));
+        $key = strtoupper(trim(str_replace("\xc2\xa0", ' ', $sku)));
+        if ($viewClass === null || ! class_exists($viewClass) || $key === '' || $minutes <= 0) {
+            return null;
+        }
+        try {
+            $row = $viewClass::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$key])->first();
+            if (! $row) {
+                return null;
+            }
+            $val = is_array($row->value) ? $row->value : (json_decode((string) ($row->value ?? ''), true) ?: []);
+
+            return self::holdPriceFromValue(is_array($val) ? $val : [], $minutes);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, float> UPPER sku → pushed price, only SKUs pushed within $minutes
+     */
+    public static function reviewHoldMap(string $channel, int $minutes): array
+    {
+        $viewClass = self::viewClass(self::normalize($channel));
+        if ($viewClass === null || ! class_exists($viewClass) || $minutes <= 0) {
+            return [];
+        }
+        $map = [];
+        try {
+            $viewClass::query()
+                ->where('value', 'like', '%SPRICE_PUSHED_AT%')
+                ->get(['sku', 'value'])
+                ->each(function ($row) use (&$map, $minutes) {
+                    $val = is_array($row->value) ? $row->value : (json_decode((string) ($row->value ?? ''), true) ?: []);
+                    $price = self::holdPriceFromValue(is_array($val) ? $val : [], $minutes);
+                    if ($price === null) {
+                        return;
+                    }
+                    foreach (self::skuLookupKeys((string) $row->sku) as $k) {
+                        $map[$k] = $price;
+                    }
+                });
+        } catch (Throwable $e) {
+            Log::warning('ChannelLivePriceSync reviewHoldMap failed', ['channel' => $channel, 'error' => $e->getMessage()]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param  array<string, mixed>  $val
+     */
+    private static function holdPriceFromValue(array $val, int $minutes): ?float
+    {
+        $at = (string) ($val['SPRICE_PUSHED_AT'] ?? '');
+        $pushed = PushedListingPrice::fromValue($val);
+        if ($at === '' || $pushed === null || ! ($pushed > 0)) {
+            return null;
+        }
+        try {
+            return \Illuminate\Support\Carbon::parse($at)->gt(now()->subMinutes($minutes)) ? round($pushed, 2) : null;
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**

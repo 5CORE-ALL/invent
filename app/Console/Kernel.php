@@ -1179,6 +1179,90 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Alibaba Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ads% and no Ship, Std max, no LMP)
+        // → S PRC → Alibaba listing price. Same twice-daily idea as Amazon. /alibaba-analytics does not need to be open.
+        // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
+        $schedule->command('alibaba:sprc-dil-auto-push')
+            ->dailyAt('08:05')
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sprc-dil-auto-push-am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('alibaba:sprc-dil-auto-push')
+            ->dailyAt('23:55')
+            ->timezone('Asia/Kolkata')
+            ->name('alibaba-sprc-dil-auto-push-pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Headless "Push on reload" for /alibaba-analytics (same as amazon:push-blue-prices): blue-triangle SKUs
+        // (INV > 0, Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()).
+        $schedule->command('alibaba:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('alibaba-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Shein Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ship + Ads%, LMP cap, Std max)
+        // → S PRC → Shein product/price/save. Same twice-daily idea as Amazon. /shein-pricing does not need to be open.
+        // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
+        $schedule->command('shein:sprc-dil-auto-push')
+            ->dailyAt('06:55')
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sprc-dil-auto-push-am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('shein:sprc-dil-auto-push')
+            ->dailyAt('22:55')
+            ->timezone('Asia/Kolkata')
+            ->name('shein-sprc-dil-auto-push-pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Headless "Push on reload" for /shein-pricing (same as amazon:push-blue-prices): blue-triangle SKUs
+        // (INV > 0, Sp. Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()).
+        $schedule->command('shein:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('shein-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // PLS (ProLightSounds) Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ship, no ads, no LMP, Std max)
+        // → S PRC → ProLightSounds Shopify price. Same twice-daily idea as Amazon. /pls-pricing does not need to be open.
+        // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
+        $schedule->command('pls:sprc-dil-auto-push')
+            ->dailyAt('07:45')
+            ->timezone('Asia/Kolkata')
+            ->name('pls-sprc-dil-auto-push-am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('pls:sprc-dil-auto-push')
+            ->dailyAt('23:45')
+            ->timezone('Asia/Kolkata')
+            ->name('pls-sprc-dil-auto-push-pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Headless "Push on reload" for /pls-pricing (same as amazon:push-blue-prices): blue-triangle SKUs
+        // (INV > 0, PLS Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()).
+        $schedule->command('pls:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('pls-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Best Buy Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap, Amz rule) → S PRC → Best Buy MCM.
         // Same twice-daily idea as Amazon, offset 40 min. /bestbuy-pricing does not need to be open.
         // Do NOT wrap 20:40 in $ist() — IST window ends at 20:00.
@@ -1256,11 +1340,9 @@ class Kernel extends ConsoleKernel
             ['05:45', '21:45', 'dil:rule-sprice-apply temu2 --push', 'temu2-sprc-dil'],
             ['05:55', '21:55', 'dil:rule-sprice-apply temu3 --push', 'temu3-sprc-dil'],
             ['06:35', '22:35', 'dil:rule-sprice-apply doba', 'doba-sprc-dil'],
-            ['06:55', '22:55', 'dil:rule-sprice-apply shein --push', 'shein-sprc-dil'],
             ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],
             ['07:25', '23:25', 'dil:rule-sprice-apply fb_marketplace', 'fb-marketplace-sprc-dil'],
             ['07:35', '23:35', 'dil:rule-sprice-apply walmart --push', 'walmart-sprc-dil'],
-            ['07:45', '23:45', 'dil:rule-sprice-apply pls --push', 'pls-sprc-dil'],
             ['05:40', '21:40', 'shopify-b2c:rule-sprice-apply --push', 'shopify-b2c-sprc-dil'],
             ['05:50', '21:50', 'macys:rule-sprice-apply --push', 'macys-sprc-dil'],
         ] as [$morning, $evening, $command, $slug]) {

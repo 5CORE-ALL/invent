@@ -136,6 +136,12 @@ class TopDawgApiService
         $stale = $expected !== null && abs($price - $expected) >= 0.05;
         $persist = \App\Support\PushedListingPrice::keepCalculated($price, $expected) ?? $price;
 
+        // A price pushed within the review window stays in the Price column; the old site cost does not replace it.
+        $hold = ChannelLivePriceSync::reviewHoldPrice('topdawg', $sku, \App\Services\TopDawgSprcDilAutoPushService::REVIEW_HOLD_MINUTES);
+        if ($hold !== null && $stale) {
+            return ['price' => $hold, 'stale' => true];
+        }
+
         // Price column is the live site cost while a push is still in review.
         // Once the site is within a few cents, keep the calculated S PRC.
         try {

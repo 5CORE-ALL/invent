@@ -7,6 +7,7 @@ use App\Http\Controllers\ProductMaster\InvDaysController;
 use App\Models\AlibabaMetric;
 use App\Models\AlibabaPricingPrice;
 use App\Models\AlibabaSheetPrice;
+use App\Models\AmazonDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
@@ -85,6 +86,8 @@ class AlibabaAnalyticsController extends Controller
         $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
         $l30 = app(AlibabaSalesController::class)->l30SkuTotals();
         $spriceBySku = $this->spriceBySku();
+        $pushMetaBySku = $this->pushMetaBySku();
+        $stdBySku = $this->amazonStdBySku($skus);
         $salesUsed = [];
 
         $children = [];
@@ -120,6 +123,7 @@ class AlibabaAnalyticsController extends Controller
             $sMetrics = $sprice > 0 ? $this->priceMetrics($sprice, $lp, $margin) : ['gpft' => 0.0, 'roi' => 0.0];
             $cvr = $ovL30 > 0 ? round(($abL30 / $ovL30) * 100, 2) : 0.0;
             $image = $this->productImage($pm, $shopify);
+            $pushMeta = $pushMetaBySku[$skuKey] ?? $pushMetaBySku[strtoupper($storedSku)] ?? [];
 
             $children[] = [
                 'Parent' => $parent,
@@ -162,6 +166,13 @@ class AlibabaAnalyticsController extends Controller
                 'SNROI' => $sMetrics['roi'],
                 'SNGPFT' => $sMetrics['gpft'],
                 'has_custom_sprice' => $sprice > 0,
+                // Amazon Std Prc for this exact SKU. Pack listings (… 2PCS) never borrow the single-unit Std.
+                'STANDARD_PRICE' => $stdBySku[$skuKey] ?? null,
+                // Push meta written by the server auto push (alibaba:sprc-dil-auto-push).
+                'SPRICE_STATUS' => $pushMeta['status'] ?? null,
+                'SPRICE_STATUS_UPDATED_AT' => $pushMeta['status_at'] ?? null,
+                'SPRICE_PUSHED_VALUE' => $pushMeta['pushed_value'] ?? null,
+                'SPRICE_PUSHED_AT' => $pushMeta['pushed_at'] ?? null,
                 'cvr' => $cvr,
                 '_margin' => $margin,
                 'is_parent' => false,
@@ -375,7 +386,7 @@ class AlibabaAnalyticsController extends Controller
                 continue;
             }
 
-            $this->storePushedPrice($sheet, $productId, $sku, $price);
+            // Alibaba reviews listing changes, so the Price column is not overwritten here. A live pull / sync does it.
             $pushed++;
             $lastPrice = $price;
             $lastSku = $sku;
@@ -433,52 +444,6 @@ class AlibabaAnalyticsController extends Controller
         return $exact->count() === 1 ? $exact->first() : null;
     }
 
-    protected function storePushedPrice(?AlibabaSheetPrice $sheet, string $productId, string $sku, float $price): void
-    {
-        $keys = array_values(array_unique(array_filter([
-            strtoupper(trim($sku)),
-            strtoupper(trim((string) preg_replace('/\s+\d+\s*PCS$/i', '', $sku))),
-            $sheet ? strtoupper(trim((string) $sheet->sku)) : '',
-        ])));
-
-        if ($sheet) {
-            $sheet->sku_price = $price;
-            $sheet->save();
-        } elseif ($productId !== '') {
-            $matched = AlibabaSheetPrice::query()
-                ->where('product_id', $productId)
-                ->where(function ($query) use ($keys): void {
-                    foreach ($keys as $key) {
-                        $query->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
-                    }
-                })
-                ->update(['sku_price' => $price]);
-            if ($matched === 0 && AlibabaSheetPrice::query()->where('product_id', $productId)->count() === 1) {
-                AlibabaSheetPrice::query()->where('product_id', $productId)->update(['sku_price' => $price]);
-            }
-        }
-
-        if (Schema::hasTable('alibaba_metrics') && $keys !== []) {
-            AlibabaMetric::query()
-                ->where('product_id', $productId)
-                ->where(function ($query) use ($keys): void {
-                    foreach ($keys as $key) {
-                        $query->orWhereRaw('UPPER(TRIM(sku)) = ?', [$key]);
-                    }
-                })
-                ->update(['price' => $price]);
-        }
-
-        if (! Schema::hasTable('alibaba_pricing_prices')) {
-            return;
-        }
-        foreach ($keys as $key) {
-            AlibabaPricingPrice::query()
-                ->whereRaw('UPPER(TRIM(sku)) = ?', [$key])
-                ->update(['price' => $price]);
-        }
-    }
-
     /**
      * @return array<string, float>
      */
@@ -499,6 +464,69 @@ class AlibabaAnalyticsController extends Controller
         }
 
         return $map;
+    }
+
+    /**
+     * Last push meta per SKU (empty until the push-meta migration has run).
+     *
+     * @return array<string, array{status:?string,status_at:?string,pushed_value:?float,pushed_at:?string}>
+     */
+    protected function pushMetaBySku(): array
+    {
+        if (! Schema::hasTable('alibaba_pricing_prices') || ! Schema::hasColumn('alibaba_pricing_prices', 'sprice_pushed_at')) {
+            return [];
+        }
+
+        $map = [];
+        foreach (AlibabaPricingPrice::query()
+            ->where(function ($q) {
+                $q->whereNotNull('sprice_status')->orWhereNotNull('sprice_pushed_at');
+            })
+            ->get(['sku', 'sprice_status', 'sprice_status_at', 'sprice_pushed_value', 'sprice_pushed_at']) as $row) {
+            $key = strtoupper(trim((string) $row->sku));
+            if ($key === '') {
+                continue;
+            }
+            $map[$key] = [
+                'status' => $row->sprice_status,
+                'status_at' => $row->sprice_status_at ? (string) $row->sprice_status_at : null,
+                'pushed_value' => $row->sprice_pushed_value !== null ? (float) $row->sprice_pushed_value : null,
+                'pushed_at' => $row->sprice_pushed_at ? (string) $row->sprice_pushed_at : null,
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * Amazon STANDARD_PRICE by upper-case SKU, only for the SKUs on this page.
+     *
+     * @param  list<string>  $skus
+     * @return array<string, float>
+     */
+    protected function amazonStdBySku(array $skus): array
+    {
+        $keys = array_values(array_unique(array_filter(array_map(
+            fn ($s) => strtoupper(trim((string) $s)),
+            $skus
+        ))));
+        $out = [];
+        foreach (array_chunk($keys, 400) as $chunk) {
+            AmazonDataView::query()
+                ->whereRaw('UPPER(TRIM(sku)) IN ('.implode(',', array_fill(0, count($chunk), '?')).')', $chunk)
+                ->get(['sku', 'value'])
+                ->each(function ($row) use (&$out) {
+                    $val = is_array($row->value)
+                        ? $row->value
+                        : (json_decode((string) ($row->value ?? ''), true) ?: []);
+                    $std = is_array($val) ? ($val['STANDARD_PRICE'] ?? null) : null;
+                    if (is_numeric($std) && (float) $std > 0) {
+                        $out[strtoupper(trim((string) $row->sku))] = round((float) $std, 2);
+                    }
+                });
+        }
+
+        return $out;
     }
 
     public function sync(Request $request, AlibabaApiService $api): JsonResponse

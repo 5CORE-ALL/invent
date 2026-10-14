@@ -77,6 +77,14 @@ class ChannelPushedPricePullService
             return $this->pullTikTok($skus, $channel, $expected);
         }
 
+        if ($channel === 'pls') {
+            return $this->pullPls($skus, $expected);
+        }
+
+        if ($channel === 'shein') {
+            return $this->pullShein($skus, $expected);
+        }
+
         if (in_array($channel, ['doba', 'doba_withoutship'], true)) {
             return $this->pullDoba($skus, $channel, $expected);
         }
@@ -795,6 +803,132 @@ class ChannelPushedPricePullService
             : (float) ($ss->b2c_price ?: $ss->price);
 
         return $price > 0 ? $price : null;
+    }
+
+    /**
+     * Live ProLightSounds variant price (Shopify GraphQL). Writes the pls_products Price column and the
+     * catalog variant price, so /pls-pricing shows what the store really has.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
+     */
+    private function pullPls(array $skus, array $expectedBySku = []): array
+    {
+        $updater = app(\App\Services\ShopifyVariantPriceUpdater::class);
+        $out = [];
+        foreach ($skus as $sku) {
+            try {
+                $variant = \App\Models\ShopifyPlsVariant::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                    ->first();
+                $variantId = $variant ? trim((string) ($variant->shopify_variant_id ?? '')) : '';
+                $live = $variantId !== '' ? $updater->fetchPrice($variantId, 'pls') : null;
+                if (! ($live > 0)) {
+                    $out[] = [
+                        'success' => false,
+                        'sku' => $sku,
+                        'marketplace' => 'pls',
+                        'price' => null,
+                        'sprice' => null,
+                        'message' => 'Live ProLightSounds price not returned',
+                    ];
+                    continue;
+                }
+                $price = $this->listingPriceToStore('pls', $sku, (float) $live, $expectedBySku);
+                \App\Services\ChannelLivePriceSync::writeLive('pls', $sku, $price);
+                $variant->price = $price;
+                $variant->save();
+
+                $out[] = [
+                    'success' => true,
+                    'sku' => $sku,
+                    'marketplace' => 'pls',
+                    'price' => $price,
+                    'sprice' => null,
+                    'message' => 'Pulled PLS Price $'.number_format($price, 2),
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price PLS pull failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                $out[] = [
+                    'success' => false,
+                    'sku' => $sku,
+                    'marketplace' => 'pls',
+                    'price' => null,
+                    'sprice' => null,
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Live Shein sale price (product/full-detail currentPrices). Writes the Sp. Price column
+     * (shein_pricing_prices.special_offer_price) and shein_metrics.price. The shop (list) price is left alone.
+     * Note: SheinApiService::getProductDetails also refreshes the SKU's shein_metrics row, same as shein:fetch sync.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
+     */
+    private function pullShein(array $skus, array $expectedBySku = []): array
+    {
+        $api = app(SheinApiService::class);
+        $out = [];
+        foreach ($skus as $i => $sku) {
+            $row = ['success' => false, 'sku' => $sku, 'marketplace' => 'shein', 'price' => null, 'sprice' => null, 'message' => ''];
+            try {
+                $code = $api->resolveSheinSkuCode($sku);
+                if ($code === '') {
+                    $row['message'] = 'No Shein skuCode for '.$sku;
+                    $out[] = $row;
+                    continue;
+                }
+                $details = $api->getProductDetails($code);
+                $live = is_array($details) && isset($details['price']) ? (float) $details['price'] : 0.0;
+                if (! ($live > 0)) {
+                    $row['message'] = 'Live Shein price not returned';
+                    $out[] = $row;
+                    continue;
+                }
+                $price = $this->listingPriceToStore('shein', $sku, $live, $expectedBySku);
+                $this->writeSheinSalePrice($sku, $price);
+                $row['success'] = true;
+                $row['price'] = $price;
+                $row['message'] = 'Pulled Shein Price $'.number_format($price, 2);
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price Shein pull failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                $row['message'] = $e->getMessage();
+            }
+            $out[] = $row;
+
+            if ($i < count($skus) - 1) {
+                usleep(150000);
+            }
+        }
+
+        return $out;
+    }
+
+    private function writeSheinSalePrice(string $sku, float $price): void
+    {
+        $keys = ChannelLivePriceSync::skuLookupKeys($sku);
+        if ($keys === []) {
+            return;
+        }
+        $price = round($price, 2);
+        if (Schema::hasTable('shein_pricing_prices')) {
+            \App\Models\SheinPricingPrice::query()
+                ->whereIn(\Illuminate\Support\Facades\DB::raw('UPPER(TRIM(sku))'), $keys)
+                ->update(['special_offer_price' => $price]);
+        }
+        if (Schema::hasTable('shein_metrics')) {
+            \App\Models\SheinMetric::query()
+                ->whereIn(\Illuminate\Support\Facades\DB::raw('UPPER(TRIM(sku))'), $keys)
+                ->update(['price' => $price]);
+        }
     }
 
     /**

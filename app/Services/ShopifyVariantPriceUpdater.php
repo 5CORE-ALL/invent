@@ -47,6 +47,32 @@ class ShopifyVariantPriceUpdater
     }
 
     /**
+     * Live variant price (GraphQL productVariant). Null when the store, token or variant is missing,
+     * or Shopify did not answer.
+     */
+    public function fetchPrice(string $variantId, string $store = 'b2c'): ?float
+    {
+        $variantId = $this->numericId($variantId);
+        if ($variantId === '') {
+            return null;
+        }
+        [$storeUrl, $token] = $this->credentials($store);
+        if ($storeUrl === '' || $token === '') {
+            return null;
+        }
+        $query = 'query VariantPrice($id: ID!) { productVariant(id: $id) { price } }';
+        $vars = ['id' => 'gid://shopify/ProductVariant/'.$variantId];
+        $json = $this->graphql($storeUrl, $token, $query, $vars);
+        if ($this->isThrottled($json)) {
+            usleep((int) ($this->throttleSeconds($json) * 1_000_000));
+            $json = $this->graphql($storeUrl, $token, $query, $vars);
+        }
+        $price = data_get($json, 'data.productVariant.price');
+
+        return is_numeric($price) && (float) $price > 0 ? round((float) $price, 2) : null;
+    }
+
+    /**
      * @return array{status: string, message?: string, verified_price?: float, data?: mixed, fallback?: bool}
      */
     private function updateViaGraphql(
