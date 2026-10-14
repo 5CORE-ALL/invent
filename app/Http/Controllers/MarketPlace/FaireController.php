@@ -1086,6 +1086,11 @@ class FaireController extends Controller
                 if ($pushStatus === '') {
                     $pushStatus = null;
                 }
+                // Server job stamps (faire:sprc-dil-auto-push): last pushed price + time, used by the blue catch-up.
+                $spricePushedValue = isset($meta['SPRICE_PUSHED_VALUE']) && is_numeric($meta['SPRICE_PUSHED_VALUE'])
+                    ? (float) $meta['SPRICE_PUSHED_VALUE'] : null;
+                $spricePushedAt = ! empty($meta['SPRICE_PUSHED_AT']) ? (string) $meta['SPRICE_PUSHED_AT'] : null;
+                $pushStatusAt = ! empty($meta['PUSH_STATUS_UPDATED_AT']) ? (string) $meta['PUSH_STATUS_UPDATED_AT'] : null;
                 $metric = $metricBySku->get($normalizedSku);
                 $price = $metric ? (float) ($metric->price ?? 0) : 0;
                 $faireStock = $metric ? (int) ($metric->inventory ?? 0) : 0;
@@ -1179,6 +1184,9 @@ class FaireController extends Controller
                     'sgpft' => $sgpft,
                     'sroi' => $sroi,
                     'push_status' => $pushStatus,
+                    'push_status_at' => $pushStatusAt,
+                    'sprice_pushed_value' => $spricePushedValue,
+                    'sprice_pushed_at' => $spricePushedAt,
                     '_margin' => round($margin, 4),
                     'inv' => $inv,
                     'ov_l30' => $ovL30,

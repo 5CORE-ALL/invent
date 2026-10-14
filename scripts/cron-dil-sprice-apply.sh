@@ -16,7 +16,7 @@
 #   25 6,22 * * * ... cron-dil-sprice-apply.sh tiktok2
 #   35 6,22 * * * ... cron-dil-sprice-apply.sh doba
 #   40 5,21 * * * ... cron-dil-sprice-apply.sh shopify_b2c push
-#   45 6,22 * * * ... cron-dil-sprice-apply.sh faire
+#   45 4,20 * * * ... cron-dil-sprice-apply.sh faire
 #   50 5,21 * * * ... cron-dil-sprice-apply.sh macys push
 #   55 6,22 * * * ... cron-dil-sprice-apply.sh shein
 #   35 4,20 * * * ... cron-dil-sprice-apply.sh purchasing_power
@@ -67,8 +67,12 @@ case "$MODE" in
     CMD=(purchasing-power:sprc-dil-auto-push)
     MODE=purchasing_power
     ;;
-  newegg|temu|temu2|temu3|tiktok|tiktok2|faire|shein|wayfair|walmart|pls)
+  newegg|temu|temu2|temu3|tiktok|tiktok2|shein|wayfair|walmart|pls)
     CMD=(dil:rule-sprice-apply "$MODE" --push)
+    ;;
+  faire)
+    CMD=(faire:sprc-dil-auto-push)
+    MODE=faire
     ;;
   reverb)
     CMD=(reverb:sprc-dil-auto-push)

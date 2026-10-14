@@ -7,10 +7,6 @@ use App\Models\AmazonDatasheet;
 use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\DobaDataView;
 use App\Models\DobaMetric;
-use App\Http\Controllers\MarketPlace\FaireController;
-use App\Models\FaireDataView;
-use App\Models\FaireMetric;
-use App\Models\FaireProductSheet;
 use App\Models\FBMarketplaceDataView;
 use App\Models\FbMarketplacePriceSoldData;
 use App\Models\MarketplacePercentage;
@@ -53,7 +49,7 @@ use Throwable;
  * Temu 2/3). Temu 1 0 Sold uses temu_orders L30 (same as
  * /temu1-data), not temu_metrics.quantity_purchased_l30. Dil stays Shopify
  * OV L30. CVR overlay where the page uses it, ship excluded on
- * Wayfair / Faire / FB, Newegg Amz floor, LMP cap at SGROI ≥ 20%.
+ * Wayfair / FB, Newegg Amz floor, LMP cap at SGROI ≥ 20%.
  * Shein: AL30 = 0 uses min Target NROI; AL30 > 0 uses Dil slab or nearest slab. Dil is Shopify OV L30 ÷ INV.
  * Level-only CVR overlay when views > 0.
  */
@@ -69,7 +65,6 @@ class DilRuleSpriceApplyService
         'tiktok',
         'tiktok2',
         'doba',
-        'faire',
         'shein',
         'wayfair',
         'fb_marketplace',
@@ -85,7 +80,6 @@ class DilRuleSpriceApplyService
         'temu3',
         'tiktok',
         'tiktok2',
-        'faire',
         'shein',
         'wayfair',
         'walmart',
@@ -295,13 +289,11 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        $sold = $this->channel === 'faire'
-            ? (float) ($row['al30'] ?? 0)
-            : ($this->channel === 'shein'
-                ? (float) ($row['al30'] ?? $row['ov_l30'] ?? 0)
-                : (array_key_exists('temu_l30', $row)
-                    ? (float) $row['temu_l30']
-                    : (float) ($row['ov_l30'] ?? 0)));
+        $sold = $this->channel === 'shein'
+            ? (float) ($row['al30'] ?? $row['ov_l30'] ?? 0)
+            : (array_key_exists('temu_l30', $row)
+                ? (float) $row['temu_l30']
+                : (float) ($row['ov_l30'] ?? 0));
         $dil = (float) ($row['dil'] ?? 0);
         $groi = null;
 
@@ -325,7 +317,7 @@ class DilRuleSpriceApplyService
             $views = (float) ($row['views'] ?? 0);
             if (empty($cfg['cvr_adj_requires_views']) || $views > 0) {
                 $cvr = (float) ($row['cvr'] ?? 0);
-                $groi = ($this->channel === 'shein' || $this->channel === 'faire')
+                $groi = $this->channel === 'shein'
                     ? AmazonDilGroiRule::adjustGroiForCvrLevel($groi, $cvr, $cvrAdj)
                     : AmazonDilGroiRule::adjustGroiForCvrArrow(
                         $groi,
@@ -342,13 +334,9 @@ class DilRuleSpriceApplyService
             return null;
         }
 
-        // Faire has no LMP cap. Capping at LMP was rewriting the Dil price so SNROI missed the slab.
-        // No LMP still uses Std Prc as the maximum, same as every other blade.
         $lmp = (float) ($row['lmp'] ?? 0);
         $std = (float) ($row['std_price'] ?? $row['standard_price'] ?? $row['STANDARD_PRICE'] ?? 0);
-        $sprice = $this->channel === 'faire'
-            ? AmazonDilGroiRule::capToStdWhenNoLmp(round($raw, 2), $lmp, $std)
-            : AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std);
+        $sprice = AmazonDilGroiRule::capSpriceToLmp($raw, $lmp, $lp, $ship, $margin, $std);
 
         if (! empty($cfg['amz_floor'])) {
             $amz = (float) ($row['amz_price'] ?? 0);
@@ -486,10 +474,7 @@ class DilRuleSpriceApplyService
             $l30Overlay = $this->temuOrdersL30BySku($skus, $this->channel === 'temu2');
         } elseif ($this->channel === 'shein') {
             $l30Overlay = $this->sheinL30BySku($skus);
-        } elseif ($this->channel === 'faire') {
-            $l30Overlay = $this->faireL30BySku();
         }
-        $faireViewsBySku = $this->channel === 'faire' ? $this->faireViewsBySku() : [];
         // TikTok 0 Sold uses TT L30 = the page's sold qty (tiktok_orders L30), not tiktok_products.sold.
         $ttL30BySku = in_array($this->channel, ['tiktok', 'tiktok2'], true) ? $this->tiktokL30BySku() : null;
 
@@ -508,9 +493,6 @@ class DilRuleSpriceApplyService
             if ($this->channel === 'shein') {
                 $ov = (float) ($shopify->quantity ?? 0);
                 $al30 = (float) ($l30Overlay[$sku] ?? 0);
-            } elseif ($this->channel === 'faire') {
-                $ov = (float) ($shopify->quantity ?? 0);
-                $al30 = (float) ($l30Overlay[$sku] ?? 0);
             } elseif ($this->channel === 'temu' || $this->channel === 'temu2') {
                 // Dil = Shopify OV L30, same as /temu1-data. Do not use temu_metrics sales.
                 $ov = (float) ($shopify->quantity ?? 0);
@@ -527,9 +509,7 @@ class DilRuleSpriceApplyService
             }
 
             $views = 0.0;
-            if ($this->channel === 'faire') {
-                $views = (float) ($faireViewsBySku[$sku] ?? 0);
-            } elseif ($viewsCol !== null && isset($metric->{$viewsCol})) {
+            if ($viewsCol !== null && isset($metric->{$viewsCol})) {
                 $views = (float) $metric->{$viewsCol};
             }
 
@@ -557,7 +537,7 @@ class DilRuleSpriceApplyService
                 'cvr' => $views > 0
                     ? round(((($this->channel === 'temu' || $this->channel === 'temu2')
                         ? (float) ($l30Overlay[$sku] ?? 0)
-                        : (($this->channel === 'shein' || $this->channel === 'faire') ? $al30 : $ov)) / $views) * 100, 2)
+                        : ($this->channel === 'shein' ? $al30 : $ov)) / $views) * 100, 2)
                     : 0.0,
                 'lmp' => $lmpBySku[$sku] ?? 0.0,
                 'std_price' => $stdBySku[$sku] ?? 0.0,
@@ -793,57 +773,6 @@ class DilRuleSpriceApplyService
             return $out;
         } catch (Throwable $e) {
             Log::warning('[DilRuleSpriceApply] shein L30 overlay failed', ['error' => $e->getMessage()]);
-
-            return [];
-        }
-    }
-
-    /**
-     * Faire AL30 from faire_order_metrics — same window as /faire-pricing.
-     *
-     * @return array<string, float>
-     */
-    protected function faireL30BySku(): array
-    {
-        try {
-            $out = [];
-            foreach (FaireController::queryFaireL30SalesBySku() as $row) {
-                $sku = strtoupper(trim((string) ($row->sku ?? '')));
-                if ($sku === '') {
-                    continue;
-                }
-                $out[$sku] = (float) ($row->al30 ?? 0);
-            }
-
-            return $out;
-        } catch (Throwable $e) {
-            Log::warning('[DilRuleSpriceApply] faire L30 overlay failed', ['error' => $e->getMessage()]);
-
-            return [];
-        }
-    }
-
-    /**
-     * @return array<string, float>
-     */
-    protected function faireViewsBySku(): array
-    {
-        if (! Schema::hasTable('faire_products_sheets')) {
-            return [];
-        }
-        try {
-            $out = [];
-            foreach (FaireProductSheet::query()->whereNotNull('sku')->where('sku', '!=', '')->get(['sku', 'views']) as $row) {
-                $sku = strtoupper(trim((string) $row->sku));
-                if ($sku === '') {
-                    continue;
-                }
-                $out[$sku] = (float) ($row->views ?? 0);
-            }
-
-            return $out;
-        } catch (Throwable $e) {
-            Log::warning('[DilRuleSpriceApply] faire views overlay failed', ['error' => $e->getMessage()]);
 
             return [];
         }
@@ -1158,14 +1087,6 @@ class DilRuleSpriceApplyService
                 'l30' => 'quantity_l30',
                 'views' => 'impressions',
                 'group' => 'item_id',
-            ],
-            'faire' => [
-                'metric' => FaireMetric::class,
-                'view' => FaireDataView::class,
-                'price' => 'price',
-                'exclude_ship' => true,
-                'cvr_adj' => true,
-                'cvr_adj_requires_views' => true,
             ],
             'shein' => [
                 'metric' => SheinMetric::class,

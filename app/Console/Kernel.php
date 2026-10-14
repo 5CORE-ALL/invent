@@ -1118,6 +1118,34 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Faire Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, no ship, no LMP) → S PRC → Faire wholesale price API.
+        // Same twice-daily idea as Amazon, offset 45 min. /faire-pricing does not need to be open.
+        // Do NOT wrap 20:45 in $ist() — IST window ends at 20:00.
+        $schedule->command('faire:sprc-dil-auto-push')
+            ->dailyAt('04:45')
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('faire:sprc-dil-auto-push')
+            ->dailyAt('20:45')
+            ->timezone('Asia/Kolkata')
+            ->name('faire-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Headless "Push on reload" for /faire-pricing (same as amazon:push-blue-prices): blue-triangle SKUs
+        // (INV > 0, Faire Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()).
+        $schedule->command('faire:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('faire-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Best Buy Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap, Amz rule) → S PRC → Best Buy MCM.
         // Same twice-daily idea as Amazon, offset 40 min. /bestbuy-pricing does not need to be open.
         // Do NOT wrap 20:40 in $ist() — IST window ends at 20:00.
@@ -1197,7 +1225,6 @@ class Kernel extends ConsoleKernel
             ['06:15', '22:15', 'dil:rule-sprice-apply tiktok --push', 'tiktok-sprc-dil'],
             ['06:25', '22:25', 'dil:rule-sprice-apply tiktok2 --push', 'tiktok2-sprc-dil'],
             ['06:35', '22:35', 'dil:rule-sprice-apply doba', 'doba-sprc-dil'],
-            ['06:45', '22:45', 'dil:rule-sprice-apply faire --push', 'faire-sprc-dil'],
             ['06:55', '22:55', 'dil:rule-sprice-apply shein --push', 'shein-sprc-dil'],
             ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],
             ['07:25', '23:25', 'dil:rule-sprice-apply fb_marketplace', 'fb-marketplace-sprc-dil'],

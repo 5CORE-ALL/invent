@@ -1352,6 +1352,71 @@ class FaireApiService
     }
 
     /**
+     * Live wholesale price of one SKU from GET /products/{id} (never retail).
+     * Used to pull the real Faire price after a push, same idea as the Amazon live pull.
+     *
+     * @return array{success: bool, price?: float, product_id?: string|null, message?: string}
+     */
+    public function pullLiveWholesalePrice(string $sku, ?string $productId = null): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Faire API credentials missing.'];
+        }
+
+        $normalize = static function (string $v): string {
+            $v = str_replace(["\xc2\xa0", "\xe2\x80\xaf"], ' ', $v);
+
+            return strtoupper(preg_replace('/\s+/u', ' ', trim($v)) ?? '');
+        };
+        $want = $normalize($sku);
+
+        $productId = trim((string) $productId);
+        if ($productId === '' && Schema::hasTable('faire_metric')) {
+            try {
+                $metric = FaireMetric::query()
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->get()
+                    ->first(fn ($row) => $normalize((string) $row->sku) === $want);
+                if ($metric && filled($metric->product_id)) {
+                    $productId = trim((string) $metric->product_id);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('FaireApiService: faire_metric lookup failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            }
+        }
+        if ($productId === '') {
+            return ['success' => false, 'message' => 'Faire product not found for SKU. Sync listings from Faire API first.'];
+        }
+
+        $info = $this->getProductInfo($productId);
+        if (empty($info['success']) || ! is_array($info['data'] ?? null)) {
+            return ['success' => false, 'product_id' => $productId, 'message' => (string) ($info['message'] ?? 'Faire product fetch failed')];
+        }
+        $variants = $info['data']['variants'] ?? $info['data']['product_variants'] ?? [];
+        if (! is_array($variants)) {
+            $variants = [];
+        }
+        foreach ($variants as $cand) {
+            if (! is_array($cand) || $normalize((string) ($cand['sku'] ?? '')) !== $want) {
+                continue;
+            }
+            $minor = $this->extractVariantWholesaleMinor($cand);
+            if ($minor !== null && $minor > 0) {
+                return ['success' => true, 'price' => round($minor / 100, 2), 'product_id' => $productId];
+            }
+
+            return ['success' => false, 'product_id' => $productId, 'message' => 'Faire returned no wholesale price for this SKU.'];
+        }
+
+        return ['success' => false, 'product_id' => $productId, 'message' => 'SKU not found on the Faire product.'];
+    }
+
+    /**
      * Faire accepts a wholesale update only when retail is in [1.25×, 10×] of that wholesale.
      * Missing retail stays at 2× wholesale (inside the window). A known retail is kept unless it falls outside.
      */

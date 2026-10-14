@@ -6,6 +6,7 @@ use App\Models\AlibabaMetric;
 use App\Models\AlibabaPricingPrice;
 use App\Models\AlibabaSheetPrice;
 use App\Models\DobaMetric;
+use App\Models\FaireMetric;
 use App\Models\NeweggPricing;
 use App\Models\ShopifySku;
 use App\Models\StoreListingPrice;
@@ -90,6 +91,10 @@ class ChannelPushedPricePullService
 
         if ($channel === 'alibaba') {
             return $this->pullAlibaba($skus, $expected);
+        }
+
+        if ($channel === 'faire') {
+            return $this->pullFaire($skus, $expected);
         }
 
         return array_map(static fn ($sku) => [
@@ -324,6 +329,79 @@ class ChannelPushedPricePullService
                     'message' => $e->getMessage(),
                 ];
             }
+
+            if ($i < count($skus) - 1) {
+                usleep(150000);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Live Faire wholesale price (GET /products/{id}) → faire_metric.price, which is the /faire-pricing Price column.
+     * With an expected price (S PRC just pushed) the Price column is only written when Faire shows that same price,
+     * so a read that is still catching up never undoes a push. Without one, the live price is written as is.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, float>  $expectedBySku
+     * @return list<array{success:bool,sku:string,marketplace:string,price:?float,sprice:?float,message:string}>
+     */
+    private function pullFaire(array $skus, array $expectedBySku = []): array
+    {
+        $api = app(FaireApiService::class);
+        $normalize = static function (string $v): string {
+            $v = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim($v));
+            $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $v);
+
+            return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $v));
+        };
+        $metrics = [];
+        if (Schema::hasTable('faire_metric')) {
+            // Exact SKU first (cheap, one query). The full table is only scanned for SKUs it does not find,
+            // because Faire exports leak NBSP / double spaces that SQL cannot fold.
+            $exact = FaireMetric::query()
+                ->whereIn(\Illuminate\Support\Facades\DB::raw('UPPER(TRIM(sku))'), array_map('strtoupper', array_map('trim', $skus)))
+                ->get();
+            foreach ($exact as $m) {
+                $metrics[$normalize((string) $m->sku)] = $m;
+            }
+            $missing = array_filter($skus, static fn ($sku) => ! isset($metrics[$normalize($sku)]));
+            if ($missing !== []) {
+                foreach (FaireMetric::query()->whereNotNull('sku')->where('sku', '!=', '')->get() as $m) {
+                    $metrics[$normalize((string) $m->sku)] ??= $m;
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($skus as $i => $sku) {
+            $row = ['success' => false, 'sku' => $sku, 'marketplace' => 'faire', 'price' => null, 'sprice' => null, 'message' => ''];
+            try {
+                $metric = $metrics[$normalize($sku)] ?? null;
+                $live = $api->pullLiveWholesalePrice($sku, $metric ? (string) ($metric->product_id ?? '') : null);
+                $price = ! empty($live['success']) ? (float) ($live['price'] ?? 0) : 0.0;
+                if (! ($price > 0)) {
+                    $row['message'] = (string) ($live['message'] ?? 'Live Faire price not returned');
+                } else {
+                    $row['price'] = $price;
+                    $expected = $expectedBySku[strtoupper(trim($sku))] ?? null;
+                    if ($expected > 0 && ! \App\Support\PushedListingPrice::same($price, (float) $expected)) {
+                        $row['message'] = 'Faire still shows $'.number_format($price, 2);
+                    } else {
+                        if ($metric) {
+                            $metric->price = round($price, 2);
+                            $metric->save();
+                        }
+                        $row['success'] = true;
+                        $row['message'] = 'Pulled Faire Price $'.number_format($price, 2);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Channel pushed-price Faire pull failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+                $row['message'] = $e->getMessage();
+            }
+            $out[] = $row;
 
             if ($i < count($skus) - 1) {
                 usleep(150000);

@@ -104,7 +104,6 @@
             scrollbar-width: thin;
         }
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'faire'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'faire'])
         #fr-summary-stats .fr-filter-badge.active-filter {
             box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.45);
             outline: 2px solid #0d6efd;
@@ -236,11 +235,6 @@
                             aria-label="Pricing mode">
                             <i class="fas fa-exchange-alt"></i>
                         </button>
-                        <button type="button" id="fr-rule-btn" class="btn btn-sm btn-outline-dark pricing-filter-item"
-                            title="Price rules: Dil %, Faire sold qty, Discount % → SPRICE = STD × (1−Disc%). Ship not used.">
-                            <i class="fas fa-sliders-h"></i> Rule
-                        </button>
-                        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'faire'])
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'faire'])
                         <button type="button" id="fr-push-to-faire-btn" class="btn btn-sm btn-primary pricing-filter-item" style="display: none;"
                             title="Push SPRICE for selected SKUs to Faire (or all with SPRICE if none selected)">
@@ -431,56 +425,7 @@
         </div>
     </div>
 
-    <!-- Price Rule: Dil % / Faire sold qty / Discount % → SPRICE from STD -->
-    <div class="modal fade" id="frPriceRuleModal" tabindex="-1" aria-labelledby="frPriceRuleModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" id="frPriceRuleModalLabel">
-                        <i class="fas fa-sliders-h me-1"></i> Price Rule
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-muted mb-2">
-                        Match rows by <strong>Dil %</strong> and <strong>Sold qty (Faire)</strong>.
-                        Apply sets <strong>SPRICE = STD prc × (1 − Discount%/100)</strong> (Ship not used).
-                        Blank min/max = no limit. If SKUs are checked, only those are updated.
-                    </p>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-bordered align-middle mb-2" id="fr-price-rule-table">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width:12%">Dil % min</th>
-                                    <th style="width:12%">Dil % max</th>
-                                    <th style="width:14%">Sold min</th>
-                                    <th style="width:14%">Sold max</th>
-                                    <th style="width:14%">Discount %</th>
-                                    <th style="width:8%"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="fr-price-rule-tbody"></tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="fr-price-rule-add-btn">
-                        <i class="fas fa-plus"></i> Add rule
-                    </button>
-                    <div id="fr-price-rule-msg" class="small mt-2 text-danger d-none"></div>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-outline-success" id="fr-price-rule-save-btn">
-                        <i class="fas fa-save"></i> Save
-                    </button>
-                    <button type="button" class="btn btn-sm btn-primary" id="fr-price-rule-apply-btn">
-                        <i class="fas fa-check"></i> Apply
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'faire'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'faire'])
 
     <div class="modal fade" id="uploadFaireViewsModal" tabindex="-1">
         <div class="modal-dialog">
@@ -526,55 +471,16 @@
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
+        // S PRC is saved + pushed by the server (faire:sprc-dil-auto-push). The page only shows it.
+        window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'faire'])
         let table = null;
         let allTableData = [];
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'faire'])
         let summaryDataCache = [];
         let frZeroSoldActive = false;
         let frMoreSoldActive = false;
         let blueTriangleFilterActive = false;
 
-        /** Same as /temu1-data discounted price: 0 Sold Dil→GROI%, else Std × (1 − T Promo). No EB/Amz/LMP cap. */
-        function frDiscountedPrice(row) {
-            if (!row || frIsParentRow(row)) return 0;
-            if (typeof chPromoZeroSoldRuleSprice === 'function') {
-                const zeroSold = Number(chPromoZeroSoldRuleSprice(row));
-                if (zeroSold > 0) return +zeroSold.toFixed(2);
-            }
-            if (typeof chPromoTemuSpriceFromStdPrmtCpn === 'function') {
-                const combo = Number(chPromoTemuSpriceFromStdPrmtCpn(row));
-                if (combo > 0) return +combo.toFixed(2);
-            }
-            if (typeof chPromoSpriceFromStdTPromo === 'function') {
-                const calc = Number(chPromoSpriceFromStdTPromo(row, { skip_lmp_cap: true }));
-                if (calc > 0) return +Number(calc).toFixed(2);
-            }
-            return 0;
-        }
-        function frSpriceRule() {
-            if (typeof window.spriceActiveRule === 'function') return window.spriceActiveRule();
-            return 'std';
-        }
-        function frRuleSprice(row, extra) {
-            extra = extra || {};
-            if (!row || frIsParentRow(row)) return 0;
-            if (frSpriceRule() === 'dil') {
-                if (typeof ebaySprcDilForRow === 'function') {
-                    const dil = Number(ebaySprcDilForRow(row)) || 0;
-                    if (dil > 0) return +dil.toFixed(2);
-                }
-                return 0;
-            }
-            // Std prc vs dil is ON: S PRC = Std × (1 − discounts). Ship is not used.
-            // Do not fall through to Sprc Dil — that was painting 100/50/30 targets beside this price.
-            if (typeof window.chStdPriceForRow === 'function') {
-                const stdRule = Number(window.chStdPriceForRow(row)) || 0;
-                if (stdRule > 0) return +stdRule.toFixed(2);
-            }
-            return 0;
-        }
-        window.frRuleSprice = frRuleSprice;
         function frFaireMargin(d) {
             const raw = parseFloat(d && d._margin);
             if (isFinite(raw) && raw > 0) return raw > 1 ? raw / 100 : raw;
@@ -628,11 +534,7 @@
         function frDisplayedSprice(data) {
             data = frRowData(data);
             if (!data || frIsParentRow(data)) return 0;
-            // Same as Amazon S PRC: paint the live Dil / rule $, not only saved SPRICE.
-            if (typeof frRuleSprice === 'function') {
-                const live = Number(frRuleSprice(data)) || 0;
-                if (live > 0) return +live.toFixed(2);
-            }
+            // Saved S PRC only (the server job sets it). No live rule calculation in the browser.
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
                 if (saved > 0) return saved;
@@ -1336,197 +1238,6 @@
                 return +price.toFixed(2);
             }
             return Math.ceil(price) - 0.01;
-        }
-
-        // ---- Price Rule (Dil % / Faire sold / Discount % → SPRICE from STD) ----
-        const FR_PRICE_RULES_KEY = 'faire_price_rules_v1';
-        let frPriceRules = [];
-
-        function frDefaultPriceRules() {
-            return [{ dil_min: null, dil_max: null, sold_min: null, sold_max: null, discount_pct: 25 }];
-        }
-
-        function frLoadPriceRules() {
-            try {
-                const raw = localStorage.getItem(FR_PRICE_RULES_KEY);
-                if (!raw) return frDefaultPriceRules();
-                const parsed = JSON.parse(raw);
-                return Array.isArray(parsed) && parsed.length ? parsed : frDefaultPriceRules();
-            } catch (e) {
-                return frDefaultPriceRules();
-            }
-        }
-
-        function frSavePriceRulesToStorage(rules) {
-            localStorage.setItem(FR_PRICE_RULES_KEY, JSON.stringify(rules || []));
-        }
-
-        function frNumOrNull(v) {
-            if (v === null || v === undefined || v === '') return null;
-            const n = parseFloat(v);
-            return isFinite(n) ? n : null;
-        }
-
-        function frInRange(val, min, max) {
-            if (min !== null && min !== undefined && val < min) return false;
-            if (max !== null && max !== undefined && val > max) return false;
-            return true;
-        }
-
-        function frReadPriceRulesFromDom() {
-            const rules = [];
-            $('#fr-price-rule-tbody tr').each(function() {
-                const $tr = $(this);
-                rules.push({
-                    dil_min: frNumOrNull($tr.find('[data-field="dil_min"]').val()),
-                    dil_max: frNumOrNull($tr.find('[data-field="dil_max"]').val()),
-                    sold_min: frNumOrNull($tr.find('[data-field="sold_min"]').val()),
-                    sold_max: frNumOrNull($tr.find('[data-field="sold_max"]').val()),
-                    discount_pct: frNumOrNull($tr.find('[data-field="discount_pct"]').val()),
-                });
-            });
-            return rules;
-        }
-
-        function frRenderPriceRules(rules) {
-            frPriceRules = Array.isArray(rules) ? rules : [];
-            const $tb = $('#fr-price-rule-tbody');
-            $tb.empty();
-            if (!frPriceRules.length) frPriceRules = frDefaultPriceRules();
-            frPriceRules.forEach(function(rule, idx) {
-                const r = rule || {};
-                $tb.append(
-                    '<tr data-idx="' + idx + '">' +
-                    '<td><input type="number" class="form-control form-control-sm" data-field="dil_min" step="0.1" placeholder="—" value="' + (r.dil_min != null ? r.dil_min : '') + '"></td>' +
-                    '<td><input type="number" class="form-control form-control-sm" data-field="dil_max" step="0.1" placeholder="—" value="' + (r.dil_max != null ? r.dil_max : '') + '"></td>' +
-                    '<td><input type="number" class="form-control form-control-sm" data-field="sold_min" step="1" placeholder="—" title="Faire sold qty (al30)" value="' + (r.sold_min != null ? r.sold_min : '') + '"></td>' +
-                    '<td><input type="number" class="form-control form-control-sm" data-field="sold_max" step="1" placeholder="—" title="Faire sold qty (al30)" value="' + (r.sold_max != null ? r.sold_max : '') + '"></td>' +
-                    '<td><input type="number" class="form-control form-control-sm" data-field="discount_pct" step="0.1" placeholder="e.g. 25" value="' + (r.discount_pct != null ? r.discount_pct : '') + '"></td>' +
-                    '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger fr-price-rule-del" title="Remove"><i class="fas fa-trash"></i></button></td>' +
-                    '</tr>'
-                );
-            });
-        }
-
-        function frRuleMatchesRow(rule, d) {
-            const dil = parseFloat(d.dil_percent);
-            const dilVal = isFinite(dil) ? dil : 0;
-            const sold = parseFloat(d.al30);
-            const soldVal = isFinite(sold) ? sold : 0;
-            return frInRange(dilVal, rule.dil_min, rule.dil_max)
-                && frInRange(soldVal, rule.sold_min, rule.sold_max);
-        }
-
-        function frApplyPriceRules() {
-            const $msg = $('#fr-price-rule-msg');
-            $msg.addClass('d-none').text('');
-            if (!table) return;
-
-            const rules = frReadPriceRulesFromDom().filter(function(r) {
-                return r.discount_pct !== null && isFinite(r.discount_pct);
-            });
-            if (!rules.length) {
-                $msg.removeClass('d-none').text('Add at least one rule with a Discount %.');
-                return;
-            }
-
-            const restrictSelected = frSelectedSkus.size > 0;
-            const updates = [];
-            let matched = 0;
-            let skippedNoStd = 0;
-
-            table.getRows().forEach(function(row) {
-                const d = row.getData();
-                if (d.is_parent) return;
-                if (restrictSelected && !frSelectedSkus.has(d.sku)) return;
-
-                let hit = null;
-                for (let i = 0; i < rules.length; i++) {
-                    if (frRuleMatchesRow(rules[i], d)) {
-                        hit = rules[i];
-                        break;
-                    }
-                }
-                if (!hit) return;
-                matched++;
-
-                const std = parseFloat(d.standard_price);
-                if (!(std > 0)) {
-                    skippedNoStd++;
-                    return;
-                }
-
-                const factor = 1 - (parseFloat(hit.discount_pct) / 100);
-                // Same no-ship rule as Shopify B2B: SPRICE = STD × (1 − Discount%/100). Ship is not used.
-                let newSprice = frRoundToRetailPrice(Math.max(0.99, std * factor));
-                const margin = parseFloat(d._margin) || 0.75;
-                const lp = parseFloat(d.lp) || 0;
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - lp) / newSprice) * 100) : 0;
-                const sroi = lp > 0 ? Math.round(((newSprice * margin - lp) / lp) * 100) : 0;
-                row.update({ sprice: newSprice, sgpft: sgpft, sroi: sroi, push_status: null });
-                updates.push({ sku: d.sku, sprice: newSprice });
-            });
-
-            if (!updates.length) {
-                $msg.removeClass('d-none').text(
-                    matched
-                        ? ('Matched ' + matched + ' row(s) but none have STD prc > 0' + (skippedNoStd ? ' (' + skippedNoStd + ')' : '') + '.')
-                        : (restrictSelected
-                            ? 'No checked rows match the Dil % / Sold qty filters.'
-                            : 'No rows match the Dil % / Sold qty filters.')
-                );
-                return;
-            }
-
-            frSavePriceRulesToStorage(frReadPriceRulesFromDom());
-            saveFaireSpriceUpdates(updates);
-            const tip = 'Applied SPRICE on ' + updates.length + ' SKU(s)'
-                + (skippedNoStd ? ' (' + skippedNoStd + ' skipped — no STD)' : '')
-                + '.';
-            if (window.toastr) toastr.success(tip);
-            else alert(tip);
-        }
-
-        function frBindPriceRuleUi() {
-            $('#fr-rule-btn').on('click', function() {
-                frRenderPriceRules(frLoadPriceRules());
-                $('#fr-price-rule-msg').addClass('d-none').text('');
-                const el = document.getElementById('frPriceRuleModal');
-                if (el && window.bootstrap && bootstrap.Modal) {
-                    bootstrap.Modal.getOrCreateInstance(el).show();
-                } else {
-                    $(el).modal('show');
-                }
-            });
-
-            $('#fr-price-rule-add-btn').on('click', function() {
-                frPriceRules = frReadPriceRulesFromDom();
-                frPriceRules.push({ dil_min: null, dil_max: null, sold_min: null, sold_max: null, discount_pct: 25 });
-                frRenderPriceRules(frPriceRules);
-            });
-
-            $(document).on('click', '#fr-price-rule-tbody .fr-price-rule-del', function() {
-                const idx = parseInt($(this).closest('tr').attr('data-idx'), 10);
-                frPriceRules = frReadPriceRulesFromDom();
-                if (frPriceRules.length <= 1) {
-                    frPriceRules = frDefaultPriceRules();
-                } else {
-                    frPriceRules.splice(idx, 1);
-                }
-                frRenderPriceRules(frPriceRules);
-            });
-
-            $('#fr-price-rule-save-btn').on('click', function() {
-                const rules = frReadPriceRulesFromDom();
-                frSavePriceRulesToStorage(rules);
-                frPriceRules = rules;
-                if (window.toastr) toastr.success('Price rules saved');
-                else alert('Price rules saved');
-            });
-
-            $('#fr-price-rule-apply-btn').on('click', function() {
-                frApplyPriceRules();
-            });
         }
 
         function frSyncPriceModeUi() {
@@ -2500,40 +2211,9 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
-                        title: 'Sprc Dil',
-                        field: 'SPRC_DIL',
-                        hozAlign: 'center',
-                        headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const val = function(row) {
-                                return (typeof ebaySprcDilForRow === 'function')
-                                    ? (ebaySprcDilForRow(row) || 0)
-                                    : 0;
-                            };
-                            return val(aRow.getData()) - val(bRow.getData());
-                        },
-                        headerTooltip: 'S PRC from Dil → Target NROI% slabs. Dil = OV L30 ÷ INV. Dil = 0 uses the 0–0 slab. AL30 = 0 still uses the Dil-matching slab. CVR overlay (editable) adjusts Target NROI; Count updates live. Formula: (LP × (1 + NROI%/100)) / margin (Ship not used).',
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            if (typeof frIsParentRow === 'function' && frIsParentRow(rowData)) return '';
-                            if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                            const meta = ebayDilGroiMetaForRow(rowData);
-                            if (!meta || !(meta.sprc > 0)) return '';
-                            const tip = (typeof ebayDilGroiTipText === 'function')
-                                ? ebayDilGroiTipText(meta, { zeroSoldLabel: '0 Sold AL30 → min Target GROI' })
-                                : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                    + ' → ' + meta.label
-                                    + ' → GROI ' + meta.groi + '%'
-                                    + ' → $' + meta.sprc.toFixed(2));
-                            return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                                + meta.sprc.toFixed(2) + '</span>';
-                        },
-                        width: 78
-                    },
-                    {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editable: false,
-                        headerTooltip: 'Not editable. The ON switch fills this column. Sprc Dil: (LP × (1 + target%/100)) / margin. Std prc vs dil: Std × (1 − discounts). Ship not used. Blue triangle = S PRC ≠ Price.',
+                        headerTooltip: 'S PRC saved by the server job (faire:sprc-dil-auto-push, 04:45 and 20:45 IST, and every 10 min for blue triangles): Std Prc − Age/Dil/B/0 Sold (AL30)/CVR/Rev Disc, raised to Min NPFT, Std Prc is the maximum. Ship, LMP and Amz are not used. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -2642,9 +2322,6 @@
                     if (!allTableData.length && Array.isArray(data)) {
                         allTableData = data;
                         if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
-                    }
-                    if (typeof ebayScheduleSprcDilAutoApply === 'function') {
-                        ebayScheduleSprcDilAutoApply();
                     }
                     frResetSkuColHoverWidth();
                     frRemoveImagePreview();
@@ -2969,7 +2646,6 @@
             $('#fr-export-pricing').on('click', function() {
                 table.download('csv', 'faire_analytics_data.csv');
             });
-            frBindPriceRuleUi();
             frBindPushUi();
 
             const frColMenu = document.getElementById('fr-column-dropdown-menu');
