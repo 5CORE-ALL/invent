@@ -138,7 +138,7 @@
                             title="C = Clearance SKUs (Inv days clearance = YES). They are exempt from the Min NPFT floor. Click to filter. Click again to clear."
                             aria-label="Clearance SKUs">C 0</span>
                         <span class="badge fs-6 p-2" id="pp-npft-mark-badge"
-                            style="background-color:#fff3cd;color:#dc3545;font-weight:800;cursor:pointer;border:1px solid #ffe69c;"
+                            style="background-color:#92400e;color:#fff;font-weight:800;cursor:pointer;"
                             title="! = S PRC was raised so SNPFT stays at or above Min NPFT %. Click to filter. Click again to clear."
                             aria-label="S PRC raised to Min NPFT">! 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'purchasingpower-price-gt-lmp-badge', 'pglChannelKey' => 'purchasingpower', 'pglPriceField' => 'PP Price'])
