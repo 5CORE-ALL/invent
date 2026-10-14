@@ -8133,10 +8133,10 @@
                     { label: 'Fallback', n: g.below.fb, color: '#94a3b8' }
                 ]);
                 amzSbidPaintColumn('mid', [
-                    { label: 'Between', n: g.mid, color: '#64748b' }
+                    { label: 'Between', n: g.mid, color: '#16a34a' }
                 ]);
                 amzSbidPaintColumn('above', [
-                    { label: '× L1', n: g.above.l1, color: '#16a34a' },
+                    { label: '× L1', n: g.above.l1, color: '#ec4899' },
                     { label: 'No L1', n: g.above.none, color: '#dc2626' }
                 ]);
             }
