@@ -20,11 +20,6 @@
             max-width: 110px;
             text-align: right;
         }
-        .mpct-net {
-            font-weight: 700;
-            text-align: right;
-            white-space: nowrap;
-        }
         .mpct-status {
             font-size: 12px;
             min-width: 72px;
@@ -32,15 +27,6 @@
         .mpct-status.is-ok { color: #166534; }
         .mpct-status.is-err { color: #b91c1c; }
         .mpct-row.is-saving { opacity: 0.65; }
-        .mpct-del {
-            border: none;
-            background: none;
-            color: #dc3545;
-            padding: 0 4px;
-            line-height: 1;
-            cursor: pointer;
-            font-size: 1.05rem;
-        }
         #mpct-flash { min-height: 1.4em; }
     </style>
 @endsection
@@ -62,9 +48,10 @@
             <div class="card mpct-card">
                 <div class="card-body">
                     <p class="text-muted small mb-3">
-                        Values from <code>marketplace_percentages</code>. Edit a cell and leave it to save.
-                        Percentage is the keep rate. Ad % is the ad deduction on the same row.
-                        Net % is Percentage minus Ad %.
+                        Values from <code>marketplace_percentages</code>.
+                        @if ($canEdit)
+                            Edit a cell and leave it to save.
+                        @endif
                     </p>
 
                     <div class="row g-2 align-items-end mb-3">
@@ -72,6 +59,7 @@
                             <label class="form-label mb-1" for="mpct-search">Search</label>
                             <input type="search" id="mpct-search" class="form-control" placeholder="Marketplace name">
                         </div>
+                        @if ($canEdit)
                         <div class="col-md-3">
                             <label class="form-label mb-1" for="mpct-new-name">New marketplace</label>
                             <input type="text" id="mpct-new-name" class="form-control" maxlength="255" placeholder="Name">
@@ -80,15 +68,10 @@
                             <label class="form-label mb-1" for="mpct-new-pct">Percentage</label>
                             <input type="number" id="mpct-new-pct" class="form-control" min="0" max="100" step="0.01" value="100">
                         </div>
-                        @if ($hasAdUpdates)
-                        <div class="col-md-2">
-                            <label class="form-label mb-1" for="mpct-new-ad">Ad %</label>
-                            <input type="number" id="mpct-new-ad" class="form-control" min="0" step="0.01" value="0">
-                        </div>
-                        @endif
                         <div class="col-md-1">
                             <button type="button" class="btn btn-primary w-100" id="mpct-add">Add</button>
                         </div>
+                        @endif
                     </div>
                     <div id="mpct-flash" class="small mb-2"></div>
 
@@ -98,12 +81,7 @@
                                 <tr>
                                     <th>Marketplace</th>
                                     <th class="text-end">Percentage</th>
-                                    @if ($hasAdUpdates)
-                                    <th class="text-end">Ad %</th>
-                                    <th class="text-end" title="Percentage minus Ad %">Net %</th>
-                                    @endif
                                     <th>Updated</th>
-                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody id="mpct-body"></tbody>
@@ -118,7 +96,7 @@
 @section('script')
     <script>
         (function () {
-            const hasAd = @json($hasAdUpdates);
+            const canEdit = @json($canEdit);
             let rows = @json($rows);
             const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             const body = document.getElementById('mpct-body');
@@ -156,7 +134,7 @@
                 if (!list.length) {
                     const tr = document.createElement('tr');
                     const td = document.createElement('td');
-                    td.colSpan = hasAd ? 6 : 4;
+                    td.colSpan = 3;
                     td.className = 'text-muted text-center py-3';
                     td.textContent = rows.length ? 'No marketplace matches that search.' : 'No marketplace percentages yet.';
                     tr.appendChild(td);
@@ -173,36 +151,19 @@
                 tr.className = 'mpct-row';
                 tr.dataset.id = row.id;
 
-                tr.appendChild(cell(nameInput(row), false));
-                tr.appendChild(cell(numberInput(row, 'percentage'), true));
-                if (hasAd) {
-                    tr.appendChild(cell(numberInput(row, 'ad_updates'), true));
-                    const net = document.createElement('td');
-                    net.className = 'mpct-net';
-                    net.dataset.net = '1';
-                    net.textContent = num(row.net);
-                    tr.appendChild(net);
-                }
+                tr.appendChild(canEdit ? cell(nameInput(row), false) : textCell(row.marketplace, false));
+                tr.appendChild(canEdit ? cell(numberInput(row, 'percentage'), true) : textCell(num(row.percentage), true));
                 const updated = document.createElement('td');
-                updated.className = 'text-muted small';
-                updated.dataset.updated = '1';
-                updated.textContent = row.updated_at || '';
-                tr.appendChild(updated);
-
-                const actions = document.createElement('td');
-                actions.className = 'text-nowrap';
+                updated.className = 'text-muted small text-nowrap';
+                const updatedText = document.createElement('span');
+                updatedText.dataset.updated = '1';
+                updatedText.textContent = row.updated_at || '';
                 const status = document.createElement('span');
-                status.className = 'mpct-status me-2';
+                status.className = 'mpct-status ms-2';
                 status.dataset.status = '1';
-                const del = document.createElement('button');
-                del.type = 'button';
-                del.className = 'mpct-del';
-                del.title = 'Remove';
-                del.innerHTML = '&times;';
-                del.addEventListener('click', function () { removeRow(row, tr); });
-                actions.appendChild(status);
-                actions.appendChild(del);
-                tr.appendChild(actions);
+                updated.appendChild(updatedText);
+                updated.appendChild(status);
+                tr.appendChild(updated);
                 return tr;
             }
 
@@ -210,6 +171,13 @@
                 const td = document.createElement('td');
                 if (end) td.className = 'text-end';
                 td.appendChild(input);
+                return td;
+            }
+
+            function textCell(value, end) {
+                const td = document.createElement('td');
+                if (end) td.className = 'text-end fw-semibold';
+                td.textContent = value == null ? '' : String(value);
                 return td;
             }
 
@@ -288,8 +256,6 @@
                     if (input.dataset.field !== 'marketplace') {
                         input.value = num(row[input.dataset.field]);
                     }
-                    const net = tr.querySelector('[data-net]');
-                    if (net) net.textContent = num(row.net);
                     const updated = tr.querySelector('[data-updated]');
                     if (updated) updated.textContent = row.updated_at || '';
                     rowStatus(tr, 'Saved', true);
@@ -303,35 +269,10 @@
                 }
             }
 
-            async function removeRow(row, tr) {
-                if (!window.confirm('Remove ' + row.marketplace + ' from Marketplace %?')) return;
-                tr.classList.add('is-saving');
-                try {
-                    const response = await fetch('/marketplace-percentage/' + row.id, {
-                        method: 'DELETE',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': token,
-                        },
-                    });
-                    const data = await response.json();
-                    if (!response.ok || !data.success) {
-                        throw new Error(data.message || 'Could not remove.');
-                    }
-                    rows = rows.filter(function (item) { return item.id !== row.id; });
-                    setFlash(data.message || 'Removed.', true);
-                    render();
-                } catch (error) {
-                    tr.classList.remove('is-saving');
-                    rowStatus(tr, error.message || 'Remove failed', false);
-                    setFlash(error.message || 'Remove failed', false);
-                }
-            }
-
-            document.getElementById('mpct-add').addEventListener('click', async function () {
+            const addBtn = document.getElementById('mpct-add');
+            if (addBtn) addBtn.addEventListener('click', async function () {
                 const name = document.getElementById('mpct-new-name').value.trim();
                 const percentage = document.getElementById('mpct-new-pct').value;
-                const adInput = document.getElementById('mpct-new-ad');
                 if (!name) {
                     setFlash('Marketplace name is required.', false);
                     return;
@@ -348,7 +289,6 @@
                         body: JSON.stringify({
                             marketplace: name,
                             percentage: percentage,
-                            ad_updates: adInput ? adInput.value : 0,
                         }),
                     });
                     const data = await response.json();
@@ -358,7 +298,6 @@
                     rows.push(data.row);
                     document.getElementById('mpct-new-name').value = '';
                     document.getElementById('mpct-new-pct').value = '100';
-                    if (adInput) adInput.value = '0';
                     search.value = '';
                     setFlash(data.message || 'Marketplace added.', true);
                     render();

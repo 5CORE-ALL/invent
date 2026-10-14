@@ -13,9 +13,13 @@ use Illuminate\View\View;
 
 class MarketplacePercentageController extends Controller
 {
+    private const EDITOR_EMAIL = 'president@5core.com';
+
     public function index(): View
     {
         $rows = MarketplacePercentage::query()
+            ->whereNotNull('percentage')
+            ->where('percentage', '>', 0)
             ->orderBy('marketplace')
             ->get()
             ->map(fn (MarketplacePercentage $row) => $this->payload($row))
@@ -23,12 +27,16 @@ class MarketplacePercentageController extends Controller
 
         return view('market-places.marketplace_percentage', [
             'rows' => $rows,
-            'hasAdUpdates' => $this->hasAdUpdates(),
+            'canEdit' => $this->canEdit(),
         ]);
     }
 
     public function store(Request $request): JsonResponse
     {
+        if ($denied = $this->denyUnlessEditor()) {
+            return $denied;
+        }
+
         $data = $request->validate([
             'marketplace' => 'required|string|max:255',
             'percentage' => 'required|numeric|min:0|max:100',
@@ -49,8 +57,8 @@ class MarketplacePercentageController extends Controller
             'marketplace' => $name,
             'percentage' => round((float) $data['percentage'], 2),
         ];
-        if ($this->hasAdUpdates()) {
-            $attributes['ad_updates'] = $this->numberString((float) ($data['ad_updates'] ?? 0));
+        if ($this->hasAdUpdates() && isset($data['ad_updates']) && $data['ad_updates'] !== '') {
+            $attributes['ad_updates'] = $this->numberString((float) $data['ad_updates']);
         }
 
         if ($existing) {
@@ -81,6 +89,10 @@ class MarketplacePercentageController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
+        if ($denied = $this->denyUnlessEditor()) {
+            return $denied;
+        }
+
         $row = MarketplacePercentage::query()->findOrFail($id);
         $allowed = $this->hasAdUpdates()
             ? 'marketplace,percentage,ad_updates'
@@ -135,6 +147,10 @@ class MarketplacePercentageController extends Controller
 
     public function destroy(int $id): JsonResponse
     {
+        if ($denied = $this->denyUnlessEditor()) {
+            return $denied;
+        }
+
         $row = MarketplacePercentage::query()->findOrFail($id);
         $name = (string) $row->marketplace;
         $row->delete();
@@ -144,6 +160,23 @@ class MarketplacePercentageController extends Controller
             'success' => true,
             'message' => $name.' removed.',
         ]);
+    }
+
+    private function canEdit(): bool
+    {
+        return strtolower(trim((string) (auth()->user()->email ?? ''))) === self::EDITOR_EMAIL;
+    }
+
+    private function denyUnlessEditor(): ?JsonResponse
+    {
+        if ($this->canEdit()) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Only president@5core.com can edit Marketplace %.',
+        ], 403);
     }
 
     private function hasAdUpdates(): bool
