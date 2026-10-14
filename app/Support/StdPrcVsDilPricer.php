@@ -29,16 +29,52 @@ class StdPrcVsDilPricer
     /** @param array{dil:list<array<string,float>>,age:list<array<string,float>>,cvr:array<string,float>,reviews:list<array<string,float>>,review_max:int,buss?:list<array<string,float>>,zero_sold_disc?:float} $rules */
     public function __construct(private array $rules, private string $channel = '') {}
 
+    /**
+     * Channels whose Age / Dil / CVR / B Disc / 0 Sold discount rules are the Amazon rules
+     * (the amazon_std_prc_vs_dil panel on /amazon-tabulator-view). Min NPFT stays per channel.
+     */
+    public const RULES_FROM_AMAZON = ['bestbuy'];
+
+    public static function usesAmazonRules(string $channel): bool
+    {
+        return in_array($channel, self::RULES_FROM_AMAZON, true);
+    }
+
+    /**
+     * Saved Std prc vs dil rules for a channel (raw saved array, may be empty).
+     * For an Amazon-rule channel the discount rules come from amazon_std_prc_vs_dil, the same row Amazon prices from.
+     *
+     * @return array<string, mixed>
+     */
+    public static function savedRules(string $channel): array
+    {
+        $row = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', $channel.'_std_prc_vs_dil')
+            ->first();
+        $saved = is_array($row?->visibility) ? $row->visibility : [];
+        if (! self::usesAmazonRules($channel)) {
+            return $saved;
+        }
+        $amazonRow = ChannelTabulatorColumnSetting::query()
+            ->where('channel_name', 'amazon_std_prc_vs_dil')
+            ->first();
+        $amazon = is_array($amazonRow?->visibility) ? $amazonRow->visibility : [];
+        foreach (['dil', 'age', 'cvr', 'buss', 'zero_sold_disc'] as $key) {
+            if (array_key_exists($key, $amazon)) {
+                $saved[$key] = $amazon[$key];
+            }
+        }
+
+        return $saved;
+    }
+
     public static function forChannel(string $channel): self
     {
         if (isset(self::$cache[$channel])) {
             return self::$cache[$channel];
         }
         $defaults = self::defaults();
-        $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', $channel.'_std_prc_vs_dil')
-            ->first();
-        $saved = is_array($row?->visibility) ? $row->visibility : [];
+        $saved = self::savedRules($channel);
         $rules = [
             'dil' => self::ranges($saved['dil'] ?? null, $defaults['dil']),
             'age' => self::ranges($saved['age'] ?? null, $defaults['age']),

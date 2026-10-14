@@ -906,6 +906,13 @@
                 chStdStampNpftMarks();
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
+                if (res.rules_from === 'amazon') {
+                    // Best Buy uses the Amazon discount rules (Age, Dil, CVR, B Disc, 0 Sold). Edit them on /amazon-tabulator-view.
+                    window.CH_STD_RULES_FROM_AMAZON = true;
+                    if (!$('#ch-sp-amazon-note').length) {
+                        $('#chStdPrcModal .ch-sp-sub').first().after('<div id="ch-sp-amazon-note" class="ch-sp-sub" style="color:#b45309;font-weight:600">Age, Dil, CVR, B Disc and 0 Sold use the same rules as /amazon-tabulator-view. Change them there. Only Min NPFT is saved on this page.</div>');
+                    }
+                }
                 if (!chStdDil.length) chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdAge.length) chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdRev.length) chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });

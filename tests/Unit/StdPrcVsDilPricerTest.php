@@ -314,4 +314,11 @@ class StdPrcVsDilPricerTest extends TestCase
             $this->assertSame(100.0, $pricer->priceFromRow($row + ['tt_l30' => null, 'ov_l30' => 0.0]));
         }
     }
+
+    public function test_best_buy_uses_the_amazon_discount_rules_and_others_do_not(): void
+    {
+        $this->assertTrue(StdPrcVsDilPricer::usesAmazonRules('bestbuy'));
+        $this->assertFalse(StdPrcVsDilPricer::usesAmazonRules('amazon'));
+        $this->assertFalse(StdPrcVsDilPricer::usesAmazonRules('purchasing_power'));
+    }
 }

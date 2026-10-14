@@ -28,6 +28,7 @@ use App\Models\TikTokProduct;
 use App\Models\TikTokProductTwo;
 use App\Models\TiktokSkuDailyData;
 use App\Services\ChannelPromoPricingService;
+use App\Support\StdPrcVsDilPricer;
 use App\Services\DilRuleSpriceApplyService;
 use App\Services\Ebay1CouponService;
 use App\Services\Ebay1PromotionService;
@@ -1368,11 +1369,9 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
         $defaults = $this->defaultStdPrcVsDil();
-        $row = ChannelTabulatorColumnSetting::query()
-            ->where('channel_name', $channel.'_std_prc_vs_dil')
-            ->first();
-        $saved = is_array($row?->visibility) ? $row->visibility : null;
-        if (! is_array($saved) || $saved === []) {
+        $fromAmazon = StdPrcVsDilPricer::usesAmazonRules($channel);
+        $saved = StdPrcVsDilPricer::savedRules($channel);
+        if ($saved === []) {
             return response()->json([
                 'success' => true,
                 'is_default' => true,
@@ -1391,6 +1390,7 @@ class ChannelPromoPricingController extends Controller
         return response()->json([
             'success' => true,
             'is_default' => false,
+            'rules_from' => $fromAmazon ? 'amazon' : null,
             'dil' => $this->normalizeStdPrcRanges($saved['dil'] ?? null, $defaults['dil']),
             'age' => $this->normalizeStdPrcRanges($saved['age'] ?? null, $defaults['age']),
             'cvr' => $this->normalizeStdPrcCvr($saved['cvr'] ?? null),
@@ -1410,15 +1410,18 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
         $defaults = $this->defaultStdPrcVsDil();
+        $fromAmazon = StdPrcVsDilPricer::usesAmazonRules($channel);
+        // Amazon-rule channels (Best Buy): the discount rules are edited on /amazon-tabulator-view. Only Min NPFT is saved here.
+        $incoming = $fromAmazon ? array_merge($request->all(), StdPrcVsDilPricer::savedRules($channel)) : $request->all();
         $payload = [
-            'dil' => $this->normalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
-            'age' => $this->normalizeStdPrcRanges($request->input('age'), $defaults['age']),
-            'cvr' => $this->normalizeStdPrcCvr($request->input('cvr')),
-            'reviews' => $this->normalizeStdPrcRanges($request->input('reviews'), $defaults['reviews']),
-            'review_max' => $this->normalizeStdPrcReviewMax($request->input('review_max')),
-            'buss' => $this->normalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
-            'roi' => $this->normalizeStdPrcRanges($request->input('roi'), $defaults['roi']),
-            'zero_sold_disc' => $this->normalizeZeroSoldDisc($request->input('zero_sold_disc')),
+            'dil' => $this->normalizeStdPrcRanges($incoming['dil'] ?? null, $defaults['dil']),
+            'age' => $this->normalizeStdPrcRanges($incoming['age'] ?? null, $defaults['age']),
+            'cvr' => $this->normalizeStdPrcCvr($incoming['cvr'] ?? null),
+            'reviews' => $this->normalizeStdPrcRanges($incoming['reviews'] ?? null, $defaults['reviews']),
+            'review_max' => $this->normalizeStdPrcReviewMax($incoming['review_max'] ?? null),
+            'buss' => $this->normalizeStdPrcRanges($incoming['buss'] ?? null, $defaults['buss']),
+            'roi' => $this->normalizeStdPrcRanges($incoming['roi'] ?? null, $defaults['roi']),
+            'zero_sold_disc' => $this->normalizeZeroSoldDisc($incoming['zero_sold_disc'] ?? null),
             'min_npft' => $this->normalizeMinNpft($request->input('min_npft'), $this->minNpftFallback($channel)),
         ];
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
@@ -1426,7 +1429,7 @@ class ChannelPromoPricingController extends Controller
             ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'roi', 'zero_sold', 'min_npft']]
         );
 
-        return response()->json(array_merge(['success' => true], $payload));
+        return response()->json(array_merge(['success' => true, 'rules_from' => $fromAmazon ? 'amazon' : null], $payload));
     }
 
     public function stdPrcVsDilHistory(Request $request, string $channel): JsonResponse
