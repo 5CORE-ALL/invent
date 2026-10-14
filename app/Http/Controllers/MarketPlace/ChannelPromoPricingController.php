@@ -1770,9 +1770,6 @@ class ChannelPromoPricingController extends Controller
         if ($channel === 'macys' || $channel === 'macy') {
             \App\Support\MacysRuleSpriceApply::dispatch();
         }
-        if ($channel === 'purchasing_power') {
-            \App\Support\PurchasingPowerRuleSpriceApply::dispatch();
-        }
 
         return response()->json([
             'success' => true,

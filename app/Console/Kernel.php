@@ -754,13 +754,6 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('purchasing-power:rule-sprice-apply')
-            ->hourly()
-            ->name('purchasing-power-rule-sprice-apply')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
      
         $ist($schedule->command('app:fetch-wayfair-data')
             ->everyFiveMinutes()
@@ -1067,7 +1060,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // TopDawg Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → TopDawg price API.
+        // TopDawg Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, no ship, no LMP) → S PRC → TopDawg price API.
         // Same twice-daily idea as Amazon, offset 30 min. /topdawg-pricing does not need to be open.
         // Do NOT wrap 20:30 in $ist() — IST window ends at 20:00.
         $schedule->command('topdawg:sprc-dil-auto-push')
@@ -1092,6 +1085,35 @@ class Kernel extends ConsoleKernel
         $schedule->command('topdawg:push-blue-prices')
             ->everyTenMinutes()
             ->name('topdawg-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Purchasing Power Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, Amz rule) → S PRC → MCM price import.
+        // Same twice-daily idea as Amazon, offset 35 min. /purchasing-power-pricing does not need to be open.
+        // Do NOT wrap 20:35 in $ist() — IST window ends at 20:00.
+        $schedule->command('purchasing-power:sprc-dil-auto-push')
+            ->dailyAt('04:35')
+            ->timezone('Asia/Kolkata')
+            ->name('purchasing-power-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('purchasing-power:sprc-dil-auto-push')
+            ->dailyAt('20:35')
+            ->timezone('Asia/Kolkata')
+            ->name('purchasing-power-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Headless "Push on reload" for /purchasing-power-pricing (same as amazon:push-blue-prices): blue-triangle
+        // SKUs (INV > 0, PP Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()). Replaces the old
+        // rule apply that ran after every MCM price sync.
+        $schedule->command('purchasing-power:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('purchasing-power-push-blue-prices')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
             ->runInBackground()
             ->appendOutputTo($log);
@@ -1156,7 +1178,6 @@ class Kernel extends ConsoleKernel
             ['07:45', '23:45', 'dil:rule-sprice-apply pls --push', 'pls-sprc-dil'],
             ['05:40', '21:40', 'shopify-b2c:rule-sprice-apply --push', 'shopify-b2c-sprc-dil'],
             ['05:50', '21:50', 'macys:rule-sprice-apply --push', 'macys-sprc-dil'],
-            ['06:00', '22:00', 'purchasing-power:rule-sprice-apply', 'pp-sprc-dil'],
         ] as [$morning, $evening, $command, $slug]) {
             $schedule->command($command)
                 ->dailyAt($morning)

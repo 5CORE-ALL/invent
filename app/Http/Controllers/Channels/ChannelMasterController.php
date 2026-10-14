@@ -3186,6 +3186,59 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Newegg snapshots saved Oct 11–14 2026 stored lifetime sales as L30 (daily-sales badge had no
+     * date window). Recompute those days from orders once, save them, and fix the rows in memory.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\ChannelMasterSummary>  $history
+     */
+    private function repairNeweggInflatedL30Snapshots($history): void
+    {
+        try {
+            $rows = $history->filter(function ($row) {
+                if ($this->allMarketplaceSnapshotKey((string) $row->channel) !== 'newegg') {
+                    return false;
+                }
+                $date = Carbon::parse($row->snapshot_date)->toDateString();
+                if ($date < '2026-10-11' || $date > '2026-10-14') {
+                    return false;
+                }
+
+                return empty($row->summaryArray()['newegg_l30_repaired']);
+            });
+            if ($rows->isEmpty()) {
+                return;
+            }
+
+            $chartDayOf = fn ($row) => Carbon::parse($row->snapshot_date, 'America/Los_Angeles')->subDay()->toDateString();
+            $totals = NeweggSalesController::l30TotalsForChartDays(
+                $rows->map($chartDayOf)->unique()->values()->all()
+            );
+
+            foreach ($rows as $row) {
+                $t = $totals[$chartDayOf($row)] ?? null;
+                if ($t === null) {
+                    continue;
+                }
+                $sd = $row->summaryArray();
+                $sd['l30_sales'] = (float) $t['l30'];
+                $sd['l30_orders'] = (float) $t['orders'];
+                $sd['total_quantity'] = (float) $t['qty'];
+                $sd['total_pft'] = (float) $t['pft'];
+                $sd['cogs'] = (float) $t['cogs'];
+                $sd['gprofit_percent'] = (float) $t['gpft'];
+                $sd['groi_percent'] = (float) $t['groi'];
+                $sd['npft_percent'] = (float) $t['gpft'];
+                $sd['nroi_percent'] = (float) $t['groi'];
+                $sd['newegg_l30_repaired'] = now()->toDateTimeString();
+                $row->summary_data = $sd;
+                $row->save();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Newegg L30 snapshot repair failed: '.$e->getMessage());
+        }
+    }
+
+    /**
      * Most recent Newegg calendar day that actually has orders (same source as daily-sales).
      *
      * @return array{sales:float,orders:int,qty:float,profit:float,cogs:float}
@@ -18576,6 +18629,8 @@ class ChannelMasterController extends Controller
                     return $this->allMarketplaceSnapshotKey((string) $row->channel) === $canonical;
                 }) ?? $rows->first();
             })->values();
+
+            $this->repairNeweggInflatedL30Snapshots($history);
 
             if ($history->isEmpty()) {
                 $seeded = $this->seedTemuViewsChartIfEmpty($channel, $metric, $isAll, []);

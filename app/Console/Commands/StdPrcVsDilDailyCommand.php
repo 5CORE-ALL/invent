@@ -46,10 +46,10 @@ class StdPrcVsDilDailyCommand extends Command
                 ['newtemutwo:sprc-dil-auto-push', $save],
                 ['reverb:sprc-dil-auto-push', $save],
                 ['topdawg:sprc-dil-auto-push', $save],
+                ['purchasing-power:sprc-dil-auto-push', $save],
                 ['dil:rule-sprice-apply', ['channel' => 'all'] + $saveAndPush],
                 ['shopify-b2c:rule-sprice-apply', $saveAndPush],
                 ['macys:rule-sprice-apply', $saveAndPush],
-                ['purchasing-power:rule-sprice-apply', $save],
             ];
 
             foreach ($steps as [$command, $args]) {

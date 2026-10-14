@@ -172,7 +172,8 @@
         var text = (decimals == null)
             ? (Math.round(n) + '%')
             : (n.toFixed(decimals) + '%');
-        var st = styleFor(kind, n);
+        // Color by the value as displayed (e.g. 10.4 shown as "10%" is the <=10 red band).
+        var st = styleFor(kind, (decimals == null || decimals === 0) ? Math.round(n) : n);
         if (!st) return text;
         return '<span style="' + st + '">' + text + '</span>';
     }

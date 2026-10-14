@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MarketplacePercentage;
 use App\Models\NeweggOrder;
 use App\Models\ProductMaster;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -23,9 +24,49 @@ class NeweggSalesController extends Controller
      *
      * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
      */
-    public static function dailySalesBadgeTotals(): array
+    public static function dailySalesBadgeTotals(string $period = 'l30', ?array $window = null): array
     {
-        $lines = app(self::class)->salesLines();
+        return self::totalsFromLines(app(self::class)->salesLines($period, $window));
+    }
+
+    /**
+     * L30 totals for several chart days with one query. Chart day X covers the
+     * 30 complete Pacific days ending X (same window the snapshot saved on X+1 should hold).
+     *
+     * @param  list<string>  $chartDays  YYYY-MM-DD
+     * @return array<string, array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}>
+     */
+    public static function l30TotalsForChartDays(array $chartDays): array
+    {
+        if ($chartDays === []) {
+            return [];
+        }
+        sort($chartDays);
+        $tz = 'America/Los_Angeles';
+        $from = Carbon::parse($chartDays[0], $tz)->subDays(29)->startOfDay();
+        $to = Carbon::parse(end($chartDays), $tz)->endOfDay();
+
+        $lines = app(self::class)->salesLines('l30', [$from, $to]);
+
+        $out = [];
+        foreach ($chartDays as $day) {
+            $dayFrom = Carbon::parse($day, $tz)->subDays(29)->format('Y-m-d').' 00:00:00';
+            $dayTo = $day.' 23:59:59';
+            $out[$day] = self::totalsFromLines(array_filter(
+                $lines,
+                fn ($row) => ($row['order_date'] ?? '') >= $dayFrom && ($row['order_date'] ?? '') <= $dayTo
+            ));
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  iterable<array<string, mixed>>  $lines
+     * @return array{l30: int, orders: int, qty: int, pft: int, cogs: int, ship: int, gpft: int, groi: int}
+     */
+    private static function totalsFromLines(iterable $lines): array
+    {
         $orders = 0;
         $qty = 0;
         $sales = 0.0;
@@ -71,13 +112,29 @@ class NeweggSalesController extends Controller
 
     public function getData(Request $request)
     {
-        return response()->json($this->salesLines());
+        return response()->json($this->salesLines('l30'));
     }
 
     /**
+     * 30 complete Pacific days ending yesterday (matches ChannelMasterController::completePacificL30L60Windows).
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    public static function l30Window(): array
+    {
+        $end = Carbon::yesterday('America/Los_Angeles');
+
+        return [
+            $end->copy()->subDays(29)->startOfDay(),
+            $end->copy()->endOfDay(),
+        ];
+    }
+
+    /**
+     * @param  array{0: Carbon, 1: Carbon}|null  $window  Override [from, to] (Pacific) instead of the default L30.
      * @return list<array<string, mixed>>
      */
-    private function salesLines(): array
+    private function salesLines(string $period = 'l30', ?array $window = null): array
     {
         // Margin comes from marketplace_percentages (Neweggb2c): margin = percentage - ad_updates.
         // This margin (net % the seller keeps) drives the profit calculation.
@@ -87,9 +144,16 @@ class NeweggSalesController extends Controller
         $margin     = $percentage - $adUpdates;
         $factor     = $margin > 0 ? $margin / 100 : 0.80;
 
-        $orders = NeweggOrder::with('items')
-            ->orderBy('order_date', 'desc')
-            ->get();
+        // Same L30 window and void filter as /all-marketplace-master (ChannelMasterController::computeNeweggWindow).
+        $query = NeweggOrder::with('items')
+            ->where(function ($q) {
+                $q->whereNull('order_status')->orWhere('order_status', '!=', 4);
+            });
+        if ($period === 'l30') {
+            [$from, $to] = $window ?? self::l30Window();
+            $query->whereBetween('order_date', [$from, $to]);
+        }
+        $orders = $query->orderBy('order_date', 'desc')->get();
 
         // Collect SKUs (Newegg seller part number) for ProductMaster lookup.
         $skus = [];
