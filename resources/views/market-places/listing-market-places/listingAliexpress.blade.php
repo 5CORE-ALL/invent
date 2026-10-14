@@ -664,7 +664,7 @@
                 const itemId = String(item.ae_product_id || '').trim();
                 // Automated: NRL from AliexpressDataView; Listed from product_id OR pricing table
                 const nrReq = (item.nr_req === 'NR' || item.nr_req === 'NRL') ? 'NR' : 'REQ';
-                const listed = (item.listed === 'Listed' || itemId) ? 'Listed' : 'Pending';
+                const listed = item.page_created ? 'Created' : ((item.listed === 'Listed' || itemId) ? 'Listed' : 'Pending');
                 return {
                     ...item,
                     parent: item.parent ?? item.Parent ?? '',
@@ -851,6 +851,7 @@
         function formatListed(cell) {
             const data = cell.getRow().getData();
             if (data.is_parent) return '';
+            if (data.page_created || data.listed === 'Created') return '';
 
             // Listed = real product_id or sku already in aliexpress_pricing_prices
             const itemId = String(data.ae_product_id || '').trim();

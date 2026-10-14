@@ -84,8 +84,9 @@ class ListingAliexpressController extends Controller
             );
 
             $resolved = AliexpressListingCounts::resolveListed($childSku, $metricsByNorm, $pricingByNorm);
-            $item->ae_product_id = $resolved['product_id'] !== '' ? $resolved['product_id'] : null;
-            $item->listed = $resolved['listed'] ? 'Listed' : 'Pending';
+            $item->page_created = (bool) ($resolved['page_created'] ?? false);
+            $item->ae_product_id = ! $item->page_created && $resolved['product_id'] !== '' ? $resolved['product_id'] : null;
+            $item->listed = $item->page_created ? 'Created' : ($resolved['listed'] ? 'Listed' : 'Pending');
 
             return $item;
         })->values();
