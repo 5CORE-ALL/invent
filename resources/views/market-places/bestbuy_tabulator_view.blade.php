@@ -121,6 +121,9 @@
             <div class="card-body py-2">
                 <!-- Summary Stats + filters (single wrapping row) -->
                 <div id="summary-stats" class="d-flex align-items-center flex-wrap gap-1">
+                        <span class="badge fs-6 p-2" id="bestbuy-rows-badge"
+                            style="background-color:#343a40;color:#fff;font-weight:700;"
+                            title="Rows shown (SKUs, parent rows excluded). When a filter is on it reads shown / total.">Rows: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold; display: none;">PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
@@ -3029,6 +3032,14 @@
             );
             $('#bestbuy-amz-cap-badge').text('Amz ' + amzCapCount.toLocaleString());
             $('#bestbuy-clearance-badge').text('C ' + clearanceCount.toLocaleString());
+            (function() {
+                let shown = 0, total = 0;
+                try {
+                    total = table.getData().filter(function(r) { return !isBestbuyParentRow(r); }).length;
+                    shown = table.getData('active').filter(function(r) { return !isBestbuyParentRow(r); }).length;
+                } catch (e) { /* ignore */ }
+                $('#bestbuy-rows-badge').text('Rows: ' + shown.toLocaleString() + (shown !== total ? ' / ' + total.toLocaleString() : ''));
+            })();
             $('#bestbuy-npft-mark-badge').text('! ' + npftMarkCount.toLocaleString());
             if (typeof syncBestbuyTriangleBadgeState === 'function') syncBestbuyTriangleBadgeState();
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
