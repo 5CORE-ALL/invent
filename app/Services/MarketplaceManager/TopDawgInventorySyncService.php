@@ -125,33 +125,12 @@ class TopDawgInventorySyncService
         $failed = (int) ($invResult['failed'] ?? 0);
         $updatedSkus = $invResult['updated_skus'] ?? [];
 
-        // TopDawg answers "submitted for review" to every SupplierProduct/update, so a push is only
-        // counted (and written to topdawg_products) once SupplierProduct/list shows the new qty.
-        $confirmed = $pushed;
-        $pending = [];
-        if ($pushed > 0) {
-            sleep(2);
-            $live = app(TopDawgLiveListingsService::class)->refreshFromTopDawg();
-            if ($live !== null) {
-                $confirmedSkus = [];
-                $updatedUpper = array_flip(array_map(static fn ($s) => strtoupper(trim((string) $s)), $updatedSkus));
-                foreach ($inventoryRows as $row) {
-                    $sku = (string) $row['sku_code'];
-                    if (! isset($updatedUpper[strtoupper(trim($sku))])) {
-                        continue;
-                    }
-                    $key = strtoupper(ShopifySku::normalizeSkuForShopifyLookup($sku) ?: $sku);
-                    if (($live[$key] ?? null) === (int) $row['inventory']) {
-                        $confirmedSkus[] = $sku;
-                    } else {
-                        $pending[] = $sku;
-                    }
-                }
-                $confirmed = count($confirmedSkus);
-                if ($confirmedSkus !== []) {
-                    $this->persistLocalStock($inventoryRows, $confirmedSkus);
-                }
-            }
+        // TopDawg answers "submitted for review" and SupplierProduct/list keeps the
+        // previous qty until that review lands. Downloading the catalog here wrote
+        // that old qty back over the row, so the mismatch list never moved.
+        // Store the Shopify qty TopDawg accepted, the same way the other channels do.
+        if ($updatedSkus !== []) {
+            $this->persistLocalStock($inventoryRows, $updatedSkus);
             $this->clearListingCaches();
         }
 
@@ -159,20 +138,17 @@ class TopDawgInventorySyncService
         if ($message === null) {
             if ($pushed === 0) {
                 $message = 'TopDawg inventory update failed.';
-            } elseif ($pending === []) {
-                $message = 'Synced '.$confirmed.' SKU(s) to TopDawg from live Shopify.';
             } else {
-                $message = 'TopDawg accepted '.$pushed.' SKU(s); '.$confirmed.' show the new qty live, '
-                    .count($pending).' still show the old qty (TopDawg review pending): '
-                    .implode(', ', array_slice($pending, 0, 10)).(count($pending) > 10 ? ', …' : '').'.';
+                $message = 'Synced '.$pushed.' SKU(s) to TopDawg from live Shopify.'
+                    .' TopDawg applies the new qty after review; Refresh live shows their catalog number until then.';
             }
         }
 
         return [
-            'updated' => $confirmed,
+            'updated' => $pushed,
             'failed' => $failed,
             'skipped' => $skipped,
-            'pending_review' => count($pending),
+            'pending_review' => 0,
             'message' => $message,
         ];
     }

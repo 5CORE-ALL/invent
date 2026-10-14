@@ -51,7 +51,8 @@ class TopDawgLiveListingsService
             if (! is_array($item)) {
                 continue;
             }
-            $sku = ShopifySku::normalizeSkuForShopifyLookup((string) ($item['product_code'] ?? $item['sku'] ?? ''));
+            $rawSku = trim((string) ($item['product_code'] ?? $item['sku'] ?? ''));
+            $sku = ShopifySku::normalizeSkuForShopifyLookup($rawSku);
             $qty = TopDawgApiService::qtyFromLiveProductRow($item);
             if ($sku === '' || $qty === null) {
                 continue;
@@ -61,7 +62,12 @@ class TopDawgLiveListingsService
             if ($state !== null && $state !== '') {
                 $update['listing_state'] = $state;
             }
-            DB::table('topdawg_products')->where('sku', $sku)->update($update);
+            DB::table('topdawg_products')->where(function ($q) use ($sku, $rawSku) {
+                $q->whereRaw('UPPER(TRIM(sku)) = ?', [$sku]);
+                if ($rawSku !== '' && strcasecmp($rawSku, $sku) !== 0) {
+                    $q->orWhere('sku', $rawSku);
+                }
+            })->update($update);
             $live[strtoupper($sku)] = $qty;
         }
 
