@@ -79,6 +79,20 @@
             margin-left: 4px;
             cursor: help;
         }
+        /* Sku Link LMP: keep every row the same height (no wrapping badges). */
+        .tabulator-cell.linked-sku-col { overflow: hidden; }
+        .bestbuy-linked-skus {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            line-height: 1.4;
+            padding: 2px 0;
+            scrollbar-width: thin;
+        }
+        .bestbuy-linked-skus .linked-sku-badge-wrap { flex: 0 0 auto; margin-bottom: 0 !important; }
         .bestbuy-sprice-amz-lbl {
             color: #fd7e14;
             font-weight: 800;
@@ -1281,7 +1295,8 @@
                 }).join('')
                 : '<span class="text-muted fst-italic">No SKUs</span>';
 
-            return `<div class="d-flex flex-wrap align-items-start py-1" style="line-height:1.6;">${badges}</div>`;
+            // One line, scrolls sideways: wrapping many linked SKUs made some rows much taller than the rest.
+            return `<div class="bestbuy-linked-skus" title="${escapeHtmlAttr(skus.join(', '))}">${badges}</div>`;
         }
 
         function linkedLmpSkuAddFormatter(cell) {
