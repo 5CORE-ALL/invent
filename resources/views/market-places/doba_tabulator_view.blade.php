@@ -2094,7 +2094,10 @@
                                 'doba L45': dobaL45,
                                 quantity_l7: quantityL7,
                                 quantity_l7_prev: quantityL7Prev,
-                                growth_percent: 0, // Calculated in formatter
+                                // Same formula the Growth cell displays, so header sort matches what is shown.
+                                growth_percent: dobaL60 > 0
+                                    ? ((dobaL30 - dobaL60) / dobaL60) * 100
+                                    : (dobaL30 > 0 ? 100 : 0),
                                 l30_avg_price: Number(item.l30_avg_price) || 0,
                                 l60_avg_price: Number(item.l60_avg_price) || 0,
                                 'doba Price': price,
@@ -2550,6 +2553,17 @@
                     {
                         title: "LP",
                         field: "LP_productmaster",
+                        width: 70,
+                        sorter: dobaNumberSorter,
+                        visible: true,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            return value > 0 ? `$${value.toFixed(2)}` : '';
+                        }
+                    },
+                    {
+                        title: "Ship",
+                        field: "Ship_productmaster",
                         width: 70,
                         sorter: dobaNumberSorter,
                         visible: true,
