@@ -403,6 +403,152 @@ class Temu2ApiService extends TemuApiService
     }
 
     /**
+     * Description update. A goodsDesc-only call is rejected with
+     * [150010017] Some SKU specifications are empty when the live SKU has blank specs.
+     * Retry with the same filled package + spec list the title update uses.
+     *
+     * @param  list<string>  $imageUrls
+     * @return array{success: bool, message: string}
+     */
+    public function updateDescription(string $identifier, string $description, array $imageUrls = []): array
+    {
+        $res = parent::updateDescription($identifier, $description, $imageUrls);
+        if (($res['success'] ?? false) || ! $this->isTemuTitleImageError((string) ($res['message'] ?? ''))) {
+            return $res;
+        }
+
+        $filled = $this->updateDescriptionWithFilledSpecs($identifier, $description);
+        if ($filled['success'] ?? false) {
+            return $filled;
+        }
+
+        $parentMessage = trim((string) ($res['message'] ?? ''));
+        $filledMessage = trim((string) ($filled['message'] ?? ''));
+
+        return ['success' => false, 'message' => $filledMessage !== '' ? $filledMessage : $parentMessage];
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    private function updateDescriptionWithFilledSpecs(string $identifier, string $description): array
+    {
+        $sku = trim($identifier);
+        $plain = $this->temuPlainDescription($description);
+        if ($sku === '' || $plain === '') {
+            return ['success' => false, 'message' => 'SKU and description are required.'];
+        }
+
+        $goodsId = $this->getGoodsIdBySku($sku);
+        if (! $goodsId) {
+            return ['success' => false, 'message' => 'Temu 2 goodsId not found for this SKU. Sync Temu 2 listings first.'];
+        }
+
+        $skuListField = config('services.temu2.update_sku_list_field', config('services.temu.update_sku_list_field', 'skuList'));
+        $skuIdField = config('services.temu2.sku_id_field', config('services.temu.sku_id_field', 'skuId'));
+        $skuCodeField = config('services.temu2.sku_code_field', config('services.temu.sku_code_field', 'outSkuSn'));
+        $apiType = config('services.temu2.goods_update_type', config('services.temu.goods_update_type', 'bg.local.goods.partial.update'));
+        $skuId = $this->getSkuIdBySku($sku);
+
+        $attempts = [
+            [
+                'type' => $apiType,
+                'goodsId' => (int) $goodsId,
+                'goodsDesc' => $plain,
+                $skuListField => $this->skuEntriesFromLivePackage($sku, $skuId, (string) $goodsId, $skuIdField, $skuCodeField, 0),
+            ],
+            [
+                'type' => $apiType,
+                'goodsId' => (int) $goodsId,
+                'goodsDesc' => $plain,
+                $skuListField => $this->skuEntriesFromLivePackage($sku, $skuId, (string) $goodsId, $skuIdField, $skuCodeField, 2),
+            ],
+        ];
+
+        $lastError = 'Temu 2 description update failed.';
+        $attemptGoodsId = (string) $goodsId;
+        for ($pass = 0; $pass < 2; $pass++) {
+            if ($pass === 1) {
+                if (! $this->temuMallGoodsMismatch($lastError)) {
+                    break;
+                }
+                $freshGoodsId = $this->replaceGoodsIdAfterMallMismatch($sku, $attemptGoodsId);
+                if ($freshGoodsId === null || $freshGoodsId === '' || $freshGoodsId === $attemptGoodsId) {
+                    break;
+                }
+                $attemptGoodsId = $freshGoodsId;
+                foreach ($attempts as &$attemptBody) {
+                    $attemptBody['goodsId'] = (int) $freshGoodsId;
+                }
+                unset($attemptBody);
+            }
+            foreach ($attempts as $i => $requestBody) {
+                try {
+                    $data = $this->postTemuRequest($requestBody);
+                } catch (\Throwable $e) {
+                    $lastError = $e->getMessage();
+                    Log::warning('Temu2 updateDescription filled-spec request failed', [
+                        'sku' => $sku,
+                        'attempt' => $i + 1,
+                        'error' => $lastError,
+                    ]);
+                    continue;
+                }
+
+                $outcome = $this->temuWriteOutcome($data, "Temu 2 description updated for SKU: {$sku}.");
+                if ($outcome['success'] && ! $outcome['review']) {
+                    $unchanged = $this->confirmTemuGoodsChange($attemptGoodsId, 'goodsDesc', $plain, $data, 'description');
+                    if ($unchanged !== null) {
+                        $outcome = ['success' => false, 'message' => $unchanged, 'review' => false];
+                    }
+                }
+                if ($outcome['success']) {
+                    Log::info('Temu2 description updated with filled SKU specs', [
+                        'sku' => $sku,
+                        'goodsId' => $attemptGoodsId,
+                        'attempt' => $i + 1,
+                    ]);
+
+                    return ['success' => true, 'message' => $outcome['message']];
+                }
+
+                $lastError = $outcome['message'];
+                Log::warning('Temu2 updateDescription filled-spec rejected', [
+                    'sku' => $sku,
+                    'goodsId' => $attemptGoodsId,
+                    'attempt' => $i + 1,
+                    'error' => $lastError,
+                ]);
+            }
+        }
+
+        return ['success' => false, 'message' => $lastError];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return list<int>
+     */
+    private function specIdsFromLiveSku(array $row): array
+    {
+        $ids = [];
+        $lists = [$row['specIdList'] ?? null, $row['specList'] ?? null, $row['specDetails'] ?? null];
+        foreach ($lists as $list) {
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $item) {
+                $id = is_array($item) ? ($item['specId'] ?? $item['id'] ?? null) : $item;
+                if (is_numeric($id) && (int) $id > 0) {
+                    $ids[] = (int) $id;
+                }
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Live SKU packageInfo only (no images/price). Units are Temu integer codes.
      *
      * @return list<array<string, mixed>>
@@ -457,6 +603,17 @@ class Temu2ApiService extends TemuApiService
                     'volumeUnit' => $volumeUnit,
                 ],
             ];
+            foreach (['specIdList', 'specList', 'specDetails'] as $specKey) {
+                if (isset($row[$specKey]) && is_array($row[$specKey]) && $row[$specKey] !== []) {
+                    $entry[$specKey] = $row[$specKey];
+                }
+            }
+            if (! isset($entry['specIdList'])) {
+                $specIds = $this->specIdsFromLiveSku($row);
+                if ($specIds !== []) {
+                    $entry['specIdList'] = $specIds;
+                }
+            }
             $id = $rowSkuId !== '' ? $rowSkuId : ($isTarget ? $skuId : null);
             if ($id !== null && $id !== '') {
                 $entry[$skuIdField] = (int) $id;
