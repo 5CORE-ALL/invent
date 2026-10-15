@@ -436,6 +436,18 @@ class InventChatBot
         return $target;
     }
 
+    /** Accounts that do not receive the morning DAR, overdue, or missed-yesterday DMs. */
+    public const DAILY_NUDGE_EXEMPT_EMAILS = [
+        'president@5core.com',
+    ];
+
+    public static function isExemptFromDailyNudges(?User $user): bool
+    {
+        $email = strtolower(trim((string) ($user->email ?? '')));
+
+        return $email !== '' && in_array($email, self::DAILY_NUDGE_EXEMPT_EMAILS, true);
+    }
+
     public static function dailyDarBody(User $user): ?string
     {
         $today = TaskBusinessTime::today()->toDateString();

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\ChatChannel;
+use App\Models\User;
 use App\Support\InventChatBot;
 use PHPUnit\Framework\TestCase;
 
@@ -45,5 +46,16 @@ class InventChatBotParseTest extends TestCase
         $this->assertFalse(InventChatBot::shouldReplyIn($taskChat, $body));
         $this->assertTrue(InventChatBot::shouldReplyIn($botInbox, 'Show my overdue'));
         $this->assertTrue(InventChatBot::shouldReplyIn($taskChat, '/help'));
+    }
+
+    public function test_president_is_exempt_from_daily_nudges(): void
+    {
+        $president = new User(['email' => 'president@5core.com']);
+        $teammate = new User(['email' => 'shobha@5core.com']);
+
+        $this->assertTrue(InventChatBot::isExemptFromDailyNudges($president));
+        $this->assertTrue(InventChatBot::isExemptFromDailyNudges(new User(['email' => ' President@5Core.com '])));
+        $this->assertFalse(InventChatBot::isExemptFromDailyNudges($teammate));
+        $this->assertFalse(InventChatBot::isExemptFromDailyNudges(null));
     }
 }

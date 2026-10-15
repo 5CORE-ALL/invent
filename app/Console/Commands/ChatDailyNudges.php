@@ -39,6 +39,10 @@ class ChatDailyNudges extends Command
         $missedSent = 0;
 
         foreach ($users as $user) {
+            if (InventChatBot::isExemptFromDailyNudges($user)) {
+                continue;
+            }
+
             $inbox = ChatWorkspace::botInboxFor($user);
 
             $darBody = InventChatBot::dailyDarBody($user);
