@@ -1000,25 +1000,25 @@
                         <div class="amm-badge-block-title">Today</div>
                         <div class="ebay2-summary-badge-row" role="group" aria-label="Today metrics">
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="today_sales" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Dot compares today with yesterday.">
-                            <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Today Sales: <span id="total-today-sales">$0</span>
+                            <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Sales: <span id="total-today-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="T Orders = Σ (L30 Orders × Today Sales ÷ L30 Sales). Same pace as Today Sales. 0 when Today Sales is 0.">
-                            <span class="summary-trend-dot none" data-metric="t_orders" title="Vs L30 daily average"></span>T Orders: <span id="total-t-orders">0</span>
+                            <span class="summary-trend-dot none" data-metric="t_orders" title="Vs L30 daily average"></span>Orders: <span id="total-t-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #17a2b8; color: white; font-weight: bold;" title="T Nprft% = Σ (Today Sales × NPFT%) ÷ Σ Today Sales.">
-                            <span class="summary-trend-dot none" data-metric="t_npft" title="Vs L30 NPFT%"></span>T Nprft%: <span id="avg-t-npft">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="t_npft" title="Vs L30 NPFT%"></span>Nprft%: <span id="avg-t-npft">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #dc3545; color: white; font-weight: bold;" title="TGroi% = Σ (Today Sales × GPFT%) ÷ Σ today COGS. Today COGS = L30 COGS × (Today Sales ÷ L30 Sales).">
-                            <span class="summary-trend-dot none" data-metric="t_groi" title="Vs L30 G ROI%"></span>TGroi%: <span id="avg-t-groi">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="t_groi" title="Vs L30 G ROI%"></span>Groi%: <span id="avg-t-groi">0.0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS.">
-                            <span class="summary-trend-dot none" data-metric="t_nroi" title="Vs L30 NROI%"></span>TNROI%: <span id="avg-t-nroi">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="t_nroi" title="Vs L30 NROI%"></span>NROI%: <span id="avg-t-nroi">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #d63384; color: white; font-weight: bold;" title="T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales.">
-                            <span class="summary-trend-dot none" data-metric="t_ads" title="Vs L30 Ads%"></span>T Ads%: <span id="avg-t-ads">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="t_ads" title="Vs L30 Ads%"></span>Ads%: <span id="avg-t-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="T Views = Σ (Views × Today Sales ÷ L30 Sales). Same pace as Today Sales.">
-                            <span class="summary-trend-dot none" data-metric="t_views" title="Vs L30 daily average"></span>T Views: <span id="total-t-views">0</span>
+                            <span class="summary-trend-dot none" data-metric="t_views" title="Vs L30 daily average"></span>Views: <span id="total-t-views">0</span>
                         </span>
                         </div>
                     </div>
@@ -1032,10 +1032,10 @@
                         </div>
                         <div class="ebay2-summary-badge-row" role="group" aria-label="Yesterday metrics">
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
-                            <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
+                            <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Sales: <span id="total-y-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Y Orders = sum of yesterday order counts across channels (1-day Pacific, same Orders column as Yesterday by marketplace).">
-                            <span class="summary-trend-dot none" data-metric="y_orders" title="Vs L30 daily average"></span>Y Orders: <span id="total-y-orders">0</span>
+                            <span class="summary-trend-dot none" data-metric="y_orders" title="Vs L30 daily average"></span>Orders: <span id="total-y-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
                             <span class="summary-trend-dot none" data-metric="y_pft" title="Rolling history"></span>Y PFT: <span id="total-y-pft">$0</span>
@@ -1044,19 +1044,19 @@
                             <span class="summary-trend-dot none" data-metric="y_npft_amt" title="Rolling history"></span>Y NPFT: <span id="total-y-npft">$0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="yNprft% = (Σ yesterday net PFT $) ÷ (Σ yesterday sales), measured from yesterday's orders alone.">
-                            <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>yNprft%: <span id="avg-y-npft">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>Nprft%: <span id="avg-y-npft">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_groi_pct" style="background-color: #dc3545; color: white; font-weight: bold; cursor:pointer;" title="YGroi% = (Σ yesterday gross PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
-                            <span class="summary-trend-dot none" data-metric="y_groi_pct" title="Rolling history"></span>YGroi%: <span id="avg-y-groi">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="y_groi_pct" title="Rolling history"></span>Groi%: <span id="avg-y-groi">0.0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="y_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
-                            <span class="summary-trend-dot none" data-metric="y_nroi_pct" title="Rolling history"></span>YNROI%: <span id="avg-y-nroi">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="y_nroi_pct" title="Rolling history"></span>NROI%: <span id="avg-y-nroi">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" data-metric="y_ads_pct" style="background-color: #d63384; color: white; font-weight: bold;" title="Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales.">
-                            <span class="summary-trend-dot none" data-metric="y_ads_pct" title="Vs L30 Ads%"></span>Y Ads%: <span id="avg-y-ads">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="y_ads_pct" title="Vs L30 Ads%"></span>Ads%: <span id="avg-y-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30).">
-                            <span class="summary-trend-dot none" data-metric="y_views" title="Vs L30 daily average"></span>Y Views: <span id="total-y-views">0</span>
+                            <span class="summary-trend-dot none" data-metric="y_views" title="Vs L30 daily average"></span>Views: <span id="total-y-views">0</span>
                         </span>
                         </div>
                     </div>
@@ -1115,28 +1115,28 @@
                         </div>
                         <div class="ebay2-summary-badge-row" role="group" aria-label="Projected metrics">
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
-                            <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
+                            <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales.">
-                            <span class="summary-trend-dot none" data-metric="p_orders" title="Rolling history"></span>P Orders: <span id="total-p-orders">0</span>
+                            <span class="summary-trend-dot none" data-metric="p_orders" title="Rolling history"></span>Orders: <span id="total-p-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_groi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-GROI% = Σ (P-Sales × GPFT%) ÷ Σ projected COGS. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-Sales = (L7 ÷ 7) × 30.">
-                            <span class="summary-trend-dot none" data-metric="p_groi_pct" title="Rolling history"></span>P-GROI%: <span id="avg-p-groi">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="p_groi_pct" title="Rolling history"></span>GROI%: <span id="avg-p-groi">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_npft" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Projected NPFT% = blended GPFT% on P-Sales minus Ads% on P-Sales. P-Sales is last-7-day pace × 30; spend is current L30 ad spend.">
-                            <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>P-Npft%: <span id="avg-p-npft">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="p_npft" title="Rolling history"></span>Npft%: <span id="avg-p-npft">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="p_npft_amt" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P NPFT $ column. Projected net profit $ = P-Sales × P-Npft%. P-Sales is last-7-day pace × 30; spend is current L30 ad spend. % is P NPFT $ vs NPFT $.">
                             <span class="summary-trend-dot none" data-metric="p_npft_amt" title="Rolling history"></span>P NPFT: <span id="total-p-npft">$0</span><span id="total-p-npft-vs-npft"></span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_nroi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-NROI% uses the same projected COGS as P GROI%. P-Sales = (L7 ÷ 7) × 30. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-NROI% = Σ (P-Sales × GPFT% − ad spend) ÷ Σ projected COGS.">
-                            <span class="summary-trend-dot none" data-metric="p_nroi_pct" title="Rolling history"></span>P-NROI%: <span id="avg-p-nroi">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="p_nroi_pct" title="Rolling history"></span>NROI%: <span id="avg-p-nroi">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #d63384; color: white; font-weight: bold;" title="P Ads% = total ad spend ÷ Σ P-Sales × 100. Spend is current L30 ad spend. P-Sales = (L7 ÷ 7) × 30.">
-                            <span class="summary-trend-dot none" data-metric="p_ads" title="Rolling history"></span>P Ads%: <span id="avg-p-ads">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="p_ads" title="Rolling history"></span>Ads%: <span id="avg-p-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #0d6efd; color: white; font-weight: bold;" title="P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales.">
-                            <span class="summary-trend-dot none" data-metric="p_views" title="Rolling history"></span>P Views: <span id="total-p-views">0</span>
+                            <span class="summary-trend-dot none" data-metric="p_views" title="Rolling history"></span>Views: <span id="total-p-views">0</span>
                         </span>
                         </div>
                     </div>
