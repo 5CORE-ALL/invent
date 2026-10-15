@@ -233,10 +233,8 @@ class DobaController extends Controller
             });
 
         $applyDailyFilters = function ($query) use ($onlyPickupPrepaidLabelFromDaily) {
-            $query->where(function ($q) {
-                $q->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
-                    ->orWhereNull('order_status');
-            });
+            // Only orders that actually happened: any status containing "cancel" (Canceled, Cancelled, Order Canceled…) is out.
+            $query->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%CANCEL%'");
             if ($onlyPickupPrepaidLabelFromDaily) {
                 $query->whereRaw(
                     'LOWER(TRIM(COALESCE(order_type, ?))) = ?',
@@ -1300,10 +1298,7 @@ class DobaController extends Controller
     private function buildDobaDailySalesSummaryMetrics(bool $onlyPickupPrepaidLabel): \Illuminate\Http\JsonResponse
     {
         $ordersQuery = DobaDailyData::whereRaw('LOWER(period) = ?', ['l30'])
-            ->where(function ($q) {
-                $q->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
-                    ->orWhereNull('order_status');
-            });
+            ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%CANCEL%'");
 
         if ($onlyPickupPrepaidLabel) {
             $ordersQuery->whereRaw(

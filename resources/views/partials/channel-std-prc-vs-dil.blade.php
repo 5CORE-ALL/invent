@@ -168,7 +168,7 @@
                         @if(in_array(($channelPromoChannel ?? ''), ['doba', 'doba_withoutship'], true))
                         <div class="ch-sp-margin">
                             <div>
-                                <div class="small text-muted" title="Actual Doba L30 orders (same totals as Doba daily sales): every order counts, including SKUs whose stock is now 0. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
+                                <div class="small text-muted" title="Doba L30 units x L30 average sold price, at the current margin, LP and ship. Counts every SKU with Doba sales, including SKUs whose stock is now 0, plus Doba orders that have no row in this table. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
                                 <strong id="ch-sp-margin-cur">—</strong>
                                 <div class="ch-sp-margin-badges" id="ch-sp-margin-cur-sub"></div>
                             </div>
@@ -760,8 +760,8 @@
          * "Current <page> L30": this page's actual sold units x the L30 average sold price, with today's
          * margin / LP / ship. Includes SKUs whose stock is now 0 (chStdRows() drops those) and ignores the draft rules.
          */
-        // Doba L30 totals straight from doba_daily_data (same numbers as /doba/daily-sales). Every order counts,
-        // including SKUs with 0 stock and SKUs that are no longer rows in this table.
+        // Doba L30 totals from doba_daily_data (same numbers as /doba/daily-sales), used only to find orders that
+        // have no row in this table (see chStdAddUnmatchedSales).
         let chStdCurrentServer = null;
         let chStdCurrentServerLoading = false;
         function chStdLoadCurrentServer() {
@@ -785,10 +785,25 @@
                 if (typeof chStdRefresh === 'function') chStdRefresh();
             }).always(function() { chStdCurrentServerLoading = false; });
         }
-        function chStdCurrentServerBucket(adsPct) {
-            if (!chStdCurrentServer) return null;
+        /**
+         * Doba orders whose SKU is not a row in this table (e.g. a sold-out SKU removed from the product master)
+         * never reach the row sum above. Add them back as: server L30 totals minus what the rows already hold,
+         * priced at the rows' own average margin and COGS ratio (no LP / ship is known for them).
+         */
+        function chStdAddUnmatchedSales(b, adsPct) {
             const s = chStdCurrentServer;
-            return { gross: s.gross, net: s.gross - (s.sales * (Number(adsPct) || 0) / 100), sales: s.sales, cogs: s.cogs, units: s.units };
+            if (!s || !(b.sales > 0)) return b;
+            const extraUnits = s.units - b.units;
+            const extraSales = s.sales - b.sales;
+            if (!(extraUnits >= 1) || !(extraSales > 1)) return b;
+            const k = extraSales / b.sales;
+            const grossAdd = b.gross * k;
+            b.gross += grossAdd;
+            b.net += grossAdd - (extraSales * (Number(adsPct) || 0) / 100);
+            b.cogs += b.cogs * k;
+            b.sales += extraSales;
+            b.units += extraUnits;
+            return b;
         }
         function chStdCurrentSiteBucket(adsPct) {
             const b = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
@@ -1113,7 +1128,7 @@
             $('#ch-sp-margin-pg-sub').html(marginBadgesHtml(pgB));
             if ($('#ch-sp-margin-cur').length) {
                 chStdLoadCurrentServer();
-                const curB = chStdCurrentServerBucket(ads) || chStdCurrentSiteBucket(ads);
+                const curB = chStdAddUnmatchedSales(chStdCurrentSiteBucket(ads), ads);
                 $('#ch-sp-margin-cur').html(marginSalesHtml(curB)).css('color', '#166534');
                 $('#ch-sp-margin-cur-sub').html(marginBadgesHtml(curB));
             }
