@@ -167,7 +167,7 @@ class AlibabaAnalyticsController extends Controller
                 'SNGPFT' => $sMetrics['gpft'],
                 'has_custom_sprice' => $sprice > 0,
                 // Amazon Std Prc for this exact SKU. Pack listings (… 2PCS) never borrow the single-unit Std.
-                'STANDARD_PRICE' => $stdBySku[$skuKey] ?? null,
+                'STANDARD_PRICE' => $stdBySku[$this->stdKey($sku)] ?? null,
                 // Push meta written by the server auto push (alibaba:sprc-dil-auto-push).
                 'SPRICE_STATUS' => $pushMeta['status'] ?? null,
                 'SPRICE_STATUS_UPDATED_AT' => $pushMeta['status_at'] ?? null,
@@ -506,27 +506,83 @@ class AlibabaAnalyticsController extends Controller
      */
     protected function amazonStdBySku(array $skus): array
     {
-        $keys = array_values(array_unique(array_filter(array_map(
-            fn ($s) => strtoupper(trim((string) $s)),
-            $skus
-        ))));
+        $wanted = [];
+        foreach ($skus as $s) {
+            $k = $this->stdKey((string) $s);
+            if ($k !== '') {
+                $wanted[$k] = (string) $s;
+            }
+        }
+        if ($wanted === []) {
+            return [];
+        }
+
+        // Key by whitespace-collapsed upper-case SKU so double spaces / NBSP in either table still match.
+        $all = [];
+        try {
+            $rows = DB::table('amazon_data_view')
+                ->select('sku')
+                ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(value, '$.STANDARD_PRICE')) as std_price")
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get();
+            foreach ($rows as $row) {
+                if (is_numeric($row->std_price ?? null) && (float) $row->std_price > 0) {
+                    $all[$this->stdKey((string) $row->sku)] = round((float) $row->std_price, 2);
+                }
+            }
+        } catch (\Throwable $e) {
+            foreach (array_chunk(array_values($wanted), 400) as $chunk) {
+                AmazonDataView::query()
+                    ->whereRaw('UPPER(TRIM(sku)) IN ('.implode(',', array_fill(0, count($chunk), '?')).')', array_map('strtoupper', array_map('trim', $chunk)))
+                    ->get(['sku', 'value'])
+                    ->each(function ($row) use (&$all) {
+                        $val = is_array($row->value)
+                            ? $row->value
+                            : (json_decode((string) ($row->value ?? ''), true) ?: []);
+                        $std = is_array($val) ? ($val['STANDARD_PRICE'] ?? null) : null;
+                        if (is_numeric($std) && (float) $std > 0) {
+                            $all[$this->stdKey((string) $row->sku)] = round((float) $std, 2);
+                        }
+                    });
+            }
+        }
+
         $out = [];
-        foreach (array_chunk($keys, 400) as $chunk) {
-            AmazonDataView::query()
-                ->whereRaw('UPPER(TRIM(sku)) IN ('.implode(',', array_fill(0, count($chunk), '?')).')', $chunk)
-                ->get(['sku', 'value'])
-                ->each(function ($row) use (&$out) {
-                    $val = is_array($row->value)
-                        ? $row->value
-                        : (json_decode((string) ($row->value ?? ''), true) ?: []);
-                    $std = is_array($val) ? ($val['STANDARD_PRICE'] ?? null) : null;
-                    if (is_numeric($std) && (float) $std > 0) {
-                        $out[strtoupper(trim((string) $row->sku))] = round((float) $std, 2);
+        $missing = [];
+        foreach ($wanted as $k => $raw) {
+            if (isset($all[$k])) {
+                $out[$k] = $all[$k];
+            } else {
+                $missing[$k] = $raw;
+            }
+        }
+
+        // No Std Prc of its own: inherit from the Sku Link LMP group (same as /doba-tabulator, /tiktok-pricing).
+        if ($missing !== []) {
+            try {
+                $groups = app(\App\Services\LmpSkuGroupService::class);
+                $groups->prepareForSkus(array_values($wanted));
+                foreach ($missing as $k => $raw) {
+                    foreach ($groups->groupContaining($raw) as $member) {
+                        $mk = $this->stdKey((string) $member);
+                        if (isset($all[$mk])) {
+                            $out[$k] = $all[$mk];
+                            break;
+                        }
                     }
-                });
+                }
+            } catch (\Throwable $e) {
+                // keep exact matches only
+            }
         }
 
         return $out;
+    }
+
+    protected function stdKey(string $sku): string
+    {
+        return strtoupper(trim(preg_replace('/[\s\x{00A0}]+/u', ' ', $sku) ?? $sku));
     }
 
     public function sync(Request $request, AlibabaApiService $api): JsonResponse
