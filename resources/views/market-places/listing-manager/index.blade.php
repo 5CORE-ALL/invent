@@ -420,13 +420,28 @@
         }
         .lm-img-edit-bar { border: 1px solid #bfdbfe; background: #f8fbff; border-radius: 10px; padding: .75rem .9rem; margin-bottom: .9rem; }
         .lm-prod-thumbs .lm-thumb { position: relative; }
+        .lm-prod-images.is-editing { grid-template-columns: 240px 1fr; align-items: start; }
+        .lm-prod-images.is-editing .lm-prod-thumbs { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: .75rem; }
+        .lm-prod-images.is-editing .lm-thumb {
+            display: flex; flex-direction: column; border: 1px solid var(--lc-border); border-radius: 8px;
+            background: #fff; overflow: hidden;
+        }
+        .lm-prod-images.is-editing .lm-prod-thumbs img {
+            width: 100%; aspect-ratio: 1; min-height: 148px; height: auto; border: 0; border-radius: 0; object-fit: contain;
+        }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools {
             position: absolute; inset: auto 0 0 0; display: flex; justify-content: center; gap: 2px;
             background: rgba(17,24,39,.72); padding: 2px; border-radius: 0 0 6px 6px; opacity: 0; transition: opacity .12s;
         }
+        .lm-prod-images.is-editing .lm-thumb .lm-thumb-tools {
+            position: static; opacity: 1; background: #111827; padding: 6px 4px; gap: 4px; border-radius: 0;
+        }
         .lm-prod-thumbs .lm-thumb:hover .lm-thumb-tools { opacity: 1; }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools button {
             border: 0; background: transparent; color: #fff; font-size: .72rem; width: 20px; height: 20px; line-height: 20px; border-radius: 4px; padding: 0;
+        }
+        .lm-prod-images.is-editing .lm-thumb .lm-thumb-tools button {
+            flex: 1; width: auto; height: 34px; font-size: .95rem; line-height: 34px;
         }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools button:hover { background: rgba(255,255,255,.18); }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools button:disabled { opacity: .35; }
@@ -2451,6 +2466,7 @@
         if (imagesEditMode) imagesBeforeEdit = currentImages.slice();
         $('#lm-img-edit-btn').toggleClass('d-none', imagesEditMode);
         $('#lm-img-save-btn, #lm-img-cancel-btn, #lm-img-edit-bar').toggleClass('d-none', !imagesEditMode);
+        $('.lm-prod-images').toggleClass('is-editing', imagesEditMode);
         $('#lm-img-add-url').val('');
         drawProductImages();
     }
