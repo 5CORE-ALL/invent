@@ -1690,6 +1690,11 @@
                     chStdAutoApplied = true;
                     chStdEnsureColumns();
                     chStdRepaintDiscColumns();
+                    // Rows rendered before the rules / Amazon map finished loading keep their zero discounts if a cell
+                    // was missed above, so re-render every rendered row once the data is ready.
+                    try {
+                        if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') table.redraw(true);
+                    } catch (eRedraw) { /* ignore */ }
                     // Rule and clearance are all loaded now: pages repaint their header counts.
                     try { $(document).trigger('chStd:settled'); } catch (e) { /* ignore */ }
                     if (!chStdOwnsSprice()) return;
