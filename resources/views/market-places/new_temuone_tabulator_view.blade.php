@@ -729,7 +729,7 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'modals'])
+    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'modals', 'channelPromoChannel' => 'newtemuone'])
     @include('partials.ebay-sprc-dil', [
         'ebaySprcDilPart' => 'modals',
         'ebaySprcDilChannel' => 'temu',

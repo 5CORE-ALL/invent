@@ -378,7 +378,7 @@
                         </div>
                         <div class="amz-sp-margin">
                             <div class="amz-sp-margin-head">
-                                <div class="amz-sp-margin-kicker">Projected with L30</div>
+                                <div class="amz-sp-margin-kicker">Projected with Amazon L30</div>
                                 <strong id="amz-sp-margin-pg">—</strong>
                                 <div class="amz-sp-margin-badges" id="amz-sp-margin-pg-sub"></div>
                             </div>

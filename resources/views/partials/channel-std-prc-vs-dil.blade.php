@@ -108,6 +108,44 @@
 @endif
 
 @if($channelStdPrcPart === 'modals' || $channelStdPrcPart === 'all')
+    @php
+        $channelStdPageName = match ($channelPromoChannel ?? '') {
+            'temu', 'newtemuone' => 'Temu 1',
+            'newtemutwo', 'temu2' => 'Temu 2',
+            'temu3' => 'Temu 3',
+            'ebay1' => 'eBay 1',
+            'ebay2' => 'eBay 2',
+            'ebay2op' => 'eBay 2 OP',
+            'ebay3' => 'eBay 3',
+            'macys', 'macy' => 'Macys',
+            'purchasing_power' => 'Purchasing Power',
+            'wayfair' => 'Wayfair',
+            'reverb' => 'Reverb',
+            'doba' => 'Doba',
+            'doba_withoutship' => 'Doba Pickup',
+            'aliexpress' => 'AliExpress',
+            'shein' => 'Shein',
+            'faire' => 'Faire',
+            'tiktok' => 'TikTok',
+            'tiktok2' => 'TikTok 2',
+            'fb_marketplace' => 'FB Marketplace',
+            'topdawg' => 'TopDawg',
+            'shopify_b2c' => 'Shopify B2C',
+            'shopify_b2b' => 'Shopify B2B',
+            'bestbuy' => 'Best Buy',
+            'newegg' => 'Newegg',
+            'walmart' => 'Walmart',
+            'pls' => 'PLS',
+            'depop' => 'Depop',
+            'vinted' => 'Vinted',
+            'instagram' => 'Instagram Shop',
+            'alibaba' => 'Alibaba',
+            'mercari_wship' => 'Mercari w Ship',
+            'mercari_woship' => 'Mercari Pickup',
+            '' => '',
+            default => ucwords(str_replace('_', ' ', (string) $channelPromoChannel)),
+        };
+    @endphp
     <div class="modal fade" id="chStdPrcModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
@@ -129,7 +167,7 @@
                         </div>
                         <div class="ch-sp-margin">
                             <div>
-                                <div class="small text-muted">Projected with L30</div>
+                                <div class="small text-muted">Projected with {{ $channelStdPageName !== '' ? $channelStdPageName.' ' : '' }}L30</div>
                                 <strong id="ch-sp-margin-pg">—</strong>
                                 <div class="ch-sp-margin-badges" id="ch-sp-margin-pg-sub"></div>
                             </div>

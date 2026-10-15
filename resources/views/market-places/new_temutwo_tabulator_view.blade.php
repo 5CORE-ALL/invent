@@ -675,7 +675,7 @@
             </div>
         </div>
     </div>
-    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'modals'])
+    @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'modals', 'channelPromoChannel' => 'newtemutwo'])
 
     <div class="modal fade" id="uploadPricingModal" tabindex="-1" aria-labelledby="uploadPricingModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
