@@ -168,7 +168,7 @@
                         @if(in_array(($channelPromoChannel ?? ''), ['doba', 'doba_withoutship'], true))
                         <div class="ch-sp-margin">
                             <div>
-                                <div class="small text-muted" title="Doba L30 units x the L30 average sold price, with today's margin, LP and ship. Every SKU with Doba sales is counted, including SKUs whose stock is now 0. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
+                                <div class="small text-muted" title="Actual Doba L30 orders (same totals as Doba daily sales): every order counts, including SKUs whose stock is now 0. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
                                 <strong id="ch-sp-margin-cur">—</strong>
                                 <div class="ch-sp-margin-badges" id="ch-sp-margin-cur-sub"></div>
                             </div>
@@ -760,6 +760,36 @@
          * "Current <page> L30": this page's actual sold units x the L30 average sold price, with today's
          * margin / LP / ship. Includes SKUs whose stock is now 0 (chStdRows() drops those) and ignores the draft rules.
          */
+        // Doba L30 totals straight from doba_daily_data (same numbers as /doba/daily-sales). Every order counts,
+        // including SKUs with 0 stock and SKUs that are no longer rows in this table.
+        let chStdCurrentServer = null;
+        let chStdCurrentServerLoading = false;
+        function chStdLoadCurrentServer() {
+            if (chStdCurrentServer || chStdCurrentServerLoading) return;
+            const ch = (typeof CHANNEL_PROMO_CHANNEL === 'string') ? CHANNEL_PROMO_CHANNEL : '';
+            if (ch !== 'doba' && ch !== 'doba_withoutship') return;
+            chStdCurrentServerLoading = true;
+            $.ajax({
+                url: ch === 'doba_withoutship' ? '/doba/summary-metrics-withoutship' : '/doba/summary-metrics',
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+            }).done(function(res) {
+                const x = res && res.success && res.data ? res.data : null;
+                if (!x) return;
+                chStdCurrentServer = {
+                    units: Number(x.total_quantity) || 0,
+                    sales: Number(x.total_sales) || 0,
+                    cogs: Number(x.total_cogs) || 0,
+                    gross: Number(x.total_pft) || 0,
+                };
+                if (typeof chStdRefresh === 'function') chStdRefresh();
+            }).always(function() { chStdCurrentServerLoading = false; });
+        }
+        function chStdCurrentServerBucket(adsPct) {
+            if (!chStdCurrentServer) return null;
+            const s = chStdCurrentServer;
+            return { gross: s.gross, net: s.gross - (s.sales * (Number(adsPct) || 0) / 100), sales: s.sales, cogs: s.cogs, units: s.units };
+        }
         function chStdCurrentSiteBucket(adsPct) {
             const b = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const noShip = chStdExcludesShip() || (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'doba_withoutship');
@@ -1082,7 +1112,8 @@
             $('#ch-sp-margin-pg').html(marginSalesHtml(pgB)).css('color', '#166534');
             $('#ch-sp-margin-pg-sub').html(marginBadgesHtml(pgB));
             if ($('#ch-sp-margin-cur').length) {
-                const curB = chStdCurrentSiteBucket(ads);
+                chStdLoadCurrentServer();
+                const curB = chStdCurrentServerBucket(ads) || chStdCurrentSiteBucket(ads);
                 $('#ch-sp-margin-cur').html(marginSalesHtml(curB)).css('color', '#166534');
                 $('#ch-sp-margin-cur-sub').html(marginBadgesHtml(curB));
             }
