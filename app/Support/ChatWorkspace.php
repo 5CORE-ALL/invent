@@ -774,6 +774,104 @@ class ChatWorkspace
         });
     }
 
+    /**
+     * Direct-message dots from the chat sidebar, counted per user.
+     *
+     * Red is a DM with unread messages (red dot). Yellow is a DM that still
+     * has visible messages and nothing unread (yellow dot). Same rules as
+     * unreadByChannel() and visibleCountsByChannel(), limited to live DMs.
+     *
+     * @param  list<int>  $userIds
+     * @return array<int, array{red: int, yellow: int}>
+     */
+    public static function dmDotCountsByUser(array $userIds): array
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        $out = [];
+        foreach ($userIds as $userId) {
+            $out[$userId] = ['red' => 0, 'yellow' => 0];
+        }
+        if ($userIds === [] || ! self::tablesReady()) {
+            return $out;
+        }
+
+        $hasArchives = Schema::hasTable('chat_message_archives');
+
+        $unreadQuery = DB::table('chat_channel_members as m')
+            ->join('chat_channels as c', function ($join) {
+                $join->on('c.id', '=', 'm.channel_id')
+                    ->where('c.type', '=', ChatChannel::TYPE_DM)
+                    ->where('c.is_archived', '=', 0);
+            })
+            ->join('chat_messages as msg', 'msg.channel_id', '=', 'm.channel_id')
+            ->whereIn('m.user_id', $userIds)
+            ->where(function ($q) {
+                $q->whereNull('m.last_read_message_id')
+                    ->orWhereColumn('msg.id', '>', 'm.last_read_message_id');
+            })
+            ->where(function ($q) {
+                $q->whereNull('msg.user_id')
+                    ->orWhereColumn('msg.user_id', '!=', 'm.user_id');
+            });
+        if ($hasArchives) {
+            $unreadQuery->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('chat_message_archives as cma')
+                    ->whereColumn('cma.message_id', 'msg.id')
+                    ->whereColumn('cma.user_id', 'm.user_id');
+            });
+        }
+        $unreadRows = $unreadQuery
+            ->groupBy('m.user_id', 'm.channel_id')
+            ->selectRaw('m.user_id, m.channel_id, COUNT(msg.id) as unread')
+            ->get();
+
+        $redChannels = [];
+        foreach ($unreadRows as $row) {
+            if ((int) $row->unread < 1) {
+                continue;
+            }
+            $redChannels[(int) $row->user_id][(int) $row->channel_id] = true;
+        }
+
+        $visibleQuery = DB::table('chat_channel_members as m')
+            ->join('chat_channels as c', function ($join) {
+                $join->on('c.id', '=', 'm.channel_id')
+                    ->where('c.type', '=', ChatChannel::TYPE_DM)
+                    ->where('c.is_archived', '=', 0);
+            })
+            ->join('chat_messages as msg', 'msg.channel_id', '=', 'm.channel_id')
+            ->whereIn('m.user_id', $userIds);
+        if ($hasArchives) {
+            $visibleQuery->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('chat_message_archives as cma')
+                    ->whereColumn('cma.message_id', 'msg.id')
+                    ->whereColumn('cma.user_id', 'm.user_id');
+            });
+        }
+        $visibleRows = $visibleQuery
+            ->groupBy('m.user_id', 'm.channel_id')
+            ->selectRaw('m.user_id, m.channel_id, COUNT(msg.id) as visible')
+            ->get();
+
+        foreach ($visibleRows as $row) {
+            $userId = (int) $row->user_id;
+            $channelId = (int) $row->channel_id;
+            if ((int) $row->visible < 1 || ! isset($out[$userId])) {
+                continue;
+            }
+            if (isset($redChannels[$userId][$channelId])) {
+                $out[$userId]['red']++;
+
+                continue;
+            }
+            $out[$userId]['yellow']++;
+        }
+
+        return $out;
+    }
+
     public static function forgetUnreadCache(int $userId): void
     {
         Cache::forget('chat_unread_total_'.$userId);

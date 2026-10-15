@@ -297,6 +297,23 @@
             color: #dc2626 !important;
             background-color: transparent !important;
         }
+        .task-summary-col-chat-red,
+        .task-summary-col-chat-yellow {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .task-summary-col-chat-red {
+            color: #e01e5a !important;
+        }
+        .task-summary-col-chat-yellow {
+            color: #b45309 !important;
+        }
+        .task-summary-col-chat-red.is-zero,
+        .task-summary-col-chat-yellow.is-zero {
+            color: #94a3b8 !important;
+            font-weight: 600;
+        }
         .task-summary-dar-cell {
             display: inline-flex;
             align-items: center;
@@ -1448,6 +1465,12 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — last 30 days hours from the in-app logger (Shobha and Mariya use Team Logger) as a % of 200" role="button" tabindex="0">
                                         ATT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
+                                    <th scope="col" class="task-summary-th-sort task-summary-col-chat-red" data-sort-key="chat_red" data-sort-type="number" title="Chat Red — direct chats with unread messages (red dot)" role="button" tabindex="0">
+                                        Chat Red <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort task-summary-col-chat-yellow" data-sort-key="chat_yellow" data-sort-type="number" title="Chat Yellow — direct chats that have messages and are fully read (yellow dot)" role="button" tabindex="0">
+                                        Chat Yellow <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Task Given — sort by tasks this member has assigned to others" role="button" tabindex="0">
                                         Task-G <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
@@ -1525,6 +1548,8 @@
                                         data-sort-org_level="{{ e($row['org_level'] ?? '') }}"
                                         data-sort-task="{{ (int) ($row['task'] ?? 0) }}"
                                         data-sort-l30_hrs="{{ (int) ($row['att_l30_pct'] ?? 0) }}"
+                                        data-sort-chat_red="{{ (int) ($row['chat_red'] ?? 0) }}"
+                                        data-sort-chat_yellow="{{ (int) ($row['chat_yellow'] ?? 0) }}"
                                         data-sort-assignor_task="{{ (int) ($row['assignor_task'] ?? 0) }}"
                                         data-sort-overdue="{{ (int) ($row['overdue'] ?? 0) }}"
                                         data-sort-dar_l30="{{ (int) ($row['dar_l30_pct'] ?? 0) }}"
@@ -1787,6 +1812,18 @@
                                             title="{{ $attHoursDisplay }}/{{ $attTarget }}">
                                             {{ $attPct }}%
                                         </td>
+                                        @php
+                                            $chatRed = (int) ($row['chat_red'] ?? 0);
+                                            $chatYellow = (int) ($row['chat_yellow'] ?? 0);
+                                        @endphp
+                                        <td class="task-summary-num task-summary-col-chat-red {{ $chatRed === 0 ? 'is-zero' : '' }}"
+                                            title="{{ $chatRed }} direct chat{{ $chatRed === 1 ? '' : 's' }} with unread messages">
+                                            {{ $chatRed }}
+                                        </td>
+                                        <td class="task-summary-num task-summary-col-chat-yellow {{ $chatYellow === 0 ? 'is-zero' : '' }}"
+                                            title="{{ $chatYellow }} direct chat{{ $chatYellow === 1 ? '' : 's' }} with the yellow dot (messages already read)">
+                                            {{ $chatYellow }}
+                                        </td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
                                         @php
@@ -1981,7 +2018,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="31" class="text-center text-muted py-4">
+                                        <td colspan="33" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -1992,7 +2029,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="31" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="33" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>

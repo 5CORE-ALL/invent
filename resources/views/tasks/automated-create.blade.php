@@ -3,6 +3,17 @@
 @section('css')
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <style>
+        .auto-task-mode-opt:has(input:checked) {
+            border-color: #667eea !important;
+            background: #eef0ff;
+            box-shadow: inset 0 0 0 1px #667eea;
+        }
+        #auto-task-mode-wrap.is-invalid {
+            border-color: #dc3545 !important;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
+        }
+    </style>
 @endsection
 
 @section('content')
@@ -107,16 +118,44 @@
                                     @endif
                                 </div>
                                 <div class="col-md-6 mb-2">
-                                    <label for="assignee_id" class="form-label fw-bold" style="font-size: 13px;">Assignee <span class="text-danger">*</span></label>
-                                    <select class="form-select form-select-sm select2 @error('assignee_id') is-invalid @enderror" 
-                                            id="assignee_id" name="assignee_id" required>
-                                        <option value="">Please Select</option>
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <label for="assignee_ids" class="form-label fw-bold mb-0" style="font-size: 13px;">Assignee(s) <span class="text-danger">*</span></label>
+                                        <button type="button" id="auto-assignee-select-all" class="btn btn-link btn-sm p-0" style="font-size: 12px; font-weight: 600; text-decoration: none;">Select all</button>
+                                    </div>
+                                    <select class="form-select form-select-sm select2-assignees @error('assignee_ids') is-invalid @enderror"
+                                            id="assignee_ids" name="assignee_ids[]" multiple required>
                                         @foreach($users as $user)
-                                            <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>
+                                            <option value="{{ $user->id }}" {{ collect(old('assignee_ids', []))->contains($user->id) ? 'selected' : '' }}>
                                                 {{ $user->name }}
                                             </option>
                                         @endforeach
                                     </select>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-2">
+                                    <div id="auto-task-mode-wrap" class="border rounded p-2 d-none" style="background:#f7f8ff; border-color:#d6d9f5 !important;" role="group" aria-label="Joint or split task">
+                                        <div style="font-size:12px; font-weight:600; margin-bottom:6px;">More than one assignee. Is this task joint or split? <span class="text-danger">*</span></div>
+                                        <div class="d-flex gap-2">
+                                            <label class="auto-task-mode-opt flex-fill border rounded px-2 py-1 mb-0" style="cursor:pointer; font-size:12px;">
+                                                <input type="radio" name="auto_task_mode" value="joint" class="me-1">
+                                                <strong>Joint</strong> <span class="text-muted">— one shared task</span>
+                                            </label>
+                                            <label class="auto-task-mode-opt flex-fill border rounded px-2 py-1 mb-0" style="cursor:pointer; font-size:12px;">
+                                                <input type="radio" name="auto_task_mode" value="split" class="me-1">
+                                                <strong>Split</strong> <span class="text-muted">— each gets a copy</span>
+                                            </label>
+                                        </div>
+                                        <input type="hidden" name="split_tasks" id="auto_split_tasks" value="1" disabled>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-2 d-flex align-items-end">
+                                    <label for="auto_create_for_all_channels" class="d-flex align-items-center gap-2 mb-0 border rounded px-2 w-100" style="min-height: 38px; cursor: pointer;">
+                                        <input type="checkbox" class="form-check-input m-0" id="auto_create_for_all_channels" name="create_for_all_channels" value="1" style="width: 18px; height: 18px;">
+                                        <i class="mdi mdi-storefront-outline"></i>
+                                        <span style="font-size: 13px;">Create for every active channel <span class="text-muted">(Group = channel name)</span></span>
+                                    </label>
                                 </div>
                             </div>
 
@@ -223,6 +262,60 @@
                 theme: 'bootstrap-5',
                 placeholder: 'Please Select'
             });
+
+            var $assignees = $('#assignee_ids');
+            $assignees.select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Select assignees',
+                closeOnSelect: false,
+                width: '100%'
+            });
+
+            function syncAutoTaskMode() {
+                var count = ($assignees.val() || []).length;
+                var $wrap = $('#auto-task-mode-wrap');
+                if (count > 1) {
+                    $wrap.removeClass('d-none');
+                    var mode = $wrap.find('input[name="auto_task_mode"]:checked').val();
+                    $('#auto_split_tasks').prop('disabled', mode !== 'split');
+                } else {
+                    $wrap.addClass('d-none').removeClass('is-invalid');
+                    $wrap.find('input[name="auto_task_mode"]').prop('checked', false);
+                    $('#auto_split_tasks').prop('disabled', true);
+                }
+            }
+
+            $assignees.on('change', syncAutoTaskMode);
+
+            $('#auto-task-mode-wrap').on('change', 'input[name="auto_task_mode"]', function () {
+                $('#auto-task-mode-wrap').removeClass('is-invalid');
+                $('#auto_split_tasks').prop('disabled', $(this).val() !== 'split');
+            });
+
+            $('#auto-assignee-select-all').on('click', function () {
+                var all = $assignees.find('option').map(function () { return this.value; }).get();
+                $assignees.val(all).trigger('change');
+            });
+
+            // When creating for every channel, Group is set per-channel on the server.
+            $('#auto_create_for_all_channels').on('change', function () {
+                var on = $(this).is(':checked');
+                $('#group').prop('disabled', on);
+                $('#group').attr('placeholder', on ? 'Group = channel name' : 'Enter Group');
+            });
+
+            // Require a Joint/Split choice when more than one assignee is selected.
+            $('form').on('submit', function (e) {
+                var count = ($assignees.val() || []).length;
+                if (count > 1 && !$('input[name="auto_task_mode"]:checked').length) {
+                    e.preventDefault();
+                    alert('More than one assignee is selected. Choose whether this task is Joint or Split.');
+                    $('#auto-task-mode-wrap').addClass('is-invalid');
+                    return false;
+                }
+            });
+
+            syncAutoTaskMode();
 
             var selectedDays = [];
             var selectedDates = [];

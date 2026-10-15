@@ -222,6 +222,29 @@
                 </label>
             </div>
 
+            <div style="margin-bottom: 9px;">
+                <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Frequency <span style="font-weight: 400; color: #6c757d;">(pick one or more)</span></label>
+                <div class="quick-task-freq d-flex gap-1 flex-wrap" role="group" aria-label="Task frequency">
+                    <label class="quick-task-freq-opt">
+                        <input type="checkbox" name="task_frequency[]" value="one_time" checked>
+                        <span>One Time</span>
+                    </label>
+                    <label class="quick-task-freq-opt">
+                        <input type="checkbox" name="task_frequency[]" value="daily">
+                        <span>Daily</span>
+                    </label>
+                    <label class="quick-task-freq-opt">
+                        <input type="checkbox" name="task_frequency[]" value="weekly">
+                        <span>Weekly</span>
+                    </label>
+                    <label class="quick-task-freq-opt">
+                        <input type="checkbox" name="task_frequency[]" value="monthly">
+                        <span>Monthly</span>
+                    </label>
+                </div>
+                <small class="text-muted quick-task-freq-hint d-none" style="font-size: 12px; display: block; margin-top: 3px;">Recurring tasks are scheduled and generated automatically.</small>
+            </div>
+
             <!-- Hidden Fields with Defaults -->
             <input type="hidden" name="priority" value="normal">
             <input type="hidden" name="tid" value="{{ now()->format('Y-m-d\TH:i') }}">
@@ -524,6 +547,32 @@
             font-weight: 500;
             color: #6c757d;
         }
+        .quick-task-freq-opt {
+            flex: 1 1 auto;
+            min-width: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            margin: 0;
+            padding: 7px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            background: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.1;
+            text-align: center;
+        }
+        .quick-task-freq-opt:has(input:checked) {
+            border-color: #667eea;
+            background: #eef0ff;
+            box-shadow: inset 0 0 0 1px #667eea;
+        }
+        .quick-task-freq-opt input {
+            margin: 0;
+        }
         
         @media (max-width: 991.98px) {
             .floating-task-btn {
@@ -582,6 +631,10 @@
             }
             .quick-task-mode-opt-hint {
                 font-size: 13px !important;
+            }
+            .quick-task-freq-opt {
+                font-size: 16px !important;
+                padding: 11px 10px !important;
             }
             .quick-assignee-ms-panel {
                 max-height: 420px;
@@ -658,6 +711,9 @@
                 if (form) form.reset();
                 if (typeof window.resetQuickTaskTitles === 'function') {
                     window.resetQuickTaskTitles();
+                }
+                if (typeof window.resetQuickTaskFrequency === 'function') {
+                    window.resetQuickTaskFrequency();
                 }
                 if (typeof window.resetQuickTaskAssignees === 'function') {
                     window.resetQuickTaskAssignees();
@@ -1012,6 +1068,27 @@
                 }
             });
 
+            function syncQuickTaskFreqHint() {
+                var hasRecurring = $('input[name="task_frequency[]"]:checked')
+                    .filter(function () { return $(this).val() !== 'one_time'; })
+                    .length > 0;
+                $('.quick-task-freq-hint').toggleClass('d-none', !hasRecurring);
+            }
+
+            $(document).on('change', 'input[name="task_frequency[]"]', function () {
+                // Keep at least one option selected (default back to One Time).
+                if ($('input[name="task_frequency[]"]:checked').length === 0) {
+                    $('input[name="task_frequency[]"][value="one_time"]').prop('checked', true);
+                }
+                syncQuickTaskFreqHint();
+            });
+
+            window.resetQuickTaskFrequency = function () {
+                $('input[name="task_frequency[]"]').prop('checked', false);
+                $('input[name="task_frequency[]"][value="one_time"]').prop('checked', true);
+                syncQuickTaskFreqHint();
+            };
+
             function quickTaskTitles() {
                 var titles = [];
                 $('#quick-task-title-list .quick-task-title-input').each(function () {
@@ -1093,6 +1170,9 @@
                 form.reset();
                 if (typeof window.resetQuickTaskTitles === 'function') {
                     window.resetQuickTaskTitles();
+                }
+                if (typeof window.resetQuickTaskFrequency === 'function') {
+                    window.resetQuickTaskFrequency();
                 }
                 $('input[name="priority"]').val('normal');
                 var now = new Date();

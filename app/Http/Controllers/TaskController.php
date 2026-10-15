@@ -39,6 +39,7 @@ use App\Policies\TaskPolicy;
 use App\Services\TaskSheetImportService;
 use App\Services\TaskWhatsAppNotificationService;
 use App\Support\AttL30Metrics;
+use App\Support\ChatWorkspace;
 use App\Support\AutomatedTaskAccess;
 use App\Support\AutomatedTaskChecklistIds;
 use App\Support\AutomatedTaskSchedule;
@@ -644,6 +645,7 @@ class TaskController extends Controller
         }
 
         $attHoursByUser = $this->getTaskSummaryAttendanceHours($members->pluck('id')->all());
+        $chatDotsByUser = ChatWorkspace::dmDotCountsByUser($members->pluck('id')->all());
         $yTimeByUser = $this->yesterdayActiveSecondsByUser(
             $members->pluck('id')->all(),
             $this->yesterdayDoneWindow()['date']
@@ -767,6 +769,8 @@ class TaskController extends Controller
                 'att_l30_target' => $attMetrics['att_l30_target'],
                 'att_l30_pct' => $attMetrics['att_l30_pct'],
                 'att_l30_band' => $attMetrics['att_l30_band'],
+                'chat_red' => (int) ($chatDotsByUser[(int) $member->id]['red'] ?? 0),
+                'chat_yellow' => (int) ($chatDotsByUser[(int) $member->id]['yellow'] ?? 0),
                 'assignor_task' => $counts['assignor_task'],
                 'overdue' => $counts['overdue'],
                 'dar_l30_count' => $darMetrics['dar_l30_count'],
@@ -2757,8 +2761,61 @@ class TaskController extends Controller
         $message = 'Task created successfully!';
         $splitIntoCopies = $request->boolean('split_tasks') && count($assigneeIds) > 1;
 
+        // Frequency is multi-select: the user may pick any combination of
+        // One Time + Daily/Weekly/Monthly at once.
+        $frequencies = collect((array) $request->input('task_frequency', ['one_time']))
+            ->map(fn ($f) => strtolower(trim((string) $f)))
+            ->filter(fn ($f) => $f !== '')
+            ->unique()
+            ->values()
+            ->all();
+        if ($frequencies === []) {
+            $frequencies = ['one_time'];
+        }
+        $recurringFrequencies = array_values(array_intersect(['daily', 'weekly', 'monthly'], $frequencies));
+        $includeOneTime = in_array('one_time', $frequencies, true) || $recurringFrequencies === [];
+
+        $recurringMessage = '';
+        if ($recurringFrequencies !== []) {
+            $recurringTotal = 0;
+            $perFreq = [];
+            foreach ($recurringFrequencies as $freq) {
+                $freqCount = $this->insertRecurringTemplates(
+                    $validated,
+                    $titleList,
+                    $assigneeIds,
+                    $assigneeEmail,
+                    $assignorEmail,
+                    $splitIntoCopies,
+                    $freq
+                );
+                $recurringTotal += $freqCount;
+                $perFreq[] = $freqCount.' '.$freq;
+            }
+            $recurringMessage = 'Scheduled '.$recurringTotal.' recurring task'.($recurringTotal === 1 ? '' : 's')
+                .' ('.implode(', ', $perFreq).'). They will be generated automatically.';
+
+            // Only recurring frequencies were chosen: nothing to add to the tasks table.
+            if (! $includeOneTime) {
+                if ($request->boolean('quick_create_more')) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Task generated successfully! '.$recurringMessage,
+                    ]);
+                }
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => $recurringMessage,
+                    ]);
+                }
+
+                return redirect()->back()->with('success', $recurringMessage);
+            }
+        }
+
         if ($request->boolean('create_for_all_channels')) {
-            return $this->storeTasksForEveryChannel($request, $taskData, $titleList);
+            return $this->storeTasksForEveryChannel($request, $taskData, $titleList, $recurringMessage);
         }
 
         if (count($titleList) > 1) {
@@ -2782,7 +2839,7 @@ class TaskController extends Controller
                             $copy = $row;
                             $copy['assign_to'] = $person->email;
                             $copy['split_tasks'] = 1;
-                            $createdTask = Task::create($copy);
+                            $createdTask = $this->createManualTask($copy);
                             if (! $linkedChat) {
                                 $this->linkChatMessageToTask($request, $createdTask);
                                 $linkedChat = true;
@@ -2792,7 +2849,7 @@ class TaskController extends Controller
                         continue;
                     }
 
-                    $createdTask = Task::create($row);
+                    $createdTask = $this->createManualTask($row);
                     if (! $linkedChat) {
                         $this->linkChatMessageToTask($request, $createdTask);
                         $linkedChat = true;
@@ -2832,7 +2889,7 @@ class TaskController extends Controller
                 $copy = $taskData;
                 $copy['assign_to'] = $person->email;
                 $copy['split_tasks'] = 1;
-                $createdTask = Task::create($copy);
+                $createdTask = $this->createManualTask($copy);
                 if (! $linkedChat) {
                     $this->linkChatMessageToTask($request, $createdTask);
                     $linkedChat = true;
@@ -2857,7 +2914,7 @@ class TaskController extends Controller
                 $message .= ' WhatsApp notification sent to '.$sent.' assignee'.($sent === 1 ? '' : 's').'.';
             }
         } else {
-            $task = Task::create($taskData);
+            $task = $this->createManualTask($taskData);
             $this->linkChatMessageToTask($request, $task);
 
             if ($assigneeEmail) {
@@ -2878,6 +2935,10 @@ class TaskController extends Controller
                     $flash = 'warning';
                 }
             }
+        }
+
+        if ($recurringMessage !== '') {
+            $message = rtrim($message).' '.$recurringMessage;
         }
 
         if ($request->boolean('quick_create_more')) {
@@ -2905,6 +2966,154 @@ class TaskController extends Controller
     }
 
     /**
+     * Restored dumps often drop AUTO_INCREMENT on tasks.id (SQLSTATE 1364).
+     */
+    private ?bool $tasksIdAutoIncrements = null;
+
+    private ?int $nextManualTaskId = null;
+
+    private function createManualTask(array $data): Task
+    {
+        $task = new Task($data);
+        if (! $this->tasksTableIdAutoIncrements()) {
+            $task->incrementing = false;
+            $task->id = $this->allocateManualTaskId();
+        }
+        $task->save();
+
+        return $task;
+    }
+
+    private function tasksTableIdAutoIncrements(): bool
+    {
+        if ($this->tasksIdAutoIncrements !== null) {
+            return $this->tasksIdAutoIncrements;
+        }
+
+        try {
+            $col = DB::selectOne("SHOW COLUMNS FROM `tasks` WHERE Field = 'id'");
+            $extra = strtolower((string) ($col->Extra ?? ''));
+            $this->tasksIdAutoIncrements = str_contains($extra, 'auto_increment');
+        } catch (\Throwable) {
+            $this->tasksIdAutoIncrements = true;
+        }
+
+        return $this->tasksIdAutoIncrements;
+    }
+
+    private function allocateManualTaskId(): int
+    {
+        if ($this->nextManualTaskId === null) {
+            $max = (int) (DB::table('tasks')->max('id') ?? 0);
+            if (Schema::hasTable('deleted_tasks')) {
+                $max = max($max, (int) (DB::table('deleted_tasks')->max('id') ?? 0));
+            }
+            $this->nextManualTaskId = $max + 1;
+        }
+
+        return $this->nextManualTaskId++;
+    }
+
+    /**
+     * Recurring tasks become automate_tasks templates; the scheduler creates the
+     * actual task instances. One template per title (and per assignee when split).
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  list<string>  $titleList
+     * @param  list<int|string>  $assigneeIds
+     */
+    /**
+     * Create recurring automate_tasks templates for a single frequency.
+     *
+     * @return int Number of templates created.
+     */
+    private function insertRecurringTemplates(
+        array $validated,
+        array $titleList,
+        array $assigneeIds,
+        ?string $assigneeEmail,
+        string $assignorEmail,
+        bool $splitIntoCopies,
+        string $frequency
+    ): int {
+        $priority = ucfirst((string) ($validated['priority'] ?? 'normal'));
+        $scheduleTime = $frequency === 'daily'
+            ? TaskBusinessTime::dailyGenerateTime()
+            : '12:00';
+        $scheduleDays = '';
+        if ($frequency === 'weekly') {
+            $scheduleDays = AutomatedTaskSchedule::resolveWeeklyDays(null);
+        } elseif ($frequency === 'monthly') {
+            $scheduleDays = '1';
+        }
+
+        $startDate = $validated['tid'] ?? now();
+
+        $base = [
+            'group' => $validated['group'] ?? null,
+            'priority' => $priority,
+            'description' => $validated['description'] ?? '',
+            'assignor' => $assignorEmail,
+            'eta_time' => $validated['etc_minutes'] ?? 10,
+            'start_date' => $startDate,
+            'due_date' => $startDate,
+            'schedule_type' => $frequency,
+            'schedule_time' => $scheduleTime,
+            'schedule_days' => $scheduleDays,
+            'status' => 'Todo',
+            'link1' => $validated['l1'] ?? '',
+            'link2' => $validated['l2'] ?? '',
+            'link3' => $validated['training_link'] ?? '',
+            'link4' => $validated['video_link'] ?? '',
+            'link5' => $validated['form_link'] ?? '',
+            'link6' => $validated['form_report_link'] ?? '',
+            'link7' => $validated['checklist_link'] ?? '',
+            'link8' => $validated['pl'] ?? '',
+            'link9' => $validated['process'] ?? '',
+            'workspace' => 0,
+            'order' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+
+        $byId = $splitIntoCopies
+            ? User::whereIn('id', $assigneeIds)->get()->keyBy('id')
+            : collect();
+
+        $count = DB::transaction(function () use ($base, $titleList, $splitIntoCopies, $assigneeIds, $byId, $assigneeEmail) {
+            $count = 0;
+            foreach ($titleList as $title) {
+                if ($splitIntoCopies) {
+                    foreach ($assigneeIds as $assigneeId) {
+                        $person = $byId->get((int) $assigneeId);
+                        if (! $person || ! $person->email) {
+                            continue;
+                        }
+                        $row = $base;
+                        $row['title'] = $title;
+                        $row['assign_to'] = $person->email;
+                        $row['split_tasks'] = 1;
+                        DB::table('automate_tasks')->insert($row);
+                        $count++;
+                    }
+                    continue;
+                }
+
+                $row = $base;
+                $row['title'] = $title;
+                $row['assign_to'] = $assigneeEmail;
+                $row['split_tasks'] = 0;
+                DB::table('automate_tasks')->insert($row);
+                $count++;
+            }
+
+            return $count;
+        });
+
+        return $count;
+    }
+
+    /**
      * @return list<string>
      */
     private function requestedTaskTitles(Request $request, string $fallback): array
@@ -2929,7 +3138,7 @@ class TaskController extends Controller
      *
      * @param  list<string>  $titleList
      */
-    private function storeTasksForEveryChannel(Request $request, array $taskData, array $titleList): JsonResponse
+    private function storeTasksForEveryChannel(Request $request, array $taskData, array $titleList, string $recurringMessage = ''): JsonResponse
     {
         $channelNames = ChannelMaster::query()
             ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
@@ -2957,7 +3166,7 @@ class TaskController extends Controller
                     $copy['title'] = $title;
                     $copy['group'] = mb_substr($channelName, 0, 255);
                     $copy['split_tasks'] = 0;
-                    $createdTask = Task::create($copy);
+                    $createdTask = $this->createManualTask($copy);
                     if (! $linkedChat) {
                         $this->linkChatMessageToTask($request, $createdTask);
                         $linkedChat = true;
@@ -2990,6 +3199,10 @@ class TaskController extends Controller
                 $message .= ' WhatsApp send failed. Check logs.';
                 $flash = 'warning';
             }
+        }
+
+        if ($recurringMessage !== '') {
+            $message = rtrim($message).' '.$recurringMessage;
         }
 
         return response()->json([
@@ -5133,7 +5346,9 @@ class TaskController extends Controller
             'group' => 'nullable|string',
             'priority' => 'nullable|in:Low,Normal,High,Urgent',
             'assignor_id' => 'nullable|exists:users,id',
-            'assignee_id' => 'required|exists:users,id', // Required so auto-generated tasks are always assigned to someone
+            'assignee_id' => 'required_without:assignee_ids|nullable|exists:users,id',
+            'assignee_ids' => 'required_without:assignee_id|nullable|array|min:1',
+            'assignee_ids.*' => 'exists:users,id',
             'etc_minutes' => 'nullable|integer',
             'tid' => 'nullable|date',
             'schedule_type' => 'required|in:daily,weekly,monthly',
@@ -5147,6 +5362,10 @@ class TaskController extends Controller
             'form_report_link' => 'nullable|string',
             'checklist_link' => 'nullable|string',
             'description' => 'nullable|string',
+        ], [
+            'assignee_id.required_without' => 'Please select at least one assignee.',
+            'assignee_ids.required_without' => 'Please select at least one assignee.',
+            'assignee_ids.min' => 'Please select at least one assignee.',
         ]);
         
         // Set default priority to Normal if not provided
@@ -5165,23 +5384,63 @@ class TaskController extends Controller
         $assignorEmail = $isAdmin && $request->has('assignor_id') 
             ? User::find($validated['assignor_id'])->email ?? $user->email
             : $user->email;
-        
-        $assigneeEmail = $request->has('assignee_id') && $validated['assignee_id']
-            ? User::find($validated['assignee_id'])->email ?? null
-            : null;
-        
-        // Insert into automate_tasks table (ONLY fields that exist in this table)
-        $automateTaskId = \DB::table('automate_tasks')->insertGetId([
+
+        // Resolve assignee emails (multi-assignee aware, with single-assignee fallback).
+        $assigneeIds = $request->input('assignee_ids', []);
+        if (! is_array($assigneeIds)) {
+            $assigneeIds = [];
+        }
+        $assigneeIds = array_values(array_filter(array_map('intval', $assigneeIds)));
+        if ($assigneeIds === [] && ! empty($validated['assignee_id'])) {
+            $assigneeIds = [(int) $validated['assignee_id']];
+        }
+
+        $usersById = User::whereIn('id', $assigneeIds)->get()->keyBy('id');
+        $assigneeEmails = [];
+        foreach ($assigneeIds as $id) {
+            $email = $usersById->get($id)->email ?? null;
+            if ($email) {
+                $assigneeEmails[] = $email;
+            }
+        }
+
+        $splitIntoCopies = $request->has('split_tasks') && count($assigneeEmails) > 1;
+
+        // "Joint" keeps one template with all emails; "Split" makes one per assignee.
+        $assignToList = $splitIntoCopies
+            ? array_map(fn ($email) => [$email], $assigneeEmails)
+            : [[implode(', ', $assigneeEmails)]];
+        $assignToList = array_map(fn ($emails) => implode(', ', $emails), $assignToList);
+
+        // Channel option: one template per active channel, Group = channel name.
+        $groups = [$validated['group'] ?? null];
+        $forAllChannels = $request->boolean('create_for_all_channels');
+        if ($forAllChannels) {
+            $channelNames = ChannelMaster::query()
+                ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+                ->orderBy('id')
+                ->pluck('channel')
+                ->map(fn ($name) => trim((string) $name))
+                ->filter(fn ($name) => $name !== '')
+                ->unique(fn ($name) => mb_strtolower($name))
+                ->values()
+                ->all();
+
+            if ($channelNames === []) {
+                return redirect()->back()->with('error', 'No active channels found.')->withInput();
+            }
+            $groups = array_map(fn ($name) => mb_substr($name, 0, 255), $channelNames);
+        }
+
+        $baseTemplate = [
             'title' => $validated['title'],
-            'group' => $validated['group'],
             'priority' => $validated['priority'],
             'description' => $validated['description'] ?? '',
             'assignor' => $assignorEmail,
-            'assign_to' => $assigneeEmail,
             'eta_time' => $validated['etc_minutes'] ?? 10,
             'start_date' => $validated['tid'] ?? now(),
             'due_date' => $validated['tid'] ?? now(),
-            'split_tasks' => $request->has('split_tasks') ? 1 : 0,
+            'split_tasks' => $splitIntoCopies ? 1 : 0,
             'schedule_type' => $validated['schedule_type'],
             'schedule_time' => $validated['schedule_time'],
             'schedule_days' => $validated['schedule_days'] ?? '',
@@ -5197,7 +5456,22 @@ class TaskController extends Controller
             'order' => 0,
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ];
+
+        $createdCount = DB::transaction(function () use ($groups, $assignToList, $baseTemplate) {
+            $count = 0;
+            foreach ($groups as $group) {
+                foreach ($assignToList as $assignTo) {
+                    $row = $baseTemplate;
+                    $row['group'] = $group;
+                    $row['assign_to'] = $assignTo !== '' ? $assignTo : null;
+                    \DB::table('automate_tasks')->insert($row);
+                    $count++;
+                }
+            }
+
+            return $count;
+        });
 
         // Note: Task instances will be created automatically by the scheduler when it's time to execute
         // No immediate insert into tasks table
@@ -5208,7 +5482,9 @@ class TaskController extends Controller
         }
         $scheduleInfo .= ' at ' . ($validated['schedule_time'] ?? 'scheduled time');
 
-        $successMessage = 'Automated task scheduled! Will execute: ' . $scheduleInfo;
+        $successMessage = $createdCount > 1
+            ? 'Scheduled '.$createdCount.' automated tasks! Will execute: '.$scheduleInfo
+            : 'Automated task scheduled! Will execute: ' . $scheduleInfo;
         if ($request->input('after_create') === 'another') {
             return redirect()->route('tasks.automatedCreate')->with('success', $successMessage);
         }
