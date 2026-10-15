@@ -48,8 +48,6 @@
         #shopifyAplusModal .dm-aplus-preview table { max-width:100%; border-collapse:collapse; }
         #shopifyAplusModal .dm-aplus-preview td, #shopifyAplusModal .dm-aplus-preview th { border:1px solid #e2e8f0; padding:4px 6px; }
         #shopifyAplusModal .dm-aplus-preview iframe { max-width:100%; }
-        #shopifyAplusModal .aplus-gallery { display:flex; flex-wrap:wrap; gap:6px; }
-        #shopifyAplusModal .aplus-gallery img { width:72px; height:72px; object-fit:cover; border-radius:6px; border:1px solid #e2e8f0; background:#fff; }
         #shopifyAplusModal .aplus-meta { font-size:11px; color:#64748b; }
         #shopifyAplusModal .aplus-source { max-height:200px; overflow:auto; font-size:11px; white-space:pre-wrap; word-break:break-all; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:.6rem; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
@@ -278,10 +276,6 @@
                             </div>
                             <div class="dm-aplus-preview" id="aplusPreview"></div>
                             <pre class="aplus-source mb-0" id="aplusSource" style="display:none;"></pre>
-                        </div>
-                        <div class="dm-modal-section mb-0" id="aplusGalleryWrap" style="display:none;">
-                            <div class="dm-modal-section-title"><i class="fas fa-images me-1"></i>Product images (<span id="aplusImageCount">0</span>)</div>
-                            <div class="aplus-gallery" id="aplusGallery"></div>
                         </div>
                     </div>
                 </div>
@@ -860,7 +854,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAplusData(data, status) {
         data = data || {};
         const html = String(data.html || '');
-        const images = Array.isArray(data.images) ? data.images : [];
         aplusCurrentHtml = html;
         const errEl = document.getElementById('aplusError');
         const badge = document.getElementById('aplusStatusBadge');
@@ -887,20 +880,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const metaParts = [];
         if (data.fetched_at) metaParts.push('Fetched: ' + data.fetched_at);
         if (has) metaParts.push((data.chars || html.length) + ' chars');
-        if (images.length) metaParts.push(images.length + ' image(s)');
         meta.textContent = metaParts.join(' · ');
 
         document.getElementById('aplusLoading').style.display = 'none';
         document.getElementById('aplusEmpty').style.display = has ? 'none' : '';
         document.getElementById('aplusContentWrap').style.display = has ? '' : 'none';
         if (has) {
-            document.getElementById('aplusPreview').innerHTML = sanitizeAplusHtml(html) || '<em class="text-muted">Description body is empty; see images below.</em>';
+            document.getElementById('aplusPreview').innerHTML = sanitizeAplusHtml(html) || '<em class="text-muted">Description body is empty.</em>';
             document.getElementById('aplusSource').textContent = html;
-            const galleryWrap = document.getElementById('aplusGalleryWrap');
-            const gallery = document.getElementById('aplusGallery');
-            galleryWrap.style.display = images.length ? '' : 'none';
-            document.getElementById('aplusImageCount').textContent = String(images.length);
-            gallery.innerHTML = images.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener" title="${esc(u)}"><img src="${esc(u)}" alt="" loading="lazy"></a>`).join('');
             setAplusView('rendered');
         }
     }
