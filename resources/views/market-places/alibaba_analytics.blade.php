@@ -740,6 +740,14 @@
                             headerTooltip: 'Units from /alibaba/daily-sales, last 30 Pacific days'
                         },
                         {
+                            title: 'STD Price', field: 'STANDARD_PRICE', hozAlign: 'center', width: 85, sorter: 'number',
+                            headerTooltip: 'Amazon STANDARD_PRICE for this exact SKU (same as /doba-tabulator STD Price).',
+                            formatter: function (cell) {
+                                const v = parseFloat(cell.getValue()) || 0;
+                                return v > 0 ? '$' + v.toFixed(2) : '';
+                            }
+                        },
+                        {
                             title: 'Price', field: 'price', hozAlign: 'center', width: 80, sorter: 'number',
                             headerTooltip: 'Alibaba API SKU price',
                             formatter: function (cell) {
