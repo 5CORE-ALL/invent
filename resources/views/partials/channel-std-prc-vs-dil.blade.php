@@ -168,7 +168,7 @@
                         @if(in_array(($channelPromoChannel ?? ''), ['doba', 'doba_withoutship'], true))
                         <div class="ch-sp-margin">
                             <div>
-                                <div class="small text-muted" title="Doba L30 units x L30 average sold price, at the current margin, LP and ship. Counts every SKU with Doba sales, including SKUs whose stock is now 0, plus Doba orders that have no row in this table. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
+                                <div class="small text-muted" title="Doba L30 units x the listed Doba price (same basis as the Sales badge), at the current margin, LP and ship. Counts every SKU with Doba sales, including SKUs whose stock is now 0. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
                                 <strong id="ch-sp-margin-cur">—</strong>
                                 <div class="ch-sp-margin-badges" id="ch-sp-margin-cur-sub"></div>
                             </div>
@@ -756,55 +756,16 @@
             if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { take(d); });
             return out;
         }
-        /**
-         * "Current <page> L30": this page's actual sold units x the L30 average sold price, with today's
-         * margin / LP / ship. Includes SKUs whose stock is now 0 (chStdRows() drops those) and ignores the draft rules.
-         */
-        // Doba L30 totals from doba_daily_data (same numbers as /doba/daily-sales), used only to find orders that
-        // have no row in this table (see chStdAddUnmatchedSales).
-        let chStdCurrentServer = null;
-        let chStdCurrentServerLoading = false;
-        function chStdLoadCurrentServer() {
-            if (chStdCurrentServer || chStdCurrentServerLoading) return;
-            const ch = (typeof CHANNEL_PROMO_CHANNEL === 'string') ? CHANNEL_PROMO_CHANNEL : '';
-            if (ch !== 'doba' && ch !== 'doba_withoutship') return;
-            chStdCurrentServerLoading = true;
-            $.ajax({
-                url: ch === 'doba_withoutship' ? '/doba/summary-metrics-withoutship' : '/doba/summary-metrics',
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-            }).done(function(res) {
-                const x = res && res.success && res.data ? res.data : null;
-                if (!x) return;
-                chStdCurrentServer = {
-                    units: Number(x.total_quantity) || 0,
-                    sales: Number(x.total_sales) || 0,
-                    cogs: Number(x.total_cogs) || 0,
-                    gross: Number(x.total_pft) || 0,
-                };
-                if (typeof chStdRefresh === 'function') chStdRefresh();
-            }).always(function() { chStdCurrentServerLoading = false; });
+        /** Price a SKU is listed at on this page (same as the page's Sales badge: units x listed price). */
+        function chStdListedPrice(d) {
+            let p = (typeof chPromoPrice === 'function') ? (Number(chPromoPrice(d)) || 0) : 0;
+            if (!(p > 0)) p = Number(d && d.l30_avg_price) || 0;
+            return p > 0 ? p : 0;
         }
         /**
-         * Doba orders whose SKU is not a row in this table (e.g. a sold-out SKU removed from the product master)
-         * never reach the row sum above. Add them back as: server L30 totals minus what the rows already hold,
-         * priced at the rows' own average margin and COGS ratio (no LP / ship is known for them).
+         * "Current <page> L30": this page's sold units x the price it is listed at (same basis as the Sales badge on the
+         * page), with today's margin / LP / ship. Includes SKUs whose stock is now 0 and ignores the draft rules.
          */
-        function chStdAddUnmatchedSales(b, adsPct) {
-            const s = chStdCurrentServer;
-            if (!s || !(b.sales > 0)) return b;
-            const extraUnits = s.units - b.units;
-            const extraSales = s.sales - b.sales;
-            if (!(extraUnits >= 1) || !(extraSales > 1)) return b;
-            const k = extraSales / b.sales;
-            const grossAdd = b.gross * k;
-            b.gross += grossAdd;
-            b.net += grossAdd - (extraSales * (Number(adsPct) || 0) / 100);
-            b.cogs += b.cogs * k;
-            b.sales += extraSales;
-            b.units += extraUnits;
-            return b;
-        }
         function chStdCurrentSiteBucket(adsPct) {
             const b = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const noShip = chStdExcludesShip() || (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'doba_withoutship');
@@ -813,8 +774,7 @@
                 if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return;
                 const units = chStdSiteL30(d);
                 if (!(units > 0)) return;
-                let price = Number(d.l30_avg_price);
-                if (!(isFinite(price) && price > 0)) price = (typeof chPromoPrice === 'function') ? (Number(chPromoPrice(d)) || 0) : 0;
+                const price = chStdListedPrice(d);
                 if (!(price > 0)) return;
                 const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                 const ship = noShip ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
@@ -1007,6 +967,18 @@
                     l30.gross += gross * units; l30.net += net * units; l30.sales += sprice * units; l30.cogs += lp * units; l30.units += units;
                     pgB.gross += gross * pgUnits; pgB.net += net * pgUnits; pgB.sales += sprice * pgUnits; pgB.cogs += lp * pgUnits; pgB.units += pgUnits;
                     invB.gross += gross * inv; invB.net += net * inv; invB.sales += sprice * inv; invB.cogs += lp * inv; invB.units += inv;
+                } else {
+                    // No Std Prc: nothing to discount, but its sold units still count. Project at the listed price so the
+                    // units match the page's Sales badge.
+                    const pgUnits = chStdSiteL30(d);
+                    const listed = pgUnits > 0 ? chStdListedPrice(d) : 0;
+                    if (listed > 0) {
+                        const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
+                        const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
+                        const gross = (listed * chStdMargin(d)) - ship - lp;
+                        const net = gross - (listed * ads / 100);
+                        pgB.gross += gross * pgUnits; pgB.net += net * pgUnits; pgB.sales += listed * pgUnits; pgB.cogs += lp * pgUnits; pgB.units += pgUnits;
+                    }
                 }
             });
             // Sales this page already made on SKUs whose stock is now 0 still belong in "Projected with <page> L30".
@@ -1019,7 +991,9 @@
                     if (chStdStockForAge(d) > 0) return;
                     const pgUnits = chStdSiteL30(d);
                     if (!(pgUnits > 0)) return;
-                    const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
+                    const stdRaw = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
+                    const hasStd = stdRaw > 0;
+                    const std = hasStd ? stdRaw : chStdListedPrice(d);
                     if (!(std > 0)) return;
                     const reviews = chStdReviews(d);
                     let revDisc = 0;
@@ -1032,9 +1006,9 @@
                     for (let i = 0; i < draft.buss.length; i++) {
                         if (chStdInRange(std, draft.buss[i], i === draft.buss.length - 1)) { bussDisc = Number(draft.buss[i].disc) || 0; break; }
                     }
-                    const sum = Math.min(99.99, revDisc + bussDisc);
+                    const sum = hasStd ? Math.min(99.99, revDisc + bussDisc) : 0;
                     let sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
-                    sprice = chStdRaiseToMinNpft(sprice, d, draft.minNpft);
+                    if (hasStd) sprice = chStdRaiseToMinNpft(sprice, d, draft.minNpft);
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
                     const gross = (sprice * chStdMargin(d)) - ship - lp;
@@ -1127,8 +1101,7 @@
             $('#ch-sp-margin-pg').html(marginSalesHtml(pgB)).css('color', '#166534');
             $('#ch-sp-margin-pg-sub').html(marginBadgesHtml(pgB));
             if ($('#ch-sp-margin-cur').length) {
-                chStdLoadCurrentServer();
-                const curB = chStdAddUnmatchedSales(chStdCurrentSiteBucket(ads), ads);
+                const curB = chStdCurrentSiteBucket(ads);
                 $('#ch-sp-margin-cur').html(marginSalesHtml(curB)).css('color', '#166534');
                 $('#ch-sp-margin-cur-sub').html(marginBadgesHtml(curB));
             }
