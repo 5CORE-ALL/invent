@@ -77,11 +77,15 @@
         #chStdPrcModal .ch-sp-npft { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border: 1px solid #e6edf5; border-radius: 14px; background: #fff; font-size: 13px; color: #334155; }
         @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'css'])
         #chStdPrcModal .ch-sp-npft .ch-sp-input { width: 64px; min-width: 64px; max-width: 64px; margin: 0; }
-        #chStdPrcModal .ch-sp-margins { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-        #chStdPrcModal .ch-sp-margin { display: flex; justify-content: space-between; gap: 16px; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px 16px; background: #fff; }
+        #chStdPrcModal .ch-sp-margins { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 12px; }
+        #chStdPrcModal .ch-sp-margin { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px 16px; background: #fff; }
         #chStdPrcModal .ch-sp-margin strong { display: block; font-size: 26px; letter-spacing: -0.03em; }
-        #chStdPrcModal .ch-sp-metric-grid { display: grid; grid-template-columns: 3.4rem auto auto; gap: 4px 12px; width: max-content; font-size: 12px; align-items: center; }
-        #chStdPrcModal .ch-sp-metric { display: contents; }
+        #chStdPrcModal .ch-sp-margin strong .ch-sp-sales-lbl { font-size: 13px; font-weight: 600; letter-spacing: 0; color: #64748b; margin-right: 6px; }
+        #chStdPrcModal .ch-sp-margin > div { flex: 1 1 100%; min-width: 0; }
+        #chStdPrcModal .ch-sp-margin-badges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+        #chStdPrcModal .ch-sp-margin-badges .badge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: 100%; height: 44px; padding: 4px 6px; font-weight: 600; white-space: nowrap; }
+        #chStdPrcModal .ch-sp-margin-badges .ch-sp-badge-lbl { font-size: 10px; font-weight: 600; opacity: .75; text-transform: uppercase; letter-spacing: .03em; }
+        #chStdPrcModal .ch-sp-margin-badges .ch-sp-badge-val { font-size: 13px; font-weight: 700; }
         #chStdPrcModal .ch-sp-add { margin-top: auto; width: 100%; border-radius: 8px; border-style: dashed; font-weight: 600; }
         #chStdPrcModal .ch-sp-del { width: 22px; height: 22px; padding: 0; border-radius: 6px; color: #94a3b8; }
         #ch-std-prc-btn {
@@ -118,19 +122,24 @@
                     <div class="ch-sp-margins">
                         <div class="ch-sp-margin">
                             <div>
-                                <div class="small text-muted" id="ch-sp-margin-l30-label">Projected margin · last L30 sales</div>
+                                <div class="small text-muted" id="ch-sp-margin-l30-label">Projected with OV L30 Sales Data</div>
                                 <strong id="ch-sp-margin-l30">—</strong>
-                                <div class="small text-muted" id="ch-sp-margin-l30-sub"></div>
+                                <div class="ch-sp-margin-badges" id="ch-sp-margin-l30-sub"></div>
                             </div>
-                            <div class="ch-sp-metric-grid" id="ch-sp-margin-l30-metrics"></div>
                         </div>
                         <div class="ch-sp-margin">
                             <div>
-                                <div class="small text-muted">Projected margin · total INV</div>
-                                <strong id="ch-sp-margin-inv">—</strong>
-                                <div class="small text-muted" id="ch-sp-margin-inv-sub"></div>
+                                <div class="small text-muted">Projected with L30</div>
+                                <strong id="ch-sp-margin-pg">—</strong>
+                                <div class="ch-sp-margin-badges" id="ch-sp-margin-pg-sub"></div>
                             </div>
-                            <div class="ch-sp-metric-grid" id="ch-sp-margin-inv-metrics"></div>
+                        </div>
+                        <div class="ch-sp-margin">
+                            <div>
+                                <div class="small text-muted">Projected with Total Inv</div>
+                                <strong id="ch-sp-margin-inv">—</strong>
+                                <div class="ch-sp-margin-badges" id="ch-sp-margin-inv-sub"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="ch-sp-npft">
@@ -203,7 +212,7 @@
                             <div class="ch-sp-col-head"><div class="ch-sp-pie-title">All discounts</div><button type="button" class="ch-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-all"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-all"></div>
-                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Discount</th><th class="text-center">Count</th><th class="text-end">Disc $</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Discount</th><th class="text-center">Count</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
                         </div>
                     </div>
                 </div>
@@ -465,6 +474,15 @@
                 const n = Number(d['PP L30']);
                 return isFinite(n) && n > 0 ? n : 0;
             }
+            // Other channels: this page's own L30 is `L30` when a separate `ov_l30` (CP Master OV L30) exists; otherwise fall back to OV L30.
+            if (d.ov_l30 != null && d.ov_l30 !== '' && d.L30 != null && d.L30 !== '') {
+                const n = Number(d.L30);
+                return isFinite(n) && n > 0 ? n : 0;
+            }
+            return chStdOvL30(d);
+        }
+        function chStdOvL30(d) {
+            if (!d) return 0;
             return (typeof chPromoOvL30 === 'function') ? (Number(chPromoOvL30(d)) || 0) : 0;
         }
         function chStdMinNpftNow() {
@@ -797,6 +815,7 @@
             let npftApplied = 0;
             const zsCounts = { zero: 0, sold: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
+            const pgB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const invB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const ads = (typeof chPromoAdsFrac === 'function') ? ((Number(chPromoAdsFrac()) || 0) * 100) : 0;
             chStdRows().forEach(function(d) {
@@ -851,9 +870,11 @@
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
                     const gross = (sprice * chStdMargin(d)) - ship - lp;
                     const net = gross - (sprice * ads / 100);
-                    const units = chStdSiteL30(d);
+                    const units = chStdOvL30(d);
+                    const pgUnits = chStdSiteL30(d);
                     const inv = (typeof chPromoInv === 'function') ? chPromoInv(d) : 0;
                     l30.gross += gross * units; l30.net += net * units; l30.sales += sprice * units; l30.cogs += lp * units; l30.units += units;
+                    pgB.gross += gross * pgUnits; pgB.net += net * pgUnits; pgB.sales += sprice * pgUnits; pgB.cogs += lp * pgUnits; pgB.units += pgUnits;
                     invB.gross += gross * inv; invB.net += net * inv; invB.sales += sprice * inv; invB.cogs += lp * inv; invB.units += inv;
                 }
             });
@@ -913,31 +934,33 @@
                 { id: 'ch-sp-pie-age', slices: ageSlices, counts: ageCounts },
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
-            let dollarSum = 0;
-            const body = [['Age', skuHits.age, dollars.age], ['Dil', skuHits.dil, dollars.dil], ['B Disc', skuHits.buss, dollars.buss], ['0 Sold', skuHits.zs, dollars.zs], ['CVR', skuHits.cvr, dollars.cvr], ['Reviews', skuHits.rev, dollars.rev]].map(function(row) {
-                dollarSum += row[2];
-                return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td><td class="text-end">' + chStdMoney(row[2]) + '</td></tr>';
+            const body = [['Age', skuHits.age], ['Dil', skuHits.dil], ['B Disc', skuHits.buss], ['0 Sold', skuHits.zs], ['CVR', skuHits.cvr], ['Reviews', skuHits.rev]].map(function(row) {
+                return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td></tr>';
             });
-            body.push('<tr class="fw-semibold"><td>All</td><td class="text-center">' + skuHits.all + '</td><td class="text-end">' + chStdMoney(dollarSum) + '</td></tr>');
+            body.push('<tr class="fw-semibold"><td>All</td><td class="text-center">' + skuHits.all + '</td></tr>');
             $('#ch-sp-all-tbody').html(body.join(''));
-            function metricHtml(bucket) {
-                const rows = [
-                    ['GROI', bucket.gross, bucket.cogs > 0 ? (bucket.gross / bucket.cogs) * 100 : 0],
-                    ['GPFT', bucket.gross, bucket.sales > 0 ? (bucket.gross / bucket.sales) * 100 : 0],
-                    ['NROI', bucket.net, bucket.cogs > 0 ? (bucket.net / bucket.cogs) * 100 : 0],
-                    ['NPFT', bucket.net, bucket.sales > 0 ? (bucket.net / bucket.sales) * 100 : 0],
-                ];
-                return rows.map(function(row) {
-                    return '<div class="ch-sp-metric"><span>' + row[0] + '</span><span style="text-align:right;font-weight:700;color:' + (row[1] < 0 ? '#dc3545' : '#166534') + '">' + chStdMoney(row[1]) + '</span><span style="text-align:right;font-weight:700;">' + Math.round(row[2]) + '%</span></div>';
-                }).join('');
+            function marginBadge(label, value, cls) {
+                return '<span class="badge border ' + cls + '"><span class="ch-sp-badge-lbl">' + chStdEsc(label) + '</span><span class="ch-sp-badge-val">' + chStdEsc(value) + '</span></span>';
             }
-            $('#ch-sp-margin-l30-label').text((typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'bestbuy') ? 'Projected margin · BB L30' : 'Projected margin · last L30 sales');
-            $('#ch-sp-margin-l30').text(chStdMoney(l30.gross)).css('color', l30.gross < 0 ? '#dc3545' : '#166534');
-            $('#ch-sp-margin-l30-sub').text(Math.round(l30.units) + ' units · ' + (l30.sales > 0 ? Math.round((l30.gross / l30.sales) * 100) : 0) + '% of sales');
-            $('#ch-sp-margin-l30-metrics').html(metricHtml(l30));
-            $('#ch-sp-margin-inv').text(chStdMoney(invB.gross)).css('color', invB.gross < 0 ? '#dc3545' : '#166534');
-            $('#ch-sp-margin-inv-sub').text(Math.round(invB.units) + ' units · ' + (invB.sales > 0 ? Math.round((invB.gross / invB.sales) * 100) : 0) + '% of retail');
-            $('#ch-sp-margin-inv-metrics').html(metricHtml(invB));
+            function marginBadgesHtml(bucket) {
+                const neutral = 'bg-secondary-subtle text-secondary-emphasis';
+                const pct = function(n) { return Math.round(n) + '%'; };
+                return marginBadge('Units', Math.round(bucket.units).toLocaleString('en-US'), neutral)
+                    + marginBadge('Profit', chStdMoney(bucket.gross), bucket.gross < 0 ? 'bg-danger-subtle text-danger-emphasis' : 'bg-success-subtle text-success-emphasis')
+                    + marginBadge('GROI', pct(bucket.cogs > 0 ? (bucket.gross / bucket.cogs) * 100 : 0), neutral)
+                    + marginBadge('GPFT', pct(bucket.sales > 0 ? (bucket.gross / bucket.sales) * 100 : 0), neutral)
+                    + marginBadge('NROI', pct(bucket.cogs > 0 ? (bucket.net / bucket.cogs) * 100 : 0), neutral)
+                    + marginBadge('NPFT', pct(bucket.sales > 0 ? (bucket.net / bucket.sales) * 100 : 0), neutral);
+            }
+            function marginSalesHtml(bucket) {
+                return '<span class="ch-sp-sales-lbl">Sales</span>' + chStdEsc(chStdMoney(bucket.sales));
+            }
+            $('#ch-sp-margin-l30').html(marginSalesHtml(l30)).css('color', '#166534');
+            $('#ch-sp-margin-l30-sub').html(marginBadgesHtml(l30));
+            $('#ch-sp-margin-pg').html(marginSalesHtml(pgB)).css('color', '#166534');
+            $('#ch-sp-margin-pg-sub').html(marginBadgesHtml(pgB));
+            $('#ch-sp-margin-inv').html(marginSalesHtml(invB)).css('color', '#166534');
+            $('#ch-sp-margin-inv-sub').html(marginBadgesHtml(invB));
             chStdRepaintDiscColumns();
         }
         function chStdPaint() {

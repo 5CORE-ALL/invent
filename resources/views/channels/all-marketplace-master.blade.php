@@ -1056,7 +1056,7 @@
                         <div class="amm-badge-block-title">
                             <span>Yesterday</span>
                             <button type="button" id="yesterdayMpViewBtn" class="btn btn-sm btn-outline-dark amm-yesterday-view-btn"
-                                title="Yesterday by marketplace" aria-label="Yesterday by marketplace">
+                                title="Yesterday by marketplace" aria-lacrbel="Yesterday by marketplace">
                                 <i class="fas fa-eye" style="color: #000;"></i>
                             </button>
                         </div>

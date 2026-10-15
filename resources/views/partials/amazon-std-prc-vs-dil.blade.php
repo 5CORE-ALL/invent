@@ -179,12 +179,13 @@
         #amzStdPrcModal .amz-sp-npft .amz-sp-input { width: 64px; min-width: 64px; max-width: 64px; margin: 0; }
         #amzStdPrcModal .amz-sp-margins {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 12px;
             margin-bottom: 12px;
         }
         #amzStdPrcModal .amz-sp-margin {
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
             gap: 16px;
@@ -206,18 +207,40 @@
             letter-spacing: -0.03em;
             margin: 2px 0;
         }
-        #amzStdPrcModal .amz-sp-metric-grid {
-            display: grid;
-            grid-template-columns: 3.4rem auto auto;
-            gap: 4px 12px;
-            width: max-content;
-            font-size: 12px;
-            align-items: center;
+        #amzStdPrcModal .amz-sp-margin strong .amz-sp-sales-lbl {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0;
+            color: #64748b;
+            margin-right: 6px;
         }
-        #amzStdPrcModal .amz-sp-metric { display: contents; }
-        #amzStdPrcModal .amz-sp-metric .amz-sp-metric-name { color: #64748b; font-weight: 700; }
-        #amzStdPrcModal .amz-sp-metric .amz-sp-metric-money { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
-        #amzStdPrcModal .amz-sp-metric .amz-sp-metric-pct { font-weight: 700; text-align: right; }
+        #amzStdPrcModal .amz-sp-margin-head { flex: 1 1 100%; min-width: 0; }
+        #amzStdPrcModal .amz-sp-margin-badges {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+            margin-top: 8px;
+        }
+        #amzStdPrcModal .amz-sp-margin-badges .badge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            width: 100%;
+            height: 44px;
+            padding: 4px 6px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #amzStdPrcModal .amz-sp-margin-badges .amz-sp-badge-lbl {
+            font-size: 10px;
+            font-weight: 600;
+            opacity: .75;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+        #amzStdPrcModal .amz-sp-margin-badges .amz-sp-badge-val { font-size: 13px; font-weight: 700; }
         #amzStdPrcModal .amz-sp-section { font-weight: 700; font-size: 12px; margin: 12px 0 6px; color: #334155; }
         #amzStdPrcModal .amz-sp-input {
             width: 52px;
@@ -348,19 +371,24 @@
                     <div class="amz-sp-margins">
                         <div class="amz-sp-margin">
                             <div class="amz-sp-margin-head">
-                                <div class="amz-sp-margin-kicker">Projected margin · last L30 sales</div>
+                                <div class="amz-sp-margin-kicker">Projected with OV L30 Sales Data</div>
                                 <strong id="amz-sp-margin-l30">—</strong>
-                                <div class="small text-muted" id="amz-sp-margin-l30-sub"></div>
+                                <div class="amz-sp-margin-badges" id="amz-sp-margin-l30-sub"></div>
                             </div>
-                            <div class="amz-sp-metric-grid" id="amz-sp-margin-l30-metrics"></div>
                         </div>
                         <div class="amz-sp-margin">
                             <div class="amz-sp-margin-head">
-                                <div class="amz-sp-margin-kicker">Projected margin · total INV</div>
-                                <strong id="amz-sp-margin-inv">—</strong>
-                                <div class="small text-muted" id="amz-sp-margin-inv-sub"></div>
+                                <div class="amz-sp-margin-kicker">Projected with L30</div>
+                                <strong id="amz-sp-margin-pg">—</strong>
+                                <div class="amz-sp-margin-badges" id="amz-sp-margin-pg-sub"></div>
                             </div>
-                            <div class="amz-sp-metric-grid" id="amz-sp-margin-inv-metrics"></div>
+                        </div>
+                        <div class="amz-sp-margin">
+                            <div class="amz-sp-margin-head">
+                                <div class="amz-sp-margin-kicker">Projected with Total Inv</div>
+                                <strong id="amz-sp-margin-inv">—</strong>
+                                <div class="amz-sp-margin-badges" id="amz-sp-margin-inv-sub"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="amz-sp-npft">
@@ -1053,18 +1081,17 @@
                 ['NPFT', bucket.net, sales > 0 ? (bucket.net / sales) * 100 : 0, 'npft'],
             ];
             return rows.map(function(row) {
-                const moneyColor = row[1] < 0 ? '#dc3545' : '#166534';
                 let pctHtml = Math.round(row[2]) + '%';
                 if (window.MetricPctColors && typeof MetricPctColors.htmlFor === 'function') {
                     const painted = MetricPctColors.htmlFor(row[3], row[2], { decimals: 0, empty: '—' });
                     if (painted) pctHtml = painted;
                 }
-                return '<div class="amz-sp-metric">'
-                    + '<span class="amz-sp-metric-name">' + row[0] + '</span>'
-                    + '<span class="amz-sp-metric-money" style="color:' + moneyColor + '">' + amzStdMoney(row[1]) + '</span>'
-                    + '<span class="amz-sp-metric-pct">' + pctHtml + '</span>'
-                    + '</div>';
+                return amzStdMarginBadge(row[0], pctHtml, 'bg-secondary-subtle text-secondary-emphasis');
             }).join('');
+        }
+        // valueHtml is trusted markup (already escaped or from MetricPctColors).
+        function amzStdMarginBadge(label, valueHtml, cls) {
+            return '<span class="badge border ' + cls + '"><span class="amz-sp-badge-lbl">' + label + '</span><span class="amz-sp-badge-val">' + valueHtml + '</span></span>';
         }
         function amzStdEsc(s) {
             return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch) {
@@ -1339,6 +1366,7 @@
             let clearanceIgnored = 0;
             let npftApplied = 0;
             const l30 = amzStdEmptyBucket();
+            const pg = amzStdEmptyBucket();
             const inv = amzStdEmptyBucket();
             const adsPct = (typeof amzAmazonAdsPct === 'function') ? amzAmazonAdsPct() : 0;
             amzStdEachInvChild(function(d) {
@@ -1418,12 +1446,18 @@
                     const net = profit - (sprice * adsPct / 100);
                     const lp = parseFloat(d.LP_productmaster) || 0;
                     const al30 = (typeof amzPefAL30 === 'function') ? amzPefAL30(d) : 0;
+                    const ov30 = (typeof amzPefOvL30 === 'function') ? amzPefOvL30(d) : 0;
                     const onHand = (typeof amzPefInv === 'function') ? amzPefInv(d) : 0;
-                    l30.gross += profit * al30;
-                    l30.net += net * al30;
-                    l30.sales += sprice * al30;
-                    l30.cogs += lp * al30;
-                    l30.units += al30;
+                    l30.gross += profit * ov30;
+                    l30.net += net * ov30;
+                    l30.sales += sprice * ov30;
+                    l30.cogs += lp * ov30;
+                    l30.units += ov30;
+                    pg.gross += profit * al30;
+                    pg.net += net * al30;
+                    pg.sales += sprice * al30;
+                    pg.cogs += lp * al30;
+                    pg.units += al30;
                     inv.gross += profit * onHand;
                     inv.net += net * onHand;
                     inv.sales += sprice * onHand;
@@ -1536,14 +1570,20 @@
                 + '</td><td class="text-end">' + pctSum + '</td><td class="text-end">' + amzStdMoney(dollarSum) + '</td></tr>');
             $('#amz-sp-all-tbody').html(body.join(''));
 
-            const l30Pct = l30.sales > 0 ? (l30.gross / l30.sales) * 100 : 0;
-            const invPct = inv.sales > 0 ? (inv.gross / inv.sales) * 100 : 0;
-            $('#amz-sp-margin-l30').text(amzStdMoney(l30.gross)).css('color', l30.gross < 0 ? '#dc3545' : '#166534');
-            $('#amz-sp-margin-l30-sub').text(Math.round(l30.units) + ' units · ' + Math.round(l30Pct) + '% of sales');
-            $('#amz-sp-margin-l30-metrics').html(amzStdMetricHtml(l30));
-            $('#amz-sp-margin-inv').text(amzStdMoney(inv.gross)).css('color', inv.gross < 0 ? '#dc3545' : '#166534');
-            $('#amz-sp-margin-inv-sub').text(Math.round(inv.units) + ' units · ' + Math.round(invPct) + '% of retail');
-            $('#amz-sp-margin-inv-metrics').html(amzStdMetricHtml(inv));
+            function amzStdMarginBadgesHtml(bucket) {
+                return amzStdMarginBadge('Units', amzStdEsc(Math.round(bucket.units).toLocaleString('en-US')), 'bg-secondary-subtle text-secondary-emphasis')
+                    + amzStdMarginBadge('Profit', amzStdEsc(amzStdMoney(bucket.gross)), bucket.gross < 0 ? 'bg-danger-subtle text-danger-emphasis' : 'bg-success-subtle text-success-emphasis')
+                    + amzStdMetricHtml(bucket);
+            }
+            function amzStdMarginSalesHtml(bucket) {
+                return '<span class="amz-sp-sales-lbl">Sales</span>' + amzStdEsc(amzStdMoney(bucket.sales));
+            }
+            $('#amz-sp-margin-l30').html(amzStdMarginSalesHtml(l30)).css('color', '#166534');
+            $('#amz-sp-margin-l30-sub').html(amzStdMarginBadgesHtml(l30));
+            $('#amz-sp-margin-pg').html(amzStdMarginSalesHtml(pg)).css('color', '#166534');
+            $('#amz-sp-margin-pg-sub').html(amzStdMarginBadgesHtml(pg));
+            $('#amz-sp-margin-inv').html(amzStdMarginSalesHtml(inv)).css('color', '#166534');
+            $('#amz-sp-margin-inv-sub').html(amzStdMarginBadgesHtml(inv));
         }
         function amzStdInRange(value, rule, isLast) {
             const n = Number(value);
