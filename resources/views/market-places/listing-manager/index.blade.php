@@ -419,21 +419,21 @@
             #lm-prod-push-channels.lm-channel-list { grid-template-columns: 1fr; }
         }
         .lm-img-edit-bar { border: 1px solid #bfdbfe; background: #f8fbff; border-radius: 10px; padding: .75rem .9rem; margin-bottom: .9rem; }
-        .lm-prod-thumbs .lm-thumb { position: relative; }
-        .lm-prod-thumbs .lm-thumb .lm-thumb-tools {
+        .lm-prod-thumbs .lm-gallery-card { position: relative; }
+        .lm-prod-thumbs .lm-gallery-card .lm-thumb-tools {
             position: absolute; inset: auto 0 0 0; display: flex; justify-content: center; gap: 2px;
             background: rgba(17,24,39,.72); padding: 2px; border-radius: 0 0 6px 6px; opacity: 0; transition: opacity .12s;
         }
-        .lm-prod-images.is-editing .lm-thumb .lm-thumb-tools {
+        .lm-prod-images.is-editing .lm-gallery-card .lm-thumb-tools {
             position: static; opacity: 1; background: #111827; padding: 6px 4px; gap: 4px; border-radius: 0;
         }
-        .lm-prod-thumbs .lm-thumb:hover .lm-thumb-tools { opacity: 1; }
-        .lm-prod-thumbs .lm-thumb .lm-thumb-tools button {
+        .lm-prod-thumbs .lm-gallery-card:hover .lm-thumb-tools { opacity: 1; }
+        .lm-prod-thumbs .lm-gallery-card .lm-thumb-tools button {
             border: 0; background: transparent; color: #fff; font-size: .72rem; width: 20px; height: 20px; line-height: 20px; border-radius: 4px; padding: 0;
         }
-        .lm-prod-thumbs .lm-thumb .lm-thumb-tools button:hover { background: rgba(255,255,255,.18); }
-        .lm-prod-thumbs .lm-thumb .lm-thumb-tools button:disabled { opacity: .35; }
-        .lm-prod-thumbs .lm-thumb .lm-thumb-main { position: absolute; top: 3px; left: 3px; background: var(--lc-blue); color: #fff; font-size: .62rem; font-weight: 700; padding: 1px 5px; border-radius: 999px; }
+        .lm-prod-thumbs .lm-gallery-card .lm-thumb-tools button:hover { background: rgba(255,255,255,.18); }
+        .lm-prod-thumbs .lm-gallery-card .lm-thumb-tools button:disabled { opacity: .35; }
+        .lm-prod-thumbs .lm-gallery-card .lm-thumb-main { position: absolute; top: 3px; left: 3px; background: var(--lc-blue); color: #fff; font-size: .62rem; font-weight: 700; padding: 1px 5px; border-radius: 999px; }
         .lm-editable-table .lm-row-edit-btn { opacity: .55; }
         .lm-editable-table tr:hover .lm-row-edit-btn { opacity: 1; }
         .lm-editable-table .lm-inline-input { font-size: .82rem; min-width: 160px; }
@@ -548,35 +548,37 @@
             width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--lc-border); border-radius: 6px; background: #fff; cursor: pointer;
         }
         .lm-prod-thumbs img.active { border-color: var(--lc-blue); box-shadow: 0 0 0 2px #bfdbfe; }
-        .lm-prod-images.is-editing { display: block; }
-        .lm-prod-images.is-editing .lm-prod-main-img { display: none; }
+        .lm-prod-images.is-editing { grid-template-columns: 280px 1fr; align-items: start; }
         .lm-prod-images.is-editing .lm-prod-thumbs {
-            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-            gap: .85rem;
+            grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+            gap: .65rem;
         }
-        .lm-prod-images.is-editing .lm-thumb {
+        .lm-prod-images.is-editing .lm-gallery-card {
             display: flex;
             flex-direction: column;
+            width: 100%;
+            height: auto;
+            min-width: 0;
+            max-width: none;
             border: 1px solid var(--lc-border);
-            border-radius: 10px;
+            border-radius: 8px;
             background: #fff;
             overflow: hidden;
-            min-width: 0;
         }
-        .lm-prod-images.is-editing .lm-thumb img {
+        .lm-prod-images.is-editing .lm-gallery-card img {
             display: block;
             width: 100%;
-            height: 190px;
-            min-height: 190px;
+            height: 140px;
+            min-height: 140px;
             max-height: none;
             aspect-ratio: auto;
-            flex: 0 0 190px;
+            flex: 0 0 140px;
             object-fit: contain;
             border: 0;
             border-radius: 0;
-            background: #f8fafc;
+            background: #fff;
         }
-        .lm-prod-images.is-editing .lm-thumb .lm-thumb-tools {
+        .lm-prod-images.is-editing .lm-gallery-card .lm-thumb-tools {
             position: static;
             opacity: 1;
             display: flex;
@@ -586,14 +588,14 @@
             padding: 6px;
             border-radius: 0;
         }
-        .lm-prod-images.is-editing .lm-thumb .lm-thumb-tools button {
+        .lm-prod-images.is-editing .lm-gallery-card .lm-thumb-tools button {
             flex: 1 1 0;
             width: auto;
             height: 36px;
             font-size: 1rem;
             line-height: 36px;
         }
-        .lm-prod-images.is-editing .lm-thumb .lm-thumb-main {
+        .lm-prod-images.is-editing .lm-gallery-card .lm-thumb-main {
             font-size: .72rem;
             padding: 2px 8px;
         }
@@ -2467,7 +2469,7 @@
         thumbs.innerHTML = list.map((u, i) => {
             const img = `<img src="${escapeHtml(u)}" alt="" class="${i === 0 ? 'active' : ''}" data-idx="${i}">`;
             if (!imagesEditMode) return img;
-            return `<div class="lm-thumb" data-idx="${i}">
+            return `<div class="lm-gallery-card" data-idx="${i}">
                 ${img}
                 ${i === 0 ? '<span class="lm-thumb-main">MAIN</span>' : ''}
                 <div class="lm-thumb-tools">
@@ -2485,7 +2487,7 @@
         });
         $(thumbs).off('click', '.lm-thumb-tools button').on('click', '.lm-thumb-tools button', function (e) {
             e.stopPropagation();
-            const idx = parseInt($(this).closest('.lm-thumb').data('idx'), 10);
+            const idx = parseInt($(this).closest('.lm-gallery-card').data('idx'), 10);
             const act = $(this).data('act');
             if (Number.isNaN(idx) || !currentImages[idx]) return;
             const next = currentImages.slice();
