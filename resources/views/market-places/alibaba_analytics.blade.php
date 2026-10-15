@@ -757,6 +757,7 @@
                                     return '<i class="fas fa-spinner fa-spin" style="color:#0d6efd;" title="Pulling live price"></i>';
                                 }
                                 const v = parseFloat(cell.getValue()) || 0;
+                                if (row.not_listed) return '<span style="color:#6c757d;" title="In product master, not listed on Alibaba">–</span>';
                                 if (v === 0) return '<span style="color:#a00211;font-weight:600;">$0.00</span>';
                                 return '$' + v.toFixed(2);
                             }

@@ -81,23 +81,70 @@ class AlibabaAnalyticsController extends Controller
             $sheetRows->pluck('sku')->filter()->all(),
             $displaySkus
         ))));
-        $shopifyData = $skus === [] ? collect() : ShopifySku::mapByProductSkus($skus);
-        $pmByNorm = $this->productMasterByNormalizedSku($skus);
+        // Product master first (normalized SKU), then everything else keys off the matched product master SKU too.
+        // Product master drives the list: every child SKU is shown, Alibaba data is overlaid by normalized SKU.
+        $allPmSkus = ProductMaster::query()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereRaw('UPPER(sku) NOT LIKE ?', ['%PARENT%'])
+            ->pluck('sku')
+            ->map(fn ($v) => trim((string) $v))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $pmByNorm = $this->productMasterByNormalizedSku(array_merge($skus, $allPmSkus));
+        $pmSkus = [];
+        foreach ($pmByNorm as $pmRow) {
+            $pmSkus[] = (string) $pmRow->sku;
+        }
+        $lookupSkus = array_values(array_unique(array_merge($skus, $pmSkus, $allPmSkus)));
+        $shopifyData = $lookupSkus === [] ? collect() : ShopifySku::mapByProductSkus($lookupSkus);
         $margin = MarketplacePercentage::takeHomeDecimal('Alibaba');
         $l30 = app(AlibabaSalesController::class)->l30SkuTotals();
         $spriceBySku = $this->spriceBySku();
         $pushMetaBySku = $this->pushMetaBySku();
-        $stdBySku = $this->amazonStdBySku($skus);
+        $stdBySku = $this->amazonStdBySku($lookupSkus);
         $salesUsed = [];
 
-        $children = [];
+        // Product master SKUs that already have an Alibaba listing (normalized SKU match).
+        $listedPm = [];
         foreach ($sheetRows as $row) {
+            $stored = trim((string) $row->sku);
+            $disp = $this->skuWithPieceCount($stored, $namesByProduct[trim((string) $row->product_id)] ?? '');
+            $hit = $pmByNorm[$this->stdKey($disp)] ?? null;
+            if ($hit === null && $disp === $stored) {
+                $hit = $pmByNorm[$this->stdKey($stored)] ?? null;
+            }
+            if ($hit !== null) {
+                $listedPm[$this->stdKey((string) $hit->sku)] = true;
+            }
+        }
+        $listRows = $sheetRows->all();
+        foreach ($allPmSkus as $pmSku) {
+            if (! isset($listedPm[$this->stdKey($pmSku)])) {
+                // Not on Alibaba yet: a blank listing so the SKU still shows with its product master / Shopify data.
+                $listRows[] = (object) [
+                    'sku' => $pmSku,
+                    'product_id' => '',
+                    'status' => null,
+                    'sku_price' => null,
+                    'soh' => null,
+                    'inv_update' => null,
+                ];
+            }
+        }
+
+        $children = [];
+        foreach ($listRows as $row) {
             $storedSku = trim((string) $row->sku);
             $productId = trim((string) $row->product_id);
             $sku = $this->skuWithPieceCount($storedSku, $namesByProduct[$productId] ?? '');
             $skuKey = strtoupper($sku);
-            $pm = $pmByNorm[$skuKey] ?? $pmByNorm[strtoupper($storedSku)] ?? null;
-            $shopify = $shopifyData->get($sku) ?? $shopifyData->get($storedSku);
+            $pmExact = $pmByNorm[$this->stdKey($sku)] ?? null;
+            $pm = $pmExact ?? $pmByNorm[$this->stdKey($storedSku)] ?? null;
+            $shopify = $shopifyData->get($sku) ?? $shopifyData->get($storedSku)
+                ?? ($pm ? $shopifyData->get((string) $pm->sku) : null);
             $inv = (int) ($shopify->inv ?? 0);
             $ovL30 = (int) ($shopify->quantity ?? 0);
             $dil = $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0.0;
@@ -133,6 +180,7 @@ class AlibabaAnalyticsController extends Controller
                 'image_path' => $image,
                 'image' => $image,
                 'product_id' => $productId,
+                'not_listed' => $productId === '',
                 'product_url' => $this->productPageUrl($productId),
                 'status' => $row->status,
                 'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
@@ -167,7 +215,7 @@ class AlibabaAnalyticsController extends Controller
                 'SNGPFT' => $sMetrics['gpft'],
                 'has_custom_sprice' => $sprice > 0,
                 // Amazon Std Prc for this exact SKU. Pack listings (… 2PCS) never borrow the single-unit Std.
-                'STANDARD_PRICE' => $stdBySku[$this->stdKey($sku)] ?? null,
+                'STANDARD_PRICE' => $stdBySku[$this->stdKey($pmExact ? (string) $pmExact->sku : $sku)] ?? null,
                 // Push meta written by the server auto push (alibaba:sprc-dil-auto-push).
                 'SPRICE_STATUS' => $pushMeta['status'] ?? null,
                 'SPRICE_STATUS_UPDATED_AT' => $pushMeta['status_at'] ?? null,
@@ -195,7 +243,8 @@ class AlibabaAnalyticsController extends Controller
         });
 
         $rows = collect(app(InvDaysController::class)->attachAgeDays($this->insertAlibabaParentRows($children)));
-        $childRows = $rows->where(fn ($r) => empty($r['is_parent_summary']));
+        // Stats cover Alibaba listings only; product master SKUs not yet listed are shown but not counted.
+        $childRows = $rows->where(fn ($r) => empty($r['is_parent_summary']) && empty($r['not_listed']));
 
         $active = $childRows->where(fn ($r) => strcasecmp((string) ($r['status'] ?? ''), 'Active') === 0)->count();
         $bulk = $childRows->where(fn ($r) => strcasecmp((string) ($r['inv_update'] ?? ''), 'Bulk') === 0)->count();
@@ -582,7 +631,7 @@ class AlibabaAnalyticsController extends Controller
 
     protected function stdKey(string $sku): string
     {
-        return strtoupper(trim(preg_replace('/[\s\x{00A0}]+/u', ' ', $sku) ?? $sku));
+        return ShopifySku::normalizeSkuForShopifyLookup($sku);
     }
 
     public function sync(Request $request, AlibabaApiService $api): JsonResponse
@@ -806,22 +855,57 @@ class AlibabaAnalyticsController extends Controller
      */
     protected function productMasterByNormalizedSku(array $skus): array
     {
-        $upper = array_values(array_unique(array_filter(array_map(
-            fn ($s) => strtoupper(trim((string) $s)),
-            $skus
-        ))));
-        if ($upper === []) {
+        $wanted = [];
+        foreach ($skus as $s) {
+            $raw = trim((string) $s);
+            if ($raw !== '') {
+                $wanted[$this->stdKey($raw)] = $raw;
+            }
+        }
+        if ($wanted === []) {
             return [];
         }
 
-        $placeholders = implode(',', array_fill(0, count($upper), '?'));
-        $map = [];
-        ProductMaster::query()
-            ->whereRaw('UPPER(TRIM(sku)) IN ('.$placeholders.')', $upper)
-            ->get()
-            ->each(function (ProductMaster $pm) use (&$map) {
-                $map[strtoupper(trim((string) $pm->sku))] = $pm;
+        // Normalized (NBSP / hyphen / spacing / case) match against product_master.sku, compact form as the last resort.
+        $byNorm = [];
+        $byCompact = [];
+        foreach (ProductMaster::query()->whereNotNull('sku')->where('sku', '!=', '')->pluck('sku') as $pmSku) {
+            $pmSku = (string) $pmSku;
+            $byNorm[$this->stdKey($pmSku)] ??= $pmSku;
+            $c = ShopifySku::compactSkuForLookup($pmSku);
+            if ($c !== '') {
+                $byCompact[$c] ??= $pmSku;
+            }
+        }
+
+        $resolved = [];
+        foreach ($wanted as $key => $raw) {
+            $hit = $byNorm[$key] ?? null;
+            if ($hit === null) {
+                $c = ShopifySku::compactSkuForLookup($raw);
+                $hit = $c !== '' ? ($byCompact[$c] ?? null) : null;
+            }
+            if ($hit !== null) {
+                $resolved[$key] = $hit;
+            }
+        }
+        if ($resolved === []) {
+            return [];
+        }
+
+        $models = [];
+        foreach (array_chunk(array_values(array_unique($resolved)), 400) as $chunk) {
+            ProductMaster::query()->whereIn('sku', $chunk)->get()->each(function (ProductMaster $pm) use (&$models) {
+                $models[(string) $pm->sku] ??= $pm;
             });
+        }
+
+        $map = [];
+        foreach ($resolved as $key => $pmSku) {
+            if (isset($models[$pmSku])) {
+                $map[$key] = $models[$pmSku];
+            }
+        }
 
         return $map;
     }
