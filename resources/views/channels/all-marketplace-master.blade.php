@@ -2241,12 +2241,34 @@
             if (parts.views <= 0) return listingCvrFromRow(row);
             return (parts.units / parts.views) * 100;
         }
-        function formatCvrCell(value) {
+        function formatCvrCell(value, color) {
             if (value === null || value === undefined || value === '' || !isFinite(Number(value))) {
                 return '<span style="color:#adb5bd;">—</span>';
             }
             const pct = Math.round(parseNumber(value) * 100) / 100;
-            return `<span style="font-weight:600;">${pct.toFixed(2)}%</span>`;
+            const style = color ? ('font-weight:600;color:' + color + ';') : 'font-weight:600;';
+            return `<span style="${style}">${pct.toFixed(2)}%</span>`;
+        }
+        function belowL30AvgColor(value, l30Total) {
+            return parseNumber(value) < (parseNumber(l30Total) / 30) ? '#dc3545' : '#166534';
+        }
+        function belowL30RateColor(value, l30Rate) {
+            if (value === null || value === undefined || value === '' || !isFinite(Number(value))) return '#6c757d';
+            if (l30Rate === null || l30Rate === undefined || !isFinite(Number(l30Rate))) return '#166534';
+            return parseNumber(value) < parseNumber(l30Rate) ? '#dc3545' : '#166534';
+        }
+        function ammHistoryDot(channel, metric) {
+            const colorFn = (typeof getMetricDotColor === 'function') ? getMetricDotColor : window.getMetricDotColor;
+            const dotColor = (typeof colorFn === 'function') ? colorFn(channel, metric) : '#6c757d';
+            return `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="${metric}" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+        }
+        function ammOpenHistoryDot(e, cell) {
+            if (!e.target.classList.contains('metric-chart-icon')) return;
+            e.stopPropagation();
+            const openChart = (typeof showMetricChart === 'function') ? showMetricChart : window.showMetricChart;
+            if (typeof openChart === 'function') {
+                openChart($(e.target).data('channel'), $(e.target).data('metric'), null);
+            }
         }
         var METRIC_DIFF_PCT = {
             gprofit: 1, groi: 1, npft: 1, p_npft: 1, p_groi_pct: 1, p_nroi_pct: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
@@ -2627,6 +2649,12 @@
             var yOrdersByChannel = null;
             var yCvrByChannel = null;
             var ySalesFooterBelowAvg = false;
+            var yOrdersFooterBelowAvg = false;
+            var yViewsFooterBelowAvg = false;
+            var yCvrFooterBelowAvg = false;
+            var tOrdersFooterBelowAvg = false;
+            var tViewsFooterBelowAvg = false;
+            var tCvrFooterBelowAvg = false;
             var yViewsExact = null;
             var l30DailyOrders = null;
             var l30DailyViews = null;
@@ -2638,6 +2666,7 @@
                 var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
                 return lastDotColorByKey[k] || DEFAULT_DOT_GRAY;
             }
+            window.getMetricDotColor = getMetricDotColor;
             function getMetricDiffAmount(channelName, metricKey) {
                 var k = snapshotChannelKey(channelName) + '_' + (metricKey || '');
                 var pair = lastDotPairByKey[k];
@@ -3381,14 +3410,27 @@
                         headerTooltip: "Yesterday order count (1-day Pacific). Same Orders figure as Yesterday by marketplace.",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 100,
+                        width: 110,
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const channel = (row['Channel '] || '').trim();
                             const value = Math.round(parseNumber(cell.getValue() || 0));
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                            const color = belowL30AvgColor(value, row['L30 Orders'] || 0);
+                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'l30_orders')}`;
                         },
-                        bottomCalc: "sum",
+                        cellClick: ammOpenHistoryDot,
+                        bottomCalc: function(values, data) {
+                            let sum = 0, l30 = 0;
+                            data.forEach(function(row) {
+                                sum += parseNumber(row['Y Orders'] || 0);
+                                l30 += parseNumber(row['L30 Orders'] || 0);
+                            });
+                            yOrdersFooterBelowAvg = sum < (l30 / 30);
+                            return sum;
+                        },
                         bottomCalcFormatter: function(cell) {
-                            return `<strong>${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
+                            const color = yOrdersFooterBelowAvg ? '#dc3545' : '#166534';
+                            return `<strong style="color:${color};">${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -3397,20 +3439,35 @@
                         headerTooltip: "Yesterday CVR = yesterday qty ÷ yesterday views. Same figure as Yesterday by marketplace.",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 90,
+                        width: 100,
                         formatter: function(cell) {
-                            return formatCvrCell(cell.getValue());
+                            const row = cell.getRow().getData();
+                            const channel = (row['Channel '] || '').trim();
+                            const value = cell.getValue();
+                            const color = belowL30RateColor(value, listingCvrFromRow(row));
+                            return formatCvrCell(value, color) + ammHistoryDot(channel, 'cvr');
                         },
+                        cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
                             if (!yCvrByChannel) return null;
-                            let views = 0, qty = 0;
+                            let views = 0, qty = 0, l30Units = 0, l30Views = 0;
                             data.forEach(function(row) {
                                 const rec = yCvrByChannel[snapshotChannelKey(row['Channel '] || '')];
-                                if (!rec) return;
-                                views += rec.views;
-                                qty += rec.qty;
+                                if (rec) {
+                                    views += rec.views;
+                                    qty += rec.qty;
+                                }
+                                const l30ViewsRow = parseNumber(row['Total Views'] || 0);
+                                const l30Rate = listingCvrFromRow(row);
+                                if (l30ViewsRow > 0 && l30Rate != null) {
+                                    l30Views += l30ViewsRow;
+                                    l30Units += l30ViewsRow * l30Rate / 100;
+                                }
                             });
-                            return views > 0 ? (qty / views) * 100 : null;
+                            const yRate = views > 0 ? (qty / views) * 100 : null;
+                            const l30Rate = l30Views > 0 ? (l30Units / l30Views) * 100 : null;
+                            yCvrFooterBelowAvg = yRate != null && l30Rate != null && yRate < l30Rate;
+                            return yRate;
                         },
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
@@ -3418,7 +3475,8 @@
                                 return '<strong style="color:#adb5bd;">—</strong>';
                             }
                             const pct = Math.round(parseNumber(value) * 100) / 100;
-                            return '<strong>' + pct.toFixed(2) + '%</strong>';
+                            const color = yCvrFooterBelowAvg ? '#dc3545' : '#166534';
+                            return '<strong style="color:' + color + ';">' + pct.toFixed(2) + '%</strong>';
                         }
                     },
                     {
@@ -3427,14 +3485,27 @@
                         headerTooltip: "Yesterday listing views (1-day Pacific). Same Views figure as Yesterday by marketplace.",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 100,
+                        width: 110,
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const channel = (row['Channel '] || '').trim();
                             const value = Math.round(parseNumber(cell.getValue() || 0));
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                            const color = belowL30AvgColor(value, row['Total Views'] || 0);
+                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'total_views')}`;
                         },
-                        bottomCalc: "sum",
+                        cellClick: ammOpenHistoryDot,
+                        bottomCalc: function(values, data) {
+                            let sum = 0, l30 = 0;
+                            data.forEach(function(row) {
+                                sum += parseNumber(row['Y Views'] || 0);
+                                l30 += parseNumber(row['Total Views'] || 0);
+                            });
+                            yViewsFooterBelowAvg = sum < (l30 / 30);
+                            return sum;
+                        },
                         bottomCalcFormatter: function(cell) {
-                            return `<strong>${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
+                            const color = yViewsFooterBelowAvg ? '#dc3545' : '#166534';
+                            return `<strong style="color:${color};">${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -3648,21 +3719,30 @@
                         headerTooltip: "T Orders = L30 Orders × Today Sales ÷ L30 Sales. 0 when Today Sales is 0.",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 100,
+                        width: 110,
                         mutator: function(value, data) {
                             return todayPartsFromRow(data).orders;
                         },
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const channel = (row['Channel '] || '').trim();
                             const value = Math.round(parseNumber(cell.getValue() || 0));
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                            const color = belowL30AvgColor(value, row['L30 Orders'] || 0);
+                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'l30_orders')}`;
                         },
+                        cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
-                            let sum = 0;
-                            data.forEach(function(row) { sum += todayPartsFromRow(row).orders; });
+                            let sum = 0, l30 = 0;
+                            data.forEach(function(row) {
+                                sum += todayPartsFromRow(row).orders;
+                                l30 += parseNumber(row['L30 Orders'] || 0);
+                            });
+                            tOrdersFooterBelowAvg = sum < (l30 / 30);
                             return sum;
                         },
                         bottomCalcFormatter: function(cell) {
-                            return `<strong>${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
+                            const color = tOrdersFooterBelowAvg ? '#dc3545' : '#166534';
+                            return `<strong style="color:${color};">${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -3671,21 +3751,31 @@
                         headerTooltip: "T CVR uses the same listing CVR as the CVR column, weighted by Today Sales ÷ L30 Sales. Blank when Today Sales is 0.",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 90,
+                        width: 100,
                         mutator: function(value, data) {
                             return tCvrFromRow(data);
                         },
                         formatter: function(cell) {
-                            return formatCvrCell(cell.getValue());
+                            const row = cell.getRow().getData();
+                            const channel = (row['Channel '] || '').trim();
+                            const value = cell.getValue();
+                            const color = belowL30RateColor(value, listingCvrFromRow(row));
+                            return formatCvrCell(value, color) + ammHistoryDot(channel, 'cvr');
                         },
+                        cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
-                            let views = 0, units = 0;
+                            let views = 0, units = 0, l30Units = 0;
                             data.forEach(function(row) {
                                 const parts = tCvrPartsFromRow(row);
                                 views += parts.views;
                                 units += parts.units;
+                                const rate = listingCvrFromRow(row);
+                                if (parts.views > 0 && rate != null) l30Units += parts.views * rate / 100;
                             });
-                            return views > 0 ? (units / views) * 100 : null;
+                            const tRate = views > 0 ? (units / views) * 100 : null;
+                            const l30Rate = views > 0 ? (l30Units / views) * 100 : null;
+                            tCvrFooterBelowAvg = tRate != null && l30Rate != null && tRate < l30Rate;
+                            return tRate;
                         },
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
@@ -3693,7 +3783,8 @@
                                 return '<strong style="color:#adb5bd;">—</strong>';
                             }
                             const pct = Math.round(parseNumber(value) * 100) / 100;
-                            return '<strong>' + pct.toFixed(2) + '%</strong>';
+                            const color = tCvrFooterBelowAvg ? '#dc3545' : '#166534';
+                            return '<strong style="color:' + color + ';">' + pct.toFixed(2) + '%</strong>';
                         }
                     },
                     {
@@ -3702,21 +3793,30 @@
                         headerTooltip: "T Views = Views × Today Sales ÷ L30 Sales. 0 when Today Sales is 0.",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 100,
+                        width: 110,
                         mutator: function(value, data) {
                             return todayPartsFromRow(data).views;
                         },
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const channel = (row['Channel '] || '').trim();
                             const value = Math.round(parseNumber(cell.getValue() || 0));
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                            const color = belowL30AvgColor(value, row['Total Views'] || 0);
+                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'total_views')}`;
                         },
+                        cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
-                            let sum = 0;
-                            data.forEach(function(row) { sum += todayPartsFromRow(row).views; });
+                            let sum = 0, l30 = 0;
+                            data.forEach(function(row) {
+                                sum += todayPartsFromRow(row).views;
+                                l30 += parseNumber(row['Total Views'] || 0);
+                            });
+                            tViewsFooterBelowAvg = sum < (l30 / 30);
                             return sum;
                         },
                         bottomCalcFormatter: function(cell) {
-                            return `<strong>${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
+                            const color = tViewsFooterBelowAvg ? '#dc3545' : '#166534';
+                            return `<strong style="color:${color};">${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -7595,6 +7695,7 @@
 
                 loadAdBreakdownChart();
             }
+            window.showMetricChart = showMetricChart;
 
             function openAdBreakdownChartModal() {
                 const el = document.getElementById('adBreakdownChartModal');
