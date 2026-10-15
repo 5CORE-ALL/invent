@@ -8203,7 +8203,47 @@ class ChannelMasterController extends Controller
      */
     public function allMarketplaceMaster(Request $request)
     {
-        return view('channels.all-marketplace-master');
+        $faRaw = \App\Models\BadgeData::dataForPage('forecast-analysis');
+        $k = static function ($value): string {
+            $n = (float) $value;
+            if (! is_finite($n)) {
+                return '0';
+            }
+
+            return number_format((int) round($n / 1000)).'K';
+        };
+        $zeroStock = (int) ($faRaw['zero_stock_pct'] ?? 0);
+        $availablePct = max(0, min(100, 100 - $zeroStock));
+        if ($availablePct > 95) {
+            $availableBg = '#7c3aed';
+            $availableFg = '#ffffff';
+        } elseif ($availablePct >= 90) {
+            $availableBg = '#198754';
+            $availableFg = '#ffffff';
+        } elseif ($availablePct >= 80) {
+            $availableBg = '#ffc107';
+            $availableFg = '#212529';
+        } else {
+            $availableBg = '#dc3545';
+            $availableFg = '#ffffff';
+        }
+
+        return view('channels.all-marketplace-master', [
+            'forecastBadges' => [
+                'msl_lp' => '$'.$k($faRaw['total_msl_c'] ?? $faRaw['msl_lp'] ?? 0),
+                'msl_sp' => '$'.$k($faRaw['total_msl_sp_amz'] ?? $faRaw['msl_sp'] ?? 0),
+                'inv' => '$'.$k($faRaw['total_inv_value'] ?? $faRaw['inv'] ?? 0),
+                'lp' => '$'.$k($faRaw['total_lp_value'] ?? $faRaw['lp'] ?? 0),
+                'ord' => '$'.$k($faRaw['total_order_value'] ?? $faRaw['ord'] ?? 0),
+                'mip' => '$'.$k($faRaw['total_mip_value'] ?? $faRaw['mip'] ?? 0),
+                'r2s' => '$'.$k($faRaw['total_r2s_value'] ?? $faRaw['r2s'] ?? 0),
+                'trn' => '$'.$k($faRaw['total_transit_value'] ?? $faRaw['trn'] ?? 0),
+                'cbm' => number_format((int) ($faRaw['total_cbm'] ?? $faRaw['cbm'] ?? 0)),
+                'available_pct' => $availablePct,
+                'available_bg' => $availableBg,
+                'available_fg' => $availableFg,
+            ],
+        ]);
     }
 
     /**

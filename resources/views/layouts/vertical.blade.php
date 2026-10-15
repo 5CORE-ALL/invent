@@ -105,6 +105,12 @@
                 <i class="mdi mdi-content-save-outline me-1"></i>Save &amp; Create More
             </button>
             <button type="button"
+                    id="quick-task-create-channel-btn"
+                    class="btn btn-light btn-sm px-2 py-1 text-dark shadow-sm"
+                    title="Create this task once for every active channel. Group becomes the channel name.">
+                <i class="mdi mdi-storefront-outline me-1"></i>Create Channel Task
+            </button>
+            <button type="button"
                     id="close-task-form-btn"
                     class="btn-close btn-close-white position-absolute"
                     style="top: 50%;
@@ -127,8 +133,17 @@
             </div>
             
             <div style="margin-bottom: 9px;">
-                <label for="quick_title" class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Task <span class="text-danger">*</span></label>
-                <input type="text" class="form-control" id="quick_title" name="title" placeholder="Enter Task" required style="font-size: 15px; padding: 5px 9px; height: 39px;">
+                <div class="d-flex align-items-center justify-content-between" style="margin-bottom: 2px;">
+                    <label for="quick_title" class="form-label mb-0" style="font-size: 13.5px; font-weight: 600;">Task <span class="text-danger">*</span></label>
+                    <button type="button" id="quick-add-task-btn" class="btn btn-link btn-sm p-0" style="font-size: 13px; font-weight: 600; text-decoration: none;">
+                        <i class="mdi mdi-plus"></i> Add task
+                    </button>
+                </div>
+                <div id="quick-task-title-list">
+                    <div class="quick-task-title-row d-flex align-items-center gap-1">
+                        <input type="text" class="form-control quick-task-title-input" id="quick_title" name="titles[]" placeholder="Enter Task" style="font-size: 15px; padding: 5px 9px; height: 39px;">
+                    </div>
+                </div>
             </div>
 
             <div style="margin-bottom: 9px;">
@@ -145,18 +160,37 @@
             <script type="application/json" id="quick-assignee-users-data">{!! json_encode($quickTaskUsers->map(fn ($u) => ['id' => (int) $u->id, 'name' => $u->name])->values()) !!}</script>
             <div style="margin-bottom: 9px;">
                 <label class="form-label" style="font-size: 13.5px; font-weight: 600; margin-bottom: 2px; display: block;">Assignee(s) <span class="text-danger">*</span></label>
-                <div class="quick-assignee-ms position-relative" id="quick_assignee_ms" title="Select one or more people; one shared task is created with all assignees">
+                <div class="quick-assignee-ms position-relative" id="quick_assignee_ms">
                     <button type="button" class="quick-assignee-ms-trigger" id="quick_assignee_ms_trigger" aria-haspopup="listbox" aria-expanded="false" aria-required="true">
                         <span class="quick-assignee-ms-label text-truncate">Select assignees</span>
                         <i class="mdi mdi-menu-down quick-assignee-ms-chevron"></i>
                     </button>
                     <div class="quick-assignee-ms-panel" id="quick_assignee_ms_panel" role="listbox" aria-multiselectable="true">
                         <input type="text" class="form-control form-control-sm quick-assignee-ms-search" id="quick_assignee_ms_search" placeholder="Search…" autocomplete="off" aria-label="Search assignees">
+                        <button type="button" class="quick-assignee-ms-item quick-assignee-ms-select-all" id="quick_assignee_ms_select_all" role="checkbox" aria-checked="false">
+                            <span class="quick-assignee-ms-box" aria-hidden="true">✓</span>
+                            <span>Select all</span>
+                        </button>
                         <ul class="quick-assignee-ms-list list-unstyled mb-0" id="quick_assignee_ms_list"></ul>
                     </div>
                     <div id="quick_assignee_hidden_wrap" class="quick-assignee-hidden-wrap"></div>
                 </div>
-                <small class="text-muted" style="font-size: 12px; display: block; margin-top: 3px;">One task; all selected users are assignees.</small>
+                <div id="quick-task-mode-wrap" class="quick-task-mode-wrap d-none" role="group" aria-label="Joint or split task">
+                    <div class="quick-task-mode-q">More than one assignee. Is this task joint or split? <span class="text-danger">*</span></div>
+                    <div class="d-flex gap-2">
+                        <label class="quick-task-mode-opt">
+                            <input type="radio" name="quick_task_mode" value="joint">
+                            <span class="quick-task-mode-opt-title">Joint</span>
+                            <span class="quick-task-mode-opt-hint">One shared task</span>
+                        </label>
+                        <label class="quick-task-mode-opt">
+                            <input type="radio" name="quick_task_mode" value="split">
+                            <span class="quick-task-mode-opt-title">Split</span>
+                            <span class="quick-task-mode-opt-hint">Each person gets a copy</span>
+                        </label>
+                    </div>
+                    <input type="hidden" name="split_tasks" id="quick_split_tasks" value="1" disabled>
+                </div>
             </div>
 
             <div style="margin-bottom: 9px;">
@@ -265,9 +299,21 @@
             font-size: 16.5px;
             font-weight: 600;
         }
-        #quick-task-save-create-more-btn {
+        #quick-task-save-create-more-btn,
+        #quick-task-create-channel-btn {
             font-size: 16.5px;
             font-weight: 600;
+        }
+        .quick-task-title-row + .quick-task-title-row {
+            margin-top: 6px;
+        }
+        .quick-task-title-remove {
+            width: 39px;
+            height: 39px;
+            flex-shrink: 0;
+            font-size: 22px;
+            line-height: 1;
+            padding: 0;
         }
 
         .floating-task-btn {
@@ -412,10 +458,71 @@
             line-height: 1;
             color: transparent;
         }
-        .quick-assignee-ms-item.is-selected .quick-assignee-ms-box {
+        .quick-assignee-ms-item.is-selected .quick-assignee-ms-box,
+        .quick-assignee-ms-select-all.is-partial .quick-assignee-ms-box {
             background: #0d6efd;
             border-color: #0d6efd;
             color: #fff;
+        }
+        .quick-assignee-ms-select-all {
+            width: 100%;
+            border: 0;
+            border-bottom: 1px solid #e9ecef;
+            background: #fff;
+            font-weight: 600;
+            text-align: left;
+            color: #212529;
+        }
+        .quick-assignee-ms-select-all.is-disabled {
+            opacity: 0.45;
+            pointer-events: none;
+        }
+        .quick-task-mode-wrap {
+            margin-top: 8px;
+            padding: 8px;
+            border: 1px solid #d6d9f5;
+            border-radius: 0.25rem;
+            background: #f7f8ff;
+        }
+        .quick-task-mode-wrap.is-invalid {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
+        }
+        .quick-task-mode-q {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            line-height: 1.35;
+        }
+        .quick-task-mode-opt {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            margin: 0;
+            padding: 6px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            background: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1.2;
+        }
+        .quick-task-mode-opt:has(input:checked) {
+            border-color: #667eea;
+            background: #eef0ff;
+            box-shadow: inset 0 0 0 1px #667eea;
+        }
+        .quick-task-mode-opt input {
+            margin: 0 0 2px;
+        }
+        .quick-task-mode-opt-title {
+            font-weight: 700;
+        }
+        .quick-task-mode-opt-hint {
+            font-size: 11px;
+            font-weight: 500;
+            color: #6c757d;
         }
         
         @media (max-width: 991.98px) {
@@ -447,6 +554,14 @@
                 padding: 12px 15px !important;
                 height: 60px !important;
             }
+            .quick-task-title-remove {
+                width: 60px;
+                height: 60px !important;
+                font-size: 28px;
+            }
+            #quick-add-task-btn {
+                font-size: 18px !important;
+            }
 
             .quick-assignee-ms-trigger {
                 height: 60px !important;
@@ -460,6 +575,13 @@
             .quick-assignee-ms-item {
                 font-size: 21px !important;
                 padding: 12px 18px !important;
+            }
+            .quick-task-mode-q,
+            .quick-task-mode-opt {
+                font-size: 16px !important;
+            }
+            .quick-task-mode-opt-hint {
+                font-size: 13px !important;
             }
             .quick-assignee-ms-panel {
                 max-height: 420px;
@@ -480,7 +602,8 @@
             }
 
             .quick-task-header-primary-btn,
-            #quick-task-save-create-more-btn {
+            #quick-task-save-create-more-btn,
+            #quick-task-create-channel-btn {
                 font-size: 19.5px;
                 padding: 9px 15px;
             }
@@ -533,6 +656,9 @@
                 opts = opts || {};
                 var form = document.getElementById('quick-task-form');
                 if (form) form.reset();
+                if (typeof window.resetQuickTaskTitles === 'function') {
+                    window.resetQuickTaskTitles();
+                }
                 if (typeof window.resetQuickTaskAssignees === 'function') {
                     window.resetQuickTaskAssignees();
                 }
@@ -578,7 +704,7 @@
                     width: r.width + 'px',
                     maxHeight: maxH + 'px'
                 });
-                $panel.find('.quick-assignee-ms-list').css('max-height', Math.max(120, maxH - 66) + 'px');
+                $panel.find('.quick-assignee-ms-list').css('max-height', Math.max(120, maxH - 108) + 'px');
             }
 
             function openQuickAssigneePanel() {
@@ -631,12 +757,51 @@
                     });
                 }
 
+                function visibleItems() {
+                    return $list.find('.quick-assignee-ms-item').not('.is-hidden');
+                }
+
+                function syncSelectAll() {
+                    var $all = $('#quick_assignee_ms_select_all');
+                    var $vis = visibleItems();
+                    var total = $vis.length;
+                    var picked = $vis.filter('.is-selected').length;
+                    var $box = $all.find('.quick-assignee-ms-box');
+                    $all.toggleClass('is-disabled', total === 0);
+                    $all.removeClass('is-selected is-partial');
+                    if (total > 0 && picked === total) {
+                        $all.addClass('is-selected').attr('aria-checked', 'true');
+                        $box.text('✓');
+                    } else if (picked > 0) {
+                        $all.addClass('is-partial').attr('aria-checked', 'mixed');
+                        $box.text('–');
+                    } else {
+                        $all.attr('aria-checked', 'false');
+                        $box.text('✓');
+                    }
+                }
+
+                function syncModePrompt() {
+                    var $wrap = $('#quick-task-mode-wrap');
+                    if (selected.size > 1) {
+                        $wrap.removeClass('d-none');
+                        var mode = $wrap.find('input[name="quick_task_mode"]:checked').val();
+                        $('#quick_split_tasks').prop('disabled', mode !== 'split');
+                        return;
+                    }
+                    $wrap.addClass('d-none').removeClass('is-invalid');
+                    $wrap.find('input[name="quick_task_mode"]').prop('checked', false);
+                    $('#quick_split_tasks').prop('disabled', true);
+                }
+
                 function updateLabel() {
                     var $lab = $('#quick_assignee_ms .quick-assignee-ms-label');
                     var $btn = $('#quick_assignee_ms_trigger');
+                    syncSelectAll();
+                    syncModePrompt();
                     if (selected.size === 0) {
                         $lab.text('Select assignees').removeClass('has-value').addClass('text-muted');
-                        $btn.attr('title', 'Select one or more people; one shared task is created with all assignees');
+                        $btn.attr('title', 'Select assignees');
                         return;
                     }
                     $btn.removeClass('is-invalid');
@@ -660,12 +825,40 @@
                     updateLabel();
                 });
 
+                $('#quick_assignee_ms_select_all').on('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var $vis = visibleItems();
+                    if (!$vis.length) return;
+                    var allOn = $vis.filter('.is-selected').length === $vis.length;
+                    $vis.each(function () {
+                        var id = parseInt($(this).data('id'), 10);
+                        var u = users.find(function (x) { return x.id === id; });
+                        if (!u) return;
+                        if (allOn) {
+                            selected.delete(id);
+                            $(this).removeClass('is-selected').attr('aria-selected', 'false');
+                        } else if (!selected.has(id)) {
+                            selected.set(id, u.name);
+                            $(this).addClass('is-selected').attr('aria-selected', 'true');
+                        }
+                    });
+                    syncHidden();
+                    updateLabel();
+                });
+
+                $('#quick-task-mode-wrap').on('change', 'input[name="quick_task_mode"]', function () {
+                    $('#quick-task-mode-wrap').removeClass('is-invalid');
+                    $('#quick_split_tasks').prop('disabled', $(this).val() !== 'split');
+                });
+
                 $('#quick_assignee_ms_search').on('input', function () {
                     var q = $(this).val().toLowerCase().trim();
                     $list.find('.quick-assignee-ms-item').each(function () {
                         var text = $(this).text().toLowerCase();
                         $(this).toggleClass('is-hidden', q.length > 0 && text.indexOf(q) === -1);
                     });
+                    syncSelectAll();
                 });
 
                 $('#quick_assignee_ms_trigger').on('click', function (e) {
@@ -793,6 +986,23 @@
                     return false;
                 }
                 $('#quick_assignor_id').removeClass('is-invalid');
+
+                var assigneeCount = $('#quick_assignee_hidden_wrap input[name="assignee_ids[]"]').length;
+                if (assigneeCount > 1) {
+                    var mode = $('input[name="quick_task_mode"]:checked').val();
+                    if (!mode) {
+                        alert('More than one assignee is selected. Choose whether this task is Joint or Split.');
+                        $('#quick-task-mode-wrap').addClass('is-invalid');
+                        var modeEl = document.getElementById('quick-task-mode-wrap');
+                        if (modeEl && modeEl.scrollIntoView) {
+                            modeEl.scrollIntoView({ block: 'nearest' });
+                        }
+                        return false;
+                    }
+                    $('#quick_split_tasks').prop('disabled', mode !== 'split');
+                } else {
+                    $('#quick_split_tasks').prop('disabled', true);
+                }
                 return true;
             }
 
@@ -802,9 +1012,63 @@
                 }
             });
 
+            function quickTaskTitles() {
+                var titles = [];
+                $('#quick-task-title-list .quick-task-title-input').each(function () {
+                    var value = $.trim($(this).val() || '');
+                    if (value) titles.push(value);
+                });
+                return titles;
+            }
+
+            function validateQuickTaskTitles() {
+                if (quickTaskTitles().length === 0) {
+                    alert('Please enter a task title.');
+                    var $empty = $('#quick-task-title-list .quick-task-title-input').filter(function () {
+                        return $.trim($(this).val() || '') === '';
+                    }).first();
+                    ($empty.length ? $empty : $('#quick_title')).trigger('focus');
+                    return false;
+                }
+                return true;
+            }
+
+            function addQuickTaskTitleRow() {
+                var $row = $('<div/>', { 'class': 'quick-task-title-row d-flex align-items-center gap-1' });
+                var $input = $('<input/>', {
+                    type: 'text',
+                    'class': 'form-control quick-task-title-input',
+                    name: 'titles[]',
+                    placeholder: 'Enter Task'
+                });
+                $input.attr('style', $('#quick_title').attr('style') || '');
+                var $remove = $('<button/>', {
+                    type: 'button',
+                    'class': 'btn btn-outline-danger quick-task-title-remove',
+                    'aria-label': 'Remove task',
+                    text: '×'
+                });
+                $row.append($input, $remove);
+                $('#quick-task-title-list').append($row);
+                $input.trigger('focus');
+            }
+
+            window.resetQuickTaskTitles = function () {
+                $('#quick-task-title-list .quick-task-title-row').not(':first').remove();
+                $('#quick_title').val('');
+            };
+
+            $('#quick-add-task-btn').on('click', function () {
+                addQuickTaskTitleRow();
+            });
+
+            $('#quick-task-title-list').on('click', '.quick-task-title-remove', function () {
+                $(this).closest('.quick-task-title-row').remove();
+            });
+
             // Handle form submission
             $('#quick-task-form').on('submit', function(e) {
-                if (!validateQuickTaskRequiredPeople()) {
+                if (!validateQuickTaskTitles() || !validateQuickTaskRequiredPeople()) {
                     e.preventDefault();
                     return false;
                 }
@@ -827,6 +1091,9 @@
                     return;
                 }
                 form.reset();
+                if (typeof window.resetQuickTaskTitles === 'function') {
+                    window.resetQuickTaskTitles();
+                }
                 $('input[name="priority"]').val('normal');
                 var now = new Date();
                 function pad(n) { return n < 10 ? '0' + n : '' + n; }
@@ -843,15 +1110,9 @@
                 closeQuickAssigneePanel();
             }
 
-            $('#quick-task-save-create-more-btn').on('click', function () {
+            function submitQuickTaskAjax(extraFields, $btn) {
                 var $form = $('#quick-task-form');
-                var title = $.trim($('#quick_title').val() || '');
-                if (!title) {
-                    alert('Please enter a task title.');
-                    $('#quick_title').trigger('focus');
-                    return;
-                }
-                if (!validateQuickTaskRequiredPeople()) {
+                if (!validateQuickTaskTitles() || !validateQuickTaskRequiredPeople()) {
                     return;
                 }
                 var priorityOverride = $('select[name="priority_override"]').val();
@@ -864,13 +1125,15 @@
                 }
 
                 var formData = new FormData($form[0]);
-                formData.append('quick_create_more', '1');
+                Object.keys(extraFields || {}).forEach(function (key) {
+                    formData.append(key, extraFields[key]);
+                });
 
                 $('#quick-task-success-alert').addClass('d-none').empty();
                 clearTimeout(window.__quickTaskAlertTimer);
 
-                var $btn = $(this);
-                $btn.prop('disabled', true);
+                var $busy = $('#quick-task-header-submit, #quick-task-save-create-more-btn, #quick-task-create-channel-btn');
+                $busy.prop('disabled', true);
                 fetch($form.attr('action'), {
                     method: 'POST',
                     body: formData,
@@ -915,8 +1178,28 @@
                 }).catch(function () {
                     alert('Network error. Please try again.');
                 }).finally(function () {
-                    $btn.prop('disabled', false);
+                    $busy.prop('disabled', false);
+                    if ($btn) {
+                        $btn.prop('disabled', false);
+                    }
                 });
+            }
+
+            $('#quick-task-save-create-more-btn').on('click', function () {
+                submitQuickTaskAjax({ quick_create_more: '1' }, $(this));
+            });
+
+            $('#quick-task-create-channel-btn').on('click', function () {
+                if (!validateQuickTaskTitles() || !validateQuickTaskRequiredPeople()) {
+                    return;
+                }
+                if (!confirm('Create this task for every active channel? Group will be each channel name.')) {
+                    return;
+                }
+                submitQuickTaskAjax({
+                    quick_create_more: '1',
+                    create_for_all_channels: '1'
+                }, $(this));
             });
         });
     </script>

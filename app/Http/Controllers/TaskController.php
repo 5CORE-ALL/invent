@@ -20,6 +20,7 @@ use App\Models\GeneralChecklistItem;
 use App\Models\ManagerJunior;
 use App\Models\PerformanceReview;
 use App\Models\ScopeOfImprovement;
+use App\Models\ChannelMaster;
 use App\Models\ChatChannelMember;
 use App\Models\ChatMessage;
 use App\Models\Task;
@@ -53,6 +54,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -2599,7 +2601,9 @@ class TaskController extends Controller
         ]);
         
         $validated = $request->validate([
-            'title' => 'required|string|max:1000',
+            'title' => 'nullable|string|max:1000',
+            'titles' => 'nullable|array',
+            'titles.*' => 'nullable|string|max:1000',
             'description' => 'nullable|string',
             'group' => 'nullable|string|max:255',
             'priority' => 'required|in:low,normal,high',
@@ -2632,6 +2636,14 @@ class TaskController extends Controller
             'assignee_ids.required_without' => 'Please select at least one assignee.',
             'assignee_ids.min' => 'Please select at least one assignee.',
         ]);
+
+        $titleList = $this->requestedTaskTitles($request, (string) ($validated['title'] ?? ''));
+        if ($titleList === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'title' => 'Please enter a task title.',
+            ]);
+        }
+        $validated['title'] = $titleList[0];
 
         // Map to old table field names
         $user = Auth::user();
@@ -2745,7 +2757,70 @@ class TaskController extends Controller
         $message = 'Task created successfully!';
         $splitIntoCopies = $request->boolean('split_tasks') && count($assigneeIds) > 1;
 
-        if ($splitIntoCopies) {
+        if ($request->boolean('create_for_all_channels')) {
+            return $this->storeTasksForEveryChannel($request, $taskData, $titleList);
+        }
+
+        if (count($titleList) > 1) {
+            $created = DB::transaction(function () use ($request, $taskData, $titleList, $splitIntoCopies, $assigneeIds) {
+                $created = [];
+                $linkedChat = false;
+                $byId = $splitIntoCopies
+                    ? User::whereIn('id', $assigneeIds)->get()->keyBy('id')
+                    : collect();
+
+                foreach ($titleList as $title) {
+                    $row = $taskData;
+                    $row['title'] = $title;
+
+                    if ($splitIntoCopies) {
+                        foreach ($assigneeIds as $assigneeId) {
+                            $person = $byId->get((int) $assigneeId);
+                            if (! $person || ! $person->email) {
+                                continue;
+                            }
+                            $copy = $row;
+                            $copy['assign_to'] = $person->email;
+                            $copy['split_tasks'] = 1;
+                            $createdTask = Task::create($copy);
+                            if (! $linkedChat) {
+                                $this->linkChatMessageToTask($request, $createdTask);
+                                $linkedChat = true;
+                            }
+                            $created[] = $createdTask;
+                        }
+                        continue;
+                    }
+
+                    $createdTask = Task::create($row);
+                    if (! $linkedChat) {
+                        $this->linkChatMessageToTask($request, $createdTask);
+                        $linkedChat = true;
+                    }
+                    $created[] = $createdTask;
+                }
+
+                return $created;
+            });
+
+            $createdCount = count($created);
+            $message = 'Created '.$createdCount.' separate task'.($createdCount === 1 ? '' : 's').'. Other details are the same.';
+            $notified = [];
+            foreach ($created as $createdTask) {
+                $emailKey = strtolower(trim((string) $createdTask->assign_to));
+                if ($emailKey === '' || isset($notified[$emailKey])) {
+                    continue;
+                }
+                $notified[$emailKey] = true;
+                try {
+                    $this->taskWhatsApp->notifyNewTaskAssigned($createdTask);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify new assigned failed: '.$e->getMessage());
+                    $message .= ' WhatsApp send failed. Check logs.';
+                    $flash = 'warning';
+                }
+            }
+        } elseif ($splitIntoCopies) {
             $byId = User::whereIn('id', $assigneeIds)->get()->keyBy('id');
             $created = [];
             $linkedChat = false;
@@ -2827,6 +2902,100 @@ class TaskController extends Controller
         }
 
         return redirect()->back()->with($flash, $message);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function requestedTaskTitles(Request $request, string $fallback): array
+    {
+        $titles = collect($request->input('titles', []))
+            ->map(fn ($title) => trim((string) $title))
+            ->filter(fn ($title) => $title !== '')
+            ->map(fn ($title) => mb_substr($title, 0, 1000))
+            ->values()
+            ->all();
+
+        if ($titles === [] && trim($fallback) !== '') {
+            $titles = [mb_substr(trim($fallback), 0, 1000)];
+        }
+
+        return $titles;
+    }
+
+    /**
+     * One task per active channel, and one more for each extra title.
+     * Group is that channel's name. Other details stay the same.
+     *
+     * @param  list<string>  $titleList
+     */
+    private function storeTasksForEveryChannel(Request $request, array $taskData, array $titleList): JsonResponse
+    {
+        $channelNames = ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->orderBy('id')
+            ->pluck('channel')
+            ->map(fn ($name) => trim((string) $name))
+            ->filter(fn ($name) => $name !== '')
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->values();
+
+        if ($channelNames->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No active channels found.',
+            ], 422);
+        }
+
+        $created = DB::transaction(function () use ($request, $taskData, $channelNames, $titleList) {
+            $created = [];
+            $linkedChat = false;
+
+            foreach ($channelNames as $channelName) {
+                foreach ($titleList as $title) {
+                    $copy = $taskData;
+                    $copy['title'] = $title;
+                    $copy['group'] = mb_substr($channelName, 0, 255);
+                    $copy['split_tasks'] = 0;
+                    $createdTask = Task::create($copy);
+                    if (! $linkedChat) {
+                        $this->linkChatMessageToTask($request, $createdTask);
+                        $linkedChat = true;
+                    }
+                    $created[] = $createdTask;
+                }
+            }
+
+            return $created;
+        });
+
+        $channelCount = $channelNames->count();
+        $createdCount = count($created);
+        $message = 'Created '.$createdCount.' task'.($createdCount === 1 ? '' : 's')
+            .' across '.$channelCount.' channel'.($channelCount === 1 ? '' : 's')
+            .'. Group is the channel name.';
+
+        $flash = 'success';
+        $notified = [];
+        foreach ($created as $createdTask) {
+            $emailKey = strtolower(trim((string) $createdTask->assign_to));
+            if ($emailKey === '' || isset($notified[$emailKey])) {
+                continue;
+            }
+            $notified[$emailKey] = true;
+            try {
+                $this->taskWhatsApp->notifyNewTaskAssigned($createdTask);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify new assigned failed: '.$e->getMessage());
+                $message .= ' WhatsApp send failed. Check logs.';
+                $flash = 'warning';
+            }
+        }
+
+        return response()->json([
+            'success' => $flash !== 'error',
+            'message' => $message,
+        ]);
     }
 
     private function linkChatMessageToTask(Request $request, Task $task): void

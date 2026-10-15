@@ -233,8 +233,13 @@
         }
         #marketplace-table.tabulator .tabulator-cell {
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            overflow: visible;
+            text-overflow: clip;
+            font-size: 11px;
+            padding: 3px 4px !important;
+        }
+        #marketplace-table.tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 4px 2px !important;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-col.tabulator-frozen {
             background-color: #dbeafe !important;
@@ -385,36 +390,43 @@
             max-width: 100%;
         }
 
-        #yesterdayMpModal .modal-dialog {
+        #yesterdayMpModal .modal-dialog,
+        #projectedMpModal .modal-dialog {
             max-width: 1100px;
         }
-        #yesterdayMpTable th {
+        #yesterdayMpTable th,
+        #projectedMpTable th {
             font-size: 11px;
             white-space: nowrap;
             text-align: center;
             background: #e6e6e6;
         }
-        #yesterdayMpTable td {
+        #yesterdayMpTable td,
+        #projectedMpTable td {
             font-size: 12px;
             vertical-align: middle;
         }
-        #yesterdayMpTable tfoot td {
+        #yesterdayMpTable tfoot td,
+        #projectedMpTable tfoot td {
             font-weight: 700;
             background: #f8f9fa;
             border-top: 2px solid #4361ee;
         }
-        #yesterdayMpTable .ymp-cell {
+        #yesterdayMpTable .ymp-cell,
+        #projectedMpTable .ymp-cell {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 5px;
             white-space: nowrap;
         }
-        #yesterdayMpTable td.text-end .ymp-cell {
+        #yesterdayMpTable td.text-end .ymp-cell,
+        #projectedMpTable td.text-end .ymp-cell {
             justify-content: flex-end;
             width: 100%;
         }
-        #yesterdayMpTable .ymp-chart-dot {
+        #yesterdayMpTable .ymp-chart-dot,
+        #projectedMpTable .ymp-chart-dot {
             display: inline-block;
             width: 8px;
             height: 8px;
@@ -424,21 +436,23 @@
             box-shadow: 0 0 0 1px rgba(0,0,0,0.12);
             vertical-align: 0.05em;
         }
-        #yesterdayMpTable .ymp-chart-dot:hover {
+        #yesterdayMpTable .ymp-chart-dot:hover,
+        #projectedMpTable .ymp-chart-dot:hover {
             transform: scale(1.35);
             box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.18);
         }
-        #yesterdayMpTable .ymp-hover-cell {
+        #yesterdayMpTable .ymp-hover-cell,
+        #projectedMpTable .ymp-hover-cell {
             cursor: pointer;
         }
 
-        /* Summary badges — four colored groups so the page never scrolls sideways */
+        /* Summary badges — metric row, then INV with Forecast before Others */
         #summary-stats {
             max-width: 100%;
             min-width: 0;
             overflow: visible;
             display: grid;
-            grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 1.15fr);
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.15fr) minmax(0, 0.75fr);
             gap: 0.5rem;
             background: transparent !important;
             padding: 0 !important;
@@ -458,40 +472,136 @@
             margin: 0 0 0.35rem;
         }
         #summary-stats .amm-badge-block--l30 {
+            grid-column: 3 / 5;
+            grid-row: 1;
             background: #dbeafe;
             border-color: #93c5fd;
         }
         #summary-stats .amm-badge-block--l30 .amm-badge-block-title { color: #1e40af; }
+        #summary-stats .amm-badge-block--today {
+            grid-column: 1;
+            grid-row: 1;
+            background: #fed7aa;
+            border-color: #fb923c;
+        }
+        #summary-stats .amm-badge-block--today .amm-badge-block-title { color: #9a3412; }
         #summary-stats .amm-badge-block--yesterday {
+            grid-column: 2;
+            grid-row: 1;
             background: #ccfbf1;
             border-color: #5eead4;
         }
-        #summary-stats .amm-badge-block--yesterday .amm-badge-block-title { color: #115e59; }
+        #summary-stats .amm-badge-block--yesterday .amm-badge-block-title {
+            color: #115e59;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.35rem;
+        }
+        #summary-stats .amm-yesterday-view-btn {
+            padding: 0.05rem 0.4rem;
+            line-height: 1.15;
+            font-size: 0.75rem;
+            border-color: #0f766e;
+            background: #fff;
+        }
         #summary-stats .amm-badge-block--projected {
+            grid-column: 5;
+            grid-row: 1;
             background: #ede9fe;
             border-color: #c4b5fd;
         }
-        #summary-stats .amm-badge-block--projected .amm-badge-block-title { color: #5b21b6; }
+        #summary-stats .amm-badge-block--projected .amm-badge-block-title {
+            color: #5b21b6;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.35rem;
+        }
+        #summary-stats .amm-projected-view-btn {
+            padding: 0.05rem 0.4rem;
+            line-height: 1.15;
+            font-size: 0.75rem;
+            border-color: #5b21b6;
+            background: #fff;
+        }
+        #summary-stats .amm-badge-block--forecast {
+            grid-column: 3 / 5;
+            grid-row: 2;
+            background: #fef9c3;
+            border-color: #fde047;
+        }
+        #summary-stats .amm-badge-block--forecast .amm-badge-block-title { color: #854d0e; }
         #summary-stats .amm-badge-block--others {
+            grid-column: 5;
+            grid-row: 2;
             background: #ffedd5;
             border-color: #fdba74;
         }
         #summary-stats .amm-badge-block--others .amm-badge-block-title { color: #9a3412; }
+        #summary-stats .amm-badge-block--inv {
+            grid-column: 1 / 3;
+            grid-row: 2;
+            background: #d1fae5;
+            border-color: #6ee7b7;
+        }
+        #summary-stats .amm-badge-block--inv .amm-badge-block-title { color: #065f46; }
+        #summary-stats .amm-badge-block--inv .ebay2-summary-badge-row {
+            margin-bottom: 0.45rem;
+        }
+        #summary-stats .amm-inv-block-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.5rem 1rem;
+        }
+        #summary-stats .amm-inv-block-pair {
+            display: flex;
+            align-items: flex-start;
+            min-width: 0;
+        }
+        #summary-stats .amm-inv-block-copy {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        #summary-stats .amm-inv-block-subtitle {
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0 0 0.15rem;
+        }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            line-height: 1.35;
+            padding: 1px 0;
+        }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-swatch {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            flex: 0 0 8px;
+        }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-name { flex: 0 1 auto; font-weight: 600; color: #334155; margin-right: auto; }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-count { font-weight: 700; min-width: 28px; text-align: right; }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-val { font-weight: 700; min-width: 40px; text-align: right; }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-pct { color: #64748b; min-width: 28px; text-align: right; }
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             align-items: center;
-            gap: 0.4rem;
+            gap: 0.25rem;
             width: 100%;
             max-width: 100%;
-            overflow: visible;
+            overflow: hidden;
         }
         #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 0 0 auto;
-            min-width: max-content;
+            flex: 0 1 auto;
+            min-width: 0;
             max-width: none;
-            font-size: 0.8125rem;
-            padding: 0.4rem 0.55rem;
+            font-size: 0.75rem;
+            padding: 0.28rem 0.38rem;
             font-weight: bold;
             box-sizing: border-box;
             display: inline-flex;
@@ -522,19 +632,37 @@
         #summary-stats .summary-trend-dot.down { background: #ef4444; }
         #summary-stats .summary-trend-dot.flat,
         #summary-stats .summary-trend-dot.none { background: #9ca3af; }
+        #column-dropdown-list {
+            max-height: 420px;
+            overflow-y: auto;
+        }
+        #column-dropdown-list .amm-col-group {
+            padding: 0.15rem 0 0.35rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        #column-dropdown-list .amm-col-group:last-child { border-bottom: 0; }
+        #column-dropdown-list .amm-col-group-head {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin: 0;
+            padding: 0.2rem 0.15rem;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            color: #1e293b;
+            cursor: pointer;
+        }
+        #column-dropdown-list .amm-col-group-items {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(120px, 1fr));
+            gap: 0 0.25rem;
+        }
+        #column-dropdown-list .amm-col-group-items label {
+            min-width: 0;
+        }
 
-        #amm-inv-btn {
-            background: #111827;
-            border-color: #111827;
-            color: #fff;
-            font-weight: 700;
-        }
-        #amm-inv-btn:hover,
-        #amm-inv-btn:focus {
-            background: #000;
-            border-color: #000;
-            color: #fff;
-        }
         #ammInvModal .amm-inv-pies {
             display: flex;
             gap: 10px;
@@ -658,11 +786,30 @@
                 width: 22px;
                 height: 22px;
             }
-            #column-dropdown-list {
+            #column-dropdown-list .amm-col-group-items {
                 grid-template-columns: repeat(3, minmax(110px, 1fr)) !important;
             }
             #summary-stats {
                 grid-template-columns: 1fr 1fr;
+            }
+            #summary-stats .amm-badge-block--today,
+            #summary-stats .amm-badge-block--yesterday,
+            #summary-stats .amm-badge-block--l30,
+            #summary-stats .amm-badge-block--projected {
+                grid-column: auto;
+                grid-row: auto;
+            }
+            #summary-stats .amm-badge-block--inv {
+                grid-column: 1 / -1;
+                grid-row: 3;
+            }
+            #summary-stats .amm-badge-block--forecast {
+                grid-column: 1;
+                grid-row: 4;
+            }
+            #summary-stats .amm-badge-block--others {
+                grid-column: 2;
+                grid-row: 4;
             }
             #summary-stats .ebay2-summary-badge-row > .badge {
                 font-size: 0.75rem;
@@ -693,10 +840,29 @@
                 max-width: calc(100vw - 16px) !important;
             }
             #column-dropdown-list {
+                max-height: 50vh;
+            }
+            #column-dropdown-list .amm-col-group-items {
                 grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
-                max-height: 50vh !important;
             }
             #summary-stats {
+                grid-template-columns: 1fr;
+            }
+            #summary-stats .amm-badge-block--today,
+            #summary-stats .amm-badge-block--yesterday,
+            #summary-stats .amm-badge-block--l30,
+            #summary-stats .amm-badge-block--projected,
+            #summary-stats .amm-badge-block--inv,
+            #summary-stats .amm-badge-block--forecast,
+            #summary-stats .amm-badge-block--others {
+                grid-column: 1;
+                grid-row: auto;
+            }
+            #summary-stats .ebay2-summary-badge-row {
+                flex-wrap: wrap;
+                overflow: visible;
+            }
+            #summary-stats .amm-inv-block-grid {
                 grid-template-columns: 1fr;
             }
             #ammInvModal .modal-dialog,
@@ -752,10 +918,9 @@
                         <div class="dropdown-menu p-0" id="column-dropdown-menu"
                             aria-labelledby="columnVisibilityDropdown"
                             style="max-height:none; overflow:visible; min-width:min(720px, calc(100vw - 24px)); width:max-content; max-width:calc(100vw - 24px);">
-                            <ul id="column-dropdown-list" class="list-unstyled mb-0 px-2 py-1"
-                                style="display:grid; grid-template-columns:repeat(5, minmax(120px, 1fr)); gap:0 0.25rem; max-height:360px; overflow-y:auto;">
+                            <div id="column-dropdown-list" class="mb-0 px-2 py-1">
                                 <!-- Populated dynamically -->
-                            </ul>
+                            </div>
                         </div>
                     </div>
 
@@ -763,23 +928,69 @@
                         data-bs-target="#addChannelModal" title="Add Channel" aria-label="Add Channel">
                         <i class="fas fa-plus-circle" style="color: #000;"></i>
                     </button>
-                    <button type="button" id="yesterdayMpViewBtn" class="btn btn-sm btn-outline-dark"
-                        title="Yesterday by marketplace" aria-label="Yesterday by marketplace">
-                        <i class="fas fa-eye" style="color: #000;"></i>
-                    </button>
-                    <a href="{{ route('l7.marketplace.master') }}" class="btn btn-sm btn-outline-dark"
-                        title="7-Day Channel Master — same metrics as Yesterday over 7 complete days" aria-label="7-Day Channel Master">
-                        <i class="fas fa-calendar-week" style="color: #000;"></i>
-                    </a>
-                    <button type="button" id="amm-inv-btn" class="btn btn-sm"
-                        title="Inventory by DIL: Red &lt;25%, Green 25–50%, Pink ≥50%. Two pies — Inv@LP and Inv@SP.">
-                        INV
-                    </button>
 
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2">
+                    <div class="amm-badge-block amm-badge-block--today">
+                        <div class="amm-badge-block-title">Today</div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Today metrics">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="today_sales" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Dot compares today with yesterday.">
+                            <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Today Sales: <span id="total-today-sales">$0</span>
+                        </span>
+                        <span class="badge fs-6 p-2" style="background-color: #17a2b8; color: white; font-weight: bold;" title="T Nprft% = Σ (Today Sales × NPFT%) ÷ Σ Today Sales.">
+                            T Nprft%: <span id="avg-t-npft">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2" style="background-color: #dc3545; color: white; font-weight: bold;" title="TGroi% = Σ (Today Sales × GPFT%) ÷ Σ today COGS. Today COGS = L30 COGS × (Today Sales ÷ L30 Sales).">
+                            TGroi%: <span id="avg-t-groi">0.0%</span>
+                        </span>
+                        <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS.">
+                            TNROI%: <span id="avg-t-nroi">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2" style="background-color: #d63384; color: white; font-weight: bold;" title="T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales.">
+                            T Ads%: <span id="avg-t-ads">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="T Views = Σ (Views × Today Sales ÷ L30 Sales). Same pace as Today Sales.">
+                            T Views: <span id="total-t-views">0</span>
+                        </span>
+                        </div>
+                    </div>
+                    <div class="amm-badge-block amm-badge-block--yesterday">
+                        <div class="amm-badge-block-title">
+                            <span>Yesterday</span>
+                            <button type="button" id="yesterdayMpViewBtn" class="btn btn-sm btn-outline-dark amm-yesterday-view-btn"
+                                title="Yesterday by marketplace" aria-label="Yesterday by marketplace">
+                                <i class="fas fa-eye" style="color: #000;"></i>
+                            </button>
+                        </div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Yesterday metrics">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
+                            <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
+                            <span class="summary-trend-dot none" data-metric="y_pft" title="Rolling history"></span>Y PFT: <span id="total-y-pft">$0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_npft_amt" style="background-color: #0f766e; color: white; font-weight: bold; cursor:pointer;" title="Y NPFT $ = sum of (Y Sales × NPFT%) per channel. Yesterday net profit using each channel’s NPFT% on the Y Sales column.">
+                            <span class="summary-trend-dot none" data-metric="y_npft_amt" title="Rolling history"></span>Y NPFT: <span id="total-y-npft">$0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="yNprft% = (Σ yesterday net PFT $) ÷ (Σ yesterday sales), measured from yesterday's orders alone.">
+                            <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>yNprft%: <span id="avg-y-npft">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_groi_pct" style="background-color: #dc3545; color: white; font-weight: bold; cursor:pointer;" title="YGroi% = (Σ yesterday gross PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
+                            <span class="summary-trend-dot none" data-metric="y_groi_pct" title="Rolling history"></span>YGroi%: <span id="avg-y-groi">0.0%</span>
+                        </span>
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="y_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
+                            <span class="summary-trend-dot none" data-metric="y_nroi_pct" title="Rolling history"></span>YNROI%: <span id="avg-y-nroi">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2" data-metric="y_ads_pct" style="background-color: #d63384; color: white; font-weight: bold;" title="Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales.">
+                            Y Ads%: <span id="avg-y-ads">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30).">
+                            Y Views: <span id="total-y-views">0</span>
+                        </span>
+                        </div>
+                    </div>
                     <div class="amm-badge-block amm-badge-block--l30">
                         <div class="amm-badge-block-title">L30</div>
                         <div class="ebay2-summary-badge-row" role="group" aria-label="L30 metrics">
@@ -825,31 +1036,14 @@
                         </span>
                         </div>
                     </div>
-                    <div class="amm-badge-block amm-badge-block--yesterday">
-                        <div class="amm-badge-block-title">Yesterday</div>
-                        <div class="ebay2-summary-badge-row" role="group" aria-label="Yesterday metrics">
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
-                            <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
-                            <span class="summary-trend-dot none" data-metric="y_pft" title="Rolling history"></span>Y PFT: <span id="total-y-pft">$0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_npft_amt" style="background-color: #0f766e; color: white; font-weight: bold; cursor:pointer;" title="Y NPFT $ = sum of (Y Sales × NPFT%) per channel. Yesterday net profit using each channel’s NPFT% on the Y Sales column.">
-                            <span class="summary-trend-dot none" data-metric="y_npft_amt" title="Rolling history"></span>Y NPFT: <span id="total-y-npft">$0</span>
-                        </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="yNprft% = (Σ yesterday net PFT $) ÷ (Σ yesterday sales), measured from yesterday's orders alone.">
-                            <span class="summary-trend-dot none" data-metric="y_npft_pct" title="Rolling history"></span>yNprft%: <span id="avg-y-npft">0.0%</span>
-                        </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_groi_pct" style="background-color: #dc3545; color: white; font-weight: bold; cursor:pointer;" title="YGroi% = (Σ yesterday gross PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
-                            <span class="summary-trend-dot none" data-metric="y_groi_pct" title="Rolling history"></span>YGroi%: <span id="avg-y-groi">0.0%</span>
-                        </span>
-                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="y_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
-                            <span class="summary-trend-dot none" data-metric="y_nroi_pct" title="Rolling history"></span>YNROI%: <span id="avg-y-nroi">0.0%</span>
-                        </span>
-                        </div>
-                    </div>
                     <div class="amm-badge-block amm-badge-block--projected">
-                        <div class="amm-badge-block-title">Projected</div>
+                        <div class="amm-badge-block-title">
+                            <span>Projected</span>
+                            <button type="button" id="projectedMpViewBtn" class="btn btn-sm btn-outline-dark amm-projected-view-btn"
+                                title="Projected figures by marketplace" aria-label="Projected figures by marketplace">
+                                <i class="fas fa-calendar-week" style="color: #000;"></i>
+                            </button>
+                        </div>
                         <div class="ebay2-summary-badge-row" role="group" aria-label="Projected metrics">
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
                             <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
@@ -866,6 +1060,30 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_nroi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-NROI% uses the same projected COGS as P GROI%. P-Sales = (L7 ÷ 7) × 30. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-NROI% = Σ (P-Sales × GPFT% − ad spend) ÷ Σ projected COGS.">
                             <span class="summary-trend-dot none" data-metric="p_nroi_pct" title="Rolling history"></span>P-NROI%: <span id="avg-p-nroi">0.0%</span>
                         </span>
+                        <span class="badge fs-6 p-2" style="background-color: #d63384; color: white; font-weight: bold;" title="P Ads% = total ad spend ÷ Σ P-Sales × 100. Spend is current L30 ad spend. P-Sales = (L7 ÷ 7) × 30.">
+                            P Ads%: <span id="avg-p-ads">0.0%</span>
+                        </span>
+                        <span class="badge fs-6 p-2" style="background-color: #0d6efd; color: white; font-weight: bold;" title="P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales.">
+                            P Views: <span id="total-p-views">0</span>
+                        </span>
+                        </div>
+                    </div>
+                    </div>
+                    <div class="amm-badge-block amm-badge-block--forecast">
+                        <div class="amm-badge-block-title">Forecast</div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Forecast metrics">
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#198754;color:#111;font-weight:bold;text-decoration:none;" title="MSL × LP. Same total as Forecast Analysis.">MSL_LP: {{ $forecastBadges['msl_lp'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#0dcaf0;color:#111;font-weight:bold;text-decoration:none;" title="MSL × AMZ price ÷ 4.">MSL_SP: {{ $forecastBadges['msl_sp'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#0dcaf0;color:#111;font-weight:bold;text-decoration:none;" title="INV value.">INV: {{ $forecastBadges['inv'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="LP value.">LP: {{ $forecastBadges['lp'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="Σ (CP × Order).">Ord: {{ $forecastBadges['ord'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="MIP value.">MIP: {{ $forecastBadges['mip'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="R2S value.">R2S: {{ $forecastBadges['r2s'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#6c757d;color:#fff;font-weight:bold;text-decoration:none;" title="Transit value.">Trn: {{ $forecastBadges['trn'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#0dcaf0;color:#111;font-weight:bold;text-decoration:none;" title="Total CBM — Σ (MSL × CBM/unit).">CBM: {{ $forecastBadges['cbm'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="NPFT% — same as Active channel.">NPFT: <span id="amm-fa-npft">—</span></a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#20c997;color:#111;font-weight:bold;text-decoration:none;" title="NROI% — same as Active channel.">NROI: <span id="amm-fa-nroi">—</span></a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:{{ $forecastBadges['available_bg'] }};color:{{ $forecastBadges['available_fg'] }};font-weight:bold;text-decoration:none;" title="Available % — child SKUs with INV &gt; 0.">Avail: {{ $forecastBadges['available_pct'] }}%</a>
                         </div>
                     </div>
                     <div class="amm-badge-block amm-badge-block--others">
@@ -874,9 +1092,14 @@
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             <span class="summary-trend-dot none" title="Channel count"></span>Channels: <span id="total-channels">0</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="today_sales" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Dot compares today with yesterday.">
-                            <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Today Sales: <span id="total-today-sales">$0</span>
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="reviews" style="color: black; font-weight: bold; cursor:pointer;" title="Weighted average product rating and total review count across channels (amazon_product_reviews).">
+                            <span class="summary-trend-dot none" data-metric="reviews" title="Rolling history"></span>Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
                         </span>
+                        </div>
+                    </div>
+                    <div class="amm-badge-block amm-badge-block--inv">
+                        <div class="amm-badge-block-title">INV</div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Inventory metrics">
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="inventory" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of (Shopify INV × Amazon live price) for Active SKUs — same units as Inv@SP / Inv@LP">
                             <span class="summary-trend-dot none" data-metric="inventory" title="Rolling history"></span>inv: <span id="inventory-value-amazon">0</span>
                         </span>
@@ -889,9 +1112,14 @@
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="TAT = inv ÷ L30 Sales (months of stock at current sales)">
                             <span class="summary-trend-dot none" data-metric="tat" title="Rolling history"></span>TAT: <span id="tat-badge">0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="reviews" style="color: black; font-weight: bold; cursor:pointer;" title="Weighted average product rating and total review count across channels (amazon_product_reviews).">
-                            <span class="summary-trend-dot none" data-metric="reviews" title="Rolling history"></span>Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
-                        </span>
+                        </div>
+                        <div class="amm-inv-block-grid">
+                            <div class="amm-inv-block-pair">
+                                <div class="amm-inv-block-copy">
+                                    <div class="amm-inv-block-subtitle">Inv@SP</div>
+                                    <div id="amm-inv-block-sp"><div class="text-muted" style="font-size:11px;">Loading…</div></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1197,6 +1425,39 @@
                             </thead>
                             <tbody id="yesterdayMpTableBody"></tbody>
                             <tfoot id="yesterdayMpTableFoot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Projected by marketplace -->
+    <div class="modal fade" id="projectedMpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2" style="background: linear-gradient(135deg, #6d28d9, #4c1d95);">
+                    <h6 class="modal-title text-white mb-0">
+                        <i class="fas fa-calendar-week me-2"></i>
+                        Projected by marketplace
+                        <span class="fw-normal" style="opacity:.9;">— P-Sales = (L7 ÷ 7) × 30</span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered table-hover mb-0" id="projectedMpTable">
+                            <thead>
+                                <tr>
+                                    <th class="text-start">Marketplace</th>
+                                    <th>P-Sales</th>
+                                    <th>P-GROI%</th>
+                                    <th>P-Npft%</th>
+                                    <th>P-NROI%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="projectedMpTableBody"></tbody>
+                            <tfoot id="projectedMpTableFoot"></tfoot>
                         </table>
                     </div>
                 </div>
@@ -1652,6 +1913,14 @@
         function pSalesFromRow(row) {
             return projectedSalesFromL7(row['L7 Sales'] || 0);
         }
+        function pViewsFromRow(row) {
+            const views = parseNumber(row['Total Views'] || 0);
+            if (views <= 0) return 0;
+            const l30 = parseNumber(row['L30 Sales'] || 0);
+            const pSales = pSalesFromRow(row);
+            if (l30 > 0 && pSales > 0) return views * (pSales / l30);
+            return views;
+        }
         function rowAdSpendFromRow(row) {
             let spend = parseNumber(row['Total Ad Spend'] || 0);
             const chName = (row['Channel '] || '').trim().toLowerCase();
@@ -1752,6 +2021,38 @@
             const ySales = parseNumber(row['Y Sales'] || 0);
             if (!ySales) return null;
             return parseNumber(row['N PFT'] || 0);
+        }
+        function yAdsPartsFromRow(row) {
+            const m = yMeasuredFromRow(row);
+            if (m && m.sales > 0) {
+                return { spend: m.spend, sales: m.sales };
+            }
+            const ySales = parseNumber(row['Y Sales'] || 0);
+            if (ySales <= 0) return { spend: 0, sales: 0 };
+            const ads = parseNumber(row['Ads%'] != null ? row['Ads%'] : (row['TACOS'] || 0));
+            return { spend: ySales * ads / 100, sales: ySales };
+        }
+        function todayPartsFromRow(row) {
+            const sales = parseNumber(row['Today Sales'] || 0);
+            if (sales <= 0) return { sales: 0, gross: 0, net: 0, cogs: 0, spend: 0, views: 0 };
+            const gp = parseNumber(row['Gprofit%'] || 0);
+            const npft = parseNumber(row['N PFT'] || 0);
+            const ads = parseNumber(row['Ads%'] != null ? row['Ads%'] : (row['TACOS'] || 0));
+            const l30 = parseNumber(row['L30 Sales'] || 0);
+            const cogsL30 = parseNumber(row['cogs'] || 0);
+            const views = parseNumber(row['Total Views'] || 0);
+            const cogs = (l30 > 0 && cogsL30 > 0)
+                ? cogsL30 * (sales / l30)
+                : sales * Math.max(0, 1 - gp / 100);
+            const todayViews = (l30 > 0 && views > 0) ? views * (sales / l30) : 0;
+            return {
+                sales: sales,
+                gross: sales * gp / 100,
+                net: sales * npft / 100,
+                cogs: cogs,
+                spend: sales * ads / 100,
+                views: todayViews
+            };
         }
         var METRIC_DIFF_PCT = {
             gprofit: 1, groi: 1, npft: 1, p_npft: 1, p_groi_pct: 1, p_nroi_pct: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
@@ -2250,13 +2551,14 @@
                 ajaxURL: "/channels-master-data",
                 ajaxParams: { size: 10000, page: 1 },
                 ajaxSorting: false,
-                layout: window.innerWidth < 768 ? "fitData" : "fitDataStretch",
+                layout: "fitData",
                 height: false,
                 renderVertical: "basic",
                 pagination: false,
                 responsiveLayout: false,
                 columnDefaults: {
-                    minWidth: 72,
+                    minWidth: 42,
+                    widthShrink: 0,
                 },
                 columnCalcs: "both",
                 initialSort: [{
@@ -2333,6 +2635,15 @@
                         } else if (Array.isArray(response.inventory_by_color) && response.inventory_by_color.length) {
                             lastInventoryPies = { slices: response.inventory_by_color, history: [] };
                         }
+                        if (lastInventoryPies && typeof ammInvRenderBlock === 'function') {
+                            ammInvRenderBlock(lastInventoryPies);
+                        } else if (typeof ammInvPiesUrl !== 'undefined') {
+                            $.getJSON(ammInvPiesUrl).done(function(res) {
+                                if (!res || (res.status && Number(res.status) !== 200) || !Array.isArray(res.slices) || !res.slices.length) return;
+                                lastInventoryPies = res;
+                                if (typeof ammInvRenderBlock === 'function') ammInvRenderBlock(res);
+                            });
+                        }
                         // TAT = inv ÷ L30 Sales (months of cover)
                         const tatEl = document.getElementById('tat-badge');
                         if (tatEl && response.data && response.data.length) {
@@ -2397,7 +2708,7 @@
                         field: "Channel ",
                         frozen: true,
                         responsive: 0,
-                        minWidth: 90,
+                        minWidth: 108,
                         formatter: function(cell) {
                             const channel = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -5030,6 +5341,20 @@
                 pinAmmTableHeader();
             });
 
+            var ammFitWidthsTimer = null;
+            function fitAmmColumnsToData() {
+                if (!table || !table.getColumns) return;
+                clearTimeout(ammFitWidthsTimer);
+                ammFitWidthsTimer = setTimeout(function() {
+                    table.getColumns().forEach(function(col) {
+                        if (!col.isVisible()) return;
+                        var def = col.getDefinition() || {};
+                        if (def.field === 'logo') return;
+                        try { col.setWidth(true); } catch (e) { /* ignore */ }
+                    });
+                }, 60);
+            }
+
             function ammStickyPort(el) {
                 var node = el && el.parentElement;
                 while (node && node !== document.body && node !== document.documentElement) {
@@ -5141,13 +5466,15 @@
                         resizeTimer = setTimeout(function() {
                             if (table) {
                                 try {
-                                    table.setLayout(window.innerWidth < 768 ? 'fitData' : 'fitDataStretch');
+                                    table.setLayout('fitData');
+                                    fitAmmColumnsToData();
                                 } catch (e) { /* ignore */ }
                                 table.redraw(true);
                             }
                             requestAnimationFrame(function() {
                                 syncBarSize();
                                 applyScroll(holder.scrollLeft);
+                                if (typeof fitAmmBadgeRows === 'function') fitAmmBadgeRows();
                             });
                         }, 150);
                     });
@@ -5254,6 +5581,35 @@
                 });
             }
 
+            function fitAmmBadgeRows() {
+                if (window.innerWidth < 768) return;
+                document.querySelectorAll('#summary-stats .ebay2-summary-badge-row').forEach(function(row) {
+                    row.style.zoom = '1';
+                    var badges = row.querySelectorAll(':scope > .badge:not(.d-none)');
+                    var size = 12;
+                    var min = 9;
+                    function apply(px) {
+                        var padY = px >= 11 ? 4 : 2;
+                        var padX = px >= 11 ? 6 : 3;
+                        badges.forEach(function(b) {
+                            b.style.setProperty('font-size', px + 'px', 'important');
+                            b.style.setProperty('padding', padY + 'px ' + padX + 'px', 'important');
+                        });
+                    }
+                    apply(size);
+                    var guard = 0;
+                    while (row.scrollWidth > row.clientWidth + 1 && size > min && guard < 16) {
+                        size -= 0.5;
+                        apply(size);
+                        guard++;
+                    }
+                    if (row.scrollWidth > row.clientWidth + 1 && row.clientWidth > 0) {
+                        row.style.zoom = String(row.clientWidth / row.scrollWidth);
+                    }
+                });
+            }
+            requestAnimationFrame(fitAmmBadgeRows);
+
             // Update summary statistics
             function updateSummaryStats(data) {
                 let totalChannels = data.length;
@@ -5263,7 +5619,14 @@
                 let totalYGross = 0;
                 let totalYNet = 0;
                 let totalYCogs = 0;
+                let totalYAdSpend = 0;
+                let totalYAdSales = 0;
                 let totalTodaySales = 0;
+                let totalTodayGross = 0;
+                let totalTodayNet = 0;
+                let totalTodayCogs = 0;
+                let totalTodayAdSpend = 0;
+                let totalTodayViews = 0;
                 let totalPSales = 0;
                 let totalPGross = 0;
                 let totalL30Orders = 0;
@@ -5320,11 +5683,20 @@
                     totalYGross += yGrossPftFromRow(row);
                     totalYNet += yNetPftFromRow(row);
                     totalYCogs += yCogsFromRow(row);
+                    const yAds = yAdsPartsFromRow(row);
+                    totalYAdSpend += yAds.spend;
+                    totalYAdSales += yAds.sales;
                     // YNPFT% divides by the same one-day sales the profit was measured
                     // against; the Y Sales badge keeps using the Y Sales column.
                     const yMeasured = yMeasuredFromRow(row);
                     totalYPctSales += yMeasured ? yMeasured.sales : ySales;
                     totalTodaySales += todaySales;
+                    const todayParts = todayPartsFromRow(row);
+                    totalTodayGross += todayParts.gross;
+                    totalTodayNet += todayParts.net;
+                    totalTodayCogs += todayParts.cogs;
+                    totalTodayAdSpend += todayParts.spend;
+                    totalTodayViews += todayParts.views;
                     totalPSales += pSales;
                     totalPGross += (gprofitPercent / 100) * pSales;
                     totalL30Orders += l30Orders;
@@ -5450,6 +5822,26 @@
                         'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US') + '. Dot compares today with yesterday.');
                     setBadgeExact($el, val);
                     lastDotPairByKey['all_today_sales'] = [totalYSales, totalTodaySales];
+                })();
+                (function() {
+                    const npft = totalTodaySales > 0 ? (totalTodayNet / totalTodaySales) * 100 : 0;
+                    const groi = totalTodayCogs > 0 ? (totalTodayGross / totalTodayCogs) * 100 : 0;
+                    const nroi = totalTodayCogs > 0 ? (totalTodayNet / totalTodayCogs) * 100 : 0;
+                    const ads = totalTodaySales > 0 ? (totalTodayAdSpend / totalTodaySales) * 100 : 0;
+                    const views = Math.round(totalTodayViews);
+                    $('#avg-t-npft').text(pct1(npft).toFixed(1) + '%');
+                    $('#avg-t-groi').text(pct1(groi).toFixed(1) + '%');
+                    $('#avg-t-nroi').text(pct1(nroi).toFixed(1) + '%');
+                    $('#avg-t-ads').text(pct1(ads).toFixed(1) + '%');
+                    let viewsText = String(views);
+                    if (Math.abs(views) >= 1000000) viewsText = (views / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                    else if (Math.abs(views) >= 1000) viewsText = Math.round(views / 1000) + 'K';
+                    $('#total-t-views').text(viewsText);
+                    $('#avg-t-npft').closest('.badge').attr('title', 'T Nprft% = Σ (Today Sales × NPFT%) ÷ Σ Today Sales. ' + pct1(npft).toFixed(1) + '%');
+                    $('#avg-t-groi').closest('.badge').attr('title', 'TGroi% = Σ (Today Sales × GPFT%) ÷ Σ today COGS. Today COGS = L30 COGS × (Today Sales ÷ L30 Sales). ' + pct1(groi).toFixed(1) + '%');
+                    $('#avg-t-nroi').closest('.badge').attr('title', 'TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS. ' + pct1(nroi).toFixed(1) + '%');
+                    $('#avg-t-ads').closest('.badge').attr('title', 'T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales. ' + pct1(ads).toFixed(1) + '%');
+                    $('#total-t-views').closest('.badge').attr('title', 'T Views = Σ (Views × Today Sales ÷ L30 Sales). ' + views.toLocaleString('en-US'));
                 })();
                 (function() {
                     const val = Math.round(totalPSales);
@@ -5618,6 +6010,27 @@
                     setBadgeExact($el, val);
                 })();
                 (function() {
+                    const avgPAds = totalPSales > 0 ? (totalAdSpend / totalPSales) * 100 : 0;
+                    const val = pct1(avgPAds);
+                    const $el = $('#avg-p-ads');
+                    $el.text(val.toFixed(1) + '%');
+                    $el.closest('.badge').attr('title',
+                        'P Ads% = total ad spend ÷ Σ P-Sales × 100. Spend is current L30 ad spend. P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
+                    setBadgeExact($el, val);
+                })();
+                (function() {
+                    let totalPViews = 0;
+                    data.forEach(function(row) {
+                        totalPViews += pViewsFromRow(row);
+                    });
+                    const val = Math.round(totalPViews);
+                    const $el = $('#total-p-views');
+                    $el.text(toCompact(val));
+                    $el.closest('.badge').attr('title',
+                        'P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. ' + val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
+                })();
+                (function() {
                     let totalPNet = 0;
                     data.forEach(function(row) {
                         totalPNet += pNetPftFromRow(row);
@@ -5671,6 +6084,21 @@
                     setBadgeExact($el, val);
                 })();
                 (function() {
+                    const avgYAds = totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : 0;
+                    const val = pct1(avgYAds);
+                    const $el = $('#avg-y-ads');
+                    if (totalYAdSales > 0) {
+                        $el.text(val.toFixed(1) + '%');
+                        setBadgeExact($el, val);
+                    } else {
+                        $el.text('NYS');
+                        setBadgeExact($el, null);
+                    }
+                    $el.closest('.badge').attr('title',
+                        'Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales. '
+                        + (totalYAdSales > 0 ? val.toFixed(1) + '%' : 'No yesterday sales.'));
+                })();
+                (function() {
                     const val = pct1(avgNroi);
                     const $el = $('#avg-nroi');
                     $el.text(val.toFixed(1) + '%');
@@ -5705,6 +6133,7 @@
                 const $revBadge = $('#ratings-reviews-badge');
                 $revBadge.text(weightedAvgRating + ' ★ | ' + totalReviews);
                 setBadgeExact($revBadge, reviewsSum);
+                requestAnimationFrame(fitAmmBadgeRows);
             }
 
             // Combine channel search and type (B2C/B2B/Dropship/Wholesale) filters
@@ -5852,43 +6281,109 @@
                 });
             }
 
-            // Build Column Visibility Dropdown — lists every column with a field.
+            // Build Column Visibility Dropdown — grouped, with a header checkbox per group.
+            const COLUMN_MENU_GROUPS = [
+                { id: 'basic', label: 'Basic', fields: ['logo', 'Channel ', 'type', 'brand_authorisation'] },
+                { id: 'today', label: 'Today', fields: ['Today Sales'] },
+                { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y GROI%', 'YNPFT%'] },
+                { id: 'l30', label: 'L30', fields: ['L30 Sales', 'L30 Orders', 'Qty', 'G Roi', 'Gprofit%', 'N ROI', 'N PFT', 'Total Views', 'CVR'] },
+                { id: 'projected', label: 'Projected', fields: ['P-Sales', 'P Growth', 'P GROI%', 'PNPFT%'] },
+                { id: 'ads', label: 'Advertisement', fields: ['Total Ad Spend', 'Ads%'] },
+                { id: 'inv', label: 'Inv', fields: [] },
+                { id: 'others', label: 'Others', fields: [] },
+            ];
+
+            function columnMenuLabel(text) {
+                return String(text || '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            function syncColumnGroupHeader(groupId) {
+                const menu = document.getElementById('column-dropdown-list');
+                if (!menu) return;
+                const head = menu.querySelector('input[data-group-toggle="' + groupId + '"]');
+                const boxes = menu.querySelectorAll('input[data-field][data-group="' + groupId + '"]');
+                if (!head || !boxes.length) return;
+                let checked = 0;
+                boxes.forEach(function(box) { if (box.checked) checked += 1; });
+                head.checked = checked === boxes.length;
+                head.indeterminate = checked > 0 && checked < boxes.length;
+            }
+
             function buildColumnDropdown() {
                 const menu = document.getElementById("column-dropdown-list");
-                if (!menu) return;
+                if (!menu || !table) return;
 
-                menu.innerHTML = '';
-
+                const byField = {};
                 table.getColumns().forEach(col => {
                     const def = col.getDefinition();
                     const field = def.field;
                     if (!field) return;
                     if (PERMANENTLY_HIDDEN_FIELDS.indexOf(field) !== -1) return;
                     if (COLUMNS_MENU_EXCLUDED_FIELDS.indexOf(field) !== -1) return;
+                    byField[field] = {
+                        field: field,
+                        visible: col.isVisible(),
+                        label: def.title || field,
+                        hover: def.menuTitle || def.title || field,
+                    };
+                });
 
-                    const isVisible = col.isVisible();
-                    const label = def.title || field;
-                    const hover = def.menuTitle || label;
-                    const li = document.createElement("li");
-                    li.style.minWidth = '0';
-                    li.innerHTML =
-                        `<label class="dropdown-item py-1 px-2 text-truncate" style="white-space:nowrap;" title="${hover}"><input type="checkbox" ${isVisible ? 'checked' : ''} data-field="${field}"> ${label}</label>`;
-                    menu.appendChild(li);
+                const claimed = {};
+                const sections = COLUMN_MENU_GROUPS.map(function(group) {
+                    const items = [];
+                    group.fields.forEach(function(field) {
+                        if (!byField[field] || claimed[field]) return;
+                        claimed[field] = true;
+                        items.push(byField[field]);
+                    });
+                    return { id: group.id, label: group.label, items: items };
+                });
+                const others = sections.find(function(section) { return section.id === 'others'; });
+                Object.keys(byField).forEach(function(field) {
+                    if (claimed[field] || !others) return;
+                    others.items.push(byField[field]);
+                });
+
+                menu.innerHTML = '';
+                sections.forEach(function(section) {
+                    if (!section.items.length) return;
+                    const wrap = document.createElement('div');
+                    wrap.className = 'amm-col-group';
+                    const checkedCount = section.items.filter(function(item) { return item.visible; }).length;
+                    const allOn = checkedCount === section.items.length;
+                    const someOn = checkedCount > 0 && !allOn;
+                    wrap.innerHTML =
+                        '<label class="amm-col-group-head">'
+                        + '<input type="checkbox" data-group-toggle="' + section.id + '"' + (allOn ? ' checked' : '') + '>'
+                        + columnMenuLabel(section.label)
+                        + '</label>'
+                        + '<div class="amm-col-group-items">'
+                        + section.items.map(function(item) {
+                            return '<label class="dropdown-item py-1 px-2 text-truncate" style="white-space:nowrap;" title="'
+                                + columnMenuLabel(item.hover) + '">'
+                                + '<input type="checkbox" data-group="' + section.id + '" data-field="'
+                                + columnMenuLabel(item.field) + '"' + (item.visible ? ' checked' : '') + '> '
+                                + columnMenuLabel(item.label)
+                                + '</label>';
+                        }).join('')
+                        + '</div>';
+                    menu.appendChild(wrap);
+                    const head = wrap.querySelector('input[data-group-toggle]');
+                    if (head) head.indeterminate = someOn;
                 });
             }
 
-            // Autosave column visibility whenever a checkbox is toggled.
-            let columnVisibilitySaveTimer = null;
-            document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
-                if (e.target.type !== 'checkbox') return;
-                const field = e.target.getAttribute('data-field');
+            function applyColumnMenuToggle(field, show) {
                 const col = table.getColumn(field);
                 if (!col) return;
-                if (e.target.checked) {
-                    col.show();
-                } else {
-                    col.hide();
-                }
+                if (show) col.show();
+                else col.hide();
+            }
+
+            function queueColumnVisibilitySave() {
                 clearTimeout(columnVisibilitySaveTimer);
                 columnVisibilitySaveTimer = setTimeout(function() {
                     saveColumnVisibility().catch(function() {
@@ -5897,6 +6392,30 @@
                         }
                     });
                 }, 300);
+            }
+
+            // Autosave column visibility whenever a checkbox is toggled.
+            let columnVisibilitySaveTimer = null;
+            document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
+                if (!e.target || e.target.type !== 'checkbox') return;
+                const groupToggle = e.target.getAttribute('data-group-toggle');
+                if (groupToggle) {
+                    const show = e.target.checked;
+                    e.target.indeterminate = false;
+                    document.querySelectorAll('#column-dropdown-list input[data-field][data-group="' + groupToggle + '"]').forEach(function(box) {
+                        box.checked = show;
+                        applyColumnMenuToggle(box.getAttribute('data-field'), show);
+                    });
+                    fitAmmColumnsToData();
+                    queueColumnVisibilitySave();
+                    return;
+                }
+                const field = e.target.getAttribute('data-field');
+                if (!field) return;
+                applyColumnMenuToggle(field, e.target.checked);
+                syncColumnGroupHeader(e.target.getAttribute('data-group'));
+                fitAmmColumnsToData();
+                queueColumnVisibilitySave();
             });
 
             // Table built event — load saved column visibility, apply it, then build the menu.
@@ -5911,6 +6430,7 @@
             table.on('dataLoaded', function() {
                 setTimeout(function() {
                     buildColumnDropdown();
+                    fitAmmColumnsToData();
                 }, 100);
                 if (!dotTrendsLoadedOnce && table.getData && table.getData().length) {
                     dotTrendsLoadedOnce = true;
@@ -6655,7 +7175,8 @@
                     };
                 });
             }
-            function ammInvLegendHtml(chart, slices, valueKey) {
+            function ammInvLegendHtml(chart, slices, valueKey, includeHist) {
+                if (includeHist === undefined) includeHist = true;
                 const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
                 return '<div class="amm-inv-pie-row" style="color:#94a3b8;font-size:10px;font-weight:600;">'
                     + '<span class="amm-inv-pie-swatch" style="visibility:hidden;"></span>'
@@ -6663,7 +7184,7 @@
                     + '<span class="amm-inv-pie-count">count</span>'
                     + '<span class="amm-inv-pie-val">$</span>'
                     + '<span class="amm-inv-pie-pct">of total</span>'
-                    + '<span class="amm-inv-hist-dot" style="visibility:hidden;"></span>'
+                    + (includeHist ? '<span class="amm-inv-hist-dot" style="visibility:hidden;"></span>' : '')
                     + '</div>'
                     + slices.map(function(s) {
                         const n = Number(s[valueKey]) || 0;
@@ -6674,10 +7195,18 @@
                             + '<span class="amm-inv-pie-count">' + (s.count || 0) + '</span>'
                             + '<span class="amm-inv-pie-val">' + ammInvMoneyCompact(n) + '</span>'
                             + '<span class="amm-inv-pie-pct">' + pct + '%</span>'
-                            + '<button type="button" class="amm-inv-hist-dot" data-chart="' + chart + '" data-band="' + s.key + '" '
-                            + 'style="background:' + s.color + ';" title="' + s.label + ' daily history"></button>'
+                            + (includeHist
+                                ? '<button type="button" class="amm-inv-hist-dot" data-chart="' + chart + '" data-band="' + s.key + '" '
+                                    + 'style="background:' + s.color + ';" title="' + s.label + ' daily history"></button>'
+                                : '')
                             + '</div>';
                     }).join('');
+            }
+            function ammInvRenderBlock(payload) {
+                const raw = (payload && payload.slices) || [];
+                if (!raw.length) return;
+                const slices = ammInvNormalizeSlices(raw);
+                $('#amm-inv-block-sp').html(ammInvLegendHtml('sp', slices, 'inv_at_sp', false));
             }
             function ammInvDrawPie(canvasId, chartRef, slices, valueKey) {
                 const canvas = document.getElementById(canvasId);
@@ -6715,7 +7244,7 @@
                     },
                 });
                 if (chartRef === 'lp') ammInvLpPieChart = chart;
-                else ammInvSpPieChart = chart;
+                else if (chartRef === 'sp') ammInvSpPieChart = chart;
             }
             function ammInvRenderPies(payload) {
                 const slices = ammInvNormalizeSlices((payload && payload.slices) || []);
@@ -6724,6 +7253,7 @@
                 lastInventoryPies = { slices: slices, history: ammInvLiveHistory };
                 $('#amm-inv-lp-legend').html(ammInvLegendHtml('lp', slices, 'inv_at_lp'));
                 $('#amm-inv-sp-legend').html(ammInvLegendHtml('sp', slices, 'inv_at_sp'));
+                ammInvRenderBlock({ slices: slices });
                 ammInvDrawPie('amm-inv-lp-pie', 'lp', slices, 'inv_at_lp');
                 ammInvDrawPie('amm-inv-sp-pie', 'sp', slices, 'inv_at_sp');
             }
@@ -6813,10 +7343,6 @@
                         }
                     });
             }
-            $(document).on('click', '#amm-inv-btn', function(e) {
-                e.preventDefault();
-                ammInvOpenModal();
-            });
             $(document).on('click', '#ammInvModal .amm-inv-hist-dot', function(e) {
                 e.preventDefault();
                 ammInvDrawHist($(this).data('chart'), $(this).data('band'));
@@ -7661,7 +8187,7 @@
                 showMetricChart(channel, metric, cv);
             }
 
-            $(document).on('mouseenter', '#yesterdayMpTable .ymp-hover-cell', function() {
+            $(document).on('mouseenter', '#yesterdayMpTable .ymp-hover-cell, #projectedMpTable .ymp-hover-cell', function() {
                 const chartEl = document.getElementById('adBreakdownChartModal');
                 if (chartEl && chartEl.classList.contains('show')) return;
                 const $el = $(this);
@@ -7674,19 +8200,19 @@
                     openYmpHistoryChart(channel, metric, value);
                 }, 500);
             });
-            $(document).on('mouseleave', '#yesterdayMpTable .ymp-hover-cell', function() {
+            $(document).on('mouseleave', '#yesterdayMpTable .ymp-hover-cell, #projectedMpTable .ymp-hover-cell', function() {
                 if (ympHoverTimer) {
                     clearTimeout(ympHoverTimer);
                     ympHoverTimer = null;
                 }
             });
-            $(document).on('mousedown', '#yesterdayMpTable .ymp-hover-cell', function() {
+            $(document).on('mousedown', '#yesterdayMpTable .ymp-hover-cell, #projectedMpTable .ymp-hover-cell', function() {
                 if (ympHoverTimer) {
                     clearTimeout(ympHoverTimer);
                     ympHoverTimer = null;
                 }
             });
-            $(document).on('click', '#yesterdayMpTable .ymp-hover-cell', function(e) {
+            $(document).on('click', '#yesterdayMpTable .ymp-hover-cell, #projectedMpTable .ymp-hover-cell', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 const $el = $(this);
@@ -7695,7 +8221,9 @@
 
             $('#adBreakdownChartModal').on('hidden.bs.modal', function() {
                 const yEl = document.getElementById('yesterdayMpModal');
-                if (yEl && yEl.classList.contains('show')) {
+                const pEl = document.getElementById('projectedMpModal');
+                const stillOpen = (yEl && yEl.classList.contains('show')) || (pEl && pEl.classList.contains('show'));
+                if (stillOpen) {
                     document.body.classList.add('modal-open');
                     if (!document.querySelector('.modal-backdrop')) {
                         const back = document.createElement('div');
@@ -7705,6 +8233,22 @@
                     }
                 }
             });
+
+            function applyYViewsBadge(rows) {
+                let sum = 0;
+                (rows || []).forEach(function(row) {
+                    sum += parseNumber(row.views || 0) || 0;
+                });
+                const val = Math.round(sum);
+                const $el = $('#total-y-views');
+                if (!$el.length) return;
+                let text = String(val);
+                if (Math.abs(val) >= 1000000) text = (val / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                else if (Math.abs(val) >= 1000) text = Math.round(val / 1000) + 'K';
+                $el.text(text);
+                $el.closest('.badge').attr('title',
+                    'Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30). ' + val.toLocaleString('en-US'));
+            }
 
             function openYesterdayMarketplaceModal() {
                 const el = document.getElementById('yesterdayMpModal');
@@ -7717,6 +8261,7 @@
                     .done(function(res) {
                         const rows = (res && res.data && res.data.rows) ? res.data.rows : [];
                         renderYesterdayMarketplaceRows(rows);
+                        applyYViewsBadge(rows);
                     })
                     .fail(function() {
                         $('#yesterdayMpTableBody').html('<tr><td colspan="9" class="text-center text-danger">Could not load yesterday metrics</td></tr>');
@@ -7727,6 +8272,115 @@
                 e.preventDefault();
                 e.stopPropagation();
                 openYesterdayMarketplaceModal();
+            });
+
+            $.get('/yesterday-marketplace-metrics').done(function(res) {
+                const rows = (res && res.data && res.data.rows) ? res.data.rows : [];
+                applyYViewsBadge(rows);
+            });
+
+            $.get('/active-channel-npft-nroi').done(function(res) {
+                if (!res || !res.success) return;
+                if (res.npft_pct != null) $('#amm-fa-npft').text(Math.round(res.npft_pct) + '%');
+                if (res.nroi_pct != null) $('#amm-fa-nroi').text(Math.round(res.nroi_pct) + '%');
+                if (typeof fitAmmBadgeRows === 'function') requestAnimationFrame(fitAmmBadgeRows);
+            });
+
+            function pMpPct1(value, metric, channel) {
+                if (value === null || value === undefined || value === '' || !isFinite(parseNumber(value))) {
+                    return '<span class="text-muted" title="No L7 Sales">—</span>';
+                }
+                const v = parseNumber(value);
+                const style = ammMetricCellStyle(metric, v) + 'font-weight:600;';
+                const color = ammMetricCellColor(metric, v);
+                return yMpWrap(channel, metric, v, `<span style="${style}">${v.toFixed(1)}%</span>`, color);
+            }
+
+            function pMpSales(value, channel, l30Sales) {
+                const v = parseNumber(value);
+                if (!v) return '<span class="text-muted" title="No L7 Sales">—</span>';
+                const pct = pSalesVsL30Pct(v, l30Sales);
+                const color = (typeof getMetricDotColor === 'function')
+                    ? getMetricDotColor(channel, 'p_sales')
+                    : '#0d6efd';
+                const inner = `<span style="font-weight:600;color:#0d6efd;">$${Math.round(v).toLocaleString('en-US')}</span>${formatPSalesVsL30PctHtml(pct)}`;
+                return yMpWrap(channel, 'p_sales', v, inner, color);
+            }
+
+            function pNroiPctFromRow(row) {
+                const pSales = pSalesFromRow(row);
+                if (!pSales) return null;
+                const pCogs = pCogsFromRow(row);
+                if (!(pCogs > 0)) return null;
+                return ((pGrossPftFromRow(row) - rowAdSpendFromRow(row)) / pCogs) * 100;
+            }
+
+            function renderProjectedMarketplaceRows(rows) {
+                let sumPSales = 0, sumL30 = 0, sumPGross = 0, sumPCogs = 0, sumSpend = 0;
+                let nroiNet = 0, nroiCogs = 0;
+
+                const sorted = (rows || []).slice().sort(function(a, b) {
+                    return pSalesFromRow(b) - pSalesFromRow(a);
+                });
+
+                const body = sorted.map(function(row) {
+                    const name = (row['Channel '] || row['Channel'] || '').toString().trim() || '—';
+                    const pSales = pSalesFromRow(row);
+                    const l30 = parseNumber(row['L30 Sales'] || 0);
+                    const pGross = pGrossPftFromRow(row);
+                    const pCogs = pCogsFromRow(row);
+                    const spend = rowAdSpendFromRow(row);
+
+                    sumPSales += pSales;
+                    sumL30 += l30;
+                    sumPGross += pGross;
+                    sumSpend += spend;
+                    if (pSales) {
+                        sumPCogs += pCogs;
+                        nroiNet += pGross - spend;
+                        nroiCogs += pCogs;
+                    }
+
+                    return `<tr>
+                        <td class="text-start fw-semibold">${yMpEsc(name)}</td>
+                        <td class="text-end">${pMpSales(pSales, name, l30)}</td>
+                        <td class="text-center">${pMpPct1(pGroiPctFromRow(row), 'p_groi_pct', name)}</td>
+                        <td class="text-center">${pMpPct1(pNpftPctFromRow(row), 'p_npft', name)}</td>
+                        <td class="text-center">${pMpPct1(pNroiPctFromRow(row), 'p_nroi_pct', name)}</td>
+                    </tr>`;
+                }).join('');
+
+                const totGroi = sumPCogs > 0 ? (sumPGross / sumPCogs) * 100 : null;
+                const totNpft = sumPSales > 0 ? ((sumPGross - sumSpend) / sumPSales) * 100 : null;
+                const totNroi = nroiCogs > 0 ? (nroiNet / nroiCogs) * 100 : null;
+
+                $('#projectedMpTableBody').html(body || '<tr><td colspan="5" class="text-center text-muted">No channels</td></tr>');
+                $('#projectedMpTableFoot').html(`<tr>
+                    <td class="text-start">Total</td>
+                    <td class="text-end">${pMpSales(sumPSales, 'All', sumL30)}</td>
+                    <td class="text-center">${pMpPct1(totGroi, 'p_groi_pct', 'All')}</td>
+                    <td class="text-center">${pMpPct1(totNpft, 'p_npft', 'All')}</td>
+                    <td class="text-center">${pMpPct1(totNroi, 'p_nroi_pct', 'All')}</td>
+                </tr>`);
+            }
+
+            function openProjectedMarketplaceModal() {
+                const el = document.getElementById('projectedMpModal');
+                if (typeof bootstrap === 'undefined' || !el) return;
+                const rows = (table && table.getData) ? table.getData() : [];
+                if (!rows.length) {
+                    $('#projectedMpTableBody').html('<tr><td colspan="5" class="text-center text-muted py-3">Channel data is still loading…</td></tr>');
+                    $('#projectedMpTableFoot').empty();
+                } else {
+                    renderProjectedMarketplaceRows(rows);
+                }
+                bootstrap.Modal.getOrCreateInstance(el).show();
+            }
+
+            $(document).on('click', '#projectedMpViewBtn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                openProjectedMarketplaceModal();
             });
         });
     </script>
