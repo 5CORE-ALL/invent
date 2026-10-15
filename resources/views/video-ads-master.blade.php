@@ -76,12 +76,21 @@
             position: relative;
             border: 1px solid #e5e7eb;
         }
-        .vam-thumb-box img {
+        .vam-thumb-box img,
+        .vam-thumb-box video {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: block;
             background: #fff;
+            pointer-events: none;
+        }
+        .vam-thumb-box video::-webkit-media-controls,
+        .vam-thumb-box video::-webkit-media-controls-start-playback-button,
+        .vam-thumb-box video::-webkit-media-controls-overlay-play-button {
+            display: none !important;
+            -webkit-appearance: none;
+            opacity: 0;
             pointer-events: none;
         }
         .vam-thumb-folder {
@@ -1231,10 +1240,12 @@
                 try { parsed = new URL(url); } catch (e) { return null; }
                 const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
                 const path = decodeURIComponent(parsed.pathname || '');
+                const videoExt = /\.(mp4|webm|mov|m4v|ogg|ogv|mkv)$/i.test(path);
                 const imageExt = /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(path);
-                const dropbox = host === 'dropbox.com' || host.endsWith('.dropbox.com');
+                const dropbox = host === 'dropbox.com' || host.endsWith('.dropbox.com') || host === 'dropboxusercontent.com' || host.endsWith('.dropboxusercontent.com');
                 const hooks = parseTags(row && row.hook_name).map(displayHookName).join('|');
                 const dropboxImage = '/video-ads-master/thumb?u=' + encodeURIComponent(url) + '&hooks=' + encodeURIComponent(hooks);
+                const dropboxVideo = videoExt || (/\/scl\/fi\//i.test(path) && !imageExt);
 
                 const yt = extractYoutubeId(url);
                 if (yt) return { type: 'image', src: 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' };
@@ -1245,21 +1256,41 @@
                 const ownDrive = path.match(/\/drive\/s\/([A-Za-z0-9]{20,64})(?:\/(.*))?$/);
                 if (ownDrive && (host === 'inventory.5coremanagement.com' || host.endsWith('.5coremanagement.com') || host === 'localhost' || host === location.hostname.replace(/^www\./i, '').toLowerCase())) {
                     if (imageExt) return { type: 'image', src: parsed.pathname + parsed.search };
-                    return null;
+                    const rest = ownDrive[2] || '';
+                    const raw = /^(raw|f)(\/|$)/i.test(rest) || videoExt
+                        ? (parsed.pathname + parsed.search)
+                        : ('/drive/s/' + ownDrive[1] + '/raw');
+                    return { type: 'image', src: raw, video: raw };
                 }
 
                 if (dropbox) {
                     if (/\/sh\//i.test(path) && !/\/scl\/(?:fo|fi)\//i.test(path)) return { type: 'folder' };
-                    return { type: 'image', src: dropboxImage };
+                    const video = dropboxVideo ? ('/video-ads-master/media?u=' + encodeURIComponent(url)) : '';
+                    return { type: 'image', src: dropboxImage, video: video };
                 }
 
                 if (imageExt) return { type: 'image', src: url };
+                if (videoExt) return { type: 'image', src: url, video: url };
                 return null;
             }
 
             window._vamThumbFail = function (el) {
                 const box = el.closest('.vam-thumb-box');
                 if (!box) return;
+                const videoUrl = box.getAttribute('data-video') || '';
+                if (el.tagName === 'IMG' && videoUrl) {
+                    box.setAttribute('data-video', '');
+                    box.setAttribute('data-src', videoUrl);
+                    const video = document.createElement('video');
+                    video.muted = true;
+                    video.defaultMuted = true;
+                    video.playsInline = true;
+                    video.preload = 'metadata';
+                    video.src = videoUrl + '#t=0.2';
+                    video.addEventListener('error', function () { window._vamThumbFail(video); });
+                    el.replaceWith(video);
+                    return;
+                }
                 box.outerHTML = '<span class="vam-dash">—</span>';
             };
 
@@ -1271,7 +1302,8 @@
                 if (kind.type === 'folder') {
                     return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-folder" title="This link is a folder"><i class="fas fa-folder"></i></a>`;
                 }
-                return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-box" data-zoom="image" data-src="${escapeHtml(kind.src)}" title="Open link"><img src="${escapeHtml(kind.src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="window._vamThumbFail(this)"></a>`;
+                const videoAttr = kind.video ? ` data-video="${escapeHtml(kind.video)}"` : '';
+                return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-box" data-zoom="image" data-src="${escapeHtml(kind.src)}"${videoAttr} title="Open link"><img src="${escapeHtml(kind.src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="window._vamThumbFail(this)"></a>`;
             }
 
             // Enlarged preview is attached to <body> so the table cannot clip it.
@@ -1295,13 +1327,27 @@
             function showThumbPop(box) {
                 if (vamZoomed === box) return;
                 const pop = vamThumbPop();
+                const media = box.querySelector('video, img');
                 const src = box.getAttribute('data-src');
-                if (!src) return;
+                if (!media || !src) return;
                 pop.innerHTML = '';
-                const img = document.createElement('img');
-                img.src = src;
-                img.referrerPolicy = 'no-referrer';
-                pop.appendChild(img);
+                if (media.tagName === 'VIDEO' && media.readyState >= 2 && media.videoWidth) {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 840;
+                        canvas.height = Math.max(2, Math.round(840 / ((media.videoWidth / media.videoHeight) || (16 / 9))));
+                        canvas.getContext('2d').drawImage(media, 0, 0, canvas.width, canvas.height);
+                        const shot = document.createElement('img');
+                        shot.src = canvas.toDataURL('image/jpeg', 0.86);
+                        pop.appendChild(shot);
+                    } catch (err) {}
+                }
+                if (!pop.firstChild) {
+                    const img = document.createElement('img');
+                    img.src = src;
+                    img.referrerPolicy = 'no-referrer';
+                    pop.appendChild(img);
+                }
                 const rect = box.getBoundingClientRect();
                 const w = 480, h = 270, gap = 12;
                 let left = rect.right + gap;
@@ -1319,6 +1365,13 @@
                 if (vamZoomed) hideThumbPop();
             });
             document.addEventListener('scroll', hideThumbPop, true);
+            document.addEventListener('loadedmetadata', (e) => {
+                const video = e.target;
+                if (!video || video.tagName !== 'VIDEO' || !video.closest('.vam-thumb-box')) return;
+                if (video.currentTime < 0.05) {
+                    try { video.currentTime = 0.2; } catch (err) {}
+                }
+            }, true);
 
             // MISSING column — shows a red dot when the row has no valid link,
             // making it easy to scan for rows that still need one. Rows that

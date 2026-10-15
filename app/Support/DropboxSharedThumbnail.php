@@ -36,6 +36,10 @@ class DropboxSharedThumbnail
                 ? $this->imageNearVideo($pageUrl, $hooks)
                 : $this->thumbnailHref($share, $hooks));
 
+        if ($href === null && $share['mode'] !== 'image') {
+            $href = $this->imageNearVideo($pageUrl, $hooks);
+        }
+
         if ($href === null) {
             return null;
         }
@@ -47,7 +51,8 @@ class DropboxSharedThumbnail
             return ['body' => $cached['body'], 'mime' => (string) $cached['mime']];
         }
 
-        $fetched = $this->fetchImage($this->rawUrl($href));
+        $fetchUrl = $this->isDropboxPageHost($href) ? $this->rawUrl($href) : $href;
+        $fetched = $this->fetchImage($fetchUrl);
         if ($fetched === null) {
             return null;
         }
@@ -332,22 +337,33 @@ class DropboxSharedThumbnail
         }
 
         $html = str_replace('\\/', '/', $page['body']);
-        if (! preg_match_all('#https://(?:www\.)?dropbox\.com/scl/(?:fi|fo)/[^"\'\s<>]+#i', $html, $matches)) {
-            return null;
-        }
-
         $entries = [];
-        foreach (array_unique($matches[0]) as $href) {
-            $href = html_entity_decode($href, ENT_QUOTES);
-            $path = rawurldecode((string) parse_url($href, PHP_URL_PATH));
-            $name = trim((string) basename($path));
-            if (! self::isImageName($name)) {
-                continue;
+        if (preg_match_all('#https://(?:www\.)?dropbox\.com/scl/(?:fi|fo)/[^"\'\s<>]+#i', $html, $matches)) {
+            foreach (array_unique($matches[0]) as $href) {
+                $href = html_entity_decode($href, ENT_QUOTES);
+                $path = rawurldecode((string) parse_url($href, PHP_URL_PATH));
+                $name = trim((string) basename($path));
+                if (! self::isImageName($name)) {
+                    continue;
+                }
+                $entries[] = ['filename' => $name, 'href' => $href];
             }
-            $entries[] = ['filename' => $name, 'href' => $href];
         }
 
-        return self::pick($entries, $hooks);
+        $picked = self::pick($entries, $hooks);
+        if ($picked !== null) {
+            return $picked;
+        }
+
+        if (preg_match('/property=["\']og:image["\']\s+content=["\']([^"\']+)["\']/i', $html, $og)
+            || preg_match('/content=["\']([^"\']+)["\']\s+property=["\']og:image["\']/i', $html, $og)) {
+            $poster = html_entity_decode($og[1], ENT_QUOTES);
+            if (self::isDropboxUrl($poster)) {
+                return $poster;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -448,6 +464,13 @@ class DropboxSharedThumbnail
     private function isDropboxHost(string $host): bool
     {
         return self::isDropboxUrl('https://'.$host.'/');
+    }
+
+    private function isDropboxPageHost(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return $host === 'dropbox.com' || $host === 'www.dropbox.com' || str_ends_with($host, '.dropbox.com');
     }
 
     private function hostOf(string $url): string
