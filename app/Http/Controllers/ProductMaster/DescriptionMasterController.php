@@ -1597,30 +1597,19 @@ class DescriptionMasterController extends Controller
         $pm = ProductMaster::query()->where('sku', $sku)->first();
         $base = trim($description);
         $aplusHtml = trim((string) ($pm?->amazon_aplus_content ?? ''));
-        $aplusImages = [];
-        $aplusRaw = $pm?->amazon_aplus_images ?? null;
-        if (is_string($aplusRaw) && trim($aplusRaw) !== '') {
-            $decoded = json_decode($aplusRaw, true);
-            if (is_array($decoded)) {
-                $aplusImages = array_values(array_filter($decoded, fn ($v) => is_string($v) && trim($v) !== ''));
-            }
-        }
         if ($base === '' && $aplusHtml !== '') {
-            $base = trim(strip_tags($aplusHtml));
+            $base = $aplusHtml;
         }
 
         $limit = $this->maxCharsForMarketplace($marketplace);
-        if (mb_strlen($base) > $limit) {
+        if (mb_strlen($this->normalizeDescriptionPlainText($base)) > $limit) {
             $base = mb_substr($base, 0, $limit);
         }
 
         $formatted = DescriptionWithImagesFormatter::buildHtmlWithImages(
             $base,
             $sku,
-            $sku,
-            (string) ($pm?->title150 ?? 'Product Image'),
-            $marketplace === 'amazon' ? 9 : 12,
-            $aplusImages
+            $sku
         );
 
         return [

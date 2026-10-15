@@ -206,26 +206,21 @@ class ShopifyAplusContentSync
         }
 
         $html = self::cleanFetchedHtml((string) ($res['html'] ?? ''));
-        $images = array_values(array_filter(array_map(
-            fn ($u) => is_string($u) ? trim($u) : '',
-            (array) ($res['images'] ?? [])
-        )));
 
-        if ($html === '' && $images === []) {
+        if ($html === '') {
             $message = 'No A+ content found for this SKU on the store.';
             $this->recordFailure($product, $message);
 
             return ['success' => false, 'status' => 'empty', 'message' => $message, 'product' => $product];
         }
 
-        $encoded = json_encode($images, JSON_UNESCAPED_SLASHES);
         $update = [
             'shopify_aplus_content' => $html,
             'shopify_aplus_fetched_at' => now(),
             'shopify_aplus_fetch_error' => null,
         ];
         if (Schema::hasColumn('product_master', 'shopify_aplus_images')) {
-            $update['shopify_aplus_images'] = $encoded !== false ? $encoded : null;
+            $update['shopify_aplus_images'] = null;
         }
 
         // Query-builder update: avoids the model's saving() hook re-computing Values for an unrelated change.
@@ -235,7 +230,6 @@ class ShopifyAplusContentSync
         Log::info('ShopifyAplusContentSync: stored Shopify A+ content', [
             'sku' => $sku,
             'chars' => mb_strlen($html),
-            'images' => count($images),
             'forced' => $force,
             'source' => (string) ($res['source'] ?? ''),
         ]);

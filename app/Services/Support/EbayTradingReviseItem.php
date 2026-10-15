@@ -79,7 +79,7 @@ final class EbayTradingReviseItem
 
     /**
      * Listing Description body for a push: the caller's full HTML is kept intact (only active content
-     * eBay rejects is removed). Product images are appended only when the HTML has no <img> of its own.
+     * eBay rejects is removed). Images already inside that HTML stay; the product gallery is not added.
      */
     public static function buildListingDescriptionHtml(string $description, string $identifier, ?string $skuHint = null): string
     {
@@ -99,17 +99,6 @@ final class EbayTradingReviseItem
         $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html) ?? $html;
         $html = preg_replace('/<iframe\b[^>]*>.*?<\/iframe>/is', '', $html) ?? $html;
         $html = trim($html);
-
-        if (! preg_match('/<img\b/i', $html)) {
-            $images = DescriptionWithImagesFormatter::resolveImageUrls($identifier, $skuHint, 12);
-            if ($images !== []) {
-                $parts = [];
-                foreach ($images as $idx => $url) {
-                    $parts[] = '<img src="'.htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'" alt="Product Image '.($idx + 1).'" style="max-width:40%; height:auto; display:inline-block; margin:5px;">';
-                }
-                $html .= '<div class="product-images" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">'.implode("\n", $parts).'</div>';
-            }
-        }
 
         if (! preg_match('/\A<div\b[^>]*\bclass\s*=\s*["\'][^"\']*\bproduct-description\b/i', $html)) {
             $html = '<div class="product-description">'.$html.'</div>';
