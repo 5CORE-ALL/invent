@@ -201,9 +201,26 @@
             background-color: #dbeafe !important;
             box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
         }
-        #amm-header-freeze-spacer {
-            display: none !important;
-            height: 0 !important;
+        #amm-header-freeze-spacer,
+        #amm-hscroll-freeze-spacer {
+            display: none;
+            width: 100%;
+            pointer-events: none;
+        }
+        #amm-header-freeze-spacer.is-on,
+        #amm-hscroll-freeze-spacer.is-on {
+            display: block;
+        }
+        #marketplace-table.tabulator .tabulator-header.amm-header-frozen,
+        #amm-table-hscroll.amm-hscroll-frozen {
+            position: fixed !important;
+            margin: 0 !important;
+        }
+        #amm-table-hscroll.amm-hscroll-frozen {
+            z-index: 31 !important;
+        }
+        #marketplace-table.tabulator .tabulator-header.amm-header-frozen {
+            z-index: 30 !important;
         }
         #marketplace-table.tabulator .tabulator-header .tabulator-header-contents,
         #marketplace-table.tabulator .tabulator-header .tabulator-headers,
@@ -454,15 +471,16 @@
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
             gap: 0.5rem;
-            align-items: stretch;
+            align-items: start;
             background: transparent !important;
             padding: 0 !important;
         }
         #summary-stats .amm-badge-block {
             min-width: 0;
-            border-radius: 10px;
-            padding: 0.4rem 0.5rem 0.5rem;
+            border-radius: 12px;
+            padding: 0.55rem 0.6rem 0.65rem;
             border: 1px solid transparent;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
         }
         #summary-stats .amm-badge-block-title {
             font-size: 0.68rem;
@@ -617,12 +635,15 @@
         #summary-stats .amm-inv-band-meta { font-size: 12px; font-weight: 700; white-space: nowrap; }
         #summary-stats .amm-badge-block--today .ebay2-summary-badge-row,
         #summary-stats .amm-badge-block--yesterday .ebay2-summary-badge-row,
-        #summary-stats .amm-badge-block--projected .ebay2-summary-badge-row {
+        #summary-stats .amm-badge-block--projected .ebay2-summary-badge-row,
+        #summary-stats .amm-badge-block--others .ebay2-summary-badge-row {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             align-items: stretch;
         }
-        #summary-stats .amm-badge-block--l30 .ebay2-summary-badge-row {
+        #summary-stats .amm-badge-block--l30 .ebay2-summary-badge-row,
+        #summary-stats .amm-badge-block--forecast .ebay2-summary-badge-row,
+        #summary-stats .amm-badge-block--inv .ebay2-summary-badge-row {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
             align-items: stretch;
@@ -637,18 +658,15 @@
             max-width: 100%;
             overflow: visible;
         }
-        #summary-stats .amm-badge-block--today .ebay2-summary-badge-row > .badge,
-        #summary-stats .amm-badge-block--yesterday .ebay2-summary-badge-row > .badge,
-        #summary-stats .amm-badge-block--l30 .ebay2-summary-badge-row > .badge,
-        #summary-stats .amm-badge-block--projected .ebay2-summary-badge-row > .badge {
+        #summary-stats .ebay2-summary-badge-row > .badge {
             width: 100%;
             min-width: 0;
             max-width: none;
             min-height: 42px;
             height: 100%;
-            font-size: 0.9rem;
+            font-size: 0.9rem !important;
             line-height: 1.2;
-            padding: 0.4rem 0.5rem;
+            padding: 0.4rem 0.5rem !important;
             border-radius: 0.375rem;
             font-weight: bold;
             box-sizing: border-box;
@@ -657,20 +675,7 @@
             justify-content: center;
             text-align: center;
             white-space: nowrap;
-        }
-        #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 0 0 auto;
-            font-size: 0.9rem;
-            line-height: 1.2;
-            padding: 0.4rem 0.55rem;
-            border-radius: 0.375rem;
-            font-weight: bold;
-            box-sizing: border-box;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            white-space: nowrap;
+            text-decoration: none;
         }
         #summary-stats .summary-trend-dot {
             display: inline-block;
@@ -997,6 +1002,9 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="today_sales" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Dot compares today with yesterday.">
                             <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Today Sales: <span id="total-today-sales">$0</span>
                         </span>
+                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="T Orders = Σ (L30 Orders × Today Sales ÷ L30 Sales). Same pace as Today Sales. 0 when Today Sales is 0.">
+                            T Orders: <span id="total-t-orders">0</span>
+                        </span>
                         <span class="badge fs-6 p-2" style="background-color: #17a2b8; color: white; font-weight: bold;" title="T Nprft% = Σ (Today Sales × NPFT%) ÷ Σ Today Sales.">
                             T Nprft%: <span id="avg-t-npft">0.0%</span>
                         </span>
@@ -1025,6 +1033,9 @@
                         <div class="ebay2-summary-badge-row" role="group" aria-label="Yesterday metrics">
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
                             <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
+                        </span>
+                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Y Orders = sum of yesterday order counts across channels (1-day Pacific, same Orders column as Yesterday by marketplace).">
+                            Y Orders: <span id="total-y-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
                             <span class="summary-trend-dot none" data-metric="y_pft" title="Rolling history"></span>Y PFT: <span id="total-y-pft">$0</span>
@@ -1077,7 +1088,7 @@
                             <span class="summary-trend-dot none" data-metric="ads_pct" title="Rolling history"></span>Ads: <span id="ads-percent-badge">0%</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Total Views (listing/Map traffic)">
-                            <span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Clicks: <span id="total-views-badge">0</span><span id="total-views-growth" style="margin-left:4px;font-weight:800;"></span>
+                            <span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Views: <span id="total-views-badge">0</span><span id="total-views-growth" style="margin-left:4px;font-weight:800;"></span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): weighted from each channel's listing CVR × views (same as the CVR column). Falls back to Qty ÷ Views when a channel has no listing CVR.">
                             <span class="summary-trend-dot none" data-metric="cvr" title="Rolling history"></span>CVR: <span id="cvr-pct-badge">0.00%</span>
@@ -1106,6 +1117,9 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
                             <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
                         </span>
+                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales.">
+                            P Orders: <span id="total-p-orders">0</span>
+                        </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_groi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-GROI% = Σ (P-Sales × GPFT%) ÷ Σ projected COGS. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-Sales = (L7 ÷ 7) × 30.">
                             <span class="summary-trend-dot none" data-metric="p_groi_pct" title="Rolling history"></span>P-GROI%: <span id="avg-p-groi">0.0%</span>
                         </span>
@@ -1126,22 +1140,17 @@
                         </span>
                         </div>
                     </div>
-                    </div>
                     <div class="amm-badge-block amm-badge-block--forecast">
                         <div class="amm-badge-block-title">Forecast</div>
                         <div class="ebay2-summary-badge-row" role="group" aria-label="Forecast metrics">
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#198754;color:#111;font-weight:bold;text-decoration:none;" title="MSL × LP. Same total as Forecast Analysis.">MSL_LP: {{ $forecastBadges['msl_lp'] }}</a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#0dcaf0;color:#111;font-weight:bold;text-decoration:none;" title="MSL × AMZ price ÷ 4.">MSL_SP: {{ $forecastBadges['msl_sp'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#0dcaf0;color:#111;font-weight:bold;text-decoration:none;" title="INV value.">INV: {{ $forecastBadges['inv'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="LP value.">LP: {{ $forecastBadges['lp'] }}</a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="Σ (CP × Order).">Ord: {{ $forecastBadges['ord'] }}</a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="MIP value.">MIP: {{ $forecastBadges['mip'] }}</a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="R2S value.">R2S: {{ $forecastBadges['r2s'] }}</a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#6c757d;color:#fff;font-weight:bold;text-decoration:none;" title="Transit value.">Trn: {{ $forecastBadges['trn'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#0dcaf0;color:#111;font-weight:bold;text-decoration:none;" title="Total CBM — Σ (MSL × CBM/unit).">CBM: {{ $forecastBadges['cbm'] }}</a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="NPFT% — same as Active channel.">NPFT: <span id="amm-fa-npft">—</span></a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#20c997;color:#111;font-weight:bold;text-decoration:none;" title="NROI% — same as Active channel.">NROI: <span id="amm-fa-nroi">—</span></a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:{{ $forecastBadges['available_bg'] }};color:{{ $forecastBadges['available_fg'] }};font-weight:bold;text-decoration:none;" title="Available % — child SKUs with INV &gt; 0.">Avail: {{ $forecastBadges['available_pct'] }}%</a>
                         </div>
                     </div>
                     <div class="amm-badge-block amm-badge-block--others">
@@ -1157,26 +1166,27 @@
                     </div>
                     <div class="amm-badge-block amm-badge-block--inv">
                         <div class="amm-badge-block-title">INV</div>
+                        <div class="ebay2-summary-badge-row" role="group" aria-label="Inventory metrics">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="inventory" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of (Shopify INV × Amazon live price) for Active SKUs — same units as Inv@SP / Inv@LP">
+                            <span class="summary-trend-dot none" data-metric="inventory" title="Rolling history"></span>inv: <span id="inventory-value-amazon">0</span>
+                        </span>
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="inv_at_sp" style="color: black; font-weight: bold; cursor:pointer;" title="Shopify INV × Standard Price (amazon_data_view.STANDARD_PRICE, LMP siblings, then live Amazon price) for Active SKUs">
+                            <span class="summary-trend-dot none" data-metric="inv_at_sp" title="Rolling history"></span>Inv@SP: <span id="inv-at-sp">0</span>
+                        </span>
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
+                            <span class="summary-trend-dot none" data-metric="inv_at_lp" title="Rolling history"></span>Inv@LP: <span id="inv-at-lp">0</span>
+                        </span>
+                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="TAT = inv ÷ L30 Sales (months of stock at current sales)">
+                            <span class="summary-trend-dot none" data-metric="tat" title="Rolling history"></span>TAT: <span id="tat-badge">0</span>
+                        </span>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:{{ $forecastBadges['available_bg'] }};color:{{ $forecastBadges['available_fg'] }};font-weight:bold;text-decoration:none;" title="Available % — child SKUs with INV &gt; 0.">Avail: {{ $forecastBadges['available_pct'] }}%</a>
+                        </div>
                         <div class="amm-inv-block-grid">
                             <div class="amm-inv-block-pair" style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:10px;align-items:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;">
                                 <div class="amm-inv-block-canvas" style="width:220px;height:120px;overflow:hidden;background:#fff;border-radius:8px;">
                                     <canvas id="amm-inv-block-sp-pie" width="220" height="120" style="width:220px;height:120px;display:block;"></canvas>
                                 </div>
                                 <div class="amm-inv-block-copy">
-                                    <div class="ebay2-summary-badge-row" role="group" aria-label="Inventory metrics" style="margin-bottom:8px;">
-                                    <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="inventory" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of (Shopify INV × Amazon live price) for Active SKUs — same units as Inv@SP / Inv@LP">
-                                        <span class="summary-trend-dot none" data-metric="inventory" title="Rolling history"></span>inv: <span id="inventory-value-amazon">0</span>
-                                    </span>
-                                    <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="inv_at_sp" style="color: black; font-weight: bold; cursor:pointer;" title="Shopify INV × Standard Price (amazon_data_view.STANDARD_PRICE, LMP siblings, then live Amazon price) for Active SKUs">
-                                        <span class="summary-trend-dot none" data-metric="inv_at_sp" title="Rolling history"></span>Inv@SP: <span id="inv-at-sp">0</span>
-                                    </span>
-                                    <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
-                                        <span class="summary-trend-dot none" data-metric="inv_at_lp" title="Rolling history"></span>Inv@LP: <span id="inv-at-lp">0</span>
-                                    </span>
-                                    <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="TAT = inv ÷ L30 Sales (months of stock at current sales)">
-                                        <span class="summary-trend-dot none" data-metric="tat" title="Rolling history"></span>TAT: <span id="tat-badge">0</span>
-                                    </span>
-                                    </div>
                                     <div class="amm-inv-block-subtitle">Inv@SP</div>
                                     <div id="amm-inv-block-sp"><div class="text-muted" style="font-size:11px;">Loading…</div></div>
                                 </div>
@@ -1983,6 +1993,14 @@
             if (l30 > 0 && pSales > 0) return views * (pSales / l30);
             return views;
         }
+        function pOrdersFromRow(row) {
+            const orders = parseNumber(row['L30 Orders'] || 0);
+            if (orders <= 0) return 0;
+            const l30 = parseNumber(row['L30 Sales'] || 0);
+            const pSales = pSalesFromRow(row);
+            if (l30 > 0 && pSales > 0) return orders * (pSales / l30);
+            return 0;
+        }
         function rowAdSpendFromRow(row) {
             let spend = parseNumber(row['Total Ad Spend'] || 0);
             const chName = (row['Channel '] || '').trim().toLowerCase();
@@ -2096,24 +2114,27 @@
         }
         function todayPartsFromRow(row) {
             const sales = parseNumber(row['Today Sales'] || 0);
-            if (sales <= 0) return { sales: 0, gross: 0, net: 0, cogs: 0, spend: 0, views: 0 };
+            if (sales <= 0) return { sales: 0, gross: 0, net: 0, cogs: 0, spend: 0, views: 0, orders: 0 };
             const gp = parseNumber(row['Gprofit%'] || 0);
             const npft = parseNumber(row['N PFT'] || 0);
             const ads = parseNumber(row['Ads%'] != null ? row['Ads%'] : (row['TACOS'] || 0));
             const l30 = parseNumber(row['L30 Sales'] || 0);
             const cogsL30 = parseNumber(row['cogs'] || 0);
             const views = parseNumber(row['Total Views'] || 0);
+            const l30Orders = parseNumber(row['L30 Orders'] || 0);
             const cogs = (l30 > 0 && cogsL30 > 0)
                 ? cogsL30 * (sales / l30)
                 : sales * Math.max(0, 1 - gp / 100);
             const todayViews = (l30 > 0 && views > 0) ? views * (sales / l30) : 0;
+            const todayOrders = (l30 > 0 && l30Orders > 0) ? l30Orders * (sales / l30) : 0;
             return {
                 sales: sales,
                 gross: sales * gp / 100,
                 net: sales * npft / 100,
                 cogs: cogs,
                 spend: sales * ads / 100,
-                views: todayViews
+                views: todayViews,
+                orders: todayOrders
             };
         }
         var METRIC_DIFF_PCT = {
@@ -5447,26 +5468,89 @@
                 return Math.round(top);
             }
 
+            function ammFreezeSpacer(id, before) {
+                var spacer = document.getElementById(id);
+                if (!spacer && before && before.parentNode) {
+                    spacer = document.createElement('div');
+                    spacer.id = id;
+                    before.parentNode.insertBefore(spacer, before);
+                }
+                return spacer;
+            }
+
+            function ammReleaseFreeze(el, frozenClass) {
+                if (!el) return;
+                el.classList.remove(frozenClass);
+                ['position', 'top', 'left', 'width', 'right', 'z-index'].forEach(function(prop) {
+                    el.style.removeProperty(prop);
+                });
+            }
+
             function pinAmmTableHeader() {
                 var tableEl = document.getElementById('marketplace-table');
                 var header = tableEl && tableEl.querySelector('.tabulator-header');
+                var bar = document.getElementById('amm-table-hscroll');
                 if (!tableEl || !header) return;
 
-                header.classList.remove('amm-header-frozen');
-                header.style.left = '';
-                header.style.width = '';
-                header.style.right = '';
-                header.style.position = '';
-
-                var spacer = document.getElementById('amm-header-freeze-spacer');
-                if (spacer) {
-                    spacer.style.display = 'none';
-                    spacer.style.height = '0px';
+                var nav = document.querySelector('.navbar-custom');
+                var pinTop = 0;
+                if (nav) {
+                    var navBottom = nav.getBoundingClientRect().bottom;
+                    if (navBottom > 0) pinTop = navBottom;
                 }
+                var barVisible = bar && bar.offsetParent !== null && bar.style.display !== 'none';
+                var barH = barVisible ? (bar.offsetHeight || 0) : 0;
+                var headerH = header.getBoundingClientRect().height || header.offsetHeight || 0;
+                var headerSpacer = ammFreezeSpacer('amm-header-freeze-spacer', header);
+                var barSpacer = bar ? ammFreezeSpacer('amm-hscroll-freeze-spacer', bar) : null;
+                var anchorTop;
+                if (barVisible) {
+                    anchorTop = (bar.classList.contains('amm-hscroll-frozen') && barSpacer)
+                        ? barSpacer.getBoundingClientRect().top
+                        : bar.getBoundingClientRect().top;
+                } else if (header.classList.contains('amm-header-frozen') && headerSpacer) {
+                    anchorTop = headerSpacer.getBoundingClientRect().top;
+                } else {
+                    anchorTop = header.getBoundingClientRect().top;
+                }
+                var tableBottom = tableEl.getBoundingClientRect().bottom;
+                var box = tableEl.getBoundingClientRect();
+                var shouldFix = anchorTop < pinTop && tableBottom > (pinTop + barH + headerH + 8);
 
-                var top = ammHeaderPinTop(header);
-                header.style.setProperty('--amm-header-top', top + 'px');
-                header.style.setProperty('top', top + 'px', 'important');
+                if (shouldFix) {
+                    if (barVisible && barSpacer) {
+                        barSpacer.classList.add('is-on');
+                        barSpacer.style.height = barH + 'px';
+                        bar.classList.add('amm-hscroll-frozen');
+                        bar.style.setProperty('position', 'fixed', 'important');
+                        bar.style.setProperty('top', Math.round(pinTop) + 'px', 'important');
+                        bar.style.setProperty('left', Math.round(box.left) + 'px', 'important');
+                        bar.style.setProperty('width', Math.round(box.width) + 'px', 'important');
+                        bar.style.setProperty('z-index', '31', 'important');
+                    }
+                    if (headerSpacer) {
+                        headerSpacer.classList.add('is-on');
+                        headerSpacer.style.height = headerH + 'px';
+                    }
+                    header.classList.add('amm-header-frozen');
+                    header.style.setProperty('position', 'fixed', 'important');
+                    header.style.setProperty('top', Math.round(pinTop + (barVisible ? barH : 0)) + 'px', 'important');
+                    header.style.setProperty('left', Math.round(box.left) + 'px', 'important');
+                    header.style.setProperty('width', Math.round(box.width) + 'px', 'important');
+                    header.style.setProperty('z-index', '30', 'important');
+                } else {
+                    ammReleaseFreeze(header, 'amm-header-frozen');
+                    ammReleaseFreeze(bar, 'amm-hscroll-frozen');
+                    if (headerSpacer) {
+                        headerSpacer.classList.remove('is-on');
+                        headerSpacer.style.height = '0px';
+                    }
+                    if (barSpacer) {
+                        barSpacer.classList.remove('is-on');
+                        barSpacer.style.height = '0px';
+                    }
+                    header.style.setProperty('--amm-header-top', Math.round(pinTop + barH) + 'px');
+                }
 
                 if (!window.__ammHeaderFreezeBound) {
                     window.__ammHeaderFreezeBound = true;
@@ -5672,6 +5756,7 @@
                 let totalTodayCogs = 0;
                 let totalTodayAdSpend = 0;
                 let totalTodayViews = 0;
+                let totalTodayOrders = 0;
                 let totalPSales = 0;
                 let totalPGross = 0;
                 let totalL30Orders = 0;
@@ -5742,6 +5827,7 @@
                     totalTodayCogs += todayParts.cogs;
                     totalTodayAdSpend += todayParts.spend;
                     totalTodayViews += todayParts.views;
+                    totalTodayOrders += todayParts.orders;
                     totalPSales += pSales;
                     totalPGross += (gprofitPercent / 100) * pSales;
                     totalL30Orders += l30Orders;
@@ -5887,6 +5973,10 @@
                     $('#avg-t-nroi').closest('.badge').attr('title', 'TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS. ' + pct1(nroi).toFixed(1) + '%');
                     $('#avg-t-ads').closest('.badge').attr('title', 'T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales. ' + pct1(ads).toFixed(1) + '%');
                     $('#total-t-views').closest('.badge').attr('title', 'T Views = Σ (Views × Today Sales ÷ L30 Sales). ' + views.toLocaleString('en-US'));
+                    const orders = Math.round(totalTodayOrders);
+                    $('#total-t-orders').text(orders.toLocaleString('en-US'));
+                    $('#total-t-orders').closest('.badge').attr('title',
+                        'T Orders = Σ (L30 Orders × Today Sales ÷ L30 Sales). Same pace as Today Sales. ' + orders.toLocaleString('en-US'));
                 })();
                 (function() {
                     const val = Math.round(totalPSales);
@@ -6074,6 +6164,17 @@
                     $el.closest('.badge').attr('title',
                         'P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. ' + val.toLocaleString('en-US'));
                     setBadgeExact($el, val);
+                })();
+                (function() {
+                    let totalPOrders = 0;
+                    data.forEach(function(row) {
+                        totalPOrders += pOrdersFromRow(row);
+                    });
+                    const val = Math.round(totalPOrders);
+                    const $el = $('#total-p-orders');
+                    $el.text(val.toLocaleString('en-US'));
+                    $el.closest('.badge').attr('title',
+                        'P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. ' + val.toLocaleString('en-US'));
                 })();
                 (function() {
                     let totalPNet = 0;
@@ -8382,6 +8483,19 @@
                     'Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30). ' + val.toLocaleString('en-US'));
             }
 
+            function applyYOrdersBadge(rows) {
+                let sum = 0;
+                (rows || []).forEach(function(row) {
+                    sum += parseNumber(row.orders || 0) || 0;
+                });
+                const val = Math.round(sum);
+                const $el = $('#total-y-orders');
+                if (!$el.length) return;
+                $el.text(val.toLocaleString('en-US'));
+                $el.closest('.badge').attr('title',
+                    'Y Orders = sum of yesterday order counts across channels (1-day Pacific, same Orders column as Yesterday by marketplace). ' + val.toLocaleString('en-US'));
+            }
+
             function openYesterdayMarketplaceModal() {
                 const el = document.getElementById('yesterdayMpModal');
                 if (typeof bootstrap === 'undefined' || !el) return;
@@ -8394,6 +8508,7 @@
                         const rows = (res && res.data && res.data.rows) ? res.data.rows : [];
                         renderYesterdayMarketplaceRows(rows);
                         applyYViewsBadge(rows);
+                        applyYOrdersBadge(rows);
                     })
                     .fail(function() {
                         $('#yesterdayMpTableBody').html('<tr><td colspan="9" class="text-center text-danger">Could not load yesterday metrics</td></tr>');
@@ -8409,6 +8524,7 @@
             $.get('/yesterday-marketplace-metrics').done(function(res) {
                 const rows = (res && res.data && res.data.rows) ? res.data.rows : [];
                 applyYViewsBadge(rows);
+                applyYOrdersBadge(rows);
             });
 
             $.get('/active-channel-npft-nroi').done(function(res) {
