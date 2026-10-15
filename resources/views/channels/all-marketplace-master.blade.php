@@ -548,23 +548,23 @@
             grid-column: 3;
             grid-row: 2;
             background: #fef9c3;
-            border-color: #fde047;
+            border-color: #facc15;
         }
         #summary-stats .amm-badge-block--forecast .amm-badge-block-title { color: #854d0e; }
         #summary-stats .amm-badge-block--others {
             grid-column: 4;
             grid-row: 2;
-            background: #ffedd5;
-            border-color: #fdba74;
+            background: #fef9c3;
+            border-color: #facc15;
         }
-        #summary-stats .amm-badge-block--others .amm-badge-block-title { color: #9a3412; }
+        #summary-stats .amm-badge-block--others .amm-badge-block-title { color: #854d0e; }
         #summary-stats .amm-badge-block--inv {
             grid-column: 1 / 3;
             grid-row: 2;
-            background: #d1fae5;
-            border-color: #6ee7b7;
+            background: #fef9c3;
+            border-color: #facc15;
         }
-        #summary-stats .amm-badge-block--inv .amm-badge-block-title { color: #065f46; }
+        #summary-stats .amm-badge-block--inv .amm-badge-block-title { color: #854d0e; }
         #summary-stats .amm-badge-block--inv .ebay2-summary-badge-row {
             margin-bottom: 0.45rem;
         }
@@ -695,24 +695,58 @@
             transform: scale(1.25);
             box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.25);
         }
+        #summary-stats .ebay2-summary-badge-row > .badge.amm-dot-down,
+        #summary-stats .ebay2-summary-badge-row > .badge.amm-dot-down *:not(.summary-trend-dot) {
+            color: #fff !important;
+            -webkit-text-fill-color: #fff !important;
+        }
         #summary-stats .summary-trend-dot.up { background: #22c55e; }
         #summary-stats .summary-trend-dot.down { background: #ef4444; }
-        #summary-stats .summary-trend-dot.flat,
+        #summary-stats .summary-trend-dot.flat { background: #eab308; }
         #summary-stats .summary-trend-dot.none { background: #9ca3af; }
+        #marketplace-table .amm-task-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.7rem;
+            min-width: 1.7rem;
+            height: 1.4rem;
+            padding: 0;
+            margin: 0;
+            border: none;
+            border-radius: 7px;
+            background: linear-gradient(135deg, #0d9488, #14b8a6);
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            line-height: 1;
+            cursor: pointer;
+        }
+        #marketplace-table .amm-task-btn:hover {
+            background: linear-gradient(135deg, #0f766e, #0d9488);
+            color: #fff;
+        }
         #column-dropdown-list {
-            max-height: 420px;
-            overflow-y: auto;
+            max-height: none;
+            overflow: visible;
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 0;
         }
         #column-dropdown-list .amm-col-group {
-            padding: 0.15rem 0 0.35rem;
-            border-bottom: 1px solid #e5e7eb;
+            padding: 0.35rem 0.55rem 0.5rem;
+            border-bottom: 0;
+            border-right: 1px solid #e5e7eb;
+            min-width: 132px;
         }
-        #column-dropdown-list .amm-col-group:last-child { border-bottom: 0; }
+        #column-dropdown-list .amm-col-group:last-child { border-right: 0; border-bottom: 0; }
         #column-dropdown-list .amm-col-group-head {
             display: flex;
             align-items: center;
             gap: 0.35rem;
-            margin: 0;
+            margin: 0 0 0.2rem;
             padding: 0.2rem 0.15rem;
             font-size: 0.72rem;
             font-weight: 800;
@@ -720,11 +754,12 @@
             text-transform: uppercase;
             color: #1e293b;
             cursor: pointer;
+            white-space: nowrap;
         }
         #column-dropdown-list .amm-col-group-items {
-            display: grid;
-            grid-template-columns: repeat(5, minmax(120px, 1fr));
-            gap: 0 0.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
         }
         #column-dropdown-list .amm-col-group-items label {
             min-width: 0;
@@ -853,9 +888,6 @@
                 width: 22px;
                 height: 22px;
             }
-            #column-dropdown-list .amm-col-group-items {
-                grid-template-columns: repeat(3, minmax(110px, 1fr)) !important;
-            }
             #summary-stats {
                 grid-template-columns: 1fr 1fr;
             }
@@ -899,14 +931,12 @@
                 height: 52px !important;
             }
             #column-dropdown-menu {
-                min-width: min(100vw - 16px, 720px) !important;
+                min-width: 0 !important;
                 max-width: calc(100vw - 16px) !important;
             }
             #column-dropdown-list {
-                max-height: 50vh;
-            }
-            #column-dropdown-list .amm-col-group-items {
-                grid-template-columns: repeat(2, minmax(100px, 1fr)) !important;
+                max-height: 70vh;
+                overflow: auto;
             }
             #summary-stats {
                 grid-template-columns: 1fr;
@@ -980,7 +1010,7 @@
                         </button>
                         <div class="dropdown-menu p-0" id="column-dropdown-menu"
                             aria-labelledby="columnVisibilityDropdown"
-                            style="max-height:none; overflow:visible; min-width:min(720px, calc(100vw - 24px)); width:max-content; max-width:calc(100vw - 24px);">
+                            style="max-height:none; overflow:visible; min-width:0; width:max-content; max-width:calc(100vw - 24px);">
                             <div id="column-dropdown-list" class="mb-0 px-2 py-1">
                                 <!-- Populated dynamically -->
                             </div>
@@ -1839,6 +1869,39 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="ammTaskModal" tabindex="-1" aria-labelledby="ammTaskLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title mb-0" id="ammTaskLabel">Assign Task</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="amm-task-form">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="amm-task-group">Group</label>
+                            <input type="text" class="form-control" id="amm-task-group" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="amm-task-title">Task <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="amm-task-title" placeholder="Enter Task" maxlength="1000" autocomplete="off" required>
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label fw-semibold" for="amm-task-assignee-search">Assign to <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="amm-task-assignee-search" list="amm-task-assignee-list" placeholder="Search user…" autocomplete="off" required>
+                                <datalist id="amm-task-assignee-list"></datalist>
+                                <button type="submit" class="btn btn-primary" id="amm-task-assign">Assign</button>
+                            </div>
+                        </div>
+                        <p class="text-danger small mb-0 mt-2 d-none" id="amm-task-error"></p>
+                        <p class="text-success small mb-0 mt-2 d-none" id="amm-task-success"></p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -2139,6 +2202,51 @@
                 views: todayViews,
                 orders: todayOrders
             };
+        }
+        function listingCvrFromRow(row) {
+            const channel = (row['Channel '] || '').trim();
+            const views = parseNumber(row['Total Views'] || 0);
+            const serverCvr = row['CVR'];
+            const hasServerCvr = serverCvr !== undefined && serverCvr !== null && serverCvr !== '';
+            const key = snapshotChannelKey(channel);
+            if (key === 'amazon' || key === 'reverb') {
+                if (views <= 0) return null;
+                const units = parseNumber(row['Qty'] || 0) || parseNumber(row['L30 Orders'] || 0);
+                return (units / views) * 100;
+            }
+            if (hasServerCvr) return parseNumber(serverCvr);
+            if (views <= 0) return null;
+            return (parseNumber(row['Qty'] || 0) / views) * 100;
+        }
+        function tCvrPartsFromRow(row) {
+            const sales = parseNumber(row['Today Sales'] || 0);
+            const l30 = parseNumber(row['L30 Sales'] || 0);
+            if (sales <= 0 || l30 <= 0) return { views: 0, units: 0 };
+            const ratio = sales / l30;
+            const views = parseNumber(row['Total Views'] || 0) * ratio;
+            const key = snapshotChannelKey(row['Channel '] || '');
+            let units;
+            if (key === 'amazon' || key === 'reverb') {
+                units = (parseNumber(row['Qty'] || 0) || parseNumber(row['L30 Orders'] || 0)) * ratio;
+            } else if (row['CVR'] !== undefined && row['CVR'] !== null && row['CVR'] !== '') {
+                units = (parseNumber(row['CVR']) / 100) * views;
+            } else {
+                units = parseNumber(row['Qty'] || 0) * ratio;
+            }
+            return { views: views, units: units };
+        }
+        function tCvrFromRow(row) {
+            if (parseNumber(row['Today Sales'] || 0) <= 0) return null;
+            const parts = tCvrPartsFromRow(row);
+            if (parts.views <= 0) return listingCvrFromRow(row);
+            return (parts.units / parts.views) * 100;
+        }
+        function formatCvrCell(value) {
+            if (value === null || value === undefined || value === '' || !isFinite(Number(value))) {
+                return '<span style="color:#adb5bd;">—</span>';
+            }
+            const pct = Math.round(parseNumber(value) * 100) / 100;
+            return `<span style="font-weight:600;">${pct.toFixed(2)}%</span>`;
         }
         var METRIC_DIFF_PCT = {
             gprofit: 1, groi: 1, npft: 1, p_npft: 1, p_groi_pct: 1, p_nroi_pct: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
@@ -2516,6 +2624,9 @@
             var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 'tat'];
             var yVsL30DotMetrics = { y_sales: 1, y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1 };
             var yOrdersExact = null;
+            var yOrdersByChannel = null;
+            var yCvrByChannel = null;
+            var ySalesFooterBelowAvg = false;
             var yViewsExact = null;
             var l30DailyOrders = null;
             var l30DailyViews = null;
@@ -3228,16 +3339,19 @@
                         sorter: "number",
                         width: 128,
                         formatter: function(cell) {
+                            const row = cell.getRow().getData();
                             const value = parseNumber(cell.getValue() || 0);
-                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const channel = (row['Channel '] || '').trim();
                             const dotColor = getMetricDotColor(channel, 'y_sales');
                             const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="y_sales" style="cursor:pointer;color:${dotColor};font-size:8px;" title="View Chart"></i>`;
+                            const avg = parseNumber(row['L30 Sales'] || 0) / 30;
+                            const color = value < avg ? '#dc3545' : '#166534';
+                            const vs = value < avg ? 'below' : 'at or above';
+                            const title = 'Y Sales ' + vs + ' the L30 daily average (L30 Sales ÷ 30).';
                             if (!value || value === 0) {
-                                // NYS = "No Yesterday Sales" — shown whenever a channel had
-                                // zero revenue on the prior PST day.
-                                return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
+                                return `<span style="color:${color};font-weight:600;" title="No Yesterday Sales. ${title}">NYS</span>${chartIcon}`;
                             }
-                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                            return `<span style="font-weight:600;color:${color};" title="${title}">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('metric-chart-icon')) {
@@ -3245,11 +3359,82 @@
                                 var cv = cell.getElement().querySelector('span'); cv = cv ? parseFloat(cv.textContent.replace(/[$,%,\s]/g, '')) : null; showMetricChart($(e.target).data('channel'), $(e.target).data('metric'), cv);
                             }
                         },
+                        bottomCalc: function(values, data) {
+                            let y = 0, l30 = 0;
+                            data.forEach(function(row) {
+                                y += parseNumber(row['Y Sales'] || 0);
+                                l30 += parseNumber(row['L30 Sales'] || 0);
+                            });
+                            ySalesFooterBelowAvg = y < (l30 / 30);
+                            return y;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = parseNumber(cell.getValue() || 0);
+                            const color = ySalesFooterBelowAvg ? '#dc3545' : '#166534';
+                            if (!value) return `<strong style="color:${color};" title="No Yesterday Sales">NYS</strong>`;
+                            return `<strong style="color:${color};">$${Math.round(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Y Orders",
+                        field: "Y Orders",
+                        headerTooltip: "Yesterday order count (1-day Pacific). Same Orders figure as Yesterday by marketplace.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const value = Math.round(parseNumber(cell.getValue() || 0));
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                        },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
+                            return `<strong>${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Y CVR",
+                        field: "Y CVR",
+                        headerTooltip: "Yesterday CVR = yesterday qty ÷ yesterday views. Same figure as Yesterday by marketplace.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        formatter: function(cell) {
+                            return formatCvrCell(cell.getValue());
+                        },
+                        bottomCalc: function(values, data) {
+                            if (!yCvrByChannel) return null;
+                            let views = 0, qty = 0;
+                            data.forEach(function(row) {
+                                const rec = yCvrByChannel[snapshotChannelKey(row['Channel '] || '')];
+                                if (!rec) return;
+                                views += rec.views;
+                                qty += rec.qty;
+                            });
+                            return views > 0 ? (qty / views) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
-                            if (!value || value === 0) return '<strong style="color:#adb5bd;" title="No Yesterday Sales">NYS</strong>';
-                            return `<strong style="color:#0d6efd;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">—</strong>';
+                            }
+                            const pct = Math.round(parseNumber(value) * 100) / 100;
+                            return '<strong>' + pct.toFixed(2) + '%</strong>';
+                        }
+                    },
+                    {
+                        title: "Y Views",
+                        field: "Y Views",
+                        headerTooltip: "Yesterday listing views (1-day Pacific). Same Views figure as Yesterday by marketplace.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const value = Math.round(parseNumber(cell.getValue() || 0));
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong>${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -3455,6 +3640,83 @@
                             const value = cell.getValue();
                             if (!value || value === 0) return '<strong style="color:#adb5bd;">$0</strong>';
                             return `<strong style="color:#fd7e14;">$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "T Orders",
+                        field: "T Orders",
+                        headerTooltip: "T Orders = L30 Orders × Today Sales ÷ L30 Sales. 0 when Today Sales is 0.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        mutator: function(value, data) {
+                            return todayPartsFromRow(data).orders;
+                        },
+                        formatter: function(cell) {
+                            const value = Math.round(parseNumber(cell.getValue() || 0));
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: function(values, data) {
+                            let sum = 0;
+                            data.forEach(function(row) { sum += todayPartsFromRow(row).orders; });
+                            return sum;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong>${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "T CVR",
+                        field: "T CVR",
+                        headerTooltip: "T CVR uses the same listing CVR as the CVR column, weighted by Today Sales ÷ L30 Sales. Blank when Today Sales is 0.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        mutator: function(value, data) {
+                            return tCvrFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            return formatCvrCell(cell.getValue());
+                        },
+                        bottomCalc: function(values, data) {
+                            let views = 0, units = 0;
+                            data.forEach(function(row) {
+                                const parts = tCvrPartsFromRow(row);
+                                views += parts.views;
+                                units += parts.units;
+                            });
+                            return views > 0 ? (units / views) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">—</strong>';
+                            }
+                            const pct = Math.round(parseNumber(value) * 100) / 100;
+                            return '<strong>' + pct.toFixed(2) + '%</strong>';
+                        }
+                    },
+                    {
+                        title: "T Views",
+                        field: "T Views",
+                        headerTooltip: "T Views = Views × Today Sales ÷ L30 Sales. 0 when Today Sales is 0.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        mutator: function(value, data) {
+                            return todayPartsFromRow(data).views;
+                        },
+                        formatter: function(cell) {
+                            const value = Math.round(parseNumber(cell.getValue() || 0));
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: function(values, data) {
+                            let sum = 0;
+                            data.forEach(function(row) { sum += todayPartsFromRow(row).views; });
+                            return sum;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            return `<strong>${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -5286,6 +5548,21 @@
                         }
                     },
                     {
+                        title: "Task",
+                        field: "_task",
+                        minWidth: 56,
+                        width: 64,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function() {
+                            return '<button type="button" class="amm-task-btn" title="Assign task" aria-label="Assign task">TM</button>';
+                        },
+                        cellClick: function(e, cell) {
+                            if (e && e.stopPropagation) e.stopPropagation();
+                            openAmmTaskFromCell(cell);
+                        }
+                    },
+                    {
                         title: "Action",
                         field: "_action",
                         responsive: 0,
@@ -5737,21 +6014,47 @@
             }
 
             function paintDotBadgeBackgrounds() {
-                document.querySelectorAll('#summary-stats .amm-badge-block--today .summary-trend-dot, #summary-stats .amm-badge-block--yesterday .summary-trend-dot, #summary-stats .amm-badge-block--l30 .summary-trend-dot, #summary-stats .amm-badge-block--projected .summary-trend-dot').forEach(function(dot) {
+                document.querySelectorAll('#summary-stats .summary-trend-dot').forEach(function(dot) {
                     var badge = dot.closest('.badge');
                     if (!badge) return;
                     var bg = '#d1d5db';
                     var fg = '#111827';
+                    var red = false;
                     if (dot.classList.contains('up')) {
                         bg = '#22c55e';
                         fg = '#052e16';
                     } else if (dot.classList.contains('down')) {
                         bg = '#ef4444';
                         fg = '#fff';
+                        red = true;
+                    } else if (dot.classList.contains('flat')) {
+                        bg = '#facc15';
+                        fg = '#713f12';
                     }
                     badge.style.setProperty('background-color', bg, 'important');
                     badge.style.setProperty('color', fg, 'important');
+                    badge.classList.toggle('amm-dot-down', red);
+                    if (red) {
+                        badge.style.setProperty('-webkit-text-fill-color', '#fff', 'important');
+                    } else {
+                        badge.style.removeProperty('-webkit-text-fill-color');
+                    }
                 });
+                document.querySelectorAll('#summary-stats .ebay2-summary-badge-row > .badge').forEach(function(badge) {
+                    if (badge.querySelector('.summary-trend-dot')) return;
+                    if (badge.classList.contains('amm-dot-down') || ammBadgeBgIsRed(badge)) {
+                        badge.classList.add('amm-dot-down');
+                        badge.style.setProperty('color', '#fff', 'important');
+                        badge.style.setProperty('-webkit-text-fill-color', '#fff', 'important');
+                    }
+                });
+            }
+            function ammBadgeBgIsRed(badge) {
+                var bg = window.getComputedStyle(badge).backgroundColor || '';
+                var m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                if (!m) return false;
+                var r = +m[1], g = +m[2], b = +m[3];
+                return r >= 180 && g <= 130 && b <= 130 && (r - g) >= 50 && (r - b) >= 50;
             }
             window.paintDotBadgeBackgrounds = paintDotBadgeBackgrounds;
 
@@ -6442,7 +6745,7 @@
             ];
 
             // Hidden from Columns menu only — still shown on the table.
-            const COLUMNS_MENU_EXCLUDED_FIELDS = ['_action'];
+            const COLUMNS_MENU_EXCLUDED_FIELDS = ['_action', '_task'];
 
             function applyColumnVisibility() {
                 if (!table) return;
@@ -6494,8 +6797,8 @@
             // Build Column Visibility Dropdown — grouped, with a header checkbox per group.
             const COLUMN_MENU_GROUPS = [
                 { id: 'basic', label: 'Basic', fields: ['logo', 'Channel ', 'type', 'brand_authorisation'] },
-                { id: 'today', label: 'Today', fields: ['Today Sales'] },
-                { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y GROI%', 'YNPFT%'] },
+                { id: 'today', label: 'Today', fields: ['Today Sales', 'T Orders', 'T CVR', 'T Views'] },
+                { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y Orders', 'Y CVR', 'Y Views', 'Y GROI%', 'YNPFT%'] },
                 { id: 'l30', label: 'L30', fields: ['L30 Sales', 'L30 Orders', 'Qty', 'G Roi', 'Gprofit%', 'N ROI', 'N PFT', 'Total Views', 'CVR'] },
                 { id: 'projected', label: 'Projected', fields: ['P-Sales', 'P Growth', 'P GROI%', 'PNPFT%'] },
                 { id: 'ads', label: 'Advertisement', fields: ['Total Ad Spend', 'Ads%'] },
@@ -6641,6 +6944,7 @@
                 setTimeout(function() {
                     buildColumnDropdown();
                     fitAmmColumnsToData();
+                    if (typeof applyYOrdersToTable === 'function') applyYOrdersToTable();
                 }, 100);
                 if (!dotTrendsLoadedOnce && table.getData && table.getData().length) {
                     dotTrendsLoadedOnce = true;
@@ -8500,11 +8804,40 @@
                 }
             }
 
+            function applyYOrdersToTable() {
+                if (!table || typeof table.getRows !== 'function' || !yOrdersByChannel) return;
+                table.getRows().forEach(function(tRow) {
+                    const key = snapshotChannelKey(tRow.getData()['Channel '] || '');
+                    const orders = Object.prototype.hasOwnProperty.call(yOrdersByChannel, key) ? yOrdersByChannel[key] : 0;
+                    const cvrRec = yCvrByChannel ? yCvrByChannel[key] : null;
+                    tRow.update({
+                        'Y Orders': orders,
+                        'Y CVR': cvrRec ? cvrRec.cvr : null,
+                        'Y Views': cvrRec ? cvrRec.views : 0
+                    });
+                });
+            }
+
             function applyYOrdersBadge(rows) {
+                yOrdersByChannel = {};
+                yCvrByChannel = {};
                 let sum = 0;
                 (rows || []).forEach(function(row) {
-                    sum += parseNumber(row.orders || 0) || 0;
+                    const orders = parseNumber(row.orders || 0) || 0;
+                    const key = snapshotChannelKey(row.channel || '');
+                    const views = parseNumber(row.views || 0) || 0;
+                    const qty = parseNumber(row.qty || 0) || 0;
+                    const rawCvr = row.cvr;
+                    const cvr = (rawCvr == null || rawCvr === '' || !isFinite(parseNumber(rawCvr)))
+                        ? (views > 0 ? (qty / views) * 100 : null)
+                        : parseNumber(rawCvr);
+                    if (key) {
+                        yOrdersByChannel[key] = orders;
+                        yCvrByChannel[key] = { cvr: cvr, views: views, qty: qty };
+                    }
+                    sum += orders;
                 });
+                applyYOrdersToTable();
                 const val = Math.round(sum);
                 const $el = $('#total-y-orders');
                 if (!$el.length) return;
@@ -8653,6 +8986,144 @@
                 e.stopPropagation();
                 openProjectedMarketplaceModal();
             });
+
+            const ammTaskStoreUrl = @json(route('tasks.store'));
+            const ammTaskUsersUrl = @json(route('tasks.usersList'));
+            const ammAssignorId = {{ (int) (auth()->id() ?? 0) }};
+            let ammTaskUsers = [];
+
+            function openAmmTaskFromCell(cell) {
+                const row = (cell && cell.getRow) ? (cell.getRow().getData() || {}) : {};
+                const channel = String(row['Channel '] || row['Channel'] || '').trim();
+                const groupEl = document.getElementById('amm-task-group');
+                const titleEl = document.getElementById('amm-task-title');
+                const searchEl = document.getElementById('amm-task-assignee-search');
+                const err = document.getElementById('amm-task-error');
+                const ok = document.getElementById('amm-task-success');
+                if (groupEl) groupEl.value = channel;
+                if (titleEl) titleEl.value = '';
+                if (searchEl) searchEl.value = '';
+                if (err) { err.textContent = ''; err.classList.add('d-none'); }
+                if (ok) { ok.textContent = ''; ok.classList.add('d-none'); }
+                ammLoadTaskUsers(function() {
+                    const modalEl = document.getElementById('ammTaskModal');
+                    if (modalEl && window.bootstrap && bootstrap.Modal) {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    }
+                    setTimeout(function() { if (titleEl) titleEl.focus(); }, 150);
+                });
+            }
+
+            function ammLoadTaskUsers(cb) {
+                if (ammTaskUsers.length) { cb(ammTaskUsers); return; }
+                fetch(ammTaskUsersUrl, {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function(r) { return r.json(); })
+                    .then(function(users) {
+                        ammTaskUsers = Array.isArray(users) ? users : [];
+                        const list = document.getElementById('amm-task-assignee-list');
+                        if (list) {
+                            list.innerHTML = ammTaskUsers.map(function(u) {
+                                const name = String(u.name || '').trim();
+                                return name ? '<option value="' + name.replace(/"/g, '&quot;') + '"></option>' : '';
+                            }).join('');
+                        }
+                        cb(ammTaskUsers);
+                    })
+                    .catch(function() { ammTaskUsers = []; cb([]); });
+            }
+
+            function ammResolveAssigneeId(label) {
+                const q = String(label || '').trim().toLowerCase();
+                if (!q) return 0;
+                const exact = ammTaskUsers.find(function(u) {
+                    return String(u.name || '').trim().toLowerCase() === q;
+                });
+                if (exact) return parseInt(exact.id, 10) || 0;
+                const partial = ammTaskUsers.filter(function(u) {
+                    return String(u.name || '').toLowerCase().indexOf(q) !== -1;
+                });
+                return partial.length === 1 ? (parseInt(partial[0].id, 10) || 0) : 0;
+            }
+
+            const ammTaskForm = document.getElementById('amm-task-form');
+            if (ammTaskForm) {
+                ammTaskForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const err = document.getElementById('amm-task-error');
+                    const ok = document.getElementById('amm-task-success');
+                    const saveBtn = document.getElementById('amm-task-assign');
+                    const group = String((document.getElementById('amm-task-group') || {}).value || '').trim();
+                    const title = String((document.getElementById('amm-task-title') || {}).value || '').trim();
+                    const assigneeLabel = String((document.getElementById('amm-task-assignee-search') || {}).value || '').trim();
+                    const assigneeId = ammResolveAssigneeId(assigneeLabel);
+                    if (ok) { ok.textContent = ''; ok.classList.add('d-none'); }
+                    if (!group) {
+                        if (err) { err.textContent = 'Channel group is missing.'; err.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (!title) {
+                        if (err) { err.textContent = 'Task is required.'; err.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (!assigneeId) {
+                        if (err) { err.textContent = 'Select a user to assign.'; err.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (!ammAssignorId) {
+                        if (err) { err.textContent = 'You must be signed in to assign a task.'; err.classList.remove('d-none'); }
+                        return;
+                    }
+                    if (err) { err.textContent = ''; err.classList.add('d-none'); }
+                    const body = new FormData();
+                    body.append('title', title);
+                    body.append('group', group);
+                    body.append('priority', 'normal');
+                    body.append('assignor_id', String(ammAssignorId));
+                    body.append('assignee_id', String(assigneeId));
+                    body.append('etc_minutes', '10');
+                    body.append('tid', new Date().toISOString().slice(0, 16));
+                    body.append('l1', window.location.href);
+                    body.append('quick_create_more', '1');
+                    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Assigning…'; }
+                    fetch(ammTaskStoreUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: body
+                    })
+                        .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+                        .then(function(res) {
+                            if (!res.ok || (res.data && res.data.success === false)) {
+                                const msg = (res.data && (res.data.message || (res.data.errors && Object.values(res.data.errors).flat()[0]))) || 'Could not assign task.';
+                                throw new Error(msg);
+                            }
+                            if (ok) {
+                                ok.textContent = (res.data && res.data.message) || 'Task assigned.';
+                                ok.classList.remove('d-none');
+                            }
+                            setTimeout(function() {
+                                const modalEl = document.getElementById('ammTaskModal');
+                                if (modalEl && window.bootstrap && bootstrap.Modal) {
+                                    const inst = bootstrap.Modal.getInstance(modalEl);
+                                    if (inst) inst.hide();
+                                }
+                            }, 700);
+                        })
+                        .catch(function(ex) {
+                            if (err) { err.textContent = ex.message || 'Could not assign task.'; err.classList.remove('d-none'); }
+                        })
+                        .finally(function() {
+                            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Assign'; }
+                        });
+                });
+            }
         });
     </script>
 @endsection
