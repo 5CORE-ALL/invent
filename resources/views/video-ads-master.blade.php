@@ -1256,11 +1256,11 @@
                 const ownDrive = path.match(/\/drive\/s\/([A-Za-z0-9]{20,64})(?:\/(.*))?$/);
                 if (ownDrive && (host === 'inventory.5coremanagement.com' || host.endsWith('.5coremanagement.com') || host === 'localhost' || host === location.hostname.replace(/^www\./i, '').toLowerCase())) {
                     if (imageExt) return { type: 'image', src: parsed.pathname + parsed.search };
+                    const token = ownDrive[1];
                     const rest = ownDrive[2] || '';
-                    const raw = /^(raw|f)(\/|$)/i.test(rest) || videoExt
-                        ? (parsed.pathname + parsed.search)
-                        : ('/drive/s/' + ownDrive[1] + '/raw');
-                    return { type: 'image', src: raw, video: raw };
+                    const poster = '/drive/s/' + token + '/poster?hooks=' + encodeURIComponent(hooks);
+                    const raw = rest === '' ? ('/drive/s/' + token + '/raw') : (parsed.pathname + parsed.search);
+                    return { type: 'image', src: poster, video: raw };
                 }
 
                 if (dropbox) {
