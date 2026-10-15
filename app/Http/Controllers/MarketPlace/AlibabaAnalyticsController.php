@@ -210,6 +210,7 @@ class AlibabaAnalyticsController extends Controller
                 'profit' => $metrics['profit_each'],
                 'sales' => $sales,
                 'lp' => round($lp, 2),
+                'ship' => $pm ? round($this->shipFromProductMaster($pm), 2) : 0.0,
                 'sprice' => $sprice > 0 ? round($sprice, 2) : null,
                 'SPRICE' => $sprice > 0 ? round($sprice, 2) : null,
                 'sgpft' => $sMetrics['gpft'],
@@ -676,6 +677,18 @@ class AlibabaAnalyticsController extends Controller
         }
 
         return [$prices, $productIds];
+    }
+
+    /** Ship cost for one unit from product_master Values.ship (case-insensitive key). */
+    protected function shipFromProductMaster(ProductMaster $pm): float
+    {
+        foreach ($this->productValues($pm) as $k => $v) {
+            if (strtolower((string) $k) === 'ship' && is_numeric($v)) {
+                return (float) $v;
+            }
+        }
+
+        return 0.0;
     }
 
     protected function stdKey(string $sku): string

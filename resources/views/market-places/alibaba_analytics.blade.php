@@ -763,6 +763,24 @@
                             }
                         },
                         {
+                            title: 'LP', field: 'lp', hozAlign: 'center', width: 62, sorter: 'number',
+                            headerTooltip: 'Landed price (LP) from product master',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                const v = parseFloat(cell.getValue()) || 0;
+                                return v > 0 ? '$' + v.toFixed(2) : '<span style="color:#6c757d;">–</span>';
+                            }
+                        },
+                        {
+                            title: 'Ship', field: 'ship', hozAlign: 'center', width: 62, sorter: 'number',
+                            headerTooltip: 'Ship cost from product master. Shown for reference; Alibaba GPFT / GROI do not subtract it.',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                const v = parseFloat(cell.getValue()) || 0;
+                                return v > 0 ? '$' + v.toFixed(2) : '<span style="color:#6c757d;">–</span>';
+                            }
+                        },
+                        {
                             title: 'GPFT', field: 'gpft', hozAlign: 'center', width: 55, sorter: 'number',
                             headerTooltip: 'GPFT = ((Price × margin) − LP) ÷ Price. Ship is not subtracted.',
                             formatter: function (cell) {
