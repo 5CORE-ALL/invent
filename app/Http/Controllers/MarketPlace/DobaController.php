@@ -230,7 +230,72 @@ class DobaController extends Controller
                 $std = $val['STANDARD_PRICE'] ?? null;
 
                 return (is_numeric($std) && floatval($std) > 0) ? round(floatval($std), 2) : 0;
-            });
+            })
+            ->all();
+
+        // SKUs with no STANDARD_PRICE of their own: inherit it from the Sku Link LMP group
+        // (same rule as /tiktok-pricing and the listing publishers), and match SKUs whose
+        // internal whitespace differs between product_master and amazon_data_view.
+        $stdWhitespaceKey = static fn ($s) => strtoupper(preg_replace('/\s+/', ' ', trim((string) $s)) ?? '');
+        $stdByCollapsedKey = [];
+        foreach ($amazonStandardPrices as $k => $v) {
+            if ($v > 0) {
+                $stdByCollapsedKey[$stdWhitespaceKey($k)] = $v;
+            }
+        }
+        $missingStdSkus = [];
+        foreach ($skus as $s) {
+            $nk = $normalizeSku($s);
+            if (empty($amazonStandardPrices[$nk])) {
+                $ck = $stdWhitespaceKey($s);
+                if (isset($stdByCollapsedKey[$ck])) {
+                    $amazonStandardPrices[$nk] = $stdByCollapsedKey[$ck];
+                } else {
+                    $missingStdSkus[] = $s;
+                }
+            }
+        }
+        if ($missingStdSkus !== []) {
+            try {
+                $lmpGroups = app(\App\Services\LmpSkuGroupService::class);
+                $lmpGroups->prepareForSkus($skus);
+                $siblingLookup = [];
+                foreach ($missingStdSkus as $s) {
+                    foreach ($lmpGroups->groupContaining((string) $s) as $member) {
+                        $siblingLookup[$normalizeSku($member)] = (string) $member;
+                    }
+                }
+                $unknown = array_values(array_filter(
+                    $siblingLookup,
+                    fn ($m, $k) => ! isset($amazonStandardPrices[$k]),
+                    ARRAY_FILTER_USE_BOTH
+                ));
+                foreach (array_chunk($unknown, 200) as $chunk) {
+                    foreach (AmazonDataView::whereIn('sku', $chunk)->get(['sku', 'value']) as $adv) {
+                        $v = is_array($adv->value) ? $adv->value : (json_decode((string) $adv->value, true) ?: []);
+                        $std = $v['STANDARD_PRICE'] ?? null;
+                        if (is_numeric($std) && (float) $std > 0) {
+                            $amazonStandardPrices[$normalizeSku($adv->sku)] = round((float) $std, 2);
+                        }
+                    }
+                }
+                foreach ($missingStdSkus as $s) {
+                    $nk = $normalizeSku($s);
+                    if (! empty($amazonStandardPrices[$nk])) {
+                        continue;
+                    }
+                    foreach ($lmpGroups->groupContaining((string) $s) as $member) {
+                        $mk = $normalizeSku($member);
+                        if (! empty($amazonStandardPrices[$mk])) {
+                            $amazonStandardPrices[$nk] = $amazonStandardPrices[$mk];
+                            break;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Doba Std Prc sibling lookup failed', ['error' => $e->getMessage()]);
+            }
+        }
 
         $applyDailyFilters = function ($query) use ($onlyPickupPrepaidLabelFromDaily) {
             // Only orders that actually happened: any status containing "cancel" (Canceled, Cancelled, Order Canceled…) is out.

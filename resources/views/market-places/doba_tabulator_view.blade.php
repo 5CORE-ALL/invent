@@ -649,8 +649,23 @@
             if (isNum) {
                 // Numeric columns sort strictly by each row's own value. Grouping children under their parent's
                 // average made low-to-high show negative, then positive, then negative again.
-                const na = parseFloat(da[field]);
-                const nb = parseFloat(db[field]);
+                // Sort by what the cell displays. SPRICE / S Pick Price show a live saved value, not the raw loaded field.
+                const shown = function(d) {
+                    if (!isDobaParentRow(d) && typeof dobaDisplayedSprice === 'function') {
+                        if (field === 'sprice') {
+                            const s = dobaDisplayedSprice(d);
+                            return s > 0 ? s : d[field];
+                        }
+                        if (field === 's_self_pick') {
+                            const s = dobaDisplayedSprice(d) || parseFloat(d.sprice) || 0;
+                            const sh = parseFloat(d.Ship_productmaster) || 0;
+                            return s > 0 ? Math.max(0, s - sh) : 0;
+                        }
+                    }
+                    return d[field];
+                };
+                const na = parseFloat(shown(da));
+                const nb = parseFloat(shown(db));
                 const fa = isFinite(na) ? na : 0;
                 const fb = isFinite(nb) ? nb : 0;
                 if (fa !== fb) return fa - fb;
