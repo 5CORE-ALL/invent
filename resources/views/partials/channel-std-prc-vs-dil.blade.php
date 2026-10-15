@@ -165,6 +165,15 @@
                                 <div class="ch-sp-margin-badges" id="ch-sp-margin-l30-sub"></div>
                             </div>
                         </div>
+                        @if(in_array(($channelPromoChannel ?? ''), ['doba', 'doba_withoutship'], true))
+                        <div class="ch-sp-margin">
+                            <div>
+                                <div class="small text-muted" title="Doba L30 units x the L30 average sold price, with today's margin, LP and ship. Every SKU with Doba sales is counted, including SKUs whose stock is now 0. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
+                                <strong id="ch-sp-margin-cur">—</strong>
+                                <div class="ch-sp-margin-badges" id="ch-sp-margin-cur-sub"></div>
+                            </div>
+                        </div>
+                        @endif
                         <div class="ch-sp-margin">
                             <div>
                                 <div class="small text-muted">Projected with {{ $channelStdPageName !== '' ? $channelStdPageName.' ' : '' }}L30</div>
@@ -747,6 +756,32 @@
             if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { take(d); });
             return out;
         }
+        /**
+         * "Current <page> L30": this page's actual sold units x the L30 average sold price, with today's
+         * margin / LP / ship. Includes SKUs whose stock is now 0 (chStdRows() drops those) and ignores the draft rules.
+         */
+        function chStdCurrentSiteBucket(adsPct) {
+            const b = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
+            const noShip = chStdExcludesShip() || (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'doba_withoutship');
+            const take = function(d) {
+                if (!d || d.is_parent_summary) return;
+                if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return;
+                const units = chStdSiteL30(d);
+                if (!(units > 0)) return;
+                let price = Number(d.l30_avg_price);
+                if (!(isFinite(price) && price > 0)) price = (typeof chPromoPrice === 'function') ? (Number(chPromoPrice(d)) || 0) : 0;
+                if (!(price > 0)) return;
+                const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
+                const ship = noShip ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
+                const gross = (price * chStdMargin(d)) - ship - lp;
+                const net = gross - (price * (Number(adsPct) || 0) / 100);
+                b.gross += gross * units; b.net += net * units; b.sales += price * units; b.cogs += lp * units; b.units += units;
+            };
+            const full = chStdFullDataset();
+            if (full) full.forEach(take);
+            else if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { take(d); });
+            return b;
+        }
         function chStdMoney(n) {
             const v = Number(n) || 0;
             return (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -1046,6 +1081,11 @@
             $('#ch-sp-margin-l30-sub').html(marginBadgesHtml(l30));
             $('#ch-sp-margin-pg').html(marginSalesHtml(pgB)).css('color', '#166534');
             $('#ch-sp-margin-pg-sub').html(marginBadgesHtml(pgB));
+            if ($('#ch-sp-margin-cur').length) {
+                const curB = chStdCurrentSiteBucket(ads);
+                $('#ch-sp-margin-cur').html(marginSalesHtml(curB)).css('color', '#166534');
+                $('#ch-sp-margin-cur-sub').html(marginBadgesHtml(curB));
+            }
             $('#ch-sp-margin-inv').html(marginSalesHtml(invB)).css('color', '#166534');
             $('#ch-sp-margin-inv-sub').html(marginBadgesHtml(invB));
             chStdRepaintDiscColumns();
