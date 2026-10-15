@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 4:40 AM and 8:40 PM IST: Best Buy Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, LMP cap, Amz rule) → SPRICE → Best Buy MCM price import. Page not required.
+ * LMP cap, Amz rule) → SPRICE → Best Buy MCM price import. Page not required.
  * Only pushes SKUs whose target price differs from the live BB Price and from the last pushed price.
  * bestbuy:push-blue-prices handles the 10-minute catch-up.
  */
@@ -25,7 +25,7 @@ class BestBuySprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Best Buy price pushes (ms)}';
 
-    protected $description = 'Best Buy Std prc vs dil (Min NPFT, LMP cap, Amz rule) → SPRICE → Best Buy MCM (4:40 AM + 8:40 PM IST).';
+    protected $description = 'Best Buy Std prc vs dil (LMP cap, Amz rule) → SPRICE → Best Buy MCM (4:40 AM + 8:40 PM IST).';
 
     protected string $monitorJobName = 'Best Buy Sprc Dil Auto Push';
 
@@ -52,7 +52,7 @@ class BestBuySprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Best Buy Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:40 and 20:40 Asia/Kolkata (IST)');
-        $this->info('Rules: bestbuy_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT + LMP cap + Amz rule (never below A Price)');
+        $this->info('Rules: bestbuy_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + LMP cap + Amz rule (never below A Price)');
         $this->info('Push: Best Buy MCM price import — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

@@ -979,7 +979,7 @@
                     editable: false,
                     sorter: "number",
                     visible: true,
-                    headerTooltip: "S PRC = Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), raised to Min NPFT % (with Ship, no ads), Std Prc is the maximum. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.",
+                    headerTooltip: "S PRC = Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), Std Prc is the maximum. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';

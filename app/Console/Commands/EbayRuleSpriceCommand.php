@@ -22,7 +22,7 @@ class EbayRuleSpriceCommand extends Command
         {--limit=25 : Rows to print}
         {--save : Save changed S PRC (no eBay push)}';
 
-    protected $description = 'eBay 1/2/3 S PRC from Std prc vs dil + Min NPFT + LMP cap + Std cap (dry run unless --save)';
+    protected $description = 'eBay 1/2/3 S PRC from Std prc vs dil + LMP cap + Std cap (dry run unless --save)';
 
     public function handle(): int
     {

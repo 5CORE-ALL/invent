@@ -372,7 +372,7 @@
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
             <span class="nto-server-push-note"
-                title="S PRC (Std prc vs dil + Min NPFT + eBay / Amazon / LMP caps) is saved and pushed to Temu 2 by the server at 04:20 and 20:20 IST. This page does not need to be open. The upload button pushes S Base Prc by hand.">
+                title="S PRC (Std prc vs dil + eBay / Amazon / LMP caps) is saved and pushed to Temu 2 by the server at 04:20 and 20:20 IST. This page does not need to be open. The upload button pushes S Base Prc by hand.">
                 <i class="fas fa-server"></i> Server auto-push 04:20 / 20:20 IST
             </span>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
@@ -1109,7 +1109,7 @@
     }
 
     /**
-     * S PRC is set by the server (newtemutwo:sprc-dil-auto-push): Std prc vs dil + Min NPFT, then the LMP cap.
+     * S PRC is set by the server (newtemutwo:sprc-dil-auto-push): Std prc vs dil, then the LMP cap.
      * The page only shows the saved dollar and the eBay / Amazon / LMP references next to it.
      */
     function temuSpriceCapCompute(row, rawSprice, extra) {
@@ -3167,7 +3167,7 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, B, 0 Sold, CVR, and Review discounts), raised to Min NPFT, then capped at the lowest eBay and Amazon price, then at LMP when SGROI at LMP is 20%+. Saved and pushed by the server at 04:20 / 20:20 IST.',
+                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, B, 0 Sold, CVR, and Review discounts), then capped at the lowest eBay and Amazon price, then at LMP when SGROI at LMP is 20%+. Saved and pushed by the server at 04:20 / 20:20 IST.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'

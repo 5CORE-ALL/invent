@@ -20,7 +20,6 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with New Temu Two as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then raised to Min NPFT % (saved in newtemutwo_std_prc_vs_dil, default 10). Clearance SKUs keep the discount price.
  *  Then capped at the lowest eBay price and the Amazon price (labels EB / Amz), same as the page.
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  S PRC is the full Temu price. Temu takes a Base price, so the push sends the S Base Prc (same invert as the page).
@@ -51,7 +50,7 @@ class NewTemutwoSprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('newtemutwo');
 
-        $this->log($logger, 'Loaded New Temu Two Std prc vs dil (newtemutwo_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Min NPFT + LMP cap');
+        $this->log($logger, 'Loaded New Temu Two Std prc vs dil (newtemutwo_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap');
 
         $stats = [
             'candidates' => 0,
@@ -189,7 +188,7 @@ class NewTemutwoSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT, then eBay / Amazon caps, then LMP cap, Std is the maximum.
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, then eBay / Amazon caps, then LMP cap, Std is the maximum.
      *
      * @param  array<string, mixed>  $row  Loaded candidate (see loadCandidates)
      * @return array{sprice:float,uncapped:float,lmp_capped:bool,labels:list<string>,base:float,full:float}|null
@@ -217,7 +216,7 @@ class NewTemutwoSprcDilAutoPushService
         $adsPct = (float) ($row['ads_percent'] ?? 0);
 
         $pricer ??= StdPrcVsDilPricer::forChannel('newtemutwo');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then Min NPFT (clearance exempt).
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,

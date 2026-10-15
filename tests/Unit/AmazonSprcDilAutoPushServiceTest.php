@@ -357,39 +357,6 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($out);
     }
 
-    public function test_dil_uncapped_negative_npft_is_raised_to_min_10(): void
-    {
-        $svc = new class extends AmazonSprcDilAutoPushService
-        {
-            public function raise(float $capped, float $dil, float $lmp, float $std): float
-            {
-                return $this->raiseUncappedNegativeToMinNpft($capped, $dil, $lmp, 28.18, 6.0, $std, 13.79, [], 10.0);
-            }
-        };
-
-        // CONGO 3 BLU: 50.81 → NPFT −1.06% → 10% floor.
-        $this->assertEqualsWithDelta(60.81, $svc->raise(50.81, 50.81, 0.0, 65.99), 0.011);
-    }
-
-    public function test_dil_capped_or_positive_npft_is_left_alone(): void
-    {
-        $svc = new class extends AmazonSprcDilAutoPushService
-        {
-            public function raise(float $capped, float $dil, float $lmp, float $std): float
-            {
-                return $this->raiseUncappedNegativeToMinNpft($capped, $dil, $lmp, 28.18, 6.0, $std, 13.79, [], 10.0);
-            }
-        };
-
-        // LMP / Std cap pulled the price below the Dil price → cap stays.
-        $this->assertEqualsWithDelta(50.81, $svc->raise(50.81, 60.0, 50.81, 65.99), 0.001);
-        $this->assertEqualsWithDelta(50.81, $svc->raise(50.81, 70.0, 0.0, 50.81), 0.001);
-        // NPFT already ≥ 0 → unchanged.
-        $this->assertEqualsWithDelta(52.0, $svc->raise(52.0, 52.0, 0.0, 65.99), 0.001);
-        // Std Prc stays the maximum.
-        $this->assertEqualsWithDelta(55.0, $svc->raise(50.81, 50.81, 0.0, 55.0), 0.001);
-    }
-
     /**
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null

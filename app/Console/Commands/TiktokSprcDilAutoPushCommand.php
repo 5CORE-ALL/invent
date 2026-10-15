@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily (TikTok 06:15 / 22:15 IST, TikTok 2 06:25 / 22:25 IST): TikTok Std prc vs dil
- * (Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ship + Ads%, LMP cap, Std max) → SPRICE → TikTok Shop price API.
+ * (Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap, Std max) → SPRICE → TikTok Shop price API.
  * Page not required. Only pushes SKUs whose target price differs from the live TikTok Price and from the last pushed price.
  * tiktok:push-blue-prices handles the 10-minute catch-up.
  */
@@ -25,7 +25,7 @@ class TiktokSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between TikTok price API calls (ms)}';
 
-    protected $description = 'TikTok / TikTok 2 Std prc vs dil (Min NPFT, LMP cap, Std max) → SPRICE → TikTok Shop (twice daily IST).';
+    protected $description = 'TikTok / TikTok 2 Std prc vs dil (LMP cap, Std max) → SPRICE → TikTok Shop (twice daily IST).';
 
     protected string $monitorJobName = 'TikTok Sprc Dil Auto Push';
 
@@ -56,7 +56,7 @@ class TiktokSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info(($channel === 'tiktok2' ? 'TikTok 2' : 'TikTok').' Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: '.($channel === 'tiktok2' ? '06:25 and 22:25' : '06:15 and 22:15').' Asia/Kolkata (IST)');
-        $this->info('Rules: '.$channel.'_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT (Ship + Ads%) + LMP cap + Std max');
+        $this->info('Rules: '.$channel.'_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + LMP cap + Std max');
         $this->info('Push: TikTok Shop price API — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

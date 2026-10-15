@@ -29,7 +29,6 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
             'review_max' => 4,
             'buss' => [['min' => 0, 'max' => 9999, 'disc' => 2]],
             'zero_sold_disc' => 4,
-            'min_npft' => 10,
         ], $over), 'bestbuy');
     }
 
@@ -72,65 +71,11 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_min_npft_raises_the_price_and_includes_ship_bb(): void
-    {
-        // Raw 90. LP 60 + Ship BB 4 = 64. Min NPFT 10%: 64 / (0.80 − 0.10) = 91.43.
-        $out = $this->service()->computeTarget($this->row(['lp' => 60, 'ship' => 4]), $this->pricer());
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(91.43, $out['sprice'], 0.011);
-        $npft = ((($out['sprice'] * 0.80) - 64) / $out['sprice']) * 100;
-        $this->assertGreaterThanOrEqual(9.99, $npft);
-    }
-
-    public function test_clearance_keeps_the_discount_price_below_min_npft(): void
+    public function test_clearance_keeps_the_discount_price(): void
     {
         $out = $this->service()->computeTarget($this->row(['lp' => 60, 'ship' => 4, 'clearance' => true]), $this->pricer());
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
-    }
-
-    public function test_std_is_the_maximum_when_min_npft_is_already_met(): void
-    {
-        // Raw 90 is under Std 100 and NPFT is healthy, so Std never lifts the price.
-        $out = $this->service()->computeTarget($this->row(), $this->pricer());
-
-        $this->assertNotNull($out);
-        $this->assertLessThanOrEqual(100.00, $out['sprice']);
-        $this->assertFalse($out['npft_floor']);
-    }
-
-    public function test_min_npft_on_snpft_wins_over_the_std_maximum(): void
-    {
-        // LP 70 + Ship BB 8 = 78. Min NPFT 10%: 78 / (0.80 − 0.10) = 111.43, above Std 100.
-        $out = $this->service()->computeTarget($this->row(['lp' => 70, 'ship' => 8]), $this->pricer());
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(111.43, $out['sprice'], 0.011);
-        $this->assertTrue($out['npft_floor']);
-        $snpft = ((($out['sprice'] * 0.80) - 78) / $out['sprice']) * 100;
-        $this->assertGreaterThanOrEqual(9.99, $snpft);
-    }
-
-    public function test_min_npft_on_snpft_wins_over_the_amz_rule(): void
-    {
-        // A Price 5.99 is far under the Min NPFT price, so the floor is the S PRC, not A Price.
-        $out = $this->service()->computeTarget($this->row(['lp' => 6, 'ship' => 2, 'standard_price' => 5.99, 'amz' => 5.99]), $this->pricer());
-
-        $this->assertNotNull($out);
-        $this->assertGreaterThan(5.99, $out['sprice']);
-        $snpft = ((($out['sprice'] * 0.80) - 8) / $out['sprice']) * 100;
-        $this->assertGreaterThanOrEqual(9.99, $snpft);
-    }
-
-    public function test_clearance_is_exempt_from_the_snpft_floor(): void
-    {
-        $out = $this->service()->computeTarget($this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]), $this->pricer());
-
-        $this->assertNotNull($out);
-        $this->assertFalse($out['npft_floor']);
-        // Clearance keeps the discount price (Std 100 − 10%), even though its SNPFT is under the floor.
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
 
@@ -143,16 +88,6 @@ class BestBuySprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(80.00, $out['sprice'], 0.001);
         $this->assertTrue($out['lmp_capped']);
         $this->assertEqualsWithDelta(90.00, $out['uncapped'], 0.001);
-    }
-
-    public function test_min_npft_wins_over_the_lmp_cap(): void
-    {
-        // LP 60 + Ship BB 4: Min NPFT 10% needs 91.43. LMP 80 would give NPFT under 10%, so the cap is skipped.
-        $out = $this->service()->computeTarget($this->row(['lp' => 60, 'ship' => 4, 'lmp' => 80]), $this->pricer());
-
-        $this->assertNotNull($out);
-        $this->assertGreaterThanOrEqual(91.42, $out['sprice']);
-        $this->assertFalse($out['lmp_capped']);
     }
 
     public function test_amz_rule_raises_price_to_a_price(): void

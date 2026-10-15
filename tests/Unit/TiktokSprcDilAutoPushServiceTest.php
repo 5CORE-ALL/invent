@@ -21,7 +21,6 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
             'review_max' => 4,
             'buss' => [['min' => 0, 'max' => 9999, 'disc' => 2]],
             'zero_sold_disc' => 4,
-            'min_npft' => 10,
         ], $over), $channel);
     }
 
@@ -67,42 +66,12 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_min_npft_includes_ship(): void
-    {
-        // Std 120: discount price 108. LP 70 + Ship 10 → NPFT 5.9%. Raised to 10%: 80 / 0.70 = 114.29.
-        $out = $this->target($this->row(['standard_price' => 120, 'lp' => 70, 'ship' => 10]));
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(114.29, $out['sprice'], 0.011);
-        $npft = ((($out['sprice'] * 0.80) - 70 - 10) / $out['sprice']) * 100;
-        $this->assertGreaterThanOrEqual(9.99, $npft);
-    }
-
-    public function test_min_npft_includes_channel_ads(): void
-    {
-        $row = $this->row(['standard_price' => 120, 'lp' => 70, 'ship' => 0]);
-
-        // No ads: NPFT at 108 is 15.2%, so the discount price stays.
-        $this->assertEqualsWithDelta(108.00, $this->target($row, null, 0.0)['sprice'], 0.001);
-        // Ads 10%: NPFT at 108 is 5.2%. Raised to 10%: 70 / (0.80 − 0.10 − 0.10) = 116.67.
-        $this->assertEqualsWithDelta(116.67, $this->target($row, null, 0.10)['sprice'], 0.011);
-    }
-
-    public function test_clearance_keeps_the_discount_price_below_min_npft(): void
+    public function test_clearance_keeps_the_discount_price(): void
     {
         $out = $this->target($this->row(['standard_price' => 120, 'lp' => 70, 'ship' => 10, 'clearance' => true]));
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(108.00, $out['sprice'], 0.001);
-    }
-
-    public function test_std_is_the_maximum(): void
-    {
-        $out = $this->target($this->row(['lp' => 80, 'ship' => 0]));
-
-        $this->assertNotNull($out);
-        // LP 80 needs 80 / 0.70 = 114.29 for 10%, but Std 100 is the maximum.
-        $this->assertEqualsWithDelta(100.00, $out['sprice'], 0.001);
     }
 
     public function test_lmp_below_the_price_caps_to_lmp(): void
@@ -122,30 +91,6 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
-        $this->assertFalse($out['lmp_capped']);
-    }
-
-    public function test_lmp_cap_is_skipped_when_sgroi_at_lmp_is_under_20(): void
-    {
-        // LP 60 + Ship 5: Min NPFT raises 90 to 92.86. SGROI at LMP 75 is −8%, so no LMP cap.
-        $out = $this->target($this->row(['lp' => 60, 'ship' => 5, 'lmp' => 75]));
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(92.86, $out['sprice'], 0.011);
-        $this->assertFalse($out['lmp_capped']);
-    }
-
-    public function test_min_npft_wins_over_the_lmp_cap(): void
-    {
-        // Std 120, LP 50, Ads 15%. SGROI at LMP 76 is 21.6% (cap allowed), but NPFT at 76 is −0.8%.
-        $out = $this->target(
-            $this->row(['standard_price' => 120, 'lp' => 50, 'ship' => 0, 'lmp' => 76]),
-            null,
-            0.15
-        );
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(108.00, $out['sprice'], 0.001);
         $this->assertFalse($out['lmp_capped']);
     }
 

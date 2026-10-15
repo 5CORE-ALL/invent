@@ -74,9 +74,6 @@
         #chStdPrcModal .ch-sp-when-down::before { background: #dc3545; }
         #chStdPrcModal .ch-sp-when-up::before { background: #198754; }
         #chStdPrcModal .ch-sp-when-up2::before { background: #14532d; }
-        #chStdPrcModal .ch-sp-npft { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border: 1px solid #e6edf5; border-radius: 14px; background: #fff; font-size: 13px; color: #334155; }
-        @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'css'])
-        #chStdPrcModal .ch-sp-npft .ch-sp-input { width: 64px; min-width: 64px; max-width: 64px; margin: 0; }
         #chStdPrcModal .ch-sp-margins { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 12px; }
         #chStdPrcModal .ch-sp-margin { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; border: 1px solid #e6edf5; border-radius: 14px; padding: 12px 16px; background: #fff; }
         #chStdPrcModal .ch-sp-margin strong { display: block; font-size: 26px; letter-spacing: -0.03em; }
@@ -152,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. S PRC is raised when NPFT% would fall under Min NPFT %. Clearance SKUs stay on the discount price.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -188,11 +185,6 @@
                                 <div class="ch-sp-margin-badges" id="ch-sp-margin-inv-sub"></div>
                             </div>
                         </div>
-                    </div>
-                    <div class="ch-sp-npft">
-                        <label class="fw-semibold mb-0" for="ch-sp-min-npft">Min NPFT %</label>
-                        <input type="number" id="ch-sp-min-npft" class="form-control form-control-sm ch-sp-input" min="0" max="99" step="0.1" value="10" title="S PRC is raised so NPFT% stays at or above this. 0 turns the floor off.">
-                        <span class="text-muted">S PRC stays at or above this NPFT%. Clearance SKUs are ignored (<strong id="ch-sp-min-npft-ignored">0</strong>). <span style="color:#dc3545;font-weight:700;">Applied <strong id="ch-sp-min-npft-applied">0</strong></span></span>
                     </div>
                     <div class="ch-sp-hist-wrap" id="ch-sp-hist-wrap">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -289,7 +281,6 @@
         const CH_STD_REV_DEFAULTS = [{ min: 1, max: 2, disc: 4 }, { min: 2, max: 3, disc: 4 }];
         const CH_STD_BUSS_DEFAULTS = [{ min: 0, max: 15, disc: 0 }, { min: 15, max: 50, disc: 0 }, { min: 50, max: 9999, disc: 0 }];
         let chStdZeroSoldDisc = 0;
-        let chStdMinNpft = 10;
         const CH_STD_CLEARANCE_URL = @json(route('inv.days.clearance.yes'));
         let chStdClearanceSet = null;
         let chStdClearanceLoading = null;
@@ -508,9 +499,6 @@
         function chStdReviews(d) {
             return chStdNum(d, ['review_count', 'reviews', 'Reviews', 'rating_count', 'ratings']);
         }
-        function chStdUsesMinNpft() {
-            return typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL !== '';
-        }
         /** This page's own sold-units field (CHANNEL_PROMO_CFG.soldField), e.g. 'doba L30', 'TT L30', 'al30'. */
         function chStdPageSoldField() {
             try {
@@ -545,14 +533,6 @@
             if (!d) return 0;
             return (typeof chPromoOvL30 === 'function') ? (Number(chPromoOvL30(d)) || 0) : 0;
         }
-        function chStdMinNpftNow() {
-            if (!chStdUsesMinNpft()) return 0;
-            const $inp = $('#ch-sp-min-npft');
-            if (!$inp.length) return chStdMinNpft;
-            const n = Number($inp.val());
-            if (!isFinite(n)) return chStdMinNpft;
-            return Math.min(99, Math.max(0, n));
-        }
         function chStdClearanceKey(sku) {
             return String(sku || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
         }
@@ -561,7 +541,7 @@
             return !!chStdClearanceSet[chStdClearanceKey(chStdRowSku(d))];
         }
         function chStdLoadClearance() {
-            if (!chStdUsesMinNpft()) return $.Deferred().resolve().promise();
+            if (typeof CHANNEL_PROMO_CHANNEL === 'undefined' || CHANNEL_PROMO_CHANNEL === '') return $.Deferred().resolve().promise();
             if (chStdClearanceSet) return $.Deferred().resolve(chStdClearanceSet).promise();
             if (chStdClearanceLoading) return chStdClearanceLoading;
             chStdClearanceLoading = $.ajax({
@@ -580,123 +560,12 @@
             return chStdClearanceLoading;
         }
         window.chStdIsClearance = chStdIsClearance;
-        window.chStdMinNpftNow = chStdMinNpftNow;
         window.chStdLoadClearance = chStdLoadClearance;
         function chStdAdsFrac() {
             if (typeof chPromoAdsFrac !== 'function') return 0;
             const n = Number(chPromoAdsFrac());
             return isFinite(n) && n > 0 ? n : 0;
         }
-        function chStdNpftAt(price, d) {
-            const p = Number(price) || 0;
-            if (!(p > 0)) return 0;
-            const margin = chStdMargin(d);
-            const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
-            const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
-            return ((p * margin - ship - lp) / p) * 100 - (chStdAdsFrac() * 100);
-        }
-        function chStdPriceForMinNpft(d, minNpft) {
-            const margin = chStdMargin(d);
-            const denom = margin - chStdAdsFrac() - (Number(minNpft) || 0) / 100;
-            if (!(denom > 0.0001)) return 0;
-            const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
-            const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
-            const raw = (lp + ship) / denom;
-            if (!(raw > 0)) return 0;
-            return Math.ceil(raw * 100 - 1e-6) / 100;
-        }
-        function chStdRaiseToMinNpft(price, d, minNpft) {
-            if (!chStdUsesMinNpft() || chStdIsClearance(d)) return price;
-            const floorPct = Number(minNpft);
-            const current = Number(price) || 0;
-            if (!(floorPct > 0) || !(current > 0)) return current;
-            if (chStdNpftAt(current, d) >= floorPct - 0.001) return current;
-            const raised = chStdPriceForMinNpft(d, floorPct);
-            return raised > current ? raised : current;
-        }
-        function chStdPriceBeforeMinNpft(d, draft) {
-            if (!d) return 0;
-            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
-            if (!(chStdStockForAge(d) > 0) && !chStdRowIsZeroSold(d)) return 0;
-            const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
-            if (!(std > 0)) return 0;
-            const sum = chStdSumDisc(d, draft || chStdDraftNow());
-            let raw = std * (1 - Math.min(99.99, sum) / 100);
-            if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
-                const ship = (typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0;
-                raw -= ship;
-            }
-            return Math.round(raw * 100) / 100;
-        }
-        /** S PRC the cell actually paints (saved on eBay; live rule price on other channels). */
-        function chStdShownSpriceForMark(d) {
-            if (!d) return 0;
-            if (typeof ebayDisplayedSprice === 'function') {
-                const n = Number(ebayDisplayedSprice(d));
-                if (n > 0) return n;
-            }
-            if (typeof ebay2DisplayedSprice === 'function') {
-                const n = Number(ebay2DisplayedSprice(d));
-                if (n > 0) return n;
-            }
-            if (typeof ebay3DisplayedSprice === 'function') {
-                const n = Number(ebay3DisplayedSprice(d));
-                if (n > 0) return n;
-            }
-            if (typeof chStdPriceForRow === 'function') {
-                const n = Number(chStdPriceForRow(d));
-                if (n > 0) return n;
-            }
-            const saved = Number(d.SPRICE_SERVER != null ? d.SPRICE_SERVER : (d.SPRICE || d.sprice));
-            return saved > 0 ? saved : 0;
-        }
-        /** Same SNPFT% the table cell paints (0 decimals). */
-        function chStdShownSnpftForMark(d) {
-            if (!d) return null;
-            if (typeof ebayDilComputedSnpft === 'function') {
-                const dil = ebayDilComputedSnpft(d);
-                if (dil != null && isFinite(dil)) return dil;
-            }
-            if (typeof ebayComputeSgpftFromSprice === 'function') {
-                const sgpft = ebayComputeSgpftFromSprice(d);
-                if (sgpft == null || !isFinite(sgpft)) return null;
-                const ads = (typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY_CHANNEL_ADS_PCT) || 0) : (chStdAdsFrac() * 100);
-                return sgpft - ads;
-            }
-            if (typeof ebay2ComputeSgpftFromSprice === 'function') {
-                const sgpft = ebay2ComputeSgpftFromSprice(d);
-                if (sgpft == null || !isFinite(sgpft)) return null;
-                const ads = (typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY2_CHANNEL_ADS_PCT) || 0) : (chStdAdsFrac() * 100);
-                return sgpft - ads;
-            }
-            if (typeof ebay3ComputeSgpftFromSprice === 'function') {
-                const sgpft = ebay3ComputeSgpftFromSprice(d);
-                if (sgpft == null || !isFinite(sgpft)) return null;
-                const ads = (typeof EBAY3_CHANNEL_ADS_PCT !== 'undefined') ? (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0) : (chStdAdsFrac() * 100);
-                return sgpft - ads;
-            }
-            const shown = chStdShownSpriceForMark(d);
-            if (!(shown > 0)) return null;
-            return chStdNpftAt(shown, d);
-        }
-        function chStdMinNpftWasApplied(d, draft) {
-            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.shouldMark === 'function') {
-                return window.minNpftSpriceMark.shouldMark(d);
-            }
-            if (!chStdUsesMinNpft() || !d || chStdIsClearance(d)) return false;
-            const floor = (draft && draft.minNpft != null) ? Number(draft.minNpft) : Number(chStdMinNpft);
-            if (!(floor > 0)) return false;
-            const snpft = chStdShownSnpftForMark(d);
-            if (snpft == null || !isFinite(snpft)) return false;
-            return Math.round(snpft) === Math.round(floor);
-        }
-        window.chStdMinNpftWasApplied = chStdMinNpftWasApplied;
-        function chStdNpftMarkHtml(d) {
-            if (!chStdMinNpftWasApplied(d)) return '';
-            const pct = Number(chStdMinNpft);
-            return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT ' + pct + '%">!</span>';
-        }
-        window.chStdNpftMarkHtml = chStdNpftMarkHtml;
         function chStdExcludesShip() {
             if (typeof CHANNEL_PROMO_CHANNEL === 'undefined') return false;
             return CHANNEL_PROMO_CHANNEL === 'shopify_b2b'
@@ -813,7 +682,6 @@
                 reviews: chStdReadRanges('#ch-sp-rev-tbody', '.ch-sp-rev-min', '.ch-sp-rev-max', '.ch-sp-rev-disc'),
                 buss: chStdReadRanges('#ch-sp-buss-tbody', '.ch-sp-buss-min', '.ch-sp-buss-max', '.ch-sp-buss-disc'),
                 zeroSoldDisc: (function() { const n = Number($('#ch-sp-zs-disc').val()); return isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; })(),
-                minNpft: chStdMinNpftNow(),
                 reviewMax: (function() { const n = parseInt($('#ch-sp-review-max').val(), 10); return isFinite(n) && n > 0 ? n : 4; })(),
                 cvr: chStdNormCvr({
                     down2_lt: $('#chStdPrcModal .ch-sp-cvr-down2-lt').val(), down2_disc: $('#chStdPrcModal .ch-sp-cvr-down2-disc').val(),
@@ -900,10 +768,8 @@
             draft.reviews.forEach(function(r, i) { revCounts['r' + i] = 0; });
             draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
             const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
-            let clearanceIgnored = 0;
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
             const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, all: 0 };
-            let npftApplied = 0;
             const zsCounts = { zero: 0, sold: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const pgB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
@@ -952,11 +818,8 @@
                 if (zsDisc > 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
                 const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc);
                 if (sum > 0) skuHits.all++;
-                if (chStdUsesMinNpft() && chStdIsClearance(d)) clearanceIgnored++;
-                if (chStdMinNpftWasApplied(d, draft)) npftApplied++;
                 if (std > 0) {
-                    let sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
-                    sprice = chStdRaiseToMinNpft(sprice, d, draft.minNpft);
+                    const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
                     const gross = (sprice * chStdMargin(d)) - ship - lp;
@@ -1007,8 +870,7 @@
                         if (chStdInRange(std, draft.buss[i], i === draft.buss.length - 1)) { bussDisc = Number(draft.buss[i].disc) || 0; break; }
                     }
                     const sum = hasStd ? Math.min(99.99, revDisc + bussDisc) : 0;
-                    let sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
-                    if (hasStd) sprice = chStdRaiseToMinNpft(sprice, d, draft.minNpft);
+                    const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
                     const gross = (sprice * chStdMargin(d)) - ship - lp;
@@ -1030,11 +892,6 @@
             $('#ch-sp-cvr-up-count').text(cvrCounts.up);
             $('#ch-sp-cvr-up2-count').text(cvrCounts.up2);
             $('#ch-sp-zs-count').text(zsCounts.zero);
-            const ignoredEl = document.getElementById('ch-sp-min-npft-ignored');
-            if (ignoredEl) ignoredEl.textContent = chStdClearanceSet ? String(clearanceIgnored) : '…';
-            const appliedEl = document.getElementById('ch-sp-min-npft-applied');
-            if (appliedEl) appliedEl.textContent = String(npftApplied);
-            chStdStampNpftMarks();
             const dilSlices = draft.dil.map(function(r, i) { return { key: 'd' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const ageSlices = draft.age.map(function(r, i) { return { key: 'a' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No age', color: '#cbd5e1' }]);
             const revSlices = draft.reviews.map(function(r, i) { return { key: 'r' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
@@ -1115,7 +972,6 @@
             $('#ch-sp-rev-tbody').html(chStdRev.map(function(r) { return chStdRangeRow('ch-sp-rev', r); }).join(''));
             $('#ch-sp-buss-tbody').html(chStdBuss.map(function(r) { return chStdRangeRow('ch-sp-buss', r); }).join(''));
             $('#ch-sp-zs-disc').val(chStdZeroSoldDisc);
-            if ($('#ch-sp-min-npft').length) $('#ch-sp-min-npft').val(chStdMinNpft);
             $('#ch-sp-review-max').val(chStdReviewMax);
             const cfg = chStdNormCvr(chStdCvr);
             $('#chStdPrcModal .ch-sp-cvr-down2-lt').val(cfg.down2_lt);
@@ -1137,9 +993,6 @@
                 chStdRev = (res.reviews || CH_STD_REV_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdBuss = (res.buss || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(0, Number(res.zero_sold_disc))) : 0;
-                if (isFinite(Number(res.min_npft))) chStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
-                if ($('#ch-sp-min-npft').length) $('#ch-sp-min-npft').val(chStdMinNpft);
-                chStdStampNpftMarks();
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdDil.length) chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1204,7 +1057,7 @@
                 .fail(function() { draw([]); });
         }
         function chStdDraftNow() {
-            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc, minNpft: chStdMinNpft };
+            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc };
         }
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
@@ -1448,7 +1301,7 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100). S PRC is raised when NPFT% would fall under Min NPFT %. Clearance SKUs are not raised.', function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];
         }
         function chStdAppendDiscColumns(cols) {
@@ -1472,8 +1325,6 @@
                 const ship = (typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0;
                 raw -= ship;
             }
-            const minNpft = (draft && draft.minNpft != null) ? draft.minNpft : chStdMinNpft;
-            raw = chStdRaiseToMinNpft(raw, d, minNpft);
             if (!(raw > 0)) return 0;
             if (chStdIsEbay()) raw = chStdEbayCap(d, raw);
             if (!(raw > 0)) return 0;
@@ -1482,7 +1333,7 @@
                 : Math.round(raw * 100) / 100;
         }
         /**
-         * Amazon order after Min NPFT: LMP cap (S PRC ≥ LMP and SGROI at LMP ≥ 20% → LMP, eBay take-home %),
+         * Amazon order: LMP cap (S PRC ≥ LMP and SGROI at LMP ≥ 20% → LMP, eBay take-home %),
          * then Std Prc is the maximum. Uses the page's own eBay LMP (L1 without ignored competitors).
          */
         function chStdEbayCap(d, price) {
@@ -1680,53 +1531,9 @@
             chStdPlaceBussColumn();
             chStdPlaceZeroSoldColumn();
             chStdDropRoiColumn();
-            chStdBindNpftMarks();
             chStdPaintPanels();
             chStdApplyPanelColumns();
         }
-        let chStdNpftMarksBound = false;
-        function chStdStampNpftMarks() {
-            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
-                window.minNpftSpriceMark.stamp();
-                return;
-            }
-            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
-            ['SPRICE', 'sprice'].forEach(function(field) {
-                let col = null;
-                try { col = table.getColumn(field); } catch (e) { col = null; }
-                if (!col || typeof col.getCells !== 'function') return;
-                col.getCells().forEach(function(cell) {
-                    const el = cell.getElement ? cell.getElement() : null;
-                    if (!el) return;
-                    const row = cell.getRow ? cell.getRow() : null;
-                    const d = row && row.getData ? row.getData() : null;
-                    // The "!" sits inside the S PRC cell, so only draw it when the row has an S PRC to explain.
-                    const hasSprice = !!(d && ((parseFloat(d.SPRICE) || 0) > 0 || (parseFloat(d.sprice) || 0) > 0));
-                    const on = !!(d && hasSprice && chStdMinNpftWasApplied(d));
-                    let mark = el.querySelector('.ch-npft-mark');
-                    if (!on) {
-                        if (mark) mark.remove();
-                        return;
-                    }
-                    if (!mark) {
-                        mark = document.createElement('span');
-                        mark.className = 'ch-npft-mark';
-                        mark.textContent = '!';
-                        el.appendChild(mark);
-                    }
-                    mark.title = 'SNPFT is at Min NPFT ' + Number(chStdMinNpft) + '%';
-                });
-            });
-        }
-        function chStdBindNpftMarks() {
-            if (typeof table === 'undefined' || !table || typeof table.on !== 'function') return;
-            if (!chStdNpftMarksBound) {
-                chStdNpftMarksBound = true;
-                table.on('renderComplete', chStdStampNpftMarks);
-            }
-            chStdStampNpftMarks();
-        }
-        window.chStdStampNpftMarks = chStdStampNpftMarks;
         function chStdDropRoiColumn() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
             let roi = null;
@@ -1883,7 +1690,7 @@
                     chStdAutoApplied = true;
                     chStdEnsureColumns();
                     chStdRepaintDiscColumns();
-                    // Rule, Min NPFT and clearance are all loaded now: pages repaint their S PRC "!" marks and header counts.
+                    // Rule and clearance are all loaded now: pages repaint their header counts.
                     try { $(document).trigger('chStd:settled'); } catch (e) { /* ignore */ }
                     if (!chStdOwnsSprice()) return;
                     const updates = chStdWritePrices(chStdDraftNow());
@@ -1913,14 +1720,13 @@
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc, min_npft: draft.minNpft },
+                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc },
             }).done(function(res) {
                 if (res && res.dil) chStdDil = res.dil.map(chStdNormRange).filter(Boolean);
                 if (res && res.age) chStdAge = res.age.map(chStdNormRange).filter(Boolean);
                 if (res && res.reviews) chStdRev = res.reviews.map(chStdNormRange).filter(Boolean);
                 if (res && res.buss) chStdBuss = res.buss.map(chStdNormRange).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(0, Number(res.zero_sold_disc)));
-                if (res && isFinite(Number(res.min_npft))) chStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdOwnsSprice()) {
@@ -1931,14 +1737,11 @@
                     chStdSaveHistory();
                     return;
                 }
-                draft.minNpft = chStdMinNpft;
                 chStdLoadClearance().always(function() {
                     const updates = chStdWritePrices(draft);
                     const done = function() {
                         chStdAutoApplied = true;
-                        $('#ch-sp-status').text(chStdUsesMinNpft()
-                            ? ('Saved. S PRC = Std Prc − Sum disc, raised to Min NPFT ' + chStdMinNpft + '% (clearance ignored), on ' + updates.length + ' SKU(s).')
-                            : ('Saved. S PRC = Std Prc − Sum disc on ' + updates.length + ' SKU(s).'));
+                        $('#ch-sp-status').text('Saved. S PRC = Std Prc − Sum disc on ' + updates.length + ' SKU(s).');
                         chStdRefresh();
                         chStdSaveHistory();
                         if (typeof chPromoToast === 'function') chPromoToast('success', 'S PRC applied from Std prc vs dil');
@@ -2044,13 +1847,9 @@
             else redraw();
             });
         };
-        @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'script'])
         $(function() {
             bindChStdPrcUi();
             chStdScheduleAutoApply();
-            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.bind === 'function') {
-                setTimeout(function() { window.minNpftSpriceMark.bind(0); }, 0);
-            }
             setTimeout(chStdApplyPanelColumns, 800);
             setTimeout(chStdApplyPanelColumns, 2200);
         });

@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 06:55 and 22:55 IST: Shein Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, Ship, Ads%, LMP cap) → SPRICE → Shein product/price/save. Page not required.
+ * Ship, Ads%, LMP cap) → SPRICE → Shein product/price/save. Page not required.
  * Only pushes SKUs whose target price differs from the live Shein Price and from the last pushed price.
  * shein:push-blue-prices handles the 10-minute catch-up.
  */
@@ -24,7 +24,7 @@ class SheinSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Shein price API calls (ms)}';
 
-    protected $description = 'Shein Std prc vs dil (Min NPFT, Ship, Ads%, LMP cap) → SPRICE → Shein (06:55 + 22:55 IST).';
+    protected $description = 'Shein Std prc vs dil (Ship, Ads%, LMP cap) → SPRICE → Shein (06:55 + 22:55 IST).';
 
     protected string $monitorJobName = 'Shein Sprc Dil Auto Push';
 
@@ -51,7 +51,7 @@ class SheinSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Shein Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 06:55 and 22:55 Asia/Kolkata (IST)');
-        $this->info('Rules: shein_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT (Ship, Ads%, LMP cap)');
+        $this->info('Rules: shein_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc)');
         $this->info('Push: Shein product/price/save — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

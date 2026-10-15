@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 4:45 AM and 8:45 PM IST: Faire Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, no Ship, no LMP) → SPRICE → Faire wholesale price API. Page not required.
+ * no Ship, no LMP) → SPRICE → Faire wholesale price API. Page not required.
  * Only pushes SKUs whose target price differs from the live Faire Price and from the last pushed price.
  * faire:push-blue-prices handles the 10-minute catch-up.
  */
@@ -24,7 +24,7 @@ class FaireSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Faire price API calls (ms)}';
 
-    protected $description = 'Faire Std prc vs dil (Min NPFT, no Ship, no LMP) → SPRICE → Faire (4:45 AM + 8:45 PM IST).';
+    protected $description = 'Faire Std prc vs dil (no Ship, no LMP) → SPRICE → Faire (4:45 AM + 8:45 PM IST).';
 
     protected string $monitorJobName = 'Faire Sprc Dil Auto Push';
 
@@ -51,7 +51,7 @@ class FaireSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Faire Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:45 and 20:45 Asia/Kolkata (IST)');
-        $this->info('Rules: faire_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT (no Ship, no LMP)');
+        $this->info('Rules: faire_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc)');
         $this->info('Push: Faire wholesale price API — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

@@ -334,12 +334,8 @@
                                 <i class="fas fa-exclamation-triangle"></i> 0</span>
                             <span class="badge fs-6 p-2" id="faire-clearance-badge"
                                 style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                                title="C = Clearance SKUs (Inv days clearance = YES). They are exempt from the Min NPFT floor. Click to filter. Click again to clear."
+                                title="C = Clearance SKUs (Inv days clearance = YES). Click to filter. Click again to clear."
                                 aria-label="Clearance SKUs">C 0</span>
-                            <span class="badge fs-6 p-2" id="faire-npft-mark-badge"
-                                style="background-color:#92400e;color:#fff;font-weight:800;cursor:pointer;"
-                                title="! = SNPFT is at Min NPFT 10%. Click to show only those rows. Click again to clear."
-                                aria-label="S PRC at Min NPFT">! 0</span>
                             <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-zero-sold-badge" data-metric="zero_sold" data-filter="zero_sold" style="font-weight:700;background:#dc3545;color:#fff;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">0 Sold: 0</span>
                             <span class="badge fs-6 p-2 fr-hover-chart fr-filter-badge" id="fr-more-sold-badge" data-metric="more_sold" data-filter="more_sold" style="font-weight:700;background:#b6e0fe;color:#0f172a;cursor:pointer;" title="Click to filter table · Hover ½s for daily trend">&gt;0 Sold: 0</span>
                         </div>
@@ -489,7 +485,6 @@
         let frMoreSoldActive = false;
         let blueTriangleFilterActive = false;
         let clearanceFilterActive = false;
-        let npftMarkFilterActive = false;
 
         function frFaireMargin(d) {
             const raw = parseFloat(d && d._margin);
@@ -518,46 +513,16 @@
             if (!(sprice > 0)) return parseFloat(d && d.sgpft) || 0;
             return frFaireSpriceMetrics(d, sprice).sgpft;
         }
-        function frSnpftAt(d) {
-            if (!d || d.is_parent) return null;
-            const v = frFaireShownSgpft(d);
-            return isFinite(v) ? v : null;
-        }
         function frIsClearance(d) {
             d = typeof frRowData === 'function' ? frRowData(d) : d;
             if (!d || (typeof frIsParentRow === 'function' && frIsParentRow(d))) return false;
             return typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d);
         }
-        function frHasNpftMark(d) {
-            d = typeof frRowData === 'function' ? frRowData(d) : d;
-            if (!d || (typeof frIsParentRow === 'function' && frIsParentRow(d))) return false;
-            if (frIsClearance(d)) return false;
-            if (!(typeof frDisplayedSprice === 'function' ? frDisplayedSprice(d) : 0) && !((parseFloat(d.sprice) || 0) > 0)) return false;
-            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.shouldMark === 'function') {
-                return !!window.minNpftSpriceMark.shouldMark(d);
-            }
-            if (typeof window.chStdMinNpftWasApplied === 'function') {
-                return !!window.chStdMinNpftWasApplied(d);
-            }
-            const v = frSnpftAt(d);
-            return v != null && isFinite(v) && Math.round(v) === 10;
-        }
         function frClearanceMarkHtml(d) {
             if (!frIsClearance(d)) return '';
-            return '<span class="fr-sprice-clearance" title="Clearance — Min NPFT not applied" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
-        }
-        function frNpftMarkHtml(d) {
-            if (frIsClearance(d)) return '';
-            if (typeof window.chStdNpftMarkHtml === 'function') {
-                const shared = window.chStdNpftMarkHtml(d);
-                if (shared) return shared;
-            }
-            if (!frHasNpftMark(d)) return '';
-            const pct = (typeof chStdMinNpftNow === 'function') ? Number(chStdMinNpftNow()) : 10;
-            return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT ' + (pct > 0 ? pct : 10) + '%">!</span>';
+            return '<span class="fr-sprice-clearance" title="Clearance" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
         }
         window.frIsClearance = frIsClearance;
-        window.frHasNpftMark = frHasNpftMark;
         function frFaireRoiHtml(v) {
             const n = Math.round(Number(v) || 0);
             if (!n) return '<span style="font-weight:700;">0%</span>';
@@ -643,10 +608,6 @@
             $('#faire-clearance-badge').css({
                 outline: clearanceFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: clearanceFilterActive ? '2px' : ''
-            });
-            $('#faire-npft-mark-badge').css({
-                outline: npftMarkFilterActive ? '3px solid #ffc107' : '',
-                outlineOffset: npftMarkFilterActive ? '2px' : ''
             });
         }
         function frSyncFilterBadgeActiveClasses() {
@@ -1522,17 +1483,14 @@
                 : (table && typeof table.getData === 'function' ? (table.getData('all') || table.getData() || []) : rows);
             let blueTriangleCount = 0;
             let clearanceCount = 0;
-            let npftMarkCount = 0;
             (blueSrc || []).forEach(function(row) {
                 if (frHasBlueTriangle(row)) blueTriangleCount++;
                 if (frIsClearance(row)) clearanceCount++;
-                if (frHasNpftMark(row)) npftMarkCount++;
             });
             $('#faire-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
             );
             $('#faire-clearance-badge').text('C ' + clearanceCount.toLocaleString());
-            $('#faire-npft-mark-badge').text('! ' + npftMarkCount.toLocaleString());
             if (typeof syncFrTriangleBadgeState === 'function') syncFrTriangleBadgeState();
         
             if (window.AnalyticsDilBadge) {
@@ -1797,11 +1755,6 @@
             if (clearanceFilterActive) {
                 table.addFilter(function(data) {
                     return frIsClearance(frRowData(data) || data);
-                });
-            }
-            if (npftMarkFilterActive) {
-                table.addFilter(function(data) {
-                    return frHasNpftMark(frRowData(data) || data);
                 });
             }
             try { table.setPage(1); } catch (e) {}
@@ -2299,7 +2252,7 @@
                     {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editable: false,
-                        headerTooltip: 'S PRC saved by the server job (faire:sprc-dil-auto-push, 04:45 and 20:45 IST, and every 10 min for blue triangles): Std Prc − Age/Dil/B/0 Sold (AL30)/CVR/Rev Disc, raised to Min NPFT 10% (C = clearance, Min NPFT skipped; ! = SNPFT is at 10%). Std Prc is the maximum. Ship, LMP and Amz are not used. Blue triangle = S PRC ≠ Price.',
+                        headerTooltip: 'S PRC saved by the server job (faire:sprc-dil-auto-push, 04:45 and 20:45 IST, and every 10 min for blue triangles): Std Prc − Age/Dil/B/0 Sold (AL30)/CVR/Rev Disc (C = clearance). Std Prc is the maximum. Ship, LMP and Amz are not used. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -2314,7 +2267,7 @@
                                 ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + clearanceMark + frNpftMarkHtml(d) + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + clearanceMark + blueTri + '</span>';
                         }
                     },
                     {
@@ -2437,9 +2390,6 @@
                 dataProcessed: function() { updateSummary(); },
                 renderComplete: function() {
                     window.table = table;
-                    if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
-                        window.minNpftSpriceMark.stamp(table);
-                    }
                     updateSummary();
                 }
             });
@@ -2674,7 +2624,6 @@
                         frZeroSoldActive = false;
                         frMoreSoldActive = false;
                         clearanceFilterActive = false;
-                        npftMarkFilterActive = false;
                     }
                     if (typeof frSyncFilterBadgeActiveClasses === 'function') frSyncFilterBadgeActiveClasses();
                     applyFilters();
@@ -2689,22 +2638,6 @@
                         frZeroSoldActive = false;
                         frMoreSoldActive = false;
                         blueTriangleFilterActive = false;
-                        npftMarkFilterActive = false;
-                    }
-                    if (typeof frSyncFilterBadgeActiveClasses === 'function') frSyncFilterBadgeActiveClasses();
-                    applyFilters();
-                });
-
-            $(document).off('click.frNpftMark', '#faire-npft-mark-badge')
-                .on('click.frNpftMark', '#faire-npft-mark-badge', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    npftMarkFilterActive = !npftMarkFilterActive;
-                    if (npftMarkFilterActive) {
-                        frZeroSoldActive = false;
-                        frMoreSoldActive = false;
-                        blueTriangleFilterActive = false;
-                        clearanceFilterActive = false;
                     }
                     if (typeof frSyncFilterBadgeActiveClasses === 'function') frSyncFilterBadgeActiveClasses();
                     applyFilters();
@@ -2764,7 +2697,6 @@
                 if (frZeroSoldActive) {
                     blueTriangleFilterActive = false;
                     clearanceFilterActive = false;
-                    npftMarkFilterActive = false;
                 }
                 applyFilters();
             });
@@ -2774,7 +2706,6 @@
                 if (frMoreSoldActive) {
                     blueTriangleFilterActive = false;
                     clearanceFilterActive = false;
-                    npftMarkFilterActive = false;
                 }
                 applyFilters();
             });

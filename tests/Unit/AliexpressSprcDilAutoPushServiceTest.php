@@ -21,7 +21,6 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
             'review_max' => 4,
             'buss' => [['min' => 0, 'max' => 9999, 'disc' => 2]],
             'zero_sold_disc' => 0,
-            'min_npft' => 10,
         ], $over), 'aliexpress');
     }
 
@@ -62,22 +61,7 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->row(['standard_price' => 0]), $this->pricer()));
     }
 
-    public function test_min_npft_raises_the_discounted_price(): void
-    {
-        // LP 60 + ship 10 at margin 0.89: 90.00 gives NPFT ≈ 11.1% − 0 = fine; use a heavier cost.
-        $out = (new AliexpressSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 70, 'ship' => 8]),
-            $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        // Raw 90.00 → NPFT = ((90 × 0.89) − 8 − 70) / 90 = 2.3%. Raised to 10%: (70 + 8) / (0.89 − 0.10) = 98.73.
-        $this->assertEqualsWithDelta(98.73, $out['sprice'], 0.011);
-        $npft = ((($out['sprice'] * 0.89) - 8 - 70) / $out['sprice']) * 100;
-        $this->assertGreaterThanOrEqual(9.99, $npft);
-    }
-
-    public function test_clearance_keeps_the_discount_price_below_min_npft(): void
+    public function test_clearance_keeps_the_discount_price(): void
     {
         $out = (new AliexpressSprcDilAutoPushService)->computeTarget(
             $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]),
@@ -109,18 +93,6 @@ class AliexpressSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
         $this->assertFalse($out['lmp_capped']);
-    }
-
-    public function test_std_is_the_maximum(): void
-    {
-        // Heavy cost forces Min NPFT above Std. Std Prc stays the ceiling.
-        $out = (new AliexpressSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 90, 'ship' => 8]),
-            $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(100.00, $out['sprice'], 0.001);
     }
 
     public function test_sgpft_and_sroi_follow_the_saved_price(): void

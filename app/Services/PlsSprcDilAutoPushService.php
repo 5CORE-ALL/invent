@@ -22,7 +22,6 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with PLS as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then raised to Min NPFT % (saved in pls_std_prc_vs_dil, default 10). NPFT = ((S PRC × margin − Ship − LP) / S PRC).
  *  PLS has no ads, so NPFT = GPFT. Clearance SKUs keep the discount price.
  *  0 Sold = P L30 (pls_products.p_l30), the page's sold qty. Std Prc is the maximum.
  *  PLS has no LMP and no Amz rule, so neither is used.
@@ -65,7 +64,7 @@ class PlsSprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('pls');
 
-        $this->log($logger, 'Loaded PLS Std prc vs dil (pls_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Min NPFT (Ship, no ads) + Std max');
+        $this->log($logger, 'Loaded PLS Std prc vs dil (pls_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Std max');
 
         $stats = [
             'candidates' => 0,
@@ -223,7 +222,7 @@ class PlsSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT (Ship, no ads), Std is the maximum.
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum.
      * PLS has no LMP, ads or Amz rule.
      *
      * @param  array<string, mixed>  $row
@@ -250,7 +249,7 @@ class PlsSprcDilAutoPushService
         }
 
         $pricer ??= StdPrcVsDilPricer::forChannel('pls');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then Min NPFT (clearance exempt, Ship included, no ads).
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,

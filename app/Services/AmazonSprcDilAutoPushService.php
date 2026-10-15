@@ -321,20 +321,6 @@ class AmazonSprcDilAutoPushService
                 return null;
             }
 
-            // A Dil price that is not held down by LMP / Std Prc and still has a
-            // negative NPFT is raised to the Min NPFT floor (default 10%).
-            $capped = $this->raiseUncappedNegativeToMinNpft(
-                $capped,
-                (float) $dilPrice,
-                $lmp,
-                $lp,
-                $ship,
-                $std,
-                $ads,
-                $row,
-                is_numeric($stdPromo['min_npft'] ?? null) ? (float) $stdPromo['min_npft'] : 10.0
-            );
-
             return [
                 'sprice' => round($capped, 2),
                 'dil' => round($dil, 2),
@@ -391,22 +377,6 @@ class AmazonSprcDilAutoPushService
         if (! ($effective > 0)) {
             return null;
         }
-        $minNpft = is_numeric($stdPromo['min_npft'] ?? null) ? (float) $stdPromo['min_npft'] : 10.0;
-        $npftRow = $row;
-        $npftRow['ads_pct'] = $ads;
-        $npftRow['margin'] = AmazonDilGroiRule::TAKE_HOME;
-        $npftRow['lp'] = $lp;
-        $npftRow['ship'] = $ship;
-        $npftPricer = new StdPrcVsDilPricer([
-            'dil' => [],
-            'age' => [],
-            'cvr' => ['flat_disc' => 0],
-            'reviews' => [],
-            'review_max' => 4,
-            'min_npft' => $minNpft,
-        ], 'amazon');
-        $effective = $npftPricer->enforceMinNpft($effective, $npftRow);
-
         $stdCeiling = $std;
         if ($totalDisc < 0 && $std > 0 && $sale !== null) {
             $stdCeiling = (float) $sale;
@@ -419,13 +389,6 @@ class AmazonSprcDilAutoPushService
             AmazonDilGroiRule::TAKE_HOME,
             $stdCeiling
         );
-        // Min NPFT wins over the LMP cap: a cap that would drop NPFT under the floor is skipped.
-        if ($lmp > 0
-            && ($effective - $capped) > 0.009
-            && abs($capped - round($lmp, 2)) <= 0.02
-            && $npftPricer->enforceMinNpft($capped, $npftRow) > $capped + 0.0001) {
-            $capped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), $lmp, $stdCeiling);
-        }
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
@@ -452,53 +415,6 @@ class AmazonSprcDilAutoPushService
             'lmp_capped' => $lmpCapped,
             'base' => $std > 0 ? round($std, 2) : round($sprice, 2),
         ];
-    }
-
-    /**
-     * Sprc Dil price with no LMP / Std cap and a negative NPFT → raise to Min NPFT.
-     * Capped SKUs (LMP or Std held the price down) and clearance SKUs are left alone.
-     * Std Prc stays the maximum.
-     *
-     * @param  array<string, mixed>  $row
-     */
-    protected function raiseUncappedNegativeToMinNpft(
-        float $capped,
-        float $dilPrice,
-        float $lmp,
-        float $lp,
-        float $ship,
-        float $std,
-        float $ads,
-        array $row,
-        float $minNpft
-    ): float {
-        if (! ($capped > 0) || ! ($lp > 0) || ! ($minNpft > 0)) {
-            return $capped;
-        }
-        if (($dilPrice - $capped) > 0.009) {
-            return $capped; // LMP or Std Prc cap is active
-        }
-        $npft = ((($capped * AmazonDilGroiRule::TAKE_HOME - $ship - $lp) / $capped) * 100) - $ads;
-        if ($npft >= 0) {
-            return $capped;
-        }
-
-        $pricerRow = $row;
-        $pricerRow['ads_pct'] = $ads;
-        $pricerRow['margin'] = AmazonDilGroiRule::TAKE_HOME;
-        $pricerRow['lp'] = $lp;
-        $pricerRow['ship'] = $ship;
-        $pricer = new StdPrcVsDilPricer([
-            'dil' => [],
-            'age' => [],
-            'cvr' => ['flat_disc' => 0],
-            'reviews' => [],
-            'review_max' => 4,
-            'min_npft' => $minNpft,
-        ], 'amazon');
-        $raised = $pricer->enforceMinNpft($capped, $pricerRow);
-
-        return AmazonDilGroiRule::capToStdWhenNoLmp(round($raised, 2), $lmp, $std);
     }
 
     /**

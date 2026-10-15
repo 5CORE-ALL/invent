@@ -794,17 +794,6 @@
                 sroiRaw: sroiRaw
             };
         }
-        /** Same "!" as eBay: only when the SNPFT cell (SGPFT, no Ads%) rounds to Min NPFT 10%. */
-        function aeNpftMarkHtml(d) {
-            if (typeof window.chStdNpftMarkHtml === 'function') {
-                const shared = window.chStdNpftMarkHtml(d);
-                if (shared) return shared;
-            }
-            const v = aeSpriceMetrics(d).sgpftRaw;
-            if (v == null || !isFinite(v)) return '';
-            if (Math.round(v) !== 10) return '';
-            return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT 10%">!</span>';
-        }
         /** Live GROI / GPFT at a price — same formula as amazonComputeGroiAt / amazonComputeGpftAt. */
         function aeComputeAt(price, data) {
             const p = parseFloat(price);
@@ -2417,7 +2406,7 @@
                         sorter: "number",
                         hozAlign: "right",
                         editable: false,
-                        headerTooltip: "S PRC saved by the server job (aliexpress:sprc-dil-auto-push, 04:15 and 20:15 IST): Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, raised to Min NPFT, LMP cap. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
+                        headerTooltip: "S PRC saved by the server job (aliexpress:sprc-dil-auto-push, 04:15 and 20:15 IST): Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap. Blue triangle = S PRC ≠ Price. Red text = S PRC ≥ LMP.",
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -2448,7 +2437,7 @@
                                 ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
                                 : '<span style="font-weight:600;">' + formatted + '</span>';
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                + priceHtml + blueTri + redTri + aeNpftMarkHtml(d) + '</span>';
+                                + priceHtml + blueTri + redTri + '</span>';
                         }
                     },
                     {
@@ -2498,7 +2487,7 @@
                     {
                         title: "SGROI%",
                         field: "sroi",
-                        headerTooltip: "SGROI at the saved S PRC (Std Prc rule, Min NPFT, LMP cap).",
+                        headerTooltip: "SGROI at the saved S PRC (Std Prc rule, LMP cap).",
                         sorter: function(a, b, aRow, bRow) {
                             const av = aeSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
                             const bv = aeSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
@@ -2612,9 +2601,6 @@
                 },
                 renderComplete: function() {
                     window.table = table;
-                    if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
-                        window.minNpftSpriceMark.stamp(table);
-                    }
                     updateSummary();
                     // #region agent log
                     try {

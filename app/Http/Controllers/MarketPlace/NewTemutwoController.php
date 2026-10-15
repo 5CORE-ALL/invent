@@ -43,7 +43,7 @@ class NewTemutwoController extends Controller
         ]);
     }
 
-    /** Channel Ads% the page nets from every row (used by the server S PRC job for Min NPFT). */
+    /** Channel Ads% the page nets from every row. */
     public function channelAdsPercent(): float
     {
         return (float) ($this->temuChannelAdsSummary()['percent'] ?? 0);

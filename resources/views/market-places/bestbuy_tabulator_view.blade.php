@@ -143,12 +143,8 @@
                             aria-label="S PRC raised to Amazon">Amz 0</span>
                         <span class="badge fs-6 p-2" id="bestbuy-clearance-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                            title="C = Clearance SKUs (Inv days clearance = YES). They are exempt from the Min NPFT floor. Click to filter. Click again to clear."
+                            title="C = Clearance SKUs (Inv days clearance = YES). Click to filter. Click again to clear."
                             aria-label="Clearance SKUs">C 0</span>
-                        <span class="badge fs-6 p-2" id="bestbuy-npft-mark-badge"
-                            style="background-color:#92400e;color:#fff;font-weight:800;cursor:pointer;"
-                            title="! = S PRC was raised so SNPFT stays at or above Min NPFT %. Click to filter. Click again to clear."
-                            aria-label="S PRC raised to Min NPFT">! 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amz">&lt; Amz</span>
@@ -503,7 +499,6 @@
     let blueTriangleFilterActive = false;
     let amzCapFilterActive = false;
     let clearanceFilterActive = false;
-    let npftMarkFilterActive = false;
 
     function isBbListed(rowData) {
         if (!rowData || isBestbuyParentRow(rowData)) return false;
@@ -617,82 +612,6 @@
     }
     window.bestbuyDisplayedSprice = bestbuyDisplayedSprice;
 
-    /**
-     * Min NPFT on SNPFT, shown right away. The server job saves the same price; until it re-saves a SKU, this keeps the
-     * page from showing a S PRC whose SNPFT is under the floor. Same math as the server (Ship BB, no ads, clearance exempt).
-     * Returns the fields to write on the row, or null when nothing changes.
-     */
-    function bestbuyFloorPatch(row) {
-        if (!row || isBestbuyParentRow(row)) return null;
-        if (typeof window.chStdMinNpftNow !== 'function') return null;
-        const minNpft = Number(window.chStdMinNpftNow()) || 0;
-        if (!(minNpft > 0)) return null;
-        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) return null;
-        const shown = bestbuyDisplayedSprice(row);
-        if (!(shown > 0)) return null;
-        const lp = parseFloat(row.LP_productmaster) || 0;
-        const ship = parseFloat(row.Ship_productmaster) || 0;
-        let margin = parseFloat(row.percentage) || 0;
-        if (margin > 1) margin = margin / 100;
-        if (!(margin > 0 && margin <= 1)) margin = 0.80;
-        if (!(lp > 0)) return null;
-        const denom = margin - minNpft / 100;
-        if (!(denom > 0.0001)) return null;
-        const npftAt = function(p) { return ((p * margin - ship - lp) / p) * 100; };
-        let target = shown;
-        if (npftAt(shown) < minNpft - 0.001) {
-            let floor = Math.ceil(((lp + ship) / denom) * 100 - 1e-6) / 100;
-            if (npftAt(floor) + 1e-6 < minNpft) floor = Math.round((floor + 0.01) * 100) / 100;
-            if (floor > shown) target = floor;
-        }
-        const sgpft = Math.round(npftAt(target) * 100) / 100;
-        const sroi = Math.round((((target * margin - ship - lp) / lp) * 100) * 100) / 100;
-        const raw = bestbuyRawSavedSprice(row);
-        const storedGpft = parseFloat(row.SGPFT);
-        const same = Math.abs(target - raw) < 0.005 && isFinite(storedGpft) && Math.abs(storedGpft - sgpft) < 0.5;
-        if (same) return null;
-        const patch = {
-            SPRICE: target, sprice: target,
-            SGPFT: sgpft, SPFT: sgpft,
-            SROI: sroi, SNROI: sroi, SGROI: sroi
-        };
-        const amz = bestbuyAmazonPrice(row);
-        if (target > shown + 0.004 || (amz > 0 && target > amz + 0.005)) patch.AMZ_CAPPED = false;
-        return patch;
-    }
-    function bestbuyApplySnpftFloor() {
-        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
-        const bySku = {};
-        let changed = 0;
-        try {
-            table.getRows().forEach(function(r) {
-                const d = r.getData();
-                const patch = bestbuyFloorPatch(d);
-                if (!patch) return;
-                bySku[String(d['(Child) sku'] || d.sku || '').trim().toUpperCase()] = patch;
-                try { r.update(patch); } catch (e) { /* ignore */ }
-                changed++;
-            });
-        } catch (e) { /* ignore */ }
-        if (!changed) return;
-        const walk = function(arr) {
-            if (!Array.isArray(arr)) return;
-            arr.forEach(function(d) {
-                if (!d) return;
-                const patch = bySku[String(d['(Child) sku'] || d.sku || '').trim().toUpperCase()];
-                if (patch) Object.assign(d, patch);
-                if (Array.isArray(d._children)) walk(d._children);
-            });
-        };
-        walk(allTableData);
-        if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
-            try { ParentExpand.captureDataset(allTableData); } catch (e) { /* ignore */ }
-        }
-        if (typeof updateSummary === 'function') {
-            try { updateSummary(); } catch (e) { /* ignore */ }
-        }
-    }
-    window.bestbuyApplySnpftFloor = bestbuyApplySnpftFloor;
     /** Amz rule: S PRC was raised to A Price (server flag AMZ_CAPPED, or a saved S PRC still under A Price). */
     function bestbuyHasAmzCap(data) {
         if (isBestbuyParentRow(data)) return false;
@@ -710,11 +629,6 @@
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
     }
     window.bestbuyHasBlueTriangle = bestbuyHasBlueTriangle;
-    function bestbuyHasNpftMark(d) {
-        if (!d || isBestbuyParentRow(d)) return false;
-        if (!((parseFloat(d.SPRICE) || 0) > 0 || (parseFloat(d.sprice) || 0) > 0)) return false;
-        return typeof window.chStdMinNpftWasApplied === 'function' && !!window.chStdMinNpftWasApplied(d);
-    }
     function syncBestbuyTriangleBadgeState() {
         $('#bestbuy-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -727,10 +641,6 @@
         $('#bestbuy-clearance-badge').css({
             outline: clearanceFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: clearanceFilterActive ? '2px' : ''
-        });
-        $('#bestbuy-npft-mark-badge').css({
-            outline: npftMarkFilterActive ? '3px solid #ffc107' : '',
-            outlineOffset: npftMarkFilterActive ? '2px' : ''
         });
     }
 
@@ -2427,7 +2337,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz), and last raised so SNPFT% is at least Min NPFT % (default 10). Min NPFT wins over Std Prc, LMP and Amz. Clearance SKUs are exempt. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
+                    headerTooltip: "Not editable. S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz) Clearance SKUs keep the discount price. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
@@ -2465,14 +2375,12 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ BB Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        // Clearance SKUs: Min NPFT is not applied, so a low SNPFT is expected. Red "C" after the value.
+                        // Clearance SKUs keep the discount price. Red "C" after the value.
                         const isClearance = typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData);
                         const clearanceMark = isClearance
-                            ? '<span class="bestbuy-sprice-clearance" title="Clearance — Min NPFT not applied" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
+                            ? '<span class="bestbuy-sprice-clearance" title="Clearance" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
                             : '';
-                        // Min NPFT raised this S PRC: red "!" (same mark as the header badge count).
-                        const npftMark = (bestbuyHasNpftMark(rowData) && typeof window.chStdNpftMarkHtml === 'function') ? window.chStdNpftMarkHtml(rowData) : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${npftMark}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
                     },
                     width: 120
                 },
@@ -2784,11 +2692,6 @@
                     return bestbuyHasAmzCap(data);
                 });
             }
-            if (npftMarkFilterActive) {
-                table.addFilter(function(data) {
-                    return bestbuyHasNpftMark(data);
-                });
-            }
             if (clearanceFilterActive) {
                 table.addFilter(function(data) {
                     return !isBestbuyParentRow(data) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data);
@@ -2809,7 +2712,6 @@
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
                         clearanceFilterActive = false;
-                        npftMarkFilterActive = false;
                         if (window.PriceLt80LmpBadge) {
                             PriceLt80LmpBadge.setOutline(document.getElementById('bestbuy-price-lt80-lmp-badge'), false);
                         }
@@ -2829,7 +2731,6 @@
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
                         clearanceFilterActive = false;
-                        npftMarkFilterActive = false;
                         if (window.PriceGtLmpBadge) {
                             PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
                         }
@@ -2850,7 +2751,6 @@
                 priceLt80LmpFilterActive = false;
                 amzCapFilterActive = false;
                 clearanceFilterActive = false;
-                npftMarkFilterActive = false;
                 if (window.PriceGtLmpBadge) {
                     PriceGtLmpBadge.setOutline(document.getElementById('bestbuy-price-gt-lmp-badge'), false);
                 }
@@ -2860,20 +2760,6 @@
             }
             applyFilters();
         });
-        $('#bestbuy-npft-mark-badge').on('click', function() {
-            npftMarkFilterActive = !npftMarkFilterActive;
-            if (npftMarkFilterActive) {
-                priceGtLmpFilterActive = false;
-                priceLt80LmpFilterActive = false;
-                blueTriangleFilterActive = false;
-                amzCapFilterActive = false;
-                clearanceFilterActive = false;
-                if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
-                if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
-            }
-            applyFilters();
-        });
-
         $('#bestbuy-clearance-badge').on('click', function() {
             clearanceFilterActive = !clearanceFilterActive;
             if (clearanceFilterActive) {
@@ -2881,16 +2767,14 @@
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
                 amzCapFilterActive = false;
-                npftMarkFilterActive = false;
                 if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
                 if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
             }
             applyFilters();
         });
 
-        // Std prc vs dil rule + Min NPFT + clearance all loaded: floor, repaint the "!" / "C" marks, recount the badges.
+        // Std prc vs dil rule + clearance all loaded: repaint the "C" marks, recount the badges.
         $(document).off('chStd:settled.bestbuy').on('chStd:settled.bestbuy', function() {
-            try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ }
             try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
             try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
         });
@@ -2901,12 +2785,9 @@
                 return;
             }
             window.chStdLoadClearance().always(function() {
-                // Clearance list is in: apply the Min NPFT floor on SNPFT, again once the saved rule has loaded.
-                try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ }
                 // The S PRC cells painted before the clearance list arrived: repaint so the "C" shows.
                 try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
                 setTimeout(function() {
-                    try { bestbuyApplySnpftFloor(); } catch (e) { /* ignore */ }
                     try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
                     try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
                 }, 2500);
@@ -2917,7 +2798,6 @@
             amzCapFilterActive = !amzCapFilterActive;
             if (amzCapFilterActive) {
                 clearanceFilterActive = false;
-                npftMarkFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
@@ -3020,12 +2900,10 @@
             let blueTriangleCount = 0;
             let amzCapCount = 0;
             let clearanceCount = 0;
-            let npftMarkCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (bestbuyHasBlueTriangle(row)) blueTriangleCount++;
                 if (bestbuyHasAmzCap(row)) amzCapCount++;
                 if (!isBestbuyParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) clearanceCount++;
-                if (bestbuyHasNpftMark(row)) npftMarkCount++;
             });
             $('#bestbuy-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
@@ -3040,7 +2918,6 @@
                 } catch (e) { /* ignore */ }
                 $('#bestbuy-rows-badge').text('Rows: ' + shown.toLocaleString() + (shown !== total ? ' / ' + total.toLocaleString() : ''));
             })();
-            $('#bestbuy-npft-mark-badge').text('! ' + npftMarkCount.toLocaleString());
             if (typeof syncBestbuyTriangleBadgeState === 'function') syncBestbuyTriangleBadgeState();
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
             $('#missing-badge').text(`Miss: ${missingCount}`);
@@ -3166,7 +3043,6 @@
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
             setTimeout(function() {
-                bestbuyApplySnpftFloor();
                 applyFilters();
                 updateSummary();
             }, 100);

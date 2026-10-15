@@ -10,8 +10,7 @@ use Illuminate\Support\Facades\Schema;
  * S PRC from a channel's saved Std prc vs dil slabs.
  * S PRC = Std Prc × (1 − (Age + Dil + CVR up/down + Review + Buss + 0 Sold) / 100).
  * Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- * Every channel then raises S PRC so NPFT% stays at or above the saved Min NPFT % (default 10).
- * NPFT% is GPFT% minus Ads%. Clearance SKUs (inv days clearance = YES) keep the discount price.
+ * Clearance SKUs (inv days clearance = YES) keep the discount price.
  * Used by the unattended apply commands. The page does not have to be open.
  */
 class StdPrcVsDilPricer
@@ -55,7 +54,6 @@ class StdPrcVsDilPricer
             'review_max' => is_numeric($saved['review_max'] ?? null) ? max(1, (int) $saved['review_max']) : $defaults['review_max'],
             'buss' => self::ranges($saved['buss'] ?? null, $defaults['buss']),
             'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
-            'min_npft' => self::minNpftPercent($saved['min_npft'] ?? null, 10.0),
         ];
 
         return self::$cache[$channel] = new self($rules, $channel);
@@ -98,23 +96,8 @@ class StdPrcVsDilPricer
         if (! ($price > 0)) {
             return null;
         }
-        $price = $this->applyMinNpft($price, $row);
 
         return $price > 0 ? $price : null;
-    }
-
-    /**
-     * Raise an already discounted price to the saved Min NPFT %. Clearance SKUs stay put.
-     *
-     * @param  array<string, mixed>  $row
-     */
-    public function enforceMinNpft(float $price, array $row): float
-    {
-        if (! ($price > 0)) {
-            return $price;
-        }
-
-        return $this->applyMinNpft($price, $row);
     }
 
     /**
@@ -125,107 +108,6 @@ class StdPrcVsDilPricer
     public function isClearanceRow(array $row): bool
     {
         return $this->rowIsClearance($row);
-    }
-
-    /**
-     * NPFT% = ((price × margin − ship − LP) / price) × 100 − Ads%.
-     * Raise to the cent that keeps NPFT at or above the saved floor. Clearance SKUs are unchanged.
-     *
-     * @param  array<string, mixed>  $row
-     */
-    private function applyMinNpft(float $price, array $row): float
-    {
-        $min = (float) ($this->rules['min_npft'] ?? 0);
-        if (! ($min > 0) || $this->rowIsClearance($row)) {
-            return $price;
-        }
-        $lp = (float) ($row['lp'] ?? $row['LP'] ?? $row['LP_productmaster'] ?? 0);
-        $ship = self::excludesShip($this->channel)
-            ? 0.0
-            : (float) ($row['ship'] ?? $row['Ship'] ?? $row['Ship_productmaster'] ?? 0);
-        $margin = $this->marginFor($row);
-        $ads = $this->adsFrac($row);
-        if ($this->npftAt($price, $lp, $ship, $margin, $ads) >= $min - 0.001) {
-            return $price;
-        }
-        $floor = $this->priceForMinNpft($lp, $ship, $margin, $ads, $min);
-        if ($floor === null || $floor <= $price) {
-            return $price;
-        }
-
-        return $floor;
-    }
-
-    private function npftAt(float $price, float $lp, float $ship, float $margin, float $ads): float
-    {
-        if (! ($price > 0)) {
-            return 0.0;
-        }
-
-        return (($price * $margin - $ship - $lp) / $price) * 100 - ($ads * 100);
-    }
-
-    private function priceForMinNpft(float $lp, float $ship, float $margin, float $ads, float $minNpft): ?float
-    {
-        $denom = $margin - $ads - ($minNpft / 100);
-        if (! ($denom > 0.0001)) {
-            return null;
-        }
-        $raw = ($lp + $ship) / $denom;
-        if (! ($raw > 0)) {
-            return null;
-        }
-        $cents = (int) ceil($raw * 100 - 1e-6);
-        $floor = $cents / 100;
-        if ($this->npftAt($floor, $lp, $ship, $margin, $ads) + 1e-6 < $minNpft) {
-            $floor = round($floor + 0.01, 2);
-        }
-
-        return $floor > 0 ? $floor : null;
-    }
-
-    /**
-     * Ads as a fraction. Values above 1 are percents (10 → 0.10).
-     *
-     * @param  array<string, mixed>  $row
-     */
-    private function adsFrac(array $row): float
-    {
-        foreach (['ads', 'ads_frac', 'ads_pct', 'AD%'] as $key) {
-            if (! isset($row[$key]) || ! is_numeric($row[$key])) {
-                continue;
-            }
-            $n = (float) $row[$key];
-            if ($n > 1) {
-                $n /= 100;
-            }
-            if ($n > 0 && $n < 1) {
-                return $n;
-            }
-        }
-
-        return 0.0;
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function marginFor(array $row): float
-    {
-        foreach (['margin', '_margin', 'percentage'] as $key) {
-            if (! isset($row[$key]) || ! is_numeric($row[$key])) {
-                continue;
-            }
-            $m = (float) $row[$key];
-            if ($m > 1) {
-                $m /= 100;
-            }
-            if ($m > 0 && $m <= 1) {
-                return $m;
-            }
-        }
-
-        return 0.80;
     }
 
     /**
@@ -290,15 +172,6 @@ class StdPrcVsDilPricer
         $sku = preg_replace('/\s+/u', ' ', $sku) ?? $sku;
 
         return strtolower($sku);
-    }
-
-    private static function minNpftPercent(mixed $value, float $fallback): float
-    {
-        if (! is_numeric($value)) {
-            return $fallback;
-        }
-
-        return round(min(99, max(0, (float) $value)), 2);
     }
 
     /** Std Prc under $15 → rule discount × 0.5. $15 and above keep the saved discount. */

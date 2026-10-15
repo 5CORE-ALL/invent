@@ -21,7 +21,6 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService / ReverbSprcDilAutoPushService, with TopDawg as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then raised to Min NPFT % (saved in topdawg_std_prc_vs_dil, default 10). Clearance SKUs keep the discount price.
  *  Std Prc is the maximum. No Amz floor and no LMP cap.
  *  TopDawg profit has no Ship (same as /topdawg/sales-dashboard).
  *
@@ -67,7 +66,7 @@ class TopDawgSprcDilAutoPushService
         $pricer = StdPrcVsDilPricer::forChannel('topdawg');
         $adsPct = $this->channelAdsPercent();
 
-        $this->log($logger, 'Loaded TopDawg Std prc vs dil (topdawg_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Min NPFT, Ads%='.$adsPct);
+        $this->log($logger, 'Loaded TopDawg Std prc vs dil (topdawg_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc, Ads%='.$adsPct);
 
         $stats = [
             'candidates' => 0,
@@ -230,7 +229,7 @@ class TopDawgSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT, Std is the maximum (no LMP cap, no Amz floor).
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum (no LMP cap, no Amz floor).
      * TopDawg profit has no Ship. Ads % is the Channel Master value (row key ads_pct).
      *
      * @param  array<string, mixed>  $row
@@ -257,7 +256,7 @@ class TopDawgSprcDilAutoPushService
         $adsPct = (float) ($row['ads_pct'] ?? 0);
 
         $pricer ??= StdPrcVsDilPricer::forChannel('topdawg');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then Min NPFT (clearance exempt, no ship).
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,

@@ -21,13 +21,11 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with Shein as the source (/shein-pricing):
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then raised to Min NPFT % (saved in shein_std_prc_vs_dil, default 10). NPFT = ((S PRC × margin − Ship − LP) / S PRC) − Ads%.
  *  Clearance SKUs keep the discount price.
  *  0 Sold = AL30 (shein_daily_data L30), the page's sold qty.
  *  Caps, same order as Amazon:
  *   1. LMP cap: S PRC at or above LMP becomes LMP when SGROI at LMP is ≥ 20%.
- *   2. Min NPFT wins over the LMP cap: a cap that would drop NPFT under the floor is skipped.
- *   3. Std Prc is the maximum.
+ *   2. Std Prc is the maximum.
  *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
  *
  * Flow, same as Amazon:
@@ -72,8 +70,7 @@ class SheinSprcDilAutoPushService
         $pricer = StdPrcVsDilPricer::forChannel(self::CHANNEL);
         $adsFrac = $this->channelAdsFrac();
 
-        $this->log($logger, 'Loaded Shein Std prc vs dil (shein_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Min NPFT (Ship + Ads% '
-            .round($adsFrac * 100, 2).'%) + LMP cap + Std max');
+        $this->log($logger, 'Loaded Shein Std prc vs dil (shein_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap + Std max');
 
         $stats = [
             'candidates' => 0,
@@ -238,7 +235,7 @@ class SheinSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT (Ship + Ads%), LMP cap, Std is the maximum.
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, LMP cap, Std is the maximum.
      *
      * @param  array<string, mixed>  $row
      * @return array{sprice:float,uncapped:float,lmp_capped:bool,base:float,margin:float,lp:float,ship:float,lmp:float}|null
@@ -266,7 +263,7 @@ class SheinSprcDilAutoPushService
         $ads = $adsFrac ?? $this->channelAdsFrac();
 
         $pricer ??= StdPrcVsDilPricer::forChannel(self::CHANNEL);
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then Min NPFT (clearance exempt, Ship included, Ads% included).
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,
@@ -292,13 +289,6 @@ class SheinSprcDilAutoPushService
 
         // Same cap order as Amazon: LMP cap (SGROI at LMP ≥ 20%), then Std Prc is the maximum.
         $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
-        // Min NPFT wins over the LMP cap: a cap that would drop NPFT under the floor is skipped.
-        if ($lmp > 0
-            && ($effective - $capped) > 0.009
-            && abs($capped - round($lmp, 2)) <= 0.02
-            && $pricer->enforceMinNpft($capped, $pricerRow) > $capped + 0.0001) {
-            $capped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), $lmp, $std);
-        }
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
@@ -320,7 +310,7 @@ class SheinSprcDilAutoPushService
     }
 
     /**
-     * Channel Ads% as a fraction. Same source as NegativeSnroiPushGuard so the Min NPFT floor and the
+     * Channel Ads% as a fraction. Same source as NegativeSnroiPushGuard so the
      * negative-SNROI check agree.
      */
     protected function channelAdsFrac(): float

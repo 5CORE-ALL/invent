@@ -3182,7 +3182,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. Saved by the server at 4:25 AM and 8:25 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap (same as Amazon), then pushed to Reverb. The page does not need to be open. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
+                    headerTooltip: "Not editable. Saved by the server at 4:25 AM and 8:25 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap (same as Amazon), then pushed to Reverb. The page does not need to be open. Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {

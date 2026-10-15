@@ -21,7 +21,6 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
             'review_max' => 4,
             'buss' => [['min' => 0, 'max' => 9999, 'disc' => 2]],
             'zero_sold_disc' => 4,
-            'min_npft' => 10,
         ], $over), 'reverb');
     }
 
@@ -71,30 +70,7 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->row(['standard_price' => 0]), $this->pricer()));
     }
 
-    public function test_min_npft_raises_the_discounted_price_and_counts_ads(): void
-    {
-        // Ads 5%: NPFT = ((P × 0.85 − 3 − 60) / P) × 100 − 5. At 90 that is 25% − 5% = 20%... use a heavier cost.
-        $out = (new ReverbSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 70, 'ship' => 5, 'ads_pct' => 5]),
-            $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        // Raised to NPFT 10%: (70 + 5) / (0.85 − 0.05 − 0.10) = 107.14 → capped by Std 100.
-        $this->assertEqualsWithDelta(100.00, $out['sprice'], 0.001);
-
-        $out = (new ReverbSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 60, 'ship' => 5, 'ads_pct' => 5]),
-            $this->pricer()
-        );
-        $this->assertNotNull($out);
-        // Raw 90 → NPFT = ((90 × 0.85 − 5 − 60) / 90) × 100 − 5 = 9.4%. Raised: 65 / 0.70 = 92.86.
-        $this->assertEqualsWithDelta(92.86, $out['sprice'], 0.011);
-        $npft = ((($out['sprice'] * 0.85) - 5 - 60) / $out['sprice']) * 100 - 5;
-        $this->assertGreaterThanOrEqual(9.99, $npft);
-    }
-
-    public function test_clearance_keeps_the_discount_price_below_min_npft(): void
+    public function test_clearance_keeps_the_discount_price(): void
     {
         $out = (new ReverbSprcDilAutoPushService)->computeTarget(
             $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]),
@@ -126,17 +102,6 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
         $this->assertFalse($out['lmp_capped']);
-    }
-
-    public function test_std_is_the_maximum(): void
-    {
-        $out = (new ReverbSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 90, 'ship' => 8]),
-            $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(100.00, $out['sprice'], 0.001);
     }
 
     public function test_margin_given_as_percent_is_normalised(): void

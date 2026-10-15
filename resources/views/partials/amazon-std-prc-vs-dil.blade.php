@@ -174,9 +174,6 @@
             font-weight: 600;
         }
         #amzStdPrcModal .amz-sp-col .table-responsive { margin-bottom: 8px; }
-        #amzStdPrcModal .amz-sp-npft { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 14px; border: 1px solid #e6edf5; border-radius: 14px; background: #fff; font-size: 13px; color: #334155; }
-        @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'css'])
-        #amzStdPrcModal .amz-sp-npft .amz-sp-input { width: 64px; min-width: 64px; max-width: 64px; margin: 0; }
         #amzStdPrcModal .amz-sp-margins {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -363,7 +360,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. S PRC is raised when NPFT% would fall under Min NPFT %. Clearance SKUs stay on the discount price.</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -390,11 +387,6 @@
                                 <div class="amz-sp-margin-badges" id="amz-sp-margin-inv-sub"></div>
                             </div>
                         </div>
-                    </div>
-                    <div class="amz-sp-npft">
-                        <label class="fw-semibold mb-0" for="amz-sp-min-npft">Min NPFT %</label>
-                        <input type="number" id="amz-sp-min-npft" class="form-control form-control-sm amz-sp-input" min="0" max="99" step="0.1" value="10" title="S PRC is raised so NPFT% stays at or above this. 0 turns the floor off.">
-                        <span class="text-muted">S PRC stays at or above this NPFT%. Clearance SKUs are ignored (<strong id="amz-sp-min-npft-ignored">0</strong>). <span style="color:#dc3545;font-weight:700;">Applied <strong id="amz-sp-min-npft-applied">0</strong></span></span>
                     </div>
                     <div class="amz-sp-hist-wrap" id="amz-sp-hist-wrap">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -770,7 +762,6 @@
             let raw = (typeof amzPefRound2 === 'function')
                 ? amzPefRound2(std * (1 - (pct / 100)))
                 : Math.round(std * (1 - (pct / 100)) * 100) / 100;
-            raw = amzStdRaiseToMinNpft(raw, d);
             return raw > 0 ? raw : 0;
         }
         window.computeAmzAgeDiscountPct = computeAmzAgeDiscountPct;
@@ -848,7 +839,6 @@
                 reviews: reviews,
                 buss: amzStdReadRanges('#amz-sp-buss-tbody', '.amz-sp-buss-min', '.amz-sp-buss-max', '.amz-sp-buss-disc'),
                 zeroSoldDisc: (function() { const n = Number($('#amz-sp-zs-disc').val()); return isFinite(n) ? amzStdDisc(n) : 0; })(),
-                minNpft: amzStdMinNpftNow(),
                 reviewMax: reviewMax,
                 noReviewsNoDiscount: $('#amz-sp-no-reviews-no-disc').is(':checked'),
             };
@@ -890,7 +880,6 @@
             amzStdPaintRanges('#amz-sp-rev-tbody', 'amz-sp-rev', reviews);
             amzStdPaintRanges('#amz-sp-buss-tbody', 'amz-sp-buss', amzStdBussRules);
             $('#amz-sp-zs-disc').val(amzStdZeroSoldDisc);
-            $('#amz-sp-min-npft').val(amzStdMinNpft);
             const maxRev = (typeof amzReviewDiscMax !== 'undefined') ? amzReviewDiscMax : 4;
             $('#amz-sp-review-max').val(maxRev);
             const noRev = (typeof amzNoReviewsNoDiscount === 'undefined') ? true : !!amzNoReviewsNoDiscount;
@@ -912,7 +901,6 @@
             const ship = parseFloat(d && d.Ship_productmaster) || 0;
             return (sprice * amzStdRowMargin(d)) - ship - lp;
         }
-        let amzStdMinNpft = 10;
         let amzStdClearanceSet = null;
         let amzStdClearanceLoading = null;
         const AMZ_STD_CLEARANCE_URL = @json(route('inv.days.clearance.yes'));
@@ -956,118 +944,6 @@
         function amzStdAdsPct() {
             return (typeof amzAmazonAdsPct === 'function') ? (Number(amzAmazonAdsPct()) || 0) : 0;
         }
-        function amzStdMinNpftNow() {
-            const $inp = $('#amz-sp-min-npft');
-            if (!$inp.length) return amzStdMinNpft;
-            const n = Number($inp.val());
-            if (!isFinite(n)) return amzStdMinNpft;
-            return Math.min(99, Math.max(0, n));
-        }
-        function amzStdNpftAt(price, d) {
-            const p = Number(price) || 0;
-            if (!(p > 0)) return 0;
-            return (amzStdUnitProfit(d, p) / p) * 100 - amzStdAdsPct();
-        }
-        function amzStdPriceForMinNpft(d, minNpft) {
-            const denom = amzStdRowMargin(d) - (amzStdAdsPct() / 100) - (Number(minNpft) || 0) / 100;
-            if (!(denom > 0.0001)) return 0;
-            const lp = parseFloat(d && d.LP_productmaster) || 0;
-            const ship = parseFloat(d && d.Ship_productmaster) || 0;
-            const raw = (lp + ship) / denom;
-            if (!(raw > 0)) return 0;
-            return Math.ceil(raw * 100 - 1e-6) / 100;
-        }
-        function amzStdRaiseToMinNpft(price, d, minNpft) {
-            if (amzStdIsClearance(d)) return Number(price) || 0;
-            const floorPct = minNpft == null ? amzStdMinNpftNow() : Number(minNpft);
-            const current = Number(price) || 0;
-            if (!(floorPct > 0) || !(current > 0)) return current;
-            if (amzStdNpftAt(current, d) >= floorPct - 0.001) return current;
-            const raised = amzStdPriceForMinNpft(d, floorPct);
-            return raised > current ? raised : current;
-        }
-        window.amzStdRaiseToMinNpft = amzStdRaiseToMinNpft;
-        /** S PRC the cell actually paints (after LMP / Std caps). */
-        function amzStdShownSpriceForMark(d) {
-            if (typeof amazonDisplaySprice === 'function') {
-                const n = Number(amazonDisplaySprice(d));
-                if (n > 0) return n;
-            }
-            if (typeof amazonShownSprice === 'function') {
-                const n = Number(amazonShownSprice(d));
-                if (n > 0) return n;
-            }
-            if (typeof amzDisplayedSprice === 'function') {
-                const n = Number(amzDisplayedSprice(d));
-                if (n > 0) return n;
-            }
-            const saved = Number(d && d.SPRICE);
-            return saved > 0 ? saved : 0;
-        }
-        function amzStdMinNpftWasApplied(d, minNpft) {
-            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.shouldMark === 'function') {
-                return window.minNpftSpriceMark.shouldMark(d);
-            }
-            if (!d || amzStdIsClearance(d)) return false;
-            const floor = minNpft == null ? Number(amzStdMinNpft) : Number(minNpft);
-            if (!(floor > 0)) return false;
-            let snpft = null;
-            if (typeof amazonComputeSpft === 'function') {
-                snpft = amazonComputeSpft(d);
-            } else {
-                const shown = amzStdShownSpriceForMark(d);
-                if (shown > 0) snpft = amzStdNpftAt(shown, d);
-            }
-            if (snpft == null || !isFinite(snpft)) return false;
-            // "!" only when the SNPFT cell shows the floor (10%), not when it is under or well above.
-            return Math.round(snpft) === Math.round(floor);
-        }
-        window.amzStdMinNpftWasApplied = amzStdMinNpftWasApplied;
-        let amzStdNpftMarksBound = false;
-        function amzStdStampNpftMarks() {
-            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
-                window.minNpftSpriceMark.stamp();
-                return;
-            }
-            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
-            ['SPRICE', 'sprice'].forEach(function(field) {
-                let col = null;
-                try { col = table.getColumn(field); } catch (e) { col = null; }
-                if (!col || typeof col.getCells !== 'function') return;
-                col.getCells().forEach(function(cell) {
-                    const el = cell.getElement ? cell.getElement() : null;
-                    if (!el) return;
-                    const row = cell.getRow ? cell.getRow() : null;
-                    const d = row && row.getData ? row.getData() : null;
-                    const on = !!(d && amzStdMinNpftWasApplied(d));
-                    let mark = el.querySelector('.ch-npft-mark');
-                    if (!on) {
-                        if (mark) mark.remove();
-                        return;
-                    }
-                    if (!mark) {
-                        mark = document.createElement('span');
-                        mark.className = 'ch-npft-mark';
-                        mark.textContent = '!';
-                        el.appendChild(mark);
-                    }
-                    mark.title = 'SNPFT is at Min NPFT ' + Number(amzStdMinNpft) + '%';
-                });
-            });
-        }
-        function amzStdBindNpftMarks(tries) {
-            if (typeof table === 'undefined' || !table || typeof table.on !== 'function') {
-                if ((tries || 0) < 40) setTimeout(function() { amzStdBindNpftMarks((tries || 0) + 1); }, 250);
-                return;
-            }
-            if (!amzStdNpftMarksBound) {
-                amzStdNpftMarksBound = true;
-                try { table.on('renderComplete', amzStdStampNpftMarks); } catch (e) { /* ignore */ }
-            }
-            amzStdStampNpftMarks();
-            if (typeof amzStdApplyPanelColumns === 'function') amzStdApplyPanelColumns();
-        }
-        window.amzStdStampNpftMarks = amzStdStampNpftMarks;
         function amzStdEmptyBucket() {
             return { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
         }
@@ -1363,8 +1239,6 @@
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
             const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, all: 0 };
             const zsCounts = { zero: 0, sold: 0 };
-            let clearanceIgnored = 0;
-            let npftApplied = 0;
             const l30 = amzStdEmptyBucket();
             const pg = amzStdEmptyBucket();
             const inv = amzStdEmptyBucket();
@@ -1428,7 +1302,6 @@
                     ? amzIsZeroSoldRow(d)
                     : !((typeof amzPefAL30 === 'function' ? amzPefAL30(d) : 0) > 0);
                 if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
-                if (amzStdIsClearance(d)) clearanceIgnored++;
                 const zsDisc = zeroSold ? amzStdScaleDisc(std, amzStdDisc(draft.zeroSoldDisc)) : 0;
                 if (ageDisc !== 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc !== 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
@@ -1439,10 +1312,7 @@
                 const sum = Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc));
                 if (sum !== 0) skuHits.all++;
                 if (std > 0) {
-                    let sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
-                    const raised = amzStdRaiseToMinNpft(sprice, d, draft.minNpft);
-                    if (raised > sprice + 0.009) npftApplied++;
-                    sprice = raised;
+                    const sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
                     const profit = amzStdUnitProfit(d, sprice);
                     const net = profit - (sprice * adsPct / 100);
                     const lp = parseFloat(d.LP_productmaster) || 0;
@@ -1491,11 +1361,6 @@
             $('#amz-sp-cvr-up-count').text(cvrCounts.up || 0);
             $('#amz-sp-cvr-up2-count').text(cvrCounts.up2 || 0);
             $('#amz-sp-zs-count').text(zsCounts.zero || 0);
-            const ignoredEl = document.getElementById('amz-sp-min-npft-ignored');
-            if (ignoredEl) ignoredEl.textContent = amzStdClearanceSet ? String(clearanceIgnored) : '…';
-            const appliedEl = document.getElementById('amz-sp-min-npft-applied');
-            if (appliedEl) appliedEl.textContent = String(npftApplied);
-            amzStdStampNpftMarks();
 
             const dilSlices = draft.dil.map(function(r, i) {
                 return { key: 'd' + i, label: r.min + '–' + r.max, color: AMZ_STD_PIE_COLORS[i % AMZ_STD_PIE_COLORS.length] };
@@ -1622,9 +1487,6 @@
                 amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 amzStdBussRules = (res.buss || AMZ_STD_BUSS_DEFAULTS).map(function(r) { return amzStdNormRange(r); }).filter(Boolean);
                 amzStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? amzStdDisc(res.zero_sold_disc) : 0;
-                if (isFinite(Number(res.min_npft))) amzStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
-                if ($('#amz-sp-min-npft').length) $('#amz-sp-min-npft').val(amzStdMinNpft);
-                amzStdStampNpftMarks();
                 if (!amzStdDilRules.length) amzStdDilRules = AMZ_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdAgeRules.length) amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdBussRules.length) amzStdBussRules = AMZ_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1658,7 +1520,7 @@
                 url: '/amazon-std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc, min_npft: draft.minNpft },
+                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc },
             });
             const revSave = $.ajax({
                 url: '/amazon-review-disc',
@@ -1673,7 +1535,6 @@
                 if (res && res.cvr) amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 if (res && res.buss) amzStdBussRules = res.buss.map(amzStdNormRange).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) amzStdZeroSoldDisc = amzStdDisc(res.zero_sold_disc);
-                if (res && isFinite(Number(res.min_npft))) amzStdMinNpft = Math.min(99, Math.max(0, Number(res.min_npft)));
                 if (typeof table !== 'undefined' && table && typeof amzTableRedrawPreserveScroll === 'function') {
                     amzTableRedrawPreserveScroll(true);
                 }
@@ -1871,15 +1732,9 @@
                 $('#amz-sp-hist-wrap').removeClass('is-open');
             });
         }
-        @include('partials.min-npft-sprice-mark', ['minNpftMarkPart' => 'script'])
         $(function() {
             bindAmzStdPrcUi();
             amzStdLoadClearance();
-            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.bind === 'function') {
-                window.minNpftSpriceMark.bind(0);
-            } else {
-                amzStdBindNpftMarks(0);
-            }
             setTimeout(amzStdApplyPanelColumns, 800);
             setTimeout(amzStdApplyPanelColumns, 2200);
         });

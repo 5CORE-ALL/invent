@@ -3185,10 +3185,6 @@
                 if (!(sale >= 0.01)) sale = null;
             }
             let effective = sale != null ? sale : std;
-            if (typeof amzStdRaiseToMinNpft === 'function') {
-                const raised = Number(amzStdRaiseToMinNpft(effective, d)) || 0;
-                if (raised > effective) effective = raised;
-            }
             const saleBase = effective;
             if (!(saleBase > 0)) return null;
             if (!(effective > 0)) return null;
@@ -3299,24 +3295,6 @@
             }
             return n > 0 ? amzPefRound2(n) : 0;
         }
-        /**
-         * Sprc Dil price with no LMP / Std cap and a negative NPFT → raise to Min NPFT (default 10%).
-         * Capped SKUs (the cap pulled the price below the Dil price) and clearance SKUs are untouched.
-         * Std Prc stays the maximum. Same math as the Amazon Sprc Dil cron.
-         */
-        function amzDilRaiseUncappedNegative(d, raw, capped) {
-            const base = Number(capped) || 0;
-            if (!(base > 0)) return base;
-            if ((Number(raw) || 0) - base > 0.009) return base; // LMP or Std cap is active
-            if (typeof amzStdNpftAt !== 'function' || typeof amzStdRaiseToMinNpft !== 'function') return base;
-            if (amzStdNpftAt(base, d) >= 0) return base;
-            let raised = Number(amzStdRaiseToMinNpft(base, d)) || 0;
-            if (!(raised > base)) return base;
-            if (typeof amazonCapToStdWhenNoLmp === 'function') {
-                raised = Number(amazonCapToStdWhenNoLmp(d, raised)) || raised;
-            }
-            return raised > base ? amzPefRound2(raised) : base;
-        }
         /** Live S PRC from Dil / CVR Disc / 0 Sold. Ignores stored SPRICE. */
         function amzIsClearanceSku(d) {
             return typeof amzStdIsClearance === 'function' && !!d && amzStdIsClearance(d);
@@ -3341,7 +3319,7 @@
                 const meta = (typeof amzDilGroiMetaForRow === 'function') ? amzDilGroiMetaForRow(d) : null;
                 const raw = meta && meta.sprc > 0 ? Number(meta.sprc) : 0;
                 if (!(raw > 0)) return 0;
-                return amzDilRaiseUncappedNegative(d, raw, amzCapRuleSprice(d, raw));
+                return amzCapRuleSprice(d, raw);
             }
             const plan = computeAmzPushPrcPlan(d);
             if (!plan || !(plan.effective > 0)) return 0;

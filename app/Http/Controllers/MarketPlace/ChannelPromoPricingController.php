@@ -1384,7 +1384,6 @@ class ChannelPromoPricingController extends Controller
                 'buss' => $defaults['buss'],
                 'roi' => $defaults['roi'],
                 'zero_sold_disc' => $defaults['zero_sold_disc'],
-                'min_npft' => $this->minNpftFallback($channel),
             ]);
         }
 
@@ -1399,7 +1398,6 @@ class ChannelPromoPricingController extends Controller
             'buss' => $this->normalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
             'roi' => $this->normalizeStdPrcRanges($saved['roi'] ?? null, $defaults['roi']),
             'zero_sold_disc' => $this->normalizeZeroSoldDisc($saved['zero_sold_disc'] ?? null),
-            'min_npft' => $this->normalizeMinNpft($saved['min_npft'] ?? null, $this->minNpftFallback($channel)),
         ]);
     }
 
@@ -1419,11 +1417,10 @@ class ChannelPromoPricingController extends Controller
             'buss' => $this->normalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
             'roi' => $this->normalizeStdPrcRanges($request->input('roi'), $defaults['roi']),
             'zero_sold_disc' => $this->normalizeZeroSoldDisc($request->input('zero_sold_disc')),
-            'min_npft' => $this->normalizeMinNpft($request->input('min_npft'), $this->minNpftFallback($channel)),
         ];
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'roi', 'zero_sold', 'min_npft']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'roi', 'zero_sold']]
         );
 
         return response()->json(array_merge(['success' => true], $payload));
@@ -1500,7 +1497,7 @@ class ChannelPromoPricingController extends Controller
     }
 
     /**
-     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array<string, float>, reviews: list<array{min:float,max:float,disc:float}>, review_max: int, buss: list<array{min:float,max:float,disc:float}>, roi: list<array{min:float,max:float,disc:float}>, zero_sold_disc: float, min_npft: float}
+     * @return array{dil: list<array{min:float,max:float,disc:float}>, age: list<array{min:float,max:float,disc:float}>, cvr: array<string, float>, reviews: list<array{min:float,max:float,disc:float}>, review_max: int, buss: list<array{min:float,max:float,disc:float}>, roi: list<array{min:float,max:float,disc:float}>, zero_sold_disc: float}
      */
     private function defaultStdPrcVsDil(): array
     {
@@ -1550,22 +1547,7 @@ class ChannelPromoPricingController extends Controller
                 ['min' => 125, 'max' => 9999, 'disc' => 0],
             ],
             'zero_sold_disc' => 0,
-            'min_npft' => 10,
         ];
-    }
-
-    private function minNpftFallback(string $channel): float
-    {
-        return 10.0;
-    }
-
-    private function normalizeMinNpft(mixed $incoming, float $fallback): float
-    {
-        if (! is_numeric($incoming)) {
-            return $fallback;
-        }
-
-        return round(min(99, max(0, (float) $incoming)), 2);
     }
 
     private function normalizeZeroSoldDisc(mixed $incoming): float

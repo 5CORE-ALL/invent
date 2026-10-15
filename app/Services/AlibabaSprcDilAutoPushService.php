@@ -23,7 +23,6 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc is the Amazon STANDARD_PRICE of the exact SKU. A SKU without one is skipped, never priced off the listing.
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then raised to Min NPFT % (saved in alibaba_std_prc_vs_dil, default 10). Alibaba does not use Ship.
  *  NPFT = ((S PRC × margin − LP) / S PRC) − Ads%. Clearance SKUs keep the discount price.
  *  0 Sold = AB L30 (Alibaba orders L30), the page's sold qty.
  *  Caps: Alibaba has no LMP, so Std Prc is the maximum.
@@ -73,8 +72,7 @@ class AlibabaSprcDilAutoPushService
         $pricer = StdPrcVsDilPricer::forChannel(self::CHANNEL);
         $adsFrac = $this->channelAdsFrac();
 
-        $this->log($logger, 'Loaded Alibaba Std prc vs dil (alibaba_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Min NPFT (no Ship, Ads% '
-            .round($adsFrac * 100, 2).'%) + Std max (no LMP)');
+        $this->log($logger, 'Loaded Alibaba Std prc vs dil (alibaba_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Std max (no LMP)');
 
         if ($blueCatchUp && ! $this->hasMetaColumns()) {
             // Without the push-meta columns a pushed SKU has no cooldown and would be pushed every 10 minutes.
@@ -251,7 +249,7 @@ class AlibabaSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT (Ads%, no Ship), Std is the maximum (no LMP).
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum (no LMP).
      *
      * @param  array<string, mixed>  $row
      * @return array{sprice:float,uncapped:float,base:float,margin:float,lp:float}|null
@@ -277,7 +275,7 @@ class AlibabaSprcDilAutoPushService
         $ads = $adsFrac ?? $this->channelAdsFrac();
 
         $pricer ??= StdPrcVsDilPricer::forChannel(self::CHANNEL);
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then Min NPFT (clearance exempt, no Ship, Ads% included).
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,
@@ -318,7 +316,7 @@ class AlibabaSprcDilAutoPushService
     }
 
     /**
-     * Channel Ads% as a fraction. Same source as NegativeSnroiPushGuard so the Min NPFT floor and the
+     * Channel Ads% as a fraction. Same source as NegativeSnroiPushGuard so the
      * negative-SNROI check agree.
      */
     protected function channelAdsFrac(): float

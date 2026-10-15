@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 4:30 AM and 8:30 PM IST: TopDawg Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, no ship, no LMP) → SPRICE → TopDawg price API. Page not required.
+ * no ship, no LMP) → SPRICE → TopDawg price API. Page not required.
  * Only pushes SKUs whose target price differs from the live TD Price. TopDawg queues a push for review (1–24h),
  * so a price already pushed is not pushed again here (topdawg:push-blue-prices handles the catch-up).
  */
@@ -24,7 +24,7 @@ class TopDawgSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between TopDawg price API calls (ms)}';
 
-    protected $description = 'TopDawg Std prc vs dil (Min NPFT, no ship, no LMP) → SPRICE → TopDawg (4:30 AM + 8:30 PM IST).';
+    protected $description = 'TopDawg Std prc vs dil (no ship, no LMP) → SPRICE → TopDawg (4:30 AM + 8:30 PM IST).';
 
     protected string $monitorJobName = 'TopDawg Sprc Dil Auto Push';
 
@@ -51,7 +51,7 @@ class TopDawgSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('TopDawg Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:30 and 20:30 Asia/Kolkata (IST)');
-        $this->info('Rules: topdawg_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT (no Ship, no LMP)');
+        $this->info('Rules: topdawg_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc)');
         $this->info('Push: TopDawg price API — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

@@ -20,7 +20,6 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with Purchasing Power as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then raised to Min NPFT % (saved in purchasing_power_std_prc_vs_dil, default 10). Clearance SKUs keep the discount price.
  *  Std Prc is the maximum, then the Amz rule: S PRC never sits below the Amazon price (A Price). Same rule
  *  the page labels "Amz" and MacysAmazonPriceCap applies to the push.
  *  Ship BB is part of profit (same as the page). Purchasing Power has no ads and no LMP, so neither is used.
@@ -63,7 +62,7 @@ class PurchasingPowerSprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('purchasing_power');
 
-        $this->log($logger, 'Loaded Purchasing Power Std prc vs dil (purchasing_power_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Min NPFT + Amz rule');
+        $this->log($logger, 'Loaded Purchasing Power Std prc vs dil (purchasing_power_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Amz rule');
 
         $stats = [
             'candidates' => 0,
@@ -262,16 +261,15 @@ class PurchasingPowerSprcDilAutoPushService
         $snpft = $sp > 0 ? (($sp * ($margin > 0 ? $margin : 0.80) - $ship - $lp) / $sp) * 100 : 0.0;
 
         return $line.sprintf(
-            ' → target=%.2f snpft=%.1f%% npft_floor=%s amz_capped=%s',
+            ' → target=%.2f snpft=%.1f%% amz_capped=%s',
             $sp,
             $snpft,
-            ! empty($computed['npft_floor']) ? 'yes' : 'no',
             ! empty($computed['amz_capped']) ? 'yes' : 'no'
         );
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT, Std is the maximum, then the Amz rule
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum, then the Amz rule
      * (never below A Price). No LMP cap and no ads on Purchasing Power.
      *
      * @param  array<string, mixed>  $row
@@ -298,7 +296,7 @@ class PurchasingPowerSprcDilAutoPushService
         }
 
         $pricer ??= StdPrcVsDilPricer::forChannel('purchasing_power');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then Min NPFT (clearance exempt, Ship BB included).
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,
@@ -330,15 +328,6 @@ class PurchasingPowerSprcDilAutoPushService
         $amzCapped = $amz > 0 && $uncapped + 0.0001 < $amz;
         $final = $amzCapped ? $amz : $uncapped;
 
-        // Min NPFT is on SNPFT (the S PRC's own NPFT), so it is the last word: it wins over the Std Prc
-        // maximum and the Amz rule. Clearance SKUs are exempt (the pricer skips them).
-        $floored = $pricer->enforceMinNpft($final, $pricerRow);
-        $npftFloor = $floored > $final + 0.0001;
-        if ($npftFloor) {
-            $final = $floored;
-            $amzCapped = $amz > 0 && abs($final - $amz) <= 0.005;
-        }
-
         if (! is_finite($final) || $final < 0.01) {
             return null;
         }
@@ -347,7 +336,6 @@ class PurchasingPowerSprcDilAutoPushService
             'sprice' => round($final, 2),
             'uncapped' => round($uncapped, 2),
             'amz_capped' => $amzCapped,
-            'npft_floor' => $npftFloor,
             'base' => round($std, 2),
             'margin' => $margin,
             'lp' => $lp,

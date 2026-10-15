@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 4:20 AM and 8:20 PM IST: New Temu Two Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, eBay/Amz/LMP cap) → S PRC → Temu 2 base price API. Page not required.
+ * eBay/Amz/LMP cap) → S PRC → Temu 2 base price API. Page not required.
  * Only pushes SKUs whose target Base differs from the live Base.
  */
 class NewTemutwoSprcDilAutoPushCommand extends Command
@@ -24,7 +24,7 @@ class NewTemutwoSprcDilAutoPushCommand extends Command
         {--sku=* : Only these SKUs (for testing)}
         {--sleep-ms=300 : Delay between Temu price API calls (ms)}';
 
-    protected $description = 'New Temu Two Std prc vs dil (Min NPFT, eBay/Amz/LMP cap) → S PRC → Temu 2 (4:20 AM + 8:20 PM IST).';
+    protected $description = 'New Temu Two Std prc vs dil (eBay/Amz/LMP cap) → S PRC → Temu 2 (4:20 AM + 8:20 PM IST).';
 
     protected string $monitorJobName = 'New Temu Two Sprc Dil Auto Push';
 
@@ -52,7 +52,7 @@ class NewTemutwoSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('New Temu Two Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:20 and 20:20 Asia/Kolkata (IST)');
-        $this->info('Rules: newtemutwo_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT + eBay/Amz/LMP cap');
+        $this->info('Rules: newtemutwo_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + eBay/Amz/LMP cap');
         $this->info('Push: Temu 2 base price API — only when Base differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

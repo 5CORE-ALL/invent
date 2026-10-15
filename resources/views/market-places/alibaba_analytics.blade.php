@@ -326,24 +326,6 @@
         }
         window.abHasBlueTriangle = abHasBlueAlert;
         /** SNGPFT = SGPFT (no ads, no ship): ((S PRC × margin) − LP) / S PRC. */
-        function abSnpftAt(row) {
-            if (!row || isAbParentRow(row)) return null;
-            const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
-            if (!(sprice > 0)) return null;
-            const lp = parseFloat(row.lp) || 0;
-            return (((sprice * AB_MARGIN) - lp) / sprice) * 100;
-        }
-        function abNpftMarkHtml(row) {
-            if (typeof window.chStdNpftMarkHtml === 'function') {
-                const shared = window.chStdNpftMarkHtml(row);
-                if (shared) return shared;
-            }
-            const v = abSnpftAt(row);
-            if (v == null || !isFinite(v)) return '';
-            if (Math.round(v) !== 10) return '';
-            return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT 10%">!</span>';
-        }
-
         window.abApplyPushPatch = function (sku, patch) {
             const key = String(sku || '').trim().toUpperCase();
             if (!key || !patch) return;
@@ -789,7 +771,7 @@
                         },
                         {
                             title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: 'number',
-                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100), raised to Min NPFT % (with Ads%, no Ship). Std Prc is the maximum, no LMP. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.',
+                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Std Prc is the maximum, no LMP. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
@@ -802,7 +784,7 @@
                                     : '';
                                 return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
                                     + '<span style="font-weight:600;">$' + value.toFixed(2) + '</span>'
-                                    + tri + abNpftMarkHtml(row) + '</span>';
+                                    + tri + '</span>';
                             }
                         },
                         {
@@ -888,9 +870,6 @@
                 table = abTable;
                 window.table = abTable;
                 abTable.on('renderComplete', function () {
-                    if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
-                        window.minNpftSpriceMark.stamp(abTable);
-                    }
                 });
                 abApplyColumnVisibility();
                 updateSummary((abAllRows || []).filter(abRowMatches));

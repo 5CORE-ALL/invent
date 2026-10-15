@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 07:45 and 23:45 IST: PLS Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, Ship, no ads, no LMP) → SPRICE → ProLightSounds Shopify price. Page not required.
+ * Ship, no ads, no LMP) → SPRICE → ProLightSounds Shopify price. Page not required.
  * Only pushes SKUs whose target price differs from the live PLS Price and from the last pushed price.
  * pls:push-blue-prices handles the 10-minute catch-up.
  */
@@ -24,7 +24,7 @@ class PlsSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between PLS price API calls (ms)}';
 
-    protected $description = 'PLS Std prc vs dil (Min NPFT, Ship, no ads, no LMP) → SPRICE → PLS (07:45 + 23:45 IST).';
+    protected $description = 'PLS Std prc vs dil (Ship, no ads, no LMP) → SPRICE → PLS (07:45 + 23:45 IST).';
 
     protected string $monitorJobName = 'PLS Sprc Dil Auto Push';
 
@@ -51,7 +51,7 @@ class PlsSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('PLS Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 07:45 and 23:45 Asia/Kolkata (IST)');
-        $this->info('Rules: pls_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT (Ship, no ads, no LMP)');
+        $this->info('Rules: pls_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc)');
         $this->info('Push: ProLightSounds Shopify price — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

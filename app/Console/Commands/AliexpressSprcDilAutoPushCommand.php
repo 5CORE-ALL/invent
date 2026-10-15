@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 4:15 AM and 8:15 PM IST: AliExpress Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, LMP cap) → SPRICE → AliExpress price API. Page not required.
+ * LMP cap) → SPRICE → AliExpress price API. Page not required.
  * Only pushes SKUs whose target price differs from the live Price. Price column updates on each successful push.
  */
 class AliexpressSprcDilAutoPushCommand extends Command
@@ -23,7 +23,7 @@ class AliexpressSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between AliExpress price API batches (ms)}';
 
-    protected $description = 'AliExpress Std prc vs dil (Min NPFT, LMP cap) → SPRICE → AliExpress (4:15 AM + 8:15 PM IST).';
+    protected $description = 'AliExpress Std prc vs dil (LMP cap) → SPRICE → AliExpress (4:15 AM + 8:15 PM IST).';
 
     protected string $monitorJobName = 'AliExpress Sprc Dil Auto Push';
 
@@ -50,7 +50,7 @@ class AliexpressSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('AliExpress Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:15 and 20:15 Asia/Kolkata (IST)');
-        $this->info('Rules: aliexpress_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT + LMP cap');
+        $this->info('Rules: aliexpress_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + LMP cap');
         $this->info('Push: AliExpress price API — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

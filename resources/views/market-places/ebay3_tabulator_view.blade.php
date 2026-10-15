@@ -1033,18 +1033,6 @@
         return sgpft - (parseFloat(EBAY3_CHANNEL_ADS_PCT) || 0);
     }
     window.ebay3ComputeSnpftFromSprice = ebay3ComputeSnpftFromSprice;
-    /** Same "!" as eBay 2: only when the SNPFT cell rounds to Min NPFT 10%. */
-    function ebay3NpftMarkHtml(rowData) {
-        if (typeof window.chStdNpftMarkHtml === 'function') {
-            const shared = window.chStdNpftMarkHtml(rowData);
-            if (shared) return shared;
-        }
-        const snpft = ebay3ComputeSnpftFromSprice(rowData);
-        if (snpft == null || !isFinite(snpft)) return '';
-        if (Math.round(snpft) !== 10) return '';
-        return '<span class="ch-npft-mark" title="SNPFT is at Min NPFT 10%">!</span>';
-    }
-
     /** True when S PRC has a saved/entered amount (including when it matches Price). */
     function ebay3HasDistinctSprice(rowData) {
         return ebay3SpriceAmount(rowData) > 0;
@@ -2926,9 +2914,8 @@
                                     + lmpNow.toFixed(2) + ' not applied — SGROI would be '
                                     + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
                             : '';
-                        const npftMark = ebay3NpftMarkHtml(rowData);
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + formattedValue + blueTri + redTri + npftMark + '</span>';
+                            + formattedValue + blueTri + redTri + '</span>';
                     },
                     width: 118
                 },
@@ -4334,9 +4321,6 @@
 
         window.table = table;
         table.on('renderComplete', function() {
-            if (window.minNpftSpriceMark && typeof window.minNpftSpriceMark.stamp === 'function') {
-                window.minNpftSpriceMark.stamp(table);
-            }
             if (typeof ebay3UpdatePaginationCounter === 'function') ebay3UpdatePaginationCounter();
             reorderEbay3ParentRowsBelowSkus();
             setTimeout(function() {

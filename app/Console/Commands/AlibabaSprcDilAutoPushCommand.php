@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 08:05 and 23:55 IST: Alibaba Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, Ads%, no Ship, no LMP) → SPRICE → Alibaba listing price. Page not required.
+ * Ads%, no Ship, no LMP) → SPRICE → Alibaba listing price. Page not required.
  * Only pushes SKUs whose target price differs from the live Alibaba Price and from the last pushed price.
  * alibaba:push-blue-prices handles the 10-minute catch-up.
  */
@@ -24,7 +24,7 @@ class AlibabaSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Alibaba price API calls (ms)}';
 
-    protected $description = 'Alibaba Std prc vs dil (Min NPFT, Ads%, no Ship, no LMP) → SPRICE → Alibaba (08:05 + 23:55 IST).';
+    protected $description = 'Alibaba Std prc vs dil (Ads%, no Ship, no LMP) → SPRICE → Alibaba (08:05 + 23:55 IST).';
 
     protected string $monitorJobName = 'Alibaba Sprc Dil Auto Push';
 
@@ -51,7 +51,7 @@ class AlibabaSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Alibaba Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 08:05 and 23:55 Asia/Kolkata (IST)');
-        $this->info('Rules: alibaba_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT (Ads%, no Ship, no LMP)');
+        $this->info('Rules: alibaba_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc)');
         $this->info('Push: Alibaba listing price — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

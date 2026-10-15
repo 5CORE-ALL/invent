@@ -21,7 +21,6 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
             'review_max' => 4,
             'buss' => [['min' => 0, 'max' => 9999, 'disc' => 2]],
             'zero_sold_disc' => 4,
-            'min_npft' => 10,
         ], $over), 'alibaba');
     }
 
@@ -64,52 +63,12 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_min_npft_ignores_ship(): void
-    {
-        // Std 120: discount price 108. LP 85: NPFT = (108 × 0.8 − 85) / 108 = 1.2%. Raised to 10%: 85 / 0.70 = 121.43,
-        // so Std 120 caps it. A Ship value in the row must not change anything.
-        $with = $this->target($this->row(['standard_price' => 120, 'lp' => 85, 'ship' => 30]));
-        $without = $this->target($this->row(['standard_price' => 120, 'lp' => 85]));
-
-        $this->assertNotNull($with);
-        $this->assertEqualsWithDelta($without['sprice'], $with['sprice'], 0.001);
-        $this->assertEqualsWithDelta(120.00, $with['sprice'], 0.001);
-    }
-
-    public function test_min_npft_raises_the_price(): void
-    {
-        // Std 150: discount price 135. LP 100: NPFT = (135 × 0.8 − 100) / 135 = 6%. Raised to 10%: 100 / 0.70 = 142.86.
-        $out = $this->target($this->row(['standard_price' => 150, 'lp' => 100]));
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(142.86, $out['sprice'], 0.011);
-    }
-
-    public function test_min_npft_includes_channel_ads(): void
-    {
-        $row = $this->row(['standard_price' => 120, 'lp' => 70]);
-
-        // No ads: NPFT at 108 is 15.2%, so the discount price stays.
-        $this->assertEqualsWithDelta(108.00, $this->target($row, null, 0.0)['sprice'], 0.001);
-        // Ads 10%: NPFT at 108 is 5.2%. Raised to 10%: 70 / (0.80 − 0.10 − 0.10) = 116.67.
-        $this->assertEqualsWithDelta(116.67, $this->target($row, null, 0.10)['sprice'], 0.011);
-    }
-
-    public function test_clearance_keeps_the_discount_price_below_min_npft(): void
+    public function test_clearance_keeps_the_discount_price(): void
     {
         $out = $this->target($this->row(['standard_price' => 150, 'lp' => 100, 'clearance' => true]));
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(135.00, $out['sprice'], 0.001);
-    }
-
-    public function test_std_is_the_maximum(): void
-    {
-        $out = $this->target($this->row(['lp' => 80]));
-
-        $this->assertNotNull($out);
-        // LP 80 needs 80 / 0.70 = 114.29 for 10%, but Std 100 is the maximum.
-        $this->assertEqualsWithDelta(100.00, $out['sprice'], 0.001);
     }
 
     public function test_no_std_or_inventory_has_no_target(): void

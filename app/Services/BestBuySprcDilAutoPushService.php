@@ -21,8 +21,7 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + Rev Disc) / 100)
  *  CVR Disc is off: Best Buy has no session CVR (Amazon A L30 / Sess30 is not used).
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then raised to Min NPFT % (saved in bestbuy_std_prc_vs_dil, default 10). Clearance SKUs keep the discount price.
- *  Std Prc is the maximum, then the LMP cap (SGROI at LMP ≥ 20%). Min NPFT wins over the LMP cap.
+ *  Std Prc is the maximum, then the LMP cap (SGROI at LMP ≥ 20%).
  *  Last, the Amz rule: S PRC never sits below the Amazon price (A Price). That floor wins over the LMP cap.
  *  Ship BB is part of profit (same as the page). Best Buy has no ads, so none is used.
  *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
@@ -64,7 +63,7 @@ class BestBuySprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('bestbuy');
 
-        $this->log($logger, 'Loaded Best Buy Std prc vs dil (bestbuy_std_prc_vs_dil) → Age/Dil/B/0 Sold/Rev Disc + Min NPFT + LMP cap + Amz rule (CVR off)');
+        $this->log($logger, 'Loaded Best Buy Std prc vs dil (bestbuy_std_prc_vs_dil) → Age/Dil/B/0 Sold/Rev Disc + LMP cap + Amz rule (CVR off)');
 
         $stats = [
             'candidates' => 0,
@@ -263,16 +262,15 @@ class BestBuySprcDilAutoPushService
         $snpft = $sp > 0 ? (($sp * ($margin > 0 ? $margin : 0.80) - $ship - $lp) / $sp) * 100 : 0.0;
 
         return $line.sprintf(
-            ' → target=%.2f snpft=%.1f%% npft_floor=%s amz_capped=%s',
+            ' → target=%.2f snpft=%.1f%% amz_capped=%s',
             $sp,
             $snpft,
-            ! empty($computed['npft_floor']) ? 'yes' : 'no',
             ! empty($computed['amz_capped']) ? 'yes' : 'no'
         );
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT, Std is the maximum, LMP cap (Min NPFT wins),
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, Std is the maximum, LMP cap,
      * then the Amz rule (never below A Price). Ship BB included, no ads.
      *
      * @param  array<string, mixed>  $row
@@ -300,7 +298,7 @@ class BestBuySprcDilAutoPushService
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $pricer ??= StdPrcVsDilPricer::forChannel('bestbuy');
-        // Age / Dil / B / 0 Sold / Rev discounts, then Min NPFT (clearance exempt, Ship BB included). CVR is off.
+        // Age / Dil / B / 0 Sold / Rev discounts, then clearance SKUs keep the discount price. CVR is off.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,
@@ -326,13 +324,6 @@ class BestBuySprcDilAutoPushService
 
         // LMP cap (SGROI at LMP ≥ 20%), Std Prc is the maximum.
         $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
-        // Min NPFT wins over the LMP cap: a cap that would drop NPFT under the floor is skipped.
-        if ($lmp > 0
-            && ($effective - $capped) > 0.009
-            && abs($capped - round($lmp, 2)) <= 0.02
-            && $pricer->enforceMinNpft($capped, $pricerRow) > $capped + 0.0001) {
-            $capped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), $lmp, $std);
-        }
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
@@ -346,16 +337,6 @@ class BestBuySprcDilAutoPushService
             $lmpCapped = false;
         }
 
-        // Min NPFT is on SNPFT (the S PRC's own NPFT), so it is the last word: it wins over the Std Prc
-        // maximum, the LMP cap and the Amz rule. Clearance SKUs are exempt (the pricer skips them).
-        $floored = $pricer->enforceMinNpft($final, $pricerRow);
-        $npftFloor = $floored > $final + 0.0001;
-        if ($npftFloor) {
-            $final = $floored;
-            $lmpCapped = false;
-            $amzCapped = $amz > 0 && abs($final - $amz) <= 0.005;
-        }
-
         if (! is_finite($final) || $final < 0.01) {
             return null;
         }
@@ -364,7 +345,6 @@ class BestBuySprcDilAutoPushService
             'sprice' => round($final, 2),
             'uncapped' => round($uncapped, 2),
             'amz_capped' => $amzCapped,
-            'npft_floor' => $npftFloor,
             'lmp_capped' => $lmpCapped,
             'base' => round($std, 2),
             'margin' => $margin,

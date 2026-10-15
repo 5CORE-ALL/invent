@@ -1003,7 +1003,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // AliExpress Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → SPRICE → AliExpress.
+        // AliExpress Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap) → SPRICE → AliExpress.
         // Same twice-daily idea as Amazon, offset 15 min. /aliexpress-pricing does not need to be open.
         // Do NOT wrap 20:15 in $ist() — IST window ends at 20:00.
         $schedule->command('aliexpress:sprc-dil-auto-push')
@@ -1022,7 +1022,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // New Temu Two Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → Temu 2 base price.
+        // New Temu Two Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap) → S PRC → Temu 2 base price.
         // Same twice-daily idea as Amazon, offset 20 min. /new-temu2 does not need to be open.
         // Do NOT wrap 20:20 in $ist() — IST window ends at 20:00.
         $schedule->command('newtemutwo:sprc-dil-auto-push')
@@ -1041,7 +1041,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Reverb Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap) → S PRC → Reverb price API.
+        // Reverb Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap) → S PRC → Reverb price API.
         // Same twice-daily idea as Amazon, offset 25 min. /reverb-pricing does not need to be open.
         // Do NOT wrap 20:25 in $ist() — IST window ends at 20:00.
         $schedule->command('reverb:sprc-dil-auto-push')
@@ -1060,7 +1060,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // TopDawg Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, no ship, no LMP) → S PRC → TopDawg price API.
+        // TopDawg Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, no ship, no LMP) → S PRC → TopDawg price API.
         // Same twice-daily idea as Amazon, offset 30 min. /topdawg-pricing does not need to be open.
         // Do NOT wrap 20:30 in $ist() — IST window ends at 20:00.
         $schedule->command('topdawg:sprc-dil-auto-push')
@@ -1089,7 +1089,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Purchasing Power Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, Amz rule) → S PRC → MCM price import.
+        // Purchasing Power Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Amz rule) → S PRC → MCM price import.
         // Same twice-daily idea as Amazon, offset 35 min. /purchasing-power-pricing does not need to be open.
         // Do NOT wrap 20:35 in $ist() — IST window ends at 20:00.
         $schedule->command('purchasing-power:sprc-dil-auto-push')
@@ -1118,7 +1118,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Faire Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, no ship, no LMP) → S PRC → Faire wholesale price API.
+        // Faire Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, no ship, no LMP) → S PRC → Faire wholesale price API.
         // Same twice-daily idea as Amazon, offset 45 min. /faire-pricing does not need to be open.
         // Do NOT wrap 20:45 in $ist() — IST window ends at 20:00.
         $schedule->command('faire:sprc-dil-auto-push')
@@ -1146,7 +1146,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // TikTok / TikTok 2 Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ship + Ads%, LMP cap, Std max)
+        // TikTok / TikTok 2 Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap, Std max)
         // → S PRC → TikTok Shop price API. Same twice-daily idea as Amazon. /tiktok-pricing and /tiktok-2-pricing do not need
         // to be open. Evening runs are NOT wrapped in $ist() — the IST window ends at 20:00.
         foreach ([
@@ -1179,7 +1179,7 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
-        // Alibaba Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ads% and no Ship, Std max, no LMP)
+        // Alibaba Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Std max, no LMP)
         // → S PRC → Alibaba listing price. Same twice-daily idea as Amazon. /alibaba-analytics does not need to be open.
         // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
         $schedule->command('alibaba:sprc-dil-auto-push')
@@ -1207,7 +1207,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Shein Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ship + Ads%, LMP cap, Std max)
+        // Shein Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap, Std max)
         // → S PRC → Shein product/price/save. Same twice-daily idea as Amazon. /shein-pricing does not need to be open.
         // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
         $schedule->command('shein:sprc-dil-auto-push')
@@ -1235,7 +1235,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // PLS (ProLightSounds) Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT with Ship, no ads, no LMP, Std max)
+        // PLS (ProLightSounds) Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, no ads, no LMP, Std max)
         // → S PRC → ProLightSounds Shopify price. Same twice-daily idea as Amazon. /pls-pricing does not need to be open.
         // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
         $schedule->command('pls:sprc-dil-auto-push')
@@ -1263,7 +1263,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Best Buy Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap, Amz rule) → S PRC → Best Buy MCM.
+        // Best Buy Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap, Amz rule) → S PRC → Best Buy MCM.
         // Same twice-daily idea as Amazon, offset 40 min. /bestbuy-pricing does not need to be open.
         // Do NOT wrap 20:40 in $ist() — IST window ends at 20:00.
         $schedule->command('bestbuy:sprc-dil-auto-push')

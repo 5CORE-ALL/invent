@@ -5,7 +5,7 @@ namespace App\Support;
 /**
  * eBay 1 / 2 / 3 S PRC — the same rule chain as /amazon-tabulator-view with the Std prc vs dil rule ON:
  *   1. S PRC = Std Prc × (1 − (Age + Dil + B Disc + 0 Sold + CVR + Review) / 100), Std under $15 halves rule discs
- *   2. raised to the channel's Min NPFT % (clearance SKUs stay on the discount price)
+ *   2. clearance SKUs stay on the discount price
  *   3. LMP cap: S PRC ≥ LMP and SGROI at LMP ≥ 20% → S PRC = LMP
  *   4. Std Prc is the maximum
  * Inputs always come from the eBay channel's own tabulator row: Shopify INV / OV L30, eBay L30,

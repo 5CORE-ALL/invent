@@ -5074,10 +5074,8 @@
                                         + (sgroiAtLmp != null ? sgroiAtLmp.toFixed(1) : '?') + '% (&lt; 20%)"></i>')
                                 : '';
 
-                            const npftMark = (typeof window.chStdNpftMarkHtml === 'function')
-                                ? window.chStdNpftMarkHtml(rowData) : '';
                             return '<span style="white-space: nowrap; display: inline-flex; align-items: center; gap: 2px;">'
-                                + formattedValue + blueTri + redTri + npftMark + '</span>';
+                                + formattedValue + blueTri + redTri + '</span>';
                         },
                         width: 118
                     },

@@ -35,7 +35,7 @@ class ReverbSprcDilAutoPushService
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('reverb');
 
-        $this->log($logger, 'Loaded Reverb Std prc vs dil (reverb_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + Min NPFT + LMP cap');
+        $this->log($logger, 'Loaded Reverb Std prc vs dil (reverb_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap');
 
         $stats = [
             'candidates' => 0,
@@ -147,7 +147,7 @@ class ReverbSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT, then LMP cap, Std is the maximum.
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, then LMP cap, Std is the maximum.
      *
      * @param  array<string, mixed>  $row
      * @return array{sprice:float,lmp_capped:bool,base:float,margin:float,lp:float,ship:float,ads:float}|null
@@ -175,7 +175,7 @@ class ReverbSprcDilAutoPushService
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $pricer ??= StdPrcVsDilPricer::forChannel('reverb');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then Min NPFT (clearance exempt).
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,

@@ -22,7 +22,6 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
             'review_max' => 4,
             'buss' => [['min' => 0, 'max' => 9999, 'disc' => 2]],
             'zero_sold_disc' => 0,
-            'min_npft' => 10,
         ], $over), 'newtemutwo');
     }
 
@@ -59,20 +58,6 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $base = TemuShopifySalesService::computePushBaseFromSprice(90.0);
         $this->assertSame(round($base, 2), $out['base']);
         $this->assertEqualsWithDelta(90.0, $out['full'], 0.02);
-    }
-
-    public function test_min_npft_raises_price_and_clearance_is_exempt(): void
-    {
-        $svc = new NewTemutwoSprcDilAutoPushService();
-        $low = $this->row(['lp' => 70]);
-
-        $raised = $svc->computeTarget($low, $this->pricer());
-        $this->assertNotNull($raised);
-        $this->assertGreaterThan(90.0, $raised['sprice']);
-
-        $clearance = $svc->computeTarget(array_merge($low, ['clearance' => 'YES']), $this->pricer());
-        $this->assertNotNull($clearance);
-        $this->assertSame(90.0, $clearance['sprice']);
     }
 
     public function test_lmp_cap_applies_when_sgroi_at_lmp_is_at_least_20(): void

@@ -21,7 +21,6 @@ class EbayRuleSpriceTest extends TestCase
             'review_max' => 4,
             'buss' => [],
             'zero_sold_disc' => 0,
-            'min_npft' => 0,
         ], $rules), $channel);
     }
 
@@ -174,20 +173,9 @@ class EbayRuleSpriceTest extends TestCase
         ]))['sprice']);
     }
 
-    public function test_min_npft_raises_with_ebay_margin_and_ebay_ads(): void
+    public function test_clearance_keeps_the_discount_price(): void
     {
-        $pricer = $this->pricer(['buss' => [['min' => 0, 'max' => 9999, 'disc' => 50]], 'min_npft' => 10]);
-        // 45 / (0.85 − 0.05 − 0.10) = 64.2857 → 64.29.
-        $this->assertSame(64.29, EbayRuleSprice::price($pricer, $this->input(['lp' => 40, 'ship' => 5, 'ads_frac' => 0.05]))['sprice']);
-        // Without ads: 45 / 0.75 = 60.00.
-        $this->assertSame(60.0, EbayRuleSprice::price($pricer, $this->input(['lp' => 40, 'ship' => 5]))['sprice']);
-        // Already above the floor: stays at the discount price.
-        $this->assertSame(50.0, EbayRuleSprice::price($pricer, $this->input(['lp' => 10, 'ship' => 2]))['sprice']);
-    }
-
-    public function test_clearance_skips_min_npft(): void
-    {
-        $pricer = $this->pricer(['buss' => [['min' => 0, 'max' => 9999, 'disc' => 50]], 'min_npft' => 10]);
+        $pricer = $this->pricer(['buss' => [['min' => 0, 'max' => 9999, 'disc' => 50]]]);
         $this->assertSame(50.0, EbayRuleSprice::price($pricer, $this->input(['lp' => 40, 'ship' => 5, 'clearance' => 'YES']))['sprice']);
     }
 
@@ -231,19 +219,9 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertSame(100.0, $out['sprice']);
     }
 
-    public function test_std_is_the_ceiling_after_min_npft(): void
-    {
-        $pricer = $this->pricer(['min_npft' => 10]);
-        // Min NPFT floor = 50 / 0.75 = 66.67, above Std 60 → Std 60.
-        $out = EbayRuleSprice::price($pricer, $this->input(['std' => 60, 'lp' => 45, 'ship' => 5]));
-        $this->assertSame(66.67, $out['rule_price']);
-        $this->assertSame(60.0, $out['sprice']);
-        $this->assertTrue($out['std_capped']);
-    }
-
     public function test_std_ceiling_still_applies_when_lmp_is_above_std(): void
     {
-        $pricer = $this->pricer(['min_npft' => 10]);
+        $pricer = $this->pricer([]);
         $out = EbayRuleSprice::price($pricer, $this->input(['std' => 60, 'lp' => 45, 'ship' => 5, 'lmp' => 70]));
         $this->assertSame(60.0, $out['sprice']);
     }

@@ -138,12 +138,8 @@
                             aria-label="S PRC raised to Amazon">Amz 0</span>
                         <span class="badge fs-6 p-2" id="pp-clearance-badge"
                             style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                            title="C = Clearance SKUs (Inv days clearance = YES). They are exempt from the Min NPFT floor. Click to filter. Click again to clear."
+                            title="C = Clearance SKUs (Inv days clearance = YES). Click to filter. Click again to clear."
                             aria-label="Clearance SKUs">C 0</span>
-                        <span class="badge fs-6 p-2" id="pp-npft-mark-badge"
-                            style="background-color:#92400e;color:#fff;font-weight:800;cursor:pointer;"
-                            title="! = S PRC was raised so SNPFT stays at or above Min NPFT %. Click to filter. Click again to clear."
-                            aria-label="S PRC raised to Min NPFT">! 0</span>
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'purchasingpower-price-gt-lmp-badge', 'pglChannelKey' => 'purchasingpower', 'pglPriceField' => 'PP Price'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'purchasingpower-price-lt80-lmp-badge', 'pltChannelKey' => 'purchasingpower', 'pltPriceField' => 'PP Price'])
                     </div>
@@ -286,7 +282,6 @@
         let blueTriangleFilterActive = false;
         let amzCapFilterActive = false;
         let clearanceFilterActive = false;
-    let npftMarkFilterActive = false;
 
         function ppIsParentRow(d) {
             return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
@@ -337,71 +332,6 @@
             const sroi = lp > 0 ? Math.round(((price * PP_MARGIN - lp - ship) / lp) * 10000) / 100 : 0;
             return { sgpft: sgpft, sroi: sroi };
         }
-        /**
-         * Min NPFT on SNPFT, shown right away. The server job saves the same price; until it re-saves a SKU, this keeps the
-         * page from showing a S PRC whose SNPFT is under the floor. Same math as the server (Ship BB, no ads, clearance exempt).
-         * Returns the fields to write on the row, or null when nothing changes.
-         */
-        function ppFloorPatch(row) {
-            if (!row || ppIsParentRow(row)) return null;
-            if (typeof window.chStdMinNpftNow !== 'function') return null;
-            const minNpft = Number(window.chStdMinNpftNow()) || 0;
-            if (!(minNpft > 0)) return null;
-            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) return null;
-            const shown = ppDisplayedSprice(row);
-            if (!(shown > 0)) return null;
-            const lp = Number(row.LP_productmaster != null ? row.LP_productmaster : row.lp) || 0;
-            const ship = Number(row.Ship_productmaster != null ? row.Ship_productmaster : row.ship) || 0;
-            let margin = Number(PP_MARGIN) || 0;
-            if (!(margin > 0 && margin <= 1)) margin = 0.65;
-            if (!(lp > 0)) return null;
-            const denom = margin - minNpft / 100;
-            if (!(denom > 0.0001)) return null;
-            const npftAt = function(p) { return ((p * margin - ship - lp) / p) * 100; };
-            if (!(npftAt(shown) < minNpft - 0.001)) return null;
-            let target = Math.ceil(((lp + ship) / denom) * 100 - 1e-6) / 100;
-            if (npftAt(target) + 1e-6 < minNpft) target = Math.round((target + 0.01) * 100) / 100;
-            if (!(target > shown)) return null;
-            const sgpft = Math.round(npftAt(target) * 100) / 100;
-            const sroi = Math.round((((target * margin - ship - lp) / lp) * 100) * 100) / 100;
-            const patch = { SPRICE: target, sprice: target, SGPFT: sgpft, SPFT: sgpft, SROI: sroi, SNROI: sroi, SGROI: sroi };
-            const amz = ppAmazonPrice(row);
-            if (amz > 0 && target > amz + 0.005) patch.AMZ_CAPPED = false;
-            return patch;
-        }
-        function ppApplySnpftFloor() {
-            if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
-            const bySku = {};
-            let changed = 0;
-            try {
-                table.getRows().forEach(function(r) {
-                    const d = r.getData();
-                    const patch = ppFloorPatch(d);
-                    if (!patch) return;
-                    bySku[String(d['(Child) sku'] || d.sku || '').trim().toUpperCase()] = patch;
-                    try { r.update(patch); } catch (e) { /* ignore */ }
-                    changed++;
-                });
-            } catch (e) { /* ignore */ }
-            if (!changed) return;
-            const walk = function(arr) {
-                if (!Array.isArray(arr)) return;
-                arr.forEach(function(d) {
-                    if (!d) return;
-                    const patch = bySku[String(d['(Child) sku'] || d.sku || '').trim().toUpperCase()];
-                    if (patch) Object.assign(d, patch);
-                    if (Array.isArray(d._children)) walk(d._children);
-                });
-            };
-            walk(allTableData);
-            if (window.ParentExpand && typeof ParentExpand.captureDataset === 'function') {
-                try { ParentExpand.captureDataset(allTableData); } catch (e) { /* ignore */ }
-            }
-            if (typeof updateSummary === 'function') {
-                try { updateSummary(); } catch (e) { /* ignore */ }
-            }
-        }
-        window.ppApplySnpftFloor = ppApplySnpftFloor;
         function ppRowSpriceForAlert(data) {
             return ppDisplayedSprice(data);
         }
@@ -413,11 +343,6 @@
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
         window.ppHasBlueTriangle = ppHasBlueTriangle;
-        function ppHasNpftMark(d) {
-        if (!d || ppIsParentRow(d)) return false;
-        if (!((parseFloat(d.SPRICE) || 0) > 0 || (parseFloat(d.sprice) || 0) > 0)) return false;
-        return typeof window.chStdMinNpftWasApplied === 'function' && !!window.chStdMinNpftWasApplied(d);
-    }
     function syncPpTriangleBadgeState() {
             $('#pp-blue-triangle-badge').css({
                 outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
@@ -431,10 +356,6 @@
                 outline: clearanceFilterActive ? '3px solid #ffc107' : '',
                 outlineOffset: clearanceFilterActive ? '2px' : ''
             });
-        $('#pp-npft-mark-badge').css({
-            outline: npftMarkFilterActive ? '3px solid #ffc107' : '',
-            outlineOffset: npftMarkFilterActive ? '2px' : ''
-        });
         }
 
         $('#zero-sold-count-badge').on('click', function() {
@@ -705,7 +626,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
                     editable: false, sorter: 'number', width: 120,
-                    headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, Std Prc is the maximum, never below A Price (Amz), and last raised so SNPFT% is at least Min NPFT % (default 10). Min NPFT wins over Std Prc and Amz. Clearance SKUs are exempt. Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
+                    headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, Std Prc is the maximum, never below A Price (Amz). Clearance SKUs keep the discount price. Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
@@ -734,14 +655,12 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        // Clearance SKUs: Min NPFT is not applied, so a low SNPFT is expected. Red "C" after the value.
+                        // Clearance SKUs keep the discount price. Red "C" after the value.
                         const isClearance = typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d);
                         const clearanceMark = isClearance
-                            ? '<span class="pp-sprice-clearance" title="Clearance — Min NPFT not applied" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
+                            ? '<span class="pp-sprice-clearance" title="Clearance" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
                             : '';
-                        // Min NPFT raised this S PRC: red "!" (same mark as the header badge count).
-                        const npftMark = (ppHasNpftMark(d) && typeof window.chStdNpftMarkHtml === 'function') ? window.chStdNpftMarkHtml(d) : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${npftMark}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
@@ -947,11 +866,6 @@
                     return ppHasAmzCap(data);
                 });
             }
-            if (npftMarkFilterActive) {
-                table.addFilter(function(data) {
-                    return ppHasNpftMark(data);
-                });
-            }
             if (clearanceFilterActive) {
                 table.addFilter(function(data) {
                     return !ppIsParentRow(data) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(data);
@@ -971,7 +885,6 @@
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
                         clearanceFilterActive = false;
-                        npftMarkFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -987,7 +900,6 @@
                         blueTriangleFilterActive = false;
                         amzCapFilterActive = false;
                         clearanceFilterActive = false;
-                        npftMarkFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -1000,24 +912,9 @@
                 priceLt80LmpFilterActive = false;
                 amzCapFilterActive = false;
                 clearanceFilterActive = false;
-                npftMarkFilterActive = false;
             }
             applyFilters();
         });
-        $('#pp-npft-mark-badge').on('click', function() {
-            npftMarkFilterActive = !npftMarkFilterActive;
-            if (npftMarkFilterActive) {
-                priceGtLmpFilterActive = false;
-                priceLt80LmpFilterActive = false;
-                blueTriangleFilterActive = false;
-                amzCapFilterActive = false;
-                clearanceFilterActive = false;
-                if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
-                if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
-            }
-            applyFilters();
-        });
-
         $('#pp-clearance-badge').on('click', function() {
             clearanceFilterActive = !clearanceFilterActive;
             if (clearanceFilterActive) {
@@ -1025,16 +922,14 @@
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
                 amzCapFilterActive = false;
-                npftMarkFilterActive = false;
                 if (window.PriceGtLmpBadge) { PriceGtLmpBadge.setOutline(document.querySelector('[id$="-price-gt-lmp-badge"]'), false); }
                 if (window.PriceLt80LmpBadge) { PriceLt80LmpBadge.setOutline(document.querySelector('[id$="-price-lt80-lmp-badge"]'), false); }
             }
             applyFilters();
         });
 
-        // Std prc vs dil rule + Min NPFT + clearance all loaded: floor, repaint the "!" / "C" marks, recount the badges.
+        // Std prc vs dil rule + clearance all loaded: repaint the "C" marks, recount the badges.
         $(document).off('chStd:settled.pp').on('chStd:settled.pp', function() {
-            try { ppApplySnpftFloor(); } catch (e) { /* ignore */ }
             try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
             try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
         });
@@ -1045,12 +940,9 @@
                 return;
             }
             window.chStdLoadClearance().always(function() {
-                // Clearance list is in: apply the Min NPFT floor on SNPFT, again once the saved rule has loaded.
-                try { ppApplySnpftFloor(); } catch (e) { /* ignore */ }
                 // The S PRC cells painted before the clearance list arrived: repaint so the "C" shows.
                 try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
                 setTimeout(function() {
-                    try { ppApplySnpftFloor(); } catch (e) { /* ignore */ }
                     try { if (table && table.getRows) table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
                     try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
                 }, 2500);
@@ -1061,7 +953,6 @@
             amzCapFilterActive = !amzCapFilterActive;
             if (amzCapFilterActive) {
                 clearanceFilterActive = false;
-                npftMarkFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
                 blueTriangleFilterActive = false;
@@ -1121,12 +1012,10 @@
             let blueTriangleCount = 0;
             let amzCapCount = 0;
             let clearanceCount = 0;
-            let npftMarkCount = 0;
             (table ? table.getData() : []).forEach(function(row) {
                 if (ppHasBlueTriangle(row)) blueTriangleCount++;
                 if (ppHasAmzCap(row)) amzCapCount++;
                 if (!ppIsParentRow(row) && typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(row)) clearanceCount++;
-                if (ppHasNpftMark(row)) npftMarkCount++;
             });
             $('#pp-blue-triangle-badge').html(
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
@@ -1141,7 +1030,6 @@
                 } catch (e) { /* ignore */ }
                 $('#pp-rows-badge').text('Rows: ' + shown.toLocaleString() + (shown !== total ? ' / ' + total.toLocaleString() : ''));
             })();
-            $('#pp-npft-mark-badge').text('! ' + npftMarkCount.toLocaleString());
             if (typeof syncPpTriangleBadgeState === 'function') syncPpTriangleBadgeState();
         
             if (window.AnalyticsDilBadge) {
@@ -1222,7 +1110,7 @@
             if (window.ParentExpand && ParentExpand.isExpanded()) return;
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
-            setTimeout(function() { ppApplySnpftFloor(); applyFilters(); updateSummary(); }, 100);
+            setTimeout(function() { applyFilters(); updateSummary(); }, 100);
         });
         table.on('renderComplete', function() { setTimeout(function() { updateSummary(); }, 100); });
 

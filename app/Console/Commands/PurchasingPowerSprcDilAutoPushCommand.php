@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Twice daily 4:35 AM and 8:35 PM IST: Purchasing Power Std prc vs dil (Age/Dil/B/0 Sold/CVR/Rev Disc,
- * Min NPFT, Amz rule) → SPRICE → MCM price import. Page not required.
+ * Amz rule) → SPRICE → MCM price import. Page not required.
  * Only pushes SKUs whose target price differs from the live PP Price and from the last pushed price.
  * purchasing-power:push-blue-prices handles the 10-minute catch-up.
  */
@@ -25,7 +25,7 @@ class PurchasingPowerSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between Purchasing Power price pushes (ms)}';
 
-    protected $description = 'Purchasing Power Std prc vs dil (Min NPFT, Amz rule) → SPRICE → MCM (4:35 AM + 8:35 PM IST).';
+    protected $description = 'Purchasing Power Std prc vs dil (Amz rule) → SPRICE → MCM (4:35 AM + 8:35 PM IST).';
 
     protected string $monitorJobName = 'Purchasing Power Sprc Dil Auto Push';
 
@@ -52,7 +52,7 @@ class PurchasingPowerSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Purchasing Power Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:35 and 20:35 Asia/Kolkata (IST)');
-        $this->info('Rules: purchasing_power_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Min NPFT + Amz rule (never below A Price)');
+        $this->info('Rules: purchasing_power_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + Amz rule (never below A Price)');
         $this->info('Push: MCM price import — only when Price differs from target'.($pushAll ? ' [PUSH ALL]' : ''));
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

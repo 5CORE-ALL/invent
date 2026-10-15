@@ -21,7 +21,6 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
             'review_max' => 4,
             'buss' => [['min' => 0, 'max' => 9999, 'disc' => 2]],
             'zero_sold_disc' => 4,
-            'min_npft' => 10,
         ], $over), 'faire');
     }
 
@@ -59,22 +58,7 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_min_npft_raises_the_price_and_ignores_ship(): void
-    {
-        // Ship on the row is ignored. NPFT = ((P × 0.75 − LP) / P) × 100. LP 60 at 90 → 8.3%.
-        // Raised to 10%: 60 / (0.75 − 0.10) = 92.31.
-        $out = (new FaireSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 60, 'ship' => 50]),
-            $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(92.31, $out['sprice'], 0.011);
-        $npft = ((($out['sprice'] * 0.75) - 60) / $out['sprice']) * 100;
-        $this->assertGreaterThanOrEqual(9.99, $npft);
-    }
-
-    public function test_clearance_keeps_the_discount_price_below_min_npft(): void
+    public function test_clearance_keeps_the_discount_price(): void
     {
         $out = (new FaireSprcDilAutoPushService)->computeTarget(
             $this->row(['lp' => 60, 'clearance' => true]),
@@ -83,15 +67,6 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
-    }
-
-    public function test_std_is_the_maximum(): void
-    {
-        $out = (new FaireSprcDilAutoPushService)->computeTarget($this->row(['lp' => 80]), $this->pricer());
-
-        $this->assertNotNull($out);
-        // LP 80 needs 80 / 0.65 = 123.08 for 10%, but Std 100 is the maximum.
-        $this->assertEqualsWithDelta(100.00, $out['sprice'], 0.001);
     }
 
     public function test_no_lmp_or_amz_rule(): void
