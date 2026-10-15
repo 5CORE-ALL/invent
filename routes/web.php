@@ -4671,8 +4671,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/video-ads-master/data',                  [\App\Http\Controllers\VideoAdsMasterController::class, 'getData'])->name('video.ads.master.data');
     Route::get('/video-ads-master/media',                 [\App\Http\Controllers\VideoAdsMasterController::class, 'media'])->name('video.ads.master.media');
     Route::get('/video-ads-master/thumb',                 [\App\Http\Controllers\VideoAdsMasterController::class, 'thumb'])->name('video.ads.master.thumb');
+    Route::get('/video-ads-master/file/{id}/{name}',      [\App\Http\Controllers\VideoAdsMasterController::class, 'uploadedFile'])->whereNumber('id')->where('name', '[A-Za-z0-9._-]+')->name('video.ads.master.file');
+    Route::post('/video-ads-master/bulk-delete',          [\App\Http\Controllers\VideoAdsMasterController::class, 'bulkDestroy'])->name('video.ads.master.bulk.destroy');
     Route::post('/video-ads-master',                      [\App\Http\Controllers\VideoAdsMasterController::class, 'store'])->name('video.ads.master.store');
-    Route::put('/video-ads-master/{id}',                  [\App\Http\Controllers\VideoAdsMasterController::class, 'update'])->whereNumber('id')->name('video.ads.master.update');
+    Route::match(['put', 'post'], '/video-ads-master/{id}', [\App\Http\Controllers\VideoAdsMasterController::class, 'update'])->whereNumber('id')->name('video.ads.master.update');
     Route::delete('/video-ads-master/{id}',               [\App\Http\Controllers\VideoAdsMasterController::class, 'destroy'])->whereNumber('id')->name('video.ads.master.destroy');
     Route::post('/video-ads-master/{id}/copy',            [\App\Http\Controllers\VideoAdsMasterController::class, 'copy'])->whereNumber('id')->name('video.ads.master.copy');
     Route::put('/video-ads-master/{id}/check',            [\App\Http\Controllers\VideoAdsMasterController::class, 'toggleCheck'])->whereNumber('id')->name('video.ads.master.check');

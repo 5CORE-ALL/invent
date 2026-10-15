@@ -238,11 +238,19 @@ class VideoAdsMasterController extends Controller
             'hook_name'    => 'nullable|string',
             'hook'         => 'nullable|string',
             'link'         => 'nullable|string',
+            'video'        => 'nullable|file|max:204800',
         ]);
 
+        unset($data['video']);
         $row = VideoAdsMaster::create($data);
+        $uploaded = $this->attachUploadedVideo($request, $row);
+        if ($uploaded !== null) {
+            $row->delete();
 
-        return response()->json(['success' => true, 'row' => $this->presentRow($row)]);
+            return $uploaded;
+        }
+
+        return response()->json(['success' => true, 'row' => $this->presentRow($row->fresh())]);
     }
 
     /**
@@ -262,20 +270,144 @@ class VideoAdsMasterController extends Controller
             'hook_name'    => 'sometimes|nullable|string',
             'hook'         => 'sometimes|nullable|string',
             'link'         => 'sometimes|nullable|string',
+            'video'        => 'nullable|file|max:204800',
         ]);
 
+        unset($data['video']);
         $row->fill($data)->save();
+        $uploaded = $this->attachUploadedVideo($request, $row);
+        if ($uploaded !== null) {
+            return $uploaded;
+        }
 
-        return response()->json(['success' => true, 'row' => $this->presentRow($row)]);
+        return response()->json(['success' => true, 'row' => $this->presentRow($row->fresh())]);
     }
 
     public function destroy($id)
     {
         $row = VideoAdsMaster::findOrFail($id);
+        $this->deleteUploadedVideoFile($row);
         VideoAdsMasterCreator::where('video_ads_master_id', $row->id)->delete();
         $row->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        $ids = $request->validate([
+            'ids' => 'required|array|min:1|max:500',
+            'ids.*' => 'integer',
+        ])['ids'];
+
+        $rows = VideoAdsMaster::query()->whereIn('id', $ids)->get();
+        foreach ($rows as $row) {
+            $this->deleteUploadedVideoFile($row);
+            VideoAdsMasterCreator::where('video_ads_master_id', $row->id)->delete();
+            $row->delete();
+        }
+
+        return response()->json(['success' => true, 'deleted' => $rows->count()]);
+    }
+
+    /**
+     * Plays a video uploaded from the Add / Edit form. The URL ends in the
+     * file extension so the table thumbnail can show a frame of it.
+     */
+    public function uploadedFile(int $id, string $name)
+    {
+        $name = basename($name);
+        abort_unless($this->isSafeVideoName($name), 404);
+
+        $row = VideoAdsMaster::findOrFail($id);
+        abort_unless(str_contains((string) $row->link, '/'.$name), 404);
+
+        $path = storage_path('app/video-ads/'.$name);
+        abort_unless(is_file($path), 404);
+
+        return response()->file($path, [
+            'Content-Type' => $this->videoMime($path),
+            'Content-Disposition' => 'inline; filename="'.$name.'"',
+            'Cache-Control' => 'private, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
+     * Store an uploaded video and point the row link at it so the table
+     * thumbnail uses the same frame preview as other video links.
+     *
+     * @return \Illuminate\Http\JsonResponse|null
+     */
+    private function attachUploadedVideo(Request $request, VideoAdsMaster $row)
+    {
+        if (! $request->hasFile('video')) {
+            return null;
+        }
+
+        $file = $request->file('video');
+        if (! $file || ! $file->isValid()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The video upload did not finish. Try a smaller file.',
+            ], 422);
+        }
+
+        $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
+        if (! in_array($ext, ['mp4', 'webm', 'mov', 'm4v', 'ogg', 'ogv', 'mkv'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Upload an mp4, webm, mov, or mkv video.',
+            ], 422);
+        }
+
+        $dir = storage_path('app/video-ads');
+        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            return response()->json(['success' => false, 'message' => 'Could not store the video.'], 500);
+        }
+
+        $this->deleteUploadedVideoFile($row);
+        $name = $row->id.'-'.bin2hex(random_bytes(4)).'.'.$ext;
+        $file->move($dir, $name);
+        $row->link = url('/video-ads-master/file/'.$row->id.'/'.$name);
+        $row->save();
+
+        return null;
+    }
+
+    private function deleteUploadedVideoFile(VideoAdsMaster $row): void
+    {
+        $name = $this->uploadedVideoName((string) $row->link);
+        if ($name === null) {
+            return;
+        }
+
+        $stillUsed = VideoAdsMaster::query()
+            ->where('id', '!=', $row->id)
+            ->where('link', 'like', '%/'.$name)
+            ->exists();
+        if ($stillUsed) {
+            return;
+        }
+
+        $path = storage_path('app/video-ads/'.$name);
+        if (is_file($path)) {
+            unlink($path);
+        }
+    }
+
+    private function uploadedVideoName(string $link): ?string
+    {
+        if (! preg_match('#/video-ads-master/file/\d+/([A-Za-z0-9._-]+)$#', $link, $m)) {
+            return null;
+        }
+
+        return $this->isSafeVideoName($m[1]) ? $m[1] : null;
+    }
+
+    private function isSafeVideoName(string $name): bool
+    {
+        return (bool) preg_match('/^\d+-[a-f0-9]+\.(mp4|webm|mov|m4v|ogg|ogv|mkv)$/i', $name);
     }
 
     /**
