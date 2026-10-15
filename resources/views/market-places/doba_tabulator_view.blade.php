@@ -3339,6 +3339,17 @@
                 ParentExpand.bind();
             }
 
+            // Sorting groups children under their parent's rolled-up value. S PRC rules and saves change the
+            // children's SGPFT% / SGROI% / S PRC after load, so rebuild the parent rollup from the live rows
+            // right before every sort, otherwise the groups sort on stale parent numbers and look unsorted.
+            table.on('dataSorting', function() {
+                try {
+                    if (window.ParentExpand && ParentExpand.isExpanded()) return;
+                    const live = table.getData();
+                    if (Array.isArray(live) && live.length) dobaRollupParentRows(live);
+                } catch (eRoll) { /* keep the previous rollup */ }
+            });
+
             table.on('dataLoaded', function(data) {
                 if (Array.isArray(data) && data.length) {
                     // ParentExpand.expand() replaces the table data with a single parent's
