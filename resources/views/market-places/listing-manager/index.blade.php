@@ -420,15 +420,6 @@
         }
         .lm-img-edit-bar { border: 1px solid #bfdbfe; background: #f8fbff; border-radius: 10px; padding: .75rem .9rem; margin-bottom: .9rem; }
         .lm-prod-thumbs .lm-thumb { position: relative; }
-        .lm-prod-images.is-editing { grid-template-columns: 240px 1fr; align-items: start; }
-        .lm-prod-images.is-editing .lm-prod-thumbs { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: .75rem; }
-        .lm-prod-images.is-editing .lm-thumb {
-            display: flex; flex-direction: column; border: 1px solid var(--lc-border); border-radius: 8px;
-            background: #fff; overflow: hidden;
-        }
-        .lm-prod-images.is-editing .lm-prod-thumbs img {
-            width: 100%; aspect-ratio: 1; min-height: 148px; height: auto; border: 0; border-radius: 0; object-fit: contain;
-        }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools {
             position: absolute; inset: auto 0 0 0; display: flex; justify-content: center; gap: 2px;
             background: rgba(17,24,39,.72); padding: 2px; border-radius: 0 0 6px 6px; opacity: 0; transition: opacity .12s;
@@ -439,9 +430,6 @@
         .lm-prod-thumbs .lm-thumb:hover .lm-thumb-tools { opacity: 1; }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools button {
             border: 0; background: transparent; color: #fff; font-size: .72rem; width: 20px; height: 20px; line-height: 20px; border-radius: 4px; padding: 0;
-        }
-        .lm-prod-images.is-editing .lm-thumb .lm-thumb-tools button {
-            flex: 1; width: auto; height: 34px; font-size: .95rem; line-height: 34px;
         }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools button:hover { background: rgba(255,255,255,.18); }
         .lm-prod-thumbs .lm-thumb .lm-thumb-tools button:disabled { opacity: .35; }
@@ -560,6 +548,55 @@
             width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--lc-border); border-radius: 6px; background: #fff; cursor: pointer;
         }
         .lm-prod-thumbs img.active { border-color: var(--lc-blue); box-shadow: 0 0 0 2px #bfdbfe; }
+        .lm-prod-images.is-editing { display: block; }
+        .lm-prod-images.is-editing .lm-prod-main-img { display: none; }
+        .lm-prod-images.is-editing .lm-prod-thumbs {
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            gap: .85rem;
+        }
+        .lm-prod-images.is-editing .lm-thumb {
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--lc-border);
+            border-radius: 10px;
+            background: #fff;
+            overflow: hidden;
+            min-width: 0;
+        }
+        .lm-prod-images.is-editing .lm-thumb img {
+            display: block;
+            width: 100%;
+            height: 190px;
+            min-height: 190px;
+            max-height: none;
+            aspect-ratio: auto;
+            flex: 0 0 190px;
+            object-fit: contain;
+            border: 0;
+            border-radius: 0;
+            background: #f8fafc;
+        }
+        .lm-prod-images.is-editing .lm-thumb .lm-thumb-tools {
+            position: static;
+            opacity: 1;
+            display: flex;
+            justify-content: space-between;
+            gap: 4px;
+            background: #111827;
+            padding: 6px;
+            border-radius: 0;
+        }
+        .lm-prod-images.is-editing .lm-thumb .lm-thumb-tools button {
+            flex: 1 1 0;
+            width: auto;
+            height: 36px;
+            font-size: 1rem;
+            line-height: 36px;
+        }
+        .lm-prod-images.is-editing .lm-thumb .lm-thumb-main {
+            font-size: .72rem;
+            padding: 2px 8px;
+        }
         .lm-listed-head { background: #dcfce7; color: #166534; font-weight: 700; padding: .55rem .75rem; border-radius: 6px 6px 0 0; }
         .lm-unlist-head { background: #f3f4f6; color: #374151; font-weight: 700; padding: .55rem .75rem; border-radius: 6px 6px 0 0; margin-top: 1rem; }
         .lm-list-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
