@@ -141,10 +141,19 @@ class DirectStoreListingPublishService
 
         $title = $primary ? trim((string) ($overrides['title'] ?? '')) : '';
         $title = $title !== '' ? $title : trim((string) ($hydrated['title'] ?? ''));
+        $fromVariationTitle = \App\Support\Marketplace\VariationListingContent::titleForSku($sku);
+        if ($fromVariationTitle !== null) {
+            $title = $fromVariationTitle;
+        }
 
         $description = $primary ? trim((string) ($overrides['description'] ?? '')) : '';
         $descriptionFromDraft = $description !== '';
         $description = $description !== '' ? $description : trim((string) ($hydrated['description'] ?? ''));
+        $fromVariationDescription = \App\Support\Marketplace\VariationListingContent::descriptionForSku($sku);
+        if ($fromVariationDescription !== null) {
+            $description = $fromVariationDescription;
+            $descriptionFromDraft = true;
+        }
 
         $price = LmpStdPrice::forSku($sku);
 

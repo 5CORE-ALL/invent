@@ -1111,6 +1111,10 @@ class WayfairListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
             $title = trim((string) ($product->{$field} ?? ''));
             if ($title !== '') {
@@ -1219,6 +1223,10 @@ class WayfairListingPublishService
      */
     private function featureBullets(ProductMaster $product, string $title): array
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
+        if ($fromVariation !== null) {
+            return array_slice($fromVariation, 0, 8);
+        }
         $out = [];
         foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5', 'feature1', 'feature2', 'feature3', 'feature4'] as $field) {
             $value = trim((string) ($product->{$field} ?? ''));
@@ -1235,6 +1243,10 @@ class WayfairListingPublishService
 
     private function marketingCopy(ProductMaster $product, string $title): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::descriptionFor($product);
+        if ($fromVariation !== null) {
+            return mb_substr(trim(strip_tags($fromVariation)), 0, 4000);
+        }
         foreach (['product_description', 'description_800', 'description_600', 'description_v2_description'] as $field) {
             $value = trim(strip_tags((string) ($product->{$field} ?? '')));
             if ($value !== '') {

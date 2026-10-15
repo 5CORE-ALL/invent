@@ -86,6 +86,7 @@ class SheinListingPublishService
         }
 
         $description = trim(strip_tags((string) ($details['description'] ?? $hydrated['description'] ?? '')));
+        $description = strip_tags(\App\Support\Marketplace\VariationListingContent::preferDescription($product, $description));
         if ($description === '') {
             $description = $title;
         }
@@ -1544,6 +1545,10 @@ class SheinListingPublishService
      */
     private function resolveTitle(ProductMaster $product, string $sku, array $hydrated = []): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
             $title = trim((string) ($product->{$field} ?? ''));
             if ($title !== '') {

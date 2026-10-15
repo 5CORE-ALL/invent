@@ -8,6 +8,7 @@ use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingCountsEngine;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerFamily;
+use App\Support\Marketplace\VariationListingContent;
 use Illuminate\Support\Collection;
 
 class ListingVariationPreviewService
@@ -105,6 +106,12 @@ class ListingVariationPreviewService
      */
     public function publishSkus(array $skus, string $channel, bool $expandSiblings = true, string $mode = 'variation', string $parentHint = '', ?int $categoryId = null, ?string $categoryUuid = null, ?string $categoryName = null, ?float $weightLb = null, ?float $weightKg = null, array $overrides = []): array
     {
+        $variation = strtolower(trim($mode)) !== 'single';
+        if ($variation) {
+            VariationListingContent::activate();
+        }
+
+        try {
         $channel = strtolower(trim($channel));
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
             return $this->temu2->publishSkus($skus, $expandSiblings, $mode, $parentHint, $categoryId);
@@ -171,6 +178,11 @@ class ListingVariationPreviewService
             'success' => false,
             'message' => $label.' listing API is not connected. Add images on CP Master, then export these SKUs to list them on '.$label.'.',
         ];
+        } finally {
+            if ($variation) {
+                VariationListingContent::deactivate();
+            }
+        }
     }
 
     /**

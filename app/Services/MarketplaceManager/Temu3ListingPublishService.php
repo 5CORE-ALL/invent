@@ -1161,6 +1161,10 @@ class Temu3ListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach ($this->titleMasterCandidates($product) as $clean) {
             if ($clean !== '' && ! $this->looksLikeSku($clean, $sku)) {
                 return $clean;
@@ -1219,6 +1223,13 @@ class Temu3ListingPublishService
 
     private function resolveDescription(ProductMaster $product, string $sku): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::descriptionFor($product);
+        if ($fromVariation !== null) {
+            $text = $this->cleanDescriptionText($fromVariation, $sku);
+            if ($text !== '') {
+                return $text;
+            }
+        }
         $rows = [$product];
         $parent = $this->parentProductFor($product, $sku);
         if ($parent) {
@@ -1341,6 +1352,10 @@ class Temu3ListingPublishService
      */
     private function resolveBullets(ProductMaster $product, string $sku): array
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         $bullets = $this->bulletLinesFromProduct($product);
         if ($bullets === []) {
             $parent = $this->parentProductFor($product, $sku);

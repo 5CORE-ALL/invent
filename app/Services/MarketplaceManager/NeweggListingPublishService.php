@@ -546,6 +546,10 @@ class NeweggListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
             $title = trim((string) ($product->{$field} ?? ''));
             if ($title !== '') {
@@ -643,6 +647,10 @@ class NeweggListingPublishService
      */
     private function resolveBullets(ProductMaster $product): array
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         $bullets = [];
         for ($i = 1; $i <= 5; $i++) {
             $b = trim((string) ($product->{'bullet'.$i} ?? $product->{'feature'.$i} ?? ''));
@@ -656,6 +664,10 @@ class NeweggListingPublishService
 
     private function resolveDescription(ProductMaster $product, string $title): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::descriptionFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach (['product_description', 'description_800', 'description_600', 'description_1000', 'description_1500'] as $col) {
             $text = trim(strip_tags((string) ($product->{$col} ?? '')));
             if ($text !== '') {

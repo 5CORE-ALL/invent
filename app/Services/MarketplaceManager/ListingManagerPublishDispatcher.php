@@ -11,6 +11,7 @@ use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerEbayTradingPublisher;
 use App\Support\Marketplace\ListingManagerFamily;
+use App\Support\Marketplace\VariationListingContent;
 use App\Support\Marketplace\WayfairPartnerClassCatalog;
 use Illuminate\Support\Facades\Schema;
 
@@ -22,6 +23,12 @@ class ListingManagerPublishDispatcher
      */
     public function publish(ListingManagerChannelDraft $draft, array $details): array
     {
+        $useVariationContent = $this->applyVariationListingContent($draft, $details);
+        if ($useVariationContent) {
+            VariationListingContent::activate();
+        }
+
+        try {
         $channelName = (string) ($draft->channel->channel ?? '');
         $key = ListingChannelCounts::normalize($channelName);
         $sku = trim((string) $draft->seller_sku);
@@ -190,6 +197,11 @@ class ListingManagerPublishDispatcher
             'message' => $channelName.' is connected for drafts and variation grouping. Direct API publish is not wired yet.'.$hint,
             'queued' => true,
         ];
+        } finally {
+            if ($useVariationContent) {
+                VariationListingContent::deactivate();
+            }
+        }
     }
 
     public static function canDirectPublish(string $channelName): bool
@@ -252,6 +264,42 @@ class ListingManagerPublishDispatcher
         $key = ListingChannelCounts::normalize($channelName);
 
         return in_array($key, self::listingApiChannelKeys(), true);
+    }
+
+    /**
+     * Variation listings take title, description, and bullets from the parent
+     * row on Variation Title, Bullet Points and Description when those fields are filled.
+     *
+     * @param  array<string, mixed>  $details
+     */
+    private function applyVariationListingContent(ListingManagerChannelDraft $draft, array &$details): bool
+    {
+        $skus = $this->publishSkusForMode($draft, $details);
+        if ($this->effectivePublishMode($details, $skus) !== 'variation') {
+            return false;
+        }
+
+        $parent = ListingManagerFamily::normalizeParentKey((string) ($details['parent_group'] ?? ''));
+        if ($parent === '') {
+            $parent = ListingManagerFamily::parentKey((string) $draft->seller_sku);
+        }
+        $content = VariationListingContent::forParent($parent);
+        if ($content['title'] !== '') {
+            $draft->title = $content['title'];
+            $draft->syncOriginalAttribute('title');
+            $details['title'] = $content['title'];
+        }
+        if ($content['description'] !== '') {
+            $details['description'] = $content['description'];
+        }
+        if ($content['bullets'] !== []) {
+            $details['bullets'] = implode("\n", $content['bullets']);
+            foreach (['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5'] as $i => $key) {
+                $details[$key] = $content['bullets'][$i] ?? '';
+            }
+        }
+
+        return true;
     }
 
     /**

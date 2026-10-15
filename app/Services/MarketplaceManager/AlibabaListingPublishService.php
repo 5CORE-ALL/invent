@@ -316,6 +316,10 @@ class AlibabaListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
             $title = trim((string) ($product->{$field} ?? ''));
             if ($title !== '') {
