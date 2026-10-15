@@ -120,15 +120,20 @@ class AlibabaAnalyticsController extends Controller
                 $listedPm[$this->stdKey((string) $hit->sku)] = true;
             }
         }
+        // Alibaba price / product id also live in alibaba_pricing_prices and alibaba_metrics (written by sync + import).
+        // Used when the sheet row has no sku_price, or the SKU has no sheet row at all.
+        [$fallbackPrice, $fallbackProductId] = $this->alibabaFallbackPrices();
+
         $listRows = $sheetRows->all();
         foreach ($allPmSkus as $pmSku) {
             if (! isset($listedPm[$this->stdKey($pmSku)])) {
-                // Not on Alibaba yet: a blank listing so the SKU still shows with its product master / Shopify data.
+                $k = $this->stdKey($pmSku);
+                // Not in the Alibaba sheet: still shown, with price / product id from pricing or metrics when known.
                 $listRows[] = (object) [
                     'sku' => $pmSku,
-                    'product_id' => '',
+                    'product_id' => $fallbackProductId[$k] ?? '',
                     'status' => null,
-                    'sku_price' => null,
+                    'sku_price' => $fallbackPrice[$k] ?? null,
                     'soh' => null,
                     'inv_update' => null,
                 ];
@@ -150,6 +155,10 @@ class AlibabaAnalyticsController extends Controller
             $dil = $inv > 0 ? round(($ovL30 / $inv) * 100, 2) : 0.0;
             $parent = trim((string) ($pm->parent ?? ''));
             $price = $row->sku_price !== null ? (float) $row->sku_price : 0.0;
+            if (! ($price > 0)) {
+                // Display SKU only: a pack listing (… 2PCS) never borrows the single-unit price.
+                $price = (float) ($fallbackPrice[$this->stdKey($sku)] ?? 0);
+            }
             $lp = $pm ? (float) ($pm->unitLandedPrice() ?? 0) : 0.0;
             $bucket = $l30[$skuKey] ?? ['qty' => 0, 'sales' => 0.0];
             if ($skuKey !== '' && isset($salesUsed[$skuKey])) {
@@ -180,7 +189,7 @@ class AlibabaAnalyticsController extends Controller
                 'image_path' => $image,
                 'image' => $image,
                 'product_id' => $productId,
-                'not_listed' => $productId === '',
+                'not_listed' => $productId === '' && ! ($price > 0),
                 'product_url' => $this->productPageUrl($productId),
                 'status' => $row->status,
                 'sku_price' => $row->sku_price !== null ? (float) $row->sku_price : null,
@@ -627,6 +636,46 @@ class AlibabaAnalyticsController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Alibaba listing price / product id by normalized SKU from alibaba_pricing_prices and alibaba_metrics.
+     *
+     * @return array{0: array<string, float>, 1: array<string, string>}
+     */
+    protected function alibabaFallbackPrices(): array
+    {
+        $prices = [];
+        $productIds = [];
+        try {
+            if (Schema::hasTable('alibaba_pricing_prices')) {
+                foreach (AlibabaPricingPrice::query()->whereNotNull('price')->where('price', '>', 0)->get(['sku', 'price']) as $r) {
+                    $k = $this->stdKey((string) $r->sku);
+                    if ($k !== '') {
+                        $prices[$k] = (float) $r->price;
+                    }
+                }
+            }
+            if (Schema::hasTable('alibaba_metrics')) {
+                foreach (AlibabaMetric::query()->whereNotNull('sku')->get(['sku', 'product_id', 'price']) as $r) {
+                    $k = $this->stdKey((string) $r->sku);
+                    if ($k === '') {
+                        continue;
+                    }
+                    if (! isset($prices[$k]) && $r->price !== null && (float) $r->price > 0) {
+                        $prices[$k] = (float) $r->price;
+                    }
+                    $pid = trim((string) ($r->product_id ?? ''));
+                    if ($pid !== '' && ! isset($productIds[$k])) {
+                        $productIds[$k] = $pid;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // keep whatever was loaded
+        }
+
+        return [$prices, $productIds];
     }
 
     protected function stdKey(string $sku): string
