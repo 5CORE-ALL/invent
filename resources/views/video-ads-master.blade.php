@@ -487,6 +487,9 @@
                     <button type="button" class="btn btn-sm btn-primary" id="vamAddRowBtn">
                         <i class="fa fa-plus"></i> Add Row
                     </button>
+                    <button type="button" class="btn btn-sm btn-danger" id="vamBulkDeleteBtn" disabled title="Delete the checked rows">
+                        <i class="fa fa-trash"></i> Delete
+                    </button>
 
                     <button type="button" class="btn btn-sm btn-success" id="vamImportBtn" title="Upload a CSV of video ads (same headers as the sample template)">
                         <i class="fa fa-upload"></i> Import CSV
@@ -601,6 +604,12 @@
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold">Hook Message</label>
                                 <input type="text" id="vam_hook" class="form-control" placeholder="Hook copy / message">
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Upload video</label>
+                                <input type="file" id="vam_video" class="form-control" accept="video/mp4,video/webm,video/quicktime,video/ogg,.mp4,.webm,.mov,.m4v,.mkv,.ogv,.ogg">
+                                <div class="form-text" id="vam_video_note">Upload the video here. After you save, its picture shows in the Thumb column like the other rows. Leave this empty to keep using the link below.</div>
                             </div>
 
                             <div class="col-12">
@@ -2072,6 +2081,9 @@
                 document.getElementById('vam_channel').value      = '';
                 document.getElementById('vam_hook').value         = '';
                 document.getElementById('vam_link').value         = '';
+                document.getElementById('vam_video').value        = '';
+                const videoNote = document.getElementById('vam_video_note');
+                if (videoNote) videoNote.textContent = 'Upload the video here. After you save, its picture shows in the Thumb column like the other rows. Leave this empty to keep using the link below.';
                 rebuildAudienceSelect([]);
                 rebuildHookSelect([]);
             }
@@ -2095,6 +2107,10 @@
                 rebuildHookSelect(parseTags(data.hook_name));
                 document.getElementById('vam_hook').value        = data.hook        || '';
                 document.getElementById('vam_link').value        = data.link        || '';
+                if (String(data.link || '').indexOf('/video-ads-master/file/') !== -1) {
+                    const videoNote = document.getElementById('vam_video_note');
+                    if (videoNote) videoNote.textContent = 'This row already has an uploaded video. Choose a new file only if you want to replace it.';
+                }
                 rowModal.show();
             }
 
@@ -2127,17 +2143,38 @@
 
                 const isEdit = !!editingId;
                 const url    = isEdit ? `/video-ads-master/${editingId}` : '/video-ads-master';
-                const method = isEdit ? 'PUT' : 'POST';
+                const videoFile = document.getElementById('vam_video').files[0] || null;
+                const saveBtn = document.getElementById('vamRowSaveBtn');
+                const saveIdle = saveBtn.innerHTML;
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = videoFile
+                    ? '<i class="fas fa-spinner fa-spin me-1"></i>Uploading…'
+                    : '<i class="fas fa-spinner fa-spin me-1"></i>Saving…';
 
-                fetch(url, {
-                    method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                    },
-                    body: JSON.stringify(payload),
-                })
+                let request;
+                if (videoFile) {
+                    const body = new FormData();
+                    Object.keys(payload).forEach(key => body.append(key, payload[key] == null ? '' : payload[key]));
+                    body.append('video', videoFile);
+                    if (isEdit) body.append('_method', 'PUT');
+                    request = fetch(url, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body,
+                    });
+                } else {
+                    request = fetch(url, {
+                        method: isEdit ? 'PUT' : 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                }
+
+                request
                 .then(r => r.json().then(j => ({ ok: r.ok, j })))
                 .then(({ ok, j }) => {
                     if (!ok || !j.success) {
@@ -2156,7 +2193,11 @@
                     updateCount();
                     rowModal.hide();
                 })
-                .catch(e => { console.error(e); showToast('Network error while saving', 'error'); });
+                .catch(e => { console.error(e); showToast('Network error while saving', 'error'); })
+                .finally(() => {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = saveIdle;
+                });
             }
 
             // ── Boot ───────────────────────────────────────────────────────────
@@ -2191,6 +2232,7 @@
                     });
 
                 document.getElementById('vamAddRowBtn').addEventListener('click', openAddForm);
+                document.getElementById('vamBulkDeleteBtn').addEventListener('click', deleteSelectedRows);
                 document.getElementById('vamRowSaveBtn').addEventListener('click', saveFormRow);
                 document.getElementById('vamSearch').addEventListener('input', applySearch);
 
@@ -2304,10 +2346,20 @@
                     paginationSizeSelector: [25, 50, 100, 200, 500],
                     paginationCounter: 'rows',
                     index: 'id',
+                    selectableRows: true,
                     columnDefaults: {
                         headerHozAlign: 'center',
                     },
                     columns: [
+                        {
+                            title: '',
+                            formatter: 'rowSelection',
+                            titleFormatter: 'rowSelection',
+                            hozAlign: 'center',
+                            headerSort: false,
+                            width: 44,
+                            resizable: false,
+                        },
                         {
                             title: 'S/P/G', field: '_target',
                             formatter: targetFormatter,
@@ -2453,7 +2505,44 @@
                 // some Tabulator versions don't have `active` data available
                 // by the time `dataLoaded` fires.
                 table.on('tableBuilt', () => updateCount());
+                table.on('rowSelectionChanged', (data) => {
+                    const btn = document.getElementById('vamBulkDeleteBtn');
+                    if (btn) btn.disabled = !data.length;
+                });
                 setTimeout(updateCount, 50);
+            }
+
+            function deleteSelectedRows() {
+                if (!table) return;
+                const rows = table.getSelectedRows();
+                if (!rows.length) {
+                    showToast('Select rows to delete', 'warning');
+                    return;
+                }
+                if (!confirm('Delete ' + rows.length + ' selected row' + (rows.length === 1 ? '' : 's') + '?')) return;
+                const ids = rows.map(row => row.getData().id).filter(Boolean);
+                const btn = document.getElementById('vamBulkDeleteBtn');
+                btn.disabled = true;
+                fetch('/video-ads-master/bulk-delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ ids }),
+                })
+                .then(r => r.json())
+                .then(j => {
+                    if (!j.success) { showToast(j.message || 'Failed to delete', 'error'); return; }
+                    rows.forEach(row => row.delete());
+                    updateCount();
+                    showToast((j.deleted || ids.length) + ' row(s) deleted', 'success');
+                })
+                .catch(e => { console.error(e); showToast('Network error', 'error'); })
+                .finally(() => {
+                    btn.disabled = table.getSelectedRows().length === 0;
+                });
             }
 
             function updateCount() {
