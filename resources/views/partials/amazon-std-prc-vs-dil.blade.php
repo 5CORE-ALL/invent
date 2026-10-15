@@ -1370,6 +1370,7 @@
             const inv = amzStdEmptyBucket();
             const adsPct = (typeof amzAmazonAdsPct === 'function') ? amzAmazonAdsPct() : 0;
             amzStdEachInvChild(function(d) {
+                try {
                 const std = Number(d.STANDARD_PRICE) || 0;
                 const dilVal = (typeof amzPefDil === 'function') ? amzPefDil(d) : 0;
                 let dilIdx = -1;
@@ -1464,7 +1465,14 @@
                     inv.cogs += lp * onHand;
                     inv.units += onHand;
                 }
+                } catch (rowErr) {
+                    // One bad SKU must not blank the whole projection.
+                    if (window.console && console.warn) console.warn('Std prc vs dil: skipped SKU', rowErr);
+                }
             });
+            // Projected cards first, straight from the draft inputs (no Save & Apply needed).
+            amzStdRenderMargins(l30, pg, inv);
+            try {
             $('#amz-sp-dil-tbody tr').each(function(i) {
                 $(this).find('.amz-sp-dil-count').text(dilCounts['d' + i] || 0);
             });
@@ -1570,14 +1578,21 @@
                 + '</td><td class="text-end">' + pctSum + '</td><td class="text-end">' + amzStdMoney(dollarSum) + '</td></tr>');
             $('#amz-sp-all-tbody').html(body.join(''));
 
-            function amzStdMarginBadgesHtml(bucket) {
-                return amzStdMarginBadge('Units', amzStdEsc(Math.round(bucket.units).toLocaleString('en-US')), 'bg-secondary-subtle text-secondary-emphasis')
-                    + amzStdMarginBadge('Profit', amzStdEsc(amzStdMoney(bucket.gross)), bucket.gross < 0 ? 'bg-danger-subtle text-danger-emphasis' : 'bg-success-subtle text-success-emphasis')
-                    + amzStdMetricHtml(bucket);
+            } catch (err) {
+                // Counts, bars and S PRC marks are secondary; they must never block the projected cards.
+                if (window.console && console.error) console.error('Std prc vs dil: modal refresh failed', err);
             }
-            function amzStdMarginSalesHtml(bucket) {
-                return '<span class="amz-sp-sales-lbl">Sales</span>' + amzStdEsc(amzStdMoney(bucket.sales));
-            }
+        }
+        function amzStdMarginBadgesHtml(bucket) {
+            return amzStdMarginBadge('Units', amzStdEsc(Math.round(bucket.units).toLocaleString('en-US')), 'bg-secondary-subtle text-secondary-emphasis')
+                + amzStdMarginBadge('Profit', amzStdEsc(amzStdMoney(bucket.gross)), bucket.gross < 0 ? 'bg-danger-subtle text-danger-emphasis' : 'bg-success-subtle text-success-emphasis')
+                + amzStdMetricHtml(bucket);
+        }
+        function amzStdMarginSalesHtml(bucket) {
+            return '<span class="amz-sp-sales-lbl">Sales</span>' + amzStdEsc(amzStdMoney(bucket.sales));
+        }
+        /** Paint the three "Projected with ..." cards from the live (unsaved) draft rules. */
+        function amzStdRenderMargins(l30, pg, inv) {
             $('#amz-sp-margin-l30').html(amzStdMarginSalesHtml(l30)).css('color', '#166534');
             $('#amz-sp-margin-l30-sub').html(amzStdMarginBadgesHtml(l30));
             $('#amz-sp-margin-pg').html(amzStdMarginSalesHtml(pg)).css('color', '#166534');
@@ -1842,9 +1857,10 @@
                 $(this).closest('tr').remove();
                 amzStdRefreshModal();
             });
-            $(document).off('input.amzsp change.amzsp').on('input.amzsp change.amzsp', '#amzStdPrcModal input', function() {
+            // Any rule edit re-projects Sales / Profit / GROI / GPFT / NROI / NPFT right away (before Save & Apply).
+            $(document).off('.amzspLive').on('input.amzspLive change.amzspLive keyup.amzspLive paste.amzspLive', '#amzStdPrcModal input', function() {
                 clearTimeout(bindAmzStdPrcUi._t);
-                bindAmzStdPrcUi._t = setTimeout(amzStdRefreshModal, 180);
+                bindAmzStdPrcUi._t = setTimeout(amzStdRefreshModal, 40);
             });
             $(document).off('click.amzsphist', '#amzStdPrcModal .amz-sp-hist-dot').on('click.amzsphist', '#amzStdPrcModal .amz-sp-hist-dot', function(e) {
                 e.preventDefault();
