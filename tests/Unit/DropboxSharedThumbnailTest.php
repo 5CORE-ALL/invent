@@ -19,6 +19,10 @@ class DropboxSharedThumbnailTest extends TestCase
             'https://www.dropbox.com/scl/fo/example/hash/Student%20Performance%20Thumbnail.png?rlkey=example',
             DropboxSharedThumbnail::pick($entries, ['Student Performance Hook'])
         );
+        $this->assertSame(
+            'https://www.dropbox.com/scl/fo/example/hash/Partnership%20Thumbnail.jpg?rlkey=example',
+            DropboxSharedThumbnail::pick($entries, ['Partnership Hook.mp4'])
+        );
     }
 
     public function test_short_hook_does_not_match_a_longer_title(): void

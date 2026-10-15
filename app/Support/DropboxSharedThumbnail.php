@@ -22,13 +22,19 @@ class DropboxSharedThumbnail
     public function imageFor(string $pageUrl, array $hooks): ?array
     {
         $share = $this->classify($pageUrl);
-        if ($share === null || $share['mode'] === 'video') {
+        if ($share === null) {
             return null;
+        }
+
+        if (($share['file_name'] ?? '') !== '') {
+            $hooks[] = $share['file_name'];
         }
 
         $href = $share['mode'] === 'image'
             ? $pageUrl
-            : $this->thumbnailHref($share, $hooks);
+            : ($share['mode'] === 'video'
+                ? $this->imageNearVideo($pageUrl, $hooks)
+                : $this->thumbnailHref($share, $hooks));
 
         if ($href === null) {
             return null;
@@ -225,7 +231,10 @@ class DropboxSharedThumbnail
     }
 
     /**
-     * @return array{mode: string, page: string, link_key: string, secure_hash: string, rlkey: string}|null
+     * A folder link that points at one video still has the poster image next to
+     * that file. Keep the folder keys so the image can be listed and chosen.
+     *
+     * @return array{mode: string, page: string, link_key: string, secure_hash: string, rlkey: string, file_name: string}|null
      */
     private function classify(string $url): ?array
     {
@@ -260,6 +269,21 @@ class DropboxSharedThumbnail
         $rest = rawurldecode((string) ($match[4] ?? ''));
         $fileName = $kind === 'fi' ? $second : $rest;
 
+        if ($kind === 'fo') {
+            if (! preg_match('/^[A-Za-z0-9_-]{6,}$/', $second)) {
+                return null;
+            }
+
+            return [
+                'mode' => self::isImageName($fileName) ? 'image' : 'folder',
+                'page' => $url,
+                'link_key' => $match[2],
+                'secure_hash' => $second,
+                'rlkey' => $rlkey,
+                'file_name' => $fileName,
+            ];
+        }
+
         if (self::isImageName($fileName)) {
             return [
                 'mode' => 'image',
@@ -267,6 +291,7 @@ class DropboxSharedThumbnail
                 'link_key' => '',
                 'secure_hash' => '',
                 'rlkey' => $rlkey,
+                'file_name' => $fileName,
             ];
         }
 
@@ -277,20 +302,52 @@ class DropboxSharedThumbnail
                 'link_key' => '',
                 'secure_hash' => '',
                 'rlkey' => $rlkey,
+                'file_name' => $fileName,
             ];
         }
 
-        if ($kind !== 'fo' || ! preg_match('/^[A-Za-z0-9_-]{6,}$/', $second)) {
+        return null;
+    }
+
+    /**
+     * Image files mentioned on a single-file Dropbox share page.
+     *
+     * @param  array<int, string>  $hooks
+     */
+    private function imageNearVideo(string $pageUrl, array $hooks): ?string
+    {
+        $jar = tempnam(sys_get_temp_dir(), 'dbx');
+        if ($jar === false) {
             return null;
         }
 
-        return [
-            'mode' => 'folder',
-            'page' => $url,
-            'link_key' => $match[2],
-            'secure_hash' => $second,
-            'rlkey' => $rlkey,
-        ];
+        try {
+            $page = $this->request($pageUrl, $jar);
+        } finally {
+            @unlink($jar);
+        }
+
+        if (! $page['ok'] || ! $this->isDropboxHost($this->hostOf($page['effective']))) {
+            return null;
+        }
+
+        $html = str_replace('\\/', '/', $page['body']);
+        if (! preg_match_all('#https://(?:www\.)?dropbox\.com/scl/(?:fi|fo)/[^"\'\s<>]+#i', $html, $matches)) {
+            return null;
+        }
+
+        $entries = [];
+        foreach (array_unique($matches[0]) as $href) {
+            $href = html_entity_decode($href, ENT_QUOTES);
+            $path = rawurldecode((string) parse_url($href, PHP_URL_PATH));
+            $name = trim((string) basename($path));
+            if (! self::isImageName($name)) {
+                continue;
+            }
+            $entries[] = ['filename' => $name, 'href' => $href];
+        }
+
+        return self::pick($entries, $hooks);
     }
 
     /**
