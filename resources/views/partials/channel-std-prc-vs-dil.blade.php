@@ -929,6 +929,42 @@
                     invB.gross += gross * inv; invB.net += net * inv; invB.sales += sprice * inv; invB.cogs += lp * inv; invB.units += inv;
                 }
             });
+            // Sales this page already made on SKUs whose stock is now 0 still belong in "Projected with <page> L30".
+            // chStdRows() skips them, so add them here. They get no Age / Dil / CVR / 0 Sold disc (same as a stock-less
+            // row in the loop above), only Reviews + B Disc, and they stay out of the counts and charts.
+            (function() {
+                const addSoldOut = function(d) {
+                    if (!d || d.is_parent_summary) return;
+                    if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return;
+                    if (chStdStockForAge(d) > 0) return;
+                    const pgUnits = chStdSiteL30(d);
+                    if (!(pgUnits > 0)) return;
+                    const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
+                    if (!(std > 0)) return;
+                    const reviews = chStdReviews(d);
+                    let revDisc = 0;
+                    if (reviews > 0 && reviews < draft.reviewMax) {
+                        for (let i = 0; i < draft.reviews.length; i++) {
+                            if (reviews >= draft.reviews[i].min && reviews <= draft.reviews[i].max) { revDisc = chStdScaleDisc(std, Number(draft.reviews[i].disc) || 0); break; }
+                        }
+                    }
+                    let bussDisc = 0;
+                    for (let i = 0; i < draft.buss.length; i++) {
+                        if (chStdInRange(std, draft.buss[i], i === draft.buss.length - 1)) { bussDisc = Number(draft.buss[i].disc) || 0; break; }
+                    }
+                    const sum = Math.min(99.99, revDisc + bussDisc);
+                    let sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
+                    sprice = chStdRaiseToMinNpft(sprice, d, draft.minNpft);
+                    const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
+                    const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
+                    const gross = (sprice * chStdMargin(d)) - ship - lp;
+                    const net = gross - (sprice * ads / 100);
+                    pgB.gross += gross * pgUnits; pgB.net += net * pgUnits; pgB.sales += sprice * pgUnits; pgB.cogs += lp * pgUnits; pgB.units += pgUnits;
+                };
+                const full = chStdFullDataset();
+                if (full) full.forEach(addSoldOut);
+                else if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { addSoldOut(d); });
+            })();
             const countKey = { dil: 'd', age: 'a', rev: 'r', buss: 'u' };
             const countMap = { dil: dilCounts, age: ageCounts, rev: revCounts, buss: bussCounts };
             ['dil', 'age', 'rev', 'buss'].forEach(function(prefix) {
