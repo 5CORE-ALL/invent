@@ -168,7 +168,7 @@
                         @if(in_array(($channelPromoChannel ?? ''), ['doba', 'doba_withoutship'], true))
                         <div class="ch-sp-margin">
                             <div>
-                                <div class="small text-muted" title="Actual Doba L30 orders (same totals as Doba daily sales): every order counts, including SKUs whose stock is now 0. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
+                                <div class="small text-muted" title="Doba L30 units x the L30 average sold price, with today's margin, LP and ship. Every SKU with Doba sales is counted, including SKUs whose stock is now 0. Not affected by the discount rules below.">Current {{ $channelStdPageName }} L30</div>
                                 <strong id="ch-sp-margin-cur">—</strong>
                                 <div class="ch-sp-margin-badges" id="ch-sp-margin-cur-sub"></div>
                             </div>
@@ -760,36 +760,6 @@
          * "Current <page> L30": this page's actual sold units x the L30 average sold price, with today's
          * margin / LP / ship. Includes SKUs whose stock is now 0 (chStdRows() drops those) and ignores the draft rules.
          */
-        // Doba L30 totals straight from doba_daily_data (same numbers as /doba/daily-sales). Every order counts,
-        // including SKUs with 0 stock and SKUs that are no longer rows in this table.
-        let chStdCurrentServer = null;
-        let chStdCurrentServerLoading = false;
-        function chStdLoadCurrentServer() {
-            if (chStdCurrentServer || chStdCurrentServerLoading) return;
-            const ch = (typeof CHANNEL_PROMO_CHANNEL === 'string') ? CHANNEL_PROMO_CHANNEL : '';
-            if (ch !== 'doba' && ch !== 'doba_withoutship') return;
-            chStdCurrentServerLoading = true;
-            $.ajax({
-                url: ch === 'doba_withoutship' ? '/doba/summary-metrics-withoutship' : '/doba/summary-metrics',
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-            }).done(function(res) {
-                const x = res && res.success && res.data ? res.data : null;
-                if (!x) return;
-                chStdCurrentServer = {
-                    units: Number(x.total_quantity) || 0,
-                    sales: Number(x.total_sales) || 0,
-                    cogs: Number(x.total_cogs) || 0,
-                    gross: Number(x.total_pft) || 0,
-                };
-                if (typeof chStdRefresh === 'function') chStdRefresh();
-            }).always(function() { chStdCurrentServerLoading = false; });
-        }
-        function chStdCurrentServerBucket(adsPct) {
-            if (!chStdCurrentServer) return null;
-            const s = chStdCurrentServer;
-            return { gross: s.gross, net: s.gross - (s.sales * (Number(adsPct) || 0) / 100), sales: s.sales, cogs: s.cogs, units: s.units };
-        }
         function chStdCurrentSiteBucket(adsPct) {
             const b = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const noShip = chStdExcludesShip() || (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'doba_withoutship');
@@ -994,42 +964,6 @@
                     invB.gross += gross * inv; invB.net += net * inv; invB.sales += sprice * inv; invB.cogs += lp * inv; invB.units += inv;
                 }
             });
-            // Sales this page already made on SKUs whose stock is now 0 still belong in "Projected with <page> L30".
-            // chStdRows() skips them, so add them here. They get no Age / Dil / CVR / 0 Sold disc (same as a stock-less
-            // row in the loop above), only Reviews + B Disc, and they stay out of the counts and charts.
-            (function() {
-                const addSoldOut = function(d) {
-                    if (!d || d.is_parent_summary) return;
-                    if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return;
-                    if (chStdStockForAge(d) > 0) return;
-                    const pgUnits = chStdSiteL30(d);
-                    if (!(pgUnits > 0)) return;
-                    const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
-                    if (!(std > 0)) return;
-                    const reviews = chStdReviews(d);
-                    let revDisc = 0;
-                    if (reviews > 0 && reviews < draft.reviewMax) {
-                        for (let i = 0; i < draft.reviews.length; i++) {
-                            if (reviews >= draft.reviews[i].min && reviews <= draft.reviews[i].max) { revDisc = chStdScaleDisc(std, Number(draft.reviews[i].disc) || 0); break; }
-                        }
-                    }
-                    let bussDisc = 0;
-                    for (let i = 0; i < draft.buss.length; i++) {
-                        if (chStdInRange(std, draft.buss[i], i === draft.buss.length - 1)) { bussDisc = Number(draft.buss[i].disc) || 0; break; }
-                    }
-                    const sum = Math.min(99.99, revDisc + bussDisc);
-                    let sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
-                    sprice = chStdRaiseToMinNpft(sprice, d, draft.minNpft);
-                    const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
-                    const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
-                    const gross = (sprice * chStdMargin(d)) - ship - lp;
-                    const net = gross - (sprice * ads / 100);
-                    pgB.gross += gross * pgUnits; pgB.net += net * pgUnits; pgB.sales += sprice * pgUnits; pgB.cogs += lp * pgUnits; pgB.units += pgUnits;
-                };
-                const full = chStdFullDataset();
-                if (full) full.forEach(addSoldOut);
-                else if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { addSoldOut(d); });
-            })();
             const countKey = { dil: 'd', age: 'a', rev: 'r', buss: 'u' };
             const countMap = { dil: dilCounts, age: ageCounts, rev: revCounts, buss: bussCounts };
             ['dil', 'age', 'rev', 'buss'].forEach(function(prefix) {
@@ -1112,8 +1046,7 @@
             $('#ch-sp-margin-pg').html(marginSalesHtml(pgB)).css('color', '#166534');
             $('#ch-sp-margin-pg-sub').html(marginBadgesHtml(pgB));
             if ($('#ch-sp-margin-cur').length) {
-                chStdLoadCurrentServer();
-                const curB = chStdCurrentServerBucket(ads) || chStdCurrentSiteBucket(ads);
+                const curB = chStdCurrentSiteBucket(ads);
                 $('#ch-sp-margin-cur').html(marginSalesHtml(curB)).css('color', '#166534');
                 $('#ch-sp-margin-cur-sub').html(marginBadgesHtml(curB));
             }
