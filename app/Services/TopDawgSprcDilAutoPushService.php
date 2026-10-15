@@ -22,8 +22,7 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  Then raised to Min NPFT % (saved in topdawg_std_prc_vs_dil, default 10). Clearance SKUs keep the discount price.
- *  Std Prc is the maximum, then the Amz rule: S PRC never sits below the Amazon price (A Price).
- *  No LMP cap (TopDawg has no LMP).
+ *  Std Prc is the maximum. No Amz floor and no LMP cap.
  *  TopDawg profit has no Ship (same as /topdawg/sales-dashboard).
  *
  * Same flow as Amazon, except Ship (TopDawg profit has none) and LMP (no LMP cap, only Std caps):
@@ -123,7 +122,7 @@ class TopDawgSprcDilAutoPushService
 
                     if (PushedListingPrice::same($row['price'] ?? 0, $sprice)) {
                         // Live TD Price already equals the target. Keep the saved S PRC in step, no push.
-                        if (! $dryRun && (! PushedListingPrice::same($row['sprice'] ?? 0, $sprice) || ! empty($row['amz_capped']) !== ! empty($computed['amz_capped']))) {
+                        if (! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
                             $this->saveSprice((string) $row['sku'], $computed, 'pushed');
                             $stats['applied']++;
                         }
@@ -231,7 +230,7 @@ class TopDawgSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT, Std is the maximum (no LMP cap).
+     * Page S PRC formula (INV > 0 child SKUs): Std rule + Min NPFT, Std is the maximum (no LMP cap, no Amz floor).
      * TopDawg profit has no Ship. Ads % is the Channel Master value (row key ads_pct).
      *
      * @param  array<string, mixed>  $row
@@ -281,22 +280,17 @@ class TopDawgSprcDilAutoPushService
             return null;
         }
 
-        // No LMP cap and no eBay / Amazon caps. Std Prc is the maximum.
+        // No LMP cap and no Amazon floor. Std Prc is the maximum.
         $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
 
-        // Amz rule: S PRC is never below the Amazon price (A Price).
-        $amz = round((float) ($row['amz'] ?? 0), 2);
-        $amzCapped = $amz > 0 && $uncapped + 0.0001 < $amz;
-        $capped = $amzCapped ? $amz : $uncapped;
-
-        if (! is_finite($capped) || $capped < 0.01) {
+        if (! is_finite($uncapped) || $uncapped < 0.01) {
             return null;
         }
 
         return [
-            'sprice' => round($capped, 2),
+            'sprice' => round($uncapped, 2),
             'uncapped' => round($uncapped, 2),
-            'amz_capped' => $amzCapped,
+            'amz_capped' => false,
             'base' => round($std, 2),
             'margin' => $margin,
             'lp' => $lp,
@@ -374,8 +368,6 @@ class TopDawgSprcDilAutoPushService
                 'margin' => (float) ($r['percentage'] ?? 0),
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
-                'amz' => (float) ($r['A Price'] ?? 0),
-                'amz_capped' => ! empty($r['AMZ_CAPPED']),
                 'sprice' => (float) ($r['SPRICE'] ?? 0),
                 'pushed_value' => isset($r['SPRICE_PUSHED_VALUE']) && is_numeric($r['SPRICE_PUSHED_VALUE'])
                     ? (float) $r['SPRICE_PUSHED_VALUE']

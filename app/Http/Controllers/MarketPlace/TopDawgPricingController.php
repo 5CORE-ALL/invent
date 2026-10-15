@@ -5,7 +5,6 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Sales\EbaySalesController;
 use App\Models\AmazonChannelSummary;
-use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
 use App\Models\MarketplacePercentage;
 use App\Models\ProductMaster;
@@ -120,16 +119,6 @@ class TopDawgPricingController extends Controller
 
         $amazonStandardPrices = $this->amazonStandardPricesBySku($skus);
 
-        // A Price (Amazon datasheet) for the Amz rule: S PRC is never below it.
-        $amazonPrices = [];
-        try {
-            foreach (AmazonDatasheet::query()->whereIn('sku', $skus)->get(['sku', 'price']) as $ad) {
-                $amazonPrices[$ad->sku] = (float) ($ad->price ?? 0);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('TopDawg A Price lookup failed: '.$e->getMessage());
-        }
-
         $topdawgData = Schema::hasTable('topdawg_products')
             ? TopDawgProduct::buildLookupByNormalizedSku($skus, false, true)
             : [];
@@ -183,7 +172,6 @@ class TopDawgPricingController extends Controller
                 '(Child) sku' => $sku,
                 'INV' => $inv,
                 'L30' => $ovL30,
-                'A Price' => $amazonPrices[$sku] ?? 0,
                 'TD Price' => $tdPrice,
                 'TD Stock' => $tdStock,
                 'TD L30' => $tdL30,
@@ -208,9 +196,6 @@ class TopDawgPricingController extends Controller
             $row['SPRICE_STATUS_UPDATED_AT'] = null;
             $row['SPRICE_PUSHED_BY'] = null;
             $row['SPRICE_PUSHED_AT'] = null;
-            // Set by topdawg:sprc-dil-auto-push when the Amz rule raised S PRC to A Price.
-            $row['AMZ_CAPPED'] = false;
-            $row['SPRICE_UNCAPPED'] = null;
             if ($dvRecord) {
                 $dvValue = is_array($dvRecord->value) ? $dvRecord->value : (json_decode($dvRecord->value, true) ?? []);
                 if (is_array($dvValue)) {
@@ -225,8 +210,6 @@ class TopDawgPricingController extends Controller
                     $row['SPRICE_STATUS_UPDATED_AT'] = $dvValue['SPRICE_STATUS_UPDATED_AT'] ?? $dvValue['PUSH_STATUS_UPDATED_AT'] ?? null;
                     $row['SPRICE_PUSHED_BY'] = $dvValue['SPRICE_PUSHED_BY'] ?? null;
                     $row['SPRICE_PUSHED_AT'] = $dvValue['SPRICE_PUSHED_AT'] ?? null;
-                    $row['AMZ_CAPPED'] = filter_var($dvValue['AMZ_CAPPED'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                    $row['SPRICE_UNCAPPED'] = isset($dvValue['SPRICE_UNCAPPED']) ? (float) $dvValue['SPRICE_UNCAPPED'] : null;
                 }
             }
 

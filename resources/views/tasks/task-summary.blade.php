@@ -314,6 +314,30 @@
             color: #94a3b8 !important;
             font-weight: 600;
         }
+        .task-summary-chat-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            vertical-align: middle;
+        }
+        .task-summary-chat-dot.is-red {
+            background: #e01e5a;
+            box-shadow: 0 0 0 2px rgba(224, 30, 90, 0.25);
+        }
+        .task-summary-chat-dot.is-yellow {
+            background: #ecb22e;
+            box-shadow: 0 0 0 2px rgba(236, 178, 46, 0.28);
+        }
+        .task-summary-col-ann {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: #d97706 !important;
+        }
+        .task-summary-col-ann.is-zero {
+            color: #94a3b8 !important;
+            font-weight: 600;
+        }
         .task-summary-dar-cell {
             display: inline-flex;
             align-items: center;
@@ -1465,11 +1489,14 @@
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="l30_hrs" data-sort-type="number" title="Attendance — last 30 days hours from the in-app logger (Shobha and Mariya use Team Logger) as a % of 200" role="button" tabindex="0">
                                         ATT <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort task-summary-col-chat-red" data-sort-key="chat_red" data-sort-type="number" title="Chat Red — direct chats with unread messages (red dot)" role="button" tabindex="0">
-                                        Chat Red <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="chat_red" data-sort-type="number" title="Red dot — direct chats with unread messages" role="button" tabindex="0" aria-label="Red dot">
+                                        <span class="task-summary-chat-dot is-red" aria-hidden="true"></span>
                                     </th>
-                                    <th scope="col" class="task-summary-th-sort task-summary-col-chat-yellow" data-sort-key="chat_yellow" data-sort-type="number" title="Chat Yellow — direct chats that have messages and are fully read (yellow dot)" role="button" tabindex="0">
-                                        Chat Yellow <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="chat_yellow" data-sort-type="number" title="Yellow dot — direct chats that have messages and are fully read" role="button" tabindex="0" aria-label="Yellow dot">
+                                        <span class="task-summary-chat-dot is-yellow" aria-hidden="true"></span>
+                                    </th>
+                                    <th scope="col" class="task-summary-th-sort" data-sort-key="ann_unseen" data-sort-type="number" title="Ann — posted announcements this person has not seen" role="button" tabindex="0">
+                                        Ann <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
                                     </th>
                                     <th scope="col" class="task-summary-th-sort" data-sort-key="assignor_task" data-sort-type="number" title="Task Given — sort by tasks this member has assigned to others" role="button" tabindex="0">
                                         Task-G <i class="task-summary-sort-icon ri-arrow-up-down-line" aria-hidden="true"></i>
@@ -1550,6 +1577,7 @@
                                         data-sort-l30_hrs="{{ (int) ($row['att_l30_pct'] ?? 0) }}"
                                         data-sort-chat_red="{{ (int) ($row['chat_red'] ?? 0) }}"
                                         data-sort-chat_yellow="{{ (int) ($row['chat_yellow'] ?? 0) }}"
+                                        data-sort-ann_unseen="{{ (int) ($row['ann_unseen'] ?? 0) }}"
                                         data-sort-assignor_task="{{ (int) ($row['assignor_task'] ?? 0) }}"
                                         data-sort-overdue="{{ (int) ($row['overdue'] ?? 0) }}"
                                         data-sort-dar_l30="{{ (int) ($row['dar_l30_pct'] ?? 0) }}"
@@ -1824,6 +1852,11 @@
                                             title="{{ $chatYellow }} direct chat{{ $chatYellow === 1 ? '' : 's' }} with the yellow dot (messages already read)">
                                             {{ $chatYellow }}
                                         </td>
+                                        @php $annUnseen = (int) ($row['ann_unseen'] ?? 0); @endphp
+                                        <td class="task-summary-num task-summary-col-ann {{ $annUnseen === 0 ? 'is-zero' : '' }}"
+                                            title="{{ $annUnseen }} posted announcement{{ $annUnseen === 1 ? '' : 's' }} not seen">
+                                            {{ $annUnseen }}
+                                        </td>
                                         <td class="task-summary-num">{{ $row['assignor_task'] }}</td>
                                         <td class="task-summary-num task-summary-col-done">{{ $row['done'] }}</td>
                                         @php
@@ -2018,7 +2051,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="33" class="text-center text-muted py-4">
+                                        <td colspan="34" class="text-center text-muted py-4">
                                             @if (($visibility['scope'] ?? 'all') !== 'all')
                                                 No team members visible to you. Ask an admin to update your Role (Mgr/Director) or tag juniors under you.
                                             @else
@@ -2029,7 +2062,7 @@
                                 @endforelse
                                 @if (!empty($rows) && count($rows))
                                     <tr id="task-summary-filter-empty" class="d-none">
-                                        <td colspan="33" class="text-center text-muted py-4">No matching team members.</td>
+                                        <td colspan="34" class="text-center text-muted py-4">No matching team members.</td>
                                     </tr>
                                 @endif
                             </tbody>

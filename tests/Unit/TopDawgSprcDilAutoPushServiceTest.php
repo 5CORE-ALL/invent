@@ -62,27 +62,13 @@ class TopDawgSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_amz_rule_raises_price_to_a_price(): void
+    public function test_amazon_price_does_not_raise_sprice(): void
     {
         $out = (new TopDawgSprcDilAutoPushService)->computeTarget($this->row(['amz' => 95.49]), $this->pricer());
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(95.49, $out['sprice'], 0.001);
-        $this->assertEqualsWithDelta(90.00, $out['uncapped'], 0.001);
-        $this->assertTrue($out['amz_capped']);
-    }
-
-    public function test_amz_rule_does_nothing_at_or_above_a_price(): void
-    {
-        $svc = new TopDawgSprcDilAutoPushService;
-
-        $above = $svc->computeTarget($this->row(['amz' => 80]), $this->pricer());
-        $this->assertEqualsWithDelta(90.00, $above['sprice'], 0.001);
-        $this->assertFalse($above['amz_capped']);
-
-        $equal = $svc->computeTarget($this->row(['amz' => 90]), $this->pricer());
-        $this->assertEqualsWithDelta(90.00, $equal['sprice'], 0.001);
-        $this->assertFalse($equal['amz_capped']);
+        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+        $this->assertFalse($out['amz_capped']);
     }
 
     public function test_no_inventory_or_std_has_no_target(): void

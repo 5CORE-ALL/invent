@@ -556,8 +556,19 @@
         }
         #summary-stats .amm-inv-block-pair {
             display: flex;
-            align-items: flex-start;
+            align-items: center;
+            gap: 0.65rem;
             min-width: 0;
+        }
+        #summary-stats .amm-inv-block-canvas {
+            width: 180px;
+            height: 110px;
+            flex: 0 0 180px;
+        }
+        #summary-stats .amm-inv-block-canvas canvas {
+            width: 180px !important;
+            height: 110px !important;
+            display: block;
         }
         #summary-stats .amm-inv-block-copy {
             flex: 1 1 auto;
@@ -570,9 +581,10 @@
             margin: 0 0 0.15rem;
         }
         #summary-stats .amm-badge-block--inv .amm-inv-pie-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: 10px minmax(92px, 1.4fr) 48px 58px 46px;
+            column-gap: 8px;
             align-items: center;
-            gap: 6px;
             font-size: 11px;
             line-height: 1.35;
             padding: 1px 0;
@@ -581,27 +593,27 @@
             width: 8px;
             height: 8px;
             border-radius: 2px;
-            flex: 0 0 8px;
         }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-name { flex: 0 1 auto; font-weight: 600; color: #334155; margin-right: auto; }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-count { font-weight: 700; min-width: 28px; text-align: right; }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-val { font-weight: 700; min-width: 40px; text-align: right; }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-pct { color: #64748b; min-width: 28px; text-align: right; }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-name { font-weight: 600; color: #334155; white-space: nowrap; }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-count { font-weight: 700; text-align: right; white-space: nowrap; }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-val { font-weight: 700; text-align: right; white-space: nowrap; }
+        #summary-stats .amm-badge-block--inv .amm-inv-pie-pct { color: #64748b; text-align: right; white-space: nowrap; }
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
             align-items: center;
-            gap: 0.25rem;
+            align-content: flex-start;
+            gap: 0.28rem;
             width: 100%;
             max-width: 100%;
-            overflow: hidden;
+            overflow: visible;
         }
         #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 0 1 auto;
+            flex: 1 1 auto;
             min-width: 0;
             max-width: none;
-            font-size: 0.75rem;
-            padding: 0.28rem 0.38rem;
+            font-size: 12px;
+            padding: 0.28rem 0.42rem;
             font-weight: bold;
             box-sizing: border-box;
             display: inline-flex;
@@ -1115,6 +1127,9 @@
                         </div>
                         <div class="amm-inv-block-grid">
                             <div class="amm-inv-block-pair">
+                                <div class="amm-inv-block-canvas">
+                                    <canvas id="amm-inv-block-sp-pie"></canvas>
+                                </div>
                                 <div class="amm-inv-block-copy">
                                     <div class="amm-inv-block-subtitle">Inv@SP</div>
                                     <div id="amm-inv-block-sp"><div class="text-muted" style="font-size:11px;">Loading…</div></div>
@@ -1784,6 +1799,7 @@
         var lastInventoryPies = null;
         var ammInvLpPieChart = null;
         var ammInvSpPieChart = null;
+        var ammInvBlockSpPieChart = null;
         var ammInvHistChart = null;
         var ammInvLiveSlices = [];
         var ammInvLiveHistory = [];
@@ -5582,29 +5598,33 @@
             }
 
             function fitAmmBadgeRows() {
-                if (window.innerWidth < 768) return;
                 document.querySelectorAll('#summary-stats .ebay2-summary-badge-row').forEach(function(row) {
-                    row.style.zoom = '1';
-                    var badges = row.querySelectorAll(':scope > .badge:not(.d-none)');
+                    row.style.zoom = '';
+                    var badges = Array.prototype.filter.call(row.querySelectorAll(':scope > .badge'), function(b) {
+                        return !b.classList.contains('d-none');
+                    });
+                    if (!badges.length || row.clientWidth < 40) return;
+                    var cols = Math.max(1, Math.ceil(badges.length / 2));
+                    var slot = 'calc(' + (100 / cols) + '% - 0.28rem)';
+                    badges.forEach(function(b) {
+                        b.style.setProperty('flex', '1 1 ' + slot, 'important');
+                        b.style.setProperty('max-width', slot, 'important');
+                        b.style.setProperty('min-width', '0', 'important');
+                        b.style.setProperty('font-size', '12px', 'important');
+                        b.style.setProperty('padding', '4px 6px', 'important');
+                        b.style.setProperty('white-space', 'nowrap', 'important');
+                    });
                     var size = 12;
-                    var min = 9;
-                    function apply(px) {
-                        var padY = px >= 11 ? 4 : 2;
-                        var padX = px >= 11 ? 6 : 3;
-                        badges.forEach(function(b) {
-                            b.style.setProperty('font-size', px + 'px', 'important');
-                            b.style.setProperty('padding', padY + 'px ' + padX + 'px', 'important');
-                        });
-                    }
-                    apply(size);
                     var guard = 0;
-                    while (row.scrollWidth > row.clientWidth + 1 && size > min && guard < 16) {
+                    while (size > 11 && guard < 4) {
+                        var clipped = badges.some(function(b) { return b.scrollWidth > b.clientWidth + 2; });
+                        if (!clipped) break;
                         size -= 0.5;
-                        apply(size);
+                        var px = size + 'px';
+                        badges.forEach(function(b) {
+                            b.style.setProperty('font-size', px, 'important');
+                        });
                         guard++;
-                    }
-                    if (row.scrollWidth > row.clientWidth + 1 && row.clientWidth > 0) {
-                        row.style.zoom = String(row.clientWidth / row.scrollWidth);
                     }
                 });
             }
@@ -7207,6 +7227,63 @@
                 if (!raw.length) return;
                 const slices = ammInvNormalizeSlices(raw);
                 $('#amm-inv-block-sp').html(ammInvLegendHtml('sp', slices, 'inv_at_sp', false));
+                ammInvDrawColumn('amm-inv-block-sp-pie', slices, 'inv_at_sp');
+            }
+            function ammInvDrawColumn(canvasId, slices, valueKey) {
+                const canvas = document.getElementById(canvasId);
+                if (!canvas || typeof Chart === 'undefined') return;
+                const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
+                if (ammInvBlockSpPieChart) {
+                    ammInvBlockSpPieChart.destroy();
+                    ammInvBlockSpPieChart = null;
+                }
+                const shortLabel = { red: 'Red', green: 'Green', pink: 'Pink' };
+                ammInvBlockSpPieChart = new Chart(canvas.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: slices.map(function(s) { return shortLabel[s.key] || s.label; }),
+                        datasets: [{
+                            data: slices.map(function(s) { return Number(s[valueKey]) || 0; }),
+                            backgroundColor: slices.map(function(s) { return s.color; }),
+                            borderWidth: 0,
+                            borderRadius: 3,
+                            maxBarThickness: 28,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        const slice = slices[ctx.dataIndex] || {};
+                                        const n = Number(ctx.raw) || 0;
+                                        const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                                        return ' ' + (slice.count || 0) + ' SKUs  ·  ' + ammInvMoneyCompact(n) + '  ·  ' + pct + '%';
+                                    },
+                                },
+                            },
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: { font: { size: 10 }, color: '#334155' },
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    font: { size: 9 },
+                                    color: '#64748b',
+                                    maxTicksLimit: 4,
+                                    callback: function(v) { return ammInvMoneyCompact(v); },
+                                },
+                                grid: { color: '#e2e8f0' },
+                            },
+                        },
+                    },
+                });
             }
             function ammInvDrawPie(canvasId, chartRef, slices, valueKey) {
                 const canvas = document.getElementById(canvasId);

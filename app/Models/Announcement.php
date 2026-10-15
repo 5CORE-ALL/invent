@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 class Announcement extends Model
 {
@@ -61,6 +62,54 @@ class Announcement extends Model
         return $query->whereDoesntHave('views', function (Builder $views) use ($userId) {
             $views->where('user_id', $userId);
         });
+    }
+
+    /**
+     * Posted announcements each user has not opened. Same count as the topbar megaphone.
+     *
+     * @param  list<int>  $userIds
+     * @return array<int, int>
+     */
+    public static function unseenCountsByUser(array $userIds): array
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        $out = [];
+        foreach ($userIds as $userId) {
+            $out[$userId] = 0;
+        }
+        if (
+            $userIds === []
+            || ! Schema::hasTable('announcements')
+            || ! Schema::hasColumn('announcements', 'posted_at')
+        ) {
+            return $out;
+        }
+
+        $postedTotal = (int) static::query()->posted()->count();
+        if ($postedTotal === 0) {
+            return $out;
+        }
+        if (! Schema::hasTable('announcement_views')) {
+            foreach ($userIds as $userId) {
+                $out[$userId] = $postedTotal;
+            }
+
+            return $out;
+        }
+
+        $seen = AnnouncementView::query()
+            ->join('announcements', 'announcements.id', '=', 'announcement_views.announcement_id')
+            ->whereNotNull('announcements.posted_at')
+            ->whereIn('announcement_views.user_id', $userIds)
+            ->groupBy('announcement_views.user_id')
+            ->selectRaw('announcement_views.user_id as user_id, COUNT(*) as seen')
+            ->pluck('seen', 'user_id');
+
+        foreach ($userIds as $userId) {
+            $out[$userId] = max(0, $postedTotal - (int) ($seen[$userId] ?? 0));
+        }
+
+        return $out;
     }
 
     /**

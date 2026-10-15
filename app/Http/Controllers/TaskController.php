@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Announcement;
 use App\Models\AttendanceDailySummary;
 use App\Models\AttendanceSession;
 use App\Models\TeamLoggerDailyHours;
@@ -646,6 +647,7 @@ class TaskController extends Controller
 
         $attHoursByUser = $this->getTaskSummaryAttendanceHours($members->pluck('id')->all());
         $chatDotsByUser = ChatWorkspace::dmDotCountsByUser($members->pluck('id')->all());
+        $annUnseenByUser = Announcement::unseenCountsByUser($members->pluck('id')->all());
         $yTimeByUser = $this->yesterdayActiveSecondsByUser(
             $members->pluck('id')->all(),
             $this->yesterdayDoneWindow()['date']
@@ -771,6 +773,7 @@ class TaskController extends Controller
                 'att_l30_band' => $attMetrics['att_l30_band'],
                 'chat_red' => (int) ($chatDotsByUser[(int) $member->id]['red'] ?? 0),
                 'chat_yellow' => (int) ($chatDotsByUser[(int) $member->id]['yellow'] ?? 0),
+                'ann_unseen' => (int) ($annUnseenByUser[(int) $member->id] ?? 0),
                 'assignor_task' => $counts['assignor_task'],
                 'overdue' => $counts['overdue'],
                 'dar_l30_count' => $darMetrics['dar_l30_count'],

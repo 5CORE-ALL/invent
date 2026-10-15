@@ -270,9 +270,6 @@
     function tdIsParentRow(d) {
         return !!(d && (d.is_parent_summary || d.is_parent || (d.Parent && String(d.Parent).toUpperCase().indexOf('PARENT') === 0)));
     }
-    function tdAmzPrice(data) {
-        return Math.round((parseFloat(data && data['A Price']) || 0) * 100) / 100;
-    }
     function tdRawSprice(data) {
         if (!data || tdIsParentRow(data)) return 0;
         if (typeof chPromoTableSprice === 'function') {
@@ -284,20 +281,8 @@
         }
         return parseFloat(data.SPRICE) || 0;
     }
-    /** Amz rule on display: a saved S PRC under A Price shows A Price right away, before the next server run re-saves it. */
     function tdDisplayedSprice(data) {
-        const v = tdRawSprice(data);
-        const amz = tdAmzPrice(data);
-        if (v > 0 && amz > 0 && v + 0.0001 < amz) return amz;
-        return v;
-    }
-    function tdHasAmzCap(data) {
-        if (!data || tdIsParentRow(data)) return false;
-        const amz = tdAmzPrice(data);
-        const shown = tdDisplayedSprice(data);
-        if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
-        const flag = data.AMZ_CAPPED === true || data.AMZ_CAPPED === 1 || data.AMZ_CAPPED === '1';
-        return flag || tdRawSprice(data) + 0.0001 < amz;
+        return tdRawSprice(data);
     }
     function tdRowSpriceForAlert(data) {
         return tdDisplayedSprice(data);
@@ -1067,7 +1052,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92, sorter: 'number',
                     editable: false,
-                    headerTooltip: 'Not editable. Saved by the server at 4:30 AM and 8:30 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap (same as Amazon), then never below A Price (Amz), then pushed to TopDawg (no ship). TopDawg queues each price for review (1–24h). The page does not need to be open. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
+                    headerTooltip: 'Not editable. Saved by the server at 4:30 AM and 8:30 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, Min NPFT, LMP cap (same as Amazon), then pushed to TopDawg (no ship). TopDawg queues each price for review (1–24h). The page does not need to be open. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
@@ -1097,12 +1082,7 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        const amzPrice = tdAmzPrice(rowData);
-                        const amzLbl = (tdHasAmzCap(rowData) && amzPrice > 0)
-                            ? '<span class="td-sprice-amz-lbl" style="font-size:9px;font-weight:700;color:#fd7e14;border:1px solid #fd7e14;border-radius:3px;padding:0 3px;" title="S PRC raised to Amazon $'
-                                + amzPrice.toFixed(2) + '">Amz</span>'
-                            : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
