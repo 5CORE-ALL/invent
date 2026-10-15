@@ -452,8 +452,9 @@
             min-width: 0;
             overflow: visible;
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.15fr) minmax(0, 0.75fr);
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
             gap: 0.5rem;
+            align-items: stretch;
             background: transparent !important;
             padding: 0 !important;
         }
@@ -472,7 +473,7 @@
             margin: 0 0 0.35rem;
         }
         #summary-stats .amm-badge-block--l30 {
-            grid-column: 3 / 5;
+            grid-column: 3;
             grid-row: 1;
             background: #dbeafe;
             border-color: #93c5fd;
@@ -506,7 +507,7 @@
             background: #fff;
         }
         #summary-stats .amm-badge-block--projected {
-            grid-column: 5;
+            grid-column: 4;
             grid-row: 1;
             background: #ede9fe;
             border-color: #c4b5fd;
@@ -526,14 +527,14 @@
             background: #fff;
         }
         #summary-stats .amm-badge-block--forecast {
-            grid-column: 3 / 5;
+            grid-column: 3;
             grid-row: 2;
             background: #fef9c3;
             border-color: #fde047;
         }
         #summary-stats .amm-badge-block--forecast .amm-badge-block-title { color: #854d0e; }
         #summary-stats .amm-badge-block--others {
-            grid-column: 5;
+            grid-column: 4;
             grid-row: 2;
             background: #ffedd5;
             border-color: #fdba74;
@@ -556,64 +557,113 @@
         }
         #summary-stats .amm-inv-block-pair {
             display: flex;
-            align-items: center;
-            gap: 0.65rem;
+            align-items: stretch;
+            gap: 0.5rem;
             min-width: 0;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.4rem 0.5rem;
         }
         #summary-stats .amm-inv-block-canvas {
-            width: 180px;
-            height: 110px;
-            flex: 0 0 180px;
+            width: 200px;
+            min-width: 200px;
+            max-width: 200px;
+            height: 112px;
+            flex: 0 0 200px;
+            overflow: hidden;
+            background: #fff;
+            border-radius: 8px;
         }
         #summary-stats .amm-inv-block-canvas canvas {
-            width: 180px !important;
-            height: 110px !important;
+            width: 200px !important;
+            height: 112px !important;
+            max-width: 200px !important;
             display: block;
         }
         #summary-stats .amm-inv-block-copy {
             flex: 1 1 auto;
             min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
         #summary-stats .amm-inv-block-subtitle {
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             font-weight: 800;
             color: #0f172a;
-            margin: 0 0 0.15rem;
+            margin: 0 0 0.3rem;
         }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-row {
+        #summary-stats .amm-inv-band-row {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 0.4rem;
+            min-width: 0;
+        }
+        #summary-stats .amm-inv-band {
+            flex: 1 1 0;
+            min-width: 0;
+            border-radius: 8px;
+            padding: 0.35rem 0.45rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            line-height: 1.25;
+        }
+        #summary-stats .amm-inv-band--red { background: #fee2e2; color: #7f1d1d; }
+        #summary-stats .amm-inv-band--green { background: #dcfce7; color: #14532d; }
+        #summary-stats .amm-inv-band--pink { background: #fce7f3; color: #9d174d; }
+        #summary-stats .amm-inv-band-name { font-size: 11px; font-weight: 800; white-space: nowrap; }
+        #summary-stats .amm-inv-band-meta { font-size: 12px; font-weight: 700; white-space: nowrap; }
+        #summary-stats .amm-badge-block--today .ebay2-summary-badge-row,
+        #summary-stats .amm-badge-block--yesterday .ebay2-summary-badge-row,
+        #summary-stats .amm-badge-block--projected .ebay2-summary-badge-row {
             display: grid;
-            grid-template-columns: 10px minmax(92px, 1.4fr) 48px 58px 46px;
-            column-gap: 8px;
-            align-items: center;
-            font-size: 11px;
-            line-height: 1.35;
-            padding: 1px 0;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: stretch;
         }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-swatch {
-            width: 8px;
-            height: 8px;
-            border-radius: 2px;
+        #summary-stats .amm-badge-block--l30 .ebay2-summary-badge-row {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            align-items: stretch;
         }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-name { font-weight: 600; color: #334155; white-space: nowrap; }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-count { font-weight: 700; text-align: right; white-space: nowrap; }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-val { font-weight: 700; text-align: right; white-space: nowrap; }
-        #summary-stats .amm-badge-block--inv .amm-inv-pie-pct { color: #64748b; text-align: right; white-space: nowrap; }
         #summary-stats .ebay2-summary-badge-row {
             display: flex;
             flex-wrap: wrap;
-            align-items: center;
+            align-items: stretch;
             align-content: flex-start;
-            gap: 0.28rem;
+            gap: 0.4rem;
             width: 100%;
             max-width: 100%;
             overflow: visible;
         }
-        #summary-stats .ebay2-summary-badge-row > .badge {
-            flex: 1 1 auto;
+        #summary-stats .amm-badge-block--today .ebay2-summary-badge-row > .badge,
+        #summary-stats .amm-badge-block--yesterday .ebay2-summary-badge-row > .badge,
+        #summary-stats .amm-badge-block--l30 .ebay2-summary-badge-row > .badge,
+        #summary-stats .amm-badge-block--projected .ebay2-summary-badge-row > .badge {
+            width: 100%;
             min-width: 0;
             max-width: none;
-            font-size: 12px;
-            padding: 0.28rem 0.42rem;
+            min-height: 42px;
+            height: 100%;
+            font-size: 0.9rem;
+            line-height: 1.2;
+            padding: 0.4rem 0.5rem;
+            border-radius: 0.375rem;
+            font-weight: bold;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
+        #summary-stats .ebay2-summary-badge-row > .badge {
+            flex: 0 0 auto;
+            font-size: 0.9rem;
+            line-height: 1.2;
+            padding: 0.4rem 0.55rem;
+            border-radius: 0.375rem;
             font-weight: bold;
             box-sizing: border-box;
             display: inline-flex;
@@ -624,8 +674,8 @@
         }
         #summary-stats .summary-trend-dot {
             display: inline-block;
-            width: 6px;
-            height: 6px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             margin-right: 0.22rem;
             margin-left: 0;
@@ -822,10 +872,6 @@
             #summary-stats .amm-badge-block--others {
                 grid-column: 2;
                 grid-row: 4;
-            }
-            #summary-stats .ebay2-summary-badge-row > .badge {
-                font-size: 0.75rem;
-                padding: 0.32rem 0.45rem;
             }
         }
 
@@ -1111,26 +1157,26 @@
                     </div>
                     <div class="amm-badge-block amm-badge-block--inv">
                         <div class="amm-badge-block-title">INV</div>
-                        <div class="ebay2-summary-badge-row" role="group" aria-label="Inventory metrics">
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="inventory" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of (Shopify INV × Amazon live price) for Active SKUs — same units as Inv@SP / Inv@LP">
-                            <span class="summary-trend-dot none" data-metric="inventory" title="Rolling history"></span>inv: <span id="inventory-value-amazon">0</span>
-                        </span>
-                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="inv_at_sp" style="color: black; font-weight: bold; cursor:pointer;" title="Shopify INV × Standard Price (amazon_data_view.STANDARD_PRICE, LMP siblings, then live Amazon price) for Active SKUs">
-                            <span class="summary-trend-dot none" data-metric="inv_at_sp" title="Rolling history"></span>Inv@SP: <span id="inv-at-sp">0</span>
-                        </span>
-                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
-                            <span class="summary-trend-dot none" data-metric="inv_at_lp" title="Rolling history"></span>Inv@LP: <span id="inv-at-lp">0</span>
-                        </span>
-                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="TAT = inv ÷ L30 Sales (months of stock at current sales)">
-                            <span class="summary-trend-dot none" data-metric="tat" title="Rolling history"></span>TAT: <span id="tat-badge">0</span>
-                        </span>
-                        </div>
                         <div class="amm-inv-block-grid">
-                            <div class="amm-inv-block-pair">
-                                <div class="amm-inv-block-canvas">
-                                    <canvas id="amm-inv-block-sp-pie"></canvas>
+                            <div class="amm-inv-block-pair" style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:10px;align-items:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;">
+                                <div class="amm-inv-block-canvas" style="width:220px;height:120px;overflow:hidden;background:#fff;border-radius:8px;">
+                                    <canvas id="amm-inv-block-sp-pie" width="220" height="120" style="width:220px;height:120px;display:block;"></canvas>
                                 </div>
                                 <div class="amm-inv-block-copy">
+                                    <div class="ebay2-summary-badge-row" role="group" aria-label="Inventory metrics" style="margin-bottom:8px;">
+                                    <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="inventory" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of (Shopify INV × Amazon live price) for Active SKUs — same units as Inv@SP / Inv@LP">
+                                        <span class="summary-trend-dot none" data-metric="inventory" title="Rolling history"></span>inv: <span id="inventory-value-amazon">0</span>
+                                    </span>
+                                    <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="inv_at_sp" style="color: black; font-weight: bold; cursor:pointer;" title="Shopify INV × Standard Price (amazon_data_view.STANDARD_PRICE, LMP siblings, then live Amazon price) for Active SKUs">
+                                        <span class="summary-trend-dot none" data-metric="inv_at_sp" title="Rolling history"></span>Inv@SP: <span id="inv-at-sp">0</span>
+                                    </span>
+                                    <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="inv_at_lp" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Sum of (Shopify inventory × LP)">
+                                        <span class="summary-trend-dot none" data-metric="inv_at_lp" title="Rolling history"></span>Inv@LP: <span id="inv-at-lp">0</span>
+                                    </span>
+                                    <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="TAT = inv ÷ L30 Sales (months of stock at current sales)">
+                                        <span class="summary-trend-dot none" data-metric="tat" title="Rolling history"></span>TAT: <span id="tat-badge">0</span>
+                                    </span>
+                                    </div>
                                     <div class="amm-inv-block-subtitle">Inv@SP</div>
                                     <div id="amm-inv-block-sp"><div class="text-muted" style="font-size:11px;">Loading…</div></div>
                                 </div>
@@ -5600,32 +5646,11 @@
             function fitAmmBadgeRows() {
                 document.querySelectorAll('#summary-stats .ebay2-summary-badge-row').forEach(function(row) {
                     row.style.zoom = '';
-                    var badges = Array.prototype.filter.call(row.querySelectorAll(':scope > .badge'), function(b) {
-                        return !b.classList.contains('d-none');
+                });
+                document.querySelectorAll('#summary-stats .ebay2-summary-badge-row > .badge').forEach(function(b) {
+                    ['flex', 'max-width', 'min-width', 'font-size', 'padding', 'white-space'].forEach(function(prop) {
+                        b.style.removeProperty(prop);
                     });
-                    if (!badges.length || row.clientWidth < 40) return;
-                    var cols = Math.max(1, Math.ceil(badges.length / 2));
-                    var slot = 'calc(' + (100 / cols) + '% - 0.28rem)';
-                    badges.forEach(function(b) {
-                        b.style.setProperty('flex', '1 1 ' + slot, 'important');
-                        b.style.setProperty('max-width', slot, 'important');
-                        b.style.setProperty('min-width', '0', 'important');
-                        b.style.setProperty('font-size', '12px', 'important');
-                        b.style.setProperty('padding', '4px 6px', 'important');
-                        b.style.setProperty('white-space', 'nowrap', 'important');
-                    });
-                    var size = 12;
-                    var guard = 0;
-                    while (size > 11 && guard < 4) {
-                        var clipped = badges.some(function(b) { return b.scrollWidth > b.clientWidth + 2; });
-                        if (!clipped) break;
-                        size -= 0.5;
-                        var px = size + 'px';
-                        badges.forEach(function(b) {
-                            b.style.setProperty('font-size', px, 'important');
-                        });
-                        guard++;
-                    }
                 });
             }
             requestAnimationFrame(fitAmmBadgeRows);
@@ -7222,11 +7247,29 @@
                             + '</div>';
                     }).join('');
             }
+            function ammInvBlockBandsHtml(slices, valueKey) {
+                const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
+                const tones = {
+                    red: 'background:#fee2e2;color:#7f1d1d;',
+                    green: 'background:#dcfce7;color:#14532d;',
+                    pink: 'background:#fce7f3;color:#9d174d;'
+                };
+                return '<div style="display:flex;flex-wrap:nowrap;gap:8px;min-width:0;">' + slices.map(function(s) {
+                    const n = Number(s[valueKey]) || 0;
+                    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+                    const tone = tones[s.key] || tones.red;
+                    return '<div style="flex:1 1 0;min-width:0;border-radius:8px;padding:8px 10px;' + tone + '">'
+                        + '<div style="font-size:12px;font-weight:800;white-space:nowrap;">' + s.label + '</div>'
+                        + '<div style="font-size:13px;font-weight:700;white-space:nowrap;margin-top:2px;">' + (s.count || 0) + '</div>'
+                        + '<div style="font-size:13px;font-weight:700;white-space:nowrap;">' + ammInvMoneyCompact(n) + ' · ' + pct + '%</div>'
+                        + '</div>';
+                }).join('') + '</div>';
+            }
             function ammInvRenderBlock(payload) {
                 const raw = (payload && payload.slices) || [];
                 if (!raw.length) return;
                 const slices = ammInvNormalizeSlices(raw);
-                $('#amm-inv-block-sp').html(ammInvLegendHtml('sp', slices, 'inv_at_sp', false));
+                $('#amm-inv-block-sp').html(ammInvBlockBandsHtml(slices, 'inv_at_sp'));
                 ammInvDrawColumn('amm-inv-block-sp-pie', slices, 'inv_at_sp');
             }
             function ammInvDrawColumn(canvasId, slices, valueKey) {
@@ -7238,6 +7281,16 @@
                     ammInvBlockSpPieChart = null;
                 }
                 const shortLabel = { red: 'Red', green: 'Green', pink: 'Pink' };
+                const canvasBox = canvas.parentElement;
+                if (canvasBox) {
+                    canvasBox.style.width = '220px';
+                    canvasBox.style.maxWidth = '220px';
+                    canvasBox.style.height = '120px';
+                    canvasBox.style.overflow = 'hidden';
+                }
+                canvas.style.width = '220px';
+                canvas.style.height = '120px';
+                canvas.style.maxWidth = '220px';
                 ammInvBlockSpPieChart = new Chart(canvas.getContext('2d'), {
                     type: 'bar',
                     data: {
@@ -7247,11 +7300,13 @@
                             backgroundColor: slices.map(function(s) { return s.color; }),
                             borderWidth: 0,
                             borderRadius: 3,
-                            maxBarThickness: 28,
+                            maxBarThickness: 36,
+                            barPercentage: 0.8,
+                            categoryPercentage: 0.7,
                         }],
                     },
                     options: {
-                        responsive: true,
+                        responsive: false,
                         maintainAspectRatio: false,
                         plugins: {
                             legend: { display: false },
