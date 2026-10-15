@@ -106,7 +106,8 @@ class DilVsSbidApplyService
                     $tables,
                     $cap,
                     $viewsOver,
-                    $rolled['npftMap']
+                    $rolled['npftMap'],
+                    DilVsSbidRule::usesEsBidCeiling($ruleKey)
                 );
 
                 if ($wanted['skip'] !== null) {
@@ -254,7 +255,8 @@ class DilVsSbidApplyService
                     $tables,
                     $cap,
                     $viewsOver,
-                    $rolled['npftMap']
+                    $rolled['npftMap'],
+                    DilVsSbidRule::usesEsBidCeiling($ruleKey)
                 );
                 if ($wanted['skip'] !== null || $wanted['off'] || $wanted['formatted'] === null) {
                     continue;
@@ -373,7 +375,8 @@ class DilVsSbidApplyService
         array $tables,
         array $cap,
         array $viewsOver,
-        array $npftMap
+        array $npftMap,
+        bool $esCeiling = false
     ): array {
         if (! $useDil) {
             return ['skip' => 'Dil vs SBid is off', 'off' => false, 'formatted' => null, 'label' => ''];
@@ -408,7 +411,7 @@ class DilVsSbidApplyService
                 (float) ($metric?->l7_views ?? 0),
                 $viewsOver
             );
-            $decision['bid'] = DilVsSbidRule::clampBid((float) $viewAdj['bid'], $cap);
+            $decision['bid'] = DilVsSbidRule::clampBid((float) $viewAdj['bid'], $cap, $esBid, $esCeiling);
             $why = trim($adjusted['why'].' '.$viewAdj['why']);
             if ($why !== '') {
                 $decision['label'] = trim($decision['label'].' '.$why);

@@ -5120,6 +5120,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay', [EbayController::class, 'ebayView'])->name('ebay');
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
     Route::get('/ebay-volume-pricing', [EbayVolumePricingController::class, 'index'])->name('ebay.volume-pricing');
+    Route::get('/ebay-volume-pricing/ship-slabs', [EbayVolumePricingController::class, 'shipSlabs'])->name('ebay.volume-pricing.ship-slabs');
     Route::get('/ebay-volume-pricing/rules', [EbayVolumePricingController::class, 'rules'])->name('ebay.volume-pricing.rules');
     Route::post('/ebay-volume-pricing/rules', [EbayVolumePricingController::class, 'saveRules'])->name('ebay.volume-pricing.rules.save');
     Route::post('/ebay-volume-pricing/push', [EbayVolumePricingController::class, 'push'])->name('ebay.volume-pricing.push');

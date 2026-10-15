@@ -248,6 +248,24 @@ class DilVsSbidRuleTest extends TestCase
         $this->assertSame(12.0, DilVsSbidRule::clampBid(12, ['min' => 5, 'max' => 20]));
     }
 
+    public function test_ebay1_and_ebay2_use_es_bid_instead_of_max(): void
+    {
+        $this->assertTrue(DilVsSbidRule::usesEsBidCeiling(DilVsSbidRule::KEY_EBAY1));
+        $this->assertTrue(DilVsSbidRule::usesEsBidCeiling(DilVsSbidRule::KEY_EBAY2));
+        $this->assertFalse(DilVsSbidRule::usesEsBidCeiling(DilVsSbidRule::KEY_EBAY3));
+
+        $cap = ['min' => 2, 'max' => 15];
+        $this->assertSame(12.1, DilVsSbidRule::clampBid(20, $cap, 12.14, true));
+        $this->assertSame(8.0, DilVsSbidRule::clampBid(8, $cap, 12.4, true));
+        $this->assertSame(5.0, DilVsSbidRule::clampBid(3, ['min' => 5, 'max' => 15], 12, true));
+        $this->assertSame(4.5, DilVsSbidRule::clampBid(20, ['min' => 5, 'max' => 15], 4.5, true));
+        $this->assertSame(18.0, DilVsSbidRule::clampBid(18, $cap, 0, true));
+        $this->assertSame(100.0, DilVsSbidRule::clampBid(150, $cap, 0, true));
+        $this->assertSame(2.0, DilVsSbidRule::clampBid(20, $cap, 1.2, true));
+        $this->assertSame(0.0, DilVsSbidRule::clampBid(0, $cap, 9, true));
+        $this->assertSame(15.0, DilVsSbidRule::clampBid(20, $cap, 12, false));
+    }
+
     public function test_l30_view_overlay_uses_l7_vs_l30_pace(): void
     {
         $cfg = DilVsSbidRule::defaultViewOver();

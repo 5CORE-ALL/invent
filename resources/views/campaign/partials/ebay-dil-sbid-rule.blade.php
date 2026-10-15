@@ -3,6 +3,7 @@
     $dilSbidListingWise = ! empty($listingWise);
     $dilSbidUnit = $dilSbidListingWise ? 'listing' : 'SKU';
     $dilSbidUnits = $dilSbidListingWise ? 'listings' : 'SKUs';
+    $dilSbidEsCeiling = in_array($dilSbidAccount, ['eBay 1', 'eBay 2'], true);
 @endphp
 @if(($part ?? 'modal') === 'modal' && ! empty($extended))
 @php
@@ -67,13 +68,15 @@
                         <i class="fas fa-percent me-2 text-primary"></i>Dil vs SBid
                         <span class="badge bg-secondary ms-2" style="font-size:11px;">{{ $dilSbidAccount }} only</span>
                     </h5>
-                    <div class="dsb-sub">S Bid = Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. The last card shows the sum that fills the S BID column.</div>
+                    <div class="dsb-sub">S Bid = Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then @if($dilSbidEsCeiling) the Min cap. A bid above ES Bid uses ES Bid. @else the Min / Max cap. @endif The last card shows the sum that fills the S BID column.</div>
                 </div>
-                <div class="dsb-cap ms-3 me-2" title="The final S Bid never goes below Min or above Max. eBay only accepts 2–100.">
+                <div class="dsb-cap ms-3 me-2" title="{{ $dilSbidEsCeiling ? 'The final S Bid never goes below Min. When it is above this listing’s ES Bid, ES Bid is used.' : 'The final S Bid never goes below Min or above Max. eBay only accepts 2–100.' }}">
                     <label class="mb-0" for="dil-sbid-cap-min">Min</label>
                     <input type="number" min="2" max="100" step="0.1" class="form-control form-control-sm dsb-cap-input" id="dil-sbid-cap-min" value="2">
+                    @unless($dilSbidEsCeiling)
                     <label class="mb-0" for="dil-sbid-cap-max">Max</label>
                     <input type="number" min="2" max="100" step="0.1" class="form-control form-control-sm dsb-cap-input" id="dil-sbid-cap-max" value="100">
+                    @endunless
                 </div>
                 <div class="form-check form-switch dil-sbid-switch mb-0 me-3">
                     <input class="form-check-input" type="checkbox" role="switch" id="dil-sbid-enabled">
@@ -91,7 +94,7 @@
                     @endif
                     Inventory 0 and missing data are not counted. First matching range wins in every table. A range that starts where the one above ended is exclusive on From. The last range is open at the top.</li>
                     <li><strong>Dil 0–0</strong> is {{ $dilSbidUnits }} with OV L30 sold = 0. Every Dil slab, including 0–0, uses the S Bid you type. Views, CVR, eBay Sold and Std NPFT % each <strong>add</strong> the S Bid of the range the {{ $dilSbidUnit }} falls in. A negative value subtracts. A {{ $dilSbidUnit }} outside every range adds 0.</li>
-                    <li>New tables start at 0, so nothing changes until you type an S Bid. L30 View up / down uses the same arrow as the L30 View column (L7 pace vs L30 pace). Its Adj starts at 0. The final bid is rounded to 0.1 and kept between the Min and Max caps (those caps cannot go outside 2 and 100, which eBay accepts).</li>
+                    <li>New tables start at 0, so nothing changes until you type an S Bid. L30 View up / down uses the same arrow as the L30 View column (L7 pace vs L30 pace). Its Adj starts at 0. The final bid is rounded to 0.1 and @if($dilSbidEsCeiling) kept at or above Min. When it is above this listing's ES Bid, ES Bid is used. eBay only accepts 2–100. @else kept between the Min and Max caps (those caps cannot go outside 2 and 100, which eBay accepts). @endif</li>
                     <li>Views, CVR and eBay Sold use <code>ebay_metrics</code> L30, same as the server push.
                     @if($dilSbidListingWise)
                         Variation SKUs that share an item_id are summed, then one S Bid is pushed and pulled on that parent listing. C Bid is shown on the parent row and every SKU under that listing.
@@ -273,11 +276,13 @@
                     <i class="fas fa-percent me-2 text-primary"></i>Dil vs SBid
                     <span class="badge bg-secondary ms-2" style="font-size:11px;">{{ $dilSbidAccount }} only</span>
                 </h5>
-                <div class="dsb-cap ms-auto me-2" title="The final S Bid never goes below Min or above Max. eBay only accepts 2–100.">
+                <div class="dsb-cap ms-auto me-2" title="{{ $dilSbidEsCeiling ? 'The final S Bid never goes below Min. When it is above this listing’s ES Bid, ES Bid is used.' : 'The final S Bid never goes below Min or above Max. eBay only accepts 2–100.' }}">
                     <label class="mb-0 small" for="dil-sbid-cap-min">Min</label>
                     <input type="number" min="2" max="100" step="0.1" class="form-control form-control-sm dsb-cap-input" id="dil-sbid-cap-min" value="2">
+                    @unless($dilSbidEsCeiling)
                     <label class="mb-0 small" for="dil-sbid-cap-max">Max</label>
                     <input type="number" min="2" max="100" step="0.1" class="form-control form-control-sm dsb-cap-input" id="dil-sbid-cap-max" value="100">
+                    @endunless
                 </div>
                 <div class="form-check form-switch dil-sbid-switch mb-0 me-3">
                     <input class="form-check-input" type="checkbox" role="switch" id="dil-sbid-enabled">
@@ -293,7 +298,11 @@
                     <li>Every slab, including 0–0, uses the <strong>S Bid %</strong> you type on that row.</li>
                     <li><strong>CVR overlay</strong> then adjusts that S Bid, same as Sprc Dil. Down = CVR is below the threshold and the arrow is down (CVR L30 under CVR L60). Up = CVR is above the threshold and the arrow is up. Flat arrows are left alone.</li>
                     <li><strong>L30 View overlay</strong> then adjusts that S Bid. Down = L30 views below the threshold and the L30 View arrow is down (L7 pace under L30 pace). Up = L30 views above the threshold and the arrow is up. Adj starts at 0.</li>
+                    @if($dilSbidEsCeiling)
+                    <li><strong>Min</strong> then keeps a real S Bid at or above that floor. When the bid is above this listing's <strong>ES Bid</strong>, ES Bid is used. eBay only accepts 2–100. A SKU with no S Bid stays blank.</li>
+                    @else
                     <li><strong>Min / Max</strong> then keep a real S Bid inside that range. They cannot go outside 2 and 100, which eBay accepts. A SKU with no S Bid stays blank.</li>
+                    @endif
                     <li>Saved for {{ $dilSbidAccount }} only. eBay, eBay 2, and eBay 3 each keep their own slabs.</li>
                     <li>eBay 1 and eBay 2 push the new S Bid on their own when Dil or CVR changes the bid. The switch must be On. eBay 3 stays manual.</li>
                 </ul>
@@ -417,6 +426,8 @@ const DIL_SBID_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultSlabs());
 const DIL_SBID_CVR_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultCvr());
 const DIL_SBID_VIEW_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultViewOver());
 const DIL_SBID_CAP_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultCap());
+const DIL_SBID_ES_CEILING = @json($dilSbidEsCeiling);
+const DIL_SBID_CAP_NOTE = DIL_SBID_ES_CEILING ? 'the Min cap. A bid above ES Bid uses that ES Bid' : 'the Min / Max cap';
 const DIL_SBID_COLORS = ['#6f42c1','#3b82f6','#14b8a6','#22c55e','#84cc16','#eab308','#f59e0b','#ea580c','#dc3545','#e83e8c','#7c3aed','#0ea5e9'];
 let currentDilSbidSlabs = DIL_SBID_DEFAULTS.map(function(s) { return Object.assign({}, s); });
 let currentDilSbidCvr = Object.assign({}, DIL_SBID_CVR_DEFAULTS);
@@ -731,10 +742,10 @@ function dilSbidPaintMode() {
             ? (DIL_SBID_EXT
                 ? (DIL_SBID_LISTING_WISE
                     ? ((dilSbidParentIndex(), dilSbidParentCount)
-                        ? 'On. One S Bid per parent. Dil, Views, CVR, eBay Sold and Std NPFT % come from the parent row, then CVR up / down, then L30 View up / down, then the Min / Max cap. Every SKU under that parent shows the same bid.'
-                        : 'On. One S Bid per eBay listing: family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Variation SKUs that share an item_id get the same bid. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
-                    : 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
-                : 'On. S Bid uses these Dil slabs, then the CVR overlay, then the L30 View overlay, then the Min / Max cap. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
+                        ? 'On. One S Bid per parent. Dil, Views, CVR, eBay Sold and Std NPFT % come from the parent row, then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. ' + (DIL_SBID_ES_CEILING ? 'When that bid is above a SKU\'s ES Bid, that SKU uses its ES Bid.' : 'Every SKU under that parent shows the same bid.')
+                        : 'On. One S Bid per eBay listing: family Dil + Views + CVR + eBay Sold + Std NPFT %, then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. Variation SKUs that share an item_id get the same bid. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
+                    : 'On. S Bid is the sum of Dil, Views, CVR, eBay Sold and Std NPFT %, then CVR up / down, then L30 View up / down, then ' + DIL_SBID_CAP_NOTE + '. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
+                : 'On. S Bid uses these Dil slabs, then the CVR overlay, then the L30 View overlay, then ' + DIL_SBID_CAP_NOTE + '. Auto-push runs when Dil / views / CVR / inventory change, and every 30 minutes.')
             : 'Off. S Bid is not changed.';
         note.className = on ? 'small mb-2 text-success' : 'small mb-2 text-muted';
     }
@@ -1159,12 +1170,26 @@ function dilSbidPaintCap() {
     if (minEl) minEl.value = cap.min;
     if (maxEl) maxEl.value = cap.max;
 }
-/** Keep a real S Bid inside Min / Max. 0 stays 0 so a missing bid is not invented. */
-function dilSbidApplyCap(bid) {
+function dilSbidEsBid(row) {
+    const n = parseFloat(row && row.ca_suggested_bid);
+    if (!isFinite(n) || n <= 0) return 0;
+    return Math.round(n * 10) / 10;
+}
+/** Keep a real S Bid at or above Min. 0 stays 0 so a missing bid is not invented.
+ *  eBay 1 and eBay 2 have no Max: a bid above esBid uses that ES Bid. */
+function dilSbidApplyCap(bid, esBid) {
     if (!(bid > 0)) return 0;
     const cap = currentDilSbidCap || DIL_SBID_CAP_DEFAULTS;
-    let next = Math.round((Number(bid) || 0) * 10) / 10;
+    const raw = Math.round((Number(bid) || 0) * 10) / 10;
+    let next = raw;
     if (next < cap.min) next = cap.min;
+    if (DIL_SBID_ES_CEILING) {
+        const es = (isFinite(esBid) && esBid > 0) ? Math.round(esBid * 10) / 10 : 0;
+        if (es > 0 && next > es) next = es;
+        if (next > 100) next = 100;
+        if (next > 0 && next < 2) next = 2;
+        return next;
+    }
     if (next > cap.max) next = cap.max;
     if (next < 2) next = 2;
     if (next > 100) next = 100;
@@ -1245,10 +1270,11 @@ function dilSbidExtBids(row) {
     });
     return out;
 }
-function dilSbidOfRow(row) {
+function dilSbidOfRow(row, esFrom) {
+    const esRow = esFrom || row;
     if (row && !row._dilSbidRolled) {
         const parent = dilSbidParentFor(row);
-        if (parent) return dilSbidOfRow(dilSbidAsParentSource(parent));
+        if (parent) return dilSbidOfRow(dilSbidAsParentSource(parent), esRow);
     }
     if (DIL_SBID_LISTING_WISE && row && !row._dilSbidRolled) {
         const key = dilSbidListingKey(row);
@@ -1259,7 +1285,7 @@ function dilSbidOfRow(row) {
         if (!rolled) {
             return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'No listing', title: 'No S Bid: no child SKUs share this eBay listing.' };
         }
-        return dilSbidOfRow(rolled);
+        return dilSbidOfRow(rolled, esRow);
     }
     const dil = dilSbidMetric(row);
     if (dil === null || !isFinite(dil)) {
@@ -1306,14 +1332,22 @@ function dilSbidOfRow(row) {
         const sign = viewAdj.adj > 0 ? '+' : '';
         title += ' ' + sign + viewAdj.adj + ' (' + viewAdj.why + ') → ' + viewAdj.bid + '%';
     }
-    const capped = dilSbidApplyCap(viewAdj.bid);
+    const es = dilSbidEsBid(esRow) || dilSbidEsBid(row);
+    const capped = dilSbidApplyCap(viewAdj.bid, es);
     if (!(capped > 0)) {
         return { bid: 0, color: '#6c757d', skip: true, off: false, short: 'Sum ≤ 0', title: 'No S Bid: after the overlays the bid is 0 or below.' };
     }
     const tenths = Math.round(viewAdj.bid * 10) / 10;
     if (capped !== tenths) {
         const cap = currentDilSbidCap || DIL_SBID_CAP_DEFAULTS;
-        title += ' → cap ' + capped + '% (min ' + cap.min + ' / max ' + cap.max + ')';
+        if (DIL_SBID_ES_CEILING && es > 0 && Math.round(Math.max(tenths, cap.min) * 10) / 10 > es) {
+            title += ' → ES Bid ' + es + '%';
+            if (capped !== es) title += ' (eBay minimum ' + capped + '%)';
+        } else if (DIL_SBID_ES_CEILING) {
+            title += ' → min ' + capped + '% (min ' + cap.min + ')';
+        } else {
+            title += ' → cap ' + capped + '% (min ' + cap.min + ' / max ' + cap.max + ')';
+        }
     }
     return { bid: capped, color: part.color, skip: false, off: false, title: title };
 }

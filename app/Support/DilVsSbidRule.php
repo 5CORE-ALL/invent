@@ -18,7 +18,8 @@ use Illuminate\Support\Facades\DB;
  * down arrow and CVR below the threshold, or up arrow and CVR above it.
  * L30 View overlay then adjusts that bid the same way, using the L30 View
  * arrow on the page (L7 pace vs L30 pace).
- * Min / Max bid caps then keep a real S Bid inside that range (and inside 2–100).
+ * Min keeps a real S Bid at or above that floor (and inside 2–100).
+ * eBay 1 and eBay 2 have no Max: a bid above that listing's ES Bid uses the ES Bid.
  */
 final class DilVsSbidRule
 {
@@ -30,6 +31,12 @@ final class DilVsSbidRule
     public const KEY_EBAY2 = 'ebay2_dil_sbid';
 
     public const KEY_EBAY3 = 'ebay3_dil_sbid';
+
+    /** eBay 1 and eBay 2 drop the Max cap and use ES Bid when the bid is higher. */
+    public static function usesEsBidCeiling(string $key): bool
+    {
+        return $key === self::KEY_EBAY1 || $key === self::KEY_EBAY2;
+    }
 
     public static function defaultSlabs(): array
     {
@@ -92,8 +99,12 @@ final class DilVsSbidRule
         return $out;
     }
 
-    /** Keep a real S Bid inside the cap. 0 stays 0 so a missing bid is not invented. */
-    public static function clampBid(float $bid, array $cap): float
+    /**
+     * Keep a real S Bid at or above Min. 0 stays 0 so a missing bid is not invented.
+     * With $esCeiling there is no Max: a bid above that listing's ES Bid becomes the ES Bid.
+     * eBay still only accepts 2.0–100.0, so a result outside that range is brought back in.
+     */
+    public static function clampBid(float $bid, array $cap, ?float $esBid = null, bool $esCeiling = false): float
     {
         if ($bid <= 0) {
             return 0.0;
@@ -102,6 +113,20 @@ final class DilVsSbidRule
         $n = round($bid, 1);
         if ($n < $cap['min']) {
             $n = $cap['min'];
+        }
+        if ($esCeiling) {
+            $es = ($esBid !== null && is_finite($esBid) && $esBid > 0) ? round($esBid, 1) : 0.0;
+            if ($es > 0 && $n > $es) {
+                $n = $es;
+            }
+            if ($n > EbayBidPercentage::MAX) {
+                $n = EbayBidPercentage::MAX;
+            }
+            if ($n > 0 && $n < EbayBidPercentage::MIN) {
+                $n = EbayBidPercentage::MIN;
+            }
+
+            return $n;
         }
         if ($n > $cap['max']) {
             $n = $cap['max'];

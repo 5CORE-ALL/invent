@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\MarketplacePercentage;
 use App\Services\Ebay1VolumePricingService;
+use App\Services\ShippingSlabRateService;
 use App\Support\EbayVolumePricingRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,7 +16,23 @@ class EbayVolumePricingController extends Controller
 {
     public function index()
     {
-        return view('market-places.ebay1_volume_pricing');
+        return view('market-places.ebay1_volume_pricing', [
+            'ebayTakeHome' => MarketplacePercentage::takeHomeDecimal('Ebay'),
+        ]);
+    }
+
+    public function shipSlabs(ShippingSlabRateService $slabs): JsonResponse
+    {
+        try {
+            $bands = $slabs->actWeightShipBands();
+        } catch (\Throwable $e) {
+            $bands = [];
+        }
+
+        return response()->json([
+            'bands' => $bands,
+            'take_home' => MarketplacePercentage::takeHomeDecimal('Ebay'),
+        ]);
     }
 
     public function rules(): JsonResponse

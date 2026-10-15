@@ -192,6 +192,83 @@ class ShippingSlabRateService
         return null;
     }
 
+    /**
+     * Shipping Master slab for an ACT weight in pounds, after the declared round-up.
+     * Missing or zero weight is the 0 lb slab.
+     */
+    public function slabKeyForActWeight(?float $lb): string
+    {
+        if ($lb === null || ! is_finite($lb) || $lb <= 0) {
+            return 'lb_0';
+        }
+        $declared = $this->roundWeightLbUpToSlab($lb);
+
+        return $this->resolveSlabKeyForWeight($declared ?? $lb) ?? 'lb_gt50';
+    }
+
+    /**
+     * Inclusive ACT-weight ceilings, in pounds, that share one slab.
+     * The last band has max null and covers every heavier weight.
+     * A weight belongs to the first band whose max is null or >= the weight.
+     *
+     * @return list<array{max: float|null, key: string}>
+     */
+    public function actWeightSlabBands(float $limitLb = 200.0): array
+    {
+        $bands = [];
+        $step = 0.01;
+        $current = $this->slabKeyForActWeight(0.0);
+        $last = 0.0;
+        $steps = (int) round(max(0.0, $limitLb) / $step);
+        for ($i = 1; $i <= $steps; $i++) {
+            $w = round($i * $step, 2);
+            $key = $this->slabKeyForActWeight($w);
+            if ($key !== $current) {
+                $bands[] = ['max' => $last, 'key' => $current];
+                $current = $key;
+            }
+            $last = $w;
+        }
+        $bands[] = ['max' => null, 'key' => $current];
+
+        return $bands;
+    }
+
+    /**
+     * Same ceilings as actWeightSlabBands, plus the Shipping Master ship rate for that slab.
+     *
+     * @return list<array{max: float|null, key: string, rate: float|null}>
+     */
+    public function actWeightShipBands(): array
+    {
+        $rates = $this->getAllSlabCarrierRates('ship');
+        $bands = [];
+        foreach ($this->actWeightSlabBands() as $band) {
+            $rate = $rates[$band['key']]['rate'] ?? null;
+            $bands[] = [
+                'max' => $band['max'],
+                'key' => $band['key'],
+                'rate' => is_numeric($rate) && (float) $rate > 0 ? round((float) $rate, 2) : null,
+            ];
+        }
+
+        return $bands;
+    }
+
+    /**
+     * @param  list<array{max: float|null, key: string}>  $bands
+     */
+    public static function bandKeyForWeight(array $bands, float $lb): ?string
+    {
+        foreach ($bands as $band) {
+            if ($band['max'] === null || $lb <= (float) $band['max'] + 1e-9) {
+                return $band['key'];
+            }
+        }
+
+        return null;
+    }
+
     /** @return list<array{key: string, label: string}> */
     private function getSlabDefinitions(): array
     {

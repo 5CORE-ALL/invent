@@ -191,13 +191,17 @@
         const VP_DATA_URL = @json(url('/ebay-data-json'));
         const VP_RULES_URL = @json(url('/ebay-volume-pricing/rules'));
         const VP_PUSH_URL = @json(url('/ebay-volume-pricing/push'));
+        const VP_SHIP_URL = @json(url('/ebay-volume-pricing/ship-slabs'));
         const VP_CSRF = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        let VP_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
 
         let vpRules = null;
         let vpTable = null;
         let vpStdRules = { age: [], dil: [] };
         let vpAgeMap = {};
         let vpAmzMap = {};
+        let vpShipBands = [];
+        let vpShipState = 'loading';
 
         function vpCsrfHeaders() {
             return { 'X-CSRF-TOKEN': VP_CSRF, 'Accept': 'application/json', 'Content-Type': 'application/json' };
@@ -352,6 +356,85 @@
         function vpWeightLb(d) {
             const n = Number(d && d.wt_act);
             return isFinite(n) ? n : null;
+        }
+        function vpTakeHome(d) {
+            const raw = Number(d && d.percentage);
+            const n = (isFinite(raw) && raw > 0) ? raw : VP_TAKEHOME;
+            if (!isFinite(n) || n <= 0) return 1;
+            return n > 1 ? n / 100 : n;
+        }
+        function vpBandAt(lb) {
+            if (!vpShipBands.length) return null;
+            const w = Number(lb);
+            const weight = isFinite(w) && w > 0 ? w : 0;
+            for (let i = 0; i < vpShipBands.length; i++) {
+                const band = vpShipBands[i];
+                if (band.max == null || weight <= Number(band.max) + 1e-9) return band;
+            }
+            return vpShipBands[vpShipBands.length - 1];
+        }
+        function vpOrderShip(d, qty) {
+            const unitShip = vpNum(d && d.Ship_productmaster);
+            const wt = vpWeightLb(d);
+            if (vpShipState === 'loading') return { pending: true };
+            if (wt == null || !(wt > 0) || vpShipState !== 'ready') {
+                return { ship: unitShip, weight: null, key: null, jumped: false, missingRate: false, pending: false, ratesMissing: vpShipState !== 'ready' };
+            }
+            const orderWt = wt * qty;
+            const unitBand = vpBandAt(wt);
+            const orderBand = vpBandAt(orderWt);
+            const same = !!(unitBand && orderBand && unitBand.key === orderBand.key);
+            if (same || !orderBand) {
+                return { ship: unitShip, weight: orderWt, key: orderBand ? orderBand.key : null, jumped: false, missingRate: false, pending: false };
+            }
+            if (!(Number(orderBand.rate) > 0)) {
+                return { ship: null, weight: orderWt, key: orderBand.key, jumped: true, missingRate: true, pending: false };
+            }
+            return { ship: Number(orderBand.rate), weight: orderWt, key: orderBand.key, jumped: true, missingRate: false, pending: false };
+        }
+        function vpBuyDiscount(d, buyKey) {
+            if (!vpRules || !vpRules.enabled || vpIsParent(d)) return 0;
+            return vpNum(vpSum(d)[buyKey]);
+        }
+        function vpQtyNpft(d, qty, buyKey) {
+            if (!d || vpIsParent(d)) return null;
+            const price = vpNum(d['eBay Price']);
+            if (!(price > 0)) return null;
+            const shipInfo = vpOrderShip(d, qty);
+            if (shipInfo.pending) return { pending: true };
+            const disc = Math.min(100, Math.max(0, vpBuyDiscount(d, buyKey)));
+            if (disc >= 100) return null;
+            const unit = price * (1 - disc / 100);
+            if (!(unit > 0)) return null;
+            if (shipInfo.missingRate || shipInfo.ship == null) return null;
+            const sales = qty * unit;
+            const lp = vpNum(d.LP_productmaster);
+            const cogs = qty * (lp > 0 ? lp : 0);
+            const margin = vpTakeHome(d);
+            const gpft = ((sales * margin - shipInfo.ship - cogs) / sales) * 100;
+            const ads = vpNum(d['AD%']);
+            const npft = Math.round((gpft - ads) * 100) / 100;
+            const shipText = '$' + shipInfo.ship.toFixed(2);
+            const weightText = shipInfo.ratesMissing
+                ? 'shipping slabs did not load, ship not increased'
+                : (shipInfo.weight == null
+                    ? 'weight missing, ship not increased'
+                    : (shipInfo.weight.toFixed(2) + ' lb' + (shipInfo.jumped ? ', heavier slab ' + shipInfo.key : ', same weight slab')));
+            const tip = qty + ' pcs at $' + unit.toFixed(2)
+                + (disc > 0 ? ' (' + disc + '% off $' + price.toFixed(2) + ')' : ' (no volume discount)')
+                + '. Ship ' + shipText + ' for ' + weightText
+                + '. LP $' + (lp > 0 ? lp : 0).toFixed(2) + ' × ' + qty
+                + '. NPFT = ((sales × take-home − ship − LP) ÷ sales) × 100 − Ads%.';
+            return { npft: npft, tip: tip, pending: false };
+        }
+        function vpNpftQtyCell(cell, qty, buyKey) {
+            const d = cell.getRow().getData();
+            if (vpIsParent(d)) return '';
+            const hit = vpQtyNpft(d, qty, buyKey);
+            if (hit && hit.pending) return '<span style="color:#adb5bd;">…</span>';
+            if (!hit) return '<span style="color:#adb5bd;">—</span>';
+            const tip = String(hit.tip).replace(/"/g, '&quot;');
+            return '<span title="' + tip + '">' + vpPctCell(hit.npft) + '</span>';
         }
         function vpReadRulesFromDom() {
             if (!vpRules) return;
@@ -581,7 +664,7 @@
         }
         function vpRefreshGrid() {
             if (!vpTable) return;
-            ['buy2', 'buy3', 'buy4'].forEach(function(field) {
+            ['buy2', 'npft2', 'buy3', 'npft3', 'buy4', 'npft4'].forEach(function(field) {
                 try {
                     const col = vpTable.getColumn(field);
                     if (col) col.getCells().forEach(function(cell) { cell.reformat(); });
@@ -737,6 +820,15 @@
             .then(function(r) { return r.json(); })
             .then(function(res) { vpRules = res.rules || null; vpPaintModal(); vpRefreshGrid(); })
             .catch(function() { document.getElementById('vp-status').textContent = 'Could not load rules'; });
+        fetch(VP_SHIP_URL, { headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(res) {
+                vpShipBands = (res && Array.isArray(res.bands)) ? res.bands : [];
+                if (res && isFinite(Number(res.take_home)) && Number(res.take_home) > 0) VP_TAKEHOME = Number(res.take_home);
+                vpShipState = vpShipBands.length ? 'ready' : 'error';
+                vpRefreshGrid();
+            })
+            .catch(function() { vpShipState = 'error'; vpRefreshGrid(); });
 
         fetch('/channel-promo-pricing/ebay1/std-prc-vs-dil', { headers: { 'Accept': 'application/json' } })
             .then(function(r) { return r.json(); })
@@ -919,14 +1011,38 @@
                     sorter: function(a, b, aRow, bRow) { return vpSum(aRow.getData()).buy2 - vpSum(bRow.getData()).buy2; },
                     headerTooltip: 'SUM of Weight + Dil + Std NPFT for Buy 2.',
                     formatter: function(cell) { return vpBuyCell(cell, 'buy2'); } },
+                { title: 'NPFT%2', field: 'npft2', hozAlign: 'center', width: 78,
+                    sorter: function(a, b, aRow, bRow) {
+                        const left = vpQtyNpft(aRow.getData(), 2, 'buy2');
+                        const right = vpQtyNpft(bRow.getData(), 2, 'buy2');
+                        return ((left && left.npft) || 0) - ((right && right.npft) || 0);
+                    },
+                    headerTooltip: 'NPFT% if 2 pieces sell at Price × (1 − Buy 2). Ship is one package: ACT weight × 2, priced from the Shipping Master weight slab. LP is × 2. Ads% is subtracted, same as NPFT%.',
+                    formatter: function(cell) { return vpNpftQtyCell(cell, 2, 'buy2'); } },
                 { title: 'Buy 3', field: 'buy3', hozAlign: 'center', width: 70,
                     sorter: function(a, b, aRow, bRow) { return vpSum(aRow.getData()).buy3 - vpSum(bRow.getData()).buy3; },
                     headerTooltip: 'SUM of Weight + Dil + Std NPFT for Buy 3.',
                     formatter: function(cell) { return vpBuyCell(cell, 'buy3'); } },
+                { title: 'NPFT%3', field: 'npft3', hozAlign: 'center', width: 78,
+                    sorter: function(a, b, aRow, bRow) {
+                        const left = vpQtyNpft(aRow.getData(), 3, 'buy3');
+                        const right = vpQtyNpft(bRow.getData(), 3, 'buy3');
+                        return ((left && left.npft) || 0) - ((right && right.npft) || 0);
+                    },
+                    headerTooltip: 'NPFT% if 3 pieces sell at Price × (1 − Buy 3). Ship is one package: ACT weight × 3, priced from the Shipping Master weight slab. LP is × 3. Ads% is subtracted, same as NPFT%.',
+                    formatter: function(cell) { return vpNpftQtyCell(cell, 3, 'buy3'); } },
                 { title: 'Buy 4', field: 'buy4', hozAlign: 'center', width: 70,
                     sorter: function(a, b, aRow, bRow) { return vpSum(aRow.getData()).buy4 - vpSum(bRow.getData()).buy4; },
                     headerTooltip: 'SUM of Weight + Dil + Std NPFT for Buy 4.',
-                    formatter: function(cell) { return vpBuyCell(cell, 'buy4'); } }
+                    formatter: function(cell) { return vpBuyCell(cell, 'buy4'); } },
+                { title: 'NPFT%4', field: 'npft4', hozAlign: 'center', width: 78,
+                    sorter: function(a, b, aRow, bRow) {
+                        const left = vpQtyNpft(aRow.getData(), 4, 'buy4');
+                        const right = vpQtyNpft(bRow.getData(), 4, 'buy4');
+                        return ((left && left.npft) || 0) - ((right && right.npft) || 0);
+                    },
+                    headerTooltip: 'NPFT% if 4 pieces sell at Price × (1 − Buy 4). Ship is one package: ACT weight × 4, priced from the Shipping Master weight slab. LP is × 4. Ads% is subtracted, same as NPFT%.',
+                    formatter: function(cell) { return vpNpftQtyCell(cell, 4, 'buy4'); } }
             ]
         });
         vpTable.on('dataProcessed', function() {
