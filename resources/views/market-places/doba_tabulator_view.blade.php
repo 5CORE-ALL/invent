@@ -646,6 +646,17 @@
         function dobaParentAwareCmp(aRow, bRow, field, isNum) {
             const da = aRow && typeof aRow.getData === 'function' ? aRow.getData() : (aRow || {});
             const db = bRow && typeof bRow.getData === 'function' ? bRow.getData() : (bRow || {});
+            if (isNum) {
+                // Numeric columns sort strictly by each row's own value. Grouping children under their parent's
+                // average made low-to-high show negative, then positive, then negative again.
+                const na = parseFloat(da[field]);
+                const nb = parseFloat(db[field]);
+                const fa = isFinite(na) ? na : 0;
+                const fb = isFinite(nb) ? nb : 0;
+                if (fa !== fb) return fa - fb;
+                if (!!da.is_parent !== !!db.is_parent) return da.is_parent ? -1 : 1;
+                return String(da['(Child) sku'] || '').localeCompare(String(db['(Child) sku'] || ''), undefined, { numeric: true, sensitivity: 'base' });
+            }
             const ka = dobaParentKey(da);
             const kb = dobaParentKey(db);
             const parentVal = function(row, key) {
