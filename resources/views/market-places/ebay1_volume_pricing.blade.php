@@ -56,6 +56,7 @@
                     <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#vpRuleModal">
                         <i class="fas fa-percent me-1"></i> Volume rules
                     </button>
+                    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'button', 'ebayZeroSoldChannel' => 'ebay1'])
                     <button type="button" class="btn btn-sm btn-warning" id="vp-push-btn" title="Send Buy 2, Buy 3, and Buy 4 to eBay 1. Checked rows on this page push alone. With nothing checked, every listing is pushed.">
                         <i class="fas fa-upload me-1"></i> Push to eBay 1
                     </button>
@@ -183,11 +184,13 @@
             </div>
         </div>
     </div>
+    @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'modal', 'ebayZeroSoldChannel' => 'ebay1'])
 @endsection
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
+        @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay1'])
         const VP_DATA_URL = @json(url('/ebay-data-json'));
         const VP_RULES_URL = @json(url('/ebay-volume-pricing/rules'));
         const VP_PUSH_URL = @json(url('/ebay-volume-pricing/push'));
@@ -880,6 +883,7 @@
                         throw new Error(message);
                     }
                     const rows = vpRowsFromPayload(vpParseJson(text));
+                    window.allTableData = rows;
                     return vpTable.setData(rows).then(function() {
                         vpTable.setSort('buy4', 'desc');
                         status.textContent = rows.length + ' rows from eBay 1';
@@ -950,11 +954,7 @@
                         if (!vpNeedsAds(cell.getRow().getData())) return '';
                         return '<i class="fas fa-exclamation-triangle" style="color:#dc3545;" title="Ads needed"></i>';
                     } },
-                { title: 'Coupon', field: 'zero_sold_coupon_code', hozAlign: 'center', width: 90,
-                    formatter: function(cell) {
-                        const code = String(cell.getValue() || '').trim();
-                        return code ? '<span style="color:#0d6efd;font-weight:600;font-size:11px;">' + code + '</span>' : '';
-                    } },
+                @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'column', 'ebayZeroSoldChannel' => 'ebay1'])
                 { title: 'CVR 30', field: 'SCVR', hozAlign: 'center', width: 70, sorter: 'number',
                     formatter: function(cell) {
                         const val = vpNum(cell.getValue());
@@ -1045,6 +1045,7 @@
                     formatter: function(cell) { return vpNpftQtyCell(cell, 4, 'buy4'); } }
             ]
         });
+        window.table = vpTable;
         vpTable.on('dataProcessed', function() {
             const n = vpTable.getDataCount('active');
             document.getElementById('vp-rows-badge').textContent = 'Rows: ' + n;

@@ -323,7 +323,7 @@ class Ebay1CouponService
 
     public function zeroSoldCampaignName(int $percent): string
     {
-        return '0 Sold '.$this->zeroSoldCouponCode($percent);
+        return 'Dil '.$this->zeroSoldCouponCode($percent);
     }
 
     /**

@@ -43,6 +43,7 @@ use App\Models\AmazonChannelSummary;
 use App\Models\ChannelMasterSummary;
 use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Services\ChannelPromoPricingService;
+use App\Support\EbayDilCoupon;
 use App\Support\EbayGetItemPrice;
 use App\Support\Marketplace\ChannelMasterViewsGuard;
 use App\Support\Marketplace\EbayListingEnded;
@@ -5256,21 +5257,99 @@ class EbayController extends Controller
     {
         $channel = $this->normalizeZeroSoldChannel($channel);
         $enabled = filter_var($request->input('enabled'), FILTER_VALIDATE_BOOLEAN);
-        $pct = (int) round((float) $request->input('pct', 5));
-        if ($pct < 5) {
-            $pct = 5;
-        }
-        if ($pct > 80) {
-            $pct = 80;
+        $cfg = $this->ebayZeroSoldCouponConfig($channel);
+
+        $rawSlabs = $request->input('slabs');
+        $slabs = is_array($rawSlabs)
+            ? EbayDilCoupon::normalize($rawSlabs)
+            : $cfg['slabs'];
+        if ($slabs === []) {
+            $slabs = EbayDilCoupon::fromLegacy($cfg['pct']);
         }
 
-        $cfg = $this->ebayZeroSoldCouponConfig($channel);
         $items = $request->input('items', []);
         if (! is_array($items)) {
             $items = [];
         }
         $items = array_slice($items, 0, 6);
 
+        $promos = $cfg['promotions'];
+        $service = Ebay1CouponService::for($channel);
+        // Save the switch and slabs before the eBay call. A refresh during a
+        // slow push must still read On, instead of Off and then removing coupons.
+        $this->persistZeroSoldCouponSetting($channel, $enabled, $slabs, $promos);
+
+        $payload = $this->dilCouponPayload($items, $enabled, $slabs);
+        $results = [];
+        $ok = true;
+        $message = null;
+        $groups = [];
+        foreach ($payload as $row) {
+            $key = $row['on'] ? (string) $row['pct'] : 'off';
+            $groups[$key][] = $row;
+        }
+        foreach ($groups as $key => $rows) {
+            $pct = $key === 'off' ? 5 : (int) $key;
+            $promoId = $key === 'off' ? null : ($promos[(string) $pct] ?? null);
+            $syncItems = [];
+            foreach ($rows as $row) {
+                $syncItems[] = ['sku' => $row['sku'], 'on' => $key !== 'off'];
+            }
+            $result = $service->syncZeroSoldCoupons($syncItems, $pct, $promoId);
+            if ($key !== 'off') {
+                $savedId = trim((string) ($result['promotion_id'] ?? ''));
+                if ($savedId !== '') {
+                    $promos[(string) $pct] = $savedId;
+                }
+            }
+            $groupResults = is_array($result['results'] ?? null) ? $result['results'] : [];
+            if ($groupResults === [] && empty($result['success'])) {
+                $ok = false;
+                $message = $result['message'] ?? $message;
+                foreach ($rows as $row) {
+                    $results[] = [
+                        'sku' => $row['sku'],
+                        'success' => false,
+                        'on' => false,
+                        'message' => $message ?? 'eBay coupon update failed',
+                    ];
+                }
+
+                continue;
+            }
+            foreach ($groupResults as $resultRow) {
+                $results[] = $resultRow;
+                if (empty($resultRow['success'])) {
+                    $ok = false;
+                }
+            }
+        }
+
+        $this->persistZeroSoldCouponSetting($channel, $enabled, $slabs, $promos);
+        $legacyPct = EbayDilCoupon::legacyPct($slabs);
+        $code = $legacyPct >= 5 ? $service->zeroSoldCouponCode($legacyPct) : '';
+        $promoId = $legacyPct >= 5 ? ($promos[(string) $legacyPct] ?? '') : '';
+
+        return response()->json([
+            'success' => $ok,
+            'enabled' => $enabled,
+            'slabs' => $slabs,
+            'pct' => $legacyPct,
+            'coupon_code' => $code,
+            'promotion_id' => $promoId !== '' ? $promoId : null,
+            'promotions' => $promos,
+            'message' => $message,
+            'results' => $results,
+        ], ($ok || $results !== []) ? 200 : 422);
+    }
+
+    /**
+     * @param  list<mixed>  $items
+     * @param  list<array{min:float,max:float,pct:int}>  $slabs
+     * @return list<array{sku:string,on:bool,pct:int}>
+     */
+    private function dilCouponPayload(array $items, bool $enabled, array $slabs): array
+    {
         $skus = [];
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -5281,21 +5360,14 @@ class EbayController extends Controller
                 $skus[] = $sku;
             }
         }
-
-        $soldBySku = [];
+        $byUpper = [];
         if ($skus !== []) {
-            $metricClass = match ($channel) {
-                'ebay2' => Ebay2Metric::class,
-                'ebay3' => Ebay3Metric::class,
-                default => EbayMetric::class,
-            };
-            $metrics = $metricClass::query()->whereIn('sku', $skus)->get(['sku', 'ebay_l30']);
-            foreach ($metrics as $metric) {
-                $soldBySku[strtoupper(trim((string) $metric->sku))] = (float) ($metric->ebay_l30 ?? 0);
+            foreach (ShopifySku::mapByProductSkus($skus) as $key => $shop) {
+                $byUpper[strtoupper(trim((string) $key))] = $shop;
             }
         }
 
-        $payload = [];
+        $out = [];
         foreach ($items as $item) {
             if (! is_array($item)) {
                 continue;
@@ -5304,65 +5376,46 @@ class EbayController extends Controller
             if ($sku === '') {
                 continue;
             }
-            $on = $enabled && ! empty($item['on']);
-            $sold = $soldBySku[strtoupper($sku)] ?? 0;
-            if ($sold >= 1 && $channel !== 'ebay3') {
-                $on = false;
-            }
-            $payload[] = ['sku' => $sku, 'on' => $on];
+            $shop = $byUpper[strtoupper($sku)] ?? null;
+            $ov = $shop ? (float) ($shop->quantity ?? 0) : 0.0;
+            $inv = $shop ? (float) ($shop->inv ?? 0) : 0.0;
+            $pct = $enabled ? EbayDilCoupon::percentFor($ov, $inv, $slabs) : 0;
+            $out[] = ['sku' => $sku, 'on' => $pct >= 5, 'pct' => $pct];
         }
 
-        $service = Ebay1CouponService::for($channel);
-        $code = $service->zeroSoldCouponCode($pct);
-        $promoId = $cfg['promotion_id'] !== '' ? $cfg['promotion_id'] : null;
-        // Save the switch before the eBay call. A refresh during a slow push
-        // must still read On, instead of Off and then removing the coupon.
-        $this->persistZeroSoldCouponSetting($channel, $enabled, $pct, $promoId, $code);
-
-        $result = [
-            'success' => true,
-            'coupon_code' => $code,
-            'promotion_id' => $promoId,
-            'results' => [],
-        ];
-        if ($payload !== []) {
-            $result = $service->syncZeroSoldCoupons(
-                $payload,
-                $pct,
-                $promoId
-            );
-        }
-
-        $promoId = $result['promotion_id'] ?? $promoId;
-        $code = trim((string) ($result['coupon_code'] ?? ''));
-        if ($code === '') {
-            $code = $service->zeroSoldCouponCode($pct);
-        }
-
-        $this->persistZeroSoldCouponSetting($channel, $enabled, $pct, $promoId, $code);
-
-        $hasResults = ! empty($result['results']);
-
-        return response()->json([
-            'success' => ! empty($result['success']),
-            'enabled' => $enabled,
-            'pct' => $pct,
-            'coupon_code' => $code,
-            'promotion_id' => $promoId,
-            'message' => $result['message'] ?? null,
-            'results' => $result['results'] ?? [],
-        ], (! empty($result['success']) || $hasResults) ? 200 : 422);
+        return $out;
     }
 
-    private function persistZeroSoldCouponSetting(string $channel, bool $enabled, int $pct, ?string $promotionId, string $code): void
+    /**
+     * @param  list<array{min:float,max:float,pct:int}>  $slabs
+     * @param  array<string, string>  $promotions
+     */
+    private function persistZeroSoldCouponSetting(string $channel, bool $enabled, array $slabs, array $promotions): void
     {
+        $legacyPct = EbayDilCoupon::legacyPct($slabs);
+        $service = Ebay1CouponService::for($channel);
+        $code = $legacyPct >= 5 ? $service->zeroSoldCouponCode($legacyPct) : '';
+        $promoId = ($legacyPct >= 5 && isset($promotions[(string) $legacyPct]))
+            ? $promotions[(string) $legacyPct]
+            : null;
+        $cleanPromos = [];
+        foreach ($promotions as $pct => $id) {
+            $id = trim((string) $id);
+            $pctInt = (int) $pct;
+            if ($id !== '' && $pctInt >= 5 && $pctInt <= 80) {
+                $cleanPromos[(string) $pctInt] = $id;
+            }
+        }
+
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_zero_sold_coupon'],
             [
                 'visibility' => [
                     'enabled' => $enabled,
-                    'pct' => $pct,
-                    'promotion_id' => ($promotionId !== null && $promotionId !== '') ? $promotionId : null,
+                    'pct' => $legacyPct,
+                    'slabs' => $slabs,
+                    'promotions' => $cleanPromos,
+                    'promotion_id' => ($promoId !== null && $promoId !== '') ? $promoId : null,
                     'coupon_code' => $code,
                 ],
                 'column_order' => [],
@@ -5378,7 +5431,7 @@ class EbayController extends Controller
     }
 
     /**
-     * @return array{enabled:bool,pct:int,coupon_code:string,promotion_id:string}
+     * @return array{enabled:bool,pct:int,coupon_code:string,promotion_id:string,slabs:list<array{min:float,max:float,pct:int}>,promotions:array<string,string>}
      */
     private function ebayZeroSoldCouponConfig(string $channel = 'ebay1'): array
     {
@@ -5391,17 +5444,36 @@ class EbayController extends Controller
         if ($pct < 5 || $pct > 80) {
             $pct = 5;
         }
+        $slabs = EbayDilCoupon::normalize($vis['slabs'] ?? null);
+        if ($slabs === []) {
+            $slabs = EbayDilCoupon::fromLegacy($row ? $pct : 5);
+        }
+        $legacyPct = EbayDilCoupon::legacyPct($slabs);
         $service = Ebay1CouponService::for($channel);
         $storedCode = isset($vis['coupon_code']) ? trim((string) $vis['coupon_code']) : '';
         $enabled = $row
             ? filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)
             : false;
+        $promos = [];
+        foreach (is_array($vis['promotions'] ?? null) ? $vis['promotions'] : [] as $promoPct => $promoId) {
+            $promoId = trim((string) $promoId);
+            $promoPctInt = (int) $promoPct;
+            if ($promoId !== '' && $promoPctInt >= 5 && $promoPctInt <= 80) {
+                $promos[(string) $promoPctInt] = $promoId;
+            }
+        }
+        $legacyPromo = isset($vis['promotion_id']) ? trim((string) $vis['promotion_id']) : '';
+        if ($legacyPromo !== '' && $legacyPct >= 5 && ! isset($promos[(string) $legacyPct])) {
+            $promos[(string) $legacyPct] = $legacyPromo;
+        }
 
         return [
             'enabled' => $enabled,
-            'pct' => $pct,
-            'coupon_code' => $storedCode !== '' ? $storedCode : $service->zeroSoldCouponCode($pct),
-            'promotion_id' => isset($vis['promotion_id']) ? trim((string) $vis['promotion_id']) : '',
+            'pct' => $legacyPct,
+            'slabs' => $slabs,
+            'coupon_code' => $storedCode !== '' ? $storedCode : ($legacyPct >= 5 ? $service->zeroSoldCouponCode($legacyPct) : ''),
+            'promotion_id' => $legacyPct >= 5 ? ($promos[(string) $legacyPct] ?? $legacyPromo) : '',
+            'promotions' => $promos,
         ];
     }
 }
