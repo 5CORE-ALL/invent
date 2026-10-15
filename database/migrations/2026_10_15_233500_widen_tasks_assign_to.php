@@ -16,18 +16,29 @@ return new class extends Migration
             return;
         }
 
-        foreach (['tasks', 'deleted_tasks', 'automate_tasks'] as $table) {
-            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'assign_to')) {
-                continue;
-            }
+        // Some restored DBs run in strict mode yet contain legacy
+        // '0000-00-00 00:00:00' datetimes. Rebuilding the table for the ALTER
+        // re-validates every row and fails. Relax sql_mode for this session so
+        // the column widening can proceed, then restore it.
+        $originalSqlMode = (string) (DB::selectOne('SELECT @@SESSION.sql_mode AS mode')->mode ?? '');
+        DB::statement("SET SESSION sql_mode = ''");
 
-            $column = DB::selectOne("SHOW COLUMNS FROM `{$table}` WHERE Field = 'assign_to'");
-            $type = strtolower((string) ($column->Type ?? ''));
-            if ($type === '' || str_contains($type, 'text')) {
-                continue;
-            }
+        try {
+            foreach (['tasks', 'deleted_tasks', 'automate_tasks'] as $table) {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'assign_to')) {
+                    continue;
+                }
 
-            DB::statement("ALTER TABLE `{$table}` MODIFY `assign_to` TEXT NULL");
+                $column = DB::selectOne("SHOW COLUMNS FROM `{$table}` WHERE Field = 'assign_to'");
+                $type = strtolower((string) ($column->Type ?? ''));
+                if ($type === '' || str_contains($type, 'text')) {
+                    continue;
+                }
+
+                DB::statement("ALTER TABLE `{$table}` MODIFY `assign_to` TEXT NULL");
+            }
+        } finally {
+            DB::statement('SET SESSION sql_mode = ?', [$originalSqlMode]);
         }
     }
 
@@ -37,12 +48,19 @@ return new class extends Migration
             return;
         }
 
-        foreach (['tasks', 'deleted_tasks', 'automate_tasks'] as $table) {
-            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'assign_to')) {
-                continue;
-            }
+        $originalSqlMode = (string) (DB::selectOne('SELECT @@SESSION.sql_mode AS mode')->mode ?? '');
+        DB::statement("SET SESSION sql_mode = ''");
 
-            DB::statement("ALTER TABLE `{$table}` MODIFY `assign_to` VARCHAR(255) NULL");
+        try {
+            foreach (['tasks', 'deleted_tasks', 'automate_tasks'] as $table) {
+                if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'assign_to')) {
+                    continue;
+                }
+
+                DB::statement("ALTER TABLE `{$table}` MODIFY `assign_to` VARCHAR(255) NULL");
+            }
+        } finally {
+            DB::statement('SET SESSION sql_mode = ?', [$originalSqlMode]);
         }
     }
 };
