@@ -493,25 +493,25 @@
         #summary-stats .amm-badge-block--l30 {
             grid-column: 3;
             grid-row: 1;
-            background: #dbeafe;
-            border-color: #93c5fd;
+            background: #fef9c3;
+            border-color: #facc15;
         }
-        #summary-stats .amm-badge-block--l30 .amm-badge-block-title { color: #1e40af; }
+        #summary-stats .amm-badge-block--l30 .amm-badge-block-title { color: #854d0e; }
         #summary-stats .amm-badge-block--today {
             grid-column: 1;
             grid-row: 1;
-            background: #fed7aa;
-            border-color: #fb923c;
+            background: #fef9c3;
+            border-color: #facc15;
         }
-        #summary-stats .amm-badge-block--today .amm-badge-block-title { color: #9a3412; }
+        #summary-stats .amm-badge-block--today .amm-badge-block-title { color: #854d0e; }
         #summary-stats .amm-badge-block--yesterday {
             grid-column: 2;
             grid-row: 1;
-            background: #ccfbf1;
-            border-color: #5eead4;
+            background: #fef9c3;
+            border-color: #facc15;
         }
         #summary-stats .amm-badge-block--yesterday .amm-badge-block-title {
-            color: #115e59;
+            color: #854d0e;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -521,17 +521,17 @@
             padding: 0.05rem 0.4rem;
             line-height: 1.15;
             font-size: 0.75rem;
-            border-color: #0f766e;
+            border-color: #a16207;
             background: #fff;
         }
         #summary-stats .amm-badge-block--projected {
             grid-column: 4;
             grid-row: 1;
-            background: #ede9fe;
-            border-color: #c4b5fd;
+            background: #fef9c3;
+            border-color: #facc15;
         }
         #summary-stats .amm-badge-block--projected .amm-badge-block-title {
-            color: #5b21b6;
+            color: #854d0e;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -541,7 +541,7 @@
             padding: 0.05rem 0.4rem;
             line-height: 1.15;
             font-size: 0.75rem;
-            border-color: #5b21b6;
+            border-color: #a16207;
             background: #fff;
         }
         #summary-stats .amm-badge-block--forecast {
@@ -1003,22 +1003,22 @@
                             <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Today Sales: <span id="total-today-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="T Orders = Σ (L30 Orders × Today Sales ÷ L30 Sales). Same pace as Today Sales. 0 when Today Sales is 0.">
-                            T Orders: <span id="total-t-orders">0</span>
+                            <span class="summary-trend-dot none" data-metric="t_orders" title="Vs L30 daily average"></span>T Orders: <span id="total-t-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #17a2b8; color: white; font-weight: bold;" title="T Nprft% = Σ (Today Sales × NPFT%) ÷ Σ Today Sales.">
-                            T Nprft%: <span id="avg-t-npft">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="t_npft" title="Vs L30 NPFT%"></span>T Nprft%: <span id="avg-t-npft">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #dc3545; color: white; font-weight: bold;" title="TGroi% = Σ (Today Sales × GPFT%) ÷ Σ today COGS. Today COGS = L30 COGS × (Today Sales ÷ L30 Sales).">
-                            TGroi%: <span id="avg-t-groi">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="t_groi" title="Vs L30 G ROI%"></span>TGroi%: <span id="avg-t-groi">0.0%</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS.">
-                            TNROI%: <span id="avg-t-nroi">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="t_nroi" title="Vs L30 NROI%"></span>TNROI%: <span id="avg-t-nroi">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #d63384; color: white; font-weight: bold;" title="T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales.">
-                            T Ads%: <span id="avg-t-ads">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="t_ads" title="Vs L30 Ads%"></span>T Ads%: <span id="avg-t-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="T Views = Σ (Views × Today Sales ÷ L30 Sales). Same pace as Today Sales.">
-                            T Views: <span id="total-t-views">0</span>
+                            <span class="summary-trend-dot none" data-metric="t_views" title="Vs L30 daily average"></span>T Views: <span id="total-t-views">0</span>
                         </span>
                         </div>
                     </div>
@@ -1035,7 +1035,7 @@
                             <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Y Sales: <span id="total-y-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Y Orders = sum of yesterday order counts across channels (1-day Pacific, same Orders column as Yesterday by marketplace).">
-                            Y Orders: <span id="total-y-orders">0</span>
+                            <span class="summary-trend-dot none" data-metric="y_orders" title="Vs L30 daily average"></span>Y Orders: <span id="total-y-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
                             <span class="summary-trend-dot none" data-metric="y_pft" title="Rolling history"></span>Y PFT: <span id="total-y-pft">$0</span>
@@ -1053,10 +1053,10 @@
                             <span class="summary-trend-dot none" data-metric="y_nroi_pct" title="Rolling history"></span>YNROI%: <span id="avg-y-nroi">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" data-metric="y_ads_pct" style="background-color: #d63384; color: white; font-weight: bold;" title="Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales.">
-                            Y Ads%: <span id="avg-y-ads">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="y_ads_pct" title="Vs L30 Ads%"></span>Y Ads%: <span id="avg-y-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30).">
-                            Y Views: <span id="total-y-views">0</span>
+                            <span class="summary-trend-dot none" data-metric="y_views" title="Vs L30 daily average"></span>Y Views: <span id="total-y-views">0</span>
                         </span>
                         </div>
                     </div>
@@ -1064,7 +1064,7 @@
                         <div class="amm-badge-block-title">L30</div>
                         <div class="ebay2-summary-badge-row" role="group" aria-label="L30 metrics">
                         <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Sales column. Amz = last {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }} days Pacific (same window &amp; AMAZON_SALES_TOTAL_MODE as Amz Daily Sales). Other channels vary.">
-                            <span class="summary-trend-dot none" data-metric="l30_sales" title="Rolling history"></span>Sales: <span id="total-l30-sales">$0</span><span id="total-sales-growth" style="margin-left:4px;font-weight:800;"></span>
+                            <span class="summary-trend-dot none" data-metric="l30_sales" title="Rolling history"></span>Sales: <span id="total-l30-sales">$0</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Sum of Orders column. Amz = {{ (int) \App\Http\Controllers\Sales\AmazonSalesController::DAILY_SALES_WINDOW_DAYS }}-day Pacific rolling (same as Amz Daily Sales); other channels vary.">
                             <span class="summary-trend-dot none" data-metric="l30_orders" title="Rolling history"></span>Orders: <span id="total-l30-orders">0</span>
@@ -1088,7 +1088,7 @@
                             <span class="summary-trend-dot none" data-metric="ads_pct" title="Rolling history"></span>Ads: <span id="ads-percent-badge">0%</span>
                         </span>
                         <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="total_views" style="color: black; font-weight: bold; cursor:pointer;" title="View trend - Total Views (listing/Map traffic)">
-                            <span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Views: <span id="total-views-badge">0</span><span id="total-views-growth" style="margin-left:4px;font-weight:800;"></span>
+                            <span class="summary-trend-dot none" data-metric="total_views" title="Rolling history"></span>Views: <span id="total-views-badge">0</span>
                         </span>
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="cvr" style="color: white; font-weight: bold; cursor:pointer;" title="Listing CVR (all channels): weighted from each channel's listing CVR × views (same as the CVR column). Falls back to Qty ÷ Views when a channel has no listing CVR.">
                             <span class="summary-trend-dot none" data-metric="cvr" title="Rolling history"></span>CVR: <span id="cvr-pct-badge">0.00%</span>
@@ -1118,7 +1118,7 @@
                             <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>P-Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
                         </span>
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales.">
-                            P Orders: <span id="total-p-orders">0</span>
+                            <span class="summary-trend-dot none" data-metric="p_orders" title="Rolling history"></span>P Orders: <span id="total-p-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_groi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-GROI% = Σ (P-Sales × GPFT%) ÷ Σ projected COGS. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-Sales = (L7 ÷ 7) × 30.">
                             <span class="summary-trend-dot none" data-metric="p_groi_pct" title="Rolling history"></span>P-GROI%: <span id="avg-p-groi">0.0%</span>
@@ -1133,10 +1133,10 @@
                             <span class="summary-trend-dot none" data-metric="p_nroi_pct" title="Rolling history"></span>P-NROI%: <span id="avg-p-nroi">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #d63384; color: white; font-weight: bold;" title="P Ads% = total ad spend ÷ Σ P-Sales × 100. Spend is current L30 ad spend. P-Sales = (L7 ÷ 7) × 30.">
-                            P Ads%: <span id="avg-p-ads">0.0%</span>
+                            <span class="summary-trend-dot none" data-metric="p_ads" title="Rolling history"></span>P Ads%: <span id="avg-p-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2" style="background-color: #0d6efd; color: white; font-weight: bold;" title="P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales.">
-                            P Views: <span id="total-p-views">0</span>
+                            <span class="summary-trend-dot none" data-metric="p_views" title="Rolling history"></span>P Views: <span id="total-p-views">0</span>
                         </span>
                         </div>
                     </div>
@@ -1159,8 +1159,11 @@
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             <span class="summary-trend-dot none" title="Channel count"></span>Channels: <span id="total-channels">0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="reviews" style="color: black; font-weight: bold; cursor:pointer;" title="Weighted average product rating and total review count across channels (amazon_product_reviews).">
-                            <span class="summary-trend-dot none" data-metric="reviews" title="Rolling history"></span>Reviews: <span id="ratings-reviews-badge">0 ★ | 0</span>
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="rating" style="color: black; font-weight: bold; cursor:pointer;" title="Weighted average product rating across channels (amazon_product_reviews). Dot opens rating history.">
+                            <span class="summary-trend-dot none" data-metric="rating" title="Rating history"></span>Rating: <span id="total-rating-badge">0.0</span> ★
+                        </span>
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="reviews" style="color: black; font-weight: bold; cursor:pointer;" title="Total review count across channels (amazon_product_reviews). Dot opens review-count history.">
+                            <span class="summary-trend-dot none" data-metric="reviews" title="Review count history"></span>Reviews: <span id="total-reviews-badge">0</span>
                         </span>
                         </div>
                     </div>
@@ -2510,9 +2513,14 @@
             var lastDotColorByKey = {};
             var lastDotPairByKey = {};
             var chartSyncedAllMetrics = {};
-            var invertedDotMetrics = ['acos', 'ads_pct', 'tat'];
+            var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 'tat'];
+            var yVsL30DotMetrics = { y_sales: 1, y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1 };
+            var yOrdersExact = null;
+            var yViewsExact = null;
+            var l30DailyOrders = null;
+            var l30DailyViews = null;
             var ySalesAllChartPrefetch = null;
-            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','today_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews'];
+            var metricDotMetricKeys = ['missing_l','map','nmap','l60_sales','l60_orders','l30_sales','y_sales','today_sales','y_pft','y_npft_amt','p_sales','p_npft_amt','ad_spend','l30_orders','qty','groi','gprofit','ads_pct','nroi','npft','p_npft','p_groi_pct','p_nroi_pct','y_npft_pct','y_groi_pct','y_nroi_pct','pft','clicks','ad_sales','ad_sold','acos','ads_cvr','cvr','total_views','inv_at_lp','inv_at_sp','inventory','tat','reviews','rating'];
             var dotTrendsPrefetch = null;
 
             function getMetricDotColor(channelName, metricKey) {
@@ -5725,7 +5733,27 @@
                     else if (up > 0 || down > 0) cls = 'flat';
                     $(this).removeClass('up down flat none').addClass(cls);
                 });
+                paintDotBadgeBackgrounds();
             }
+
+            function paintDotBadgeBackgrounds() {
+                document.querySelectorAll('#summary-stats .amm-badge-block--today .summary-trend-dot, #summary-stats .amm-badge-block--yesterday .summary-trend-dot, #summary-stats .amm-badge-block--l30 .summary-trend-dot, #summary-stats .amm-badge-block--projected .summary-trend-dot').forEach(function(dot) {
+                    var badge = dot.closest('.badge');
+                    if (!badge) return;
+                    var bg = '#d1d5db';
+                    var fg = '#111827';
+                    if (dot.classList.contains('up')) {
+                        bg = '#22c55e';
+                        fg = '#052e16';
+                    } else if (dot.classList.contains('down')) {
+                        bg = '#ef4444';
+                        fg = '#fff';
+                    }
+                    badge.style.setProperty('background-color', bg, 'important');
+                    badge.style.setProperty('color', fg, 'important');
+                });
+            }
+            window.paintDotBadgeBackgrounds = paintDotBadgeBackgrounds;
 
             function fitAmmBadgeRows() {
                 document.querySelectorAll('#summary-stats .ebay2-summary-badge-row').forEach(function(row) {
@@ -5737,7 +5765,10 @@
                     });
                 });
             }
-            requestAnimationFrame(fitAmmBadgeRows);
+            requestAnimationFrame(function() {
+                fitAmmBadgeRows();
+                paintDotBadgeBackgrounds();
+            });
 
             // Update summary statistics
             function updateSummaryStats(data) {
@@ -5903,7 +5934,6 @@
                     badge.attr('data-sales-title', salesTitle);
                     badge.attr('title', salesTitle);
                     setBadgeExact($el, val);
-                    loadTotalSalesGrowth(val);
                 })();
                 // Show NYS when no channel had any sales yesterday — clearer than "$0".
                 (function() {
@@ -6051,7 +6081,6 @@
                     badge.attr('data-views-title', viewsTitle);
                     badge.attr('title', viewsTitle);
                     setBadgeExact($el, val);
-                    loadTotalViewsGrowth(val);
                 })();
                 // Listing CVR: prefer each channel's listing CVR × views (same as the CVR column /
                 // /temu-decrease / Shopify / Reverb badges). Fallback to Qty ÷ Views.
@@ -6274,12 +6303,47 @@
                     }
                     if (!isNaN(r) && !isNaN(rev) && rev > 0) { ratingSum += r * rev; reviewsSum += rev; }
                 });
-                const weightedAvgRating = reviewsSum > 0 ? (ratingSum / reviewsSum).toFixed(1) : '0.0';
-                const totalReviews = Math.round(reviewsSum).toLocaleString('en-US');
-                const $revBadge = $('#ratings-reviews-badge');
-                $revBadge.text(weightedAvgRating + ' ★ | ' + totalReviews);
-                setBadgeExact($revBadge, reviewsSum);
+                const weightedAvgRating = reviewsSum > 0 ? (ratingSum / reviewsSum) : 0;
+                const $ratingBadge = $('#total-rating-badge');
+                $ratingBadge.text(weightedAvgRating.toFixed(1));
+                setBadgeExact($ratingBadge, Math.round(weightedAvgRating * 10) / 10);
+                const $revBadge = $('#total-reviews-badge');
+                $revBadge.text(Math.round(reviewsSum).toLocaleString('en-US'));
+                setBadgeExact($revBadge, Math.round(reviewsSum));
+
+                pinSummaryDot('y_sales', totalL30Sales / 30, totalYSales,
+                    'Green when yesterday sales are above the L30 daily average (L30 Sales ÷ 30).');
+                pinSummaryDot('y_npft_pct', avgNpft, totalYPctSales > 0 ? (totalYNet / totalYPctSales) * 100 : 0,
+                    'Green when yesterday NPFT% is above the L30 NPFT%.');
+                pinSummaryDot('y_groi_pct', avgGroi, totalYCogs > 0 ? (totalYGross / totalYCogs) * 100 : 0,
+                    'Green when yesterday GROI% is above the L30 G ROI%.');
+                pinSummaryDot('y_nroi_pct', avgNroi, totalYCogs > 0 ? (totalYNet / totalYCogs) * 100 : 0,
+                    'Green when yesterday NROI% is above the L30 NROI%.');
+                pinSummaryDot('y_ads_pct', avgAdsPercent, totalYAdSales > 0 ? (totalYAdSpend / totalYAdSales) * 100 : 0,
+                    'Green when yesterday Ads% is below the L30 Ads%.');
+                l30DailyOrders = totalL30Orders / 30;
+                l30DailyViews = totalViews / 30;
+                if (yOrdersExact != null) {
+                    pinSummaryDot('y_orders', l30DailyOrders, yOrdersExact,
+                        'Green when yesterday orders are above the L30 daily average (L30 Orders ÷ 30).');
+                }
+                if (yViewsExact != null) {
+                    pinSummaryDot('y_views', l30DailyViews, yViewsExact,
+                        'Green when yesterday views are above the L30 daily average (L30 Views ÷ 30).');
+                }
+                if (typeof colorSummaryBadgeDots === 'function') {
+                    colorSummaryBadgeDots(channelKeysFromTableData());
+                }
                 requestAnimationFrame(fitAmmBadgeRows);
+            }
+
+            function pinSummaryDot(metric, baseline, current, title) {
+                if (!yVsL30DotMetrics[metric]) return;
+                if (baseline == null || current == null || !isFinite(baseline) || !isFinite(current)) return;
+                lastDotPairByKey['all_' + metric] = [baseline, current];
+                chartSyncedAllMetrics[metric] = true;
+                var dot = document.querySelector('#summary-stats .summary-trend-dot[data-metric="' + metric + '"]');
+                if (dot && title) dot.title = title;
             }
 
             // Combine channel search and type (B2C/B2B/Dropship/Wholesale) filters
@@ -7003,7 +7067,7 @@
             // (graph dot = last value vs the day before). The dot-trend cache is built
             // from a different snapshot table and could disagree (green dot, red graph).
             function syncAllBadgeDotWithChart(metric, values) {
-                if (!metric || metric === 'today_sales' || !Array.isArray(values) || values.length < 2) return;
+                if (!metric || metric === 'today_sales' || yVsL30DotMetrics[metric] || !Array.isArray(values) || values.length < 2) return;
                 var v1 = Number(values[values.length - 2]);
                 var v2 = Number(values[values.length - 1]);
                 if (!isFinite(v1) || !isFinite(v2)) return;
@@ -7202,6 +7266,7 @@
                 'inventory': 'inv',
                 'tat': 'TAT',
                 'reviews': 'Reviews',
+                'rating': 'Rating',
             };
 
             // Show metric chart (for non-ad-breakdown columns)
@@ -7621,30 +7686,6 @@
                 if (pct == null || !isFinite(pct) || Math.abs(pct) < 0.05) return '#6c757d';
                 return pct > 0 ? '#198754' : '#dc3545';
             }
-            function paintMetricBadgeGrowth(elId, titleAttr, titlePrefix, pct, colorFn) {
-                var el = document.getElementById(elId);
-                if (!el) return;
-                el.textContent = formatViewsGrowth(pct);
-                el.style.color = colorFn(pct);
-                el.title = titlePrefix + ' change versus about 30 days ago';
-                var badge = el.closest('.badge');
-                if (badge && pct != null && isFinite(pct)) {
-                    var baseTitle = badge.getAttribute(titleAttr) || badge.getAttribute('title') || '';
-                    var cleaned = baseTitle.replace(new RegExp(' ' + titlePrefix + ' L30 growth:.*$'), '');
-                    badge.setAttribute(titleAttr, cleaned);
-                    badge.setAttribute('title', cleaned + ' ' + titlePrefix + ' L30 growth: ' + formatViewsGrowth(pct));
-                }
-            }
-            function paintViewsBadgeGrowth(pct) {
-                paintMetricBadgeGrowth('total-views-growth', 'data-views-title', 'Views', pct, viewsGrowthColor);
-            }
-            function salesBadgeGrowthColor(pct) {
-                if (pct == null || !isFinite(pct) || Math.abs(pct) < 0.05) return '#e5e7eb';
-                return pct > 0 ? '#bbf7d0' : '#fecaca';
-            }
-            function paintSalesBadgeGrowth(pct) {
-                paintMetricBadgeGrowth('total-sales-growth', 'data-sales-title', 'Sales', pct, salesBadgeGrowthColor);
-            }
             var l30GrowthMetrics = { total_views: 'views', l30_sales: 'sales', sales: 'sales', today_sales: 'sales' };
             function paintChartViewsGrowth(values) {
                 var wrap = document.getElementById('adChartGrowthWrap');
@@ -7670,37 +7711,6 @@
                 el.textContent = formatViewsGrowth(growth.pct);
                 el.style.color = viewsGrowthColor(growth.pct);
                 el.title = 'Change from ' + growth.span + ' days earlier to the latest ' + kind;
-                if (currentChartChannel === 'all') {
-                    if (kind === 'views') paintViewsBadgeGrowth(growth.pct);
-                    else paintSalesBadgeGrowth(growth.pct);
-                }
-            }
-            var viewsGrowthPrefetch = null;
-            var salesGrowthPrefetch = null;
-            function loadRollingGrowth(metric, badgeValue, prefetchHolder, paint) {
-                if (prefetchHolder.req && prefetchHolder.req.readyState !== 4) return;
-                prefetchHolder.req = $.ajax({
-                    url: '/channel-metric-chart-data',
-                    method: 'GET',
-                    data: {
-                        channel: 'all',
-                        metric: metric,
-                        days: 30,
-                        badge_value: badgeValue
-                    }
-                }).done(function(response) {
-                    var rows = response && response.success && response.data ? response.data : [];
-                    var growth = viewsL30Growth(rows.map(function(row) { return Number(row.value); }));
-                    paint(growth ? growth.pct : null);
-                });
-            }
-            function loadTotalViewsGrowth(badgeValue) {
-                if (!viewsGrowthPrefetch) viewsGrowthPrefetch = {};
-                loadRollingGrowth('total_views', badgeValue, viewsGrowthPrefetch, paintViewsBadgeGrowth);
-            }
-            function loadTotalSalesGrowth(badgeValue) {
-                if (!salesGrowthPrefetch) salesGrowthPrefetch = {};
-                loadRollingGrowth('l30_sales', badgeValue, salesGrowthPrefetch, paintSalesBadgeGrowth);
             }
 
             // Render chart
@@ -7747,6 +7757,7 @@
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'tat') return v.toFixed(2);
+                    if (m === 'rating') return v.toFixed(1);
                     return Math.round(v).toLocaleString('en-US');
                 };
 
@@ -8481,6 +8492,12 @@
                 $el.text(text);
                 $el.closest('.badge').attr('title',
                     'Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30). ' + val.toLocaleString('en-US'));
+                yViewsExact = val;
+                if (l30DailyViews != null) {
+                    pinSummaryDot('y_views', l30DailyViews, val,
+                        'Green when yesterday views are above the L30 daily average (L30 Views ÷ 30).');
+                    if (typeof colorSummaryBadgeDots === 'function') colorSummaryBadgeDots(channelKeysFromTableData());
+                }
             }
 
             function applyYOrdersBadge(rows) {
@@ -8494,6 +8511,12 @@
                 $el.text(val.toLocaleString('en-US'));
                 $el.closest('.badge').attr('title',
                     'Y Orders = sum of yesterday order counts across channels (1-day Pacific, same Orders column as Yesterday by marketplace). ' + val.toLocaleString('en-US'));
+                yOrdersExact = val;
+                if (l30DailyOrders != null) {
+                    pinSummaryDot('y_orders', l30DailyOrders, val,
+                        'Green when yesterday orders are above the L30 daily average (L30 Orders ÷ 30).');
+                    if (typeof colorSummaryBadgeDots === 'function') colorSummaryBadgeDots(channelKeysFromTableData());
+                }
             }
 
             function openYesterdayMarketplaceModal() {

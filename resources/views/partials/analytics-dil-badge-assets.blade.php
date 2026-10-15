@@ -176,6 +176,7 @@
         if (!$dot.length) return;
         if (!isFinite(curr) || prevDil == null || !isFinite(prevDil)) {
             $dot.attr('class', 'summary-trend-dot none').attr('title', 'Click for daily Dil% history');
+            if (typeof window.paintDotBadgeBackgrounds === 'function') window.paintDotBadgeBackgrounds();
             return;
         }
         let cls = 'flat';
@@ -185,6 +186,7 @@
         $dot.attr('class', 'summary-trend-dot ' + cls)
             .attr('title', (cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : 'Same'))
                 + ' vs prior day (' + prevDil.toFixed(1) + '% → ' + curr.toFixed(1) + '%). Click for history.');
+        if (typeof window.paintDotBadgeBackgrounds === 'function') window.paintDotBadgeBackgrounds();
     }
     function set(dil, ovL30, inv) {
         const $b = $('#analytics-dil-badge');

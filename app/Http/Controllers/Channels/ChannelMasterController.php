@@ -18598,6 +18598,7 @@ class ChannelMasterController extends Controller
                 'inventory' => 'inventory_value_amazon',
                 'tat' => null,  // computed: inventory_value_amazon / total l30_sales (all only)
                 'reviews' => 'total_reviews',
+                'rating' => null, // weighted: Σ (avg_rating × total_reviews) ÷ Σ total_reviews
             ];
 
             $metricKey = $metricMap[$metric] ?? $metric;
@@ -18780,6 +18781,8 @@ class ChannelMasterController extends Controller
                     // any of this day's per-channel snapshots actually carries the field. If none
                     // do, skip the day so the chart doesn't render a flat-zero history.
                     $hasMetricData = false;
+                    $ratingWeighted = 0.0;
+                    $ratingReviews = 0.0;
 
                     foreach ($rows as $row) {
                         $sd = \App\Models\ChannelMasterSummary::decodeSummaryData($row->summary_data ?? []);
@@ -18896,6 +18899,14 @@ class ChannelMasterController extends Controller
                                 $totalVal = max($totalVal, $dayVal);
                             } elseif ($dayInv > 0) {
                                 $hasMetricData = true;
+                            }
+                        } elseif ($metric === 'rating') {
+                            $revCount = floatval($sd['total_reviews'] ?? 0);
+                            $avgRating = floatval($sd['avg_rating'] ?? 0);
+                            if ($revCount > 0 && $avgRating > 0) {
+                                $hasMetricData = true;
+                                $ratingWeighted += $avgRating * $revCount;
+                                $ratingReviews += $revCount;
                             }
                         } elseif ($shouldAvg) {
                             $totalVal += floatval($sd[$metricKey] ?? 0);
@@ -19022,6 +19033,11 @@ class ChannelMasterController extends Controller
                             continue;
                         }
                         $value = round($totalVal);
+                    } elseif ($metric === 'rating') {
+                        if ($ratingReviews <= 0) {
+                            continue;
+                        }
+                        $value = round($ratingWeighted / $ratingReviews, 2);
                     } elseif ($useL7Window && $metricKey !== null && !$hasMetricData) {
                         continue;
                     } elseif ($shouldAvg && $count > 0) {
@@ -19160,6 +19176,11 @@ class ChannelMasterController extends Controller
                         $spend = floatval($summaryData['total_ad_spend'] ?? 0);
                         $cogs = floatval($summaryData['cogs'] ?? 0);
                         $value = $cogs > 0 ? round((($pft - $spend) / $cogs) * 100, 1) : 0;
+                    } elseif ($metric === 'rating') {
+                        if (! array_key_exists('avg_rating', $summaryData)) {
+                            continue;
+                        }
+                        $value = round(floatval($summaryData['avg_rating']), 2);
                     } else {
                         $requireKey = in_array($metric, ['y_sales', 'l7_sales', 'p_sales', 'reviews'], true)
                             || ($useL7Window && $metricKey !== null && ! in_array($metric, ['cvr', 'nroi', 'pft', 'acos', 'ad_sales', 'ad_sold', 'ads_cvr'], true));

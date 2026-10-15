@@ -95,20 +95,22 @@
             <button type="submit"
                     form="quick-task-form"
                     id="quick-task-header-submit"
-                    class="btn btn-success btn-sm px-2 py-1 shadow-sm quick-task-header-primary-btn">
-                <i class="mdi mdi-plus-circle me-1"></i>Create Task
+                    class="btn btn-success btn-sm px-2 py-1 shadow-sm quick-task-header-primary-btn"
+                    title="Create Task"
+                    aria-label="Create Task">
+                <i class="mdi mdi-plus-circle"></i>
             </button>
             <button type="button"
                     id="quick-task-save-create-more-btn"
                     class="btn btn-warning btn-sm px-2 py-1 text-dark shadow-sm border border-dark border-opacity-10"
                     title="Save this task and clear the form for another">
-                <i class="mdi mdi-content-save-outline me-1"></i>Save &amp; Create More
+                Save &amp; More
             </button>
             <button type="button"
                     id="quick-task-create-channel-btn"
                     class="btn btn-light btn-sm px-2 py-1 text-dark shadow-sm"
                     title="Create this task once for every active channel. Group becomes the channel name.">
-                <i class="mdi mdi-storefront-outline me-1"></i>Create Channel Task
+                <i class="mdi mdi-plus me-1"></i>Channel Task
             </button>
             <button type="button"
                     id="close-task-form-btn"
@@ -321,6 +323,10 @@
         .quick-task-header-primary-btn {
             font-size: 16.5px;
             font-weight: 600;
+        }
+        .quick-task-header-primary-btn .mdi {
+            font-size: 1.2em;
+            line-height: 1;
         }
         #quick-task-save-create-more-btn,
         #quick-task-create-channel-btn {
