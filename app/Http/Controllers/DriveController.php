@@ -837,6 +837,29 @@ class DriveController extends Controller
         return $this->streamItem($item->disk, $item->path, $item->name, $item->mime_type, request()->boolean('download'), true);
     }
 
+    /**
+     * The picture stored in a public share. Folder links often hold a video
+     * and a separate jpg; this returns that image, not the video.
+     */
+    public function publicPoster(string $token)
+    {
+        $item = $this->publicItem($token);
+        if (! $item->isFolder()) {
+            abort_unless($this->isImageItem($item), 404);
+
+            return $this->streamItem($item->disk, $item->path, $item->name, $item->mime_type, false, true);
+        }
+
+        $hooks = array_values(array_filter(array_map(
+            static fn ($hook) => trim((string) $hook),
+            explode('|', (string) request()->query('hooks', ''))
+        )));
+        $image = $this->posterImage($item, $hooks);
+        abort_unless($image, 404);
+
+        return $this->streamItem($image->disk, $image->path, $image->name, $image->mime_type, false, true);
+    }
+
     public function publicChild(string $token, string $uuid)
     {
         $root = $this->publicItem($token);
@@ -966,6 +989,110 @@ class DriveController extends Controller
         $this->drive->log($item, $user, 'uploaded');
 
         return $item;
+    }
+
+    private function posterImage(DriveItem $folder, array $hooks): ?DriveItem
+    {
+        $images = $this->imageChildren($folder);
+        if ($images->isEmpty()) {
+            $subfolders = DriveItem::query()
+                ->where('parent_id', $folder->id)
+                ->whereNull('trashed_at')
+                ->where('type', 'folder')
+                ->get();
+            foreach ($subfolders as $subfolder) {
+                $images = $images->concat($this->imageChildren($subfolder));
+            }
+        }
+        if ($images->isEmpty()) {
+            return null;
+        }
+        if ($images->count() === 1) {
+            return $images->first();
+        }
+
+        $best = null;
+        $bestScore = 0;
+        foreach ($hooks as $hook) {
+            $hookNorm = $this->posterNorm($hook);
+            if ($hookNorm === '') {
+                continue;
+            }
+            foreach ($images as $image) {
+                $score = $this->posterScore($hookNorm, $this->posterNorm((string) $image->name));
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $best = $image;
+                }
+            }
+        }
+        if ($best instanceof DriveItem && $bestScore >= 80) {
+            return $best;
+        }
+
+        $thumb = $images->first(fn (DriveItem $image) => preg_match('/thumb/i', (string) $image->name) === 1);
+
+        return $thumb instanceof DriveItem ? $thumb : $images->first();
+    }
+
+    private function imageChildren(DriveItem $folder)
+    {
+        return DriveItem::query()
+            ->where('parent_id', $folder->id)
+            ->whereNull('trashed_at')
+            ->where('type', '!=', 'folder')
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (DriveItem $item) => $this->isImageItem($item))
+            ->values();
+    }
+
+    private function isImageItem(DriveItem $item): bool
+    {
+        if ($item->isFolder()) {
+            return false;
+        }
+        if ($item->category() === 'image') {
+            return true;
+        }
+
+        return in_array(strtolower((string) $item->extension), ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp'], true);
+    }
+
+    private function posterNorm(string $value): string
+    {
+        $value = strtolower($value);
+        $value = preg_replace('/\.(png|jpe?g|gif|webp|avif|bmp|mp4|webm|mov|m4v)$/i', '', $value) ?? $value;
+        $value = preg_replace('/\b(thumbnail|thumbnails|thumb|hooks|hook|video)\b/', ' ', $value) ?? $value;
+        $value = preg_replace('/[^a-z0-9]+/', ' ', $value) ?? $value;
+
+        return trim(preg_replace('/\s+/', ' ', $value) ?? $value);
+    }
+
+    private function posterScore(string $hook, string $file): int
+    {
+        if ($hook === '' || $file === '') {
+            return 0;
+        }
+        if ($hook === $file) {
+            return 100;
+        }
+        $hookTokens = array_values(array_filter(explode(' ', $hook)));
+        $fileTokens = array_values(array_filter(explode(' ', $file)));
+        if ($hookTokens === [] || $fileTokens === []) {
+            return 0;
+        }
+        $hookInFile = count(array_diff($hookTokens, $fileTokens)) === 0;
+        $fileInHook = count(array_diff($fileTokens, $hookTokens)) === 0;
+        if (! $hookInFile && ! $fileInHook) {
+            return 0;
+        }
+        $extra = abs(count($hookTokens) - count($fileTokens));
+        if ($extra === 0) {
+            return 100;
+        }
+
+        return count($hookTokens) >= 2 && $extra <= 1 ? 80 : 0;
     }
 
     private function publicItem(string $token): DriveItem

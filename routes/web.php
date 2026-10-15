@@ -441,6 +441,7 @@ Route::get('/barcode-image-data', [MastersBarcodeController::class, 'getData'])-
 Route::controller(\App\Http\Controllers\DriveController::class)->prefix('drive/s/{token}')->where(['token' => '[A-Za-z0-9]{20,64}'])->name('drive.public.')->group(function () {
     Route::get('/', 'publicShow')->name('show');
     Route::get('/download', 'publicZip')->name('download');
+    Route::get('/poster', 'publicPoster')->name('poster');
     Route::get('/raw/{filename?}', 'publicRaw')->where('filename', '[^/]+')->name('raw');
     Route::get('/f/{uuid}/{filename?}', 'publicChild')->where('filename', '[^/]+')->name('child');
 });

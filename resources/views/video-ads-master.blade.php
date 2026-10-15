@@ -72,25 +72,26 @@
             margin: 0 auto;
             border-radius: 6px;
             overflow: hidden;
-            background: #0f172a;
+            background: #fff;
             position: relative;
+            border: 1px solid #e5e7eb;
         }
-        .vam-thumb-box video,
-        .vam-thumb-box img {
+        .vam-thumb-box img,
+        .vam-thumb-box video {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: block;
-            background: #0f172a;
+            background: #fff;
             pointer-events: none;
         }
-        .vam-thumb-fallback {
-            position: absolute;
-            inset: 0;
-            display: grid;
-            place-items: center;
-            color: #fff;
-            font-size: 22px;
+        .vam-thumb-box video::-webkit-media-controls,
+        .vam-thumb-box video::-webkit-media-controls-start-playback-button,
+        .vam-thumb-box video::-webkit-media-controls-overlay-play-button {
+            display: none !important;
+            -webkit-appearance: none;
+            opacity: 0;
+            pointer-events: none;
         }
         .vam-thumb-folder {
             display: grid;
@@ -112,18 +113,18 @@
             height: 270px;
             border-radius: 10px;
             overflow: hidden;
-            background: #000;
-            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+            background: #fff;
+            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
             pointer-events: none;
+            border: 1px solid #e5e7eb;
         }
         #vam-thumb-pop[hidden] { display: none; }
-        #vam-thumb-pop video,
         #vam-thumb-pop img {
             width: 100%;
             height: 100%;
             object-fit: contain;
             display: block;
-            background: #000;
+            background: #fff;
         }
 
         .vam-target-pill {
@@ -1232,9 +1233,8 @@
                 return m ? m[1] : '';
             }
 
-            // How to preview the LINK cell. Dropbox shared folders hold an
-            // uploaded poster (the jpg/png next to the video); that image is
-            // loaded through our thumb endpoint and matched to the row's hook.
+            // How to preview the LINK cell. The thumb is the picture file in
+            // that link (jpg/png next to the video, or the image itself).
             function thumbKind(url, row) {
                 let parsed;
                 try { parsed = new URL(url); } catch (e) { return null; }
@@ -1242,7 +1242,10 @@
                 const path = decodeURIComponent(parsed.pathname || '');
                 const videoExt = /\.(mp4|webm|mov|m4v|ogg|ogv|mkv)$/i.test(path);
                 const imageExt = /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(path);
-                const dropbox = host === 'dropbox.com' || host.endsWith('.dropbox.com');
+                const dropbox = host === 'dropbox.com' || host.endsWith('.dropbox.com') || host === 'dropboxusercontent.com' || host.endsWith('.dropboxusercontent.com');
+                const hooks = parseTags(row && row.hook_name).map(displayHookName).join('|');
+                const dropboxImage = '/video-ads-master/thumb?u=' + encodeURIComponent(url) + '&hooks=' + encodeURIComponent(hooks);
+                const dropboxVideo = videoExt || (/\/scl\/fi\//i.test(path) && !imageExt);
 
                 const yt = extractYoutubeId(url);
                 if (yt) return { type: 'image', src: 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' };
@@ -1250,47 +1253,45 @@
                 const drive = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
                 if (drive) return { type: 'image', src: 'https://drive.google.com/thumbnail?id=' + drive[1] + '&sz=w640' };
 
-                // 5Core Drive share page (/drive/s/TOKEN) or its direct file URL.
-                // The page itself is not a video file; the poster is the first
-                // frame of /drive/s/TOKEN/raw, same as the share screen.
                 const ownDrive = path.match(/\/drive\/s\/([A-Za-z0-9]{20,64})(?:\/(.*))?$/);
                 if (ownDrive && (host === 'inventory.5coremanagement.com' || host.endsWith('.5coremanagement.com') || host === 'localhost' || host === location.hostname.replace(/^www\./i, '').toLowerCase())) {
-                    const rest = ownDrive[2] || '';
                     if (imageExt) return { type: 'image', src: parsed.pathname + parsed.search };
-                    if (/^(raw|f)(\/|$)/i.test(rest) || videoExt) {
-                        return { type: 'video', proxy: false, src: parsed.pathname + parsed.search };
-                    }
-                    return { type: 'video', proxy: false, src: '/drive/s/' + ownDrive[1] + '/raw' };
-                }
-
-                if (dropbox && /\/scl\/fo\//i.test(path) && !videoExt && !imageExt) {
-                    const hooks = parseTags(row && row.hook_name).map(displayHookName).join('|');
-                    return {
-                        type: 'image',
-                        src: '/video-ads-master/thumb?u=' + encodeURIComponent(url) + '&hooks=' + encodeURIComponent(hooks),
-                    };
+                    const token = ownDrive[1];
+                    const rest = ownDrive[2] || '';
+                    const poster = '/drive/s/' + token + '/poster?hooks=' + encodeURIComponent(hooks);
+                    const raw = rest === '' ? ('/drive/s/' + token + '/raw') : (parsed.pathname + parsed.search);
+                    return { type: 'image', src: poster, video: raw };
                 }
 
                 if (dropbox) {
-                    if (videoExt || (/\/scl\/fi\//i.test(path) && !imageExt)) return { type: 'video', proxy: true };
-                    if (imageExt) {
-                        return { type: 'image', src: '/video-ads-master/thumb?u=' + encodeURIComponent(url) };
-                    }
-                    if (/\/sh\//i.test(path)) return { type: 'folder' };
-                    return null;
+                    if (/\/sh\//i.test(path) && !/\/scl\/(?:fo|fi)\//i.test(path)) return { type: 'folder' };
+                    const video = dropboxVideo ? ('/video-ads-master/media?u=' + encodeURIComponent(url)) : '';
+                    return { type: 'image', src: dropboxImage, video: video };
                 }
 
-                if (videoExt) return { type: 'video', proxy: false, src: url };
                 if (imageExt) return { type: 'image', src: url };
+                if (videoExt) return { type: 'image', src: url, video: url };
                 return null;
             }
 
             window._vamThumbFail = function (el) {
                 const box = el.closest('.vam-thumb-box');
-                if (!box || box.querySelector('.vam-thumb-fallback')) return;
-                el.remove();
-                box.removeAttribute('data-zoom');
-                box.insertAdjacentHTML('beforeend', '<i class="fas fa-play-circle vam-thumb-fallback"></i>');
+                if (!box) return;
+                const videoUrl = box.getAttribute('data-video') || '';
+                if (el.tagName === 'IMG' && videoUrl) {
+                    box.setAttribute('data-video', '');
+                    box.setAttribute('data-src', videoUrl);
+                    const video = document.createElement('video');
+                    video.muted = true;
+                    video.defaultMuted = true;
+                    video.playsInline = true;
+                    video.preload = 'metadata';
+                    video.src = videoUrl + '#t=0.2';
+                    video.addEventListener('error', function () { window._vamThumbFail(video); });
+                    el.replaceWith(video);
+                    return;
+                }
+                box.outerHTML = '<span class="vam-dash">—</span>';
             };
 
             function thumbFormatter(cell) {
@@ -1301,14 +1302,8 @@
                 if (kind.type === 'folder') {
                     return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-folder" title="This link is a folder"><i class="fas fa-folder"></i></a>`;
                 }
-                const src = kind.type === 'video' && kind.proxy
-                    ? ('/video-ads-master/media?u=' + encodeURIComponent(url))
-                    : kind.src;
-                const preview = kind.type === 'video' ? (src + '#t=0.2') : src;
-                const media = kind.type === 'video'
-                    ? `<video muted playsinline preload="metadata" src="${escapeHtml(preview)}" onerror="window._vamThumbFail(this)"></video>`
-                    : `<img src="${escapeHtml(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="window._vamThumbFail(this)">`;
-                return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-box" data-zoom="${kind.type}" data-src="${escapeHtml(preview)}" title="Open link">${media}</a>`;
+                const videoAttr = kind.video ? ` data-video="${escapeHtml(kind.video)}"` : '';
+                return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="vam-thumb-box" data-zoom="image" data-src="${escapeHtml(kind.src)}"${videoAttr} title="Open link"><img src="${escapeHtml(kind.src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="window._vamThumbFail(this)"></a>`;
             }
 
             // Enlarged preview is attached to <body> so the table cannot clip it.
@@ -1336,34 +1331,22 @@
                 const src = box.getAttribute('data-src');
                 if (!media || !src) return;
                 pop.innerHTML = '';
-                let drawn = false;
                 if (media.tagName === 'VIDEO' && media.readyState >= 2 && media.videoWidth) {
                     try {
                         const canvas = document.createElement('canvas');
-                        const ratio = media.videoWidth / media.videoHeight;
                         canvas.width = 840;
-                        canvas.height = Math.max(2, Math.round(840 / (ratio || (16 / 9))));
+                        canvas.height = Math.max(2, Math.round(840 / ((media.videoWidth / media.videoHeight) || (16 / 9))));
                         canvas.getContext('2d').drawImage(media, 0, 0, canvas.width, canvas.height);
-                        const img = document.createElement('img');
-                        img.src = canvas.toDataURL('image/jpeg', 0.86);
-                        pop.appendChild(img);
-                        drawn = true;
-                    } catch (err) { drawn = false; }
+                        const shot = document.createElement('img');
+                        shot.src = canvas.toDataURL('image/jpeg', 0.86);
+                        pop.appendChild(shot);
+                    } catch (err) {}
                 }
-                if (!drawn) {
-                    if (box.getAttribute('data-zoom') === 'image') {
-                        const img = document.createElement('img');
-                        img.src = src;
-                        img.referrerPolicy = 'no-referrer';
-                        pop.appendChild(img);
-                    } else {
-                        const video = document.createElement('video');
-                        video.muted = true;
-                        video.playsInline = true;
-                        video.preload = 'auto';
-                        video.src = src;
-                        pop.appendChild(video);
-                    }
+                if (!pop.firstChild) {
+                    const img = document.createElement('img');
+                    img.src = src;
+                    img.referrerPolicy = 'no-referrer';
+                    pop.appendChild(img);
                 }
                 const rect = box.getBoundingClientRect();
                 const w = 480, h = 270, gap = 12;
@@ -1385,7 +1368,6 @@
             document.addEventListener('loadedmetadata', (e) => {
                 const video = e.target;
                 if (!video || video.tagName !== 'VIDEO' || !video.closest('.vam-thumb-box')) return;
-                if (video.videoHeight > video.videoWidth) video.style.objectFit = 'contain';
                 if (video.currentTime < 0.05) {
                     try { video.currentTime = 0.2; } catch (err) {}
                 }
