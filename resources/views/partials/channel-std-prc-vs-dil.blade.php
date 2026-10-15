@@ -502,8 +502,21 @@
         function chStdUsesMinNpft() {
             return typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL !== '';
         }
+        /** This page's own sold-units field (CHANNEL_PROMO_CFG.soldField), e.g. 'doba L30', 'TT L30', 'al30'. */
+        function chStdPageSoldField() {
+            try {
+                if (typeof chPromoCfg !== 'undefined' && chPromoCfg && chPromoCfg.soldField) return String(chPromoCfg.soldField);
+            } catch (e) { /* chPromoCfg still in TDZ */ }
+            return '';
+        }
         function chStdSiteL30(d) {
             if (!d) return 0;
+            // Marketplace pages must project with their own units, never the overall (OV) units.
+            const soldField = chStdPageSoldField();
+            if (soldField && d[soldField] != null && d[soldField] !== '') {
+                const own = Number(d[soldField]);
+                return isFinite(own) && own > 0 ? own : 0;
+            }
             if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'bestbuy') {
                 const n = Number(d['BB L30']);
                 return isFinite(n) && n > 0 ? n : 0;
