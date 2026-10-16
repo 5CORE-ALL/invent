@@ -22,18 +22,18 @@
         #vlc-tabulator .tabulator {
             font-size: 11px;
             width: 100% !important;
-            border: 1px solid #d1d5db;
+            border: 1px solid #64748b;
         }
 
         #vlc-tabulator .tabulator-header {
             background: #e8ecf1;
             color: #1e293b;
             font-weight: 600;
-            border-bottom: 1px solid #cbd5e1;
+            border-bottom: 1px solid #64748b;
         }
 
         #vlc-tabulator .tabulator-header .tabulator-col {
-            border-right: 1px solid #cbd5e1;
+            border-right: 1px solid #64748b;
         }
 
         #vlc-tabulator .tabulator-header .tabulator-col-content,
@@ -56,9 +56,14 @@
             padding: 4px 6px;
             vertical-align: middle;
             text-align: center;
-            border-bottom: 1px solid #e5e7eb;
-            border-right: 1px solid #f1f5f9;
+            border-bottom: 1px solid #94a3b8;
+            border-right: 1px solid #64748b;
             font-size: 11px;
+        }
+
+        #vlc-tabulator .tabulator-cell.vlc-parent {
+            font-weight: 700;
+            color: #0f172a;
         }
 
         #vlc-tabulator .tabulator-row.tabulator-row-even .tabulator-cell {
@@ -175,9 +180,10 @@
                         headerFilterPlaceholder: 'Parent',
                         minWidth: 160,
                         widthGrow: 1,
+                        cssClass: 'vlc-parent',
                         formatter: function (cell) {
                             const v = String(cell.getValue() || '').trim();
-                            return v ? escapeHtml(v) : '—';
+                            return v ? '<strong>' + escapeHtml(v) + '</strong>' : '—';
                         }
                     },
                     {
