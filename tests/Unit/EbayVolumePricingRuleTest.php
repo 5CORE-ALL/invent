@@ -67,6 +67,14 @@ class EbayVolumePricingRuleTest extends TestCase
         $this->assertSame([], EbayVolumePricingRule::ebayTiers(['buy2' => 0, 'buy3' => 0, 'buy4' => -2]));
     }
 
+    public function test_ebay_tiers_must_be_consecutive_from_buy_2(): void
+    {
+        $this->assertSame([], EbayVolumePricingRule::ebayTiers(['buy2' => 0, 'buy3' => 10, 'buy4' => 20]));
+        $this->assertSame([
+            ['qty' => 2, 'percent' => 6.0],
+        ], EbayVolumePricingRule::ebayTiers(['buy2' => 6, 'buy3' => 0, 'buy4' => 25]));
+    }
+
     public function test_custom_weight_min_max_is_kept_and_old_slab_keys_convert(): void
     {
         $custom = EbayVolumePricingRule::merge([

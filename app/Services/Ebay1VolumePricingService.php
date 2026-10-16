@@ -195,12 +195,17 @@ class Ebay1VolumePricingService
      */
     private function payload(string $name, array $tiers, array $listingIds, ?array $existing): array
     {
-        $rules = [];
-        foreach (array_values($tiers) as $i => $tier) {
+        // eBay needs minQuantity 1,2,3,(4) in order, ruleOrder equal to minQuantity, and Buy 1 at 0%.
+        $rules = [[
+            'discountBenefit' => ['percentageOffOrder' => '0'],
+            'discountSpecification' => ['minQuantity' => 1],
+            'ruleOrder' => 1,
+        ]];
+        foreach (array_values($tiers) as $tier) {
             $rules[] = [
                 'discountBenefit' => ['percentageOffOrder' => $this->percentString((float) $tier['percent'])],
                 'discountSpecification' => ['minQuantity' => (int) $tier['qty']],
-                'ruleOrder' => $i + 1,
+                'ruleOrder' => (int) $tier['qty'],
             ];
         }
         $start = now('UTC')->addMinutes(2)->format('Y-m-d\TH:i:s.000\Z');

@@ -159,7 +159,7 @@ class EbayVolumePricingRule
     }
 
     /**
-     * Tiers eBay will accept: 0 is omitted, later tiers stay strictly above earlier ones, cap 80.
+     * Tiers eBay will accept: consecutive from Buy 2 (stops at the first 0), later tiers stay strictly above earlier ones, cap 80.
      *
      * @param  array{buy2:float,buy3:float,buy4:float}  $sum
      * @return list<array{qty:int,percent:float}>
@@ -174,8 +174,9 @@ class EbayVolumePricingRule
         $out = [];
         $prev = 0.0;
         foreach ($raw as $qty => $pct) {
+            // eBay quantities must be consecutive from Buy 2 (Buy 1 is added at 0%), so stop at the first gap.
             if ($pct <= 0) {
-                continue;
+                break;
             }
             if ($prev > 0 && $pct <= $prev) {
                 $pct = round($prev + 0.1, 1);
