@@ -4041,6 +4041,7 @@
                 || CHANNEL_PROMO_CHANNEL === 'temu'
                 || CHANNEL_PROMO_CHANNEL === 'temu2'
                 || CHANNEL_PROMO_CHANNEL === 'temu3'
+                || CHANNEL_PROMO_CHANNEL === 'alibaba'
                 || CHANNEL_PROMO_CHANNEL === 'faire') {
                 return 0;
             }
