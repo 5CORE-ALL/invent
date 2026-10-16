@@ -681,8 +681,8 @@
                             <div class="gac-raw-filter-field">
                                 <label class="gac-raw-filter-label mb-0" for="gac-filter-stat">Sts</label>
                                 <select id="gac-filter-stat" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by campaign status">
-                                    <option value="all" selected>All</option>
-                                    <option value="ENABLED">Enabled</option>
+                                    <option value="all">All</option>
+                                    <option value="ENABLED" selected>Enabled</option>
                                     <option value="NOT_ENABLED">All except Enabled</option>
                                     <option value="PAUSED">Paused</option>
                                     <option value="REMOVED">Removed</option>
