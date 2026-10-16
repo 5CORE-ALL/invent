@@ -983,6 +983,88 @@ class ListingManagerAmazonHydrator
     }
 
     /**
+     * This child SKU's Image Master photos only. Parent photos and a shared
+     * Shopify catalog image are not substituted for the child's own files.
+     * A public inventory copy is kept ahead of cdn.shopify.com, which Temu rejects.
+     *
+     * @return list<string>
+     */
+    public static function temuChildImageUrls(string $sku, int $limit = 10): array
+    {
+        $limit = max(1, $limit);
+        $urls = [];
+        $shopify = [];
+        $push = function (string $raw) use (&$urls, $limit): bool {
+            $url = self::publicImageUrl($raw);
+            if ($url === '' || ! preg_match('#^https?://#i', $url) || in_array($url, $urls, true)) {
+                return false;
+            }
+            $urls[] = $url;
+
+            return count($urls) >= $limit;
+        };
+        $consider = function (string $raw) use ($push, &$shopify): bool {
+            $url = self::publicImageUrl($raw);
+            if ($url === '') {
+                return false;
+            }
+            if (self::isShopifyCdnHost($url)) {
+                if (! in_array($url, $shopify, true)) {
+                    $shopify[] = $url;
+                }
+
+                return false;
+            }
+
+            return $push($url);
+        };
+
+        foreach (self::productImageRows($sku) as $row) {
+            $path = trim((string) ($row->image_path ?? ''));
+            $cdn = trim((string) ($row->cdn_url ?? ''));
+            if ($consider($path) || $consider($cdn)) {
+                return $urls;
+            }
+        }
+
+        if ($urls === []) {
+            $pm = self::productMaster($sku);
+            foreach (['main_image', 'image_url', 'main_image_brand', 'image_path'] as $key) {
+                if ($consider((string) ($pm[$key] ?? ''))) {
+                    return $urls;
+                }
+            }
+            for ($i = 1; $i <= 20; $i++) {
+                if ($consider((string) ($pm['image'.$i] ?? ''))) {
+                    return $urls;
+                }
+            }
+            foreach (self::imageMasterFromMetrics($sku) as $url) {
+                if ($consider($url)) {
+                    return $urls;
+                }
+            }
+        }
+
+        if ($urls === []) {
+            foreach ($shopify as $url) {
+                if ($push($url)) {
+                    break;
+                }
+            }
+        }
+
+        return $urls;
+    }
+
+    private static function isShopifyCdnHost(string $url): bool
+    {
+        $host = strtolower((string) (parse_url($url, PHP_URL_HOST) ?? ''));
+
+        return $host === 'cdn.shopify.com' || $host === 'cdn.shopifycdn.com';
+    }
+
+    /**
      * Photos Image Master shows for this SKU: product_images, this SKU's Product Master
      * image slots, and this SKU's saved image_master_json. Parent photos are not included.
      *
