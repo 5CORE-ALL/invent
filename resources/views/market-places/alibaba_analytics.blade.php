@@ -315,12 +315,49 @@
             return !!(data.is_parent_summary || data.is_parent_row);
         }
 
+        /**
+         * The S PRC shown, same as /amazon-tabulator-view: the live rule price (Std × (1 − sum of discounts)),
+         * the exact amount Push Prc sends. Falls back to the saved S PRC only when the rule gives nothing.
+         */
+        function abShownSprice(data) {
+            if (!data || isAbParentRow(data)) return 0;
+            if (typeof chPromoPushSpriceAmount === 'function') {
+                const live = Number(chPromoPushSpriceAmount(data)) || 0;
+                if (live > 0) return live;
+            }
+            return parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+        }
+        window.abShownSprice = abShownSprice;
+        /** Rules / maps load after first paint: repaint the price cells and counts from the live rule price. */
+        window.abAfterRulesRedraw = function () {
+            try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
+        };
+
+        /** Sort by the value the cell shows (live S PRC based), blanks last in both directions. */
+        function abDisplayedSorter(field) {
+            const val = function (d) {
+                const sp = abShownSprice(d);
+                if (field === 'SPRICE') return sp > 0 ? sp : null;
+                const lp = parseFloat(d && d.lp) || 0;
+                if (!(sp > 0)) return null;
+                if (field === 'sgroi' || field === 'snroi') return lp > 0 ? (((sp * AB_MARGIN) - lp) / lp) * 100 : null;
+                return (((sp * AB_MARGIN) - lp) / sp) * 100;
+            };
+            return function (a, b, aRow, bRow, col, dir) {
+                const x = val(aRow.getData() || {}), y = val(bRow.getData() || {});
+                if (x === null && y === null) return 0;
+                if (x === null) return dir === 'asc' ? 1 : -1;
+                if (y === null) return dir === 'asc' ? -1 : 1;
+                return x - y;
+            };
+        }
+
         function abHasBlueAlert(data) {
             if (!data || isAbParentRow(data)) return false;
             const sku = String(data.sku || '').trim().toUpperCase();
             if (!sku || sku.indexOf('PARENT') === 0) return false;
             if (!(parseFloat(data.INV) > 0)) return false;
-            const sprice = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            const sprice = abShownSprice(data);
             const price = parseFloat(data.price) || 0;
             return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
         }
@@ -797,12 +834,12 @@
                             }
                         },
                         {
-                            title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: 'number',
-                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Std Prc is the maximum, no LMP. Saved and pushed by the server (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.',
+                            title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: abDisplayedSorter('SPRICE'),
+                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Std Prc is the maximum, no LMP. Shows the live rule price, the same amount Push Prc sends (same as Amazon). The server saves and pushes the same price (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
-                                const value = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                const value = abShownSprice(row);
                                 if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
                                 const live = parseFloat(row.price) || 0;
                                 const differ = abHasBlueAlert(row);
@@ -815,12 +852,12 @@
                             }
                         },
                         {
-                            title: 'SGROI', field: 'sgroi', hozAlign: 'center', width: 55, sorter: 'number',
+                            title: 'SGROI', field: 'sgroi', hozAlign: 'center', width: 55, sorter: abDisplayedSorter('sgroi'),
                             headerTooltip: 'SGROI = ((S PRC × margin) − LP) ÷ LP. Ship is not subtracted.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
-                                const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                const sprice = abShownSprice(row);
                                 const lp = parseFloat(row.lp) || 0;
                                 if (!(sprice > 0) || !(lp > 0)) return '<span style="color:#6c757d;">–</span>';
                                 const profit = (sprice * AB_MARGIN) - lp;
@@ -828,12 +865,12 @@
                             }
                         },
                         {
-                            title: 'SGPFT', field: 'sgpft', hozAlign: 'center', width: 55, sorter: 'number',
+                            title: 'SGPFT', field: 'sgpft', hozAlign: 'center', width: 55, sorter: abDisplayedSorter('sgpft'),
                             headerTooltip: 'SGPFT = ((S PRC × margin) − LP) ÷ S PRC. Ship is not subtracted.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
-                                const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                const sprice = abShownSprice(row);
                                 if (!(sprice > 0)) return '<span style="color:#6c757d;">–</span>';
                                 const lp = parseFloat(row.lp) || 0;
                                 const profit = (sprice * AB_MARGIN) - lp;
@@ -865,12 +902,12 @@
                             formatter: function (cell) { return abMoney(cell.getValue()); }
                         },
                         {
-                            title: 'SNROI', field: 'snroi', hozAlign: 'center', width: 55, sorter: 'number',
+                            title: 'SNROI', field: 'snroi', hozAlign: 'center', width: 55, sorter: abDisplayedSorter('snroi'),
                             headerTooltip: 'Alibaba has no ads. SNROI = SGROI.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
-                                const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                const sprice = abShownSprice(row);
                                 const lp = parseFloat(row.lp) || 0;
                                 if (!(sprice > 0) || !(lp > 0)) return '<span style="color:#6c757d;">–</span>';
                                 const profit = (sprice * AB_MARGIN) - lp;
@@ -878,12 +915,12 @@
                             }
                         },
                         {
-                            title: 'SNGPFT', field: 'sngpft', hozAlign: 'center', width: 60, sorter: 'number',
+                            title: 'SNGPFT', field: 'sngpft', hozAlign: 'center', width: 60, sorter: abDisplayedSorter('sngpft'),
                             headerTooltip: 'Alibaba has no ads. SNGPFT = SGPFT.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
-                                const sprice = parseFloat(row.SPRICE != null ? row.SPRICE : row.sprice) || 0;
+                                const sprice = abShownSprice(row);
                                 if (!(sprice > 0)) return '<span style="color:#6c757d;">–</span>';
                                 const lp = parseFloat(row.lp) || 0;
                                 const profit = (sprice * AB_MARGIN) - lp;

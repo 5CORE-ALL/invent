@@ -1696,6 +1696,7 @@
                     // was missed above, so re-render every rendered row once the data is ready.
                     try {
                         if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') table.redraw(true);
+            if (typeof window.abAfterRulesRedraw === 'function') window.abAfterRulesRedraw();
                     } catch (eRedraw) { /* ignore */ }
                     // Rule and clearance are all loaded now: pages repaint their header counts.
                     try { $(document).trigger('chStd:settled'); } catch (e) { /* ignore */ }
