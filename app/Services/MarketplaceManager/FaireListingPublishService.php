@@ -112,7 +112,7 @@ class FaireListingPublishService
                     'message' => 'Set Std Prc on LMP Overall for '.$sku.'.',
                 ];
             }
-            $images = $this->productImages($product);
+            $images = $this->productImages($product, $sku);
             if ($images === [] && $overrideImages !== []) {
                 $images = $overrideImages;
             }
@@ -259,7 +259,7 @@ class FaireListingPublishService
                 continue;
             }
             $product = $products->get(strtolower($sku));
-            if (! $product || $this->productImages($product) === []) {
+            if (! $product || $this->productImages($product, $sku) === []) {
                 continue;
             }
             $out[] = $sku;
@@ -620,7 +620,7 @@ class FaireListingPublishService
 
         $token = (string) Str::uuid();
 
-        return [
+        $payload = [
             'sku' => $row['sku'],
             'idempotency_token' => $token,
             'idempotence_token' => $token,
@@ -632,6 +632,18 @@ class FaireListingPublishService
                 'retail_price' => ['amount_minor' => $retailMinor, 'currency' => 'USD'],
             ]],
         ];
+        $variantImages = [];
+        foreach (array_slice($row['images'] ?? [], 0, 8) as $url) {
+            $url = trim((string) $url);
+            if ($url !== '') {
+                $variantImages[] = ['url' => $url];
+            }
+        }
+        if ($variantImages !== []) {
+            $payload['images'] = $variantImages;
+        }
+
+        return $payload;
     }
 
     /**
@@ -968,8 +980,17 @@ class FaireListingPublishService
     /**
      * @return list<string>
      */
-    private function productImages(ProductMaster $product): array
+    private function productImages(ProductMaster $product, string $sku = ''): array
     {
+        $sku = $sku !== '' ? $sku : trim((string) $product->sku);
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            return ListingManagerAmazonHydrator::variationSkuImageUrls($sku, 8);
+        }
+        $color = ListingManagerAmazonHydrator::colorImageUrls($sku, trim((string) ($product->parent ?? '')), 8);
+        if ($color !== []) {
+            return $color;
+        }
+
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
             $raw = trim($raw);

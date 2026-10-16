@@ -749,7 +749,7 @@ class EbayListingPublishService
     private function publicImages(mixed $images, ProductMaster $product, string $sku): array
     {
         $fromMaster = ListingManagerAmazonHydrator::publishImageUrls($sku, (string) ($product->parent ?? ''), 12);
-        if ($fromMaster !== []) {
+        if ($fromMaster !== [] || \App\Support\Marketplace\VariationListingContent::active()) {
             return $fromMaster;
         }
 

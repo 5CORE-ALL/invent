@@ -13,6 +13,7 @@ use App\Models\ShopifySku;
 use App\Services\ReverbApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -623,16 +624,16 @@ class ReverbListingPublishService
     {
         $fromVariation = \App\Support\Marketplace\VariationListingContent::descriptionFor($product);
         if ($fromVariation !== null) {
-            return $fromVariation;
+            return $this->appendVariationBullets($product, $fromVariation);
         }
         $html = trim((string) ($product->description_html ?? ''));
         if ($html !== '') {
-            return $html;
+            return $this->appendVariationBullets($product, $html);
         }
         foreach (['description_1500', 'description_1000', 'description_800', 'description_600', 'product_description'] as $col) {
             $text = trim((string) ($product->{$col} ?? ''));
             if ($text !== '') {
-                return $text;
+                return $this->appendVariationBullets($product, $text);
             }
         }
 
@@ -649,10 +650,28 @@ class ReverbListingPublishService
                 $out .= '<li>'.e($b).'</li>';
             }
 
-            return $out.'</ul>';
+            return $this->appendVariationBullets($product, $out.'</ul>');
         }
 
-        return $title;
+        return $this->appendVariationBullets($product, $title);
+    }
+
+    private function appendVariationBullets(ProductMaster $product, string $html): string
+    {
+        $bullets = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
+        if ($bullets === null || $bullets === []) {
+            return $html;
+        }
+        $items = '';
+        foreach ($bullets as $bullet) {
+            $bullet = trim($bullet);
+            if ($bullet === '' || str_contains($html, $bullet)) {
+                continue;
+            }
+            $items .= '<li>'.e($bullet).'</li>';
+        }
+
+        return $items === '' ? $html : $html.'<ul>'.$items.'</ul>';
     }
 
     private function defaultListingBrand(): string
@@ -705,6 +724,15 @@ class ReverbListingPublishService
      */
     private function productImages(ProductMaster $product, string $sku = ''): array
     {
+        $childSku = $sku !== '' ? $sku : trim((string) $product->sku);
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            return ListingManagerAmazonHydrator::variationSkuImageUrls($childSku, 8);
+        }
+        $color = ListingManagerAmazonHydrator::colorImageUrls($childSku, trim((string) ($product->parent ?? '')), 8);
+        if ($color !== []) {
+            return $color;
+        }
+
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
             foreach ($this->splitImageValues($raw) as $one) {

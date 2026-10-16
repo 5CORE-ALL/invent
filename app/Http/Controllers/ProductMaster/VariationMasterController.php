@@ -44,7 +44,11 @@ class VariationMasterController extends Controller
             'variation_name' => 'nullable|string|max:500',
             'title' => 'nullable|string|max:500',
             'description' => 'nullable|string|max:20000',
-            'bullets' => 'nullable|string|max:8000',
+            'bullet_1' => 'nullable|string|max:1000',
+            'bullet_2' => 'nullable|string|max:1000',
+            'bullet_3' => 'nullable|string|max:1000',
+            'bullet_4' => 'nullable|string|max:1000',
+            'bullet_5' => 'nullable|string|max:1000',
         ]);
 
         $product = ProductMaster::query()->find($request->integer('id'));
@@ -65,7 +69,7 @@ class VariationMasterController extends Controller
             $product->save();
         }
 
-        $listingChanged = $request->exists('title') || $request->exists('description') || $request->exists('bullets');
+        $listingChanged = $request->exists('title') || $request->exists('description') || $this->requestHasBullet($request);
         $listing = null;
         if ($listingChanged) {
             $parent = ListingManagerFamily::normalizeParentKey((string) ($request->input('parent') ?: $product->parent));
@@ -73,12 +77,13 @@ class VariationMasterController extends Controller
                 $parent,
                 $request->exists('title') ? $this->normalizeDisplay($request->input('title')) : null,
                 $request->exists('description') ? $this->keepLines($request->input('description')) : null,
-                $request->exists('bullets') ? $this->keepLines($request->input('bullets')) : null
+                $this->requestHasBullet($request) ? $this->joinBullets($this->bulletSlotsFromRequest($request)) : null
             );
             if ($error !== null) {
                 return response()->json(['success' => false, 'message' => $error], 422);
             }
-            $listing = VariationListingContent::forParent($parent);
+            $parentRow = VariationListingContent::parentProduct($parent);
+            $listing = $this->listingText(is_array($parentRow?->Values) ? $parentRow->Values : []);
         }
 
         $values = is_array($product->Values) ? $product->Values : [];
@@ -90,7 +95,11 @@ class VariationMasterController extends Controller
             'variation_name' => $values['variation_name'] ?? '',
             'title' => $listing['title'] ?? '',
             'description' => $listing['description'] ?? '',
-            'bullets' => isset($listing['bullets']) ? implode("\n", $listing['bullets']) : '',
+            'bullet_1' => $listing['bullet_1'] ?? '',
+            'bullet_2' => $listing['bullet_2'] ?? '',
+            'bullet_3' => $listing['bullet_3'] ?? '',
+            'bullet_4' => $listing['bullet_4'] ?? '',
+            'bullet_5' => $listing['bullet_5'] ?? '',
         ]);
     }
 
@@ -103,7 +112,7 @@ class VariationMasterController extends Controller
             return response()->streamDownload(function () use ($rows) {
                 $out = fopen('php://output', 'w');
                 fwrite($out, "\xEF\xBB\xBF");
-                fputcsv($out, ['Parent SKU', 'Child SKU', 'Variation Type', 'Variation Name', 'Title', 'Description', 'Bullet Points']);
+                fputcsv($out, ['Parent SKU', 'Child SKU', 'Variation Type', 'Variation Name', 'Title', 'Description', 'Bullet 1', 'Bullet 2', 'Bullet 3', 'Bullet 4', 'Bullet 5']);
                 foreach ($rows as $row) {
                     fputcsv($out, [
                         $row['parent'],
@@ -112,7 +121,11 @@ class VariationMasterController extends Controller
                         $row['variation_name'],
                         $row['title'],
                         $row['description'],
-                        $row['bullets'],
+                        $row['bullet_1'],
+                        $row['bullet_2'],
+                        $row['bullet_3'],
+                        $row['bullet_4'],
+                        $row['bullet_5'],
                     ]);
                 }
                 fclose($out);
@@ -124,7 +137,7 @@ class VariationMasterController extends Controller
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Variation Master');
-        $sheet->fromArray(['Parent SKU', 'Child SKU', 'Variation Type', 'Variation Name', 'Title', 'Description', 'Bullet Points'], null, 'A1');
+        $sheet->fromArray(['Parent SKU', 'Child SKU', 'Variation Type', 'Variation Name', 'Title', 'Description', 'Bullet 1', 'Bullet 2', 'Bullet 3', 'Bullet 4', 'Bullet 5'], null, 'A1');
         $rowNum = 2;
         foreach ($rows as $row) {
             $sheet->fromArray([
@@ -134,16 +147,20 @@ class VariationMasterController extends Controller
                 $row['variation_name'],
                 $row['title'],
                 $row['description'],
-                $row['bullets'],
+                $row['bullet_1'],
+                $row['bullet_2'],
+                $row['bullet_3'],
+                $row['bullet_4'],
+                $row['bullet_5'],
             ], null, 'A'.$rowNum);
             $rowNum++;
         }
-        $sheet->getStyle('A1:G1')->applyFromArray([
+        $sheet->getStyle('A1:K1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '0F766E']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
-        foreach (range('A', 'G') as $col) {
+        foreach (range('A', 'K') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
         $sheet->freezePane('A2');
@@ -175,13 +192,18 @@ class VariationMasterController extends Controller
         $nameIdx = $this->columnIndex($headers, ['variation name', 'variationname']);
         $titleIdx = $this->columnIndex($headers, ['title']);
         $descriptionIdx = $this->columnIndex($headers, ['description']);
-        $bulletsIdx = $this->columnIndex($headers, ['bullet points', 'bulletpoints', 'bullets', 'bullet point']);
+        $legacyBulletsIdx = $this->columnIndex($headers, ['bullet points', 'bulletpoints', 'bullets', 'bullet point']);
+        $bulletIdx = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $bulletIdx[$i] = $this->columnIndex($headers, ['bullet '.$i, 'bullet'.$i]);
+        }
+        $hasBulletColumn = $legacyBulletsIdx !== null || count(array_filter($bulletIdx, static fn ($idx) => $idx !== null)) > 0;
 
         if ($skuIdx === null) {
             return response()->json(['success' => false, 'message' => 'Child SKU column is required.'], 422);
         }
-        if ($typeIdx === null && $nameIdx === null && $titleIdx === null && $descriptionIdx === null && $bulletsIdx === null) {
-            return response()->json(['success' => false, 'message' => 'Need a Variation Type, Variation Name, Title, Description, or Bullet Points column.'], 422);
+        if ($typeIdx === null && $nameIdx === null && $titleIdx === null && $descriptionIdx === null && ! $hasBulletColumn) {
+            return response()->json(['success' => false, 'message' => 'Need a Variation Type, Variation Name, Title, Description, or Bullet column.'], 422);
         }
 
         $products = ProductMaster::query()->get(['id', 'parent', 'sku', 'Values']);
@@ -197,7 +219,7 @@ class VariationMasterController extends Controller
         $skipped = 0;
         $missing = 0;
 
-        DB::transaction(function () use ($rows, $parentIdx, $skuIdx, $typeIdx, $nameIdx, $titleIdx, $descriptionIdx, $bulletsIdx, $byNorm, &$updated, &$skipped, &$missing) {
+        DB::transaction(function () use ($rows, $parentIdx, $skuIdx, $typeIdx, $nameIdx, $titleIdx, $descriptionIdx, $legacyBulletsIdx, $bulletIdx, $byNorm, &$updated, &$skipped, &$missing) {
             foreach (array_slice($rows, 1) as $row) {
                 if (! is_array($row)) {
                     continue;
@@ -234,9 +256,17 @@ class VariationMasterController extends Controller
                     }
                 }
 
+                $numberedBullet = false;
+                foreach ($bulletIdx as $idx) {
+                    if ($idx !== null && array_key_exists($idx, $row)) {
+                        $numberedBullet = true;
+                        break;
+                    }
+                }
                 $listingTouched = ($titleIdx !== null && array_key_exists($titleIdx, $row))
                     || ($descriptionIdx !== null && array_key_exists($descriptionIdx, $row))
-                    || ($bulletsIdx !== null && array_key_exists($bulletsIdx, $row));
+                    || $numberedBullet
+                    || ($legacyBulletsIdx !== null && array_key_exists($legacyBulletsIdx, $row));
                 if ($listingTouched) {
                     $parent = $parentIdx !== null
                         ? $this->normalizeDisplay($row[$parentIdx] ?? null)
@@ -245,7 +275,7 @@ class VariationMasterController extends Controller
                         $parent,
                         $titleIdx !== null ? $this->normalizeDisplay($row[$titleIdx] ?? null) : null,
                         $descriptionIdx !== null ? $this->keepLines($row[$descriptionIdx] ?? null) : null,
-                        $bulletsIdx !== null ? $this->keepLines($row[$bulletsIdx] ?? null) : null
+                        $this->importBulletText($parent, $row, $bulletIdx, $legacyBulletsIdx, $numberedBullet)
                     );
                     if ($error !== null) {
                         $missing++;
@@ -275,7 +305,7 @@ class VariationMasterController extends Controller
     }
 
     /**
-     * @return list<array{id: int, parent: string, sku: string, variation_type: string, variation_name: string, title: string, description: string, bullets: string}>
+     * @return list<array{id: int, parent: string, sku: string, variation_type: string, variation_name: string, title: string, description: string, bullet_1: string, bullet_2: string, bullet_3: string, bullet_4: string, bullet_5: string}>
      */
     private function productRows(): array
     {
@@ -312,7 +342,7 @@ class VariationMasterController extends Controller
         foreach ($children as $product) {
             $parent = ListingManagerFamily::normalizeParentKey($this->normalizeDisplay($product->parent));
             $values = is_array($product->Values) ? $product->Values : [];
-            $listing = $listingByParent[$parent] ?? ['title' => '', 'description' => '', 'bullets' => ''];
+            $listing = $listingByParent[$parent] ?? $this->emptyListingText();
             $rows[] = [
                 'id' => (int) $product->id,
                 'parent' => $this->normalizeDisplay($product->parent),
@@ -321,7 +351,11 @@ class VariationMasterController extends Controller
                 'variation_name' => $this->normalizeDisplay($values['variation_name'] ?? null),
                 'title' => $listing['title'],
                 'description' => $listing['description'],
-                'bullets' => $listing['bullets'],
+                'bullet_1' => $listing['bullet_1'],
+                'bullet_2' => $listing['bullet_2'],
+                'bullet_3' => $listing['bullet_3'],
+                'bullet_4' => $listing['bullet_4'],
+                'bullet_5' => $listing['bullet_5'],
             ];
         }
 
@@ -330,7 +364,7 @@ class VariationMasterController extends Controller
 
     /**
      * @param  array<string, mixed>  $values
-     * @return array{title: string, description: string, bullets: string}
+     * @return array{title: string, description: string, bullet_1: string, bullet_2: string, bullet_3: string, bullet_4: string, bullet_5: string}
      */
     private function listingText(array $values): array
     {
@@ -338,12 +372,119 @@ class VariationMasterController extends Controller
         if (is_array($bullets)) {
             $bullets = implode("\n", $bullets);
         }
+        $slots = $this->bulletSlots($bullets);
 
         return [
             'title' => $this->normalizeDisplay($values[VariationListingContent::TITLE_KEY] ?? null),
             'description' => $this->keepLines($values[VariationListingContent::DESCRIPTION_KEY] ?? null),
-            'bullets' => $this->keepLines($bullets),
+            'bullet_1' => $slots[0],
+            'bullet_2' => $slots[1],
+            'bullet_3' => $slots[2],
+            'bullet_4' => $slots[3],
+            'bullet_5' => $slots[4],
         ];
+    }
+
+    /**
+     * @return array{title: string, description: string, bullet_1: string, bullet_2: string, bullet_3: string, bullet_4: string, bullet_5: string}
+     */
+    private function emptyListingText(): array
+    {
+        return [
+            'title' => '',
+            'description' => '',
+            'bullet_1' => '',
+            'bullet_2' => '',
+            'bullet_3' => '',
+            'bullet_4' => '',
+            'bullet_5' => '',
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function bulletSlots(mixed $raw): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', (string) $raw) ?: [];
+        $slots = [];
+        for ($i = 0; $i < 5; $i++) {
+            $slots[] = $this->normalizeDisplay($lines[$i] ?? '');
+        }
+
+        return $slots;
+    }
+
+    /**
+     * @param  list<string>  $slots
+     */
+    private function joinBullets(array $slots): string
+    {
+        $lines = [];
+        for ($i = 0; $i < 5; $i++) {
+            $lines[] = $this->normalizeDisplay($slots[$i] ?? '');
+        }
+        while ($lines !== [] && end($lines) === '') {
+            array_pop($lines);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function requestHasBullet(Request $request): bool
+    {
+        for ($i = 1; $i <= 5; $i++) {
+            if ($request->exists('bullet_'.$i)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function bulletSlotsFromRequest(Request $request): array
+    {
+        $slots = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $slots[] = $this->normalizeDisplay($request->input('bullet_'.$i));
+        }
+
+        return $slots;
+    }
+
+    /**
+     * @param  list<mixed>  $row
+     * @param  array<int, int|null>  $bulletIdx
+     */
+    private function importBulletText(string $parent, array $row, array $bulletIdx, ?int $legacyBulletsIdx, bool $numberedBullet): ?string
+    {
+        if ($numberedBullet) {
+            $existing = $this->bulletSlots('');
+            $parentRow = VariationListingContent::parentProduct($parent);
+            if ($parentRow) {
+                $stored = is_array($parentRow->Values) ? ($parentRow->Values[VariationListingContent::BULLETS_KEY] ?? '') : '';
+                if (is_array($stored)) {
+                    $stored = implode("\n", $stored);
+                }
+                $existing = $this->bulletSlots($stored);
+            }
+            foreach ($bulletIdx as $number => $idx) {
+                if ($idx !== null && array_key_exists($idx, $row)) {
+                    $existing[$number - 1] = $this->normalizeDisplay($row[$idx] ?? '');
+                }
+            }
+
+            return $this->joinBullets($existing);
+        }
+
+        if ($legacyBulletsIdx !== null && array_key_exists($legacyBulletsIdx, $row)) {
+            return $this->joinBullets($this->bulletSlots($row[$legacyBulletsIdx] ?? ''));
+        }
+
+        return null;
     }
 
     private function writeListingText(string $parent, ?string $title, ?string $description, ?string $bullets): ?string

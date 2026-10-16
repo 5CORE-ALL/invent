@@ -93,11 +93,12 @@ class TikTokListingPublishService
             $description = '<p>'.e($title).'</p>';
         }
 
+        $imageParent = (string) ($product->parent ?? '');
         $imageSku = $primarySku;
-        $imageSources = ListingManagerAmazonHydrator::imageMasterUploadSources($primarySku, (string) ($product->parent ?? ''));
+        $imageSources = ListingManagerAmazonHydrator::imageMasterUploadSources($primarySku, $imageParent);
         if ($imageSources === []) {
             foreach ($publishSkus as $sku) {
-                $imageSources = ListingManagerAmazonHydrator::imageMasterUploadSources($sku, (string) ($product->parent ?? ''));
+                $imageSources = ListingManagerAmazonHydrator::imageMasterUploadSources($sku, $imageParent);
                 if ($imageSources !== []) {
                     $imageSku = $sku;
                     break;
@@ -132,20 +133,44 @@ class TikTokListingPublishService
             return ['success' => false, 'message' => 'Set Std Prc on LMP Overall for '.$primarySku.'.'];
         }
 
-        $uploaded = $api->uploadImageMasterForListing($imageSku, (string) ($product->parent ?? ''));
-        $uris = $uploaded['uris'] ?? [];
-        if ($uris === []) {
-            return [
-                'success' => false,
-                'message' => trim((string) ($uploaded['message'] ?? '')) !== ''
-                    ? (string) $uploaded['message']
-                    : 'TikTok image upload failed for '.$imageSku.'. Check Image Master photos.',
-            ];
-        }
-
         $skuRows = $mode === 'variation' && count($publishSkus) > 1
             ? $publishSkus
             : [$primarySku];
+        $perSkuUri = [];
+        $uris = [];
+        if (count($skuRows) > 1) {
+            $lastImageError = '';
+            foreach ($skuRows as $sku) {
+                $uploaded = $api->uploadImageMasterForListing($sku, $imageParent, 1);
+                $uri = trim((string) ($uploaded['uris'][0]['uri'] ?? ''));
+                if ($uri === '') {
+                    $lastImageError = trim((string) ($uploaded['message'] ?? ''));
+                    continue;
+                }
+                $perSkuUri[$sku] = $uri;
+                $uris[] = ['uri' => $uri];
+            }
+            if ($uris === []) {
+                return [
+                    'success' => false,
+                    'message' => $lastImageError !== ''
+                        ? $lastImageError
+                        : 'TikTok image upload failed for '.$primarySku.'. Check Image Master photos.',
+                ];
+            }
+        } else {
+            $uploaded = $api->uploadImageMasterForListing($imageSku, $imageParent);
+            $uris = $uploaded['uris'] ?? [];
+            if ($uris === []) {
+                return [
+                    'success' => false,
+                    'message' => trim((string) ($uploaded['message'] ?? '')) !== ''
+                        ? (string) $uploaded['message']
+                        : 'TikTok image upload failed for '.$imageSku.'. Check Image Master photos.',
+                ];
+            }
+        }
+
         $tiktokSkus = [];
         foreach ($skuRows as $sku) {
             $childHydrated = $sku === $primarySku ? $hydrated : ListingManagerAmazonHydrator::hydrate($sku, false);
@@ -161,10 +186,14 @@ class TikTokListingPublishService
             ];
             if (count($skuRows) > 1) {
                 $type = ListingManagerFamily::variationType($sku);
-                $row['sales_attributes'] = [[
+                $attribute = [
                     'name' => $type !== '' ? $type : 'Variation',
                     'value_name' => ListingManagerFamily::variationLabel($sku, $parentHint !== '' ? $parentHint : $this->groupKey($product)),
-                ]];
+                ];
+                if (($perSkuUri[$sku] ?? '') !== '') {
+                    $attribute['sku_img'] = ['uri' => $perSkuUri[$sku]];
+                }
+                $row['sales_attributes'] = [$attribute];
             }
             $tiktokSkus[] = $row;
         }
@@ -605,7 +634,7 @@ class TikTokListingPublishService
     private function publicImages(mixed $images, ProductMaster $product, string $sku): array
     {
         $fromMaster = ListingManagerAmazonHydrator::publishImageUrls($sku, (string) ($product->parent ?? ''));
-        if ($fromMaster !== []) {
+        if ($fromMaster !== [] || \App\Support\Marketplace\VariationListingContent::active()) {
             return $fromMaster;
         }
 

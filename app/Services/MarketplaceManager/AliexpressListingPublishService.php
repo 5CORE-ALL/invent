@@ -10,6 +10,7 @@ use App\Models\ShopifySku;
 use App\Services\AliExpressApiService;
 use App\Support\Marketplace\AliexpressListingCounts;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\LmpStdPrice;
 use Illuminate\Support\Facades\Cache;
@@ -149,7 +150,7 @@ class AliexpressListingPublishService
                     'message' => 'Set Std Prc on LMP Overall for '.$sku.'.',
                 ];
             }
-            $images = $isSeed && $overrideImages !== [] ? $overrideImages : $this->productImages($product, $sku);
+            $images = $this->productImages($product, $sku);
             if ($images === [] && $overrideImages !== []) {
                 $images = $overrideImages;
             }
@@ -879,16 +880,16 @@ class AliexpressListingPublishService
     {
         $fromVariation = \App\Support\Marketplace\VariationListingContent::descriptionFor($product);
         if ($fromVariation !== null) {
-            return $fromVariation;
+            return $this->appendVariationBullets($product, $fromVariation);
         }
         $html = trim((string) ($product->description_html ?? ''));
         if ($html !== '') {
-            return $html;
+            return $this->appendVariationBullets($product, $html);
         }
         foreach (['description_1500', 'description_1000', 'description_800', 'description_600', 'product_description'] as $col) {
             $text = trim((string) ($product->{$col} ?? ''));
             if ($text !== '') {
-                return nl2br(e($text), false);
+                return $this->appendVariationBullets($product, nl2br(e($text), false));
             }
         }
         $bullets = [];
@@ -904,10 +905,28 @@ class AliexpressListingPublishService
                 $out .= '<li>'.e($b).'</li>';
             }
 
-            return $out.'</ul>';
+            return $this->appendVariationBullets($product, $out.'</ul>');
         }
 
-        return '<p>'.e($title).'</p>';
+        return $this->appendVariationBullets($product, '<p>'.e($title).'</p>');
+    }
+
+    private function appendVariationBullets(ProductMaster $product, string $html): string
+    {
+        $bullets = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
+        if ($bullets === null || $bullets === []) {
+            return $html;
+        }
+        $items = '';
+        foreach ($bullets as $bullet) {
+            $bullet = trim($bullet);
+            if ($bullet === '' || str_contains($html, $bullet)) {
+                continue;
+            }
+            $items .= '<li>'.e($bullet).'</li>';
+        }
+
+        return $items === '' ? $html : $html.'<ul>'.$items.'</ul>';
     }
 
     /**
@@ -1472,6 +1491,15 @@ class AliexpressListingPublishService
      */
     private function productImages(ProductMaster $product, string $sku = ''): array
     {
+        $childSku = $sku !== '' ? $sku : trim((string) $product->sku);
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            return ListingManagerAmazonHydrator::variationSkuImageUrls($childSku, 6);
+        }
+        $color = ListingManagerAmazonHydrator::colorImageUrls($childSku, trim((string) ($product->parent ?? '')), 6);
+        if ($color !== []) {
+            return $color;
+        }
+
         $urls = [];
         $push = function (string $raw) use (&$urls): void {
             foreach ($this->splitImageValues($raw) as $one) {

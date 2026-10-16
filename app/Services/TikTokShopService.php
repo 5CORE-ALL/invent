@@ -2651,13 +2651,13 @@ class TikTokShopService
      *
      * @return array{uris: list<array{uri: string}>, message: string}
      */
-    public function uploadImageMasterForListing(string $sku, ?string $parentSku = null): array
+    public function uploadImageMasterForListing(string $sku, ?string $parentSku = null, int $limit = 9): array
     {
         if (! $this->accessToken) {
             return ['uris' => [], 'message' => 'TikTok access token is missing. Connect the shop, then try Publish again.'];
         }
 
-        $sources = ListingManagerAmazonHydrator::imageMasterUploadSources($sku, $parentSku);
+        $sources = ListingManagerAmazonHydrator::imageMasterUploadSources($sku, $parentSku, $limit);
         if ($sources === []) {
             return [
                 'uris' => [],

@@ -137,12 +137,12 @@ class TopDawgListingPublishService
             ];
         }
 
-        $images = is_array($overrides['images'] ?? null) ? array_values(array_filter(array_map(
-            static fn ($url) => trim((string) $url),
-            $overrides['images']
-        ))) : [];
+        $images = $this->productImages($product, $sku);
         if ($images === []) {
-            $images = $this->productImages($product, $sku);
+            $images = is_array($overrides['images'] ?? null) ? array_values(array_filter(array_map(
+                static fn ($url) => trim((string) $url),
+                $overrides['images']
+            ))) : [];
         }
         if ($images === []) {
             return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Image Master).'];

@@ -162,6 +162,9 @@ class ListingManagerPublishDispatcher
                     'answers' => is_array($details['wayfair_answers'] ?? null) ? $details['wayfair_answers'] : [],
                 ];
             }
+            if ($mode === 'variation') {
+                $overrides['images'] = [];
+            }
             $result = app(ListingVariationPreviewService::class)->publishSkus(
                 $skus !== [] ? $skus : [$sku],
                 $key,
