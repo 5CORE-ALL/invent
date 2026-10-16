@@ -134,6 +134,12 @@
             width: 100%; height: 100%; object-fit: contain; background: #000;
         }
         .tmv-modal-stage canvas { display: none; }
+        /* Last known screen shown (dimmed) until the first real live frame arrives. */
+        .tmv-modal-still {
+            position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+            opacity: .55; display: none;
+        }
+        .tmv-modal-still.is-on { display: block; }
         .tmv-modal-wait {
             position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
             gap: .5rem; text-align: center; padding: 1rem; background: rgba(2, 6, 23, .55); color: #cbd5e1; font-size: .9rem; pointer-events: none;
@@ -219,6 +225,7 @@
             </div>
         </div>
         <div class="tmv-modal-stage" id="tmvModalStage">
+            <img class="tmv-modal-still" id="tmvModalStill" alt="">
             <video id="tmvModalVideo" muted playsinline autoplay></video>
             <canvas id="tmvModalMirror"></canvas>
             <div class="tmv-modal-wait" id="tmvModalWait"><div class="tmv-spin"></div><div id="tmvModalWaitText">Connecting…</div></div>
@@ -587,6 +594,7 @@
         const mBadge = document.getElementById('tmvModalBadge');
         const mToggle = document.getElementById('tmvModalToggle');
         const mStage = document.getElementById('tmvModalStage');
+        const mStill = document.getElementById('tmvModalStill');
         let focused = null;
         let focusTimer = null;
         let mirrorRaf = null;
@@ -612,6 +620,17 @@
             mBadge.textContent = live ? '● LIVE' : (t.playing ? 'CONNECTING' : 'PAUSED');
             mBadge.classList.toggle('is-live', live);
             mToggle.textContent = t.playing ? 'Pause' : 'Play';
+            // Until live frames arrive, hide the (black) video and show the last known screen instead.
+            const showVideo = live || t.canvas.classList.contains('is-on') && t.playing;
+            mVideo.style.visibility = showVideo ? 'visible' : 'hidden';
+            mMirror.style.visibility = showVideo ? 'visible' : 'hidden';
+            const still = t.img.currentSrc || t.img.src || '';
+            if (still && !showVideo) {
+                if (mStill.getAttribute('src') !== still) mStill.src = still;
+                mStill.classList.add('is-on');
+            } else {
+                mStill.classList.remove('is-on');
+            }
             mWait.classList.toggle('is-on', !live);
             mWait.classList.toggle('is-paused', !t.playing);
             mWaitText.textContent = !t.playing ? 'Paused' : (t.waitText.textContent || 'Connecting…');
