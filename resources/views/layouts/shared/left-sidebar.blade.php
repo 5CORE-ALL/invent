@@ -2941,21 +2941,8 @@
                         <li>
                             <a href="{{ route('variation.name.thumbnail') }}">PM variation name / thumbnail</a>
                         </li>
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarVariationMaster" aria-expanded="{{ request()->routeIs('variation.master', 'variation.listing.content') ? 'true' : 'false' }}" aria-controls="sidebarVariationMaster">
-                                <span>Variation Master</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse {{ request()->routeIs('variation.master', 'variation.listing.content') ? 'show' : '' }}" id="sidebarVariationMaster">
-                                <ul class="side-nav-third-level">
-                                    <li>
-                                        <a href="{{ route('variation.master') }}">Variation Master</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('variation.listing.content') }}">Variation Title, Bullet Points and Description</a>
-                                    </li>
-                                </ul>
-                            </div>
+                        <li>
+                            <a href="{{ route('variation.master') }}">Variation Master</a>
                         </li>
                         <li>
                             <a href="{{ route('raw.images') }}">

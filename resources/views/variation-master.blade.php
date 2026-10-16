@@ -73,6 +73,23 @@
             background-color: #f0fdfa;
         }
 
+        #vm-tabulator .tabulator-cell.vm-sku {
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        #vm-tabulator .tabulator-cell.vm-text {
+            text-align: left;
+            vertical-align: top;
+        }
+
+        #vm-tabulator .vm-multiline {
+            white-space: pre-wrap;
+            text-align: left;
+            max-height: 72px;
+            overflow: auto;
+        }
+
         .vm-toolbar {
             display: flex;
             align-items: center;
@@ -105,7 +122,7 @@
                             <i class="bi bi-filetype-csv me-1"></i>Download CSV
                         </a>
                         <input type="file" id="vm-upload-file" class="d-none" accept=".xlsx,.xls,.csv">
-                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Type Variation Type and Variation Name here. Variation listings on Missing Listing and Listing Manager use these two fields.</span>
+                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, and Bullet Points are shared by every child of that parent and are used when a variation listing is published.</span>
                         <span class="small ms-auto" id="vm-status"></span>
                     </div>
                 </div>
@@ -135,6 +152,17 @@
                     .replace(/"/g, '&quot;');
             }
 
+            function textFormatter(cell) {
+                const value = String(cell.getValue() || '');
+                if (!value) return '';
+                return '<div class="vm-multiline">' + escapeHtml(value) + '</div>';
+            }
+
+            function skuFormatter(cell) {
+                const v = String(cell.getValue() || '').trim();
+                return v ? '<strong>' + escapeHtml(v) + '</strong>' : '—';
+            }
+
             function setStatus(text, ok) {
                 if (!statusEl) return;
                 statusEl.textContent = text || '';
@@ -162,10 +190,8 @@
                         headerFilter: 'input',
                         headerFilterPlaceholder: 'Parent SKU',
                         minWidth: 140,
-                        formatter: function (cell) {
-                            const v = String(cell.getValue() || '').trim();
-                            return v ? escapeHtml(v) : '—';
-                        }
+                        cssClass: 'vm-sku',
+                        formatter: skuFormatter
                     },
                     {
                         title: 'Child SKU',
@@ -173,10 +199,8 @@
                         headerFilter: 'input',
                         headerFilterPlaceholder: 'Child SKU',
                         minWidth: 160,
-                        formatter: function (cell) {
-                            const v = String(cell.getValue() || '').trim();
-                            return v ? escapeHtml(v) : '—';
-                        }
+                        cssClass: 'vm-sku',
+                        formatter: skuFormatter
                     },
                     {
                         title: 'Variation Type',
@@ -203,14 +227,55 @@
                             const v = String(cell.getValue() || '').trim();
                             return v ? escapeHtml(v) : '';
                         }
+                    },
+                    {
+                        title: 'Title',
+                        field: 'title',
+                        editor: 'textarea',
+                        headerFilter: 'input',
+                        headerFilterPlaceholder: 'Title',
+                        minWidth: 200,
+                        cssClass: 'vm-editable vm-text',
+                        formatter: textFormatter
+                    },
+                    {
+                        title: 'Description',
+                        field: 'description',
+                        editor: 'textarea',
+                        headerFilter: 'input',
+                        headerFilterPlaceholder: 'Description',
+                        minWidth: 240,
+                        cssClass: 'vm-editable vm-text',
+                        formatter: textFormatter
+                    },
+                    {
+                        title: 'Bullet Points',
+                        field: 'bullets',
+                        editor: 'textarea',
+                        headerFilter: 'input',
+                        headerFilterPlaceholder: 'One per line',
+                        minWidth: 200,
+                        cssClass: 'vm-editable vm-text',
+                        formatter: textFormatter
                     }
                 ]
             });
 
             table.on('cellEdited', function (cell) {
                 const field = cell.getField();
-                if (field !== 'variation_type' && field !== 'variation_name') return;
+                const listingFields = ['title', 'description', 'bullets'];
+                const childFields = ['variation_type', 'variation_name'];
+                if (childFields.indexOf(field) === -1 && listingFields.indexOf(field) === -1) return;
                 const row = cell.getRow().getData();
+                const payload = { id: row.id, parent: row.parent || '' };
+                if (listingFields.indexOf(field) !== -1) {
+                    payload.title = row.title || '';
+                    payload.description = row.description || '';
+                    payload.bullets = row.bullets || '';
+                } else {
+                    payload.variation_type = row.variation_type || '';
+                    payload.variation_name = row.variation_name || '';
+                }
                 fetch(saveUrl, {
                     method: 'POST',
                     headers: {
@@ -218,19 +283,31 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrf
                     },
-                    body: JSON.stringify({
-                        id: row.id,
-                        variation_type: row.variation_type || '',
-                        variation_name: row.variation_name || ''
-                    })
+                    body: JSON.stringify(payload)
                 }).then(function (res) {
-                    if (!res.ok) throw new Error('Save failed');
-                    return res.json();
-                }).then(function () {
-                    setStatus('Saved ' + (row.sku || ''), true);
-                }).catch(function () {
+                    return res.json().then(function (json) {
+                        return { ok: res.ok, json: json };
+                    });
+                }).then(function (result) {
+                    if (!result.ok || !result.json || result.json.success === false) {
+                        throw new Error((result.json && result.json.message) || 'Save failed');
+                    }
+                    if (listingFields.indexOf(field) !== -1) {
+                        table.getRows().forEach(function (other) {
+                            const data = other.getData();
+                            if (String(data.parent || '') === String(row.parent || '') && data.id !== row.id) {
+                                other.update({
+                                    title: row.title || '',
+                                    description: row.description || '',
+                                    bullets: row.bullets || ''
+                                });
+                            }
+                        });
+                    }
+                    setStatus('Saved ' + (row.sku || row.parent || ''), true);
+                }).catch(function (err) {
                     cell.restoreOldValue();
-                    setStatus('Could not save ' + (row.sku || ''), false);
+                    setStatus(err && err.message ? err.message : 'Could not save ' + (row.sku || ''), false);
                 });
             });
 
