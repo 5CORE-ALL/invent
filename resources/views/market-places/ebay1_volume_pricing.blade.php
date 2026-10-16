@@ -809,7 +809,7 @@
                 .then(function(res) {
                     const msg = (res.j && res.j.message) || 'Push finished';
                     const extra = (res.j && res.j.errors && res.j.errors.length) ? ' ' + res.j.errors[0] : '';
-                    document.getElementById('vp-status').textContent = msg;
+                    document.getElementById('vp-status').textContent = msg + extra;
                     vpToast(res.ok ? 'ok' : 'error', msg + extra);
                 })
                 .catch(function() {
