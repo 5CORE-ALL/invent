@@ -14,6 +14,7 @@ use App\Services\LmpSkuGroupService;
 use App\Services\Support\ProductMasterMarketplaceMaps;
 use App\Services\Temu3ApiService;
 use App\Support\Marketplace\ListingChannelCounts;
+use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\LmpStdPrice;
 use App\Support\Marketplace\ListingCountsEngine;
@@ -281,6 +282,7 @@ class Temu3ListingPublishService
                 'price' => $price,
                 'qty' => $this->resolveQty($sku),
                 'dimensions' => $this->resolveDimensions($product, $sku),
+                'images' => $images,
             ];
         }
 
@@ -288,13 +290,33 @@ class Temu3ListingPublishService
         if ($gallerySources === []) {
             return ['success' => false, 'message' => 'No Image Master photos found. Add images on Image Master before publishing.'];
         }
-        $gallerySources = array_slice($gallerySources, 0, self::MAX_IMAGES);
 
-        $upload = $this->uploadImages($gallerySources);
+        $upload = $this->uploadImageMap($gallerySources);
         if (($upload['error'] ?? null) !== null) {
             return ['success' => false, 'message' => $upload['error']];
         }
-        $hostedImages = $upload['urls'] ?? [];
+        $hostedBySource = $upload['map'] ?? [];
+        $hostedImages = [];
+        foreach ($prepared as $index => $row) {
+            $skuImages = [];
+            foreach ($row['images'] as $url) {
+                $hosted = trim((string) ($hostedBySource[$url] ?? ''));
+                if ($hosted !== '' && ! in_array($hosted, $skuImages, true)) {
+                    $skuImages[] = $hosted;
+                }
+            }
+            if ($skuImages === []) {
+                continue;
+            }
+            while (count($skuImages) < 3) {
+                $skuImages[] = $skuImages[0];
+            }
+            $prepared[$index]['hosted_images'] = array_slice($skuImages, 0, self::MAX_IMAGES);
+            $first = $prepared[$index]['hosted_images'][0];
+            if (! in_array($first, $hostedImages, true)) {
+                $hostedImages[] = $first;
+            }
+        }
         if ($hostedImages === []) {
             return ['success' => false, 'message' => 'Failed to upload images to '.$this->shopLabel().'. Check API credentials and image URLs.'];
         }
@@ -330,7 +352,7 @@ class Temu3ListingPublishService
                 'externalSkuId' => $row['sku'],
                 'outSkuSn' => $row['sku'],
                 'quantity' => $row['qty'],
-                'images' => $hostedImages,
+                'images' => $row['hosted_images'] ?? $hostedImages,
                 'specDetails' => $spec,
                 'price' => [
                     'listPriceType' => 0,
@@ -1598,6 +1620,15 @@ class Temu3ListingPublishService
      */
     private function resolveSourceImages(ProductMaster $product, string $sku): array
     {
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            return ListingManagerAmazonHydrator::variationSkuImageUrls($sku, self::MAX_IMAGES);
+        }
+
+        $color = ListingManagerAmazonHydrator::colorImageUrls($sku, trim((string) ($product->parent ?? '')), self::MAX_IMAGES);
+        if ($color !== []) {
+            return $color;
+        }
+
         $urls = [];
         $seen = [];
         $push = function (string $raw) use (&$urls, &$seen): void {
@@ -1702,6 +1733,51 @@ class Temu3ListingPublishService
         }
 
         return asset(ltrim($path, '/'));
+    }
+
+    /**
+     * Upload each source once and keep the source URL mapped to the hosted URL.
+     *
+     * @param  list<string>  $sourceImages
+     * @return array{map: array<string, string>, error: ?string}
+     */
+    private function uploadImageMap(array $sourceImages): array
+    {
+        $map = [];
+        foreach ($sourceImages as $url) {
+            if (isset($map[$url])) {
+                continue;
+            }
+            if ($this->isTemuHostedImageUrl($url)) {
+                $map[$url] = $url;
+                continue;
+            }
+
+            $res = $this->uploadImageToTemu3($url);
+            if (! empty($res['success']) && ! empty($res['url'])) {
+                $map[$url] = (string) $res['url'];
+                continue;
+            }
+
+            $msg = trim((string) ($res['message'] ?? ''));
+            Log::warning('Temu3 publish image upload failed', [
+                'url' => $url,
+                'message' => $msg,
+            ]);
+
+            if ($this->isIpWhitelistMessage($msg)) {
+                return ['map' => [], 'error' => $this->ipWhitelistUserMessage()];
+            }
+
+            return [
+                'map' => [],
+                'error' => $msg !== ''
+                    ? $this->shopLabel().' image upload failed: '.$msg
+                    : $this->shopLabel().' image upload failed.',
+            ];
+        }
+
+        return ['map' => $map, 'error' => null];
     }
 
     /**

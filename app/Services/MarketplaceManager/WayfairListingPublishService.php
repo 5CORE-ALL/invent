@@ -226,7 +226,7 @@ class WayfairListingPublishService
             if ($title === '') {
                 return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
             }
-            $images = $this->overrideImages() ?: $this->productImages($product, $sku);
+            $images = $this->productImages($product, $sku) ?: $this->overrideImages();
             if ($images === []) {
                 return ['success' => false, 'message' => 'No public https image for '.$sku.'. Add images on CP / Image Master.'];
             }
@@ -1168,7 +1168,7 @@ class WayfairListingPublishService
             (string) ($product->parent ?? ''),
             8
         );
-        if ($fromMaster !== []) {
+        if ($fromMaster !== [] || \App\Support\Marketplace\VariationListingContent::active()) {
             return $fromMaster;
         }
 

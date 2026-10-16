@@ -122,7 +122,7 @@
                             <i class="bi bi-filetype-csv me-1"></i>Download CSV
                         </a>
                         <input type="file" id="vm-upload-file" class="d-none" accept=".xlsx,.xls,.csv">
-                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, and Bullet Points are shared by every child of that parent and are used when a variation listing is published.</span>
+                        <span class="small text-muted ms-2">Parent SKU and Child SKU come from CP master. Title, Description, and Bullet 1–5 are shared by every child of that parent and are used when a variation listing is published.</span>
                         <span class="small ms-auto" id="vm-status"></span>
                     </div>
                 </div>
@@ -167,6 +167,22 @@
                 if (!statusEl) return;
                 statusEl.textContent = text || '';
                 statusEl.className = 'small ms-auto ' + (ok === false ? 'text-danger' : 'text-success');
+            }
+
+            function bulletColumn(number) {
+                return {
+                    title: 'Bullet ' + number,
+                    field: 'bullet_' + number,
+                    editor: 'input',
+                    headerFilter: 'input',
+                    headerFilterPlaceholder: 'Bullet ' + number,
+                    minWidth: 160,
+                    cssClass: 'vm-editable',
+                    formatter: function (cell) {
+                        const value = String(cell.getValue() || '').trim();
+                        return value ? escapeHtml(value) : '';
+                    }
+                };
             }
 
             const table = new Tabulator('#vm-tabulator', {
@@ -248,30 +264,36 @@
                         cssClass: 'vm-editable vm-text',
                         formatter: textFormatter
                     },
-                    {
-                        title: 'Bullet Points',
-                        field: 'bullets',
-                        editor: 'textarea',
-                        headerFilter: 'input',
-                        headerFilterPlaceholder: 'One per line',
-                        minWidth: 200,
-                        cssClass: 'vm-editable vm-text',
-                        formatter: textFormatter
-                    }
+                    bulletColumn(1),
+                    bulletColumn(2),
+                    bulletColumn(3),
+                    bulletColumn(4),
+                    bulletColumn(5)
                 ]
             });
 
+            const bulletFields = ['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5'];
+
+            function listingSnapshot(row) {
+                const snapshot = {
+                    title: row.title || '',
+                    description: row.description || ''
+                };
+                bulletFields.forEach(function (field) {
+                    snapshot[field] = row[field] || '';
+                });
+                return snapshot;
+            }
+
             table.on('cellEdited', function (cell) {
                 const field = cell.getField();
-                const listingFields = ['title', 'description', 'bullets'];
+                const listingFields = ['title', 'description'].concat(bulletFields);
                 const childFields = ['variation_type', 'variation_name'];
                 if (childFields.indexOf(field) === -1 && listingFields.indexOf(field) === -1) return;
                 const row = cell.getRow().getData();
                 const payload = { id: row.id, parent: row.parent || '' };
                 if (listingFields.indexOf(field) !== -1) {
-                    payload.title = row.title || '';
-                    payload.description = row.description || '';
-                    payload.bullets = row.bullets || '';
+                    Object.assign(payload, listingSnapshot(row));
                 } else {
                     payload.variation_type = row.variation_type || '';
                     payload.variation_name = row.variation_name || '';
@@ -296,11 +318,7 @@
                         table.getRows().forEach(function (other) {
                             const data = other.getData();
                             if (String(data.parent || '') === String(row.parent || '') && data.id !== row.id) {
-                                other.update({
-                                    title: row.title || '',
-                                    description: row.description || '',
-                                    bullets: row.bullets || ''
-                                });
+                                other.update(listingSnapshot(row));
                             }
                         });
                     }

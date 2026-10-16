@@ -917,6 +917,242 @@ class ListingManagerAmazonHydrator
     }
 
     /**
+     * Image Master photos for this SKU's color.
+     * Uses this SKU's Image Master rows, keeping only files whose name matches the variation color when any do.
+     * If this SKU has no Image Master rows, keeps parent Image Master files that match the color.
+     *
+     * @return list<string>
+     */
+    public static function colorImageUrls(string $sku, ?string $parentSku = null, int $limit = 9): array
+    {
+        if (! VariationListingContent::active()) {
+            return [];
+        }
+
+        return self::variationSkuImageUrls($sku, $limit);
+    }
+
+    /**
+     * Image Master rows stored on this child SKU. Variation publish uses these
+     * photos only, so each color keeps its own Image Master gallery.
+     *
+     * @return list<string>
+     */
+    public static function variationSkuImageUrls(string $sku, int $limit = 9): array
+    {
+        $urls = self::urlsFromImageRows(self::productImageRows($sku));
+
+        return self::publishHttps(array_slice($urls, 0, max(1, $limit)), $limit);
+    }
+
+    /**
+     * @return list<object>
+     */
+    private static function colorImageRows(string $sku, ?string $parentSku = null): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return [];
+        }
+
+        $own = self::productImageRows($sku);
+        if ($own !== []) {
+            $matched = self::rowsMatchingColor($own, self::colorNeedles($sku));
+
+            return $matched !== [] ? $matched : $own;
+        }
+
+        $parentSku = trim((string) $parentSku);
+        if ($parentSku === '') {
+            $parentSku = trim((string) (self::productMaster($sku)['parent'] ?? ''));
+        }
+        if ($parentSku === '' || strcasecmp($parentSku, $sku) === 0) {
+            return [];
+        }
+
+        return self::rowsMatchingColor(self::productImageRows($parentSku), self::colorNeedles($sku));
+    }
+
+    /**
+     * @param  list<object>  $rows
+     * @param  list<string>  $needles
+     * @return list<object>
+     */
+    private static function rowsMatchingColor(array $rows, array $needles): array
+    {
+        if ($needles === []) {
+            return [];
+        }
+
+        $matched = [];
+        foreach ($rows as $row) {
+            $haystack = trim((string) ($row->original_name ?? '')).' '.(string) ($row->image_path ?? '').' '.(string) ($row->cdn_url ?? '');
+            if (self::haystackHasColor($haystack, $needles)) {
+                $matched[] = $row;
+            }
+        }
+
+        return $matched;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function colorNeedles(string $sku): array
+    {
+        $tokens = [];
+        $name = ListingManagerFamily::attributesForSku($sku)['name'] ?? '';
+        foreach (preg_split('/[^a-z0-9]+/i', (string) $name) ?: [] as $part) {
+            $tokens[] = (string) $part;
+        }
+        $parts = preg_split('/\s+/', trim($sku)) ?: [];
+        if (count($parts) >= 2) {
+            $tokens[] = (string) end($parts);
+        }
+
+        $needles = [];
+        foreach ($tokens as $token) {
+            foreach (self::colorAliases($token) as $alias) {
+                if (! in_array($alias, $needles, true)) {
+                    $needles[] = $alias;
+                }
+            }
+        }
+
+        return $needles;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function colorAliases(string $token): array
+    {
+        $token = strtolower(trim($token));
+        if ($token === '' || strlen($token) < 2) {
+            return [];
+        }
+
+        $map = [
+            'black' => ['black', 'blk'],
+            'blk' => ['black', 'blk'],
+            'white' => ['white', 'wh', 'wht'],
+            'wh' => ['white', 'wh', 'wht'],
+            'wht' => ['white', 'wh', 'wht'],
+            'blue' => ['blue', 'blu'],
+            'blu' => ['blue', 'blu'],
+            'navy' => ['navy', 'nvy'],
+            'nvy' => ['navy', 'nvy'],
+            'red' => ['red'],
+            'green' => ['green', 'grn'],
+            'grn' => ['green', 'grn'],
+            'yellow' => ['yellow', 'ylw', 'yel'],
+            'ylw' => ['yellow', 'ylw', 'yel'],
+            'yel' => ['yellow', 'ylw', 'yel'],
+            'gold' => ['gold', 'gld'],
+            'gld' => ['gold', 'gld'],
+            'silver' => ['silver', 'slv', 'slvr'],
+            'slv' => ['silver', 'slv', 'slvr'],
+            'slvr' => ['silver', 'slv', 'slvr'],
+            'purple' => ['purple', 'prpl', 'pur'],
+            'prpl' => ['purple', 'prpl', 'pur'],
+            'pur' => ['purple', 'prpl', 'pur'],
+            'pink' => ['pink', 'pnk'],
+            'pnk' => ['pink', 'pnk'],
+            'orange' => ['orange', 'org'],
+            'org' => ['orange', 'org'],
+            'brown' => ['brown', 'brn'],
+            'brn' => ['brown', 'brn'],
+            'grey' => ['grey', 'gray', 'gry'],
+            'gray' => ['grey', 'gray', 'gry'],
+            'gry' => ['grey', 'gray', 'gry'],
+            'beige' => ['beige'],
+            'ivory' => ['ivory'],
+            'camo' => ['camo', 'camouflage'],
+            'clear' => ['clear', 'clr'],
+            'clr' => ['clear', 'clr'],
+            'natural' => ['natural', 'nat'],
+            'chrome' => ['chrome', 'chr'],
+            'chr' => ['chrome', 'chr'],
+        ];
+
+        if (isset($map[$token])) {
+            return $map[$token];
+        }
+
+        return strlen($token) >= 3 ? [$token] : [];
+    }
+
+    /**
+     * @param  list<string>  $needles
+     */
+    private static function haystackHasColor(string $haystack, array $needles): bool
+    {
+        $haystack = strtolower($haystack);
+        foreach ($needles as $needle) {
+            $needle = strtolower(trim($needle));
+            if ($needle === '') {
+                continue;
+            }
+            if (preg_match('/(?:^|[^a-z0-9])'.preg_quote($needle, '/').'(?:[^a-z0-9]|$)/', $haystack)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<object>  $rows
+     * @return list<string>
+     */
+    private static function urlsFromImageRows(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            foreach (['cdn_url', 'image_path'] as $col) {
+                $url = self::publicImageUrl($row->{$col} ?? null);
+                if ($url !== '' && ! in_array($url, $out, true)) {
+                    $out[] = $url;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $urls
+     * @return list<string>
+     */
+    private static function publishHttps(array $urls, int $limit): array
+    {
+        $published = ListingManagerImageStore::publishUrls($urls, $urls);
+        $out = [];
+        foreach ($published as $url) {
+            $url = trim((string) $url);
+            if ($url === '') {
+                continue;
+            }
+            if (str_starts_with($url, '//')) {
+                $url = 'https:'.$url;
+            }
+            if (! preg_match('#^https?://#i', $url) && str_starts_with($url, '/')) {
+                $base = rtrim((string) config('app.url'), '/');
+                $url = $base !== '' ? $base.$url : $url;
+            }
+            if (! preg_match('#^https?://#i', $url) || in_array($url, $out, true)) {
+                continue;
+            }
+            $out[] = $url;
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Ordered Image Master URLs for a SKU (product_images, Product Master slots, metrics JSON).
      *
      * @return list<string>
@@ -939,6 +1175,10 @@ class ListingManagerAmazonHydrator
      */
     public static function publishImageUrls(string $sku, ?string $parentSku = null, int $limit = 9): array
     {
+        if (VariationListingContent::active()) {
+            return self::variationSkuImageUrls($sku, $limit);
+        }
+
         $urls = self::imageMasterUrls($sku);
         $parentSku = trim((string) $parentSku);
         if ($parentSku !== '' && strcasecmp($parentSku, $sku) !== 0) {
@@ -982,6 +1222,10 @@ class ListingManagerAmazonHydrator
      */
     public static function imageMasterUploadSources(string $sku, ?string $parentSku = null, int $limit = 9): array
     {
+        if (VariationListingContent::active()) {
+            return self::uploadSourcesFromRows(self::productImageRows($sku), $limit);
+        }
+
         $skus = [];
         foreach ([$sku, $parentSku] as $candidate) {
             $candidate = trim((string) $candidate);
@@ -1031,6 +1275,37 @@ class ListingManagerAmazonHydrator
                 'path' => $disk,
                 'url' => $url,
                 'name' => basename(urldecode($path) ?: 'image.jpg'),
+            ];
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<object>  $rows
+     * @return list<array{path: ?string, url: string, name: string}>
+     */
+    private static function uploadSourcesFromRows(array $rows, int $limit): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $rel = str_replace('\\', '/', trim((string) ($row->image_path ?? '')));
+            $disk = self::publicDiskFile($rel);
+            $url = trim((string) ($row->cdn_url ?? ''));
+            $url = $url === '' ? self::publicImageUrl($rel) : self::publicImageUrl($url);
+            $key = $disk ?: $url;
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = [
+                'path' => $disk,
+                'url' => $url,
+                'name' => basename($rel !== '' ? $rel : ($url !== '' ? (string) (parse_url($url, PHP_URL_PATH) ?: 'image.jpg') : 'image.jpg')),
             ];
             if (count($out) >= $limit) {
                 break;

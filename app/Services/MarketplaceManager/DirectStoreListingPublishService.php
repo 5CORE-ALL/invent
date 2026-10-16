@@ -157,9 +157,16 @@ class DirectStoreListingPublishService
 
         $price = LmpStdPrice::forSku($sku);
 
-        $images = $primary && is_array($overrides['images'] ?? null) ? $overrides['images'] : [];
-        if ($images === []) {
-            $images = is_array($hydrated['images'] ?? null) ? $hydrated['images'] : [];
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            $images = ListingManagerAmazonHydrator::variationSkuImageUrls($sku, 10);
+        } else {
+            $images = ListingManagerAmazonHydrator::colorImageUrls($sku, null, 10);
+            if ($images === [] && $primary && is_array($overrides['images'] ?? null)) {
+                $images = $overrides['images'];
+            }
+            if ($images === []) {
+                $images = is_array($hydrated['images'] ?? null) ? $hydrated['images'] : [];
+            }
         }
         $images = array_values(array_unique(array_filter(
             array_map(static fn ($u) => trim((string) $u), $images),

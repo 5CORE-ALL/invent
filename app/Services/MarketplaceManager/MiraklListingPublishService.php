@@ -129,9 +129,9 @@ class MiraklListingPublishService
             ];
         }
 
-        $images = $this->overrideImages($overrides);
+        $images = $this->productImages($product, $sku);
         if ($images === []) {
-            $images = $this->productImages($product, $sku);
+            $images = $this->overrideImages($overrides);
         }
         if ($images === []) {
             return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Image Master).'];

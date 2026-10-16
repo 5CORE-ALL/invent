@@ -39,17 +39,24 @@ class AmazonListingPublishService
         if ($qty === null && array_key_exists('quantity', $details) && $details['quantity'] !== null && $details['quantity'] !== '') {
             $qty = (int) $details['quantity'];
         }
-        $images = $this->httpsImages(is_array($details['images'] ?? null) ? $details['images'] : []);
-        foreach (is_array($details['image_source_urls'] ?? null) ? $details['image_source_urls'] : [] as $url) {
-            $url = trim((string) $url);
-            if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $images, true)) {
-                $images[] = $url;
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            $images = ListingManagerAmazonHydrator::variationSkuImageUrls($sku, 9);
+        } else {
+            $images = ListingManagerAmazonHydrator::colorImageUrls($sku, null, 9);
+            if ($images === []) {
+                $images = $this->httpsImages(is_array($details['images'] ?? null) ? $details['images'] : []);
             }
-        }
-        foreach (ListingManagerAmazonHydrator::publishImageUrls($sku, null, 9) as $url) {
-            $url = trim((string) $url);
-            if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $images, true)) {
-                $images[] = $url;
+            foreach (is_array($details['image_source_urls'] ?? null) ? $details['image_source_urls'] : [] as $url) {
+                $url = trim((string) $url);
+                if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $images, true)) {
+                    $images[] = $url;
+                }
+            }
+            foreach (ListingManagerAmazonHydrator::publishImageUrls($sku, null, 9) as $url) {
+                $url = trim((string) $url);
+                if ($url !== '' && preg_match('#^https://#i', $url) && ! in_array($url, $images, true)) {
+                    $images[] = $url;
+                }
             }
         }
         $images = array_slice($images, 0, 9);

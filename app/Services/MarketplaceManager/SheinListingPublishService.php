@@ -87,6 +87,10 @@ class SheinListingPublishService
 
         $description = trim(strip_tags((string) ($details['description'] ?? $hydrated['description'] ?? '')));
         $description = strip_tags(\App\Support\Marketplace\VariationListingContent::preferDescription($product, $description));
+        $variationBullets = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
+        if ($variationBullets !== null) {
+            $description = self::mergeBulletsIntoDescription($description, $variationBullets);
+        }
         if ($description === '') {
             $description = $title;
         }
@@ -1340,8 +1344,15 @@ class SheinListingPublishService
                 ]];
             }
 
+            $colorImages = \App\Support\Marketplace\VariationListingContent::active()
+                ? ListingManagerAmazonHydrator::variationSkuImageUrls($sku, 8)
+                : ListingManagerAmazonHydrator::colorImageUrls($sku, null, 8);
+            $imageInfo = $colorImages !== [] ? $this->api->uploadListingImages($colorImages) : [];
+            $imageList = $imageInfo !== []
+                ? $imageInfo
+                : (\App\Support\Marketplace\VariationListingContent::active() ? [] : $hostedImages);
             $skc = [
-                'image_info' => ['image_info_list' => $hostedImages],
+                'image_info' => ['image_info_list' => $imageList],
                 'sku_list' => [$skuPayload],
             ];
             if ($mainSale && $mainValues !== []) {
@@ -1632,7 +1643,7 @@ class SheinListingPublishService
     private function publicImages(mixed $images, ProductMaster $product, string $sku): array
     {
         $fromMaster = ListingManagerAmazonHydrator::publishImageUrls($sku, (string) ($product->parent ?? ''));
-        if ($fromMaster !== []) {
+        if ($fromMaster !== [] || \App\Support\Marketplace\VariationListingContent::active()) {
             return $fromMaster;
         }
 
