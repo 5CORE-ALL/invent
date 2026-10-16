@@ -44,6 +44,17 @@
             width: 100%; height: 100%; object-fit: contain; display: block; background: #020617;
         }
         .tmv-tile img.is-poster { opacity: .45; filter: grayscale(.2); }
+        /* Live frames are painted on a canvas (no image-swap flicker); it sits over the still poster. */
+        .tmv-canvas {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            object-fit: contain; background: #020617; display: none;
+        }
+        .tmv-canvas.is-on { display: block; }
+        .tmv-wait.is-error .tmv-spin { display: none; }
+        .tmv-wait.is-error p { color: #fca5a5; font-size: .78rem; }
+        .tmv-wait.is-live { background: rgba(2, 6, 23, .2); justify-content: flex-start; align-items: flex-start; padding: .5rem; }
+        .tmv-wait.is-live .tmv-spin { width: 12px; height: 12px; }
+        .tmv-wait.is-live p { margin-top: .25rem; background: rgba(2, 6, 23, .7); padding: .1rem .4rem; border-radius: 4px; }
         .tmv-wait {
             position: absolute; inset: 0; display: flex; flex-direction: column;
             align-items: center; justify-content: center; text-align: center; padding: 1rem;
@@ -121,6 +132,7 @@
             @forelse($tiles as $tile)
             <article class="tmv-tile" data-user-id="{{ $tile['user_id'] }}" data-start-url="{{ $tile['start_url'] }}" data-name="{{ $tile['name'] }}">
                 <img alt="" @if($tile['poster']) src="{{ $tile['poster'] }}" class="is-poster" @endif>
+                <canvas class="tmv-canvas"></canvas>
                 <div class="tmv-wait">
                     <div class="tmv-spin"></div>
                     <p>Connecting…</p>
@@ -202,31 +214,53 @@
             const hidden = tiles.filter(t => t.minimized);
             dock.classList.toggle('is-on', hidden.length > 0);
             dock.innerHTML = hidden.map(t => {
-                const src = t.img.currentSrc || t.img.src || '';
+                const src = t.thumb || t.img.currentSrc || t.img.src || '';
                 return '<button type="button" class="tmv-chip" data-restore="' + t.userId + '">' +
                     (src ? '<img class="tmv-chip-thumb" alt="" src="' + src + '">' : '') +
                     t.name + ' · Restore</button>';
             }).join('');
         }
 
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
+
+        // One tile = one live session. Frames are pulled one-at-a-time (never overlapping) and
+        // painted on a canvas, so the picture updates smoothly instead of flashing between images.
         function createTile(el) {
             const img = el.querySelector('img');
+            const canvas = el.querySelector('.tmv-canvas');
+            const ctx = canvas.getContext('2d');
             const wait = el.querySelector('.tmv-wait');
+            const waitText = wait.querySelector('p');
             const meta = el.querySelector('.tmv-meta');
             const playBtn = el.querySelector('.js-play');
             const pauseBtn = el.querySelector('.js-pause');
             const minBtn = el.querySelector('.js-min');
             const tile = {
-                el, img, wait, meta, playBtn, pauseBtn,
+                el, img, canvas, wait, meta, playBtn, pauseBtn,
                 userId: el.dataset.userId,
                 name: el.dataset.name || 'Employee',
                 startUrl: el.dataset.startUrl,
                 urls: null,
                 playing: false,
                 minimized: false,
-                pollTimer: null,
-                objectUrl: null,
+                runId: 0,
+                retryTimer: null,
+                posterUrl: null,
+                thumb: null,
+                hasLive: false,
+                lastLiveAt: 0,
+                lastSessionAt: 0,
             };
+
+            function showWait(text, mode) {
+                waitText.textContent = text;
+                wait.classList.remove('is-off', 'is-error', 'is-live');
+                if (mode) wait.classList.add(mode);
+            }
+
+            function hideWait() {
+                wait.classList.add('is-off');
+            }
 
             async function startSession() {
                 const body = new URLSearchParams();
@@ -236,99 +270,218 @@
                     method: 'POST',
                     headers: Object.assign(headers(true), { 'Content-Type': 'application/x-www-form-urlencoded' }),
                     body: body.toString(),
+                    credentials: 'same-origin',
                 });
                 if (!r.ok) {
-                    let message = 'start failed';
+                    let message = 'Could not start live view';
                     try { message = (await r.json()).message || message; } catch (_) {}
-                    throw new Error(message);
+                    const err = new Error(message);
+                    err.status = r.status;
+                    throw err;
                 }
                 const data = await r.json();
                 tile.urls = data.urls;
-            }
-
-            async function pullFrame() {
-                if (!tile.playing || tile.minimized || !tile.urls) return;
-                try {
-                    const r = await fetch(tile.urls.frame, { headers: headers(false), cache: 'no-store' });
-                    if (r.status === 204) {
-                        wait.classList.remove('is-off');
-                        wait.querySelector('p').textContent = 'Waiting for desktop agent…';
-                        return;
-                    }
-                    if (!r.ok) return;
-                    const blob = await r.blob();
-                    if (!blob.size) return;
-                    if (tile.objectUrl) URL.revokeObjectURL(tile.objectUrl);
-                    tile.objectUrl = URL.createObjectURL(blob);
-                    img.onload = function () {
-                        img.classList.remove('is-poster');
-                        wait.classList.add('is-off');
-                    };
-                    img.src = tile.objectUrl;
-                    const title = r.headers.get('X-Live-Window-Title') || '';
-                    const app = r.headers.get('X-Live-App-Name') || '';
-                    meta.textContent = [app, title].filter(Boolean).join(' — ') || 'Live';
-                } catch (_) {}
-            }
-
-            function stopPoll() {
-                if (tile.pollTimer) { clearInterval(tile.pollTimer); tile.pollTimer = null; }
+                tile.lastSessionAt = Date.now();
             }
 
             async function stopSession() {
-                if (!tile.urls) return;
+                const urls = tile.urls;
+                tile.urls = null;
+                if (!urls) return;
                 const body = new URLSearchParams();
                 body.set('_token', csrf);
                 body.set('reason', 'stopped');
                 try {
-                    await fetch(tile.urls.stop, {
+                    await fetch(urls.stop, {
                         method: 'POST',
                         headers: Object.assign(headers(true), { 'Content-Type': 'application/x-www-form-urlencoded' }),
                         body: body.toString(),
                         keepalive: true,
+                        credentials: 'same-origin',
                     });
                 } catch (_) {}
+            }
+
+            async function drawLive(blob) {
+                let bmp = null;
+                if (window.createImageBitmap) {
+                    try { bmp = await createImageBitmap(blob); } catch (_) { bmp = null; }
+                }
+                if (!bmp) {
+                    bmp = await new Promise(function (resolve) {
+                        const url = URL.createObjectURL(blob);
+                        const im = new Image();
+                        im.onload = function () { URL.revokeObjectURL(url); resolve(im); };
+                        im.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
+                        im.src = url;
+                    });
+                }
+                if (!bmp) return false;
+                const w = bmp.width || bmp.naturalWidth;
+                const h = bmp.height || bmp.naturalHeight;
+                if (!w || !h) return false;
+                if (canvas.width !== w || canvas.height !== h) {
+                    canvas.width = w;
+                    canvas.height = h;
+                }
+                ctx.drawImage(bmp, 0, 0, w, h);
+                if (bmp.close) bmp.close();
+                canvas.classList.add('is-on');
+                return true;
+            }
+
+            function showPoster(blob) {
+                const next = URL.createObjectURL(blob);
+                const prev = tile.posterUrl;
+                tile.posterUrl = next;
+                img.classList.add('is-poster');
+                img.src = next;
+                if (prev) URL.revokeObjectURL(prev);
+            }
+
+            // Returns true if the session is still healthy, false if it should be re-created.
+            async function pullFrame(runId) {
+                const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                const abortTimer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
+                try {
+                    const r = await fetch(tile.urls.frame, {
+                        headers: headers(false),
+                        cache: 'no-store',
+                        credentials: 'same-origin',
+                        signal: ctrl ? ctrl.signal : undefined,
+                    });
+                    if (runId !== tile.runId) return true;
+                    if (r.status === 403 || r.status === 404 || r.status === 419) return false;
+                    if (r.status === 204 || !r.ok) {
+                        if (!tile.hasLive) {
+                            showWait('Waiting for desktop agent…');
+                        } else if (Date.now() - tile.lastLiveAt > 6000) {
+                            showWait('Reconnecting…', 'is-live');
+                        }
+                        return true;
+                    }
+                    const type = (r.headers.get('Content-Type') || '').toLowerCase();
+                    if (type && type.indexOf('image/') !== 0) return true;
+                    const blob = await r.blob();
+                    if (runId !== tile.runId || !blob.size) return true;
+
+                    const isLive = (r.headers.get('X-Live-Source') || 'live').toLowerCase() === 'live';
+                    if (isLive) {
+                        if (await drawLive(blob)) {
+                            tile.hasLive = true;
+                            tile.lastLiveAt = Date.now();
+                            hideWait();
+                            const title = r.headers.get('X-Live-Window-Title') || '';
+                            const app = r.headers.get('X-Live-App-Name') || '';
+                            meta.textContent = [app, title].filter(Boolean).join(' — ') || 'Live';
+                        }
+                    } else if (!tile.hasLive) {
+                        // Only a saved screenshot so far: show it dimmed until real video arrives.
+                        showPoster(blob);
+                        showWait('Waiting for desktop agent…');
+                    } else if (Date.now() - tile.lastLiveAt > 6000) {
+                        showWait('Reconnecting…', 'is-live');
+                    }
+                    return true;
+                } catch (_) {
+                    return true;
+                } finally {
+                    if (abortTimer) clearTimeout(abortTimer);
+                }
+            }
+
+            function frameDelay() {
+                // Fewer tiles => faster refresh; many tiles => stay within the browser connection limit.
+                const active = tiles.filter(t => t.playing && !t.minimized).length || 1;
+                return Math.min(1000, 120 + active * 45);
+            }
+
+            async function loop(runId) {
+                while (tile.playing && !tile.minimized && runId === tile.runId) {
+                    const t0 = performance.now();
+                    if (!tile.urls) {
+                        try {
+                            await startSession();
+                        } catch (err) {
+                            if (runId !== tile.runId) return;
+                            handleStartError(err);
+                            return;
+                        }
+                    }
+                    const healthy = await pullFrame(runId);
+                    if (runId !== tile.runId) return;
+
+                    // Session lost, or the desktop agent never produced live video for a while:
+                    // open a fresh session instead of spinning forever.
+                    const stalled = !tile.hasLive && Date.now() - tile.lastSessionAt > 25000;
+                    const dropped = tile.hasLive && Date.now() - tile.lastLiveAt > 20000;
+                    if (!healthy || stalled || dropped) {
+                        await stopSession();
+                        tile.hasLive = false;
+                        if (runId !== tile.runId) return;
+                        await sleep(1000);
+                        continue;
+                    }
+                    await sleep(Math.max(40, frameDelay() - (performance.now() - t0)));
+                }
+            }
+
+            function scheduleRetry(ms) {
+                clearTimeout(tile.retryTimer);
+                tile.retryTimer = setTimeout(function () {
+                    tile.retryTimer = null;
+                    if (!tile.minimized) play();
+                }, ms);
+            }
+
+            function handleStartError(err) {
+                tile.playing = false;
                 tile.urls = null;
+                playBtn.classList.remove('is-on');
+                showWait((err && err.message) || 'Could not start live view', 'is-error');
+                meta.textContent = 'Not live';
+                // Off duty / transient failure: keep checking so video starts by itself later.
+                scheduleRetry(15000);
+                layout();
             }
 
             async function play() {
                 if (tile.playing) return;
+                clearTimeout(tile.retryTimer);
+                tile.retryTimer = null;
                 tile.playing = true;
+                tile.runId += 1;
                 playBtn.classList.add('is-on');
                 pauseBtn.classList.remove('is-on');
-                wait.classList.remove('is-off');
-                wait.querySelector('p').textContent = 'Connecting…';
-                try {
-                    if (!tile.urls) await startSession();
-                    stopPoll();
-                    tile.pollTimer = setInterval(pullFrame, 400);
-                    pullFrame();
-                } catch (err) {
-                    tile.playing = false;
-                    playBtn.classList.remove('is-on');
-                    wait.querySelector('p').textContent = (err && err.message && err.message !== 'start failed')
-                        ? err.message
-                        : 'Could not start live view';
-                }
+                if (!tile.hasLive) showWait('Connecting…');
                 layout();
+                loop(tile.runId);
             }
 
             async function pause() {
+                clearTimeout(tile.retryTimer);
+                tile.retryTimer = null;
                 tile.playing = false;
+                tile.runId += 1;
                 playBtn.classList.remove('is-on');
                 pauseBtn.classList.add('is-on');
-                stopPoll();
-                await stopSession();
-                wait.classList.remove('is-off');
-                wait.querySelector('p').textContent = 'Paused';
-                if (img.src) wait.classList.add('is-off');
+                tile.hasLive = false;
+                if (canvas.classList.contains('is-on') || img.src) {
+                    showWait('Paused', 'is-live');
+                } else {
+                    showWait('Paused');
+                }
                 layout();
+                await stopSession();
             }
 
             function minimize() {
+                try {
+                    tile.thumb = canvas.classList.contains('is-on') ? canvas.toDataURL('image/jpeg', 0.4) : null;
+                } catch (_) { tile.thumb = null; }
                 tile.minimized = true;
                 el.classList.add('is-min');
-                if (tile.playing) pause();
+                if (tile.playing || tile.retryTimer) pause();
                 layout();
             }
 
@@ -348,7 +501,9 @@
             tile.minimize = minimize;
             tile.restore = restore;
             tile.shutdown = function () {
-                stopPoll();
+                tile.playing = false;
+                tile.runId += 1;
+                clearTimeout(tile.retryTimer);
                 if (tile.urls) {
                     const body = new URLSearchParams();
                     body.set('_token', csrf);
