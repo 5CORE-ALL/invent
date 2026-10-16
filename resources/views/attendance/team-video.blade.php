@@ -101,6 +101,46 @@
         .tmv-chip-thumb {
             width: 22px; height: 16px; border-radius: 4px; object-fit: cover; background: #334155;
         }
+        .tmv-tile { cursor: pointer; }
+        .tmv-controls button { cursor: pointer; }
+
+        /* Focused player: click Play on a tile to watch that screen big, like a video. */
+        .tmv-modal {
+            position: fixed; inset: 0; z-index: 50; display: none; flex-direction: column;
+            background: rgba(2, 6, 23, .97);
+        }
+        .tmv-modal.is-on { display: flex; }
+        .tmv-modal-bar {
+            display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+            padding: .6rem 1rem; background: #111827; border-bottom: 1px solid #1f2937; flex-shrink: 0;
+        }
+        .tmv-modal-title { font-weight: 700; font-size: 1rem; }
+        .tmv-modal-meta { font-size: .75rem; color: #94a3b8; margin-top: .1rem; max-width: 60vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tmv-live-badge {
+            display: inline-flex; align-items: center; gap: .3rem; margin-left: .6rem; padding: .1rem .5rem;
+            border-radius: 999px; font-size: .65rem; font-weight: 700; background: #7f1d1d; color: #fecaca;
+        }
+        .tmv-live-badge.is-live { background: #dc2626; color: #fff; }
+        .tmv-modal-actions { display: flex; gap: .5rem; }
+        .tmv-modal-actions button {
+            font: inherit; font-size: .8rem; border-radius: 8px; border: 1px solid #334155;
+            background: #0f172a; color: #e2e8f0; padding: .4rem .8rem; cursor: pointer;
+        }
+        .tmv-modal-actions button:hover { background: #1e293b; }
+        .tmv-modal-stage {
+            position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #000;
+        }
+        .tmv-modal-stage video, .tmv-modal-stage canvas {
+            width: 100%; height: 100%; object-fit: contain; background: #000;
+        }
+        .tmv-modal-stage canvas { display: none; }
+        .tmv-modal-wait {
+            position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+            gap: .5rem; text-align: center; padding: 1rem; background: rgba(2, 6, 23, .55); color: #cbd5e1; font-size: .9rem; pointer-events: none;
+        }
+        .tmv-modal-wait.is-on { display: flex; }
+        .tmv-modal-wait.is-paused .tmv-spin { display: none; }
+        .tmv-modal-wait .tmv-spin { width: 28px; height: 28px; }
         @keyframes tmvSpin { to { transform: rotate(360deg); } }
     </style>
 </head>
@@ -165,6 +205,25 @@
         </div>
     </div>
     <div class="tmv-dock" id="tmvDock"></div>
+
+    <div class="tmv-modal" id="tmvModal" role="dialog" aria-modal="true" aria-label="Live screen">
+        <div class="tmv-modal-bar">
+            <div>
+                <div class="tmv-modal-title"><span id="tmvModalName"></span><span class="tmv-live-badge" id="tmvModalBadge">CONNECTING</span></div>
+                <div class="tmv-modal-meta" id="tmvModalMeta"></div>
+            </div>
+            <div class="tmv-modal-actions">
+                <button type="button" id="tmvModalToggle">Pause</button>
+                <button type="button" id="tmvModalFs">Fullscreen</button>
+                <button type="button" id="tmvModalClose">✕ Close</button>
+            </div>
+        </div>
+        <div class="tmv-modal-stage" id="tmvModalStage">
+            <video id="tmvModalVideo" muted playsinline autoplay></video>
+            <canvas id="tmvModalMirror"></canvas>
+            <div class="tmv-modal-wait" id="tmvModalWait"><div class="tmv-spin"></div><div id="tmvModalWaitText">Connecting…</div></div>
+        </div>
+    </div>
 
     <script>
     (function () {
@@ -236,7 +295,7 @@
             const pauseBtn = el.querySelector('.js-pause');
             const minBtn = el.querySelector('.js-min');
             const tile = {
-                el, img, canvas, wait, meta, playBtn, pauseBtn,
+                el, img, canvas, wait, meta, playBtn, pauseBtn, waitText,
                 userId: el.dataset.userId,
                 name: el.dataset.name || 'Employee',
                 startUrl: el.dataset.startUrl,
@@ -391,6 +450,8 @@
             }
 
             function frameDelay() {
+                // The tile being watched in the big player gets the fastest refresh; the rest slow down.
+                if (focused) return focused === tile ? 70 : 800;
                 // Fewer tiles => faster refresh; many tiles => stay within the browser connection limit.
                 const active = tiles.filter(t => t.playing && !t.minimized).length || 1;
                 return Math.min(1000, 120 + active * 45);
@@ -492,7 +553,8 @@
                 play();
             }
 
-            playBtn.addEventListener('click', function (e) { e.stopPropagation(); play(); });
+            playBtn.addEventListener('click', function (e) { e.stopPropagation(); play(); openFocus(tile); });
+            el.addEventListener('click', function () { if (!tile.minimized) { play(); openFocus(tile); } });
             pauseBtn.addEventListener('click', function (e) { e.stopPropagation(); pause(); });
             minBtn.addEventListener('click', function (e) { e.stopPropagation(); minimize(); });
 
@@ -513,6 +575,102 @@
             };
             return tile;
         }
+
+        // ---- Focused (big) player -------------------------------------------------------------
+        const modal = document.getElementById('tmvModal');
+        const mVideo = document.getElementById('tmvModalVideo');
+        const mMirror = document.getElementById('tmvModalMirror');
+        const mWait = document.getElementById('tmvModalWait');
+        const mWaitText = document.getElementById('tmvModalWaitText');
+        const mName = document.getElementById('tmvModalName');
+        const mMeta = document.getElementById('tmvModalMeta');
+        const mBadge = document.getElementById('tmvModalBadge');
+        const mToggle = document.getElementById('tmvModalToggle');
+        const mStage = document.getElementById('tmvModalStage');
+        let focused = null;
+        let focusTimer = null;
+        let mirrorRaf = null;
+
+        function mirrorLoop() {
+            if (!focused) return;
+            const src = focused.canvas;
+            if (src.width && src.height) {
+                if (mMirror.width !== src.width || mMirror.height !== src.height) {
+                    mMirror.width = src.width;
+                    mMirror.height = src.height;
+                }
+                mMirror.getContext('2d').drawImage(src, 0, 0);
+            }
+            mirrorRaf = requestAnimationFrame(mirrorLoop);
+        }
+
+        function syncFocus() {
+            const t = focused;
+            if (!t) return;
+            mMeta.textContent = t.meta.textContent || '';
+            const live = t.playing && t.hasLive;
+            mBadge.textContent = live ? '● LIVE' : (t.playing ? 'CONNECTING' : 'PAUSED');
+            mBadge.classList.toggle('is-live', live);
+            mToggle.textContent = t.playing ? 'Pause' : 'Play';
+            mWait.classList.toggle('is-on', !live);
+            mWait.classList.toggle('is-paused', !t.playing);
+            mWaitText.textContent = !t.playing ? 'Paused' : (t.waitText.textContent || 'Connecting…');
+        }
+
+        function openFocus(tile) {
+            if (focused === tile) return;
+            if (focused) closeFocus();
+            focused = tile;
+            mName.textContent = tile.name;
+            modal.classList.add('is-on');
+            let streamed = false;
+            if (tile.canvas.captureStream) {
+                try {
+                    mVideo.srcObject = tile.canvas.captureStream(20);
+                    mVideo.style.display = 'block';
+                    mMirror.style.display = 'none';
+                    const p = mVideo.play();
+                    if (p && p.catch) p.catch(function () {});
+                    streamed = true;
+                } catch (_) { streamed = false; }
+            }
+            if (!streamed) {
+                mVideo.style.display = 'none';
+                mMirror.style.display = 'block';
+                mirrorRaf = requestAnimationFrame(mirrorLoop);
+            }
+            syncFocus();
+            focusTimer = setInterval(syncFocus, 250);
+        }
+
+        function closeFocus() {
+            if (!focused) return;
+            focused = null;
+            clearInterval(focusTimer);
+            focusTimer = null;
+            if (mirrorRaf) { cancelAnimationFrame(mirrorRaf); mirrorRaf = null; }
+            try { mVideo.pause(); } catch (_) {}
+            mVideo.srcObject = null;
+            modal.classList.remove('is-on');
+            if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function () {});
+        }
+
+        document.getElementById('tmvModalClose').addEventListener('click', closeFocus);
+        document.getElementById('tmvModalToggle').addEventListener('click', function () {
+            if (!focused) return;
+            if (focused.playing) focused.pause(); else focused.play();
+            syncFocus();
+        });
+        document.getElementById('tmvModalFs').addEventListener('click', function () {
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(function () {});
+            } else if (mStage.requestFullscreen) {
+                mStage.requestFullscreen().catch(function () {});
+            }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && focused && !document.fullscreenElement) closeFocus();
+        });
 
         dock.addEventListener('click', function (e) {
             const btn = e.target.closest('[data-restore]');
