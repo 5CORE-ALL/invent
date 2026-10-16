@@ -191,7 +191,7 @@
     <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay1'])
-        const VP_DATA_URL = @json(url('/ebay-data-json'));
+        const VP_DATA_URL = @json(url('/ebay-data-json')) + '?cache=1';
         const VP_RULES_URL = @json(url('/ebay-volume-pricing/rules'));
         const VP_PUSH_URL = @json(url('/ebay-volume-pricing/push'));
         const VP_SHIP_URL = @json(url('/ebay-volume-pricing/ship-slabs'));
@@ -893,6 +893,9 @@
             }).catch(function(err) {
                 status.textContent = (err && err.message) ? err.message : 'Could not load eBay 1 data';
                 vpToast('error', status.textContent);
+            }).finally(function() {
+                const ph = document.querySelector('#vp-table .tabulator-placeholder-contents');
+                if (ph) ph.textContent = 'No eBay 1 rows';
             });
         }
 
@@ -901,7 +904,7 @@
             paginationMode: 'local',
             layout: 'fitDataStretch',
             height: 'calc(100vh - 210px)',
-            placeholder: 'No eBay 1 rows',
+            placeholder: 'Loading eBay 1 rows… this can take up to a minute on the first open.',
             pagination: true,
             paginationSize: 100,
             initialSort: [{ column: 'buy4', dir: 'desc' }],

@@ -422,6 +422,18 @@ class EbayController extends Controller
 
     public function ebayDataJson(Request $request)
     {
+        // Read-only pages (Volume Pricing) pass ?cache=1 and accept data up to 2 minutes old,
+        // so a second open does not rebuild the full payload (dozens of queries) again.
+        $useShortCache = $request->boolean('cache');
+        $shortCacheKey = 'ebay_data_json_short_v1';
+        if ($useShortCache) {
+            $hit = Cache::get($shortCacheKey);
+            if (is_string($hit) && $hit !== '') {
+                return response($hit, 200)
+                    ->header('Content-Type', 'application/json; charset=UTF-8');
+            }
+        }
+
         try {
             $obLevel = ob_get_level();
             ob_start();
@@ -481,6 +493,14 @@ class EbayController extends Controller
                     'error' => json_last_error_msg(),
                 ]);
                 return response()->json(['error' => 'Failed to encode data'], 500);
+            }
+
+            if ($useShortCache) {
+                try {
+                    Cache::put($shortCacheKey, $json, 120);
+                } catch (\Throwable $e) {
+                    Log::warning('ebayDataJson: short cache write failed: ' . $e->getMessage());
+                }
             }
 
             return response($json, 200)
