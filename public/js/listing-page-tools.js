@@ -1491,6 +1491,13 @@
         };
     }
 
+    function ownPublishModalId() {
+        const channel = String(cfg().channel || '').toLowerCase();
+        if (channel === 'temu2' && document.getElementById('temu2PublishModal')) return 'temu2PublishModal';
+        if (channel === 'temu3' && document.getElementById('temu3PublishModal')) return 'temu3PublishModal';
+        return '';
+    }
+
     function enhanceTable(table) {
         try {
             table.updateColumnDefinition('sku', {
@@ -1504,9 +1511,9 @@
 
         const hasPublish = (table.getColumns() || []).some(function (col) {
             const def = col.getDefinition ? col.getDefinition() : {};
-            return def.field === 'publish_to_marketplace' || def.field === 'publish_to_temu2';
+            return def.field === 'publish_to_marketplace' || def.field === 'publish_to_temu2' || def.field === 'publish_to_temu3';
         });
-        if (!hasPublish && !(document.getElementById('temu2PublishModal') && cfg().channel === 'temu2')) {
+        if (!hasPublish && !ownPublishModalId()) {
             try {
                 table.addColumn({
                     title: 'Publish to ' + (cfg().channelLabel || 'marketplace'),
@@ -1537,9 +1544,9 @@
             exportFiltered(table);
         });
 
-        $(document).off('click.listingPageTools', '.listing-mp-publish-btn, .temu2-publish-btn')
-            .on('click.listingPageTools', '.listing-mp-publish-btn, .temu2-publish-btn', function (e) {
-                if (document.getElementById('temu2PublishModal') && $(this).hasClass('temu2-publish-btn')) {
+        $(document).off('click.listingPageTools', '.listing-mp-publish-btn, .temu2-publish-btn, .temu3-publish-btn')
+            .on('click.listingPageTools', '.listing-mp-publish-btn, .temu2-publish-btn, .temu3-publish-btn', function (e) {
+                if (ownPublishModalId() && ($(this).hasClass('temu2-publish-btn') || $(this).hasClass('temu3-publish-btn'))) {
                     return;
                 }
                 e.preventDefault();
@@ -1549,7 +1556,7 @@
             });
 
         $('#bulk-publish-btn').off('click.listingPageTools').on('click.listingPageTools', function () {
-            if (document.getElementById('temu2PublishModal') && cfg().channel === 'temu2') {
+            if (ownPublishModalId()) {
                 return;
             }
             const selected = (table.getSelectedData() || [])

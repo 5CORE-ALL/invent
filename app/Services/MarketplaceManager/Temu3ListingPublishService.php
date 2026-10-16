@@ -961,6 +961,15 @@ class Temu3ListingPublishService
             }
         }
 
+        $childSkus = [];
+        foreach ($children as $product) {
+            $childSku = trim((string) $product->sku);
+            if ($childSku !== '') {
+                $childSkus[] = $childSku;
+            }
+        }
+        ListingManagerFamily::warmAttributes($childSkus);
+
         $rows = [];
         $publishSkus = [];
         $selectedCount = 0;
@@ -969,9 +978,12 @@ class Temu3ListingPublishService
             $classified = $this->classifyChildSku($sku);
             $publishable = ($classified['status'] ?? '') === 'will_publish';
             $selected = $publishable && isset($seedNorm[$this->skuNorm($sku)]);
+            $attr = ListingManagerFamily::attributesForSku($sku);
             $rows[] = [
                 'sku' => $sku,
-                'spec' => $sku,
+                'spec' => $attr['name'] !== '' ? $attr['name'] : $sku,
+                'variation_type' => $attr['type'],
+                'variation_name' => $attr['name'],
                 'inv' => $this->resolveQty($sku),
                 'status' => $classified['status'],
                 'reason' => $classified['reason'],
