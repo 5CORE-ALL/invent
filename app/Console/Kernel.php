@@ -1933,8 +1933,9 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Grid loads after 21:50 save a new rule SBID/SBGT. This run pushes those
-        // gaps, including overnight. Recent failures stay on the 21:50 retry.
+        // Every 30 minutes, page open or not: recalculates the grid SBID/SBGT, pulls live
+        // Lbid/Lbgt, and pushes every Enabled campaign that still differs. Failures wait
+        // 3 hours here and are always retried by the 21:50 run.
         $schedule->command('amazon:ads-live-bid-bgt-sync --limit=100')
             ->everyThirtyMinutes()
             ->timezone('Asia/Kolkata')

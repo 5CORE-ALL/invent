@@ -3489,6 +3489,9 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const channel = (row['Channel '] || '').trim();
+                            if (cell.getValue() === null || cell.getValue() === undefined || cell.getValue() === '') {
+                                return '<span style="color:#adb5bd;" title="No views source for this channel">—</span>';
+                            }
                             const value = Math.round(parseNumber(cell.getValue() || 0));
                             const color = belowL30AvgColor(value, row['Total Views'] || 0);
                             return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'y_views')}`;
@@ -3800,6 +3803,9 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const channel = (row['Channel '] || '').trim();
+                            if (parseNumber(row['Total Views'] || 0) <= 0) {
+                                return '<span style="color:#adb5bd;" title="No views source for this channel">—</span>';
+                            }
                             const value = Math.round(parseNumber(cell.getValue() || 0));
                             const color = belowL30AvgColor(value, row['Total Views'] || 0);
                             return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 't_views')}`;
@@ -8945,7 +8951,7 @@
                     tRow.update({
                         'Y Orders': orders,
                         'Y CVR': cvrRec ? cvrRec.cvr : null,
-                        'Y Views': cvrRec ? cvrRec.views : 0
+                        'Y Views': cvrRec ? cvrRec.views : null
                     });
                 });
             }
@@ -8965,7 +8971,8 @@
                         : parseNumber(rawCvr);
                     if (key) {
                         yOrdersByChannel[key] = orders;
-                        yCvrByChannel[key] = { cvr: cvr, views: views, qty: qty };
+                        // No view source (e.g. Doba) -> keep null so the Y Views cell shows "—", not 0.
+                        yCvrByChannel[key] = { cvr: cvr, views: (row.views == null || row.views === '') ? null : views, qty: qty };
                     }
                     sum += orders;
                 });

@@ -46,6 +46,9 @@ use Illuminate\Support\Facades\Schema;
 
 class AmazonAdsController extends Controller
 {
+    /** Request attribute (not HTTP input) that lets a sbid_universe call save every campaign's SBID. */
+    private const PERSIST_SBID_UNIVERSE_ATTR = 'amazon_ads_persist_sbid_universe';
+
     /**
      * Whitelist: URL segment => database table (raw read-only for DataTables).
      *
@@ -5995,6 +5998,36 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * Recalculate the grid SBID for every campaign and save it, without a page load.
+     *
+     * The grid only saves SBID for the rows it shows, so with nobody on the page the stored sbid went
+     * stale and the scheduled sync never saw a Lbid/SBID gap. This runs the same calculation the grid
+     * runs (same default window: latest calendar day plus L30 for campaigns that day omitted).
+     *
+     * @return array{rows: int, written: int}
+     */
+    public function refreshStoredSbids(string $table): array
+    {
+        if (! in_array($table, ['amazon_sp_campaign_reports', 'amazon_sb_campaign_reports'], true)) {
+            return ['rows' => 0, 'written' => 0];
+        }
+        @set_time_limit(0);
+        $request = Request::create('/', 'POST', [
+            'draw' => 1,
+            'start' => 0,
+            'length' => 20000,
+            'sbid_universe' => 1,
+        ]);
+        $request->attributes->set(self::PERSIST_SBID_UNIVERSE_ATTR, true);
+        $payload = $this->rawDataSingleSourcePayload($request, $table, 0, 20000);
+
+        return [
+            'rows' => (int) ($payload['sbid_rows_seen'] ?? 0),
+            'written' => (int) ($payload['sbid_rows_written'] ?? 0),
+        ];
+    }
+
+    /**
      * Server-side JSON for DataTables (GET). Source must match RAW_TABLE_SOURCES key.
      */
     public function rawData(Request $request, string $source)
@@ -6845,7 +6878,10 @@ class AmazonAdsController extends Controller
             $suggestedSbgtByCampaign,
             $data
         );
-        if (! $forBgtUniverse && ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== [])) {
+        // A grid page saves the SBID of the rows it shows. The scheduled sync has no page, so it asks for the
+        // whole universe and sets this request attribute (never an HTTP input) to have every SBID saved.
+        $persistSbidUniverse = $forSbidUniverse && (bool) $request->attributes->get(self::PERSIST_SBID_UNIVERSE_ATTR, false);
+        if (($persistSbidUniverse || ! $forBgtUniverse) && ($suggestedSbidByRowId !== [] || $suggestedSbidByCampaign !== [])) {
             AmazonBidUtilizationService::persistSuggestedSbidByRowId($table, $suggestedSbidByRowId, $suggestedSbidByCampaign);
         }
         if (! $forBgtUniverse && ($suggestedSbgtByRowId !== [] || $suggestedSbgtByCampaign !== [])) {
@@ -6879,6 +6915,10 @@ class AmazonAdsController extends Controller
             'bgt_sync_counts' => $bgtSyncCounts,
             'bid_sync_counts' => $bidSyncCounts,
         ];
+        if ($persistSbidUniverse) {
+            $payload['sbid_rows_written'] = count($suggestedSbidByRowId);
+            $payload['sbid_rows_seen'] = count($data);
+        }
         if ($distinctCampaignCount !== null) {
             $payload['distinctCampaignCount'] = $distinctCampaignCount;
         }

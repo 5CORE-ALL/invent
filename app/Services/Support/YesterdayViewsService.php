@@ -19,9 +19,38 @@ class YesterdayViewsService
     private const TZ = 'America/Los_Angeles';
 
     /**
+     * Channels with no listing-views source. Their Y Views / T Views / CVR must stay
+     * blank — Doba's sheet `views` column is not real traffic (Total Views is 0 on
+     * /all-marketplace-master), and dividing it by 30 invented a Y Views number.
+     */
+    public const NO_VIEW_CHANNELS = ['doba'];
+
+    public static function hasViewSource(string $key): bool
+    {
+        return ! in_array($key, self::NO_VIEW_CHANNELS, true);
+    }
+
+    /**
+     * @param  array<string, int>  $map
+     * @return array<string, int>
+     */
+    private function withoutNoViewChannels(array $map): array
+    {
+        return array_diff_key($map, array_flip(self::NO_VIEW_CHANNELS));
+    }
+
+    /**
      * @return array<string, int> canonical channel key => yesterday views
      */
     public function viewsByChannel(?string $date = null): array
+    {
+        return $this->withoutNoViewChannels($this->collectViewsByChannel($date));
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function collectViewsByChannel(?string $date = null): array
     {
         $date = $date ?: Carbon::yesterday(self::TZ)->toDateString();
         $map = $this->sumStoredMarketplaceL1();
@@ -72,7 +101,6 @@ class YesterdayViewsService
             'temu' => ['temu_metrics', 'product_clicks_l7'],
             'temu2' => ['temu2_metrics', 'product_clicks_l7'],
             'walmart' => ['walmart_pricing_sales', 'page_views_l7'],
-            'doba' => ['doba_sheet_data', 'views_l7'],
             'wayfair' => ['wayfair_product_sheets', 'views_l7'],
             'reverb' => ['reverb_products', 'views_l7'],
             'tiktok' => ['tiktok_products', 'views_l7'],
@@ -110,7 +138,6 @@ class YesterdayViewsService
             'temu' => ['temu_metrics', 'product_clicks_l1', 'product_clicks_l7'],
             'temu2' => ['temu2_metrics', 'product_clicks_l1', 'product_clicks_l7'],
             'walmart' => ['walmart_pricing_sales', 'page_views_l1', 'page_views_l7'],
-            'doba' => ['doba_sheet_data', 'views_l1', 'views_l7'],
             'wayfair' => ['wayfair_product_sheets', 'views_l1', 'views_l7'],
             'reverb' => ['reverb_products', 'views_l1', 'views_l7'],
             'tiktok' => ['tiktok_products', 'views_l1', 'views_l7'],

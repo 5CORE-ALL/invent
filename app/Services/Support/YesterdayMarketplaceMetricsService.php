@@ -1630,6 +1630,9 @@ class YesterdayMarketplaceMetricsService
         }
 
         $key = $this->key($name);
+        if (! YesterdayViewsService::hasViewSource($key)) {
+            return null;
+        }
         $lookup = match ($key) {
             'shopifyb2c', 'shopify' => 'shopify',
             default => $key,
@@ -1648,6 +1651,9 @@ class YesterdayMarketplaceMetricsService
     private function viewsForChannel(string $name, array $viewsByChannel): ?int
     {
         $key = $this->key($name);
+        if (! YesterdayViewsService::hasViewSource($key)) {
+            return null;
+        }
         $lookup = match ($key) {
             'shopifyb2c', 'shopify' => 'shopify',
             default => $key,

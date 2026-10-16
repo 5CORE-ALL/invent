@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\AmazonAdsController;
 use App\Services\AmazonAdsLiveBidBgtSyncService;
 use App\Support\AmazonAdsDesiredSbgtResolver;
 use App\Support\AmazonAdsLiveSyncFollowUp;
@@ -16,11 +17,18 @@ use Throwable;
 
 class AmazonAdsLiveBidBgtSync extends Command
 {
+    /** The 30-minute run leaves a failed campaign alone this long before trying it again. */
+    private const FAILED_RETRY_AFTER_HOURS = 3;
+
+    /** A saved SBGT further than this from the live budget counts as a mismatch. */
+    private const BUDGET_GAP_DOLLARS = '0.015';
+
     protected $signature = 'amazon:ads-live-bid-bgt-sync
         {--channel=all : sp, sb, or all}
         {--campaign-id= : Only this campaign ID}
         {--failed-only : Retry rows that are not verified}
-        {--retry-failed : Also retry campaigns whose sync failed in the last 12 hours}
+        {--retry-failed : Also retry campaigns whose sync failed in the last 3 hours}
+        {--no-refresh : Push the saved SBID/SBGT as they are, without recalculating them from the grid rules first}
         {--limit=200 : Max report campaigns to verify in this run}';
 
     protected $description = 'Pull live Amazon BGT/BID, compare Lbgt to SBGT and Lbid to SBID, push mismatches, verify before marking synced';
@@ -47,7 +55,10 @@ class AmazonAdsLiveBidBgtSync extends Command
         $failed = 0;
 
         try {
-            $this->refreshStoredSbgt($channelOpt, $onlyCid);
+            if (! $this->option('no-refresh')) {
+                $this->refreshStoredSbgt($channelOpt, $onlyCid);
+                $this->refreshStoredSbid($channelOpt, $onlyCid);
+            }
             $bidFilled = [];
             for ($pass = 0; $pass < 8; $pass++) {
                 Cache::forget(AmazonAdsLiveSyncFollowUp::DIRTY_KEY);
@@ -145,6 +156,32 @@ class AmazonAdsLiveBidBgtSync extends Command
             }
             AmazonAdsSbgt::persistByRowId($table, [], $idToBgt);
             $this->info(strtoupper($channel).' grid SBGT saved for '.count($idToBgt).' enabled campaigns on '.$day.'.');
+        }
+    }
+
+    /**
+     * Save the SBID the grid would show for every campaign. The grid only saves the rows on screen, so
+     * without this a closed page left `sbid` stale and a Lbid/SBID gap was never seen or pushed.
+     * A single-campaign run skips it: that is a targeted retry, not a full pass.
+     */
+    private function refreshStoredSbid(string $channelOpt, string $onlyCid): void
+    {
+        if ($onlyCid !== '') {
+            return;
+        }
+        $channels = $channelOpt === 'sp' || $channelOpt === 'sb' ? [$channelOpt] : ['sp', 'sb'];
+        foreach ($channels as $channel) {
+            $table = $channel === 'sb' ? 'amazon_sb_campaign_reports' : 'amazon_sp_campaign_reports';
+            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'sbid')) {
+                continue;
+            }
+            try {
+                $out = app(AmazonAdsController::class)->refreshStoredSbids($table);
+                $this->info(strtoupper($channel).' grid SBID recalculated for '.$out['rows'].' campaign rows, '.$out['written'].' changed.');
+            } catch (Throwable $e) {
+                // Keep going: the sync still pushes whatever SBID is already saved.
+                $this->warn(strtoupper($channel).' grid SBID was not recalculated: '.$e->getMessage());
+            }
         }
     }
 
@@ -464,7 +501,9 @@ class AmazonAdsLiveBidBgtSync extends Command
             ->whereNotNull('r.sbgt')
             ->where('r.sbgt', '!=', '')
             ->whereNotNull('r.campaignBudgetAmount')
-            ->whereRaw('ABS((r.sbgt + 0) - (r.campaignBudgetAmount + 0)) > ?', [0.015]);
+            // Constant written into the SQL, not bound: a bound float arrives as text and SQLite then
+            // calls every number smaller than it, so the gap was never found there.
+            ->whereRaw('ABS((r.sbgt + 0) - (r.campaignBudgetAmount + 0)) > '.self::BUDGET_GAP_DOLLARS);
         if ($onlyCid !== '') {
             $q->where('r.campaign_id', $onlyCid);
         }
@@ -503,8 +542,9 @@ class AmazonAdsLiveBidBgtSync extends Command
 
     /**
      * A follow-up run should push a newly saved SBID/SBGT. It should not
-     * hammer Amazon again for a failure from the last 12 hours. The 21:50
-     * run passes --retry-failed and includes those.
+     * hammer Amazon again for a failure from the last few hours. Waiting 12
+     * hours left a red Alert up all day with nobody on the page; the 21:50
+     * run passes --retry-failed and includes those regardless.
      */
     private function skipRecentFailures(Builder $query, string $channel, string $field, bool $retryFailed): void
     {
@@ -518,7 +558,7 @@ class AmazonAdsLiveBidBgtSync extends Command
         })->where(function ($w) {
             $w->whereNull('s.id')
                 ->orWhere('s.status', '!=', 'failed')
-                ->orWhere('s.updated_at', '<', now()->subHours(12));
+                ->orWhere('s.updated_at', '<', now()->subHours(self::FAILED_RETRY_AFTER_HOURS));
         });
     }
 
