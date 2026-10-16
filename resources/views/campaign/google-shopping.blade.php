@@ -3839,7 +3839,7 @@
                         .then(function(body) { loadFromRule((body && body.rule) || {}); })
                         .catch(function() { loadFromRule({}); });
                 }
-                /** @return {{cleaned: Array|null, error: string}} */
+                /** Returns an object with cleaned (Array or null) and error (string). */
                 function collect() {
                     var cleaned = (bands || []).map(function(b) {
                         var row = {
