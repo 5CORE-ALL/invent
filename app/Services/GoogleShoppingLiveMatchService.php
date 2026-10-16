@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Http\Controllers\Campaigns\GoogleShoppingCampaignsController;
 use App\Support\GoogleShoppingLiveSyncStatus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -20,21 +21,24 @@ use Throwable;
  */
 class GoogleShoppingLiveMatchService
 {
+    /** A campaign Google keeps rejecting is not pushed again for this long (the daily run retries it anyway). */
+    public const FAILED_RETRY_AFTER_HOURS = 3;
+
     /** @param  array<string, callable>  $hooks */
     public function __construct(private array $hooks = []) {}
 
     /**
      * @return array{
      *   checked: int, bid_mismatch: int, bgt_mismatch: int,
-     *   bid_pushed: int, bgt_pushed: int, bid_left: int, bgt_left: int,
+     *   bid_pushed: int, bgt_pushed: int, bid_left: int, bgt_left: int, waiting: int,
      *   push_errors: list<string>, error: ?string
      * }
      */
-    public function run(bool $dryRun = false, ?string $onlyCampaignId = null): array
+    public function run(bool $dryRun = false, ?string $onlyCampaignId = null, bool $retryFailed = false): array
     {
         $stats = [
             'checked' => 0, 'bid_mismatch' => 0, 'bgt_mismatch' => 0,
-            'bid_pushed' => 0, 'bgt_pushed' => 0, 'bid_left' => 0, 'bgt_left' => 0,
+            'bid_pushed' => 0, 'bgt_pushed' => 0, 'bid_left' => 0, 'bgt_left' => 0, 'waiting' => 0,
             'push_errors' => [], 'error' => null,
         ];
 
@@ -60,6 +64,18 @@ class GoogleShoppingLiveMatchService
         $stats['bgt_left'] = $stats['bgt_mismatch'];
         if ($dryRun || ($bidIds === [] && $bgtIds === [])) {
             return $stats;
+        }
+
+        // Campaigns whose last push did not stick wait before the next try.
+        if (! $retryFailed) {
+            $bidWait = array_values(array_filter($bidIds, fn (string $id) => $this->isWaiting('bid', $id)));
+            $bgtWait = array_values(array_filter($bgtIds, fn (string $id) => $this->isWaiting('bgt', $id)));
+            $stats['waiting'] = count($bidWait) + count($bgtWait);
+            $bidIds = array_values(array_diff($bidIds, $bidWait));
+            $bgtIds = array_values(array_diff($bgtIds, $bgtWait));
+            if ($bidIds === [] && $bgtIds === []) {
+                return $stats;
+            }
         }
 
         foreach ([['bid', $bidIds], ['bgt', $bgtIds]] as [$field, $ids]) {
@@ -90,10 +106,17 @@ class GoogleShoppingLiveMatchService
         }
 
         [$bidStill, $bgtStill] = $this->mismatches($pushedTargets);
-        $stats['bid_left'] = count($bidStill);
-        $stats['bgt_left'] = count($bgtStill);
+        $stats['bid_left'] = count($bidStill) + $this->waitingCount('bid', $stats['bid_mismatch'], $bidIds);
+        $stats['bgt_left'] = count($bgtStill) + $this->waitingCount('bgt', $stats['bgt_mismatch'], $bgtIds);
         $stats['bid_pushed'] = count($bidIds) - count(array_intersect($bidIds, $bidStill));
         $stats['bgt_pushed'] = count($bgtIds) - count(array_intersect($bgtIds, $bgtStill));
+
+        foreach ($bidIds as $id) {
+            in_array($id, $bidStill, true) ? $this->markFailed('bid', $id) : $this->clearFailed('bid', $id);
+        }
+        foreach ($bgtIds as $id) {
+            in_array($id, $bgtStill, true) ? $this->markFailed('bgt', $id) : $this->clearFailed('bgt', $id);
+        }
 
         return $stats;
     }
@@ -226,6 +249,36 @@ class GoogleShoppingLiveMatchService
         }
 
         return app(GoogleShoppingCampaignsController::class)->pushSbgtForLiveMatch($ids);
+    }
+
+    private static function failKey(string $field, string $id): string
+    {
+        return 'google-shopping:match-failed:'.$field.':'.$id;
+    }
+
+    private function isWaiting(string $field, string $id): bool
+    {
+        return Cache::has(self::failKey($field, $id));
+    }
+
+    private function markFailed(string $field, string $id): void
+    {
+        Cache::put(self::failKey($field, $id), now()->toDateTimeString(), now()->addHours(self::FAILED_RETRY_AFTER_HOURS));
+    }
+
+    private function clearFailed(string $field, string $id): void
+    {
+        Cache::forget(self::failKey($field, $id));
+    }
+
+    /**
+     * Mismatches that were held back this run (still waiting after an earlier failed push).
+     *
+     * @param  list<string>  $pushedIds
+     */
+    private function waitingCount(string $field, int $totalMismatch, array $pushedIds): int
+    {
+        return max(0, $totalMismatch - count($pushedIds));
     }
 
     private static function positive(mixed $v): ?float

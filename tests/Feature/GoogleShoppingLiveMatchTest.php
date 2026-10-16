@@ -282,4 +282,75 @@ class GoogleShoppingLiveMatchTest extends TestCase
 
         $this->assertSame([], $this->pushes);
     }
+
+    // ---------- RETRY WAIT ----------
+
+    public function test_campaign_google_rejected_is_not_pushed_again_right_away(): void
+    {
+        $this->campaign('1', 0.33, 3, 0.50, 3.0);
+        $this->googleIgnoresPushes = true;
+
+        $this->runMatch()->assertExitCode(0);
+        $this->assertCount(1, $this->pushes);
+
+        $this->runMatch()
+            ->expectsOutputToContain('Waiting before the next try')
+            ->assertExitCode(0);
+        $this->assertCount(1, $this->pushes);
+    }
+
+    public function test_retry_failed_pushes_a_waiting_campaign_again(): void
+    {
+        $this->campaign('1', 0.33, 3, 0.50, 3.0);
+        $this->googleIgnoresPushes = true;
+        $this->runMatch()->assertExitCode(0);
+
+        $this->googleIgnoresPushes = false;
+        $this->runMatch(['--retry-failed' => true])->assertExitCode(0);
+
+        $this->assertCount(2, $this->pushes);
+        $this->assertSame(0.33, $this->google['1']['bid']);
+    }
+
+    public function test_a_campaign_that_waited_is_pushed_again_after_the_wait_and_clears_when_it_sticks(): void
+    {
+        $this->campaign('1', 0.33, 3, 0.50, 3.0);
+        $this->googleIgnoresPushes = true;
+        $this->runMatch()->assertExitCode(0);
+
+        $this->googleIgnoresPushes = false;
+        $this->travel(GoogleShoppingLiveMatchService::FAILED_RETRY_AFTER_HOURS + 1)->hours();
+        $this->runMatch()->assertExitCode(0);
+        $this->assertSame(0.33, $this->google['1']['bid']);
+
+        // It stuck, so a later mismatch is pushed straight away again.
+        $this->google['1']['bid'] = 0.90;
+        $this->runMatch()->assertExitCode(0);
+        $this->assertSame(0.33, $this->google['1']['bid']);
+    }
+
+    public function test_one_failing_campaign_does_not_hold_back_the_others(): void
+    {
+        $this->campaign('1', 0.33, 3, 0.50, 3.0);
+        $this->googleIgnoresPushes = true;
+        $this->runMatch()->assertExitCode(0);
+
+        $this->googleIgnoresPushes = false;
+        $this->campaign('2', 0.40, 3, 0.60, 3.0);
+        $this->runMatch()->assertExitCode(0);
+
+        $this->assertSame(0.40, $this->google['2']['bid']);
+        $this->assertSame(0.50, $this->google['1']['bid']);
+    }
+
+    public function test_google_error_is_shown_in_plain_words(): void
+    {
+        $raw = "{\n \"message\": \"Request contains an invalid argument.\",\n \"code\": 3,\n \"details\": [{\"errors\": [{\"errorCode\": {\"requestError\": \"UNSUPPORTED_VERSION\"}, \"message\": \"Version v22 is deprecated. Requests to this version will be blocked.\"}]}]\n}";
+
+        $this->assertSame(
+            'Version v22 is deprecated. Requests to this version will be blocked.',
+            \App\Services\GoogleAdsSbidService::briefGoogleError(new \RuntimeException($raw))
+        );
+        $this->assertSame('plain failure', \App\Services\GoogleAdsSbidService::briefGoogleError(new \RuntimeException('plain failure')));
+    }
 }

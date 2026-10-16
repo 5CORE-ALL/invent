@@ -3,49 +3,49 @@
 namespace App\Services;
 
 use Google\Auth\Credentials\UserRefreshCredentials;
-use Google\Ads\GoogleAds\Lib\V22\GoogleAdsClientBuilder;
-use Google\Ads\GoogleAds\V22\Services\AdGroupOperation;
-use Google\Ads\GoogleAds\V22\Services\AdGroupCriterionOperation;
-use Google\Ads\GoogleAds\V22\Resources\AdGroup;
-use Google\Ads\GoogleAds\V22\Resources\AdGroupCriterion;
+use Google\Ads\GoogleAds\Lib\V25\GoogleAdsClientBuilder;
+use Google\Ads\GoogleAds\V25\Services\AdGroupOperation;
+use Google\Ads\GoogleAds\V25\Services\AdGroupCriterionOperation;
+use Google\Ads\GoogleAds\V25\Resources\AdGroup;
+use Google\Ads\GoogleAds\V25\Resources\AdGroupCriterion;
 use Google\Protobuf\FieldMask;
-use Google\Ads\GoogleAds\V22\Services\SearchGoogleAdsStreamRequest;
-use Google\Ads\GoogleAds\V22\Services\MutateAdGroupsRequest;
+use Google\Ads\GoogleAds\V25\Services\SearchGoogleAdsStreamRequest;
+use Google\Ads\GoogleAds\V25\Services\MutateAdGroupsRequest;
 use Illuminate\Support\Facades\Log;
-use Google\Ads\GoogleAds\V22\Services\MutateAdGroupCriteriaRequest;
-use Google\Ads\GoogleAds\V22\Services\CampaignBudgetOperation;
-use Google\Ads\GoogleAds\V22\Services\MutateCampaignBudgetsRequest;
-use Google\Ads\GoogleAds\V22\Resources\CampaignBudget;
-use Google\Ads\GoogleAds\V22\Services\AdGroupAdOperation;
-use Google\Ads\GoogleAds\V22\Services\MutateAdGroupAdsRequest;
-use Google\Ads\GoogleAds\V22\Resources\AdGroupAd;
-use Google\Ads\GoogleAds\V22\Enums\AdGroupAdStatusEnum\AdGroupAdStatus;
-use Google\Ads\GoogleAds\V22\Services\CampaignOperation;
-use Google\Ads\GoogleAds\V22\Services\MutateCampaignsRequest;
-use Google\Ads\GoogleAds\V22\Resources\Campaign;
-use Google\Ads\GoogleAds\V22\Resources\Campaign\ShoppingSetting;
-use Google\Ads\GoogleAds\V22\Resources\Ad;
-use Google\Ads\GoogleAds\V22\Common\MaximizeConversions;
-use Google\Ads\GoogleAds\V22\Common\TargetSpend;
-use Google\Ads\GoogleAds\V22\Common\KeywordInfo;
-use Google\Ads\GoogleAds\V22\Common\ManualCpc;
-use Google\Ads\GoogleAds\V22\Common\ListingDimensionInfo;
-use Google\Ads\GoogleAds\V22\Common\ListingGroupInfo;
-use Google\Ads\GoogleAds\V22\Common\ProductItemIdInfo;
-use Google\Ads\GoogleAds\V22\Common\ShoppingProductAdInfo;
-use Google\Ads\GoogleAds\Util\V22\ResourceNames;
-use Google\Ads\GoogleAds\V22\Enums\CampaignStatusEnum\CampaignStatus;
-use Google\Ads\GoogleAds\V22\Enums\AdvertisingChannelTypeEnum\AdvertisingChannelType;
-use Google\Ads\GoogleAds\V22\Enums\AdGroupTypeEnum\AdGroupType;
-use Google\Ads\GoogleAds\V22\Enums\AdGroupStatusEnum\AdGroupStatus;
-use Google\Ads\GoogleAds\V22\Enums\AdGroupCriterionStatusEnum\AdGroupCriterionStatus;
-use Google\Ads\GoogleAds\V22\Enums\KeywordMatchTypeEnum\KeywordMatchType;
-use Google\Ads\GoogleAds\V22\Enums\ListingGroupTypeEnum\ListingGroupType;
-use Google\Ads\GoogleAds\V22\Enums\BudgetDeliveryMethodEnum\BudgetDeliveryMethod;
-use Google\Ads\GoogleAds\V22\Enums\EuPoliticalAdvertisingStatusEnum\EuPoliticalAdvertisingStatus;
-use Google\Ads\GoogleAds\V22\Resources\CampaignCriterion;
-use Google\Ads\GoogleAds\V22\Services\CampaignCriterionOperation;
-use Google\Ads\GoogleAds\V22\Services\MutateCampaignCriteriaRequest;
+use Google\Ads\GoogleAds\V25\Services\MutateAdGroupCriteriaRequest;
+use Google\Ads\GoogleAds\V25\Services\CampaignBudgetOperation;
+use Google\Ads\GoogleAds\V25\Services\MutateCampaignBudgetsRequest;
+use Google\Ads\GoogleAds\V25\Resources\CampaignBudget;
+use Google\Ads\GoogleAds\V25\Services\AdGroupAdOperation;
+use Google\Ads\GoogleAds\V25\Services\MutateAdGroupAdsRequest;
+use Google\Ads\GoogleAds\V25\Resources\AdGroupAd;
+use Google\Ads\GoogleAds\V25\Enums\AdGroupAdStatusEnum\AdGroupAdStatus;
+use Google\Ads\GoogleAds\V25\Services\CampaignOperation;
+use Google\Ads\GoogleAds\V25\Services\MutateCampaignsRequest;
+use Google\Ads\GoogleAds\V25\Resources\Campaign;
+use Google\Ads\GoogleAds\V25\Resources\Campaign\ShoppingSetting;
+use Google\Ads\GoogleAds\V25\Resources\Ad;
+use Google\Ads\GoogleAds\V25\Common\MaximizeConversions;
+use Google\Ads\GoogleAds\V25\Common\TargetSpend;
+use Google\Ads\GoogleAds\V25\Common\KeywordInfo;
+use Google\Ads\GoogleAds\V25\Common\ManualCpc;
+use Google\Ads\GoogleAds\V25\Common\ListingDimensionInfo;
+use Google\Ads\GoogleAds\V25\Common\ListingGroupInfo;
+use Google\Ads\GoogleAds\V25\Common\ProductItemIdInfo;
+use Google\Ads\GoogleAds\V25\Common\ShoppingProductAdInfo;
+use Google\Ads\GoogleAds\Util\V25\ResourceNames;
+use Google\Ads\GoogleAds\V25\Enums\CampaignStatusEnum\CampaignStatus;
+use Google\Ads\GoogleAds\V25\Enums\AdvertisingChannelTypeEnum\AdvertisingChannelType;
+use Google\Ads\GoogleAds\V25\Enums\AdGroupTypeEnum\AdGroupType;
+use Google\Ads\GoogleAds\V25\Enums\AdGroupStatusEnum\AdGroupStatus;
+use Google\Ads\GoogleAds\V25\Enums\AdGroupCriterionStatusEnum\AdGroupCriterionStatus;
+use Google\Ads\GoogleAds\V25\Enums\KeywordMatchTypeEnum\KeywordMatchType;
+use Google\Ads\GoogleAds\V25\Enums\ListingGroupTypeEnum\ListingGroupType;
+use Google\Ads\GoogleAds\V25\Enums\BudgetDeliveryMethodEnum\BudgetDeliveryMethod;
+use Google\Ads\GoogleAds\V25\Enums\EuPoliticalAdvertisingStatusEnum\EuPoliticalAdvertisingStatus;
+use Google\Ads\GoogleAds\V25\Resources\CampaignCriterion;
+use Google\Ads\GoogleAds\V25\Services\CampaignCriterionOperation;
+use Google\Ads\GoogleAds\V25\Services\MutateCampaignCriteriaRequest;
 
 class GoogleAdsSbidService
 {
@@ -287,6 +287,23 @@ class GoogleAdsSbidService
             throw $e;
         }
     }
+    /**
+     * Short, readable reason from a Google Ads exception. The raw message is a long JSON document.
+     */
+    public static function briefGoogleError(\Throwable $e): string
+    {
+        $msg = $e->getMessage();
+        if (preg_match('/"message"\s*:\s*"((?:[^"\\\\]|\\\\.)*)"[^{}]*"errorCode"/s', $msg, $m)
+            || preg_match('/"errors"\s*:\s*\[\s*\{.*?"message"\s*:\s*"((?:[^"\\\\]|\\\\.)*)"/s', $msg, $m)) {
+            return stripslashes($m[1]);
+        }
+        if (preg_match('/UNSUPPORTED_VERSION/', $msg)) {
+            return 'Google Ads API version is no longer supported';
+        }
+
+        return mb_substr(trim(preg_replace('/\s+/', ' ', $msg)), 0, 200);
+    }
+
     public function updateCampaignSbids($customerId, $campaignId, $sbidFactor, bool $includeProductGroups = true)
     {
         try {
@@ -306,6 +323,8 @@ class GoogleAdsSbidService
 
             $processedAdGroups = 0;
             $processedProductGroups = 0;
+            // Some updates can fail while others work. Keep going, but never report success for the campaign.
+            $partialFailures = [];
 
             foreach ($adGroups as $row) {
                 // Fix: Use correct field names from Google Ads API response
@@ -322,6 +341,7 @@ class GoogleAdsSbidService
                             'ad_group_resource' => $adGroupResource,
                             'error' => $e->getMessage()
                         ]);
+                        $partialFailures[] = 'ad group '.$adGroupResource.': '.self::briefGoogleError($e);
                         // Continue with other ad groups
                     }
 
@@ -351,6 +371,7 @@ class GoogleAdsSbidService
                                         'product_group_resource' => $pgResource,
                                         'error' => $e->getMessage()
                                     ]);
+                                    $partialFailures[] = 'product group '.$pgResource.': '.self::briefGoogleError($e);
                                     // Continue with other product groups
                                 }
                             }
@@ -360,6 +381,7 @@ class GoogleAdsSbidService
                             'ad_group_resource' => $adGroupResource,
                             'error' => $e->getMessage()
                         ]);
+                        $partialFailures[] = 'product groups of '.$adGroupResource.': '.self::briefGoogleError($e);
                     }
                     }
                 } else {
@@ -370,6 +392,12 @@ class GoogleAdsSbidService
             // If no ad groups were processed, throw an exception
             if ($processedAdGroups === 0) {
                 throw new \Exception("Failed to update any ad groups for campaign ID: {$campaignId}");
+            }
+            if ($partialFailures !== []) {
+                throw new \Exception(
+                    "SBID only partly updated for campaign ID {$campaignId} ({$processedAdGroups} ad group(s), {$processedProductGroups} product group(s) done; "
+                    .count($partialFailures).' failed). First error: '.$partialFailures[0]
+                );
             }
 
         } catch (\Exception $e) {

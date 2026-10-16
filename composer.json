@@ -9,7 +9,7 @@
         "barryvdh/laravel-dompdf": "^3.1",
         "ecomphp/tiktokshop-php": "^2.8",
         "google/apiclient": "^2.0",
-        "googleads/google-ads-php": "^31.0",
+        "googleads/google-ads-php": "^35.2",
         "guzzlehttp/guzzle": "^7.9",
         "jasara/laravel-selling-partner-api": "^4.0",
         "laravel/framework": "^10.10",
