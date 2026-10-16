@@ -132,7 +132,7 @@ class AliexpressListingPublishService
 
         $title = $overrideTitle !== '' ? $overrideTitle : $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
-            return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
 
         $prepared = [];

@@ -224,7 +224,7 @@ class WayfairListingPublishService
             }
             $title = trim((string) ($this->overrides['title'] ?? '')) ?: $this->resolveTitle($product, $sku);
             if ($title === '') {
-                return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
+                return ['success' => false, 'message' => $sku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
             }
             $images = $this->productImages($product, $sku) ?: $this->overrideImages();
             if ($images === []) {

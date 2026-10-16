@@ -40,6 +40,25 @@ class ListingVariationPreviewService
     {
         $channel = strtolower(trim($channel));
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
+        if ($mode === 'variation') {
+            VariationListingContent::activate();
+        }
+        try {
+        return $this->buildPreview($seedSkus, $channel, $skuParents, $mode);
+        } finally {
+            if ($mode === 'variation') {
+                VariationListingContent::deactivate();
+            }
+        }
+    }
+
+    /**
+     * @param  list<string>  $seedSkus
+     * @param  array<string, string>  $skuParents
+     * @return array{success: bool, groups: list<array<string, mixed>>}
+     */
+    private function buildPreview(array $seedSkus, string $channel, array $skuParents, string $mode): array
+    {
         if (in_array($channel, ['temu2', 'temutwo'], true)) {
             return $this->temu2->previewFromSkus($seedSkus, $skuParents, $mode);
         }
@@ -333,6 +352,16 @@ class ListingVariationPreviewService
         );
         if ($nrReq === 'NR') {
             return ['status' => 'skipped_nrl', 'reason' => 'NRL'];
+        }
+        if (VariationListingContent::active()) {
+            $title = VariationListingContent::titleFor($product) ?? '';
+            if ($title === '') {
+                return ['status' => 'skipped_no_title', 'reason' => VariationListingContent::titleGapMessage()];
+            }
+            $description = VariationListingContent::descriptionFor($product) ?? '';
+            if ($description === '') {
+                return ['status' => 'skipped_no_description', 'reason' => VariationListingContent::descriptionGapMessage()];
+            }
         }
         if (ListingManagerAmazonHydrator::imageMasterUploadSources($sku, (string) ($product->parent ?? '')) === []) {
             return ['status' => 'skipped_no_image', 'reason' => 'No images on Image Master'];

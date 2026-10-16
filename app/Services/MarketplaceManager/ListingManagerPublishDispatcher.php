@@ -287,19 +287,13 @@ class ListingManagerPublishDispatcher
             $parent = ListingManagerFamily::parentKey((string) $draft->seller_sku);
         }
         $content = VariationListingContent::forParent($parent);
-        if ($content['title'] !== '') {
-            $draft->title = $content['title'];
-            $draft->syncOriginalAttribute('title');
-            $details['title'] = $content['title'];
-        }
-        if ($content['description'] !== '') {
-            $details['description'] = $content['description'];
-        }
-        if ($content['bullets'] !== []) {
-            $details['bullets'] = implode("\n", $content['bullets']);
-            foreach (['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5'] as $i => $key) {
-                $details[$key] = $content['bullets'][$i] ?? '';
-            }
+        $draft->title = $content['title'];
+        $draft->syncOriginalAttribute('title');
+        $details['title'] = $content['title'];
+        $details['description'] = $content['description'];
+        $details['bullets'] = implode("\n", $content['bullets']);
+        foreach (['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5'] as $i => $key) {
+            $details[$key] = $content['bullets'][$i] ?? '';
         }
 
         return true;

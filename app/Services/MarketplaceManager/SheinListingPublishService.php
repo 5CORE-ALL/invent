@@ -82,7 +82,7 @@ class SheinListingPublishService
         $details = ListingManagerAmazonHydrator::detailsFromHydration($hydrated, [], 'shein');
         $title = $this->clipTitle($this->resolveTitle($product, $primarySku, $hydrated));
         if ($title === '') {
-            return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
 
         $description = trim(strip_tags((string) ($details['description'] ?? $hydrated['description'] ?? '')));
