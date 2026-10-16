@@ -83,6 +83,10 @@
                         <input class="form-check-input" type="checkbox" role="switch" id="vp-enabled">
                         <label class="form-check-label small fw-semibold" for="vp-enabled" id="vp-enabled-label">Off</label>
                     </div>
+                    <div class="form-check form-switch mb-0 me-3" title="Pushes changed Buy 2, Buy 3, Buy 4 to eBay 1 at 5:30 AM and 9:30 PM IST. This page does not need to be open. Needs the rules switch On.">
+                        <input class="form-check-input" type="checkbox" role="switch" id="vp-auto">
+                        <label class="form-check-label small fw-semibold" for="vp-auto" id="vp-auto-label">Auto push Off</label>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -455,6 +459,7 @@
                 vpRules[name] = rows;
             });
             vpRules.enabled = !!document.getElementById('vp-enabled').checked;
+            vpRules.auto_push = !!document.getElementById('vp-auto').checked;
         }
         function vpCountRanges(rows, valueOf) {
             const counts = (rows || []).map(function() { return 0; });
@@ -649,6 +654,9 @@
             document.getElementById('vpRuleModal').classList.toggle('is-off', !on);
             document.getElementById('vp-enabled').checked = on;
             document.getElementById('vp-enabled-label').textContent = on ? 'On' : 'Off';
+            const auto = !!vpRules.auto_push;
+            document.getElementById('vp-auto').checked = auto;
+            document.getElementById('vp-auto-label').textContent = auto ? (on ? 'Auto push On' : 'Auto push On (waits for rules On)') : 'Auto push Off';
             document.getElementById('vp-mode-note').textContent = on
                 ? 'On. Each SKU gets Buy 2, Buy 3, and Buy 4 from Weight + Dil + Std NPFT.'
                 : 'Off. Buy 2, Buy 3, and Buy 4 stay blank on the grid.';
@@ -698,6 +706,10 @@
             vpReadRulesFromDom();
             vpPaintModal();
             vpRefreshGrid();
+        });
+        document.getElementById('vp-auto').addEventListener('change', function() {
+            vpReadRulesFromDom();
+            vpPaintModal();
         });
         function vpCascadeBuys(input) {
             const row = input.closest('#vp-weight-body tr, #vp-dil-body tr, #vp-npft-body tr');

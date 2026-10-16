@@ -9,8 +9,7 @@ use App\Services\ShippingSlabRateService;
 use App\Support\EbayVolumePricingRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 
 class EbayVolumePricingController extends Controller
 {
@@ -45,13 +44,73 @@ class EbayVolumePricingController extends Controller
 
     public function saveRules(Request $request): JsonResponse
     {
+        $before = $this->loadRules();
         $rules = $this->storeRules($request->all(), false);
+
+        $message = $rules['enabled'] ? 'Volume pricing rules are on.' : 'Volume pricing rules are off.';
+        $started = false;
+        if ($rules['enabled'] && $rules['auto_push'] && $this->rulesChanged($before, $rules)) {
+            $started = $this->startAutoPush();
+            $message .= $started
+                ? ' Rules changed, so the new Buy 2, Buy 3, and Buy 4 are being pushed to eBay in the background.'
+                : ' Rules changed, but the background push could not start. It will run at the next 5:30 AM or 9:30 PM IST.';
+        }
 
         return response()->json([
             'success' => true,
-            'message' => $rules['enabled'] ? 'Volume pricing rules are on.' : 'Volume pricing rules are off.',
+            'message' => $message,
+            'auto_push_started' => $started,
             'rules' => $rules,
         ]);
+    }
+
+    /**
+     * Did anything that decides a discount change? Promotion ids and the saved fingerprint do not count.
+     *
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
+     */
+    private function rulesChanged(array $before, array $after): bool
+    {
+        $pick = static fn (array $r): string => json_encode([
+            $r['enabled'] ?? false,
+            $r['auto_push'] ?? false,
+            $r['weight'] ?? [],
+            $r['dil'] ?? [],
+            $r['npft'] ?? [],
+        ]);
+
+        return $pick($before) !== $pick($after);
+    }
+
+    /**
+     * Run the same command the scheduler runs, detached, so it keeps going after this request ends and
+     * the page does not have to stay open.
+     */
+    private function startAutoPush(): bool
+    {
+        try {
+            $php = PHP_BINARY ?: 'php';
+            if (stripos($php, 'fpm') !== false || stripos($php, 'cgi') !== false) {
+                $cli = trim((string) shell_exec('command -v php 2>/dev/null'));
+                if ($cli !== '') {
+                    $php = $cli;
+                }
+            }
+            if (stripos(PHP_OS_FAMILY, 'Windows') !== false) {
+                return false;
+            }
+            $log = storage_path('logs/ebay1-volume-pricing-auto-push.log');
+            $cmd = 'nohup '.escapeshellarg($php).' '.escapeshellarg(base_path('artisan'))
+                .' ebay1:volume-pricing-auto-push >> '.escapeshellarg($log).' 2>&1 &';
+            exec($cmd);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('eBay1 volume pricing auto push could not start', ['error' => $e->getMessage()]);
+
+            return false;
+        }
     }
 
     public function push(Request $request, Ebay1VolumePricingService $service): JsonResponse
@@ -76,6 +135,7 @@ class EbayVolumePricingController extends Controller
         @set_time_limit(180);
         $result = $service->push($rules, array_slice($rows, 0, 5000), ! $request->boolean('full'));
         $rules['promotion_ids'] = $result['promotion_ids'];
+        $rules['promotion_state'] = $result['promotion_state'];
         $this->persist($rules);
 
         return response()->json($result, $result['success'] ? 200 : 422);
@@ -90,6 +150,7 @@ class EbayVolumePricingController extends Controller
         $existing = $this->loadRules();
         $rules = EbayVolumePricingRule::merge($raw);
         $rules['promotion_ids'] = $existing['promotion_ids'] ?? [];
+        $rules['promotion_state'] = $existing['promotion_state'] ?? [];
         if (! $keepIdsOnly) {
             $this->persist($rules);
         }
@@ -102,17 +163,7 @@ class EbayVolumePricingController extends Controller
      */
     private function loadRules(): array
     {
-        if (! Schema::hasTable('ebay_sbid_rules')) {
-            return EbayVolumePricingRule::defaults();
-        }
-        $row = DB::table('ebay_sbid_rules')->where('key', EbayVolumePricingRule::KEY)->first();
-        $saved = null;
-        if ($row && isset($row->rule)) {
-            $decoded = is_array($row->rule) ? $row->rule : json_decode((string) $row->rule, true);
-            $saved = is_array($decoded) ? $decoded : null;
-        }
-
-        return EbayVolumePricingRule::merge($saved);
+        return app(Ebay1VolumePricingService::class)->loadRules();
     }
 
     /**
@@ -120,21 +171,6 @@ class EbayVolumePricingController extends Controller
      */
     private function persist(array $rules): void
     {
-        if (! Schema::hasTable('ebay_sbid_rules')) {
-            return;
-        }
-        $now = now();
-        $values = [
-            'rule' => json_encode($rules),
-            'updated_at' => $now,
-        ];
-        $exists = DB::table('ebay_sbid_rules')->where('key', EbayVolumePricingRule::KEY)->exists();
-        if (! $exists) {
-            $values['created_at'] = $now;
-        }
-        DB::table('ebay_sbid_rules')->updateOrInsert(
-            ['key' => EbayVolumePricingRule::KEY],
-            $values
-        );
+        app(Ebay1VolumePricingService::class)->saveRules($rules);
     }
 }

@@ -75,6 +75,46 @@ class EbayVolumePricingRuleTest extends TestCase
         ], EbayVolumePricingRule::ebayTiers(['buy2' => 6, 'buy3' => 0, 'buy4' => 25]));
     }
 
+    public function test_listing_row_matches_the_page_math_and_skips_parents(): void
+    {
+        $row = EbayVolumePricingRule::listingRow([
+            '(Child) sku' => 'CS 06 2W',
+            'eBay_item_id' => '235983162568',
+            'INV' => 200,
+            'L30' => 50,
+            'STANDARD_PRICE' => 100,
+            'LP_productmaster' => 20,
+            'Ship_productmaster' => 10,
+            'wt_act' => '1.5',
+        ]);
+
+        $this->assertSame('235983162568', $row['item_id']);
+        $this->assertSame(25.0, $row['dil']);
+        $this->assertSame(40.0, $row['npft']);
+        $this->assertSame(1.5, $row['weight_lb']);
+        $this->assertNull(EbayVolumePricingRule::listingRow(['(Child) sku' => 'PARENT CS 06', 'eBay_item_id' => '1']));
+        $this->assertNull(EbayVolumePricingRule::listingRow(['(Child) sku' => 'CS 06', 'eBay_item_id' => '']));
+        $this->assertNull(EbayVolumePricingRule::listingRow(['(Child) sku' => 'CS 06', 'eBay_item_id' => '9', 'is_parent_summary' => true]));
+        $this->assertSame(0.0, EbayVolumePricingRule::listingRow(['(Child) sku' => 'A', 'eBay_item_id' => '9', 'INV' => 0, 'L30' => 5])['dil']);
+        $this->assertNull(EbayVolumePricingRule::listingRow(['(Child) sku' => 'A', 'eBay_item_id' => '9', 'STANDARD_PRICE' => 0])['npft']);
+    }
+
+    public function test_auto_push_flag_and_promotion_state_survive_save_and_load(): void
+    {
+        $this->assertFalse(EbayVolumePricingRule::defaults()['auto_push']);
+
+        $rules = EbayVolumePricingRule::merge([
+            'enabled' => true,
+            'auto_push' => true,
+            'promotion_ids' => ['2=2|3=8|4=15' => '1616684486303@EBAY_US'],
+            'promotion_state' => ['2=2|3=8|4=15' => 'abc123', 'bad' => ''],
+        ]);
+
+        $this->assertTrue($rules['auto_push']);
+        $this->assertSame(['2=2|3=8|4=15' => 'abc123'], $rules['promotion_state']);
+        $this->assertSame(['2=2|3=8|4=15' => '1616684486303@EBAY_US'], $rules['promotion_ids']);
+    }
+
     public function test_custom_weight_min_max_is_kept_and_old_slab_keys_convert(): void
     {
         $custom = EbayVolumePricingRule::merge([

@@ -1137,6 +1137,25 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // eBay 1 volume pricing (Buy 2/3/4 = Weight + Dil + Std NPFT) → eBay promotions. Only listings whose
+        // discount changed are re-sent. /ebay-volume-pricing does not need to be open. Runs only when the
+        // page has Rules On and Auto push On. Do NOT wrap 21:30 in $ist() — IST window ends at 20:00.
+        $schedule->command('ebay1:volume-pricing-auto-push')
+            ->dailyAt('05:30')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-volume-pricing-auto-push-530am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('ebay1:volume-pricing-auto-push')
+            ->dailyAt('21:30')
+            ->timezone('Asia/Kolkata')
+            ->name('ebay1-volume-pricing-auto-push-930pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Headless "Push on reload" for /faire-pricing (same as amazon:push-blue-prices): blue-triangle SKUs
         // (INV > 0, Faire Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()).
         $schedule->command('faire:push-blue-prices')

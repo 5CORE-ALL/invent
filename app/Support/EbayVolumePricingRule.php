@@ -62,6 +62,7 @@ class EbayVolumePricingRule
 
         return [
             'enabled' => false,
+            'auto_push' => false,
             'weight' => $weight,
             'dil' => [
                 ['min' => 0, 'max' => 0, 'buy2' => 0, 'buy3' => 0, 'buy4' => 0],
@@ -79,6 +80,7 @@ class EbayVolumePricingRule
                 ['min' => 30, 'max' => 999, 'buy2' => 0, 'buy3' => 0, 'buy4' => 0],
             ],
             'promotion_ids' => [],
+            'promotion_state' => [],
         ];
     }
 
@@ -127,12 +129,56 @@ class EbayVolumePricingRule
             }
         }
 
+        $state = [];
+        foreach (is_array($raw['promotion_state'] ?? null) ? $raw['promotion_state'] : [] as $sig => $hash) {
+            $sig = trim((string) $sig);
+            $hash = trim((string) $hash);
+            if ($sig !== '' && $hash !== '') {
+                $state[$sig] = $hash;
+            }
+        }
+
         return [
             'enabled' => (bool) ($raw['enabled'] ?? false),
+            'auto_push' => (bool) ($raw['auto_push'] ?? false),
             'weight' => $weight,
             'dil' => self::ranges($raw['dil'] ?? null),
             'npft' => self::ranges($raw['npft'] ?? null),
             'promotion_ids' => $ids,
+            'promotion_state' => $state,
+        ];
+    }
+
+    /**
+     * One grid row as the push needs it. Same math as the Volume Pricing page (Dil = OV L30 / INV,
+     * Std NPFT = ((Std x 0.70 - ship - LP) / Std) x 100). Parent rows and rows with no listing id give null.
+     *
+     * @param  array<string, mixed>  $d
+     * @return array{sku:string,item_id:string,weight_lb:?float,dil:float,npft:?float}|null
+     */
+    public static function listingRow(array $d): ?array
+    {
+        $sku = trim((string) ($d['(Child) sku'] ?? ''));
+        if (! empty($d['is_parent_summary']) || $sku === '' || stripos($sku, 'PARENT') === 0) {
+            return null;
+        }
+        $itemId = trim((string) ($d['eBay_item_id'] ?? ''));
+        if ($itemId === '') {
+            return null;
+        }
+        $num = static fn ($v): float => is_numeric($v) && is_finite((float) $v) ? (float) $v : 0.0;
+        $inv = $num($d['INV'] ?? 0);
+        $ov = $num($d['L30'] ?? 0);
+        $std = $num($d['STANDARD_PRICE'] ?? 0);
+        $lp = $num($d['LP_productmaster'] ?? 0);
+        $ship = $num($d['Ship_productmaster'] ?? 0);
+
+        return [
+            'sku' => $sku,
+            'item_id' => $itemId,
+            'weight_lb' => is_numeric($d['wt_act'] ?? null) ? (float) $d['wt_act'] : null,
+            'dil' => $inv > 0 ? ($ov / $inv) * 100 : 0.0,
+            'npft' => $std > 0 ? round((($std * 0.70 - $ship - ($lp > 0 ? $lp : 0)) / $std) * 10000) / 100 : null,
         ];
     }
 
