@@ -931,6 +931,14 @@
                         const sku = cell.getValue() || '';
                         return '<span>' + sku + '</span>';
                     } },
+                { title: 'Link', field: 'eBay_item_id', hozAlign: 'center', width: 56, headerSort: false,
+                    formatter: function(cell) {
+                        const raw = String(cell.getValue() || '').trim();
+                        const m = raw.match(/^v1\|(\d+)/) || raw.match(/^(\d{9,})$/);
+                        if (!m) return '';
+                        const url = 'https://www.ebay.com/itm/' + m[1];
+                        return '<a href="' + url + '" target="_blank" rel="noopener" title="Open on eBay (' + m[1] + ')"><i class="fas fa-external-link-alt"></i></a>';
+                    } },
                 { title: 'INV', field: 'INV', hozAlign: 'center', width: 60, sorter: 'number',
                     formatter: function(cell) { return Math.round(vpNum(cell.getValue())); } },
                 { title: 'OV L30', field: 'L30', hozAlign: 'center', width: 70, sorter: 'number',
