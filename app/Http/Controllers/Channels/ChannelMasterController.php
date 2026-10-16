@@ -18546,6 +18546,55 @@ class ChannelMasterController extends Controller
 
             $isAll = ($channel === 'all');
 
+            // Today block badges (Orders / Nprft% / Groi% / NROI% / Ads% / Views):
+            // daily history saved in badges_data_histories by channel:refresh-today-sales.
+            if (in_array($metric, \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::TODAY_BADGE_FIELDS, true)) {
+                $live = $request->input('badge_value');
+                $points = $isAll
+                    ? \App\Models\BadgeDataHistory::series(
+                        'all-marketplace-master',
+                        $metric,
+                        $days > 0 ? $days : 30,
+                        ($live !== null && $live !== '' && is_numeric($live)) ? (float) $live : null
+                    )
+                    : [];
+
+                return response()->json([
+                    'success' => true,
+                    'data' => array_map(
+                        static fn (array $p) => ['date' => $p['date'], 'value' => $p['value']],
+                        $points
+                    ),
+                ]);
+            }
+
+            // Forecast block badges (MSL_LP / MSL_SP / Ord / MIP / R2S / Trn / NPFT / NROI):
+            // daily snapshots saved in badges_data_histories by badges:save-all.
+            $forecastHistoryMap = [
+                'fa_msl_lp' => ['forecast-analysis', 'total_msl_c'],
+                'fa_msl_sp' => ['forecast-analysis', 'total_msl_sp_amz'],
+                'fa_ord' => ['forecast-analysis', 'total_order_value'],
+                'fa_mip' => ['forecast-analysis', 'total_mip_value'],
+                'fa_r2s' => ['forecast-analysis', 'total_r2s_value'],
+                'fa_trn' => ['forecast-analysis', 'total_transit_value'],
+                'fa_npft' => ['all-marketplace-master', 'npft_pct'],
+                'fa_nroi' => ['all-marketplace-master', 'n_roi'],
+            ];
+            if (isset($forecastHistoryMap[$metric])) {
+                [$historyPage, $historyField] = $forecastHistoryMap[$metric];
+                $points = $isAll
+                    ? \App\Models\BadgeDataHistory::series($historyPage, $historyField, $days > 0 ? $days : 30)
+                    : [];
+
+                return response()->json([
+                    'success' => true,
+                    'data' => array_map(
+                        static fn (array $p) => ['date' => $p['date'], 'value' => $p['value']],
+                        $points
+                    ),
+                ]);
+            }
+
             if ($metric === 'today_sales') {
                 return response()->json([
                     'success' => true,

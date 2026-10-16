@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Console\Commands\Concerns\MonitorsCronExecution;
+use App\Http\Controllers\Channels\ChannelMasterController;
 use App\Models\BadgeData;
+use App\Support\Badges\AllMarketplaceMasterBadgeAggregator;
 use App\Services\CronMonitor\CronExecutionContext;
 use App\Services\Support\ChannelTodaySalesService;
 use Illuminate\Console\Command;
@@ -47,6 +49,28 @@ class RefreshChannelTodaySales extends Command
 
         $existing = BadgeData::dataForPage('all-marketplace-master', []);
         $existing['today_sales'] = $result['total'];
+
+        // Whole Today block (Orders, Nprft%, Groi%, NROI%, Ads%, Views) goes into
+        // badges_data + badges_data_histories, same as the other badges.
+        try {
+            $payload = app(ChannelMasterController::class)->getAllMarketplaceMasterChannelPayload();
+            $today = AllMarketplaceMasterBadgeAggregator::todayMetrics($payload['data'] ?? []);
+            unset($today['today_sales']);
+            $existing = array_merge($existing, $today);
+            $this->info(sprintf(
+                'Today badges: orders=%d, nprft=%s%%, groi=%s%%, nroi=%s%%, ads=%s%%, views=%d',
+                $today['t_orders'],
+                $today['t_npft_pct'],
+                $today['t_groi_pct'],
+                $today['t_nroi_pct'],
+                $today['t_ads_pct'],
+                $today['t_views'],
+            ));
+        } catch (\Throwable $e) {
+            report($e);
+            $this->warn('Today block metrics not refreshed: '.$e->getMessage());
+        }
+
         BadgeData::saveForPage('all-marketplace-master', $existing);
 
         return self::SUCCESS;

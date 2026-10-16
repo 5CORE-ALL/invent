@@ -1032,22 +1032,22 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="today_sales" style="background-color: #fd7e14; color: white; font-weight: bold; cursor:pointer;" title="Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT (America/New_York) through now. Dot compares today with yesterday.">
                             <span class="summary-trend-dot none" data-metric="today_sales" title="Today vs yesterday"></span>Sales: <span id="total-today-sales">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="T Orders = Σ (L30 Orders × Today Sales ÷ L30 Sales). Same pace as Today Sales. 0 when Today Sales is 0.">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="t_orders" style="color: black; font-weight: bold; cursor:pointer;" title="T Orders = Σ (L30 Orders × Today Sales ÷ L30 Sales). Same pace as Today Sales. 0 when Today Sales is 0.">
                             <span class="summary-trend-dot none" data-metric="t_orders" title="Vs L30 daily average"></span>Orders: <span id="total-t-orders">0</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #17a2b8; color: white; font-weight: bold;" title="T Nprft% = Σ (Today Sales × NPFT%) ÷ Σ Today Sales.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="t_npft_pct" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="T Nprft% = Σ (Today Sales × NPFT%) ÷ Σ Today Sales.">
                             <span class="summary-trend-dot none" data-metric="t_npft" title="Vs L30 NPFT%"></span>Nprft%: <span id="avg-t-npft">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #dc3545; color: white; font-weight: bold;" title="TGroi% = Σ (Today Sales × GPFT%) ÷ Σ today COGS. Today COGS = L30 COGS × (Today Sales ÷ L30 Sales).">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="t_groi_pct" style="background-color: #dc3545; color: white; font-weight: bold; cursor:pointer;" title="TGroi% = Σ (Today Sales × GPFT%) ÷ Σ today COGS. Today COGS = L30 COGS × (Today Sales ÷ L30 Sales).">
                             <span class="summary-trend-dot none" data-metric="t_groi" title="Vs L30 G ROI%"></span>Groi%: <span id="avg-t-groi">0.0%</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;" title="TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS.">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="t_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS.">
                             <span class="summary-trend-dot none" data-metric="t_nroi" title="Vs L30 NROI%"></span>NROI%: <span id="avg-t-nroi">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #d63384; color: white; font-weight: bold;" title="T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="t_ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales.">
                             <span class="summary-trend-dot none" data-metric="t_ads" title="Vs L30 Ads%"></span>Ads%: <span id="avg-t-ads">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="T Views = Σ (Views × Today Sales ÷ L30 Sales). Same pace as Today Sales.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="t_views" style="background-color: #0dcaf0; color: #111; font-weight: bold; cursor:pointer;" title="T Views = Σ (Views × Today Sales ÷ L30 Sales). Same pace as Today Sales.">
                             <span class="summary-trend-dot none" data-metric="t_views" title="Vs L30 daily average"></span>Views: <span id="total-t-views">0</span>
                         </span>
                         </div>
@@ -1173,13 +1173,13 @@
                     <div class="amm-badge-block amm-badge-block--forecast">
                         <div class="amm-badge-block-title">Forecast</div>
                         <div class="ebay2-summary-badge-row" role="group" aria-label="Forecast metrics">
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#198754;color:#111;font-weight:bold;text-decoration:none;" title="MSL × LP. Same total as Forecast Analysis.">MSL_LP: {{ $forecastBadges['msl_lp'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#0dcaf0;color:#111;font-weight:bold;text-decoration:none;" title="MSL × AMZ price ÷ 4.">MSL_SP: {{ $forecastBadges['msl_sp'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="Σ (CP × Order).">Ord: {{ $forecastBadges['ord'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="MIP value.">MIP: {{ $forecastBadges['mip'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="R2S value.">R2S: {{ $forecastBadges['r2s'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#6c757d;color:#fff;font-weight:bold;text-decoration:none;" title="Transit value.">Trn: {{ $forecastBadges['trn'] }}</a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;" title="NPFT% — same as Active channel.">NPFT: <span id="amm-fa-npft">—</span></a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_msl_lp" style="background-color:#198754;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="MSL × LP. Same total as Forecast Analysis. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">MSL_LP: {{ $forecastBadges['msl_lp'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_msl_sp" style="background-color:#0dcaf0;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="MSL × AMZ price ÷ 4. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">MSL_SP: {{ $forecastBadges['msl_sp'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_ord" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="Σ (CP × Order). Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">Ord: {{ $forecastBadges['ord'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_mip" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="MIP value. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">MIP: {{ $forecastBadges['mip'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_r2s" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="R2S value. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">R2S: {{ $forecastBadges['r2s'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_trn" style="background-color:#6c757d;color:#fff;font-weight:bold;text-decoration:none;cursor:pointer;" title="Transit value. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">Trn: {{ $forecastBadges['trn'] }}</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_npft" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="NPFT% — same as Active channel. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">NPFT: <span id="amm-fa-npft">—</span></a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#20c997;color:#111;font-weight:bold;text-decoration:none;" title="NROI% — same as Active channel.">NROI: <span id="amm-fa-nroi">—</span></a>
                         </div>
                     </div>
@@ -6393,6 +6393,12 @@
                     const nroi = totalTodayCogs > 0 ? (totalTodayNet / totalTodayCogs) * 100 : 0;
                     const ads = totalTodaySales > 0 ? (totalTodayAdSpend / totalTodaySales) * 100 : 0;
                     const views = Math.round(totalTodayViews);
+                    setBadgeExact($('#avg-t-npft'), pct1(npft));
+                    setBadgeExact($('#avg-t-groi'), pct1(groi));
+                    setBadgeExact($('#avg-t-nroi'), pct1(nroi));
+                    setBadgeExact($('#avg-t-ads'), pct1(ads));
+                    setBadgeExact($('#total-t-views'), views);
+                    setBadgeExact($('#total-t-orders'), Math.round(totalTodayOrders));
                     $('#avg-t-npft').text(pct1(npft).toFixed(1) + '%');
                     $('#avg-t-groi').text(pct1(groi).toFixed(1) + '%');
                     $('#avg-t-nroi').text(pct1(nroi).toFixed(1) + '%');
@@ -7471,7 +7477,7 @@
             // (graph dot = last value vs the day before). The dot-trend cache is built
             // from a different snapshot table and could disagree (green dot, red graph).
             function syncAllBadgeDotWithChart(metric, values) {
-                if (!metric || metric === 'today_sales' || yVsL30DotMetrics[metric] || !Array.isArray(values) || values.length < 2) return;
+                if (!metric || metric === 'today_sales' || /^t_/.test(metric) || yVsL30DotMetrics[metric] || !Array.isArray(values) || values.length < 2) return;
                 var v1 = Number(values[values.length - 2]);
                 var v2 = Number(values[values.length - 1]);
                 if (!isFinite(v1) || !isFinite(v2)) return;
@@ -7636,6 +7642,12 @@
                 'l30_sales': 'Sales',
                 'y_sales': 'Y Sales',
                 'today_sales': 'Today Sales',
+                't_orders': 'Today Orders',
+                't_npft_pct': 'Today Nprft%',
+                't_groi_pct': 'Today Groi%',
+                't_nroi_pct': 'Today NROI%',
+                't_ads_pct': 'Today Ads%',
+                't_views': 'Today Views',
                 'y_pft': 'Y PFT',
                 'y_npft_amt': 'Y NPFT',
                 'p_sales': 'P-Sales',
@@ -8158,7 +8170,8 @@
                     if (m === 'cvr' || m === 'ads_cvr') {
                         return v.toFixed(2) + '%';
                     }
-                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'p_nroi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi') {
+                    if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'p_nroi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi'
+                        || m === 't_npft_pct' || m === 't_groi_pct' || m === 't_nroi_pct' || m === 't_ads_pct') {
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'tat') return v.toFixed(2);
@@ -8167,7 +8180,7 @@
                 };
 
                 // --- Dot colors: green=UP red=DOWN. ACOS, TAcos %, and TAT invert (lower is better). ---
-                const invertedMetrics = ['acos', 'ads_pct', 'tat'];
+                const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'tat'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
                 if (currentChartMode === 'metric' && currentChartChannel === 'all') {

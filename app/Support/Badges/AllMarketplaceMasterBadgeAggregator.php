@@ -8,6 +8,21 @@ namespace App\Support\Badges;
 class AllMarketplaceMasterBadgeAggregator
 {
     /**
+     * badges_data field names for the Today block badges (besides today_sales).
+     * Same names are used as the chart metric keys on All Marketplace Master.
+     *
+     * @var list<string>
+     */
+    public const TODAY_BADGE_FIELDS = [
+        't_orders',
+        't_npft_pct',
+        't_groi_pct',
+        't_nroi_pct',
+        't_ads_pct',
+        't_views',
+    ];
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      * @param  array<string, mixed>  $extras  inventory_value_amazon, inv_at_lp, etc.
      * @return array<string, int|float|string|null>
@@ -164,6 +179,7 @@ class AllMarketplaceMasterBadgeAggregator
         $shopifyInvSum = (float) ($extras['shopify_inv_sum'] ?? 0);
         $shopifyWeightedAvgLp = (float) ($extras['shopify_weighted_avg_lp'] ?? 0);
         $tat = $totalL30Sales > 0 ? $inventoryValueAmazon / $totalL30Sales : 0.0;
+        $today = self::todayMetrics($rows);
 
         return [
             'channels' => $totalChannels,
@@ -176,6 +192,12 @@ class AllMarketplaceMasterBadgeAggregator
             'y_groi_pct' => round($avgYGroi, 2),
             'y_nroi_pct' => round($avgYNroi, 2),
             'today_sales' => round($totalTodaySales, 2),
+            't_orders' => $today['t_orders'],
+            't_npft_pct' => $today['t_npft_pct'],
+            't_groi_pct' => $today['t_groi_pct'],
+            't_nroi_pct' => $today['t_nroi_pct'],
+            't_ads_pct' => $today['t_ads_pct'],
+            't_views' => $today['t_views'],
             'p_sales' => round($totalPSales, 2),
             'p_npft_amt' => round($totalPNet, 2),
             'l30_orders' => (int) round($totalL30Orders),
@@ -206,6 +228,64 @@ class AllMarketplaceMasterBadgeAggregator
             'total_reviews' => (int) round($reviewsSum),
             'seller_avg_rating' => $sellerReviewsSum > 0 ? round($sellerRatingSum / $sellerReviewsSum, 1) : 0.0,
             'seller_total_reviews' => (int) round($sellerReviewsSum),
+        ];
+    }
+
+    /**
+     * Today block badges (Sales, Orders, Nprft%, Groi%, NROI%, Ads%, Views).
+     * Mirrors todayPartsFromRow() + the Today block in updateSummaryStats() on
+     * channels/all-marketplace-master.blade.php.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{today_sales: float, t_orders: int, t_npft_pct: float, t_groi_pct: float, t_nroi_pct: float, t_ads_pct: float, t_views: int}
+     */
+    public static function todayMetrics(array $rows): array
+    {
+        $totalSales = 0.0;
+        $totalGross = 0.0;
+        $totalNet = 0.0;
+        $totalCogs = 0.0;
+        $totalSpend = 0.0;
+        $totalViews = 0.0;
+        $totalOrders = 0.0;
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $sales = self::rowNumber($row, 'Today Sales');
+            $totalSales += $sales;
+            if ($sales <= 0) {
+                continue;
+            }
+
+            $gp = self::rowNumber($row, 'Gprofit%');
+            $npft = self::rowNumber($row, 'N PFT');
+            $ads = self::rowNumber($row, 'Ads%', 'TACOS');
+            $l30 = self::rowNumber($row, 'L30 Sales');
+            $cogsL30 = self::rowNumber($row, 'cogs');
+            $views = self::rowNumber($row, 'Total Views');
+            $l30Orders = self::rowNumber($row, 'L30 Orders');
+
+            $totalCogs += ($l30 > 0 && $cogsL30 > 0)
+                ? $cogsL30 * ($sales / $l30)
+                : $sales * max(0.0, 1 - $gp / 100);
+            $totalGross += $sales * $gp / 100;
+            $totalNet += $sales * $npft / 100;
+            $totalSpend += $sales * $ads / 100;
+            $totalViews += ($l30 > 0 && $views > 0) ? $views * ($sales / $l30) : 0.0;
+            $totalOrders += ($l30 > 0 && $l30Orders > 0) ? $l30Orders * ($sales / $l30) : 0.0;
+        }
+
+        return [
+            'today_sales' => round($totalSales, 2),
+            't_orders' => (int) round($totalOrders),
+            't_npft_pct' => $totalSales > 0 ? round(($totalNet / $totalSales) * 100, 2) : 0.0,
+            't_groi_pct' => $totalCogs > 0 ? round(($totalGross / $totalCogs) * 100, 2) : 0.0,
+            't_nroi_pct' => $totalCogs > 0 ? round(($totalNet / $totalCogs) * 100, 2) : 0.0,
+            't_ads_pct' => $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 2) : 0.0,
+            't_views' => (int) round($totalViews),
         ];
     }
 
