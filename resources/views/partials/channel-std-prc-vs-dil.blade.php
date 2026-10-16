@@ -1316,6 +1316,8 @@
         function chStdPriceForRow(d, draft) {
             if (!d) return 0;
             if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
+            // Product-master SKU with no Alibaba listing (no product id / price): nothing to push to.
+            if (d.not_listed) return 0;
             if (!(chStdStockForAge(d) > 0) && !chStdRowIsZeroSold(d)) return 0;
             const std = (typeof chPromoStdBase === 'function') ? chPromoStdBase(d) : 0;
             if (!(std > 0)) return 0;
