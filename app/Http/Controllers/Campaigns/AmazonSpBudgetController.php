@@ -557,6 +557,35 @@ class AmazonSpBudgetController extends Controller
         }
     }
 
+    /**
+     * Targets that can take a new bid. Archived targets are left out: Amazon rejects every one of
+     * them (ARCHIVED_ENTITY_CANNOT_BE_MODIFIED), and an archived twin of an enabled target in the
+     * same request made Amazon answer the enabled one with a duplicate-value error, so its bid
+     * stayed old and the live-bid check kept failing.
+     *
+     * @param  list<array<string, mixed>>  $adTargets
+     * @return list<array{bid: float, targetId: string}>
+     */
+    public static function targetsToPush(array $adTargets, float $newBid): array
+    {
+        $out = [];
+        foreach ($adTargets as $adTarget) {
+            if (! is_array($adTarget)) {
+                continue;
+            }
+            if (strtoupper(trim((string) ($adTarget['state'] ?? ''))) === 'ARCHIVED') {
+                continue;
+            }
+            $targetId = isset($adTarget['targetId']) ? trim((string) $adTarget['targetId']) : '';
+            if ($targetId === '') {
+                continue;
+            }
+            $out[] = ['bid' => $newBid, 'targetId' => $targetId];
+        }
+
+        return $out;
+    }
+
     public function updateAutoCampaignTargetsBid(array $campaignIds, array $newBids)
     {
         ini_set('max_execution_time', 300);
@@ -584,16 +613,7 @@ class AmazonSpBudgetController extends Controller
             $adTargets = $this->getTargetsAdByCampaign([$campaignId]);
             if (empty($adTargets)) continue;
 
-            foreach ($adTargets as $adTarget) {
-                $targetId = isset($adTarget['targetId']) ? trim((string) $adTarget['targetId']) : '';
-                if ($targetId === '') {
-                    continue;
-                }
-                $allTargets[] = [
-                    'bid' => $newBid,
-                    'targetId' => $targetId,
-                ];
-            }
+            array_push($allTargets, ...self::targetsToPush($adTargets, $newBid));
         }
 
         if (empty($allTargets)) {
@@ -680,16 +700,7 @@ class AmazonSpBudgetController extends Controller
             $adTargets = $this->getTargetsAdByCampaign([$campaignId]);
             if (empty($adTargets)) continue;
 
-            foreach ($adTargets as $adTarget) {
-                $targetId = isset($adTarget['targetId']) ? trim((string) $adTarget['targetId']) : '';
-                if ($targetId === '') {
-                    continue;
-                }
-                $allTargets[] = [
-                    'bid' => $newBid,
-                    'targetId' => $targetId,
-                ];
-            }
+            array_push($allTargets, ...self::targetsToPush($adTargets, $newBid));
         }
 
         if (empty($allTargets)) {
