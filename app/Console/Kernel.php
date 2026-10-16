@@ -3506,6 +3506,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // Y Orders / Y Views / Y CVR daily history (per channel + all) for /all-marketplace-master graphs.
+        $ist($schedule->command('badges:record-amm-column-history --days=3')
+            ->dailyAt('19:25')
+            ->timezone('Asia/Kolkata')
+            ->name('badges-record-amm-column-history-daily')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->appendOutputTo($log));
+
         /*
         |--------------------------------------------------------------------------
         | AUTO LOGOUT INACTIVE USERS
