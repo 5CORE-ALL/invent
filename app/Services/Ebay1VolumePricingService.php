@@ -29,7 +29,7 @@ class Ebay1VolumePricingService
      * @param  list<array{sku?:string,item_id?:string,weight_lb?:mixed,dil?:mixed,npft?:mixed}>  $rows
      * @return array{success:bool,message:string,pushed:int,groups:int,skipped:int,errors:list<string>,promotion_ids:array<string,string>}
      */
-    public function push(array $rules, array $rows): array
+    public function push(array $rules, array $rows, bool $partial = false): array
     {
         $groups = [];
         $skipped = 0;
@@ -85,9 +85,17 @@ class Ebay1VolumePricingService
                 $planned[$index === 0 ? $sig : $sig.'#'.($index + 1)] = true;
             }
         }
+        // A full push covers every listing, so promotions it no longer needs are paused.
+        // A partial push (checked rows) only touches its own listings and leaves the other promotions alone.
+        $kept = [];
         foreach ($known as $key => $promoId) {
             $promoId = trim((string) $promoId);
             if ($promoId === '' || isset($planned[$key])) {
+                continue;
+            }
+            if ($partial) {
+                $kept[$key] = $promoId;
+
                 continue;
             }
             $this->pause($token, $promoId);
@@ -103,7 +111,7 @@ class Ebay1VolumePricingService
                 $key = $index === 0 ? $sig : $sig.'#'.($index + 1);
                 $name = $this->nameFor($group['tiers'], $index);
                 $promoId = trim((string) ($known[$key] ?? ''));
-                $result = $this->upsert($token, $promoId, $name, $group['tiers'], $ids);
+                $result = $this->upsert($token, $promoId, $name, $group['tiers'], $ids, $partial);
                 if (! $result['success']) {
                     $errors[] = $name.': '.$result['message'];
                     if ($promoId !== '') {
@@ -142,7 +150,7 @@ class Ebay1VolumePricingService
             'groups' => count($used),
             'skipped' => $skipped,
             'errors' => $errors,
-            'promotion_ids' => $used,
+            'promotion_ids' => $partial ? array_merge($kept, $used) : $used,
         ];
     }
 
@@ -151,9 +159,15 @@ class Ebay1VolumePricingService
      * @param  list<string>  $listingIds
      * @return array{success:bool,message:string,promotion_id:string}
      */
-    private function upsert(string $token, string $promoId, string $name, array $tiers, array $listingIds): array
+    private function upsert(string $token, string $promoId, string $name, array $tiers, array $listingIds, bool $merge = false): array
     {
         $detail = $promoId !== '' ? $this->getPromotion($token, $promoId) : null;
+        if ($merge && $detail !== null) {
+            $current = $detail['inventoryCriterion']['listingIds'] ?? [];
+            if (is_array($current)) {
+                $listingIds = array_values(array_unique(array_merge(array_map('strval', $current), $listingIds)));
+            }
+        }
         $payload = $this->payload($name, $tiers, $listingIds, $detail);
         if ($detail === null) {
             $resp = $this->http($token)->post('https://api.ebay.com/sell/marketing/v1/item_promotion', $payload);

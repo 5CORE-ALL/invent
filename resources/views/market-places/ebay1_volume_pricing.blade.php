@@ -804,7 +804,7 @@
             fetch(VP_PUSH_URL, {
                 method: 'POST',
                 headers: vpCsrfHeaders(),
-                body: JSON.stringify({ rules: vpRules, rows: rows })
+                body: JSON.stringify({ rules: vpRules, rows: rows, partial: picked.length > 0 })
             }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
                 .then(function(res) {
                     const msg = (res.j && res.j.message) || 'Push finished';

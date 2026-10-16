@@ -74,7 +74,7 @@ class EbayVolumePricingController extends Controller
         }
 
         @set_time_limit(180);
-        $result = $service->push($rules, array_slice($rows, 0, 5000));
+        $result = $service->push($rules, array_slice($rows, 0, 5000), $request->boolean('partial'));
         $rules['promotion_ids'] = $result['promotion_ids'];
         $this->persist($rules);
 
