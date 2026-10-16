@@ -105,7 +105,7 @@ class NeweggListingPublishService
 
         $title = trim((string) ($overrides['title'] ?? '')) ?: $this->resolveTitle($product, $sku);
         if ($title === '') {
-            return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $sku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
 
         $price = $this->resolvePrice($sku, $product);
@@ -614,31 +614,14 @@ class NeweggListingPublishService
      */
     private function resolveDimensions(ProductMaster $product, array $overrides = []): array
     {
-        $values = is_array($product->Values) ? $product->Values : [];
-        $num = static function (array $bag, array $keys, float $fallback): float {
-            foreach ($keys as $key) {
-                if (isset($bag[$key]) && is_numeric($bag[$key]) && (float) $bag[$key] > 0) {
-                    return (float) $bag[$key];
-                }
-            }
-
-            return $fallback;
-        };
-        $lb = is_numeric($overrides['package_weight_lb'] ?? null) ? (float) $overrides['package_weight_lb'] : 0.0;
-        $oz = is_numeric($overrides['package_weight_oz'] ?? null) ? (float) $overrides['package_weight_oz'] : 0.0;
-        $weight = $lb + ($oz / 16);
+        $fromMaster = ListingManagerAmazonHydrator::dimWtPackage((string) ($product->sku ?? ''));
+        $lb = (float) ($fromMaster['weight_lb'] ?? 0) + ((float) ($fromMaster['weight_oz'] ?? 0) / 16);
 
         return [
-            'length' => is_numeric($overrides['package_length'] ?? null) && (float) $overrides['package_length'] > 0
-                ? (float) $overrides['package_length']
-                : $num($values, ['length', 'Length', 'item_length', 'L', 'l'], 1.0),
-            'width' => is_numeric($overrides['package_width'] ?? null) && (float) $overrides['package_width'] > 0
-                ? (float) $overrides['package_width']
-                : $num($values, ['width', 'Width', 'item_width', 'W', 'w'], 1.0),
-            'height' => is_numeric($overrides['package_height'] ?? null) && (float) $overrides['package_height'] > 0
-                ? (float) $overrides['package_height']
-                : $num($values, ['height', 'Height', 'item_height', 'H', 'h'], 1.0),
-            'weight' => $weight > 0 ? $weight : $num($values, ['weight', 'Weight', 'item_weight', 'wt', 'lb', 'wt_act'], 1.0),
+            'length' => (float) ($fromMaster['length'] ?? 0) > 0 ? (float) $fromMaster['length'] : 1.0,
+            'width' => (float) ($fromMaster['width'] ?? 0) > 0 ? (float) $fromMaster['width'] : 1.0,
+            'height' => (float) ($fromMaster['height'] ?? 0) > 0 ? (float) $fromMaster['height'] : 1.0,
+            'weight' => $lb > 0 ? $lb : 1.0,
         ];
     }
 

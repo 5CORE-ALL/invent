@@ -82,7 +82,7 @@ class SheinListingPublishService
         $details = ListingManagerAmazonHydrator::detailsFromHydration($hydrated, [], 'shein');
         $title = $this->clipTitle($this->resolveTitle($product, $primarySku, $hydrated));
         if ($title === '') {
-            return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
 
         $description = trim(strip_tags((string) ($details['description'] ?? $hydrated['description'] ?? '')));
@@ -1319,12 +1319,14 @@ class SheinListingPublishService
                 continue;
             }
             $qty = max(1, $this->resolveQuantity($sku, $childHydrated));
+            $childDims = $this->resolveDimensionsCm([], $childHydrated);
+            $childWeight = $this->resolveWeightGrams([], $childHydrated, null);
             $skuPayload = [
                 'supplier_sku' => $sku,
-                'height' => $dims['height'],
-                'length' => $dims['length'],
-                'width' => $dims['width'],
-                'weight' => (string) $weightGrams,
+                'height' => $childDims['height'],
+                'length' => $childDims['length'],
+                'width' => $childDims['width'],
+                'weight' => (string) $childWeight,
                 'mall_state' => 1,
                 'stop_purchase' => 1,
                 'stock_info_list' => [[
@@ -1603,7 +1605,9 @@ class SheinListingPublishService
      */
     private function resolveWeightGrams(array $details, array $hydrated, ?float $weightLb): int
     {
-        $lb = $weightLb !== null && $weightLb > 0 ? $weightLb : 0.0;
+        $sku = trim((string) ($hydrated['sku'] ?? $details['sku'] ?? $details['mpn'] ?? ''));
+        $pkg = $sku !== '' ? ListingManagerAmazonHydrator::dimWtPackage($sku) : ['weight_lb' => '', 'weight_oz' => ''];
+        $lb = (float) ($pkg['weight_lb'] ?? 0) + ((float) ($pkg['weight_oz'] ?? 0) / 16);
         if ($lb <= 0) {
             $lb = (float) ($details['package_weight_lb'] ?? $hydrated['package_weight_lb'] ?? 0);
             $oz = (float) ($details['package_weight_oz'] ?? $hydrated['package_weight_oz'] ?? 0);
@@ -1629,10 +1633,13 @@ class SheinListingPublishService
             return (string) max(1, (int) round($cm > 0 ? $cm : 25));
         };
 
+        $sku = trim((string) ($hydrated['sku'] ?? $details['sku'] ?? $details['mpn'] ?? ''));
+        $pkg = $sku !== '' ? ListingManagerAmazonHydrator::dimWtPackage($sku) : [];
+
         return [
-            'length' => $toCm((float) ($details['package_length'] ?? $hydrated['package_length'] ?? 10)),
-            'width' => $toCm((float) ($details['package_width'] ?? $hydrated['package_width'] ?? 8)),
-            'height' => $toCm((float) ($details['package_height'] ?? $hydrated['package_height'] ?? 6)),
+            'length' => $toCm((float) ($pkg['length'] ?? 0) ?: (float) ($details['package_length'] ?? $hydrated['package_length'] ?? 10)),
+            'width' => $toCm((float) ($pkg['width'] ?? 0) ?: (float) ($details['package_width'] ?? $hydrated['package_width'] ?? 8)),
+            'height' => $toCm((float) ($pkg['height'] ?? 0) ?: (float) ($details['package_height'] ?? $hydrated['package_height'] ?? 6)),
         ];
     }
 

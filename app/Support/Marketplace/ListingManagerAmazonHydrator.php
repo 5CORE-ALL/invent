@@ -471,6 +471,45 @@ class ListingManagerAmazonHydrator
     }
 
     /**
+     * Replace draft package size with the live /dim-wt-master item package for this SKU.
+     *
+     * @param  array<string, mixed>  $details
+     * @return array<string, mixed>
+     */
+    public static function overlayDimWt(array $details, string $sku): array
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return $details;
+        }
+        $pkg = self::dimWtPackage($sku);
+        foreach ([
+            'package_length' => 'length',
+            'package_width' => 'width',
+            'package_height' => 'height',
+            'item_length' => 'length',
+            'item_width' => 'width',
+            'item_height' => 'height',
+        ] as $field => $key) {
+            $value = trim((string) ($pkg[$key] ?? ''));
+            if ($value !== '' && (float) $value > 0) {
+                $details[$field] = $value;
+            }
+        }
+        $lb = (float) ($pkg['weight_lb'] ?? 0);
+        $oz = (float) ($pkg['weight_oz'] ?? 0);
+        if ($lb + ($oz / 16) > 0) {
+            $details['package_weight_lb'] = (string) $pkg['weight_lb'];
+            $details['package_weight_oz'] = (string) $pkg['weight_oz'];
+            $details['item_weight_lb'] = (string) $pkg['weight_lb'];
+            $details['item_weight_oz'] = (string) $pkg['weight_oz'];
+            unset($details['item_weight']);
+        }
+
+        return $details;
+    }
+
+    /**
      * Prefill Reverb make/model/finish/year/condition/shipping from Reverb Listing Master.
      *
      * @param  array<string, mixed>  $merged
@@ -940,9 +979,49 @@ class ListingManagerAmazonHydrator
      */
     public static function variationSkuImageUrls(string $sku, int $limit = 9): array
     {
-        $urls = self::urlsFromImageRows(self::productImageRows($sku));
+        return self::publishHttps(array_slice(self::childImageMasterUrls($sku), 0, max(1, $limit)), $limit);
+    }
 
-        return self::publishHttps(array_slice($urls, 0, max(1, $limit)), $limit);
+    /**
+     * Photos Image Master shows for this SKU: product_images, this SKU's Product Master
+     * image slots, and this SKU's saved image_master_json. Parent photos are not included.
+     *
+     * @return list<string>
+     */
+    private static function childImageMasterUrls(string $sku): array
+    {
+        $urls = self::urlsFromImageRows(self::productImageRows($sku));
+        $push = function (mixed $raw) use (&$urls): void {
+            $url = self::publicImageUrl($raw);
+            if ($url !== '' && ! in_array($url, $urls, true)) {
+                $urls[] = $url;
+            }
+        };
+
+        $pm = self::productMaster($sku);
+        foreach (['main_image', 'image_url', 'main_image_brand', 'image_path'] as $key) {
+            $push($pm[$key] ?? null);
+        }
+        for ($i = 1; $i <= 20; $i++) {
+            $push($pm['image'.$i] ?? null);
+        }
+
+        $values = $pm['Values'] ?? $pm['values'] ?? [];
+        if (is_string($values)) {
+            $decoded = json_decode($values, true);
+            $values = is_array($decoded) ? $decoded : [];
+        }
+        if (is_array($values)) {
+            foreach (['image_path', 'main_image', 'cdn_url'] as $key) {
+                $push($values[$key] ?? null);
+            }
+        }
+
+        foreach (self::imageMasterFromMetrics($sku) as $url) {
+            $push($url);
+        }
+
+        return $urls;
     }
 
     /**
@@ -1223,7 +1302,37 @@ class ListingManagerAmazonHydrator
     public static function imageMasterUploadSources(string $sku, ?string $parentSku = null, int $limit = 9): array
     {
         if (VariationListingContent::active()) {
-            return self::uploadSourcesFromRows(self::productImageRows($sku), $limit);
+            $out = self::uploadSourcesFromRows(self::productImageRows($sku), $limit);
+            $seen = [];
+            foreach ($out as $row) {
+                $key = ($row['path'] ?? '') ?: ($row['url'] ?? '');
+                if ($key !== '') {
+                    $seen[$key] = true;
+                }
+            }
+            foreach (self::childImageMasterUrls($sku) as $url) {
+                if (count($out) >= $limit) {
+                    break;
+                }
+                if ($url === '' || isset($seen[$url])) {
+                    continue;
+                }
+                $path = (string) (parse_url($url, PHP_URL_PATH) ?: $url);
+                $disk = self::publicDiskFile($path);
+                $key = $disk ?: $url;
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $seen[$url] = true;
+                $out[] = [
+                    'path' => $disk,
+                    'url' => $url,
+                    'name' => basename(urldecode($path) ?: 'image.jpg'),
+                ];
+            }
+
+            return $out;
         }
 
         $skus = [];
@@ -1628,18 +1737,17 @@ class ListingManagerAmazonHydrator
             $values = [];
         }
 
-        $num = static function (array $keys) use ($values, $pm): ?float {
+        $num = static function (array $keys) use ($values): ?float {
             foreach ($keys as $key) {
-                foreach ([$values[$key] ?? null, $pm[$key] ?? null] as $raw) {
-                    if ($raw === null || $raw === '') {
-                        continue;
-                    }
-                    if (is_string($raw)) {
-                        $raw = str_replace(',', '', trim($raw));
-                    }
-                    if (is_numeric($raw) && (float) $raw > 0) {
-                        return (float) $raw;
-                    }
+                $raw = $values[$key] ?? null;
+                if ($raw === null || $raw === '') {
+                    continue;
+                }
+                if (is_string($raw)) {
+                    $raw = str_replace(',', '', trim($raw));
+                }
+                if (is_numeric($raw) && (float) $raw > 0) {
+                    return (float) $raw;
                 }
             }
 
@@ -1647,19 +1755,19 @@ class ListingManagerAmazonHydrator
         };
 
         if ($overwrite || $out['length'] === '' || (float) $out['length'] <= 0) {
-            $n = $num(['l', 'L', 'length', 'l1', 'l_decl']);
+            $n = $num(['l', 'l_decl']);
             if ($n !== null) {
                 $out['length'] = (string) $n;
             }
         }
         if ($overwrite || $out['width'] === '' || (float) $out['width'] <= 0) {
-            $n = $num(['w', 'W', 'width', 'w1', 'w_decl']);
+            $n = $num(['w', 'w_decl']);
             if ($n !== null) {
                 $out['width'] = (string) $n;
             }
         }
         if ($overwrite || $out['height'] === '' || (float) $out['height'] <= 0) {
-            $n = $num(['h', 'H', 'height', 'h1', 'h_decl']);
+            $n = $num(['h', 'h_decl']);
             if ($n !== null) {
                 $out['height'] = (string) $n;
             }
@@ -1669,14 +1777,14 @@ class ListingManagerAmazonHydrator
         if ($hasWeight && ! $overwrite) {
             return;
         }
-        $lb = $num(['wt_act', 'wt_decl', 'weight_lb', 'wt']);
+        $lb = $num(['wt_act', 'wt_decl']);
         if ($lb !== null) {
             $out['weight_lb'] = (string) (int) floor($lb);
             $out['weight_oz'] = (string) round(($lb - floor($lb)) * 16, 1);
 
             return;
         }
-        $kg = $num(['wt_act_kg', 'weight_kg', 'ctn_weight_kg']);
+        $kg = $num(['wt_act_kg']);
         if ($kg !== null) {
             $w = $kg * 2.20462;
             $out['weight_lb'] = (string) (int) floor($w);

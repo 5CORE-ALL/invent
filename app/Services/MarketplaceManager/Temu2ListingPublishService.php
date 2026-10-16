@@ -139,6 +139,25 @@ class Temu2ListingPublishService
     public function previewFromSkus(array $seedSkus, array $skuParents = [], string $mode = 'variation'): array
     {
         $mode = strtolower(trim($mode)) === 'single' ? 'single' : 'variation';
+        if ($mode === 'variation') {
+            \App\Support\Marketplace\VariationListingContent::activate();
+        }
+        try {
+        return $this->previewGroups($seedSkus, $skuParents, $mode);
+        } finally {
+            if ($mode === 'variation') {
+                \App\Support\Marketplace\VariationListingContent::deactivate();
+            }
+        }
+    }
+
+    /**
+     * @param  list<string>  $seedSkus
+     * @param  array<string, string>  $skuParents
+     * @return array{success: bool, groups: list<array<string, mixed>>}
+     */
+    private function previewGroups(array $seedSkus, array $skuParents, string $mode): array
+    {
         $seeds = $this->uniqueTrimmedSkus($seedSkus);
         $seedNorm = [];
         foreach ($seeds as $sku) {
@@ -250,11 +269,11 @@ class Temu2ListingPublishService
         $parentKey = $parentHint !== '' ? $parentHint : $this->groupKeyForProduct($primary);
         $title = $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
-            return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
         $description = $this->resolveDescription($primary, $primarySku);
         if ($description === '') {
-            return ['success' => false, 'message' => $primarySku.': Description missing in Description Master'];
+            return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::descriptionGapMessage()];
         }
 
         $gallerySources = [];
@@ -1016,10 +1035,10 @@ class Temu2ListingPublishService
     private function masterReadiness(ProductMaster $product, string $sku): ?array
     {
         if ($this->resolveTitle($product, $sku) === '') {
-            return ['status' => 'skipped_no_title', 'reason' => 'Title missing in Title Master'];
+            return ['status' => 'skipped_no_title', 'reason' => \App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
         if ($this->resolveDescription($product, $sku) === '') {
-            return ['status' => 'skipped_no_description', 'reason' => 'Description missing in Description Master'];
+            return ['status' => 'skipped_no_description', 'reason' => \App\Support\Marketplace\VariationListingContent::descriptionGapMessage()];
         }
         if ($this->resolveSourceImages($product, $sku) === []) {
             return ['status' => 'skipped_no_image', 'reason' => 'Images missing in Image Master'];
@@ -1183,6 +1202,9 @@ class Temu2ListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            return \App\Support\Marketplace\VariationListingContent::titleFor($product) ?? '';
+        }
         $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
         if ($fromVariation !== null) {
             return $fromVariation;
@@ -1245,6 +1267,9 @@ class Temu2ListingPublishService
 
     private function resolveDescription(ProductMaster $product, string $sku): string
     {
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            return $this->cleanDescriptionText(\App\Support\Marketplace\VariationListingContent::descriptionFor($product) ?? '', $sku);
+        }
         $fromVariation = \App\Support\Marketplace\VariationListingContent::descriptionFor($product);
         if ($fromVariation !== null) {
             $text = $this->cleanDescriptionText($fromVariation, $sku);
@@ -1374,6 +1399,9 @@ class Temu2ListingPublishService
      */
     private function resolveBullets(ProductMaster $product, string $sku): array
     {
+        if (\App\Support\Marketplace\VariationListingContent::active()) {
+            return array_slice(\App\Support\Marketplace\VariationListingContent::bulletsFor($product) ?? [], 0, 5);
+        }
         $fromVariation = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
         if ($fromVariation !== null) {
             return $fromVariation;
@@ -3049,19 +3077,7 @@ class Temu2ListingPublishService
         if (! $row || strcasecmp(trim((string) $row->sku), $sku) !== 0) {
             $row = $this->findProductLoose($sku) ?? $hint;
         }
-        $pkg = $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
-        if ($this->dimWtMasterPackageComplete($pkg) || ! $row) {
-            return $pkg;
-        }
-        $parent = $this->parentProductFor($row, $sku);
-        if ($parent) {
-            $pkg = $this->mergeDimWtMasterPackage(
-                $pkg,
-                $this->dimWtMasterItemPackage($this->dimWtMasterValues($parent))
-            );
-        }
-
-        return $pkg;
+        return $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
     }
 
     private function hasDimWt(?ProductMaster $product, ?string $sku = null): bool
@@ -3085,21 +3101,21 @@ class Temu2ListingPublishService
         $pkg = $this->dimWtMasterPackageForSku($sku, $product);
 
         $toCm = static function (?float $cm, ?float $inches): string {
-            if ($cm !== null && $cm > 0) {
-                return (string) max(1, round($cm, 2));
-            }
             if ($inches !== null && $inches > 0) {
                 return (string) max(1, round($inches * 2.54, 2));
+            }
+            if ($cm !== null && $cm > 0) {
+                return (string) max(1, round($cm, 2));
             }
 
             return '1';
         };
 
         $weightG = '1';
-        if (($pkg['weight_kg'] ?? null) !== null) {
-            $weightG = (string) max(1, round((float) $pkg['weight_kg'] * 1000, 2));
-        } elseif (($pkg['weight_lb'] ?? null) !== null) {
+        if (($pkg['weight_lb'] ?? null) !== null) {
             $weightG = (string) max(1, round((float) $pkg['weight_lb'] * 453.592, 2));
+        } elseif (($pkg['weight_kg'] ?? null) !== null) {
+            $weightG = (string) max(1, round((float) $pkg['weight_kg'] * 1000, 2));
         }
 
         return [

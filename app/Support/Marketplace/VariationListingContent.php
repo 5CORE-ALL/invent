@@ -6,8 +6,8 @@ use App\Models\ProductMaster;
 
 /**
  * Title, description, and bullet points stored on the CP master PARENT row.
- * Used only while a variation listing publish is active. Empty fields do not
- * replace Title Master, Description Master, or Bullet Points Master.
+ * While a variation listing preview or publish is active, these fields are the
+ * only source. Single listings keep using Title, Description, and Bullet masters.
  */
 class VariationListingContent
 {
@@ -123,9 +123,8 @@ class VariationListingContent
         if (! self::active()) {
             return null;
         }
-        $title = self::forParent(self::parentKeyFor($product))['title'];
 
-        return $title !== '' ? $title : null;
+        return self::forParent(self::parentKeyFor($product))['title'];
     }
 
     public static function descriptionFor(ProductMaster $product): ?string
@@ -133,9 +132,8 @@ class VariationListingContent
         if (! self::active()) {
             return null;
         }
-        $description = self::forParent(self::parentKeyFor($product))['description'];
 
-        return $description !== '' ? $description : null;
+        return self::forParent(self::parentKeyFor($product))['description'];
     }
 
     /**
@@ -146,9 +144,22 @@ class VariationListingContent
         if (! self::active()) {
             return null;
         }
-        $bullets = self::forParent(self::parentKeyFor($product))['bullets'];
 
-        return $bullets !== [] ? $bullets : null;
+        return self::forParent(self::parentKeyFor($product))['bullets'];
+    }
+
+    public static function titleGapMessage(): string
+    {
+        return self::active()
+            ? 'Title missing in Variation Master'
+            : 'Title missing in Title Master';
+    }
+
+    public static function descriptionGapMessage(): string
+    {
+        return self::active()
+            ? 'Description missing in Variation Master'
+            : 'Description missing in Description Master';
     }
 
     public static function titleForSku(string $sku): ?string
@@ -160,9 +171,8 @@ class VariationListingContent
         if ($product) {
             return self::titleFor($product);
         }
-        $title = self::forParent(ListingManagerFamily::parentKey($sku))['title'];
 
-        return $title !== '' ? $title : null;
+        return self::forParent(ListingManagerFamily::parentKey($sku))['title'];
     }
 
     public static function descriptionForSku(string $sku): ?string
@@ -174,9 +184,8 @@ class VariationListingContent
         if ($product) {
             return self::descriptionFor($product);
         }
-        $description = self::forParent(ListingManagerFamily::parentKey($sku))['description'];
 
-        return $description !== '' ? $description : null;
+        return self::forParent(ListingManagerFamily::parentKey($sku))['description'];
     }
 
     public static function preferDescription(ProductMaster $product, string $fallback): string

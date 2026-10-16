@@ -92,7 +92,7 @@ class EbayListingPublishService
         $details = ListingManagerAmazonHydrator::detailsFromHydration($hydrated, [], $channel);
         $title = $this->resolveTitle($product, $primarySku, $hydrated);
         if ($title === '') {
-            return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
         $title = $this->clipTitle($title);
 

@@ -126,7 +126,7 @@ class TopDawgListingPublishService
 
         $title = trim((string) ($overrides['title'] ?? '')) ?: $this->resolveTitle($product, $sku);
         if ($title === '') {
-            return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $sku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
 
         $price = $this->resolvePrice($sku, $product);
@@ -479,50 +479,15 @@ class TopDawgListingPublishService
      */
     private function packageInches(ProductMaster $product, string $sku, array $overrides = []): array
     {
-        $fromDraft = [
-            'length' => is_numeric($overrides['package_length'] ?? null) ? (float) $overrides['package_length'] : null,
-            'width' => is_numeric($overrides['package_width'] ?? null) ? (float) $overrides['package_width'] : null,
-            'height' => is_numeric($overrides['package_height'] ?? null) ? (float) $overrides['package_height'] : null,
-            'weight' => $this->weightLbFromOverrides($overrides),
+        $fromMaster = ListingManagerAmazonHydrator::dimWtPackage($sku);
+        $lb = (float) ($fromMaster['weight_lb'] ?? 0) + ((float) ($fromMaster['weight_oz'] ?? 0) / 16);
+
+        return [
+            'weight' => $lb > 0 ? round($lb, 3) : null,
+            'length' => (float) ($fromMaster['length'] ?? 0) > 0 ? (float) $fromMaster['length'] : null,
+            'width' => (float) ($fromMaster['width'] ?? 0) > 0 ? (float) $fromMaster['width'] : null,
+            'height' => (float) ($fromMaster['height'] ?? 0) > 0 ? (float) $fromMaster['height'] : null,
         ];
-        if ($fromDraft['weight'] !== null && $fromDraft['length'] !== null && $fromDraft['width'] !== null && $fromDraft['height'] !== null) {
-            return $fromDraft;
-        }
-
-        $values = $this->productValues($product);
-        $pkg = [
-            'weight' => $fromDraft['weight'] ?? $this->valuesNumber($values, 'wt_act', 'itm_wt_gw', 'wt_decl'),
-            'length' => $fromDraft['length'] ?? $this->valuesNumber($values, 'l', 'l_decl'),
-            'width' => $fromDraft['width'] ?? $this->valuesNumber($values, 'w', 'w_decl'),
-            'height' => $fromDraft['height'] ?? $this->valuesNumber($values, 'h', 'h_decl'),
-        ];
-        if ($pkg['weight'] !== null && $pkg['length'] !== null && $pkg['width'] !== null && $pkg['height'] !== null) {
-            return $pkg;
-        }
-
-        $parentSku = trim((string) ($product->parent ?? ''));
-        if ($parentSku === '' || strcasecmp($parentSku, $sku) === 0) {
-            return $pkg;
-        }
-        $parent = $this->findProduct($parentSku);
-        if (! $parent) {
-            return $pkg;
-        }
-        $parentValues = $this->productValues($parent);
-        if ($pkg['weight'] === null) {
-            $pkg['weight'] = $this->valuesNumber($parentValues, 'wt_act', 'itm_wt_gw', 'wt_decl');
-        }
-        if ($pkg['length'] === null) {
-            $pkg['length'] = $this->valuesNumber($parentValues, 'l', 'l_decl');
-        }
-        if ($pkg['width'] === null) {
-            $pkg['width'] = $this->valuesNumber($parentValues, 'w', 'w_decl');
-        }
-        if ($pkg['height'] === null) {
-            $pkg['height'] = $this->valuesNumber($parentValues, 'h', 'h_decl');
-        }
-
-        return $pkg;
     }
 
     /**

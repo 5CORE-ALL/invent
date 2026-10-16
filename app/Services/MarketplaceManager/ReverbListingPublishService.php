@@ -97,7 +97,7 @@ class ReverbListingPublishService
 
         $title = $this->resolveTitle($product, $sku);
         if ($title === '') {
-            return ['success' => false, 'message' => $sku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $sku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
 
         $price = $this->resolvePrice($sku, $product);

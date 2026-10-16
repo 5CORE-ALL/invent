@@ -132,7 +132,7 @@ class AliexpressListingPublishService
 
         $title = $overrideTitle !== '' ? $overrideTitle : $this->resolveTitle($primary, $primarySku);
         if ($title === '') {
-            return ['success' => false, 'message' => $primarySku.': Title missing in Title Master'];
+            return ['success' => false, 'message' => $primarySku.': '.\App\Support\Marketplace\VariationListingContent::titleGapMessage()];
         }
 
         $prepared = [];
@@ -245,11 +245,15 @@ class AliexpressListingPublishService
         $description = $overrideDescription !== '' ? $overrideDescription : $this->resolveDescription($primary, $subject);
         $skuInfoList = [];
         foreach ($prepared as $row) {
+            $rowPkg = $this->packageSize($row['product'], $row['sku']);
+            if (empty($rowPkg['has_weight'])) {
+                $rowPkg = $pkg;
+            }
             $skuRow = array_merge([
                 'sku_code' => $row['sku'],
                 'price' => number_format((float) $row['price'], 2, '.', ''),
                 'inventory' => max(1, (int) $row['inv']),
-            ], $this->skuPackageFields($pkg));
+            ], $this->skuPackageFields($rowPkg));
             $variation = $this->variationAttribute((string) $row['sku']);
             $skuRow['sku_attributes_list'] = [[
                 'sku_attribute_name' => $variation['name'],
@@ -1264,22 +1268,23 @@ class AliexpressListingPublishService
         }
 
         $toCm = static function (?float $cm, ?float $inches, int $fallback): int {
-            if ($cm !== null && $cm > 0) {
-                return (int) max(1, round($cm));
-            }
             if ($inches !== null && $inches > 0) {
                 return (int) max(1, round($inches * 2.54));
+            }
+            if ($cm !== null && $cm > 0) {
+                return (int) max(1, round($cm));
             }
 
             return $fallback;
         };
 
-        $hasWeight = $weightKg !== null && $weightKg > 0;
-        $weightLb = $hasWeight
-            ? (($pkg['weight_lb'] ?? null) !== null
-                ? (float) $pkg['weight_lb']
-                : $weightKg / 0.45359237)
-            : null;
+        $hasWeight = ($pkg['weight_lb'] ?? null) !== null || ($weightKg !== null && $weightKg > 0);
+        $weightLb = ($pkg['weight_lb'] ?? null) !== null
+            ? (float) $pkg['weight_lb']
+            : ($hasWeight ? $weightKg / 0.45359237 : null);
+        if (($pkg['weight_lb'] ?? null) !== null) {
+            $weightKg = (float) $pkg['weight_lb'] * 0.45359237;
+        }
 
         return [
             'length' => $toCm($pkg['length_cm'] ?? null, $pkg['length_in'] ?? null, 10),
@@ -1391,19 +1396,7 @@ class AliexpressListingPublishService
         if (! $row || $this->normalizeSkuKey((string) $row->sku) !== $this->normalizeSkuKey($sku)) {
             $row = $this->findProductLoose($sku) ?? $hint;
         }
-        $pkg = $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
-        if ($this->dimWtMasterHasWeight($pkg) || ! $row) {
-            return $pkg;
-        }
-        $parent = $this->parentProductFor($row, $sku);
-        if ($parent) {
-            $pkg = $this->mergeDimWtMasterPackage(
-                $pkg,
-                $this->dimWtMasterItemPackage($this->dimWtMasterValues($parent))
-            );
-        }
-
-        return $pkg;
+        return $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
     }
 
     private function normalizeSkuKey(string $sku): string
