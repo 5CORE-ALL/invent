@@ -18550,11 +18550,15 @@ class ChannelMasterController extends Controller
             // daily history saved in badges_data_histories by channel:refresh-today-sales.
             // Y/T Orders, Views, CVR columns share the same table: per channel history is
             // stored under "amm-channel:{key}", all channels under all-marketplace-master.
-            if (in_array($metric, \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::TODAY_BADGE_FIELDS, true)
+            $ammBadgeFields = array_merge(
+                \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::TODAY_BADGE_FIELDS,
+                \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::PROJECTED_BADGE_FIELDS
+            );
+            if (in_array($metric, $ammBadgeFields, true)
                 || in_array($metric, \App\Support\Marketplace\AmmColumnHistory::FIELDS, true)) {
                 $live = $request->input('badge_value');
                 $liveValue = ($isAll
-                    && in_array($metric, \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::TODAY_BADGE_FIELDS, true)
+                    && in_array($metric, $ammBadgeFields, true)
                     && $live !== null && $live !== '' && is_numeric($live))
                     ? (float) $live
                     : null;
@@ -19681,11 +19685,34 @@ class ChannelMasterController extends Controller
                 $this->overlayBusiness5CoreB2bLiveSalesDot($all);
             }
             $filtered = $this->filterCachedDotTrends($all, $channelKeys);
+            $this->overlayProjectedBadgeHistoryDots($filtered);
 
             return response()->json(['success' => true, 'channels' => $filtered === [] ? (object) [] : $filtered]);
         } catch (\Exception $e) {
             \Log::error('getChannelMetricDotTrends error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching dot trends'], 500);
+        }
+    }
+
+    /**
+     * Projected Orders / Ads% / Views badge dots: last two days from badges_data_histories
+     * (page all-marketplace-master), since channel_master snapshots do not hold them.
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $filtered
+     */
+    private function overlayProjectedBadgeHistoryDots(array &$filtered): void
+    {
+        try {
+            foreach (\App\Support\Badges\AllMarketplaceMasterBadgeAggregator::PROJECTED_BADGE_FIELDS as $field) {
+                $points = \App\Models\BadgeDataHistory::series('all-marketplace-master', $field, 14, null);
+                $n = count($points);
+                if ($n < 2) {
+                    continue;
+                }
+                $filtered['all'][$field] = [$points[$n - 2]['value'], $points[$n - 1]['value']];
+            }
+        } catch (\Throwable $e) {
+            report($e);
         }
     }
 

@@ -61,6 +61,16 @@ class RefreshChannelTodaySales extends Command
             unset($today['today_sales']);
             $existing = array_merge($existing, $today);
 
+            // Projected block Orders / Ads% / Views (no other job recorded these).
+            $projected = AllMarketplaceMasterBadgeAggregator::projectedMetrics($payload['data'] ?? []);
+            $existing = array_merge($existing, $projected);
+            $this->info(sprintf(
+                'Projected badges: orders=%d, ads=%s%%, views=%d',
+                $projected['p_orders'],
+                $projected['p_ads_pct'],
+                $projected['p_views'],
+            ));
+
             // Others block (Rating / Reviews) — only overwrite when reviews were found.
             $reviews = AllMarketplaceMasterBadgeAggregator::reviewsMetrics($payload['data'] ?? []);
             if ($reviews['total_reviews'] > 0) {

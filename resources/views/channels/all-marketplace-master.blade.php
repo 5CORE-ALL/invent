@@ -1147,7 +1147,7 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_sales" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="Sum of P-Sales column. Projected 30-day sales from last-7-day pace: (L7 Sales ÷ 7) × 30. % is P-Sales vs Sales.">
                             <span class="summary-trend-dot none" data-metric="p_sales" title="Rolling history"></span>Sales: <span id="total-p-sales">$0</span><span id="total-p-sales-vs-sales"></span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales.">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="p_orders" style="color: black; font-weight: bold; cursor:pointer;" title="P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. Click for daily history.">
                             <span class="summary-trend-dot none" data-metric="p_orders" title="Rolling history"></span>Orders: <span id="total-p-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_groi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-GROI% = Σ (P-Sales × GPFT%) ÷ Σ projected COGS. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-Sales = (L7 ÷ 7) × 30.">
@@ -1162,10 +1162,10 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_nroi_pct" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P-NROI% uses the same projected COGS as P GROI%. P-Sales = (L7 ÷ 7) × 30. Projected COGS = L30 COGS × (P-Sales ÷ L30 Sales). P-NROI% = Σ (P-Sales × GPFT% − ad spend) ÷ Σ projected COGS.">
                             <span class="summary-trend-dot none" data-metric="p_nroi_pct" title="Rolling history"></span>NROI%: <span id="avg-p-nroi">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #d63384; color: white; font-weight: bold;" title="P Ads% = total ad spend ÷ Σ P-Sales × 100. Spend is current L30 ad spend. P-Sales = (L7 ÷ 7) × 30.">
-                            <span class="summary-trend-dot none" data-metric="p_ads" title="Rolling history"></span>Ads%: <span id="avg-p-ads">0.0%</span>
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="P Ads% = total ad spend ÷ Σ P-Sales × 100. Spend is current L30 ad spend. P-Sales = (L7 ÷ 7) × 30. Click for daily history.">
+                            <span class="summary-trend-dot none" data-metric="p_ads_pct" title="Rolling history"></span>Ads%: <span id="avg-p-ads">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #0d6efd; color: white; font-weight: bold;" title="P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="p_views" style="background-color: #0d6efd; color: white; font-weight: bold; cursor:pointer;" title="P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. Click for daily history.">
                             <span class="summary-trend-dot none" data-metric="p_views" title="Rolling history"></span>Views: <span id="total-p-views">0</span>
                         </span>
                         </div>
@@ -2643,7 +2643,7 @@
             var lastDotColorByKey = {};
             var lastDotPairByKey = {};
             var chartSyncedAllMetrics = {};
-            var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 'tat'];
+            var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 'p_ads_pct', 'tat'];
             var yVsL30DotMetrics = { y_sales: 1, y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1 };
             var yOrdersExact = null;
             var yOrdersByChannel = null;
@@ -6596,6 +6596,7 @@
                     $el.closest('.badge').attr('title',
                         'P Ads% = total ad spend ÷ Σ P-Sales × 100. Spend is current L30 ad spend. P-Sales is (L7 ÷ 7) × 30. ' + val.toFixed(1) + '%');
                     setBadgeExact($el, val);
+                    prefetchAllBadgeChartDot('p_ads_pct', val);
                 })();
                 (function() {
                     let totalPViews = 0;
@@ -6608,6 +6609,7 @@
                     $el.closest('.badge').attr('title',
                         'P Views = Σ (Views × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. ' + val.toLocaleString('en-US'));
                     setBadgeExact($el, val);
+                    prefetchAllBadgeChartDot('p_views', val);
                 })();
                 (function() {
                     let totalPOrders = 0;
@@ -6619,6 +6621,8 @@
                     $el.text(val.toLocaleString('en-US'));
                     $el.closest('.badge').attr('title',
                         'P Orders = Σ (L30 Orders × P-Sales ÷ L30 Sales). Same 30-day pace as P-Sales. ' + val.toLocaleString('en-US'));
+                    setBadgeExact($el, val);
+                    prefetchAllBadgeChartDot('p_orders', val);
                 })();
                 (function() {
                     let totalPNet = 0;
@@ -6725,6 +6729,10 @@
                 const $revBadge = $('#total-reviews-badge');
                 $revBadge.text(Math.round(reviewsSum).toLocaleString('en-US'));
                 setBadgeExact($revBadge, Math.round(reviewsSum));
+                if (reviewsSum > 0) {
+                    prefetchAllBadgeChartDot('rating', Math.round(weightedAvgRating * 10) / 10);
+                    prefetchAllBadgeChartDot('reviews', Math.round(reviewsSum));
+                }
 
                 pinSummaryDot('y_sales', totalL30Sales / 30, totalYSales,
                     'Green when yesterday sales are above the L30 daily average (L30 Sales ÷ 30).');
@@ -7493,6 +7501,59 @@
                 colorSummaryBadgeDots(channelKeysFromTableData());
             }
 
+            // Colour a badge dot on page load exactly like the graph does after a click:
+            // fetch the same series (history + live badge value) and sync the dot from it.
+            // Used by badges whose history lives in badges_data_histories (no snapshot pair).
+            var badgeChartDotPrefetched = {};
+            function prefetchAllBadgeChartDot(metric, badgeValue) {
+                if (!metric || badgeValue === null || badgeValue === undefined || isNaN(badgeValue)) return;
+                var sig = String(Math.round(Number(badgeValue) * 100) / 100);
+                var state = badgeChartDotPrefetched[metric];
+                if (state && state.sig === sig) return;
+                badgeChartDotPrefetched[metric] = { sig: sig };
+                $.ajax({
+                    url: '/channel-metric-chart-data',
+                    method: 'GET',
+                    data: { channel: 'all', metric: metric, days: 30, badge_value: badgeValue }
+                }).done(function(response) {
+                    var rows = response && response.success && Array.isArray(response.data) ? response.data : [];
+                    syncAllBadgeDotWithChart(metric, rows.map(function(r) { return Number(r.value); }));
+                }).fail(function() {
+                    delete badgeChartDotPrefetched[metric];
+                });
+            }
+
+            // Forecast badges (MSL_LP, MSL_SP, Ord, MIP, R2S, Trn, NPFT, NROI): server-rendered
+            // values whose history is in badges_data_histories. Their dot is injected by the
+            // global footer script, so wait for it, then colour it from the same series the graph
+            // shows (last point vs the day before) — no click needed.
+            function primeForecastBadgeDots() {
+                ['fa_msl_lp', 'fa_msl_sp', 'fa_ord', 'fa_mip', 'fa_r2s', 'fa_trn', 'fa_npft', 'fa_nroi'].forEach(function(metric) {
+                    if (badgeChartDotPrefetched[metric]) return;
+                    badgeChartDotPrefetched[metric] = { sig: 'forecast' };
+                    $.ajax({
+                        url: '/channel-metric-chart-data',
+                        method: 'GET',
+                        data: { channel: 'all', metric: metric, days: 30 }
+                    }).done(function(response) {
+                        var rows = response && response.success && Array.isArray(response.data) ? response.data : [];
+                        var values = rows.map(function(r) { return Number(r.value); });
+                        var tries = 0;
+                        (function apply() {
+                            if ($('#summary-stats .summary-trend-dot[data-metric="' + metric + '"]').length || tries >= 10) {
+                                syncAllBadgeDotWithChart(metric, values);
+                                return;
+                            }
+                            tries++;
+                            setTimeout(apply, 500);
+                        })();
+                    }).fail(function() {
+                        delete badgeChartDotPrefetched[metric];
+                    });
+                });
+            }
+            setTimeout(primeForecastBadgeDots, 800);
+
             function prefetchAllYSalesChart(badgeValue) {
                 if (ySalesAllChartPrefetch && ySalesAllChartPrefetch.readyState !== 4) {
                     return;
@@ -7655,6 +7716,9 @@
                 't_ads_pct': 'Today Ads%',
                 't_views': 'Today Views',
                 't_cvr': 'Today CVR',
+                'p_orders': 'Projected Orders',
+                'p_ads_pct': 'Projected Ads%',
+                'p_views': 'Projected Views',
                 'y_orders': 'Y Orders',
                 'y_views': 'Y Views',
                 'y_cvr': 'Y CVR',
@@ -8191,7 +8255,7 @@
                         return v.toFixed(2) + '%';
                     }
                     if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'p_nroi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi'
-                        || m === 't_npft_pct' || m === 't_groi_pct' || m === 't_nroi_pct' || m === 't_ads_pct'
+                        || m === 't_npft_pct' || m === 't_groi_pct' || m === 't_nroi_pct' || m === 't_ads_pct' || m === 'p_ads_pct'
                         || m === 'fa_npft' || m === 'fa_nroi') {
                         return v.toFixed(1) + '%';
                     }
@@ -8204,7 +8268,7 @@
                 };
 
                 // --- Dot colors: green=UP red=DOWN. ACOS, TAcos %, and TAT invert (lower is better). ---
-                const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'tat'];
+                const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'p_ads_pct', 'tat'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
                 if (currentChartMode === 'metric' && currentChartChannel === 'all') {

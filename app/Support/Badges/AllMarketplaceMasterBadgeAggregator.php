@@ -23,6 +23,18 @@ class AllMarketplaceMasterBadgeAggregator
     ];
 
     /**
+     * Projected block badges that had no history before (Orders, Ads%, Views).
+     * Projected Sales / GROI% / Npft% / NROI% already have chart history.
+     *
+     * @var list<string>
+     */
+    public const PROJECTED_BADGE_FIELDS = [
+        'p_orders',
+        'p_ads_pct',
+        'p_views',
+    ];
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      * @param  array<string, mixed>  $extras  inventory_value_amazon, inv_at_lp, etc.
      * @return array<string, int|float|string|null>
@@ -180,6 +192,7 @@ class AllMarketplaceMasterBadgeAggregator
         $shopifyWeightedAvgLp = (float) ($extras['shopify_weighted_avg_lp'] ?? 0);
         $tat = $totalL30Sales > 0 ? $inventoryValueAmazon / $totalL30Sales : 0.0;
         $today = self::todayMetrics($rows);
+        $projected = self::projectedMetrics($rows);
 
         return [
             'channels' => $totalChannels,
@@ -199,6 +212,9 @@ class AllMarketplaceMasterBadgeAggregator
             't_ads_pct' => $today['t_ads_pct'],
             't_views' => $today['t_views'],
             'p_sales' => round($totalPSales, 2),
+            'p_orders' => $projected['p_orders'],
+            'p_ads_pct' => $projected['p_ads_pct'],
+            'p_views' => $projected['p_views'],
             'p_npft_amt' => round($totalPNet, 2),
             'l30_orders' => (int) round($totalL30Orders),
             'qty' => (int) round($totalQty),
@@ -320,6 +336,59 @@ class AllMarketplaceMasterBadgeAggregator
             't_nroi_pct' => $totalCogs > 0 ? round(($totalNet / $totalCogs) * 100, 2) : 0.0,
             't_ads_pct' => $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 2) : 0.0,
             't_views' => (int) round($totalViews),
+        ];
+    }
+
+    /**
+     * Projected block Orders / Ads% / Views badges. Mirrors pOrdersFromRow(),
+     * pViewsFromRow() and the P Ads% block in updateSummaryStats().
+     * P-Sales = (L7 Sales ÷ 7) × 30; spend is current L30 ad spend.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{p_orders: int, p_ads_pct: float, p_views: int}
+     */
+    public static function projectedMetrics(array $rows): array
+    {
+        $totalPSales = 0.0;
+        $totalAdSpend = 0.0;
+        $totalViews = 0.0;
+        $totalOrders = 0.0;
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $pSales = array_key_exists('P-Sales', $row) && $row['P-Sales'] !== null && $row['P-Sales'] !== ''
+                ? self::parseNumber($row['P-Sales'])
+                : (self::rowNumber($row, 'L7 Sales') / 7) * 30;
+            $l30 = self::rowNumber($row, 'L30 Sales');
+            $views = self::rowNumber($row, 'Total Views');
+            $l30Orders = self::rowNumber($row, 'L30 Orders');
+
+            $adSpend = self::rowNumber($row, 'Total Ad Spend');
+            $channelName = strtolower(trim((string) ($row['Channel '] ?? $row['Channel'] ?? '')));
+            if ($adSpend <= 0 && str_contains($channelName, 'reverb')) {
+                $bumpPct = self::rowNumber($row, 'Ads%', 'TACOS %', 'TACOS');
+                if ($bumpPct > 0 && $l30 > 0) {
+                    $adSpend = ($bumpPct / 100) * $l30;
+                }
+            }
+
+            $totalPSales += $pSales;
+            $totalAdSpend += $adSpend;
+            if ($views > 0) {
+                $totalViews += ($l30 > 0 && $pSales > 0) ? $views * ($pSales / $l30) : $views;
+            }
+            if ($l30Orders > 0 && $l30 > 0 && $pSales > 0) {
+                $totalOrders += $l30Orders * ($pSales / $l30);
+            }
+        }
+
+        return [
+            'p_orders' => (int) round($totalOrders),
+            'p_ads_pct' => $totalPSales > 0 ? round(($totalAdSpend / $totalPSales) * 100, 2) : 0.0,
+            'p_views' => (int) round($totalViews),
         ];
     }
 
