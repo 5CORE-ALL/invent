@@ -467,10 +467,49 @@ class GoogleShoppingCampaignsController extends Controller
             $out[$cid] = [
                 'sbid' => $arr['sbid'] ?? null,
                 'sbgt' => $arr['sbgt'] ?? null,
+                'status' => strtoupper(trim((string) ($arr['campaign_status'] ?? ''))),
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * Background push of SBID for campaigns whose live bid differs. Same rules and Google Ads
+     * calls as the page's Push SBID button (ENABLED only, no SBID means skip).
+     *
+     * @param  list<string>  $campaignIds
+     * @return array{ok: bool, message: string, output: string}
+     */
+    public function pushSbidForLiveMatch(array $campaignIds): array
+    {
+        return $this->pushResultArray($this->pushGridSbid($campaignIds));
+    }
+
+    /**
+     * Background push of SBGT for campaigns whose live budget differs. Same rules and Google Ads
+     * calls as the page's Push SBGT button.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array{ok: bool, message: string, output: string}
+     */
+    public function pushSbgtForLiveMatch(array $campaignIds): array
+    {
+        return $this->pushResultArray($this->pushGridSbgt($campaignIds));
+    }
+
+    /**
+     * @return array{ok: bool, message: string, output: string}
+     */
+    private function pushResultArray(JsonResponse $response): array
+    {
+        $data = $response->getData(true);
+
+        return [
+            'ok' => (bool) ($data['ok'] ?? false),
+            'message' => (string) ($data['message'] ?? ''),
+            'output' => (string) ($data['output'] ?? ''),
+        ];
     }
 
     /**

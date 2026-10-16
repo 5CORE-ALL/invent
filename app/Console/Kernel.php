@@ -2208,6 +2208,23 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Every 30 minutes, page open or not: pulls live Lbid/Lbgt, pushes SBID/SBGT to every Enabled
+        // Shopping campaign that still differs, pulls again to confirm. Stays out of the way of the
+        // daily 17:48 SBID push, the budget pushes and the 18:00 live pull.
+        $schedule->command('google-shopping:match-live-bid-bgt')
+            ->cron('20,50 * * * *')
+            ->timezone('Asia/Kolkata')
+            ->name('google-shopping-match-live-bid-bgt')
+            ->skip(static function (): bool {
+                $now = now('Asia/Kolkata');
+                $m = (int) $now->format('Hi');
+
+                return $m >= 1740 && $m <= 1815;
+            })
+            ->withoutOverlapping(25)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Reset SBID status daily — must complete before sbid:update at 17:48 IST.
         // withoutOverlapping(2) keeps the daily reset single-fire even if a tick is delayed.
         $schedule->call(function () {
