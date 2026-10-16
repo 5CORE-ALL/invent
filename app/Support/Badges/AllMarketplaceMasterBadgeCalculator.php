@@ -68,7 +68,7 @@ class AllMarketplaceMasterBadgeCalculator implements PageBadgeCalculator
     /**
      * Same channel identity as Active Channel (allMarketplaceSnapshotKey).
      */
-    private static function snapshotKey(string $name): string
+    public static function snapshotKey(string $name): string
     {
         $key = strtolower(str_replace([' ', '-', '&', '/', '(', ')'], '', trim($name)));
 

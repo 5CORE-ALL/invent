@@ -1064,7 +1064,7 @@
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_sales" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Sum of Y Sales column (Yesterday's sales across all channels). Trend is built from daily snapshots: older days that pre-date Y Sales being captured will be skipped.">
                             <span class="summary-trend-dot none" data-metric="y_sales" title="Rolling history"></span>Sales: <span id="total-y-sales">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;" title="Y Orders = sum of yesterday order counts across channels (1-day Pacific, same Orders column as Yesterday by marketplace).">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="y_orders" style="color: black; font-weight: bold; cursor:pointer;" title="Y Orders = sum of yesterday order counts across channels (1-day Pacific, same Orders column as Yesterday by marketplace).">
                             <span class="summary-trend-dot none" data-metric="y_orders" title="Vs L30 daily average"></span>Orders: <span id="total-y-orders">0</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link d-none" data-metric="y_pft" style="background-color: #17a2b8; color: white; font-weight: bold; cursor:pointer;" title="Y PFT $ = sum of (Y Sales × GPFT%) per channel. Yesterday gross profit using each channel’s GPFT% on the Y Sales column.">
@@ -1085,7 +1085,7 @@
                         <span class="badge fs-6 p-2" data-metric="y_ads_pct" style="background-color: #d63384; color: white; font-weight: bold;" title="Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales.">
                             <span class="summary-trend-dot none" data-metric="y_ads_pct" title="Vs L30 Ads%"></span>Ads%: <span id="avg-y-ads">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2" style="background-color: #0dcaf0; color: #111; font-weight: bold;" title="Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30).">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_views" style="background-color: #0dcaf0; color: #111; font-weight: bold; cursor:pointer;" title="Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30).">
                             <span class="summary-trend-dot none" data-metric="y_views" title="Vs L30 daily average"></span>Views: <span id="total-y-views">0</span>
                         </span>
                         </div>
@@ -1180,7 +1180,7 @@
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_r2s" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="R2S value. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">R2S: {{ $forecastBadges['r2s'] }}</a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_trn" style="background-color:#6c757d;color:#fff;font-weight:bold;text-decoration:none;cursor:pointer;" title="Transit value. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">Trn: {{ $forecastBadges['trn'] }}</a>
                         <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_npft" style="background-color:#ffc107;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="NPFT% — same as Active channel. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">NPFT: <span id="amm-fa-npft">—</span></a>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:#20c997;color:#111;font-weight:bold;text-decoration:none;" title="NROI% — same as Active channel.">NROI: <span id="amm-fa-nroi">—</span></a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_nroi" style="background-color:#20c997;color:#111;font-weight:bold;text-decoration:none;cursor:pointer;" title="NROI% — same as Active channel. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">NROI: <span id="amm-fa-nroi">—</span></a>
                         </div>
                     </div>
                     <div class="amm-badge-block amm-badge-block--others">
@@ -3416,7 +3416,7 @@
                             const channel = (row['Channel '] || '').trim();
                             const value = Math.round(parseNumber(cell.getValue() || 0));
                             const color = belowL30AvgColor(value, row['L30 Orders'] || 0);
-                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'l30_orders')}`;
+                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'y_orders')}`;
                         },
                         cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
@@ -3445,7 +3445,7 @@
                             const channel = (row['Channel '] || '').trim();
                             const value = cell.getValue();
                             const color = belowL30RateColor(value, listingCvrFromRow(row));
-                            return formatCvrCell(value, color) + ammHistoryDot(channel, 'cvr');
+                            return formatCvrCell(value, color) + ammHistoryDot(channel, 'y_cvr');
                         },
                         cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
@@ -3491,7 +3491,7 @@
                             const channel = (row['Channel '] || '').trim();
                             const value = Math.round(parseNumber(cell.getValue() || 0));
                             const color = belowL30AvgColor(value, row['Total Views'] || 0);
-                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'total_views')}`;
+                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'y_views')}`;
                         },
                         cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
@@ -3728,7 +3728,7 @@
                             const channel = (row['Channel '] || '').trim();
                             const value = Math.round(parseNumber(cell.getValue() || 0));
                             const color = belowL30AvgColor(value, row['L30 Orders'] || 0);
-                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'l30_orders')}`;
+                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 't_orders')}`;
                         },
                         cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
@@ -3760,7 +3760,7 @@
                             const channel = (row['Channel '] || '').trim();
                             const value = cell.getValue();
                             const color = belowL30RateColor(value, listingCvrFromRow(row));
-                            return formatCvrCell(value, color) + ammHistoryDot(channel, 'cvr');
+                            return formatCvrCell(value, color) + ammHistoryDot(channel, 't_cvr');
                         },
                         cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
@@ -3802,7 +3802,7 @@
                             const channel = (row['Channel '] || '').trim();
                             const value = Math.round(parseNumber(cell.getValue() || 0));
                             const color = belowL30AvgColor(value, row['Total Views'] || 0);
-                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'total_views')}`;
+                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 't_views')}`;
                         },
                         cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
@@ -7648,6 +7648,18 @@
                 't_nroi_pct': 'Today NROI%',
                 't_ads_pct': 'Today Ads%',
                 't_views': 'Today Views',
+                't_cvr': 'Today CVR',
+                'y_orders': 'Y Orders',
+                'y_views': 'Y Views',
+                'y_cvr': 'Y CVR',
+                'fa_msl_lp': 'Forecast MSL_LP',
+                'fa_msl_sp': 'Forecast MSL_SP',
+                'fa_ord': 'Forecast Ord',
+                'fa_mip': 'Forecast MIP',
+                'fa_r2s': 'Forecast R2S',
+                'fa_trn': 'Forecast Trn',
+                'fa_npft': 'Forecast NPFT%',
+                'fa_nroi': 'Forecast NROI%',
                 'y_pft': 'Y PFT',
                 'y_npft_amt': 'Y NPFT',
                 'p_sales': 'P-Sales',
@@ -8070,6 +8082,8 @@
             $(document).on('click', '.badge-chart-link', function(e) {
                 const metricKey = $(this).data('metric');
                 if (!metricKey) return;
+                // Forecast badges are links to Forecast Analysis: Ctrl/Cmd+click keeps that.
+                if ((e.ctrlKey || e.metaKey) && this.href) return;
                 // Prefer data-exact-value (set when badges update) so compact "326K" is not
                 // misread as 326. Fall back to parsing the visible text (supports K/M).
                 let badgeValue = parseFloat($(this).attr('data-exact-value'));
@@ -8167,12 +8181,16 @@
                     }
                     // Listing CVR / Ads CVR shift slowly inside a rolling window — show 2 decimals
                     // so adjacent days don't display as the same number (avoids a flat trend).
-                    if (m === 'cvr' || m === 'ads_cvr') {
+                    if (m === 'cvr' || m === 'ads_cvr' || m === 'y_cvr' || m === 't_cvr') {
                         return v.toFixed(2) + '%';
                     }
                     if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'p_nroi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi'
-                        || m === 't_npft_pct' || m === 't_groi_pct' || m === 't_nroi_pct' || m === 't_ads_pct') {
+                        || m === 't_npft_pct' || m === 't_groi_pct' || m === 't_nroi_pct' || m === 't_ads_pct'
+                        || m === 'fa_npft' || m === 'fa_nroi') {
                         return v.toFixed(1) + '%';
+                    }
+                    if (m === 'fa_msl_lp' || m === 'fa_msl_sp' || m === 'fa_ord' || m === 'fa_mip' || m === 'fa_r2s' || m === 'fa_trn') {
+                        return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     if (m === 'tat') return v.toFixed(2);
                     if (m === 'rating') return v.toFixed(1);

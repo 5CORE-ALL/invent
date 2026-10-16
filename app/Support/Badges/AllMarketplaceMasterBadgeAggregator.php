@@ -232,6 +232,40 @@ class AllMarketplaceMasterBadgeAggregator
     }
 
     /**
+     * Others block Rating / Reviews badges (weighted avg rating, total review count).
+     * Same math as the review loop in aggregate().
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{avg_rating: float, total_reviews: int}
+     */
+    public static function reviewsMetrics(array $rows): array
+    {
+        $ratingSum = 0.0;
+        $reviewsSum = 0.0;
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $rating = self::rowNumber($row, 'Avg Rating');
+            $reviews = self::rowNumber($row, 'Total Reviews');
+            if ($reviews <= 0 && isset($row['Reviews']) && is_array($row['Reviews'])) {
+                $rating = self::parseNumber($row['Reviews']['Avg Rating'] ?? $row['Reviews']['avg_rating'] ?? 0);
+                $reviews = self::parseNumber($row['Reviews']['Total Reviews'] ?? $row['Reviews']['total_reviews'] ?? 0);
+            }
+            if ($reviews > 0) {
+                $ratingSum += $rating * $reviews;
+                $reviewsSum += $reviews;
+            }
+        }
+
+        return [
+            'avg_rating' => $reviewsSum > 0 ? round($ratingSum / $reviewsSum, 1) : 0.0,
+            'total_reviews' => (int) round($reviewsSum),
+        ];
+    }
+
+    /**
      * Today block badges (Sales, Orders, Nprft%, Groi%, NROI%, Ads%, Views).
      * Mirrors todayPartsFromRow() + the Today block in updateSummaryStats() on
      * channels/all-marketplace-master.blade.php.

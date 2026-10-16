@@ -18548,16 +18548,22 @@ class ChannelMasterController extends Controller
 
             // Today block badges (Orders / Nprft% / Groi% / NROI% / Ads% / Views):
             // daily history saved in badges_data_histories by channel:refresh-today-sales.
-            if (in_array($metric, \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::TODAY_BADGE_FIELDS, true)) {
+            // Y/T Orders, Views, CVR columns share the same table: per channel history is
+            // stored under "amm-channel:{key}", all channels under all-marketplace-master.
+            if (in_array($metric, \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::TODAY_BADGE_FIELDS, true)
+                || in_array($metric, \App\Support\Marketplace\AmmColumnHistory::FIELDS, true)) {
                 $live = $request->input('badge_value');
-                $points = $isAll
-                    ? \App\Models\BadgeDataHistory::series(
-                        'all-marketplace-master',
-                        $metric,
-                        $days > 0 ? $days : 30,
-                        ($live !== null && $live !== '' && is_numeric($live)) ? (float) $live : null
-                    )
-                    : [];
+                $liveValue = ($isAll
+                    && in_array($metric, \App\Support\Badges\AllMarketplaceMasterBadgeAggregator::TODAY_BADGE_FIELDS, true)
+                    && $live !== null && $live !== '' && is_numeric($live))
+                    ? (float) $live
+                    : null;
+                $points = \App\Models\BadgeDataHistory::series(
+                    \App\Support\Marketplace\AmmColumnHistory::pageFor($channel),
+                    $metric,
+                    $days > 0 ? $days : 30,
+                    $liveValue
+                );
 
                 return response()->json([
                     'success' => true,
@@ -19357,6 +19363,18 @@ class ChannelMasterController extends Controller
             // Interpolation would replace same-value points (e.g. 88630, 88630) with smoothed
             // values and make the graph show incorrect numbers vs table.
 
+            // Others block: Rating / Reviews also keep their own daily history in
+            // badges_data_histories (written by badges:save-all). Fill any day the
+            // channel snapshots are missing so the trend never starts from one point.
+            if ($isAll && in_array($metric, ['rating', 'reviews'], true)) {
+                $chartData = $this->mergeBadgeHistoryIntoChart(
+                    $chartData,
+                    'all-marketplace-master',
+                    $metric === 'rating' ? 'avg_rating' : 'total_reviews',
+                    $days > 0 ? $days : 30
+                );
+            }
+
             $liveSales = $this->business5CoreB2bL30SalesChartIfNeeded(
                 $channel,
                 $metric,
@@ -19384,6 +19402,61 @@ class ChannelMasterController extends Controller
             \Log::error('getChannelMetricChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
         }
+    }
+
+    /**
+     * Add days that exist in badges_data_histories but not in $chartData ("M d" labels).
+     *
+     * @param  list<array{date: string, value: float|int}>  $chartData
+     * @return list<array{date: string, value: float|int}>
+     */
+    private function mergeBadgeHistoryIntoChart(array $chartData, string $page, string $field, int $days): array
+    {
+        if (! Schema::hasTable('badges_data_histories')) {
+            return $chartData;
+        }
+
+        $tz = 'America/Los_Angeles';
+        $today = Carbon::now($tz)->startOfDay();
+        $rows = \App\Models\BadgeDataHistory::query()
+            ->where('page_name', $page)
+            ->where('field', $field)
+            ->whereDate('snapshot_date', '>=', $today->copy()->subDays(max(1, $days) - 1)->toDateString())
+            ->orderBy('snapshot_date')
+            ->get(['snapshot_date', 'value']);
+        if ($rows->isEmpty()) {
+            return $chartData;
+        }
+
+        // [timestamp => [label, value]] — existing snapshot points win over history.
+        $byTs = [];
+        foreach ($chartData as $pt) {
+            $label = (string) ($pt['date'] ?? '');
+            try {
+                $d = Carbon::createFromFormat('M d', $label, $tz)->startOfDay();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if ($d->gt($today->copy()->addDay())) {
+                $d->subYear();
+            }
+            $byTs[$d->getTimestamp()] = ['date' => $label, 'value' => $pt['value']];
+        }
+        foreach ($rows as $row) {
+            $ymd = $row->snapshot_date instanceof \DateTimeInterface
+                ? $row->snapshot_date->format('Y-m-d')
+                : (string) $row->snapshot_date;
+            $value = (float) $row->value;
+            if ($value <= 0) {
+                continue;
+            }
+            $d = Carbon::parse($ymd, $tz)->startOfDay();
+            $byTs[$d->getTimestamp()] ??= ['date' => $d->format('M d'), 'value' => round($value, 2)];
+        }
+
+        ksort($byTs);
+
+        return array_values($byTs);
     }
 
     /**

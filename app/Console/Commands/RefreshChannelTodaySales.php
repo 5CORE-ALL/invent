@@ -54,9 +54,19 @@ class RefreshChannelTodaySales extends Command
         // badges_data + badges_data_histories, same as the other badges.
         try {
             $payload = app(ChannelMasterController::class)->getAllMarketplaceMasterChannelPayload();
+            // Per-channel T Orders / T Views / T CVR history (graphs on those columns).
+            $this->info('T column history values saved: '.\App\Support\Marketplace\AmmColumnHistory::recordToday($payload['data'] ?? []));
+
             $today = AllMarketplaceMasterBadgeAggregator::todayMetrics($payload['data'] ?? []);
             unset($today['today_sales']);
             $existing = array_merge($existing, $today);
+
+            // Others block (Rating / Reviews) — only overwrite when reviews were found.
+            $reviews = AllMarketplaceMasterBadgeAggregator::reviewsMetrics($payload['data'] ?? []);
+            if ($reviews['total_reviews'] > 0) {
+                $existing = array_merge($existing, $reviews);
+                $this->info(sprintf('Reviews badges: rating=%s, reviews=%d', $reviews['avg_rating'], $reviews['total_reviews']));
+            }
             $this->info(sprintf(
                 'Today badges: orders=%d, nprft=%s%%, groi=%s%%, nroi=%s%%, ads=%s%%, views=%d',
                 $today['t_orders'],
