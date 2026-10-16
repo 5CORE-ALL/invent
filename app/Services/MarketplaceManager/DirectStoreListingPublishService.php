@@ -181,16 +181,12 @@ class DirectStoreListingPublishService
         $upc = $primary ? trim((string) ($overrides['upc'] ?? '')) : '';
         $upc = $upc !== '' ? $upc : trim((string) ($hydrated['upc'] ?? ''));
 
-        $weight = null;
-        $lb = (float) ($primary ? ($overrides['package_weight_lb'] ?? 0) : 0) ?: (float) ($hydrated['package_weight_lb'] ?? 0);
-        $oz = (float) ($primary ? ($overrides['package_weight_oz'] ?? 0) : 0) ?: (float) ($hydrated['package_weight_oz'] ?? 0);
-        if ($lb + $oz / 16 > 0) {
-            $weight = round($lb + $oz / 16, 3);
-        }
-
+        $fromMaster = ListingManagerAmazonHydrator::dimWtPackage($sku);
+        $lb = (float) ($fromMaster['weight_lb'] ?? 0) + ((float) ($fromMaster['weight_oz'] ?? 0) / 16);
+        $weight = $lb > 0 ? round($lb, 3) : null;
         $dims = [];
         foreach (['length', 'width', 'height'] as $axis) {
-            $v = (float) ($primary ? ($overrides['package_'.$axis] ?? 0) : 0) ?: (float) ($hydrated['package_'.$axis] ?? 0);
+            $v = (float) ($fromMaster[$axis] ?? 0);
             $dims[$axis] = $v > 0 ? round($v, 2) : null;
         }
 

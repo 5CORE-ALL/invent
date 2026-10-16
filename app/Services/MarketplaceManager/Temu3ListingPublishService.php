@@ -3077,19 +3077,7 @@ class Temu3ListingPublishService
         if (! $row || strcasecmp(trim((string) $row->sku), $sku) !== 0) {
             $row = $this->findProductLoose($sku) ?? $hint;
         }
-        $pkg = $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
-        if ($this->dimWtMasterPackageComplete($pkg) || ! $row) {
-            return $pkg;
-        }
-        $parent = $this->parentProductFor($row, $sku);
-        if ($parent) {
-            $pkg = $this->mergeDimWtMasterPackage(
-                $pkg,
-                $this->dimWtMasterItemPackage($this->dimWtMasterValues($parent))
-            );
-        }
-
-        return $pkg;
+        return $this->dimWtMasterItemPackage($this->dimWtMasterValues($row));
     }
 
     private function hasDimWt(?ProductMaster $product, ?string $sku = null): bool
@@ -3113,21 +3101,21 @@ class Temu3ListingPublishService
         $pkg = $this->dimWtMasterPackageForSku($sku, $product);
 
         $toCm = static function (?float $cm, ?float $inches): string {
-            if ($cm !== null && $cm > 0) {
-                return (string) max(1, round($cm, 2));
-            }
             if ($inches !== null && $inches > 0) {
                 return (string) max(1, round($inches * 2.54, 2));
+            }
+            if ($cm !== null && $cm > 0) {
+                return (string) max(1, round($cm, 2));
             }
 
             return '1';
         };
 
         $weightG = '1';
-        if (($pkg['weight_kg'] ?? null) !== null) {
-            $weightG = (string) max(1, round((float) $pkg['weight_kg'] * 1000, 2));
-        } elseif (($pkg['weight_lb'] ?? null) !== null) {
+        if (($pkg['weight_lb'] ?? null) !== null) {
             $weightG = (string) max(1, round((float) $pkg['weight_lb'] * 453.592, 2));
+        } elseif (($pkg['weight_kg'] ?? null) !== null) {
+            $weightG = (string) max(1, round((float) $pkg['weight_kg'] * 1000, 2));
         }
 
         return [

@@ -1361,52 +1361,16 @@ class WayfairListingPublishService
      */
     private function packageSize(ProductMaster $product, string $sku): array
     {
-        $values = $product->Values;
-        if (is_string($values)) {
-            $decoded = json_decode($values, true);
-            $values = is_array($decoded) ? $decoded : [];
-        }
-        $values = is_array($values) ? $values : [];
-        $num = function (array $src, string ...$keys) {
-            foreach ($keys as $key) {
-                if (! isset($src[$key]) || ! is_numeric($src[$key]) || (float) $src[$key] <= 0) {
-                    continue;
-                }
+        $fromMaster = ListingManagerAmazonHydrator::dimWtPackage($sku);
+        $lb = (float) ($fromMaster['weight_lb'] ?? 0) + ((float) ($fromMaster['weight_oz'] ?? 0) / 16);
 
-                return (float) $src[$key];
-            }
-
-            return null;
-        };
-
-        $pkg = [
-            'length_in' => $num($values, 'l', 'l_decl'),
-            'width_in' => $num($values, 'w', 'w_decl'),
-            'height_in' => $num($values, 'h', 'h_decl'),
-            'weight_lb' => $num($values, 'wt_act', 'itm_wt_gw', 'wt_decl'),
-            'weight_kg' => $num($values, 'wt_act_kg'),
+        return [
+            'length_in' => (float) ($fromMaster['length'] ?? 0) > 0 ? (float) $fromMaster['length'] : null,
+            'width_in' => (float) ($fromMaster['width'] ?? 0) > 0 ? (float) $fromMaster['width'] : null,
+            'height_in' => (float) ($fromMaster['height'] ?? 0) > 0 ? (float) $fromMaster['height'] : null,
+            'weight_lb' => $lb > 0 ? $lb : null,
+            'weight_kg' => null,
         ];
-        foreach ([
-            'length_in' => 'package_length',
-            'width_in' => 'package_width',
-            'height_in' => 'package_height',
-        ] as $pkgKey => $overrideKey) {
-            $n = $this->overrides[$overrideKey] ?? null;
-            if (is_numeric($n) && (float) $n > 0) {
-                $pkg[$pkgKey] = (float) $n;
-            }
-        }
-        $lb = (float) ($this->overrides['package_weight_lb'] ?? 0);
-        $oz = (float) ($this->overrides['package_weight_oz'] ?? 0);
-        $totalLb = $lb + ($oz / 16);
-        if ($totalLb > 0) {
-            $pkg['weight_lb'] = $totalLb;
-        }
-        if (($pkg['weight_lb'] ?? null) === null && ($pkg['weight_kg'] ?? null) !== null) {
-            $pkg['weight_lb'] = (float) $pkg['weight_kg'] / 0.45359237;
-        }
-
-        return $pkg;
     }
 
     private function groupKey(ProductMaster $product): string

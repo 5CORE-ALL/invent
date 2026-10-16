@@ -596,8 +596,11 @@ class TikTokListingPublishService
      */
     private function resolveWeightLb(array $details, array $hydrated, ?float $weightLb): float
     {
-        if ($weightLb !== null && $weightLb > 0) {
-            return round($weightLb, 2);
+        $sku = trim((string) ($hydrated['sku'] ?? $details['sku'] ?? $details['mpn'] ?? ''));
+        $pkg = $sku !== '' ? ListingManagerAmazonHydrator::dimWtPackage($sku) : ['weight_lb' => '', 'weight_oz' => ''];
+        $fromMaster = (float) ($pkg['weight_lb'] ?? 0) + ((float) ($pkg['weight_oz'] ?? 0) / 16);
+        if ($fromMaster > 0) {
+            return round($fromMaster, 2);
         }
         $lb = (float) ($details['package_weight_lb'] ?? $hydrated['package_weight_lb'] ?? 0);
         $oz = (float) ($details['package_weight_oz'] ?? $hydrated['package_weight_oz'] ?? 0);
@@ -616,9 +619,11 @@ class TikTokListingPublishService
      */
     private function resolveDimensions(array $details, array $hydrated): array
     {
-        $length = (float) ($details['package_length'] ?? $hydrated['package_length'] ?? 0);
-        $width = (float) ($details['package_width'] ?? $hydrated['package_width'] ?? 0);
-        $height = (float) ($details['package_height'] ?? $hydrated['package_height'] ?? 0);
+        $sku = trim((string) ($hydrated['sku'] ?? $details['sku'] ?? $details['mpn'] ?? ''));
+        $pkg = $sku !== '' ? ListingManagerAmazonHydrator::dimWtPackage($sku) : [];
+        $length = (float) ($pkg['length'] ?? 0) ?: (float) ($details['package_length'] ?? $hydrated['package_length'] ?? 0);
+        $width = (float) ($pkg['width'] ?? 0) ?: (float) ($details['package_width'] ?? $hydrated['package_width'] ?? 0);
+        $height = (float) ($pkg['height'] ?? 0) ?: (float) ($details['package_height'] ?? $hydrated['package_height'] ?? 0);
 
         return [
             'length' => number_format($length > 0 ? $length : 10, 2, '.', ''),

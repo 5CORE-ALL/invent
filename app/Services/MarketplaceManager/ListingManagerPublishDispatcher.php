@@ -24,6 +24,7 @@ class ListingManagerPublishDispatcher
     public function publish(ListingManagerChannelDraft $draft, array $details): array
     {
         $useVariationContent = $this->applyVariationListingContent($draft, $details);
+        $details = ListingManagerAmazonHydrator::overlayDimWt($details, trim((string) $draft->seller_sku));
         if ($useVariationContent) {
             VariationListingContent::activate();
         }
@@ -45,7 +46,7 @@ class ListingManagerPublishDispatcher
             $categoryId = $this->categoryIdFromDetails($details);
             $categoryUuid = trim((string) ($details['category_uuid'] ?? $details['primary_category_id'] ?? '')) ?: null;
             $categoryName = trim((string) ($details['primary_category_path'] ?? $details['category_name'] ?? '')) ?: null;
-            $weightLb = $this->weightLbFromDetails($details);
+            $weightLb = null;
             $overrides = [];
             if (in_array($key, ['faire'], true) || str_contains($key, 'faire')) {
                 $images = is_array($details['images'] ?? null) ? $details['images'] : [];
@@ -67,11 +68,6 @@ class ListingManagerPublishDispatcher
                     'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
                     'upc' => trim((string) ($details['upc'] ?? '')),
                     'manufacturer' => trim((string) ($details['manufacturer'] ?? $details['brand'] ?? '5 Core')),
-                    'package_length' => $details['package_length'] ?? '',
-                    'package_width' => $details['package_width'] ?? '',
-                    'package_height' => $details['package_height'] ?? '',
-                    'package_weight_lb' => $details['package_weight_lb'] ?? '',
-                    'package_weight_oz' => $details['package_weight_oz'] ?? '',
                     'newegg_feed_request_id' => trim((string) ($details['newegg_feed_request_id'] ?? '')),
                 ];
             }
@@ -87,11 +83,6 @@ class ListingManagerPublishDispatcher
                     'manufacturer' => trim((string) ($details['manufacturer'] ?? '5 Core')),
                     'upc' => trim((string) ($details['upc'] ?? '')),
                     'country_of_origin' => trim((string) ($details['country_of_origin'] ?? 'CN')),
-                    'package_length' => $details['package_length'] ?? '',
-                    'package_width' => $details['package_width'] ?? '',
-                    'package_height' => $details['package_height'] ?? '',
-                    'package_weight_lb' => $details['package_weight_lb'] ?? '',
-                    'package_weight_oz' => $details['package_weight_oz'] ?? '',
                     'gender' => trim((string) ($details['gender'] ?? 'Unisex')),
                     'age_group' => trim((string) ($details['age_group'] ?? 'Adults')),
                     'condition' => trim((string) ($details['condition'] ?? $details['condition_name'] ?? 'New')),
@@ -141,8 +132,6 @@ class ListingManagerPublishDispatcher
                     'quantity' => $draft->quantity !== null ? (int) $draft->quantity : null,
                     'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
                     'upc' => trim((string) ($details['upc'] ?? '')),
-                    'package_weight_lb' => $details['package_weight_lb'] ?? '',
-                    'package_weight_oz' => $details['package_weight_oz'] ?? '',
                 ];
             }
             if ($key === 'wayfair') {
@@ -153,11 +142,6 @@ class ListingManagerPublishDispatcher
                     'images' => array_values(array_filter(array_map(static fn ($url) => trim((string) $url), $images))),
                     'color' => trim((string) ($details['color'] ?? '')),
                     'country_of_origin' => trim((string) ($details['country_of_origin'] ?? '')),
-                    'package_length' => $details['package_length'] ?? '',
-                    'package_width' => $details['package_width'] ?? '',
-                    'package_height' => $details['package_height'] ?? '',
-                    'package_weight_lb' => $details['package_weight_lb'] ?? '',
-                    'package_weight_oz' => $details['package_weight_oz'] ?? '',
                     'collection' => trim((string) ($details['wayfair_collection'] ?? '')),
                     'answers' => is_array($details['wayfair_answers'] ?? null) ? $details['wayfair_answers'] : [],
                 ];

@@ -29,6 +29,7 @@ class AmazonListingPublishService
         if ($sku === '') {
             return ['success' => false, 'message' => 'SKU is required.'];
         }
+        $details = ListingManagerAmazonHydrator::overlayDimWt($details, $sku);
         $details['price'] = LmpStdPrice::forSku($sku) ?? 0;
         if (! $this->api->isConfigured()) {
             return ['success' => false, 'message' => 'Amazon SP-API is not connected. Set Amazon client id, secret, refresh token, and seller id.'];
@@ -394,11 +395,11 @@ class AmazonListingPublishService
      */
     public static function sizeAttributesFromDetails(array $details): array
     {
-        $length = (float) ($details['item_length'] ?? $details['package_length'] ?? 0);
-        $width = (float) ($details['item_width'] ?? $details['package_width'] ?? 0);
-        $height = (float) ($details['item_height'] ?? $details['package_height'] ?? 0);
-        $lb = (float) ($details['item_weight_lb'] ?? $details['package_weight_lb'] ?? 0);
-        $oz = (float) ($details['item_weight_oz'] ?? $details['package_weight_oz'] ?? 0);
+        $length = (float) ($details['package_length'] ?? $details['item_length'] ?? 0);
+        $width = (float) ($details['package_width'] ?? $details['item_width'] ?? 0);
+        $height = (float) ($details['package_height'] ?? $details['item_height'] ?? 0);
+        $lb = (float) ($details['package_weight_lb'] ?? $details['item_weight_lb'] ?? 0);
+        $oz = (float) ($details['package_weight_oz'] ?? $details['item_weight_oz'] ?? 0);
         $weightLb = $lb + ($oz / 16);
         if ($weightLb <= 0) {
             $weightLb = (float) ($details['item_weight'] ?? 0);
