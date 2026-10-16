@@ -167,9 +167,10 @@ class Ebay1VolumePricingService
         }
 
         $status = strtoupper((string) ($detail['promotionStatus'] ?? ''));
-        $paused = false;
+        // These promotions belong to the app, so a RUNNING or PAUSED one must end up running again.
+        $needsResume = $status === 'PAUSED';
         if ($status === 'RUNNING') {
-            $paused = $this->pause($token, $promoId);
+            $needsResume = $this->pause($token, $promoId);
             $detail = $this->getPromotion($token, $promoId) ?? $detail;
             $payload = $this->payload($name, $tiers, $listingIds, $detail);
         }
@@ -177,10 +178,15 @@ class Ebay1VolumePricingService
             'https://api.ebay.com/sell/marketing/v1/item_promotion/'.rawurlencode($this->apiId($promoId)),
             $payload
         );
-        if ($paused) {
-            $this->resume($token, $promoId);
+        $resumed = true;
+        if ($needsResume) {
+            $resumed = $this->resume($token, $promoId);
         }
         if ($resp->successful() || $resp->status() === 204) {
+            if (! $resumed) {
+                return ['success' => false, 'message' => 'updated but eBay would not resume the promotion (it is paused)', 'promotion_id' => $promoId];
+            }
+
             return ['success' => true, 'message' => 'updated', 'promotion_id' => $promoId];
         }
 
@@ -283,14 +289,26 @@ class Ebay1VolumePricingService
         return false;
     }
 
-    private function resume(string $token, string $promoId): void
+    private function resume(string $token, string $promoId): bool
     {
         $id = rawurlencode($this->apiId($promoId));
-        try {
-            $this->http($token)->post('https://api.ebay.com/sell/marketing/v1/item_promotion/'.$id.'/resume');
-        } catch (\Throwable $e) {
-            // already scheduled
+        foreach ([
+            'https://api.ebay.com/sell/marketing/v1/item_promotion/'.$id.'/resume',
+            'https://api.ebay.com/sell/marketing/v1/promotion/'.$id.'/resume',
+        ] as $url) {
+            try {
+                $resp = $this->http($token)->post($url);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            if ($resp->successful() || $resp->status() === 204) {
+                return true;
+            }
+            Log::warning('eBay1 volume pricing resume failed', ['url' => $url, 'status' => $resp->status(), 'body' => mb_substr((string) $resp->body(), 0, 300)]);
         }
+        $current = strtoupper((string) ($this->getPromotion($token, $promoId)['promotionStatus'] ?? ''));
+
+        return $current !== 'PAUSED';
     }
 
     private function http(string $token): \Illuminate\Http\Client\PendingRequest
