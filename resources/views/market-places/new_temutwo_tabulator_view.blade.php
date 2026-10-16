@@ -239,12 +239,12 @@
             flex: 0 0 auto;
             white-space: nowrap;
             padding: 4px 12px;
-            border: 1px solid #86efac;
+            border: 1px solid #cbd5e1;
             border-radius: 999px;
-            background: #f0fdf4;
+            background: #f1f5f9;
             font-size: 12px;
             font-weight: 700;
-            color: #15803d;
+            color: #475569;
             line-height: 1.2;
             margin: 0;
         }
@@ -372,8 +372,8 @@
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
             <span class="nto-server-push-note"
-                title="S PRC (Std prc vs dil + eBay / Amazon / LMP caps) is saved and pushed to Temu 2 by the server at 04:20 and 20:20 IST. This page does not need to be open. The upload button pushes S Base Prc by hand.">
-                <i class="fas fa-server"></i> Server auto-push 04:20 / 20:20 IST
+                title="Auto-push is off. Prices push only when you click a push button.">
+                <i class="fas fa-hand-pointer"></i> Auto-push off - push by button
             </span>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
@@ -3129,36 +3129,6 @@
                             const row = cell.getRow().getData();
                             openLmpModal(row.sku || row['(Child) sku'], row.lmp_entries || []);
                         }
-                    }
-                },
-                {
-                    title: 'cvr%',
-                    field: 'cvr_pct',
-                    hozAlign: 'center',
-                    width: 58,
-                    sorter: function(a, b, aRow, bRow) {
-                        const v = function(row) {
-                            return parseFloat(row && (row.cvr_percent != null ? row.cvr_percent : row.cvr_30)) || 0;
-                        };
-                        return v(aRow.getData()) - v(bRow.getData());
-                    },
-                    headerTooltip: 'CVR% = (Temu L30 / Views) × 100. Grey dot = 0. Green = up vs CVR 60. Red = down vs CVR 60.',
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData() || {};
-                        const val = parseFloat(row.cvr_percent != null ? row.cvr_percent : row.cvr_30) || 0;
-                        const prior = parseFloat(row.cvr_60) || 0;
-                        const trend = temuCvrTrend(val, prior);
-                        let dotColor = '#adb5bd';
-                        if (val > 0) {
-                            dotColor = trend === 'down' ? '#a00211' : (trend === 'up' ? '#20c997' : '#ffc107');
-                        }
-                        const shown = Math.round(val);
-                        const tip = 'CVR ' + (val > 3.5 ? String(Math.round(val)) : val.toFixed(1))
-                            + '% vs CVR 60 ' + prior.toFixed(1) + '%';
-                        return '<span title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-flex;align-items:center;justify-content:center;gap:4px;font-weight:600;">'
-                            + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';"></span>'
-                            + shown
-                            + '</span>';
                     }
                 },
                 {

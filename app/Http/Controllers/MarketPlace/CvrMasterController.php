@@ -1622,7 +1622,7 @@ class CvrMasterController extends Controller
 
                 if (Schema::hasTable('google_sku_competitors')) {
                     $googleGrouped = DB::table('google_sku_competitors')
-                        ->select(['sku', 'price', 'product_link', 'ignored'])
+                        ->selectRaw('sku, (price + COALESCE(shipping, 0)) as price, product_link, ignored')
                         ->where('marketplace', 'google')
                         ->where('price', '>', 0)
                         ->get()

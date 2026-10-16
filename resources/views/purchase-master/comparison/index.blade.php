@@ -5950,9 +5950,9 @@ document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('.comparison-lmp-field-ebay:not(.comparison-lmp-field-temu)').forEach(el => {
             el.classList.toggle('d-none', meta.key !== 'ebay');
         });
-        // Shipping / Delivery (ebay + temu)
+        // Shipping / Delivery (ebay + temu + shopify/google)
         document.querySelectorAll('.comparison-lmp-field-ebay.comparison-lmp-field-temu').forEach(el => {
-            el.classList.toggle('d-none', meta.key !== 'ebay' && meta.key !== 'temu');
+            el.classList.toggle('d-none', meta.key !== 'ebay' && meta.key !== 'temu' && meta.key !== 'shopify');
         });
         document.querySelectorAll('.comparison-lmp-field-shopify').forEach(el => {
             el.classList.toggle('d-none', meta.key !== 'shopify');
@@ -6285,6 +6285,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const sku = document.getElementById('comparison-lmp-add-comp-sku')?.value.trim();
         let productId = document.getElementById('comparison-lmp-add-comp-product-id')?.value.trim();
         const price = parseFloat(document.getElementById('comparison-lmp-add-comp-price')?.value);
+        const shipping = parseFloat(document.getElementById('comparison-lmp-add-comp-shipping')?.value) || 0;
         const link = document.getElementById('comparison-lmp-add-comp-link')?.value.trim();
         const form = document.getElementById('comparison-lmp-add-form');
 
@@ -6323,6 +6324,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 product_id: productId,
                 source: 'manual',
                 price,
+                shipping,
                 product_link: link || null,
             }),
         })
@@ -6338,6 +6340,7 @@ document.addEventListener('DOMContentLoaded', function () {
             showComparisonToast('success', 'Shopify (Google) LMP added');
             document.getElementById('comparison-lmp-add-comp-product-id').value = '';
             document.getElementById('comparison-lmp-add-comp-price').value = '';
+            document.getElementById('comparison-lmp-add-comp-shipping').value = '';
             document.getElementById('comparison-lmp-add-comp-link').value = '';
             return reloadCurrentComparisonLmpList().then(function () {
                 if (comparisonLmpOpenedFromRoi || document.getElementById('comparisonRoiModal')?.classList.contains('show')) {

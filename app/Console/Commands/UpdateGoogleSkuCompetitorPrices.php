@@ -62,7 +62,7 @@ class UpdateGoogleSkuCompetitorPrices extends Command
                 }
 
                 $newPrice = (float) ($latest->price ?? 0);
-                $oldPrice = (float) ($row->price ?? 0);
+                $oldPrice = (float) $row->base_price;
                 $imageNeedsUpdate = !empty($latest->image) && empty($row->image);
                 $priceChanged = $newPrice != $oldPrice;
 
@@ -146,7 +146,7 @@ class UpdateGoogleSkuCompetitorPrices extends Command
 
             $competitors = GoogleSkuCompetitor::whereIn('id', $ids)->get();
             foreach ($competitors as $competitor) {
-                $oldPrice = (float) ($competitor->price ?? 0);
+                $oldPrice = (float) $competitor->base_price;
                 $newImage = $live['image'] ?? null;
                 $imageChanged = !empty($newImage) && empty($competitor->image);
                 $priceChanged = $oldPrice != ($live['price'] ?? 0);

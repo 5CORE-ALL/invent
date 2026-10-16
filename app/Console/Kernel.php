@@ -1022,6 +1022,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // DISABLED: Temu 2 auto-push is off. Prices push only from the /new-temu2 push button.
+        if (false) {
         // New Temu Two Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap) → S PRC → Temu 2 base price.
         // Same twice-daily idea as Amazon, offset 20 min. /new-temu2 does not need to be open.
         // Do NOT wrap 20:20 in $ist() — IST window ends at 20:00.
@@ -1040,6 +1042,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
+        }
 
         // Reverb Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap) → S PRC → Reverb price API.
         // Same twice-daily idea as Amazon, offset 25 min. /reverb-pricing does not need to be open.
@@ -1355,8 +1358,7 @@ class Kernel extends ConsoleKernel
         // Std prc vs dil → S PRC, then push. The analytics page does not need to be open.
         foreach ([
             ['05:25', '21:25', 'dil:rule-sprice-apply newegg --push', 'newegg-sprc-dil'],
-            ['05:35', '21:35', 'dil:rule-sprice-apply temu --push', 'temu-sprc-dil'],
-            ['05:45', '21:45', 'dil:rule-sprice-apply temu2 --push', 'temu2-sprc-dil'],
+            // temu / temu2 auto-push removed: push only by button on /new-temu1 and /new-temu2.
             ['05:55', '21:55', 'dil:rule-sprice-apply temu3 --push', 'temu3-sprc-dil'],
             ['06:35', '22:35', 'dil:rule-sprice-apply doba', 'doba-sprc-dil'],
             ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],

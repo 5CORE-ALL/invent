@@ -537,6 +537,10 @@
                                     <label class="form-label mb-0" for="addLmpPrice">Price <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control form-control-sm" id="addLmpPrice" placeholder="29.99" step="0.01" min="0.01" required>
                                 </div>
+                                <div class="lmp-field lmp-field-price">
+                                    <label class="form-label mb-0" for="addLmpShipping" title="Shipping is added to the price: LMP = Price + Shipping">Shipping</label>
+                                    <input type="number" class="form-control form-control-sm" id="addLmpShipping" placeholder="0.00" step="0.01" min="0" value="">
+                                </div>
                                 <div class="lmp-field">
                                     <label class="form-label mb-0" for="addLmpTitle">Title</label>
                                     <input type="text" class="form-control form-control-sm" id="addLmpTitle" placeholder="Product title">
@@ -4628,6 +4632,10 @@
 
             list.forEach(function(item, index) {
                 const price = parseFloat(item.price) || 0;
+                const itemShip = parseFloat(item.shipping) || 0;
+                const shipHint = itemShip > 0
+                    ? ' <small class="text-muted" title="Item $' + (parseFloat(item.base_price) || 0).toFixed(2) + ' + shipping $' + itemShip.toFixed(2) + '">(incl. $' + itemShip.toFixed(2) + ' ship)</small>'
+                    : '';
                 const ignored = !!item.ignored;
                 const isLowest = !ignored && shopifyB2cCents(price) > 0 && shopifyB2cCents(lowest) > 0 && shopifyB2cCents(price) === shopifyB2cCents(lowest);
                 const link = shopifyB2cConnectedLink(item.product_link || item.link || '');
@@ -4660,7 +4668,7 @@
                     : priceBadge;
                 html += '<tr class="' + (ignored ? 'lmp-ignored-row ' : '') + (isLowest ? 'table-success' : '') + '">' +
                     '<td class="text-center"><strong>' + (index + 1) + '</strong></td>' +
-                    '<td><div class="d-flex align-items-center">' + imgHtml + priceBadgeHtml + '</div></td>' +
+                    '<td><div class="d-flex align-items-center">' + imgHtml + priceBadgeHtml + shipHint + '</div></td>' +
                     '<td style="font-size:11px;" title="' + escapeHtmlAttr(source) + '">' + escapeHtmlAttr(String(source).substring(0, 30)) + '</td>' +
                     '<td style="font-size:11px;">' + escapeHtmlAttr(productId) + '</td>' +
                     '<td style="font-size:11px;" title="' + escapeHtmlAttr(title) + '">' + escapeHtmlAttr(titleShort || '—') + '</td>' +
@@ -4695,6 +4703,7 @@
             $('#addLmpProductId').val('');
             $('#addLmpSource').val('');
             $('#addLmpPrice').val('');
+            $('#addLmpShipping').val('');
             $('#addLmpTitle').val('');
             $('#addLmpLink').val('');
             $('#lmpOpenGoogleSearch').attr('href', GOOGLE_SEARCH_URL + '?sku=' + encodeURIComponent(sku));
@@ -4770,6 +4779,7 @@
             const productId = ($('#addLmpProductId').val() || '').trim();
             const source = ($('#addLmpSource').val() || '').trim() || 'manual';
             const price = parseFloat($('#addLmpPrice').val());
+            const shipping = parseFloat($('#addLmpShipping').val()) || 0;
             const title = ($('#addLmpTitle').val() || '').trim();
             const link = ($('#addLmpLink').val() || '').trim();
 
@@ -4799,6 +4809,7 @@
                     product_id: productId,
                     source: source,
                     price: price,
+                    shipping: shipping,
                     product_link: link || null,
                     product_title: title || null,
                 },
@@ -4809,6 +4820,7 @@
                         $('#addLmpProductId').val('');
                         $('#addLmpSource').val('');
                         $('#addLmpPrice').val('');
+            $('#addLmpShipping').val('');
                         $('#addLmpTitle').val('');
                         $('#addLmpLink').val('');
                         loadGoogleLmpModal(sku, $('#lmpModal').data('linked-lmp-skus') || []);

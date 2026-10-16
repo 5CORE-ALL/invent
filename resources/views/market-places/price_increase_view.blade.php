@@ -10928,13 +10928,18 @@
             });
 
             googleList.forEach(function(google) {
-                const price = parseFloat(google.price) || 0;
-                if (price <= 0) return;
+                // google.price = final LMP price (item + shipping); base_price = item price.
+                const totalPrice = parseFloat(google.price) || 0;
+                if (totalPrice <= 0) return;
+                const gShip = Math.max(0, parseFloat(google.shipping) || 0);
+                const price = google.base_price != null ? (parseFloat(google.base_price) || totalPrice) : totalPrice;
                 rows.push({
                     channel: 'google',
                     id: google.id,
                     sku: sku,
                     price: price,
+                    shipCost: gShip,
+                    totalPrice: totalPrice,
                     ignored: !!google.ignored,
                     link: google.link || google.product_link || '',
                     extId: google.product_id || '',
@@ -10943,7 +10948,7 @@
                     rating: google.rating != null ? parseFloat(google.rating) : null,
                     reviews: google.reviews != null ? parseInt(google.reviews) : null,
                     old_price: null,
-                    delivery: '',
+                    delivery: gShip,
                     source: google.source || '',
                 });
             });
@@ -11602,7 +11607,7 @@
                 // Temu / AliExpress: no ASIN/item id
                 idField = '';
             }
-            const showShip = (ch === 'aliexpress' || ch === 'tiktok');
+            const showShip = (ch === 'aliexpress' || ch === 'tiktok' || ch === 'google');
             const shipField = showShip
                 ? ('<div class="col-2"><label class="form-label mb-0 small">Ship</label>'
                     + '<input type="text" class="form-control" id="lmpAddShip" inputmode="decimal" placeholder="0.00" autocomplete="off" title="Shipping cost (Del)"></div>')
@@ -12070,13 +12075,15 @@
                 return;
             }
             if (channel === 'google') {
+                let gShipIn = parseLmpPriceInput($('#lmpAddShip').val());
+                if (isNaN(gShipIn) || gShipIn < 0) gShipIn = 0;
                 $.ajax({
                     url: isEdit ? '/google-lmp-update' : '/google-lmp-add',
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     data: isEdit
-                        ? { id: editId, product_id: idVal, price: price, product_link: link || null }
-                        : { sku: sku, product_id: idVal, price: price, product_link: link || null, source: 'manual' },
+                        ? { id: editId, product_id: idVal, price: price, shipping: gShipIn, product_link: link || null }
+                        : { sku: sku, product_id: idVal, price: price, shipping: gShipIn, product_link: link || null, source: 'manual' },
                     success: function(r) { done(!!(r.success || r.data), r.message || (isEdit ? 'Google LMP updated' : 'Google LMP added')); },
                     error: function(xhr) {
                         done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Google LMP' : 'Failed to add Google LMP'));

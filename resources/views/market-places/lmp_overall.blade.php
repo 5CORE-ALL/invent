@@ -507,6 +507,7 @@
                 lmp_google: {
                     label: 'LMP Google', kind: 'google', url: '/google-lmp-data', pull: true,
                     idLabel: 'Product ID', idPlaceholder: 'Product ID', linkPlaceholder: 'https://www.google.com/shopping/...',
+                    extraLabel: 'Shipping',
                 },
             };
             const lmpState = { field: null, row: null, bySku: {}, competitors: [], editing: null, loadGen: 0, stdSilent: false };
@@ -704,7 +705,7 @@
                 document.getElementById('lmp-ov-id-wrap').hidden = site.kind === 'temu';
                 document.getElementById('lmp-ov-source-wrap').hidden = site.kind !== 'google';
                 const extra = document.getElementById('lmp-ov-extra-wrap');
-                extra.hidden = !(site.kind === 'ebay' || site.kind === 'temu');
+                extra.hidden = !(site.kind === 'ebay' || site.kind === 'temu' || site.kind === 'google');
                 if (site.extraLabel) document.getElementById('lmp-ov-extra-label').textContent = site.extraLabel;
                 document.getElementById('lmp-ov-pull').hidden = !site.pull;
             }
@@ -729,10 +730,14 @@
                     });
                 }
                 document.getElementById('lmp-ov-id').value = item.asin || item.item_id || item.product_id || '';
-                const price = parseFloat(item.price);
+                // Google rows: `price` is item + shipping, so edit the item price (base_price) and shipping separately.
+                const isGoogleRow = item.base_price != null && item.base_price !== '';
+                const price = parseFloat(isGoogleRow ? item.base_price : item.price);
                 document.getElementById('lmp-ov-price').value = price > 0 ? price.toFixed(2) : '';
                 document.getElementById('lmp-ov-link').value = item.product_link || item.link || '';
-                const extra = item.shipping_cost != null && item.shipping_cost !== '' ? item.shipping_cost : item.delivery;
+                const extra = item.shipping_cost != null && item.shipping_cost !== ''
+                    ? item.shipping_cost
+                    : (item.shipping != null && item.shipping !== '' ? item.shipping : item.delivery);
                 const extraN = parseFloat(extra);
                 document.getElementById('lmp-ov-extra').value = extraN > 0 ? extraN.toFixed(2) : '';
                 document.getElementById('lmp-ov-source').value = item.source || '';
@@ -1154,8 +1159,8 @@
                         : postJson('/ebay-lmp-add', { sku: sku, item_id: idVal, price: price, shipping_cost: extra, product_link: link || null });
                 } else if (site.kind === 'google') {
                     req = editing
-                        ? postJson('/google-lmp-update', { id: editing.id, price: price, product_link: link || null, product_id: idVal })
-                        : postJson('/google-lmp-add', { sku: sku, product_id: idVal, source: source || null, price: price, product_link: link || null });
+                        ? postJson('/google-lmp-update', { id: editing.id, price: price, shipping: extra, product_link: link || null, product_id: idVal })
+                        : postJson('/google-lmp-add', { sku: sku, product_id: idVal, source: source || null, price: price, shipping: extra, product_link: link || null });
                 } else {
                     const draft = { price: price, delivery: extra, link: link || null, ignored: false, source_sku: sku };
                     req = editing

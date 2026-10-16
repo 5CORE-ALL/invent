@@ -1029,6 +1029,13 @@
                                 <i class="fas fa-times-circle"></i>
                             </button>
 
+                            <a href="{{ route('forecast.analysis.spare-parts') }}"
+                               class="btn btn-sm btn-outline-primary fw-semibold d-flex align-items-center"
+                               aria-label="Spare parts purchase sheet"
+                               title="Open the Spare Parts Purchase Sheet (stock, on-order and suggested order qty for spare parts)">
+                                <i class="fas fa-screwdriver-wrench"></i>
+                            </a>
+
                             @php
                                 $__forecastPresidentEmail = 'president@5core.com';
                                 $__forecastIsPresident = strtolower(trim((string) (\Illuminate\Support\Facades\Auth::user()->email ?? ''))) === $__forecastPresidentEmail;
@@ -2232,6 +2239,85 @@
             return Math.round((moq / (msl / 4)) * 30);
         }
 
+        /**
+         * Pre-purchase alerts for a SKU row. Returns [{sev:'high'|'med'|'low', label, text}].
+         * Skipped for parent rows and for NR (do-not-reorder) SKUs.
+         */
+        function forecastRowAlerts(row) {
+            const out = [];
+            if (!row || row.is_parent || row.isParent) return out;
+            const nrVal = String(row.nr == null ? '' : row.nr).trim().toUpperCase();
+            if (nrVal === 'NR') return out;
+
+            const num = function(v) {
+                if (v === null || v === undefined || v === '') return NaN;
+                return parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+            };
+            const push = function(sev, label, text) { out.push({ sev: sev, label: label, text: text }); };
+
+            // Supplier / cost data needed to place an order
+            if (!String(row.mfrg_supplier || '').trim()) {
+                push('high', 'No supplier', 'No supplier is assigned to this SKU. Assign a supplier before ordering.');
+            }
+            const cp = num(row.CP);
+            if (!Number.isFinite(cp) || cp <= 0) {
+                push('high', 'No CP', 'Cost price (CP) is missing or zero, so profit and ROI cannot be trusted.');
+            }
+            const cbm = num(row.cbm);
+            if (!Number.isFinite(cbm) || cbm <= 0) {
+                push('med', 'No CBM', 'CBM per unit is missing, so container space and freight cannot be calculated.');
+            }
+            const moq = displayMoqForRow(row);
+            if (!Number.isFinite(moq) || moq <= 0) {
+                push('med', 'No MOQ', 'MOQ / approved order qty is not set.');
+            }
+
+            // Profitability
+            const nroi = num(row.avg_nroi_pct);
+            const npft = num(row.avg_npft_pct);
+            if ((Number.isFinite(nroi) && nroi < 0) || (Number.isFinite(npft) && npft < 0)) {
+                push('high', 'Negative margin', 'Avg NROI or Avg NPFT is negative. This SKU loses money at the current price/cost.');
+            } else {
+                if (Number.isFinite(nroi) && nroi < 50) {
+                    push('med', 'Low NROI', 'Avg NROI is ' + Math.round(nroi) + '% (below 50%). Review price or cost before buying.');
+                }
+                if (Number.isFinite(npft) && npft < 30) {
+                    push('med', 'Low NPFT', 'Avg NPFT is ' + Math.round(npft) + '% (below 30%). Margin is thin.');
+                }
+            }
+
+            // Quality / returns
+            const rr = num(row.return_rate);
+            if (Number.isFinite(rr) && rr >= 10) {
+                push('high', 'High returns', 'Return rate is ' + rr.toFixed(1) + '% (10% or more). Check quality / listing issues before reordering.');
+            } else if (Number.isFinite(rr) && rr >= 5) {
+                push('med', 'Returns', 'Return rate is ' + rr.toFixed(1) + '% (5% or more). Keep an eye on quality.');
+            }
+            const rating = num(row.rating);
+            if (Number.isFinite(rating) && rating > 0 && rating < 3.5) {
+                push('med', 'Low rating', 'Rating is ' + rating.toFixed(1) + ' (below 3.5). Customers are unhappy with this product.');
+            }
+
+            // Stock / demand
+            const days = forecastDaysOfStock(row);
+            if (days != null && days >= 240) {
+                push('med', 'Overstock', 'Current stock covers ' + days + ' days (240 or more). No need to buy more now.');
+            }
+            const moqDays = forecastMoqDays(row);
+            if (moqDays != null && moqDays > 180) {
+                push('med', 'MOQ too high', 'MOQ covers ' + moqDays + ' days of sales (over 180). Ordering MOQ would overstock.');
+            }
+            const msl = num(row.msl);
+            if ((!Number.isFinite(msl) || msl <= 0)) {
+                push('low', 'No sales', 'No sales history (MSL is 0). Demand is unproven.');
+            }
+
+            if (!row.has_cd) {
+                push('low', 'No CD', 'No Comparison Data (CD) saved for this SKU.');
+            }
+            return out;
+        }
+
         function faMetricChartDot(metric, row, current) {
             const sku = String(row.SKU || row.sku || '').replace(/"/g, '&quot;');
             const parentName = String(row.Parent || row.parent || '').replace(/"/g, '&quot;');
@@ -3151,6 +3237,53 @@
                     }
                 },
                 {
+                    title: "Alert",
+                    field: "alert",
+                    headerSort: true,
+                    hozAlign: "center",
+                    width: 84,
+                    minWidth: 70,
+                    headerTooltip: "Issues to address before purchasing (hover a badge for details). Red = critical, amber = review, grey = info.",
+                    sorter: function(a, b, aRow, bRow) {
+                        const w = { high: 100, med: 10, low: 1 };
+                        const score = function(r) {
+                            return forecastRowAlerts(r.getData()).reduce(function(s, x) { return s + (w[x.sev] || 0); }, 0);
+                        };
+                        return score(aRow) - score(bRow);
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (d.is_parent || d.isParent) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const alerts = forecastRowAlerts(d);
+                        if (!alerts.length) {
+                            const okTip = String(d.nr || '').trim().toUpperCase() === 'NR'
+                                ? 'NR (do not reorder): no alerts checked'
+                                : 'No issues found. Ready to purchase.';
+                            return '<span style="display:block;text-align:center;color:#16a34a;font-weight:700;" title="' + okTip + '">&#10003;</span>';
+                        }
+                        const rank = { high: 3, med: 2, low: 1 };
+                        const top = alerts.reduce(function(a, b) { return rank[b.sev] > rank[a.sev] ? b : a; });
+                        const colors = {
+                            high: { bg: '#fee2e2', fg: '#b91c1c', bd: '#fca5a5' },
+                            med:  { bg: '#fef3c7', fg: '#a16207', bd: '#fcd34d' },
+                            low:  { bg: '#f3f4f6', fg: '#4b5563', bd: '#d1d5db' }
+                        };
+                        const c = colors[top.sev];
+                        const sevName = { high: 'CRITICAL', med: 'REVIEW', low: 'INFO' };
+                        const tip = alerts.map(function(a) {
+                            return '[' + sevName[a.sev] + '] ' + a.label + ': ' + a.text;
+                        }).join('\n');
+                        const safeTip = tip.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/\n/g, '&#10;');
+                        const safeLabel = String(top.label).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                        const more = alerts.length > 1 ? ' +' + (alerts.length - 1) : '';
+                        return '<span style="display:inline-block;max-width:100%;padding:1px 6px;border-radius:10px;font-size:0.68rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help;' +
+                            'background:' + c.bg + ';color:' + c.fg + ';border:1px solid ' + c.bd + ';" title="' + safeTip + '">' +
+                            '&#9888; ' + safeLabel + more + '</span>';
+                    }
+                },
+                {
                     title: "INV",
                     field: "INV",
                     accessor: row => (row ? row["INV"] : 0),
@@ -3201,6 +3334,31 @@
                             return `<div class="text-center"><span class="forecast-dil-pct" style="color:${col};">${percent}%</span></div>`;
                         }
                         return `<div class="text-center"><span class="forecast-dil-pct" style="color:#b71c1c;">0%</span></div>`;
+                    }
+                },
+                {
+                    title: "Return Rate",
+                    field: "return_rate",
+                    headerSort: true,
+                    hozAlign: "center",
+                    width: 80,
+                    minWidth: 68,
+                    sorter: "number",
+                    headerTooltip: "Return Rate = returned qty (last 12 months, refund records) ÷ units sold (last 12 months + L30)",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        const v = parseFloat(d.return_rate);
+                        if (!Number.isFinite(v)) {
+                            return '<span style="display:block;text-align:center;color:#6c757d;">-</span>';
+                        }
+                        const retQty = parseFloat(d.return_qty) || 0;
+                        const sold = parseFloat(d.return_sold_qty) || 0;
+                        let col = '#28a745';
+                        if (v >= 10) col = '#a00211';
+                        else if (v >= 5) col = '#B8860B';
+                        const tip = 'Returned ' + retQty + ' ÷ sold ' + sold;
+                        return '<span style="display:block;text-align:center;font-weight:700;color:' + col + ';" title="' + tip + '">' +
+                            v.toFixed(1) + '%</span>';
                     }
                 },
                 {
@@ -4471,6 +4629,7 @@
                     const children = childrenByParent[row.parentKey] || [];
 
                     let sumInv = 0, sumL30 = 0, sumOrderGiven = 0, sumTransit = 0;
+                    let sumReturnQty = 0, sumReturnSold = 0;
                     let sumToOrder = 0, sumMOQ = 0, sumTwoOrderQty = 0, sumApprReqQty = 0;
                     let gpftSum = 0, gpftCnt = 0;
                     let adSum   = 0, adCnt   = 0;
@@ -4488,6 +4647,8 @@
                         sumL30         += (parseFloat(c["L30"])         || (raw && parseFloat(raw["L30"]))         || 0);
                         sumOrderGiven  += (parseFloat(c.order_given)    || (raw && parseFloat(raw.order_given))    || 0);
                         sumTransit     += (parseFloat(c.transit)        || (raw && parseFloat(raw.transit))        || 0);
+                        sumReturnQty   += (parseFloat(c.return_qty)     || 0);
+                        sumReturnSold  += (parseFloat(c.return_sold_qty) || 0);
                         sumToOrder     += (parseFloat(c.to_order)       || 0);
                         if (String(c.nr ?? raw?.nr ?? '').trim().toUpperCase() !== 'NR') {
                             sumMOQ     += (parseFloat(c.MOQ)            || (raw && parseFloat(raw.MOQ))            || 0);
@@ -4548,6 +4709,9 @@
                     row.rating       = ratCnt  ? Math.round(ratSum  / ratCnt  * 10) / 10 : null;
                     row.INV          = sumInv;
                     row["L30"]       = sumL30;
+                    row.return_qty   = sumReturnQty;
+                    row.return_sold_qty = sumReturnSold;
+                    row.return_rate  = sumReturnSold > 0 ? Math.round((sumReturnQty / sumReturnSold) * 1000) / 10 : null;
                     row.order_given  = sumOrderGiven;
                     row.transit      = sumTransit;
                     row.to_order     = sumToOrder;
@@ -6137,8 +6301,8 @@
             const FA_COL_GROUP_KEYS = ['basic', 'grp1', 'grp2', 'others'];
             const FA_COL_GROUP_LABELS = { basic: 'basic', grp1: 'GRP1', grp2: 'GRP2', others: 'Others' };
             const FA_COL_GROUPS = {
-                basic: ['Image', 'Parent', 'SKU', 'mfrg_supplier', 'Category', 'stage', 'exec'],
-                grp1: ['INV', 'L30', 'ov_dil', 'days_cover', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'moq_days', 'nr', 'date_apprvl', 'TAT'],
+                basic: ['Image', 'Parent', 'SKU', 'alert', 'mfrg_supplier', 'Category', 'stage', 'exec'],
+                grp1: ['INV', 'L30', 'ov_dil', 'return_rate', 'days_cover', 'msl', 'to_order', 'two_order_qty', 'order_given', 'readyToShipQty', 'transit', 'MOQ', 'moq_days', 'nr', 'date_apprvl', 'TAT'],
                 grp2: ['CP', 'LP', 'cbm', 'total_cbm', 'avg_nroi_pct', 'avg_npft_pct', 'mfrg_order_date', 'r2s_amount', 'r2s_new_photo'],
                 others: [],
             };

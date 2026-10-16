@@ -237,6 +237,22 @@
             'ebaySprcDilChannel' => 'temu',
             'ebaySprcDilClampToNearest' => true,
         ])
+        .nto-server-push-note {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
+            white-space: nowrap;
+            padding: 4px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 999px;
+            background: #f1f5f9;
+            font-size: 12px;
+            font-weight: 700;
+            color: #475569;
+            line-height: 1.2;
+            margin: 0;
+        }
         .nto-reload-push-switch {
             display: inline-flex;
             align-items: center;
@@ -433,16 +449,10 @@
     </style>
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
-            <label class="nto-reload-push-switch{{ !empty($newtemuonePageReloadPushEnabled) ? '' : ' is-off' }}"
-                id="nto-reload-push-wrap"
-                title="When ON, this page queues S Base Prc for blue-triangle SKUs only (S PRC ≠ Temu Price) on load and when you flip the switch. When OFF, nothing auto-pushes. Progress shows in the bar.">
-                <span class="nto-reload-push-text">
-                    Push on reload
-                    <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemuonePageReloadPushEnabled) ? 'On' : 'Off' }}</span>
-                </span>
-                <input type="checkbox" role="switch" id="nto-reload-push-switch"
-                    {{ !empty($newtemuonePageReloadPushEnabled) ? 'checked' : '' }}>
-            </label>
+            <span class="nto-server-push-note" id="nto-reload-push-wrap"
+                title="Auto-push is off. Prices push only when you click a push button.">
+                <i class="fas fa-hand-pointer"></i> Auto-push off - push by button
+            </span>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
                 <div class="nto-reload-push-progress-track">
@@ -1323,7 +1333,7 @@
         const n = await ntoPersistDisplayedSprice();
         if (opts.push === true) {
             window._ntoReloadPushQueued = false;
-            if (typeof ntoTryQueuePushOnReload === 'function') ntoTryQueuePushOnReload();
+            if (typeof ntoTryQueuePushOnReload === 'function') ntoTryQueuePushOnReload({ manual: true });
         }
         return n;
     }
@@ -1467,6 +1477,25 @@
         const lp = parseFloat(row && row.lp) || 0;
         if (snpft == null || !(lp > 0)) return null;
         return (snpft / lp) * 100;
+    }
+
+    /**
+     * Sorter for columns whose displayed value is computed client-side (live S PRC cap, Ads%, etc.).
+     * The stored row field can be null/stale, so sort by the same function the formatter uses.
+     * Rows with no value ("—") always sort as lowest.
+     */
+    function temuComputedSorter(valueFn) {
+        return function(a, b, aRow, bRow) {
+            const toNum = function(row) {
+                let v = null;
+                try { v = valueFn(row.getData()); } catch (e) { v = null; }
+                return (v == null || !isFinite(v)) ? -Infinity : v;
+            };
+            const x = toNum(aRow);
+            const y = toNum(bRow);
+            if (x === y) return 0;
+            return x < y ? -1 : 1;
+        };
     }
 
     // CVR 30 vs CVR 60, ±0.1pp dead band. Same rule the Amazon tabulator uses for its
@@ -2083,8 +2112,9 @@
     function ntoPushCsrf() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     }
+    // Auto-push is permanently OFF: prices push only when the user clicks a push button.
     function ntoPageReloadPushAllowed() {
-        return ntoPageReloadPushEnabled !== false;
+        return false;
     }
     function syncNtoReloadPushSwitchUi() {
         const on = ntoPageReloadPushAllowed();
@@ -2411,13 +2441,14 @@
     window.ntoPushLeftoverBlues = ntoPushLeftoverBlues;
     function ntoTryQueuePushOnReload(opts) {
         opts = opts || {};
-        if (!ntoPageReloadPushAllowed()) return;
+        // Only an explicit user action (e.g. Dil Save & push) may queue a push.
+        if (!opts.manual) return;
         if (window._ntoReloadPushQueued) return;
         const retry = opts.retry || 0;
         if (typeof table === 'undefined' || !table || typeof table.getDataCount !== 'function' || table.getDataCount() === 0) {
             if (retry < 12) {
                 setTimeout(function() {
-                    ntoTryQueuePushOnReload({ retry: retry + 1 });
+                    ntoTryQueuePushOnReload({ retry: retry + 1, manual: true });
                 }, 400);
             }
             return;
@@ -3329,7 +3360,7 @@
                     field: 'roi_percent',
                     hozAlign: 'center',
                     width: 60,
-                    sorter: 'number',
+                    sorter: temuComputedSorter(temuGroiPercent),
                     headerTooltip: 'GROI% = Gpft ÷ LP. Gpft = (R Price × Temu margin) − Temu Ship − LP. Margin from marketplace_percentages "Temu".',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3347,7 +3378,7 @@
                     field: 'profit_percent',
                     hozAlign: 'center',
                     width: 60,
-                    sorter: 'number',
+                    sorter: temuComputedSorter(temuGpftPercent),
                     headerTooltip: 'GPFT% = Gpft ÷ T Price. Gpft = (R Price × Temu margin) − Temu Ship − LP. Margin from marketplace_percentages "Temu".',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3365,7 +3396,7 @@
                     field: 'nroi_percent',
                     hozAlign: 'center',
                     width: 60,
-                    sorter: 'number',
+                    sorter: temuComputedSorter(temuNroiPercent),
                     headerTooltip: 'GNROI% = GNPFT ÷ LP. GNPFT = Gpft − (T Price × Ads%). Same formula as /temu2-decrease NROI.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3383,7 +3414,7 @@
                     field: 'npft_percent',
                     hozAlign: 'center',
                     width: 60,
-                    sorter: 'number',
+                    sorter: temuComputedSorter(temuNpftPercent),
                     headerTooltip: 'GNPFT% = GNPFT ÷ T Price. GNPFT = Gpft − (T Price × Ads%). Ads% is the channel Ads badge — same formula as /temu2-decrease NPFT.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3600,7 +3631,7 @@
                     field: 'sgroi_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
+                    sorter: temuComputedSorter(temuSgroiPercent),
                     headerTooltip: 'SGROI% = SPFT ÷ LP. Live ROI at S PRC: (S R Prc × 0.95 − Temu Ship − LP) / LP. Dil + CVR set SNROI, not this column.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3617,7 +3648,7 @@
                     field: 'sgpft_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
+                    sorter: temuComputedSorter(temuSgpftPercent),
                     headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3635,7 +3666,7 @@
                     field: 'snroi_percent',
                     hozAlign: 'center',
                     width: 70,
-                    sorter: 'number',
+                    sorter: temuComputedSorter(temuSnroiPercent),
                     headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. S PRC is solved so this matches the Dil + CVR target. SGROI is the gross ROI on that same price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3660,7 +3691,7 @@
                     field: 'snpft_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
+                    sorter: temuComputedSorter(temuSnpftPercent),
                     headerTooltip: 'SNPFT% = SNPFT ÷ S PRC. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();

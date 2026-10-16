@@ -18,17 +18,47 @@ class GoogleSkuCompetitor extends Model
         'product_title',
         'image',
         'price',
+        'shipping',
         'ignored',
         'rating',
         'reviews',
     ];
 
     protected $casts = [
-        'price' => 'decimal:2',
+        'shipping' => 'decimal:2',
         'ignored' => 'boolean',
         'rating' => 'decimal:2',
         'reviews' => 'integer',
     ];
+
+    /**
+     * Item price as stored (without shipping).
+     */
+    public function getBasePriceAttribute(): float
+    {
+        return round((float) ($this->attributes['price'] ?? 0), 2);
+    }
+
+    /**
+     * `price` always reads as the final LMP price: item price + shipping.
+     * Every LMP consumer (lowest, sort, grids, modals) therefore includes shipping.
+     * The raw item price is available as `base_price`.
+     */
+    public function getPriceAttribute($value): string
+    {
+        $base = (float) ($value ?? 0);
+        $shipping = (float) ($this->attributes['shipping'] ?? 0);
+
+        return number_format($base + max($shipping, 0), 2, '.', '');
+    }
+
+    /**
+     * SQL fragment for the final price (item price + shipping).
+     */
+    public static function totalPriceSql(): string
+    {
+        return '(price + COALESCE(shipping, 0))';
+    }
 
     public static function normalizeSkuKey(?string $sku): string
     {
@@ -44,7 +74,7 @@ class GoogleSkuCompetitor extends Model
     {
         $dir = strtolower($direction) === 'desc' ? 'DESC' : 'ASC';
 
-        return $query->orderByRaw('CAST(price AS DECIMAL(10,2)) ' . $dir);
+        return $query->orderByRaw('CAST(' . self::totalPriceSql() . ' AS DECIMAL(10,2)) ' . $dir);
     }
 
     public static function lowestFromCollection($items)
@@ -240,7 +270,7 @@ class GoogleSkuCompetitor extends Model
         self::query()
             ->where('marketplace', $marketplace)
             ->wherePositivePrice()
-            ->select(['id', 'sku', 'price', 'product_id', 'source', 'product_link', 'ignored'])
+            ->select(['id', 'sku', 'price', 'shipping', 'product_id', 'source', 'product_link', 'ignored'])
             ->orderBy('id')
             ->chunkById(3000, function ($rows) use (&$details) {
                 foreach ($rows as $row) {

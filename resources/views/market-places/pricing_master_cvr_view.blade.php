@@ -5316,6 +5316,9 @@
         function syncLmpEditDraftFromForm() {
             if (!lmpEditState) return;
             lmpEditState.draftPrice = $('#lmpAddPrice').val();
+            if ($('#lmpAddShipping').length) {
+                lmpEditState.draftShip = $('#lmpAddShipping').val();
+            }
             lmpEditState.draftLink = $('#lmpAddLink').val();
             if ($('#lmpAddId').length) {
                 lmpEditState.draftExtId = $('#lmpAddId').val();
@@ -5353,6 +5356,12 @@
                     ? lmpEditState.draftExtId
                     : (lmpEditState.extId || '');
                 $('#lmpAddPrice').val(priceVal);
+                if ($('#lmpAddShipping').length) {
+                    const shipVal = lmpEditState.draftShip != null && lmpEditState.draftShip !== ''
+                        ? lmpEditState.draftShip
+                        : (parseFloat(lmpEditState.origShip) > 0 ? Number(lmpEditState.origShip).toFixed(2) : '');
+                    $('#lmpAddShipping').val(shipVal);
+                }
                 $('#lmpAddLink').val(linkVal);
                 if ($('#lmpAddId').length) {
                     $('#lmpAddId').val(extVal);
@@ -5376,6 +5385,7 @@
                 channel: row.channel,
                 extId: row.extId || '',
                 origPrice: row.price,
+                origShip: row.channel === 'google' ? (row.shipCost || 0) : 0,
                 origLink: row.link || '',
                 draftPrice: priceStr,
                 draftLink: row.link || '',
@@ -5700,13 +5710,18 @@
             });
 
             googleList.forEach(function(google) {
-                const price = parseFloat(google.price) || 0;
-                if (price <= 0) return;
+                // google.price = final LMP price (item + shipping); base_price = item price.
+                const totalPrice = parseFloat(google.price) || 0;
+                if (totalPrice <= 0) return;
+                const gShip = Math.max(0, parseFloat(google.shipping) || 0);
+                const price = google.base_price != null ? (parseFloat(google.base_price) || totalPrice) : totalPrice;
                 rows.push({
                     channel: 'google',
                     id: google.id,
                     sku: sku,
                     price: price,
+                    shipCost: gShip,
+                    totalPrice: totalPrice,
                     ignored: !!google.ignored,
                     link: google.link || google.product_link || '',
                     extId: google.product_id || '',
@@ -5715,7 +5730,7 @@
                     rating: google.rating != null ? parseFloat(google.rating) : null,
                     reviews: google.reviews != null ? parseInt(google.reviews) : null,
                     old_price: null,
-                    delivery: '',
+                    delivery: gShip,
                     source: google.source || '',
                 });
             });
@@ -6097,6 +6112,10 @@
                 + idField
                 + '<div class="' + (idField ? 'col-3' : 'col-4') + '"><label class="form-label mb-0 small">Price</label>'
                 + '<input type="text" class="form-control" id="lmpAddPrice" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>'
+                + (ch === 'google'
+                    ? '<div class="col-2"><label class="form-label mb-0 small" title="Added to the price: LMP = Price + Shipping">Shipping</label>'
+                        + '<input type="text" class="form-control" id="lmpAddShipping" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>'
+                    : '')
                 + '<div class="' + (idField ? 'col-3' : 'col-5') + '"><label class="form-label mb-0 small">Link</label>'
                 + '<input type="text" class="form-control" id="lmpAddLink" placeholder="https://..." autocomplete="off"></div>'
                 + '<div class="col-auto d-flex gap-1">'
@@ -6133,7 +6152,7 @@
             return m ? m[1] : '';
         }
 
-        $(document).on('input change', '#lmpAddPrice, #lmpAddLink, #lmpAddId', function() {
+        $(document).on('input change', '#lmpAddPrice, #lmpAddShipping, #lmpAddLink, #lmpAddId', function() {
             syncLmpEditDraftFromForm();
         });
 
@@ -6310,6 +6329,8 @@
             const editId = ($('#lmpEditId').val() || (lmpEditState && lmpEditState.id) || '').toString();
             const isEdit = !!editId;
             let price = parseLmpPriceInput($('#lmpAddPrice').val());
+            const lmpShipRaw = parseLmpPriceInput($('#lmpAddShipping').val());
+            const lmpShip = isNaN(lmpShipRaw) ? 0 : Math.max(0, lmpShipRaw);
             let link = ($('#lmpAddLink').val() || '').trim();
             let idVal = ($('#lmpAddId').val() || '').trim();
             if (!(price > 0)) {
@@ -6426,8 +6447,8 @@
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
                     data: isEdit
-                        ? { id: editId, product_id: idVal, price: price, product_link: link || null }
-                        : { sku: sku, product_id: idVal, price: price, product_link: link || null, source: 'manual' },
+                        ? { id: editId, product_id: idVal, price: price, shipping: lmpShip, product_link: link || null }
+                        : { sku: sku, product_id: idVal, price: price, shipping: lmpShip, product_link: link || null, source: 'manual' },
                     success: function(r) { done(!!(r.success || r.data), r.message || (isEdit ? 'Google LMP updated' : 'Google LMP added')); },
                     error: function(xhr) {
                         done(false, (xhr.responseJSON && (xhr.responseJSON.error || xhr.responseJSON.message)) || (isEdit ? 'Failed to update Google LMP' : 'Failed to add Google LMP'));

@@ -742,6 +742,28 @@ class ForecastAnalysisController extends Controller
             Log::warning('Forecast: failed to load comparison_data availability: '.$e->getMessage());
         }
 
+        // Returned qty per SKU over the last 12 months (refund_records, same window as the
+        // sales basis used for MSL). Return Rate = returned qty ÷ units sold (msl_basis_qty).
+        $returnQtyBySku = [];
+        try {
+            if (Schema::hasTable('refund_records')) {
+                $returnRows = DB::table('refund_records')
+                    ->where('created_at', '>=', Carbon::now()->subMonths(12))
+                    ->groupBy('sku')
+                    ->selectRaw('sku, SUM(qty) as total_qty')
+                    ->get();
+                foreach ($returnRows as $returnRow) {
+                    $returnSku = $normalizeSku($returnRow->sku ?? '');
+                    if ($returnSku === '') {
+                        continue;
+                    }
+                    $returnQtyBySku[$returnSku] = ($returnQtyBySku[$returnSku] ?? 0) + (int) $returnRow->total_qty;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Forecast: failed to load refund_records return qty: '.$e->getMessage());
+        }
+
         foreach ($productListData as $prodData) {
             $sheetSku = $normalizeSku($prodData->sku);
             if (empty($sheetSku)) continue;
@@ -1099,6 +1121,14 @@ class ForecastAnalysisController extends Controller
                 $item->m_avg = $basisMonths > 0 ? round($l30Qty / $basisMonths, 6) : 0.0;
                 $item->TAT = null;
             }
+
+            // Return Rate = returned qty (last 12 months) ÷ units sold over the MSL basis window.
+            $item->return_qty = (int) ($returnQtyBySku[$sheetSku] ?? 0);
+            $returnSoldQty = (float) ($item->msl_basis_qty ?? 0);
+            $item->return_sold_qty = (int) round($returnSoldQty);
+            $item->return_rate = $returnSoldQty > 0
+                ? round(($item->return_qty / $returnSoldQty) * 100, 1)
+                : null;
 
             // Total CBM column on /forecast.analysis uses the formula:
             //     total_cbm = MSL (computed safety / min stock level) × CBM per unit

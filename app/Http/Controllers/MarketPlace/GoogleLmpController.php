@@ -83,7 +83,10 @@ class GoogleLmpController extends Controller
                     'sku' => $comp->sku,
                     'product_id' => $comp->product_id,
                     'source' => $comp->source,
+                    // price = final LMP price (item price + shipping)
                     'price' => (float) ($comp->price ?? 0),
+                    'base_price' => (float) $comp->base_price,
+                    'shipping' => (float) ($comp->shipping ?? 0),
                     'ignored' => (bool) ($comp->ignored ?? false),
                     'link' => $comp->product_link,
                     'product_link' => $comp->product_link,
@@ -111,6 +114,7 @@ class GoogleLmpController extends Controller
                 'product_id' => 'required|string',
                 'source' => 'nullable|string',
                 'price' => 'required|numeric|min:0',
+                'shipping' => 'nullable|numeric|min:0',
                 'product_link' => 'nullable|string',
                 'product_title' => 'nullable|string',
                 'search_query' => 'nullable|string',
@@ -132,6 +136,7 @@ class GoogleLmpController extends Controller
                 'product_id' => $validated['product_id'],
                 'source' => $validated['source'] ?? null,
                 'price' => $validated['price'],
+                'shipping' => $validated['shipping'] ?? 0,
                 'product_link' => $validated['product_link'] ?? null,
                 'product_title' => $validated['product_title'] ?? null,
                 'search_query' => $validated['search_query'] ?? null,
@@ -225,6 +230,7 @@ class GoogleLmpController extends Controller
             $validated = $request->validate([
                 'id' => 'required|integer',
                 'price' => 'required|numeric|min:0',
+                'shipping' => 'nullable|numeric|min:0',
                 'product_link' => 'nullable|string',
                 'product_id' => 'nullable|string',
             ]);
@@ -235,7 +241,15 @@ class GoogleLmpController extends Controller
             }
 
             DB::beginTransaction();
-            $lmp->price = $validated['price'];
+            // With `shipping` sent: price = item price. Without it: price is the displayed
+            // final price (item + shipping), so keep the saved shipping and back it out.
+            if (array_key_exists('shipping', $validated) && $validated['shipping'] !== null) {
+                $lmp->shipping = $validated['shipping'];
+                $lmp->price = $validated['price'];
+            } else {
+                $shipping = (float) ($lmp->shipping ?? 0);
+                $lmp->price = max((float) $validated['price'] - $shipping, 0.01);
+            }
             if (array_key_exists('product_link', $validated)) {
                 $lmp->product_link = $validated['product_link'] ?: null;
             }

@@ -5560,6 +5560,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shortfall.analysis', action: [ShortFallAnalysisController::class, 'shortFallAnalysis'])->name('shortfall.analysis');
     Route::get('/costprice.analysis', action: [CostpriceAnalysisController::class, 'costpriceAnalysis'])->name('costprice.analysis');
     Route::get('/forecast.analysis', action: [ForecastAnalysisController::class, 'forecastAnalysis'])->name('forecast.analysis');
+    Route::get('/forecast.analysis/spare-parts', [SpareController::class, 'purchaseSheet'])->name('forecast.analysis.spare-parts');
     Route::get('/transit', action: [ForecastAnalysisController::class, 'transit'])->name('transit');
     Route::get('/forecast-analysis/get-sku-quantity', action: [ForecastAnalysisController::class, 'getSkuQuantity'])->name('forecast.analysis.get.sku.quantity');
     Route::get('/forecast-analysis/history', action: [ForecastAnalysisController::class, 'getForecastAnalysisHistory'])->name('forecast.analysis.history');

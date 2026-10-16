@@ -3061,6 +3061,9 @@
                             <a href="{{ route('forecast.analysis') }}">Purchase Forecast Analysis</a>
                         </li>
                         <li>
+                            <a href="{{ route('forecast.analysis.spare-parts') }}">Spare Parts Purchase Sheet</a>
+                        </li>
+                        <li>
                             <a href="{{ route('to.order.analysis') }}">Purchase Order</a>
                         </li>
                         <li>
