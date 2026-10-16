@@ -2945,6 +2945,9 @@
                             <a href="{{ route('variation.master') }}">Variation Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('variation.listing.content') }}">Variation Title, Bullet Points and Description</a>
+                        </li>
+                        <li>
                             <a href="{{ route('raw.images') }}">
                                 PM Raw Images
                                 @php $rawImagesMissingCount = \App\Http\Controllers\ProductMaster\RawImagesController::missingCountForSidebar(); @endphp

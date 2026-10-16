@@ -88,6 +88,7 @@ class TikTokListingPublishService
         }
 
         $description = trim((string) ($details['description'] ?? $hydrated['description'] ?? ''));
+        $description = \App\Support\Marketplace\VariationListingContent::preferDescription($product, $description);
         if ($description === '') {
             $description = '<p>'.e($title).'</p>';
         }
@@ -519,6 +520,10 @@ class TikTokListingPublishService
      */
     private function resolveTitle(ProductMaster $product, string $sku, array $hydrated = []): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
             $title = trim((string) ($product->{$field} ?? ''));
             if ($title !== '') {

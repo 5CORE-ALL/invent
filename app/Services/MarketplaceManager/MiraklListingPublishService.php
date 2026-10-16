@@ -721,6 +721,10 @@ class MiraklListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach (['title80', 'title100', 'title150', 'title60'] as $field) {
             $title = trim((string) ($product->{$field} ?? ''));
             if ($title !== '') {
@@ -739,6 +743,10 @@ class MiraklListingPublishService
 
     private function resolveDescription(ProductMaster $product, string $title): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::descriptionFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         foreach (['product_description', 'description_800', 'description_600', 'description_1000', 'description_1500'] as $col) {
             $text = trim((string) ($product->{$col} ?? ''));
             if ($text !== '') {
@@ -751,6 +759,10 @@ class MiraklListingPublishService
 
     private function resolveBullets(ProductMaster $product): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
+        if ($fromVariation !== null) {
+            return implode("\n", $fromVariation);
+        }
         $lines = [];
         foreach (['bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5'] as $col) {
             $line = trim((string) ($product->{$col} ?? ''));

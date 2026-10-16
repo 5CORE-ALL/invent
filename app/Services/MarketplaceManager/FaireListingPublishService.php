@@ -313,7 +313,10 @@ class FaireListingPublishService
             $variants[] = $this->variantPayload($row, $optionName);
         }
 
-        $description = trim((string) ($primary->product_description ?? $primary->description_800 ?? $primary->description_600 ?? ''));
+        $description = \App\Support\Marketplace\VariationListingContent::preferDescription(
+            $primary,
+            trim((string) ($primary->product_description ?? $primary->description_800 ?? $primary->description_600 ?? ''))
+        );
         if (strlen($description) > 1000) {
             $description = substr($description, 0, 997).'...';
         }
@@ -920,6 +923,10 @@ class FaireListingPublishService
 
     private function resolveTitle(ProductMaster $product, string $sku): string
     {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::titleFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
         $shopify = ShopifySku::mapByProductSkus([$sku])->get($sku);
 
         return ListingManagerAmazonHydrator::titleFromProductMaster(

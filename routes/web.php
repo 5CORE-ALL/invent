@@ -276,6 +276,7 @@ use App\Http\Controllers\ProductMaster\TechnicalSpecificationsController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\ProductMaster\ImageAuditController;
 use App\Http\Controllers\ProductMaster\ImageMasterController;
+use App\Http\Controllers\ProductMaster\VariationListingContentController;
 use App\Http\Controllers\ProductMaster\VariationMasterController;
 use App\Http\Controllers\ProductMaster\VariationNameThumbnailController;
 use App\Http\Controllers\ProductMaster\RawImagesController;
@@ -4544,6 +4545,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/variation-master/save', [VariationMasterController::class, 'save'])->name('variation.master.save');
     Route::get('/variation-master/download', [VariationMasterController::class, 'download'])->name('variation.master.download');
     Route::post('/variation-master/import', [VariationMasterController::class, 'import'])->name('variation.master.import');
+
+    Route::get('/variation-master/content', [VariationListingContentController::class, 'index'])->name('variation.listing.content');
+    Route::get('/variation-master/content/data', [VariationListingContentController::class, 'getData'])->name('variation.listing.content.data');
+    Route::post('/variation-master/content/save', [VariationListingContentController::class, 'save'])->name('variation.listing.content.save');
+    Route::get('/variation-master/content/download', [VariationListingContentController::class, 'download'])->name('variation.listing.content.download');
+    Route::post('/variation-master/content/import', [VariationListingContentController::class, 'import'])->name('variation.listing.content.import');
 
     Route::get('/image-audit', [ImageAuditController::class, 'index'])->name('image.audit');
     Route::get('/image-audit/data', [ImageAuditController::class, 'data'])->name('image.audit.data');
