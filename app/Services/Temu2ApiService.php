@@ -1121,22 +1121,51 @@ class Temu2ApiService extends TemuApiService
         }
 
         $updated = 0;
+        $alive = [];
+        $havePortal = false;
+
+        $listSeen = [];
+        $listComplete = true;
         foreach ([3 => 'inactive', 2 => 'active'] as $searchType => $status) {
-            $updated += $this->upsertSkuListQueryStatus((int) $searchType, $status);
+            $result = $this->upsertSkuListQueryStatus((int) $searchType, $status, $listSeen);
+            $updated += $result['updated'];
+            $listComplete = $listComplete && $result['complete'];
         }
+        if ($listComplete && $listSeen !== []) {
+            $alive = $listSeen;
+            $havePortal = true;
+        }
+
+        $retrieveSeen = [];
+        $retrieveComplete = true;
         foreach (['INACTIVE' => 'inactive', 'ACTIVE' => 'active'] as $searchType => $status) {
-            $updated += $this->upsertSkuRetrieveStatus((string) $searchType, $status);
+            $result = $this->upsertSkuRetrieveStatus((string) $searchType, $status, $retrieveSeen);
+            $updated += $result['updated'];
+            $retrieveComplete = $retrieveComplete && $result['complete'];
+        }
+        if ($retrieveComplete && $retrieveSeen !== []) {
+            $alive += $retrieveSeen;
+            $havePortal = true;
+        }
+
+        if ($havePortal) {
+            $updated += $this->markTemu2SkusMissingFromPortal($alive);
         }
 
         return $updated;
     }
 
-    protected function upsertSkuListQueryStatus(int $skuSearchType, string $listingStatus): int
+    /**
+     * @param  array<string, true>  $seen
+     * @return array{updated: int, complete: bool}
+     */
+    protected function upsertSkuListQueryStatus(int $skuSearchType, string $listingStatus, array &$seen): array
     {
         $pageNumber = 1;
         $pageSize = 100;
         $totalPages = null;
         $updated = 0;
+        $complete = true;
         $url = $this->openApiRouterUrl();
 
         do {
@@ -1159,6 +1188,7 @@ class Temu2ApiService extends TemuApiService
                     'page' => $pageNumber,
                     'error' => $e->getMessage(),
                 ]);
+                $complete = false;
                 break;
             }
             $data = $response->json() ?? [];
@@ -1167,6 +1197,7 @@ class Temu2ApiService extends TemuApiService
                     'skuSearchType' => $skuSearchType,
                     'error' => $data['errorMsg'] ?? $response->status(),
                 ]);
+                $complete = false;
                 break;
             }
             $result = $data['result'] ?? [];
@@ -1178,6 +1209,7 @@ class Temu2ApiService extends TemuApiService
                 if (! is_array($item)) {
                     continue;
                 }
+                $this->rememberTemu2PortalSku($seen, $item);
                 $updated += $this->persistTemu2SkuListingRow($item, $listingStatus) ? 1 : 0;
             }
             if ($totalPages === null) {
@@ -1188,13 +1220,22 @@ class Temu2ApiService extends TemuApiService
             usleep(200000);
         } while ($pageNumber <= ($totalPages ?? 1) && $pageNumber <= 1000);
 
-        return $updated;
+        if (($totalPages ?? 1) >= $pageNumber && $pageNumber > 1000) {
+            $complete = false;
+        }
+
+        return ['updated' => $updated, 'complete' => $complete];
     }
 
-    protected function upsertSkuRetrieveStatus(string $skuSearchType, string $listingStatus): int
+    /**
+     * @param  array<string, true>  $seen
+     * @return array{updated: int, complete: bool}
+     */
+    protected function upsertSkuRetrieveStatus(string $skuSearchType, string $listingStatus, array &$seen): array
     {
         $pageToken = null;
         $updated = 0;
+        $complete = true;
         $pages = 0;
         do {
             $requestBody = [
@@ -1211,6 +1252,7 @@ class Temu2ApiService extends TemuApiService
                     'skuSearchType' => $skuSearchType,
                     'error' => $data['errorMsg'] ?? '',
                 ]);
+                $complete = false;
                 break;
             }
             $items = $data['result']['skuList'] ?? [];
@@ -1221,6 +1263,7 @@ class Temu2ApiService extends TemuApiService
                 if (! is_array($item)) {
                     continue;
                 }
+                $this->rememberTemu2PortalSku($seen, $item);
                 $updated += $this->persistTemu2SkuListingRow($item, $listingStatus) ? 1 : 0;
             }
             $pageToken = $data['result']['pagination']['nextToken'] ?? null;
@@ -1228,7 +1271,77 @@ class Temu2ApiService extends TemuApiService
             usleep(200000);
         } while ($pageToken && $pages < 500);
 
-        return $updated;
+        if ($pageToken) {
+            $complete = false;
+        }
+
+        return ['updated' => $updated, 'complete' => $complete];
+    }
+
+    /**
+     * @param  array<string, true>  $seen
+     * @param  array<string, mixed>  $item
+     */
+    protected function rememberTemu2PortalSku(array &$seen, array $item): void
+    {
+        $sku = trim((string) ($item['outSkuSn'] ?? $item['skuSn'] ?? $item['sku'] ?? ''));
+        if ($sku === '') {
+            return;
+        }
+        $seen[strtoupper($sku)] = true;
+    }
+
+    /**
+     * Local rows that still have a goods id but were not in a completed Temu catalog
+     * pull are no longer listed. Missing Listing counts them again.
+     *
+     * @param  array<string, true>  $seen
+     */
+    protected function markTemu2SkusMissingFromPortal(array $seen): int
+    {
+        if ($seen === []) {
+            return 0;
+        }
+
+        $marked = 0;
+        Temu2Metric::query()
+            ->whereNotNull('goods_id')
+            ->where('goods_id', '!=', '')
+            ->where(function ($query) {
+                $query->whereNull('listing_status')
+                    ->orWhereRaw("LOWER(REPLACE(TRIM(listing_status), ' ', '_')) NOT IN ('deleted', 'delete', 'delisted', 'unlisted', 'not_listed', 'missing')");
+            })
+            ->select(['id', 'sku'])
+            ->chunkById(500, function ($rows) use ($seen, &$marked) {
+                $ids = [];
+                foreach ($rows as $row) {
+                    $sku = strtoupper(trim((string) $row->sku));
+                    if ($sku === '' || isset($seen[$sku])) {
+                        continue;
+                    }
+                    $ids[] = (int) $row->id;
+                }
+                if ($ids === []) {
+                    return;
+                }
+                $marked += Temu2Metric::query()->whereIn('id', $ids)->update([
+                    'listing_status' => 'deleted',
+                ]);
+            });
+
+        if ($marked > 0) {
+            Log::info('Temu2 listings no longer on the portal marked deleted', ['marked' => $marked]);
+            try {
+                app(\App\Services\MarketplaceManager\Temu2LiveListingsService::class)->clearCache();
+                \App\Support\Marketplace\ListingChannelCounts::refreshChannelOnMissingListingPage('temu2');
+            } catch (\Throwable $e) {
+                Log::warning('Temu2 missing-listing refresh after delete reconcile failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $marked;
     }
 
     /**
