@@ -951,6 +951,8 @@
             'graph' => 'Graph',
             'tsp' => 'TSP',
             'batch' => 'Batch',
+            'energy_star_registration' => 'Energy Star Registration',
+            'us_energy_efficiency_label' => 'US Energy Efficiency Label',
         ];
         $__cmFilterIds = [
             'battery' => 'filterBattery',
@@ -964,6 +966,8 @@
             'graph' => 'filterGraph',
             'tsp' => 'filterTsp',
             'batch' => 'filterBatch',
+            'energy_star_registration' => 'filterEnergyStar',
+            'us_energy_efficiency_label' => 'filterUsEnergyLabel',
         ];
     @endphp
 
@@ -1000,6 +1004,8 @@
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="graph" data-kpi-key="badge:compliance-master|missing_graph" data-kpi-label="Graph" data-kpi-value="0" title="Show rows with Graph REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Graph <span id="cm-summary-graph">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="tsp" data-kpi-key="badge:compliance-master|missing_tsp" data-kpi-label="TSP" data-kpi-value="0" title="Show rows with TSP REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>TSP <span id="cm-summary-tsp">(0)</span></button>
                             <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="batch" data-kpi-key="badge:compliance-master|missing_batch" data-kpi-label="Batch" data-kpi-value="0" title="Show rows with Batch REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Batch <span id="cm-summary-batch">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="energy_star_registration" data-kpi-key="badge:compliance-master|missing_energy_star_registration" data-kpi-label="Energy Star" data-kpi-value="0" title="Show rows with Energy Star Registration REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>Energy Star <span id="cm-summary-energy-star">(0)</span></button>
+                            <button type="button" class="badge bg-success cm-summary-badge" data-cm-filter="us_energy_efficiency_label" data-kpi-key="badge:compliance-master|missing_us_energy_efficiency_label" data-kpi-label="US Energy" data-kpi-value="0" title="Show rows with US Energy Efficiency Label REQ"><span class="summary-trend-dot none" role="button" tabindex="0" title="Click for rolling history"></span>US Energy <span id="cm-summary-us-energy">(0)</span></button>
                         </div>
                     </div>
                 </div>
@@ -1201,7 +1207,7 @@
             let complianceAutoSaveInFlight = false;
             let complianceAutoSaveQueued = false;
 
-            const COMPLIANCE_BULK_FIELD_KEYS = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'];
+            const COMPLIANCE_BULK_FIELD_KEYS = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch', 'energy_star_registration', 'us_energy_efficiency_label'];
             let cmSummaryBadgeFilter = null;
 
             // Get CSRF token from meta tag
@@ -2215,7 +2221,9 @@
                 logo: 'Logo',
                 graph: 'Graph',
                 tsp: 'TSP',
-                batch: 'Batch'
+                batch: 'Batch',
+                energy_star_registration: 'Energy Star Registration',
+                us_energy_efficiency_label: 'US Energy Efficiency Label'
             };
 
             const CM_FILTER_IDS = {
@@ -2229,7 +2237,9 @@
                 logo: 'filterLogo',
                 graph: 'filterGraph',
                 tsp: 'filterTsp',
-                batch: 'filterBatch'
+                batch: 'filterBatch',
+                energy_star_registration: 'filterEnergyStar',
+                us_energy_efficiency_label: 'filterUsEnergyLabel'
             };
 
             function cmPassAllHeaderFilter() {
@@ -2401,13 +2411,14 @@
 
                 COMPLIANCE_BULK_FIELD_KEYS.forEach(function(fk) {
                     const label = CM_FIELD_LABELS[fk] || fk;
+                    const wide = label.length > 12;
                     cols.push({
                         title: label,
                         field: fk,
                         headerSort: false,
                         hozAlign: 'center',
-                        minWidth: 52,
-                        widthGrow: 1,
+                        minWidth: wide ? 132 : 52,
+                        widthGrow: wide ? 1.6 : 1,
                         cssClass: 'cm-compliance-field-col',
                         titleFormatter: cmTitleWithCount(label, fk + 'MissingCount'),
                         headerFilter: cmSelectHeaderFilter(CM_FILTER_IDS[fk], fk),
@@ -2501,6 +2512,8 @@
                 let graphMissingCount = 0;
                 let tspMissingCount = 0;
                 let batchMissingCount = 0;
+                let energyStarMissingCount = 0;
+                let usEnergyMissingCount = 0;
 
                 filteredData.forEach(item => {
                     if (item.Parent) parentSet.add(item.Parent);
@@ -2520,6 +2533,8 @@
                     if (isReqFilterMatchForItem(item, 'graph')) graphMissingCount++;
                     if (isReqFilterMatchForItem(item, 'tsp')) tspMissingCount++;
                     if (isReqFilterMatchForItem(item, 'batch')) batchMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'energy_star_registration')) energyStarMissingCount++;
+                    if (isReqFilterMatchForItem(item, 'us_energy_efficiency_label')) usEnergyMissingCount++;
                 });
                 
                 const setText = function(id, text) {
@@ -2542,6 +2557,8 @@
                 setText('graphMissingCount', `(${graphMissingCount})`);
                 setText('tspMissingCount', `(${tspMissingCount})`);
                 setText('batchMissingCount', `(${batchMissingCount})`);
+                setText('energy_star_registrationMissingCount', `(${energyStarMissingCount})`);
+                setText('us_energy_efficiency_labelMissingCount', `(${usEnergyMissingCount})`);
 
                 let summaryAny = 0;
                 let summaryBattery = 0;
@@ -2555,6 +2572,8 @@
                 let summaryGraph = 0;
                 let summaryTsp = 0;
                 let summaryBatch = 0;
+                let summaryEnergyStar = 0;
+                let summaryUsEnergy = 0;
                 (Array.isArray(tableData) ? tableData : []).forEach(item => {
                     if (rowHasAnyReqCompliance(item)) summaryAny++;
                     if (isReqFilterMatchForItem(item, 'battery')) summaryBattery++;
@@ -2568,6 +2587,8 @@
                     if (isReqFilterMatchForItem(item, 'graph')) summaryGraph++;
                     if (isReqFilterMatchForItem(item, 'tsp')) summaryTsp++;
                     if (isReqFilterMatchForItem(item, 'batch')) summaryBatch++;
+                    if (isReqFilterMatchForItem(item, 'energy_star_registration')) summaryEnergyStar++;
+                    if (isReqFilterMatchForItem(item, 'us_energy_efficiency_label')) summaryUsEnergy++;
                 });
 
                 const sp = (id, val) => {
@@ -2595,6 +2616,8 @@
                 sp('cm-summary-graph', summaryGraph);
                 sp('cm-summary-tsp', summaryTsp);
                 sp('cm-summary-batch', summaryBatch);
+                sp('cm-summary-energy-star', summaryEnergyStar);
+                sp('cm-summary-us-energy', summaryUsEnergy);
                 syncComplianceSidebarBadge(summaryAny);
                 persistComplianceKpiSnapshot();
             }
@@ -2620,7 +2643,9 @@
                     logo: 'Show rows with Logo REQ',
                     graph: 'Show rows with Graph REQ',
                     tsp: 'Show rows with TSP REQ',
-                    batch: 'Show rows with Batch REQ'
+                    batch: 'Show rows with Batch REQ',
+                    energy_star_registration: 'Show rows with Energy Star Registration REQ',
+                    us_energy_efficiency_label: 'Show rows with US Energy Efficiency Label REQ'
                 };
                 document.querySelectorAll('#cm-summary-stats .cm-summary-badge').forEach(function(badge) {
                     const key = badge.getAttribute('data-cm-filter');
@@ -2934,7 +2959,9 @@
                         logo: 'filterLogo',
                         graph: 'filterGraph',
                         tsp: 'filterTsp',
-                        batch: 'filterBatch'
+                        batch: 'filterBatch',
+                        energy_star_registration: 'filterEnergyStar',
+                        us_energy_efficiency_label: 'filterUsEnergyLabel'
                     };
                     for (const key of Object.keys(fieldFilterMap)) {
                         const el = document.getElementById(fieldFilterMap[key]);
@@ -3008,7 +3035,7 @@
 
             function runComplianceExcelExport(btn) {
                     // Columns to export (excluding Image and Action)
-                    const columns = ["Parent", "SKU", "INV", "Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph", "TSP", "Batch"];
+                    const columns = ["Parent", "SKU", "INV", "Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph", "TSP", "Batch", "Energy Star Registration", "US Energy Efficiency Label"];
 
                     // Column definitions with their data keys
                     const columnDefs = {
@@ -3059,11 +3086,17 @@
                         },
                         "Batch": {
                             key: "batch"
+                        },
+                        "Energy Star Registration": {
+                            key: "energy_star_registration"
+                        },
+                        "US Energy Efficiency Label": {
+                            key: "us_energy_efficiency_label"
                         }
                     };
 
                     const complianceFieldKeysForExport = new Set([
-                        'battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'
+                        'battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch', 'energy_star_registration', 'us_energy_efficiency_label'
                     ]);
 
                     // Mirror complianceFieldCellHtml() as plain text for Excel export so the
@@ -3150,7 +3183,7 @@
                                 // Adjust width based on column type
                                 if (["Parent", "SKU"].includes(col)) {
                                     return { wch: 20 }; // Wider for text columns
-                                } else if (["Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph", "TSP", "Batch"].includes(col)) {
+                                } else if (["Supplier", "Email", "Battery", "Wireless", "Electric", "GCC", "RoHS", "Blanket", "Bluetooth", "Logo", "Graph", "TSP", "Batch", "Energy Star Registration", "US Energy Efficiency Label"].includes(col)) {
                                     return { wch: 15 };
                                 } else {
                                     return { wch: 10 }; // Default width for numeric columns
@@ -3407,10 +3440,10 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data
                     const sampleData = [
-                        ['SKU', 'Battery', 'Wireless', 'Electric', 'GCC', 'RoHS', 'Blanket', 'Bluetooth', 'Logo', 'Graph', 'TSP', 'Batch'],
-                        ['SKU001', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
-                        ['SKU002', 'REQ', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
-                        ['SKU003', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'REQ', 'N/A', 'N/A']
+                        ['SKU', 'Battery', 'Wireless', 'Electric', 'GCC', 'RoHS', 'Blanket', 'Bluetooth', 'Logo', 'Graph', 'TSP', 'Batch', 'Energy Star Registration', 'US Energy Efficiency Label'],
+                        ['SKU001', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
+                        ['SKU002', 'REQ', 'N/A', 'REQ', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'REQ', 'N/A'],
+                        ['SKU003', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'N/A', 'REQ', 'N/A', 'N/A', 'N/A', 'REQ']
                     ];
 
                     // Create workbook
@@ -3430,7 +3463,9 @@
                         { wch: 12 }, // Logo
                         { wch: 12 }, // Graph
                         { wch: 12 }, // TSP
-                        { wch: 12 }  // Batch
+                        { wch: 12 }, // Batch
+                        { wch: 28 }, // Energy Star Registration
+                        { wch: 28 }  // US Energy Efficiency Label
                     ];
 
                     // Style header row
