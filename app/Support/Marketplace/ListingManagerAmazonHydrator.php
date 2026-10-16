@@ -940,9 +940,49 @@ class ListingManagerAmazonHydrator
      */
     public static function variationSkuImageUrls(string $sku, int $limit = 9): array
     {
-        $urls = self::urlsFromImageRows(self::productImageRows($sku));
+        return self::publishHttps(array_slice(self::childImageMasterUrls($sku), 0, max(1, $limit)), $limit);
+    }
 
-        return self::publishHttps(array_slice($urls, 0, max(1, $limit)), $limit);
+    /**
+     * Photos Image Master shows for this SKU: product_images, this SKU's Product Master
+     * image slots, and this SKU's saved image_master_json. Parent photos are not included.
+     *
+     * @return list<string>
+     */
+    private static function childImageMasterUrls(string $sku): array
+    {
+        $urls = self::urlsFromImageRows(self::productImageRows($sku));
+        $push = function (mixed $raw) use (&$urls): void {
+            $url = self::publicImageUrl($raw);
+            if ($url !== '' && ! in_array($url, $urls, true)) {
+                $urls[] = $url;
+            }
+        };
+
+        $pm = self::productMaster($sku);
+        foreach (['main_image', 'image_url', 'main_image_brand', 'image_path'] as $key) {
+            $push($pm[$key] ?? null);
+        }
+        for ($i = 1; $i <= 20; $i++) {
+            $push($pm['image'.$i] ?? null);
+        }
+
+        $values = $pm['Values'] ?? $pm['values'] ?? [];
+        if (is_string($values)) {
+            $decoded = json_decode($values, true);
+            $values = is_array($decoded) ? $decoded : [];
+        }
+        if (is_array($values)) {
+            foreach (['image_path', 'main_image', 'cdn_url'] as $key) {
+                $push($values[$key] ?? null);
+            }
+        }
+
+        foreach (self::imageMasterFromMetrics($sku) as $url) {
+            $push($url);
+        }
+
+        return $urls;
     }
 
     /**
@@ -1223,7 +1263,37 @@ class ListingManagerAmazonHydrator
     public static function imageMasterUploadSources(string $sku, ?string $parentSku = null, int $limit = 9): array
     {
         if (VariationListingContent::active()) {
-            return self::uploadSourcesFromRows(self::productImageRows($sku), $limit);
+            $out = self::uploadSourcesFromRows(self::productImageRows($sku), $limit);
+            $seen = [];
+            foreach ($out as $row) {
+                $key = ($row['path'] ?? '') ?: ($row['url'] ?? '');
+                if ($key !== '') {
+                    $seen[$key] = true;
+                }
+            }
+            foreach (self::childImageMasterUrls($sku) as $url) {
+                if (count($out) >= $limit) {
+                    break;
+                }
+                if ($url === '' || isset($seen[$url])) {
+                    continue;
+                }
+                $path = (string) (parse_url($url, PHP_URL_PATH) ?: $url);
+                $disk = self::publicDiskFile($path);
+                $key = $disk ?: $url;
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $seen[$url] = true;
+                $out[] = [
+                    'path' => $disk,
+                    'url' => $url,
+                    'name' => basename(urldecode($path) ?: 'image.jpg'),
+                ];
+            }
+
+            return $out;
         }
 
         $skus = [];
