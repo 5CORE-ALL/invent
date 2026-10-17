@@ -505,12 +505,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
-        $ist($schedule->command('shopify-b2c:rule-sprice-apply')
-            ->twiceDaily(11, 19)
-            ->name('shopify-b2c-rule-sprice-after-metrics')
-            ->withoutOverlapping(180)
-            ->runInBackground()
-            ->appendOutputTo($log));
+        // Shopify B2C S PRC is saved + pushed by shopify-b2c:sprc-dil-auto-push (04:50 / 20:50 IST, see below).
 
         $ist($schedule->command('app:snapshot-shopify-b2c-badges')
             ->twiceDaily(11, 19)
@@ -1140,6 +1135,26 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Shopify B2C Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap) → S PRC → Shopify live price.
+        // Same twice-daily idea as Amazon, offset 50 min. /shopify-b2c-pricing does not need to be open.
+        // Saves S PRC, then queues the push for every SKU whose S PRC ≠ live Price (negative SNROI is skipped).
+        // Do NOT wrap 20:50 in $ist() — IST window ends at 20:00.
+        $schedule->command('shopify-b2c:sprc-dil-auto-push')
+            ->dailyAt('04:50')
+            ->timezone('Asia/Kolkata')
+            ->name('shopify-b2c-sprc-dil-auto-push-4am-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        $schedule->command('shopify-b2c:sprc-dil-auto-push')
+            ->dailyAt('20:50')
+            ->timezone('Asia/Kolkata')
+            ->name('shopify-b2c-sprc-dil-auto-push-8pm-ist')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // eBay 1 volume pricing (Buy 2/3/4 = Weight + Dil + Std NPFT) → eBay promotions. Only listings whose
         // discount changed are re-sent. /ebay-volume-pricing does not need to be open. Runs only when the
         // page has Rules On and Auto push On. Do NOT wrap 21:30 in $ist() — IST window ends at 20:00.
@@ -1364,7 +1379,6 @@ class Kernel extends ConsoleKernel
             ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],
             ['07:25', '23:25', 'dil:rule-sprice-apply fb_marketplace', 'fb-marketplace-sprc-dil'],
             ['07:35', '23:35', 'dil:rule-sprice-apply walmart --push', 'walmart-sprc-dil'],
-            ['05:40', '21:40', 'shopify-b2c:rule-sprice-apply --push', 'shopify-b2c-sprc-dil'],
             ['05:50', '21:50', 'macys:rule-sprice-apply --push', 'macys-sprc-dil'],
         ] as [$morning, $evening, $command, $slug]) {
             $schedule->command($command)
@@ -1419,8 +1433,6 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(180)
             ->runInBackground()
             ->appendOutputTo($log);
-
-        // Shopify B2C Dil→SNROI no longer writes SPRICE. Slabs stay on the page.
 
         /*
         |--------------------------------------------------------------------------
@@ -3523,15 +3535,6 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('badges-save-all-daily')
             ->withoutOverlapping(30)
-            ->runInBackground()
-            ->appendOutputTo($log));
-
-        // Y Orders / Y Views / Y CVR daily history (per channel + all) for /all-marketplace-master graphs.
-        $ist($schedule->command('badges:record-amm-column-history --days=3')
-            ->dailyAt('19:25')
-            ->timezone('Asia/Kolkata')
-            ->name('badges-record-amm-column-history-daily')
-            ->withoutOverlapping(60)
             ->runInBackground()
             ->appendOutputTo($log));
 

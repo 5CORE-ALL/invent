@@ -7,7 +7,6 @@ use App\Http\Controllers\Controller;
 use App\Jobs\RunChannelPushCpnJob;
 use App\Jobs\RunChannelPushPrmtJob;
 use App\Jobs\RunChannelPushSpriceJob;
-use App\Jobs\RunShopifyB2cRuleSpriceApplyJob;
 use App\Models\AliexpressMetric;
 use App\Models\FaireMetric;
 use App\Models\AmazonDataView;
@@ -1271,9 +1270,6 @@ class ChannelPromoPricingController extends Controller
         $minRoi = null;
         if (self::channelUsesZeroSoldMinRoi($channel)) {
             $minRoi = $this->persistZeroSoldMinRoi($channel, $request->input('min_roi'));
-            if ($channel === 'shopify_b2c') {
-                $this->queueShopifyB2cRuleSpriceApply();
-            }
         }
 
         $payload = ['success' => true, 'channel' => $channel, 'rules' => $rules];
@@ -1746,9 +1742,6 @@ class ChannelPromoPricingController extends Controller
             ]
         );
 
-        if ($channel === 'shopify_b2c') {
-            $this->queueShopifyB2cRuleSpriceApply();
-        }
         if ($channel === 'macys' || $channel === 'macy') {
             \App\Support\MacysRuleSpriceApply::dispatch();
         }
@@ -2393,10 +2386,6 @@ class ChannelPromoPricingController extends Controller
             'cpn'
         );
 
-        if ($channel === 'shopify_b2c') {
-            $this->queueShopifyB2cRuleSpriceApply();
-        }
-
         return response()->json(['success' => true, 'channel' => $channel, 'rules' => $rules]);
     }
 
@@ -2844,16 +2833,6 @@ class ChannelPromoPricingController extends Controller
         );
 
         return $minRoi;
-    }
-
-    /** Recalc + save Shopify B2C S PRC in the background (page does not need to stay open). */
-    private function queueShopifyB2cRuleSpriceApply(): void
-    {
-        try {
-            RunShopifyB2cRuleSpriceApplyJob::dispatch();
-        } catch (\Throwable $e) {
-            Log::warning('[ShopifyB2cRuleSpriceApply] dispatch failed', ['error' => $e->getMessage()]);
-        }
     }
 
     /**

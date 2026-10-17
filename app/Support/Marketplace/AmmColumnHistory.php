@@ -26,6 +26,83 @@ class AmmColumnHistory
     /** Chart metric keys that read from this history. */
     public const FIELDS = ['y_orders', 'y_views', 'y_cvr', 't_orders', 't_views', 't_cvr'];
 
+    /**
+     * True when the all-channels Y history has too few distinct days for a trend dot / graph.
+     * channel:calculate-data uses this to backfill past days once, like the Sales history.
+     */
+    public static function yHistoryIsThin(int $minDays = 14): bool
+    {
+        try {
+            $since = now(BadgeDataHistory::TZ)->subDays(30)->toDateString();
+            foreach (['y_orders', 'y_views'] as $field) {
+                $days = BadgeDataHistory::query()
+                    ->where('page_name', self::ALL_PAGE)
+                    ->where('field', $field)
+                    ->whereDate('snapshot_date', '>=', $since)
+                    ->distinct()
+                    ->count('snapshot_date');
+                if ($days < $minDays) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Re-record Y Orders / Y Views / Y CVR for the last $days Pacific days (ending $end,
+     * default yesterday). Shared by channel:calculate-data and the standalone command.
+     *
+     * @param  null|callable(string): void  $progress
+     * @return int values written
+     */
+    public static function backfillYesterday(int $days = 30, ?Carbon $end = null, ?callable $progress = null): int
+    {
+        $days = max(1, min(120, $days));
+        $end = ($end ?: Carbon::now(BadgeDataHistory::TZ)->subDay())->copy()->startOfDay();
+        $start = $end->copy()->subDays($days - 1);
+
+        $channels = \App\Models\ChannelMaster::query()
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->orderBy('id')
+            ->pluck('channel')
+            ->map(fn ($name) => AllMarketplaceMasterBadgeCalculator::snapshotKey((string) $name))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $svc = app(\App\Services\Support\YesterdayMarketplaceMetricsService::class);
+        $total = 0;
+
+        for ($day = $start->copy(); $day->lte($end); $day->addDay()) {
+            $ymd = $day->toDateString();
+            $rows = [];
+            foreach ($channels as $key) {
+                try {
+                    $row = $svc->metricsForPacificDate($key, $ymd);
+                } catch (\Throwable $e) {
+                    report($e);
+                    $row = null;
+                }
+                if ($row !== null) {
+                    $rows[] = $row;
+                }
+            }
+
+            $written = self::recordYesterday($rows, $day->copy());
+            $total += $written;
+            if ($progress) {
+                $progress(sprintf('%s: %d channel row(s), %d value(s) saved', $ymd, count($rows), $written));
+            }
+        }
+
+        return $total;
+    }
+
     public static function pageFor(string $channelKey): string
     {
         return $channelKey === 'all' ? self::ALL_PAGE : self::PAGE_PREFIX.$channelKey;

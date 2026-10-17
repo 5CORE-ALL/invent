@@ -6092,8 +6092,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shopifyb2c/save-nr', [Shopifyb2cController::class, 'saveNrToDatabase']);
     Route::post('/shopifyb2c/update-listed-live', [Shopifyb2cController::class, 'updateListedLive']);
     Route::post('/shopify/save-sprice', [Shopifyb2cController::class, 'saveSpriceToDatabase']);
-    Route::get('/shopify-b2c-zero-sold-coupon', [Shopifyb2cController::class, 'zeroSoldCouponSetting']);
-    Route::post('/shopify-b2c-zero-sold-coupon', [Shopifyb2cController::class, 'saveZeroSoldCouponSetting']);
     Route::get('/shopify-pricing-cvr', [Shopifyb2cController::class, 'shopifyPricingCvr']);
 
     Route::post('/shopifyb2c-zero/reason-action/update', [Shopifyb2cZeroController::class, 'updateReasonAction']);

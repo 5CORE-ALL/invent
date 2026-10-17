@@ -15,7 +15,7 @@
 #   15 6,22 * * * ... cron-dil-sprice-apply.sh tiktok
 #   25 6,22 * * * ... cron-dil-sprice-apply.sh tiktok2
 #   35 6,22 * * * ... cron-dil-sprice-apply.sh doba
-#   40 5,21 * * * ... cron-dil-sprice-apply.sh shopify_b2c push
+#   50 4,20 * * * ... cron-dil-sprice-apply.sh shopify_b2c
 #   45 4,20 * * * ... cron-dil-sprice-apply.sh faire
 #   50 5,21 * * * ... cron-dil-sprice-apply.sh macys push
 #   55 6,22 * * * ... cron-dil-sprice-apply.sh shein   (now shein:sprc-dil-auto-push)
@@ -26,7 +26,7 @@
 #   35 7,23 * * * ... cron-dil-sprice-apply.sh walmart
 #   45 7,23 * * * ... cron-dil-sprice-apply.sh pls
 #
-# Hourly Macys and the 13:40 Shopify save stay without "push".
+# Hourly Macys stays without "push".
 #
 set -euo pipefail
 
@@ -50,10 +50,8 @@ case "$MODE" in
     MODE=newtemuone
     ;;
   shopify_b2c|shopify-b2c)
-    CMD=(shopify-b2c:rule-sprice-apply)
-    if [[ "$PUSH" == "push" || "$PUSH" == "--push" ]]; then
-      CMD+=(--push)
-    fi
+    # Saves S PRC, then queues the live push itself (same as Amazon). "push" is accepted and ignored.
+    CMD=(shopify-b2c:sprc-dil-auto-push)
     MODE=shopify_b2c
     ;;
   macys|macy)

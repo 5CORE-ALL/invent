@@ -41,12 +41,18 @@ trait MonitorsCronExecution
         $locks = app(DuplicateLockService::class);
         $lockKey = '';
 
-        try {
-            $lockKey = $locks->acquire($commandName, $this->monitoredLockTtl());
-        } catch (Throwable $e) {
-            $this->error($e->getMessage());
+        // Commands can opt out of duplicate-run blocking with
+        // `protected bool $monitorDisableDuplicateLock = true;`
+        $skipLock = property_exists($this, 'monitorDisableDuplicateLock') && $this->monitorDisableDuplicateLock;
 
-            return self::FAILURE;
+        if (! $skipLock) {
+            try {
+                $lockKey = $locks->acquire($commandName, $this->monitoredLockTtl());
+            } catch (Throwable $e) {
+                $this->error($e->getMessage());
+
+                return self::FAILURE;
+            }
         }
 
         try {

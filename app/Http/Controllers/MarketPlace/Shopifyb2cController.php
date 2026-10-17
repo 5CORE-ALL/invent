@@ -37,7 +37,7 @@ class Shopifyb2cController extends Controller
         'gpft_percent', 'groi_percent', 'nroi_percent', 'npft_percent', 'tcos_percent',
         'total_l30', 'total_views', 'cvr_percent', 'total_b2b_l30',
         'zero_sold_count', 'sold_count', 'missing_count', 'less_amz_count', 'more_amz_count',
-        'blue_triangle_count', 'purple_triangle_count',
+        'blue_triangle_count',
         'lmp_missing_count', 'prc_gt_lmp_count', 'price_lt80_lmp_count',
         'avg_price', 'total_inv',
     ];
@@ -388,95 +388,6 @@ class Shopifyb2cController extends Controller
     }
 
 
-
-    public const ZERO_SOLD_COUPON_STORE = 'shopify_b2c_zero_sold_coupon';
-
-    /** @return array{enabled:bool,pct:float} */
-    public static function zeroSoldCouponConfig(): array
-    {
-        $pct = 5.0;
-        $enabled = false;
-        try {
-            $row = ChannelTabulatorColumnSetting::query()
-                ->where('channel_name', self::ZERO_SOLD_COUPON_STORE)
-                ->first();
-            $vis = is_array($row?->visibility) ? $row->visibility : [];
-            if (is_numeric($vis['pct'] ?? null)) {
-                $pct = (float) $vis['pct'];
-            }
-            $enabled = filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-        } catch (\Throwable) {
-            $enabled = false;
-        }
-        if ($pct < 0) {
-            $pct = 0.0;
-        }
-        if ($pct > 100) {
-            $pct = 100.0;
-        }
-
-        return ['enabled' => $enabled, 'pct' => round($pct, 2)];
-    }
-
-    public function zeroSoldCouponSetting()
-    {
-        $cfg = self::zeroSoldCouponConfig();
-
-        return response()->json([
-            'success' => true,
-            'enabled' => $cfg['enabled'],
-            'pct' => $cfg['pct'],
-        ]);
-    }
-
-    public function saveZeroSoldCouponSetting(Request $request)
-    {
-        $pct = round(max(0, min(100, (float) $request->input('pct', 5))), 2);
-        $enabled = $request->boolean('enabled');
-        ChannelTabulatorColumnSetting::query()->updateOrCreate(
-            ['channel_name' => self::ZERO_SOLD_COUPON_STORE],
-            ['visibility' => ['enabled' => $enabled, 'pct' => $pct]]
-        );
-
-        $saved = 0;
-        $items = $request->input('items', []);
-        if (is_array($items)) {
-            foreach (array_slice($items, 0, 400) as $item) {
-                if (! is_array($item)) {
-                    continue;
-                }
-                $sku = trim((string) ($item['sku'] ?? ''));
-                if ($sku === '') {
-                    continue;
-                }
-                $cpn = round(max(0, min(100, (float) ($item['cpn'] ?? 0))), 2);
-                $view = Shopifyb2cDataView::query()
-                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
-                    ->first();
-                if (! $view) {
-                    $view = new Shopifyb2cDataView(['sku' => $sku]);
-                }
-                $existing = is_array($view->value)
-                    ? $view->value
-                    : (json_decode((string) $view->value, true) ?: []);
-                if (round((float) ($existing['PEF_CPN_PCT'] ?? 0), 2) === $cpn) {
-                    continue;
-                }
-                $existing['PEF_CPN_PCT'] = $cpn;
-                $view->value = $existing;
-                $view->save();
-                $saved++;
-            }
-        }
-        self::forgetTabularDataCache();
-
-        return response()->json([
-            'success' => true,
-            'enabled' => $enabled,
-            'pct' => $pct,
-            'saved' => $saved,
-        ]);
-    }
 
     public function saveSpriceToDatabase(Request $request)
     {
@@ -1735,7 +1646,6 @@ class Shopifyb2cController extends Controller
             $prcGtLmp = 0;
             $priceLt80 = 0;
             $blueTriangle = 0;
-            $purpleTriangle = 0;
             foreach ($children as $row) {
                 $price = floatval($row['Price'] ?? 0);
                 $lmp = floatval($row['lmp_price'] ?? ($row['LMP'] ?? 0));
@@ -1750,12 +1660,8 @@ class Shopifyb2cController extends Controller
                 }
 
                 $sprice = floatval($row['SPRICE'] ?? 0);
-                $amz = floatval($row['A Price'] ?? 0);
                 if ($sprice > 0 && $price > 0 && round($sprice, 2) !== round($price, 2)) {
                     $blueTriangle++;
-                }
-                if ($sprice > 0 && $amz > 0 && $sprice < $amz) {
-                    $purpleTriangle++;
                 }
             }
 
@@ -1776,7 +1682,6 @@ class Shopifyb2cController extends Controller
                 'less_amz_count' => $lessAmzCount,
                 'more_amz_count' => $moreAmzCount,
                 'blue_triangle_count' => $blueTriangle,
-                'purple_triangle_count' => $purpleTriangle,
                 'lmp_missing_count' => $lmpMissing,
                 'prc_gt_lmp_count' => $prcGtLmp,
                 'price_lt80_lmp_count' => $priceLt80,

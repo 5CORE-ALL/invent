@@ -84,7 +84,7 @@ $price = [
     'shein:fetch sync',
     'walmart:fetch-listed-prices',
     'sync:amazon-prices',
-    'shopify-b2c:rule-sprice-apply',
+    'shopify-b2c:sprc-dil-auto-push',
     'channel:push-sprice-daily',
     'products:recalc-lp',
 ];

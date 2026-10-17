@@ -458,7 +458,6 @@
         .shopify-b2c-search-group #parent-search:focus { outline: none; border: 0; }
 
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'css', 'channelPromoChannel' => 'shopify_b2c'])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'css', 'ebaySprcDilChannel' => 'shopify_b2c'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'css'])
     </style>
     @include('partials.lazy-chart-js')
@@ -688,8 +687,6 @@
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
 
-                    {{-- Sprc Dil (Dil → Target SNROI, same as Amazon / eBay) --}}
-                    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'buttons', 'ebaySprcDilChannel' => 'shopify_b2c'])
                     @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'shopify_b2c'])
                 </div>
 
@@ -725,13 +722,8 @@
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-blue-triangle-badge"
                             data-metric="blue_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Blue triangle: INV > 0 and S PRC ≠ Price (needs push). If LMP is below A Price, S PRC uses A Price. Otherwise S PRC is Sprc Dil, raised to A Price when Sprc Dil is lower, then capped at LMP. Click to show only those SKUs. Push on reload skips INV=0 and Price = S PRC.">
+                            title="Blue triangle: INV > 0 and S PRC ≠ Price (needs push). The server saves S PRC from Std prc vs dil and pushes it twice daily (04:50 / 20:50 IST). Click to show only those SKUs.">
                             <span class="summary-trend-dot none" data-metric="blue_triangle_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0</span>
-                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
-                            data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
-                            style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Amz: S PRC is A Price because Sprc Dil is below A Price, or LMP is below A Price. Sprc Dil above A Price is not capped to Amz. Click badge to filter. Click dot for rolling history.">
-                            <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span>Amz 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price', 'pglTitle' => 'Price or S PRC > non-ignored LMP (red triangle), INV > 0 only. Click badge to filter. Click dot for rolling history.'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2c-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2c', 'pltPriceField' => 'Price'])
@@ -767,10 +759,6 @@
                         title="Push SPRICE to Shopify for selected SKUs">
                         <i class="fas fa-paper-plane"></i> Push
                     </button>
-                    <button type="button" id="shopify-b2c-zero-sold-coupon-btn" class="btn btn-outline-secondary btn-sm"
-                        title="5% coupon on 0 Sold only. On/Off. Percent is editable.">
-                        <i class="fas fa-ticket-alt"></i> 0 Sold CPN Off
-                    </button>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -782,29 +770,7 @@
         </div>
     </div>
     </div>
-    <div class="modal fade" id="shopifyB2cZeroSoldCouponModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-sm">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title fs-6">0 Sold coupon</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-3">
-                    <p class="small text-muted mb-3">Applies only when B2C L30 is 0 and INV is above 0. Sold rows stay at 0%.</p>
-                    <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" id="shopify-b2c-zero-sold-coupon-switch">
-                        <label class="form-check-label" for="shopify-b2c-zero-sold-coupon-switch" id="shopify-b2c-zero-sold-coupon-switch-label">Off</label>
-                    </div>
-                    <label class="form-label small mb-1" for="shopify-b2c-zero-sold-coupon-pct">Coupon %</label>
-                    <input type="number" class="form-control form-control-sm" id="shopify-b2c-zero-sold-coupon-pct"
-                        min="0" max="100" step="0.01" value="5">
-                    <div class="small text-muted mt-2" id="shopify-b2c-zero-sold-coupon-status"></div>
-                </div>
-            </div>
-        </div>
-    </div>
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'modals', 'channelPromoChannel' => 'shopify_b2c'])
-    @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'modals', 'ebaySprcDilChannel' => 'shopify_b2c'])
 
     <div class="modal fade p-0" id="shopifyB2cMetricChartModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
@@ -910,18 +876,18 @@
         total_l30: 'L30', total_views: 'Views', cvr_percent: 'CVR%', total_b2b_l30: 'B2C L30',
         zero_sold_count: '0 Sold', sold_count: '> 0 Sold',
         less_amz_count: '< Amz', more_amz_count: '> Amz',
-        blue_triangle_count: 'S PRC ≠ Price', purple_triangle_count: 'S PRC uses A Price',
+        blue_triangle_count: 'S PRC ≠ Price',
         lmp_missing_count: 'LMP M.', prc_gt_lmp_count: 'Price > LMP', price_lt80_lmp_count: 'Price < 80% LMP',
         avg_price: 'Price', total_inv: 'INV'
     };
     const shopifyB2cBadgeInvertMetrics = {
         tcos_percent: true, zero_sold_count: true, less_amz_count: true,
-        blue_triangle_count: true, purple_triangle_count: true, lmp_missing_count: true,
+        blue_triangle_count: true, lmp_missing_count: true,
         prc_gt_lmp_count: true, price_lt80_lmp_count: true
     };
     const shopifyB2cFilterBadgeIds = {
         'zero-sold-count-badge': 1, 'more-sold-count-badge': 1,
-        'shopifyb2c-blue-triangle-badge': 1, 'shopifyb2c-purple-triangle-badge': 1,
+        'shopifyb2c-blue-triangle-badge': 1,
         'shopifyb2c-lmp-missing-badge': 1, 'shopifyb2c-price-gt-lmp-badge': 1,
         'shopifyb2c-price-lt80-lmp-badge': 1, 'less-amz-badge': 1, 'more-amz-badge': 1
     };
@@ -1281,51 +1247,6 @@
         return sku.includes('PARENT');
     }
 
-    function shopifyB2cIsAmzSuggApplied(data) {
-        if (!data) return false;
-        const f = data.AMZ_SUGG_APPLIED;
-        return f === true || f === 1 || f === '1' || f === 'true';
-    }
-
-    /** Raw Sprc Dil $. This is the Dil suggestion before the A Price floor. */
-    function shopifyB2cRawSprcDil(data) {
-        if (!data || isShopifyB2cParentRow(data)) return 0;
-        if (typeof ebayDilGroiMetaForRow === 'function') {
-            const meta = ebayDilGroiMetaForRow(data);
-            const raw = Number(meta && (meta.rawSprc > 0 ? meta.rawSprc : meta.sprc)) || 0;
-            if (raw > 0) return Math.round(raw * 100) / 100;
-        }
-        if (typeof ebaySprcDilForRow === 'function') {
-            const dil = Number(ebaySprcDilForRow(data)) || 0;
-            if (dil > 0) return Math.round(dil * 100) / 100;
-        }
-        return 0;
-    }
-
-    /** S PRC to show / push. Sprc Dil above A Price stays. A stored Amz pin cannot cap it down. */
-    function shopifyB2cDisplayedSprice(data) {
-        if (!data || isShopifyB2cParentRow(data)) return 0;
-        if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
-            const dil = shopifyB2cRawSprcDil(data);
-            return dil > 0 ? dil : 0;
-        }
-        if (typeof window.chStdPriceForRow === 'function') {
-            const stdRule = Number(window.chStdPriceForRow(data)) || 0;
-            if (stdRule > 0) return stdRule;
-        }
-        const stored = parseFloat(data.SPRICE) || 0;
-        const amz = shopifyB2cAmzPrice(data);
-        if (shopifyB2cIsAmzSuggApplied(data)) {
-            if (amz > 0) return Math.round(amz * 100) / 100;
-            return stored > 0 ? Math.round(stored * 100) / 100 : 0;
-        }
-        if (typeof chPromoTableSprice === 'function') {
-            const saved = Number(chPromoTableSprice(data)) || 0;
-            if (saved > 0) return saved;
-        }
-        return stored > 0 ? Math.round(stored * 100) / 100 : 0;
-    }
-
     function shopifyB2cAmzPrice(data) {
         return parseFloat(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0;
     }
@@ -1353,93 +1274,27 @@
         return raw > 0 ? Math.round(raw * 100) / 100 : 0;
     }
 
-    /** Non-ignored LMP is below A Price, so S PRC uses A Price. */
-    function shopifyB2cLmpBelowAmz(data) {
-        const amz = shopifyB2cCents(shopifyB2cAmzPrice(data));
-        const lmp = shopifyB2cCents(shopifyB2cRowLmp(data));
-        return amz > 0 && lmp > 0 && lmp < amz;
+    /**
+     * S PRC to show / push. The server (shopify-b2c:sprc-dil-auto-push) owns S PRC: Std prc vs dil, LMP cap,
+     * saved twice daily and pushed to Shopify. The page only shows the saved value.
+     */
+    function shopifyB2cDisplayedSprice(data) {
+        if (!data || isShopifyB2cParentRow(data)) return 0;
+        const stored = parseFloat(data.SPRICE) || 0;
+        return stored > 0 ? Math.round(stored * 100) / 100 : 0;
     }
 
-    /** Sprc Dil below A Price rises to Amz. Sprc Dil above A Price stays, unless LMP is below A Price — then S PRC is Amz. Otherwise cap at LMP. */
+    /** LMP cap only (manual edits). Std Prc vs dil is already applied by the server. */
     function shopifyB2cCapLikeTemu(data, sprice) {
-        let s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
+        const s = Math.round((parseFloat(sprice) || 0) * 100) / 100;
         if (!(s > 0)) return 0;
-        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
-        const amzCents = shopifyB2cCents(amz);
-        const sCents = shopifyB2cCents(s);
-        if (amzCents > 0 && shopifyB2cLmpBelowAmz(data)) return amz;
-        if (amzCents > 0 && sCents > amzCents) return s;
-        if (amzCents > 0 && sCents < amzCents) s = amz;
-        s = shopifyB2cExactLmpCap(data, s);
-        if (amzCents > 0 && shopifyB2cCents(s) > 0 && shopifyB2cCents(s) < amzCents) s = amz;
-        return s > 0 ? s : 0;
+        return shopifyB2cExactLmpCap(data, s);
     }
 
-    /** Displayed S PRC after LMP cap, before the Amz floor. Sprc Dil uses the raw Dil $ so Amz still flags. */
-    function shopifyB2cPriceBeforeAmzFloor(data) {
-        if (!data || isShopifyB2cParentRow(data)) return 0;
-        let value = shopifyB2cDisplayedSprice(data);
-        if (!(value > 0)) return 0;
-        if (!shopifyB2cIsAmzSuggApplied(data)) {
-            value = shopifyB2cExactLmpCap(data, value);
-        }
-        return Math.round(value * 100) / 100;
-    }
-
-    /** Shown / pushed S PRC. LMP below A Price uses A Price. Sprc Dil below A Price uses A Price. Sprc Dil above A Price stays — no Amz cap. */
     function shopifyB2cShownSprice(data) {
-        if (!data || isShopifyB2cParentRow(data)) return 0;
-        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
-        if (shopifyB2cLmpBelowAmz(data)) return amz;
-        if (shopifyB2cIsAmzSuggApplied(data) && shopifyB2cCents(amz) > 0) {
-            let s = shopifyB2cExactLmpCap(data, amz);
-            if (shopifyB2cCents(s) > 0 && shopifyB2cCents(s) < shopifyB2cCents(amz)) s = amz;
-            return s > 0 ? s : 0;
-        }
-        const price = shopifyB2cDisplayedSprice(data);
-        if (!(price > 0)) return 0;
-        return shopifyB2cCapLikeTemu(data, price);
+        return shopifyB2cDisplayedSprice(data);
     }
     window.shopifyB2cShownSprice = shopifyB2cShownSprice;
-
-    function shopifyB2cHasAmzFloor(data) {
-        if (!data || isShopifyB2cParentRow(data)) return false;
-        let raw = 0;
-        if (typeof ebayDilGroiMetaForRow === 'function') {
-            const meta = ebayDilGroiMetaForRow(data);
-            raw = Number(meta && (meta.rawSprc > 0 ? meta.rawSprc : 0)) || 0;
-        }
-        if (!(raw > 0)) raw = shopifyB2cDisplayedSprice(data);
-        const amz = shopifyB2cCents(shopifyB2cAmzPrice(data));
-        const shown = shopifyB2cCents(shopifyB2cShownSprice(data));
-        const rawCents = shopifyB2cCents(raw);
-        return amz > 0 && shown > 0 && rawCents > amz && shown === amz;
-    }
-
-    /** Sprc Dil was below A Price and the shown S PRC is A Price. */
-    function shopifyB2cRaisedToAmz(data) {
-        if (!data || isShopifyB2cParentRow(data)) return false;
-        let raw = 0;
-        if (typeof ebayDilGroiMetaForRow === 'function') {
-            const meta = ebayDilGroiMetaForRow(data);
-            raw = Number(meta && (meta.rawSprc > 0 ? meta.rawSprc : 0)) || 0;
-        }
-        if (!(raw > 0)) raw = shopifyB2cDisplayedSprice(data);
-        const amz = shopifyB2cCents(shopifyB2cAmzPrice(data));
-        const shown = shopifyB2cCents(shopifyB2cShownSprice(data));
-        const rawCents = shopifyB2cCents(raw);
-        return rawCents > 0 && amz > 0 && rawCents < amz && shown > 0 && shown === amz;
-    }
-
-    function shopifyB2cShowAmzLabel(data) {
-        if (!data || isShopifyB2cParentRow(data)) return false;
-        const amz = shopifyB2cCents(shopifyB2cAmzPrice(data));
-        const shown = shopifyB2cCents(shopifyB2cShownSprice(data));
-        if (!(amz > 0) || !(shown > 0) || shown !== amz) return false;
-        if (shopifyB2cCents(shopifyB2cRawSprcDil(data)) > amz) return false;
-        if (shopifyB2cLmpBelowAmz(data)) return true;
-        return shopifyB2cRaisedToAmz(data) || shopifyB2cIsAmzSuggApplied(data);
-    }
 
     function shopifyB2cHasBlueTriangle(data) {
         if (!data || isShopifyB2cParentRow(data)) return false;
@@ -1466,44 +1321,11 @@
         return copy;
     }
 
-    /** Badge / filter: S PRC is A Price because Sprc Dil or LMP is below it. Above is not capped. */
-    function shopifyB2cHasPurpleTriangle(data) {
-        return shopifyB2cShowAmzLabel(data);
-    }
-
-    function shopifyB2cAmzLabelHtml(data) {
-        if (!shopifyB2cShowAmzLabel(data)) return '';
-        const amz = shopifyB2cAmzPrice(data);
-        let before = 0;
-        if (typeof ebayDilGroiMetaForRow === 'function') {
-            const meta = ebayDilGroiMetaForRow(data);
-            before = Number(meta && meta.rawSprc) || 0;
-        }
-        if (!(before > 0)) before = shopifyB2cDisplayedSprice(data);
-        const lmp = shopifyB2cRowLmp(data);
-        const title = shopifyB2cLmpBelowAmz(data)
-            ? ('LMP $' + lmp.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — using Amz')
-            : (shopifyB2cHasAmzFloor(data)
-                ? ('Sprc Dil $' + before.toFixed(2) + ' &gt; A Price $' + amz.toFixed(2) + ' — keeping Sprc Dil')
-                : (shopifyB2cRaisedToAmz(data)
-                    ? ('Sprc Dil $' + before.toFixed(2) + ' &lt; A Price $' + amz.toFixed(2) + ' — using Amz')
-                    : ('S PRC set to A Price $' + amz.toFixed(2) + '. Sprc Dil above A Price is not capped')));
-        return '<span class="shopifyb2c-sprice-amz-lbl" title="' + title + '">Amz</span>';
-    }
-
-    function syncShopifyB2cPurpleTriangleBadgeState() {
-        $('#shopifyb2c-purple-triangle-badge').css({
-            outline: purpleTriangleFilterActive ? '3px solid #ffc107' : '',
-            outlineOffset: purpleTriangleFilterActive ? '2px' : ''
-        });
-    }
-
     function syncShopifyB2cTriangleBadgeState() {
         $('#shopifyb2c-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: blueTriangleFilterActive ? '2px' : ''
         });
-        syncShopifyB2cPurpleTriangleBadgeState();
     }
 
     /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
@@ -1659,61 +1481,6 @@
         return s > 0 ? Math.round(s * 100) / 100 : 0;
     }
 
-    /** Amazon-style: leftover stored S PRC cannot win — write the visible rule onto the row, then save. */
-    function shopifyB2cWriteRuleSpriceOnRow(row, opts) {
-        opts = opts || {};
-        if (!row || typeof row.getData !== 'function') return 0;
-        const d = row.getData() || {};
-        if (isShopifyB2cParentRow(d)) return 0;
-        const amzSugg = shopifyB2cIsAmzSuggApplied(d);
-        const shown = shopifyB2cShownSprice(d);
-        if (!(shown > 0)) return 0;
-        const stored = parseFloat(d.SPRICE) || 0;
-        if (!opts.force && shopifyB2cCents(stored) === shopifyB2cCents(shown)) return 0;
-        row.update({ SPRICE: 0, sprice: 0, has_custom_sprice: false, AMZ_SUGG_APPLIED: amzSugg });
-        shopifyB2cApplySpriceMetricsToRow(row, shown);
-        if (opts.persist === false) return shown;
-        const sku = d['(Child) sku'] || d.sku;
-        if (!sku) return shown;
-        if (typeof chPromoPersistClearThenSprice === 'function') {
-            chPromoPersistClearThenSprice(row, shown, true, { skip_push: true, sku: sku, row: row })
-                .then(function(res) {
-                    if (typeof chPromoApplySpriceSavePatch === 'function') {
-                        chPromoApplySpriceSavePatch(row, shown, res, sku);
-                    }
-                })
-                .catch(function() {
-                    shopifyB2cApplySpriceMetricsToRow(row, shown);
-                });
-        } else {
-            saveSpriceWithRetry(sku, shown, row);
-        }
-        return shown;
-    }
-
-    function shopifyB2cApplyRuleSpriceToAllRows(opts) {
-        opts = opts || {};
-        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return 0;
-        let changed = 0;
-        (table.getRows('all') || []).forEach(function(row) {
-            if (shopifyB2cWriteRuleSpriceOnRow(row, opts)) changed++;
-        });
-        if (changed) {
-            const holder = table.element && table.element.querySelector('.tabulator-tableholder');
-            const top = holder ? holder.scrollTop : 0;
-            const left = holder ? holder.scrollLeft : 0;
-            try { table.redraw(true); } catch (e) { /* ignore */ }
-            if (holder) {
-                holder.scrollTop = top;
-                holder.scrollLeft = left;
-            }
-            if (typeof window.updateShopifyB2cSummary === 'function') window.updateShopifyB2cSummary();
-            else if (typeof window.updateSummary === 'function') window.updateSummary();
-        }
-        return changed;
-    }
-    window.shopifyB2cApplyRuleSpriceToAllRows = shopifyB2cApplyRuleSpriceToAllRows;
-
     function shopifyB2cSpriceEditor(cell, onRendered, success, cancel) {
         const data = cell.getRow().getData();
         const shown = shopifyB2cShownSprice(data);
@@ -1818,7 +1585,6 @@
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
-    let purpleTriangleFilterActive = false;
     let decreaseModeActive = true;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -2458,7 +2224,6 @@
             if ($(e.target).closest('.summary-trend-dot').length) return;
             lessAmzFilterActive = !lessAmzFilterActive;
             moreAmzFilterActive = false; // Deactivate the other filter
-            if (lessAmzFilterActive) purpleTriangleFilterActive = false;
             applyFilters();
         });
 
@@ -2468,7 +2233,6 @@
             if ($(e.target).closest('.summary-trend-dot').length) return;
             moreAmzFilterActive = !moreAmzFilterActive;
             lessAmzFilterActive = false; // Deactivate the other filter
-            if (moreAmzFilterActive) purpleTriangleFilterActive = false;
             applyFilters();
         });
 
@@ -2758,9 +2522,7 @@
                 items.forEach(function(item) {
                     const d = item.row.getData() || {};
                     let price = 0;
-                    if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
-                        price = (typeof ebaySprcDilForRow === 'function') ? (Number(ebaySprcDilForRow(d)) || 0) : 0;
-                    } else if (typeof window.chStdPriceForRow === 'function') {
+                    if (typeof window.chStdPriceForRow === 'function') {
                         price = Number(window.chStdPriceForRow(d)) || 0;
                     }
                     if (!(price > 0)) return;
@@ -2784,7 +2546,7 @@
         // SAVE SPRICE to database with retry
         function saveSpriceWithRetry(sku, sprice, row, retryCount = 0, skipClear) {
             const maxRetries = 3;
-            const amzSugg = row && typeof row.getData === 'function' && shopifyB2cIsAmzSuggApplied(row.getData());
+            const amzSugg = false;
             if (row && Number(sprice) > 0 && typeof chPromoFinalSpriceToSave === 'function' && !amzSugg) {
                 sprice = chPromoFinalSpriceToSave(row.getData(), sprice);
             }
@@ -2853,8 +2615,9 @@
             google_spend_L30: 0
         };
 
+        // S PRC is saved + pushed by the server (shopify-b2c:sprc-dil-auto-push). The page only shows it.
+        window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shopify_b2c', 'channelPromoTakehome' => 0.95])
-        @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'shopify_b2c'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
 
         function shopifyB2cTableWrapHeight() {
@@ -3412,76 +3175,23 @@
                 },
                 ...(typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : []),
                 {
-                    title: "CPN %",
-                    field: "cpn_pct",
-                    hozAlign: "center",
-                    headerSort: true,
-                    width: 70,
-                    headerTooltip: "Coupon on 0 Sold only (B2C L30 = 0, INV > 0). Turn it on or off, and set the percent, in 0 Sold CPN. Sold rows are 0%.",
-                    sorter: function(a, b, aRow, bRow) {
-                        return shopifyB2cCouponPctForRow(aRow.getData()) - shopifyB2cCouponPctForRow(bRow.getData());
-                    },
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        if (isShopifyB2cParentRow(row)) return '';
-                        const pct = shopifyB2cCouponPctForRow(row);
-                        if (!(pct > 0)) return '';
-                        return '<span style="font-weight:600;">' + pct + '%</span>';
-                    }
-                },
-                {
-                    title: "Sprc Dil",
-                    field: "SPRC_DIL",
-                    hozAlign: "center",
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        const val = function(row) {
-                            return (typeof ebaySprcDilForRow === 'function')
-                                ? (ebaySprcDilForRow(row) || 0)
-                                : 0;
-                        };
-                        return val(aRow.getData()) - val(bRow.getData());
-                    },
-                    headerTooltip: "S PRC from Dil → Target NROI% slabs. B2C L30 = 0 still uses the Dil-matching slab. CVR overlay (editable) adjusts Target NROI; Count updates live. This cell is the suggestion only. If LMP is below A Price, S PRC uses A Price. Otherwise if this is below A Price, S PRC uses A Price, and if it is above A Price, S PRC keeps this Sprc Dil, then LMP if that is lower. Formula: (LP × (1 + NROI%/100) + Ship) / (take-home − Ads%/100) so SNROI = target.",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        if (isShopifyB2cParentRow(rowData)) return '';
-                        if (typeof ebayDilGroiMetaForRow !== 'function') return '';
-                        const meta = ebayDilGroiMetaForRow(rowData);
-                        if (!meta) return '';
-                        const shown = Number(meta.rawSprc > 0 ? meta.rawSprc : meta.sprc) || 0;
-                        if (!(shown > 0)) return '';
-                        const tip = (typeof ebayDilGroiTipText === 'function')
-                            ? ebayDilGroiTipText(Object.assign({}, meta, { sprc: shown }), { zeroSoldLabel: '0 Sold B2C L30 → min Target NROI' })
-                            : ('Dil ' + (isFinite(meta.dil) ? meta.dil.toFixed(1) : '0') + '%'
-                                + ' → ' + meta.label
-                                + ' → GROI ' + meta.groi + '%'
-                                + ' → $' + shown.toFixed(2));
-                        return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="font-weight:600;color:#6f42c1;">$'
-                            + shown.toFixed(2) + '</span>';
-                    },
-                    width: 78
-                },
-                {
                     title: "S PRC",
                     field: "SPRICE",
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. If LMP is below A Price, S PRC uses A Price. Otherwise if Sprc Dil is below A Price, S PRC uses A Price, and if Sprc Dil is above A Price, S PRC keeps Sprc Dil, then LMP if that is lower. Blue triangle = S PRC ≠ Price. Red triangle = S PRC capped at LMP. Amz = using A Price.",
+                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), capped at LMP, saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at LMP.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
                             return '';
                         }
-                        const amzSugg = shopifyB2cIsAmzSuggApplied(rowData);
-                        let value = shopifyB2cShownSprice(rowData);
+                        const value = shopifyB2cShownSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;
                         const live = parseFloat(rowData.Price) || 0;
                         const lmp = shopifyB2cRowLmp(rowData);
-                        const lmpBelowAmz = shopifyB2cLmpBelowAmz(rowData);
-                        
+
                         let bgColor = '';
                         if (status === 'pushed') bgColor = 'background-color: #fff3cd;';
                         else if (status === 'applied') bgColor = 'background-color: #d4edda;';
@@ -3492,31 +3202,21 @@
                             return '';
                         }
 
-                        let overLmp = !lmpBelowAmz && shopifyB2cCents(lmp) > 0 && shopifyB2cCents(value) >= shopifyB2cCents(lmp);
-                        let redTri = '';
-                        if (!amzSugg && !lmpBelowAmz) {
-                            redTri = overLmp
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $' + lmp.toFixed(2) + '"></i>'
-                                : '';
-                        } else if (overLmp) {
-                            redTri = '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="Amazon suggested price is at/above LMP $'
-                                + lmp.toFixed(2) + ' — not capped"></i>';
-                        }
-                        if (!(value > 0)) {
-                            return '';
-                        }
+                        const overLmp = shopifyB2cCents(lmp) > 0 && shopifyB2cCents(value) >= shopifyB2cCents(lmp);
+                        const redTri = overLmp
+                            ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $' + lmp.toFixed(2) + '"></i>'
+                            : '';
                         const formatted = '$' + value.toFixed(2);
                         let priceHtml = `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         if (overLmp) {
                             priceHtml = `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         }
-                        const amzLbl = shopifyB2cAmzLabelHtml(rowData);
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${amzLbl}${blueTri}</span>`;
+
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
@@ -3870,13 +3570,6 @@
                 });
             }
 
-            // Amz: S PRC is A Price because Sprc Dil or LMP is below A Price. Above is not capped.
-            if (purpleTriangleFilterActive) {
-                table.addFilter(function(data) {
-                    return shopifyB2cShowAmzLabel(data);
-                });
-            }
-
             if (lmpMissingFilterActive && window.LmpMissingBadge) {
                 table.addFilter(function(data) {
                     return LmpMissingBadge.isMissingLmp(data);
@@ -3943,7 +3636,6 @@
                     lmpMissingFilterActive = on;
                     if (on) {
                         blueTriangleFilterActive = false;
-                        purpleTriangleFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -3951,7 +3643,6 @@
         }
         function shopifyB2cClearPriceGtLmpCompetingFilters() {
             blueTriangleFilterActive = false;
-            purpleTriangleFilterActive = false;
             priceLt80LmpFilterActive = false;
             lmpMissingFilterActive = false;
             lessAmzFilterActive = false;
@@ -4003,7 +3694,6 @@
                     priceLt80LmpFilterActive = on;
                     if (on) {
                         blueTriangleFilterActive = false;
-                        purpleTriangleFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -4016,20 +3706,6 @@
                 lmpMissingFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
-                purpleTriangleFilterActive = false;
-                lessAmzFilterActive = false;
-                moreAmzFilterActive = false;
-            }
-            applyFilters();
-        });
-        $('#shopifyb2c-purple-triangle-badge').on('click', function(e) {
-            if ($(e.target).closest('.summary-trend-dot').length) return;
-            purpleTriangleFilterActive = !purpleTriangleFilterActive;
-            if (purpleTriangleFilterActive) {
-                lmpMissingFilterActive = false;
-                priceGtLmpFilterActive = false;
-                priceLt80LmpFilterActive = false;
-                blueTriangleFilterActive = false;
                 lessAmzFilterActive = false;
                 moreAmzFilterActive = false;
             }
@@ -4164,24 +3840,16 @@
                 PriceLt80LmpBadge.update('#shopifyb2c-price-lt80-lmp-badge', allData, 'shopifyb2c', 'Price');
             }
             let blueTriangleCount = 0;
-            let purpleTriangleCount = 0;
             const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
                 ? allTableData
                 : allData;
             blueSrc.forEach(function(row) {
                 if (shopifyB2cHasBlueTriangle(row)) blueTriangleCount++;
-                if (shopifyB2cHasPurpleTriangle(row)) purpleTriangleCount++;
             });
             setShopifyB2cSummaryBadge(
                 $('#shopifyb2c-blue-triangle-badge'),
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString(),
                 blueTriangleCount,
-                true
-            );
-            setShopifyB2cSummaryBadge(
-                $('#shopifyb2c-purple-triangle-badge'),
-                'Amz ' + purpleTriangleCount.toLocaleString(),
-                purpleTriangleCount,
                 true
             );
             syncShopifyB2cTriangleBadgeState();
@@ -4320,138 +3988,6 @@
                 });
         }
 
-        let shopifyB2cZeroSoldCoupon = { enabled: false, pct: 5, ready: false, saving: false, pending: false };
-
-        function shopifyB2cIsZeroSoldRow(data) {
-            if (!data || isShopifyB2cParentRow(data)) return false;
-            if (!(parseFloat(data.INV) > 0)) return false;
-            const sold = parseFloat(data['B2B L30'] != null ? data['B2B L30'] : data['B2C L30']) || 0;
-            return !(sold > 0);
-        }
-
-        function shopifyB2cCouponPctForRow(data) {
-            if (!shopifyB2cZeroSoldCoupon.enabled || !shopifyB2cIsZeroSoldRow(data)) return 0;
-            const pct = Number(shopifyB2cZeroSoldCoupon.pct);
-            if (!isFinite(pct) || pct <= 0) return 0;
-            return Math.round(pct * 100) / 100;
-        }
-        window.shopifyB2cCouponPctForRow = shopifyB2cCouponPctForRow;
-
-        function shopifyB2cPaintZeroSoldCouponButton() {
-            const on = !!shopifyB2cZeroSoldCoupon.enabled;
-            const pct = Number(shopifyB2cZeroSoldCoupon.pct) || 0;
-            const label = on ? ('0 Sold CPN ' + pct + '%') : '0 Sold CPN Off';
-            $('#shopify-b2c-zero-sold-coupon-btn')
-                .toggleClass('btn-success', on)
-                .toggleClass('btn-outline-secondary', !on)
-                .html('<i class="fas fa-ticket-alt"></i> ' + label);
-            $('#shopify-b2c-zero-sold-coupon-switch').prop('checked', on);
-            $('#shopify-b2c-zero-sold-coupon-switch-label').text(on ? 'On' : 'Off');
-            const $pct = $('#shopify-b2c-zero-sold-coupon-pct');
-            if (!$pct.is(':focus')) $pct.val(pct);
-        }
-
-        function shopifyB2cRefreshZeroSoldCouponColumn() {
-            if (typeof table === 'undefined' || !table) return;
-            const rows = (typeof table.getRows === 'function') ? table.getRows() : [];
-            rows.forEach(function(row) {
-                const d = row.getData() || {};
-                const pct = shopifyB2cCouponPctForRow(d);
-                if (shopifyB2cCents(d.cpn_pct) === shopifyB2cCents(pct)) return;
-                row.update({ cpn_pct: pct, PEF_CPN_PCT: pct });
-            });
-        }
-
-        function shopifyB2cPersistZeroSoldCoupon() {
-            if (typeof table === 'undefined' || !table) return;
-            if (shopifyB2cZeroSoldCoupon.saving) {
-                shopifyB2cZeroSoldCoupon.pending = true;
-                return;
-            }
-            const items = [];
-            (allTableData || []).forEach(function(d) {
-                if (!d || isShopifyB2cParentRow(d)) return;
-                const sku = String(d['(Child) sku'] || d.sku || '').trim();
-                if (!sku || sku.toUpperCase().indexOf('PARENT') !== -1) return;
-                const pct = shopifyB2cCouponPctForRow(d);
-                const stored = d.PEF_CPN_PCT != null ? d.PEF_CPN_PCT : d.cpn_pct;
-                if (shopifyB2cCents(stored) === shopifyB2cCents(pct)) return;
-                d.cpn_pct = pct;
-                d.PEF_CPN_PCT = pct;
-                items.push({ sku: sku, cpn: pct });
-            });
-            shopifyB2cPostZeroSoldCoupon(items, 0);
-        }
-
-        function shopifyB2cPostZeroSoldCoupon(items, offset) {
-            const chunk = items.slice(offset, offset + 300);
-            shopifyB2cZeroSoldCoupon.saving = true;
-            $('#shopify-b2c-zero-sold-coupon-status').text(items.length ? ('Saving ' + Math.min(offset + chunk.length, items.length) + ' / ' + items.length) : 'Saved');
-            $.ajax({
-                url: '/shopify-b2c-zero-sold-coupon',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'), 'Accept': 'application/json' },
-                data: {
-                    _token: $('meta[name="csrf-token"]').attr('content'),
-                    enabled: shopifyB2cZeroSoldCoupon.enabled ? 1 : 0,
-                    pct: shopifyB2cZeroSoldCoupon.pct,
-                    items: chunk
-                }
-            }).done(function() {
-                const next = offset + chunk.length;
-                if (next < items.length) {
-                    shopifyB2cPostZeroSoldCoupon(items, next);
-                    return;
-                }
-                shopifyB2cZeroSoldCoupon.saving = false;
-                $('#shopify-b2c-zero-sold-coupon-status').text('Saved');
-                if (typeof showToast === 'function') showToast('0 Sold coupon saved', 'success');
-                if (shopifyB2cZeroSoldCoupon.pending) {
-                    shopifyB2cZeroSoldCoupon.pending = false;
-                    shopifyB2cPersistZeroSoldCoupon();
-                }
-            }).fail(function() {
-                shopifyB2cZeroSoldCoupon.saving = false;
-                $('#shopify-b2c-zero-sold-coupon-status').text('Save failed');
-                if (typeof showToast === 'function') showToast('0 Sold coupon save failed', 'error');
-            });
-        }
-
-        function shopifyB2cApplyZeroSoldCoupon(persist) {
-            shopifyB2cPaintZeroSoldCouponButton();
-            shopifyB2cRefreshZeroSoldCouponColumn();
-            if (persist) shopifyB2cPersistZeroSoldCoupon();
-        }
-
-        function shopifyB2cLoadZeroSoldCoupon() {
-            $.getJSON('/shopify-b2c-zero-sold-coupon').done(function(resp) {
-                shopifyB2cZeroSoldCoupon.enabled = !!(resp && resp.enabled);
-                const pct = Number(resp && resp.pct);
-                shopifyB2cZeroSoldCoupon.pct = isFinite(pct) ? pct : 5;
-                shopifyB2cZeroSoldCoupon.ready = true;
-                shopifyB2cApplyZeroSoldCoupon(true);
-            });
-        }
-
-        $('#shopify-b2c-zero-sold-coupon-btn').on('click', function() {
-            const modalEl = document.getElementById('shopifyB2cZeroSoldCouponModal');
-            if (!modalEl || typeof bootstrap === 'undefined') return;
-            shopifyB2cPaintZeroSoldCouponButton();
-            bootstrap.Modal.getOrCreateInstance(modalEl).show();
-        });
-        $('#shopify-b2c-zero-sold-coupon-switch').on('change', function() {
-            shopifyB2cZeroSoldCoupon.enabled = $(this).is(':checked');
-            shopifyB2cApplyZeroSoldCoupon(true);
-        });
-        $('#shopify-b2c-zero-sold-coupon-pct').on('change', function() {
-            let pct = Number($(this).val());
-            if (!isFinite(pct) || pct < 0) pct = 0;
-            if (pct > 100) pct = 100;
-            shopifyB2cZeroSoldCoupon.pct = Math.round(pct * 100) / 100;
-            $(this).val(shopifyB2cZeroSoldCoupon.pct);
-            shopifyB2cApplyZeroSoldCoupon(true);
-        });
-
         // Wait for table to be built
         table.on('tableBuilt', function() {
             applyColumnVisibilityFromServer();
@@ -4461,8 +3997,6 @@
         });
 
         table.on('dataLoaded', function() {
-            if (!shopifyB2cZeroSoldCoupon.ready) shopifyB2cLoadZeroSoldCoupon();
-            else shopifyB2cApplyZeroSoldCoupon(false);
             shopifyB2cSyncTableHeight();
             setTimeout(function() {
                 applyFilters();

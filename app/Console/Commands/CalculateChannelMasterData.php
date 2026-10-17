@@ -48,6 +48,9 @@ class CalculateChannelMasterData extends Command
     /** Expire before the 15-min every-5-min mutex so a crashed run cannot block the next ticks. */
     protected int $monitorLockTtlSeconds = 840;
 
+    /** Do not block overlapping runs (e.g. manual --force while cron is running). */
+    protected bool $monitorDisableDuplicateLock = true;
+
     public function handle(): int
     {
         return $this->runMonitored(
@@ -199,8 +202,17 @@ class CalculateChannelMasterData extends Command
                     $this->warn('Y column history save failed: '.$e->getMessage());
                 }
                 try {
-                    // T Orders / T Views / T CVR: same pace formulas as the page, from the rows just
-                    // calculated. Saved under today's Pacific date; the last run of the day wins.
+                   
+                    if ($this->option('force') && \App\Support\Marketplace\AmmColumnHistory::yHistoryIsThin()) {
+                        $this->info('Backfilling last 30 days of Y Orders / Y Views / Y CVR history...');
+                        $filled = \App\Support\Marketplace\AmmColumnHistory::backfillYesterday(30);
+                        $this->info("✓ Y column history backfill saved: {$filled}");
+                    }
+                } catch (\Throwable $e) {
+                    $this->warn('Y column history backfill failed: '.$e->getMessage());
+                }
+                try {
+                   
                     $tWritten = \App\Support\Marketplace\AmmColumnHistory::recordToday($channels);
                     $this->info("✓ T column history values saved: {$tWritten}");
                 } catch (\Throwable $e) {
