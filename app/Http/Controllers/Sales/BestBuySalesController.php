@@ -8,6 +8,7 @@ use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Services\Support\ChannelTodaySalesService;
 use App\Support\ProductMasterShipBb;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -16,7 +17,14 @@ class BestBuySalesController extends Controller
 {
     public function index()
     {
-        return view('sales.bestbuy_daily_sales_data');
+        // Y Sales = yesterday (California / Pacific, same as the Order Date (PT) column)
+        // using the same sales definition as the page: unit price × qty, excluding CLOSED.
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+
+        return view('sales.bestbuy_daily_sales_data', [
+            'salesYesterday' => MiraklDailyData::sumRevenueOnDate('Best Buy USA', $yesterday->toDateString()),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
+        ]);
     }
 
     /**
