@@ -781,7 +781,7 @@
                                             <input type="radio" name="temu3-publish-mode" value="variation">
                                             <span>
                                                 <strong>Variation listing</strong>
-                                                <em>One listing with the SKUs you check. Suggested siblings start unchecked.</em>
+                                                <em>One listing with the SKUs you check. Variation Type and Variation Name come from Variation Master. Suggested siblings start unchecked.</em>
                                             </span>
                                         </label>
                                     </div>
@@ -1555,7 +1555,7 @@
                 $('#temu3PublishModalLabel').text(single ? 'Publish single listings' : 'Publish variation listing');
                 $('#temu3-publish-modal-note').text(single
                     ? 'Each checked SKU becomes its own Temu listing. Suggested siblings are hidden in this mode.'
-                    : 'One Temu listing per group. Only the SKUs you check are included — suggested siblings stay off until you check them.');
+                    : 'One Temu listing per group. Variation Type and Variation Name come from Variation Master. Only the SKUs you check are included — suggested siblings stay off until you check them.');
                 const $btn = $('#temu3-publish-confirm');
                 if (!$btn.prop('disabled')) {
                     $btn.html(single
@@ -1585,7 +1585,9 @@
                     const selectedCount = children.filter(childShouldCheck).length;
                     html += `<div class="temu3-publish-group" data-group-index="${gi}" data-parent="${escapeHtml(parent)}">`;
                     html += `<div class="temu3-publish-group-head">${escapeHtml(parent)} · ${selectedCount} selected for ${single ? 'single listing' + (selectedCount === 1 ? '' : 's') : 'this variation'}</div>`;
-                    html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th><th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
+                    html += '<table class="table table-sm mb-0"><thead><tr><th style="width:36px;"></th><th>SKU</th>';
+                    if (!single) html += '<th>Variation Type</th><th>Variation Name</th>';
+                    html += '<th>INV</th><th>In this listing</th><th>Status</th></tr></thead><tbody>';
                     children.forEach(function (child) {
                         const sku = String(child.sku || '');
                         const publishable = child.status === 'will_publish';
@@ -1597,6 +1599,12 @@
                         html += '<tr>';
                         html += `<td><input type="checkbox" class="temu3-publish-sku-check" data-sku="${escapeHtml(sku)}" ${checked ? 'checked' : ''} ${publishable ? '' : 'disabled'}></td>`;
                         html += `<td><span class="sku-cell"><span class="sku-cell-text">${escapeHtml(sku)}</span><button type="button" class="copy-sku-btn" data-sku="${escapeHtml(sku)}" title="Copy SKU"><i class="fas fa-copy"></i></button></span></td>`;
+                        if (!single) {
+                            const type = String(child.variation_type || '').trim();
+                            const name = String(child.variation_name || '').trim();
+                            html += `<td>${type ? escapeHtml(type) : '—'}</td>`;
+                            html += `<td>${name ? escapeHtml(name) : '—'}</td>`;
+                        }
                         html += `<td>${escapeHtml(String(child.inv ?? 0))}</td>`;
                         html += `<td>${role}</td>`;
                         html += `<td>${publishStatusLabel(child.status, child.reason)}</td>`;
@@ -1905,5 +1913,5 @@
             publishUrl: '/listing_temu3/save-status'
         };
     </script>
-    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261015-vm"></script>
+    <script src="{{ asset('js/listing-page-tools.js') }}?v=20261017-vm"></script>
 @endsection

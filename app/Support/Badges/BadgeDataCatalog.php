@@ -197,6 +197,8 @@ class BadgeDataCatalog
                 'missing_graph' => 'Graph',
                 'missing_tsp' => 'TSP',
                 'missing_batch' => 'Batch',
+                'missing_energy_star_registration' => 'Energy Star',
+                'missing_us_energy_efficiency_label' => 'US Energy',
             ],
             'lmp-missing' => [
                 'lmp_missing' => 'LMP M.',

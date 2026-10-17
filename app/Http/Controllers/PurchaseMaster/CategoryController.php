@@ -3956,7 +3956,7 @@ PROMPT;
     {
         try {
             $validated = $request->validate([
-                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph,tsp,batch',
+                'field' => 'required|string|in:'.implode(',', ComplianceMasterBadgeCalculator::FIELD_KEYS),
                 'image' => 'required|file|image|max:5120',
             ]);
 
@@ -3991,7 +3991,7 @@ PROMPT;
     {
         try {
             $request->validate([
-                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph,tsp,batch',
+                'field' => 'required|string|in:'.implode(',', ComplianceMasterBadgeCalculator::FIELD_KEYS),
                 'pdf' => 'required|file|mimes:pdf|max:15360',
             ]);
 
@@ -4027,7 +4027,7 @@ PROMPT;
         try {
             $validated = $request->validate([
                 'sku' => 'required|string',
-                'field' => 'required|string|in:battery,wireless,electric,gcc,rohs,blanket,bluetooth,logo,graph,tsp,batch',
+                'field' => 'required|string|in:'.implode(',', ComplianceMasterBadgeCalculator::FIELD_KEYS),
                 'kind' => 'required|string|in:image,pdf',
             ]);
 
@@ -4127,7 +4127,7 @@ PROMPT;
      */
     private function complianceMasterRowHasFieldKeys(array $values): bool
     {
-        $fields = ['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'];
+        $fields = ComplianceMasterBadgeCalculator::FIELD_KEYS;
         foreach ($fields as $f) {
             if (! array_key_exists($f, $values)) {
                 continue;
@@ -4147,7 +4147,7 @@ PROMPT;
     private function mergeComplianceFieldsFromRequest(array $validated): array
     {
         $out = [];
-        foreach (['battery', 'wireless', 'electric', 'gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'] as $field) {
+        foreach (ComplianceMasterBadgeCalculator::FIELD_KEYS as $field) {
             $v = $validated[$field] ?? '';
             $out[$field] = $v !== null ? trim((string) $v) : '';
             if ($out[$field] === '') {
@@ -4228,6 +4228,8 @@ PROMPT;
                 'graph' => 'nullable|string',
                 'tsp' => 'nullable|string',
                 'batch' => 'nullable|string',
+                'energy_star_registration' => 'nullable|string',
+                'us_energy_efficiency_label' => 'nullable|string',
                 'battery_img' => 'nullable|string|max:500',
                 'wireless_img' => 'nullable|string|max:500',
                 'electric_img' => 'nullable|string|max:500',
@@ -4239,6 +4241,8 @@ PROMPT;
                 'graph_img' => 'nullable|string|max:500',
                 'tsp_img' => 'nullable|string|max:500',
                 'batch_img' => 'nullable|string|max:500',
+                'energy_star_registration_img' => 'nullable|string|max:500',
+                'us_energy_efficiency_label_img' => 'nullable|string|max:500',
                 'battery_pdf' => 'nullable|string|max:500',
                 'wireless_pdf' => 'nullable|string|max:500',
                 'electric_pdf' => 'nullable|string|max:500',
@@ -4250,6 +4254,8 @@ PROMPT;
                 'graph_pdf' => 'nullable|string|max:500',
                 'tsp_pdf' => 'nullable|string|max:500',
                 'batch_pdf' => 'nullable|string|max:500',
+                'energy_star_registration_pdf' => 'nullable|string|max:500',
+                'us_energy_efficiency_label_pdf' => 'nullable|string|max:500',
                 'apply_siblings' => 'nullable|boolean',
             ]);
 
@@ -4369,6 +4375,8 @@ PROMPT;
                 'graph' => 'nullable|string',
                 'tsp' => 'nullable|string',
                 'batch' => 'nullable|string',
+                'energy_star_registration' => 'nullable|string',
+                'us_energy_efficiency_label' => 'nullable|string',
                 'battery_img' => 'nullable|string|max:500',
                 'wireless_img' => 'nullable|string|max:500',
                 'electric_img' => 'nullable|string|max:500',
@@ -4380,6 +4388,8 @@ PROMPT;
                 'graph_img' => 'nullable|string|max:500',
                 'tsp_img' => 'nullable|string|max:500',
                 'batch_img' => 'nullable|string|max:500',
+                'energy_star_registration_img' => 'nullable|string|max:500',
+                'us_energy_efficiency_label_img' => 'nullable|string|max:500',
                 'battery_pdf' => 'nullable|string|max:500',
                 'wireless_pdf' => 'nullable|string|max:500',
                 'electric_pdf' => 'nullable|string|max:500',
@@ -4391,6 +4401,8 @@ PROMPT;
                 'graph_pdf' => 'nullable|string|max:500',
                 'tsp_pdf' => 'nullable|string|max:500',
                 'batch_pdf' => 'nullable|string|max:500',
+                'energy_star_registration_pdf' => 'nullable|string|max:500',
+                'us_energy_efficiency_label_pdf' => 'nullable|string|max:500',
                 'apply_siblings' => 'nullable|boolean',
             ]);
 
@@ -4497,6 +4509,8 @@ PROMPT;
                 'graph' => 'graph',
                 'tsp' => 'tsp',
                 'batch' => 'batch',
+                'energy_star_registration' => 'energy_star_registration',
+                'us_energy_efficiency_label' => 'us_energy_efficiency_label',
             ];
 
             // Find column indices
@@ -4573,7 +4587,7 @@ PROMPT;
                     }
                 }
 
-                foreach (['gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch'] as $field) {
+                foreach (['gcc', 'rohs', 'blanket', 'bluetooth', 'logo', 'graph', 'tsp', 'batch', 'energy_star_registration', 'us_energy_efficiency_label'] as $field) {
                     if (isset($columnIndices[$field]) && isset($row[$columnIndices[$field]])) {
                         $v = trim((string) $row[$columnIndices[$field]]);
                         if ($v !== '') {

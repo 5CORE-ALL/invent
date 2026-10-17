@@ -325,9 +325,12 @@ class Temu3ListingPublishService
                 }
             }
             if ($skuImages === []) {
-                continue;
+                return [
+                    'success' => false,
+                    'message' => $row['sku'].': Images missing in Image Master.',
+                ];
             }
-            while (count($skuImages) < 3) {
+            while (count($skuImages) < 3 && $skuImages !== []) {
                 $skuImages[] = $skuImages[0];
             }
             $prepared[$index]['hosted_images'] = array_slice($skuImages, 0, self::MAX_IMAGES);
@@ -371,7 +374,7 @@ class Temu3ListingPublishService
                 'externalSkuId' => $row['sku'],
                 'outSkuSn' => $row['sku'],
                 'quantity' => $row['qty'],
-                'images' => $row['hosted_images'] ?? $hostedImages,
+                'images' => $row['hosted_images'] ?? [],
                 'specDetails' => $spec,
                 'price' => [
                     'listPriceType' => 0,
@@ -383,8 +386,8 @@ class Temu3ListingPublishService
                     'length' => (string) ($dimensions['length'] ?? '1'),
                     'width' => (string) ($dimensions['width'] ?? '1'),
                     'height' => (string) ($dimensions['height'] ?? '1'),
-                    'weightUnit' => (string) ($dimensions['weightUnit'] ?? 'g'),
-                    'volumeUnit' => (string) ($dimensions['volumeUnit'] ?? 'cm'),
+                    'weightUnit' => (int) ($dimensions['weightUnit'] ?? 2),
+                    'volumeUnit' => (int) ($dimensions['volumeUnit'] ?? 2),
                 ],
             ];
         }
@@ -608,8 +611,8 @@ class Temu3ListingPublishService
                 'length' => (string) ($pkg['length'] ?? '1'),
                 'width' => (string) ($pkg['width'] ?? '1'),
                 'height' => (string) ($pkg['height'] ?? '1'),
-                'weightUnit' => (string) ($pkg['weightUnit'] ?? 'g'),
-                'volumeUnit' => (string) ($pkg['volumeUnit'] ?? 'cm'),
+                'weightUnit' => (int) ($pkg['weightUnit'] ?? 2),
+                'volumeUnit' => (int) ($pkg['volumeUnit'] ?? 2),
                 'price' => $item['price'] ?? [],
             ];
         }
@@ -961,6 +964,15 @@ class Temu3ListingPublishService
             }
         }
 
+        $childSkus = [];
+        foreach ($children as $product) {
+            $childSku = trim((string) $product->sku);
+            if ($childSku !== '') {
+                $childSkus[] = $childSku;
+            }
+        }
+        ListingManagerFamily::warmAttributes($childSkus);
+
         $rows = [];
         $publishSkus = [];
         $selectedCount = 0;
@@ -969,9 +981,12 @@ class Temu3ListingPublishService
             $classified = $this->classifyChildSku($sku);
             $publishable = ($classified['status'] ?? '') === 'will_publish';
             $selected = $publishable && isset($seedNorm[$this->skuNorm($sku)]);
+            $attr = ListingManagerFamily::attributesForSku($sku);
             $rows[] = [
                 'sku' => $sku,
-                'spec' => $sku,
+                'spec' => $attr['name'] !== '' ? $attr['name'] : $sku,
+                'variation_type' => $attr['type'],
+                'variation_name' => $attr['name'],
                 'inv' => $this->resolveQty($sku),
                 'status' => $classified['status'],
                 'reason' => $classified['reason'],
@@ -1649,7 +1664,7 @@ class Temu3ListingPublishService
     private function resolveSourceImages(ProductMaster $product, string $sku): array
     {
         if (\App\Support\Marketplace\VariationListingContent::active()) {
-            return ListingManagerAmazonHydrator::variationSkuImageUrls($sku, self::MAX_IMAGES);
+            return ListingManagerAmazonHydrator::temuChildImageUrls($sku, self::MAX_IMAGES);
         }
 
         $color = ListingManagerAmazonHydrator::colorImageUrls($sku, trim((string) ($product->parent ?? '')), self::MAX_IMAGES);
@@ -1849,6 +1864,50 @@ class Temu3ListingPublishService
     }
 
     /**
+     * Image Master stores a Shopify CDN copy beside the inventory file.
+     * Temu rejects cdn.shopify.com as fileUrl, so use this SKU's own file URL.
+     */
+    private function inventoryUrlForShopifyCdn(string $imageUrl): string
+    {
+        $imageUrl = trim($imageUrl);
+        if ($imageUrl === '' || stripos($imageUrl, 'shopify') === false) {
+            return '';
+        }
+        if (! Schema::hasTable('product_images') || ! Schema::hasColumn('product_images', 'cdn_url') || ! Schema::hasColumn('product_images', 'image_path')) {
+            return '';
+        }
+
+        $stripped = preg_replace('/\?.*$/', '', $imageUrl) ?: $imageUrl;
+        try {
+            $path = DB::table('product_images')
+                ->where(function ($q) use ($imageUrl, $stripped) {
+                    $q->where('cdn_url', $imageUrl);
+                    if ($stripped !== $imageUrl) {
+                        $q->orWhere('cdn_url', $stripped);
+                    }
+                })
+                ->whereNotNull('image_path')
+                ->where('image_path', '!=', '')
+                ->orderByDesc('id')
+                ->value('image_path');
+        } catch (\Throwable) {
+            return '';
+        }
+
+        $path = trim((string) $path);
+        if ($path === '' || preg_match('#^https?://#i', $path)) {
+            return preg_match('#^https?://#i', $path) && stripos($path, 'shopify') === false ? $path : '';
+        }
+
+        $relative = ltrim(str_replace('\\', '/', $path), '/');
+        if (str_starts_with($relative, 'storage/')) {
+            return asset($relative);
+        }
+
+        return asset('storage/'.$relative);
+    }
+
+    /**
      * Temu 3 image API expects `fileUrl` on bg.local.goods.image.upload.
      *
      * @return array{success: bool, url?: string, message: string}
@@ -1856,7 +1915,15 @@ class Temu3ListingPublishService
     private function uploadImageToTemu3(string $imageUrl): array
     {
         $stripped = preg_replace('/\?.*$/', '', $imageUrl) ?: $imageUrl;
-        $candidates = array_values(array_unique(array_filter([$imageUrl, $stripped])));
+        $candidates = [$imageUrl, $stripped];
+        $local = $this->inventoryUrlForShopifyCdn($imageUrl);
+        if ($local !== '') {
+            array_unshift($candidates, $local);
+        }
+        if (stripos($imageUrl, '://cdn.shopify.com') !== false) {
+            $candidates[] = (string) preg_replace('#://cdn\.shopify\.com#i', '://cdn.shopifycdn.com', $imageUrl);
+        }
+        $candidates = array_values(array_unique(array_filter($candidates)));
 
         $attempts = [];
         foreach ($candidates as $url) {
@@ -3091,40 +3158,44 @@ class Temu3ListingPublishService
     }
 
     /**
-     * Temu packageInfo from /dim-wt-master for this SKU (Item L/W/H IN + Itm wt GW, CM when stored).
+     * Temu US packageInfo: Item L/W/H IN and Itm wt GW, unit codes 2 = inch and lb.
      *
-     * @return array{weight: string, length: string, width: string, height: string, weightUnit: string, volumeUnit: string}
+     * @return array{weight: string, length: string, width: string, height: string, weightUnit: int, volumeUnit: int}
      */
     private function resolveDimensions(ProductMaster $product, ?string $sku = null): array
     {
         $sku = trim((string) ($sku ?: $product->sku));
         $pkg = $this->dimWtMasterPackageForSku($sku, $product);
+        $fmt = static function (float $n): string {
+            $text = number_format($n, 2, '.', '');
 
-        $toCm = static function (?float $cm, ?float $inches): string {
-            if ($inches !== null && $inches > 0) {
-                return (string) max(1, round($inches * 2.54, 2));
+            return rtrim(rtrim($text, '0'), '.') ?: '0';
+        };
+        $inches = static function (?float $inch, ?float $cm) use ($fmt): string {
+            if ($inch !== null && $inch > 0) {
+                return $fmt($inch);
             }
             if ($cm !== null && $cm > 0) {
-                return (string) max(1, round($cm, 2));
+                return $fmt($cm / 2.54);
             }
 
             return '1';
         };
 
-        $weightG = '1';
+        $weightLb = '1';
         if (($pkg['weight_lb'] ?? null) !== null) {
-            $weightG = (string) max(1, round((float) $pkg['weight_lb'] * 453.592, 2));
+            $weightLb = $fmt((float) $pkg['weight_lb']);
         } elseif (($pkg['weight_kg'] ?? null) !== null) {
-            $weightG = (string) max(1, round((float) $pkg['weight_kg'] * 1000, 2));
+            $weightLb = $fmt((float) $pkg['weight_kg'] / 0.45359237);
         }
 
         return [
-            'weight' => $weightG,
-            'length' => $toCm($pkg['length_cm'] ?? null, $pkg['length_in'] ?? null),
-            'width' => $toCm($pkg['width_cm'] ?? null, $pkg['width_in'] ?? null),
-            'height' => $toCm($pkg['height_cm'] ?? null, $pkg['height_in'] ?? null),
-            'weightUnit' => 'g',
-            'volumeUnit' => 'cm',
+            'weight' => $weightLb,
+            'length' => $inches($pkg['length_in'] ?? null, $pkg['length_cm'] ?? null),
+            'width' => $inches($pkg['width_in'] ?? null, $pkg['width_cm'] ?? null),
+            'height' => $inches($pkg['height_in'] ?? null, $pkg['height_cm'] ?? null),
+            'weightUnit' => 2,
+            'volumeUnit' => 2,
         ];
     }
 

@@ -25,6 +25,8 @@ class ComplianceMasterBadgeCalculator implements PageBadgeCalculator
         'graph',
         'tsp',
         'batch',
+        'energy_star_registration',
+        'us_energy_efficiency_label',
     ];
 
     public static function pageName(): string
