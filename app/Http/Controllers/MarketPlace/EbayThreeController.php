@@ -394,7 +394,7 @@ class EbayThreeController extends Controller
         };
 
         // Fetch NR values for these SKUs from EbayThreeDataView (include PARENT SKUs for nr_req mirror + lookups)
-        $ebayDataViews = EbayThreeDataView::whereIn('sku', $allSkus)->get()->keyBy('sku');
+        $ebayDataViews = $this->dataViewsKeyedByRequestedSku(EbayThreeDataView::whereIn('sku', $allSkus)->get(), $allSkus);
 
         // NR/REQ (pricing column): listing status rows that include nr_req (same source as save-status)
         $ebayListingStatuses = EbayThreeListingStatus::whereIn('sku', $allSkus)
@@ -1485,7 +1485,7 @@ class EbayThreeController extends Controller
         $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch NR values for these SKUs from EbayThreeDataView
-        $ebayDataViews = EbayThreeDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayDataViews = $this->dataViewsKeyedByRequestedSku(EbayThreeDataView::whereIn('sku', $skus)->get(), $skus);
         
         // Fetch NRL (nr_req) values from EbayThreeListingStatus - get most recent non-empty record
         $ebayListingStatuses = EbayThreeListingStatus::whereIn('sku', $skus)
@@ -2113,6 +2113,31 @@ class EbayThreeController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    /**
+     * saveSpriceToDatabase stores the SKU upper-cased, but the product master can be mixed case ("CS 05 2W WoG").
+     * The DB match is case-insensitive while a PHP array key is not, so key each row by the SKU that was asked for.
+     *
+     * @param  iterable<int, \App\Models\EbayThreeDataView>  $views
+     * @param  iterable<int, mixed>  $skus
+     * @return array<string, \App\Models\EbayThreeDataView>
+     */
+    private function dataViewsKeyedByRequestedSku($views, $skus): array
+    {
+        $byUpper = [];
+        foreach ($views as $view) {
+            $byUpper[strtoupper(trim((string) $view->sku))] = $view;
+        }
+        $out = [];
+        foreach ($skus as $sku) {
+            $upper = strtoupper(trim((string) $sku));
+            if (isset($byUpper[$upper])) {
+                $out[(string) $sku] = $byUpper[$upper];
+            }
+        }
+
+        return $out;
     }
 
     public function saveSpriceToDatabase(Request $request)
