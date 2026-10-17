@@ -18569,6 +18569,15 @@ class ChannelMasterController extends Controller
                     $liveValue
                 );
 
+                // Y / T Orders, Views, CVR cells: the graph's newest point must be the number
+                // the cell shows (same idea as pinAllYSalesChartLastPoint for Y Sales), so a
+                // graph and its cell can never disagree on the latest day.
+                if (in_array($metric, \App\Support\Marketplace\AmmColumnHistory::FIELDS, true)
+                    && $points !== []
+                    && $live !== null && $live !== '' && is_numeric($live)) {
+                    $points[array_key_last($points)]['value'] = round((float) $live, 2);
+                }
+
                 return response()->json([
                     'success' => true,
                     'data' => array_map(

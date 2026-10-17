@@ -104,6 +104,31 @@ class AmmColumnHistory
     }
 
     /**
+     * Distinct saved days per Y field for the all-channels page (for the command's log line).
+     *
+     * @return array<string, int>
+     */
+    public static function yHistoryDayCounts(): array
+    {
+        $out = [];
+        $since = now(BadgeDataHistory::TZ)->subDays(30)->toDateString();
+        foreach (['y_orders', 'y_views', 'y_cvr'] as $field) {
+            try {
+                $out[$field] = (int) BadgeDataHistory::query()
+                    ->where('page_name', self::ALL_PAGE)
+                    ->where('field', $field)
+                    ->whereDate('snapshot_date', '>=', $since)
+                    ->distinct()
+                    ->count('snapshot_date');
+            } catch (\Throwable $e) {
+                $out[$field] = -1;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * Reverb Y Views used to be saved as raw impressions (÷1000 is what the page shows).
      * Drops those rows (and the All totals / CVR built from them) so they get re-recorded
      * scaled. Self-limiting: only fires while an unscaled Reverb value is still saved.

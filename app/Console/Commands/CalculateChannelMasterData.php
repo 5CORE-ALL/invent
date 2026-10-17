@@ -203,6 +203,7 @@ class CalculateChannelMasterData extends Command
                 }
                 try {
                    
+                    $this->info('Saved Y history days (all channels, last 30): '.json_encode(\App\Support\Marketplace\AmmColumnHistory::yHistoryDayCounts()));
                     $purged = $this->option('force')
                         && \App\Support\Marketplace\AmmColumnHistory::purgeUnscaledReverbYHistory();
                     if ($purged) {
