@@ -36,7 +36,7 @@ final class UserOverdueNudge
         }
 
         $minOverdueDays = max(0, $minOverdueDays);
-        $cacheKey = 'overdue_nudge_count_v2_'.$user->id.'_'.$minOverdueDays.'_'.TaskBusinessTime::today()->toDateString();
+        $cacheKey = 'overdue_nudge_count_v3_'.$user->id.'_'.$minOverdueDays.'_'.TaskBusinessTime::today()->toDateString();
 
         return (int) Cache::remember($cacheKey, now()->addMinutes(2), function () use ($email, $minOverdueDays) {
             TaskBusinessTime::applyDatabaseSession();
@@ -50,7 +50,7 @@ final class UserOverdueNudge
             }
 
             return (int) Task::query()
-                ->where('status', '!=', 'Archived')
+                ->whereNotIn('status', ['Done', 'Archived'])
                 ->whereNotNull('start_date')
                 ->where(function ($q) use ($email) {
                     $q->whereRaw('LOWER(TRIM(assign_to)) = ?', [$email])

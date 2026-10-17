@@ -1496,6 +1496,28 @@
         };
     }
 
+    /**
+     * Sort by the number the cell shows. Blank values (null / NaN, and 0 when zeroEmpty) stay at the bottom
+     * for both low to high and high to low. Tabulator passes the rows already swapped for desc.
+     */
+    function shopifyB2cNumberSorter(getValue, zeroEmpty) {
+        const norm = function(row) {
+            const v = getValue(row.getData() || {});
+            if (v == null || typeof v !== 'number' || !isFinite(v)) return null;
+            if (zeroEmpty && v <= 0) return null;
+            return v;
+        };
+        return function(a, b, aRow, bRow, column, dir) {
+            const av = norm(aRow);
+            const bv = norm(bRow);
+            if (av == null && bv == null) return 0;
+            const blankLast = dir === 'desc' ? -1 : 1;
+            if (av == null) return blankLast;
+            if (bv == null) return -blankLast;
+            return av - bv;
+        };
+    }
+
     /** Live Price metrics after a successful push (Price becomes S PRC). */
     function shopifyB2cComputeLivePriceMetrics(data, price) {
         const p = Math.round((parseFloat(price) || 0) * 100) / 100;
@@ -2731,6 +2753,8 @@
                 {
                     title: "Parent",
                     field: "Parent",
+                    sorter: "alphanum",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent...",
                     cssClass: "text-primary",
@@ -2760,6 +2784,8 @@
                 {
                     title: "SKU",
                     field: "(Child) sku",
+                    sorter: "alphanum",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
                     cssClass: "text-primary fw-bold",
@@ -2787,20 +2813,23 @@
                     field: "INV",
                     hozAlign: "center",
                     width: 50,
-                    sorter: "number"
+                    sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" }
                 },
                 {
                     title: "OV L30",
                     field: "L30",
                     hozAlign: "center",
                     width: 50,
-                    sorter: "number"
+                    sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" }
                 },
                 {
                     title: "Dil",
                     field: "DIL%",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     headerTooltip: "OV L30 / INV × 100. Same Dil Sprc Dil uses.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -2827,6 +2856,7 @@
                     hozAlign: "center",
                     width: 60,
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue() || 0, 10);
                         if (value === 0) {
@@ -2841,6 +2871,7 @@
                     field: "CVR%",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     width: 60,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
@@ -2868,6 +2899,7 @@
                     hozAlign: "center",
                     width: 70,
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue() || 0);
                         if (value === 0) {
@@ -2880,7 +2912,10 @@
                     title: "NR/REQ",
                     field: "nr_req",
                     hozAlign: "center",
-                    headerSort: false,
+                    sorter: function(a, b, aRow, bRow) {
+                        const v = function(row) { return String((row.getData() || {}).nr_req || 'REQ').trim().toUpperCase() === 'NR' ? 1 : 0; };
+                        return v(aRow) - v(bRow);
+                    },
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         let value = cell.getValue();
@@ -2911,7 +2946,7 @@
                     headerTooltip: "Standard Price (Std Prc) — same shared value as /amazon-tabulator-view (amazon_data_view.STANDARD_PRICE). Editable; saves to all Sku Link LMP siblings. Dot vs Amz price.",
                     editor: "input",
                     width: 70,
-                    sorter: "number",
+                    sorter: shopifyB2cNumberSorter(function(d) { return parseFloat(d.STANDARD_PRICE); }, true),
                     editable: function(cell) {
                         const d = cell.getRow().getData();
                         if (isShopifyB2cParentRow(d)) return false;
@@ -2938,6 +2973,7 @@
                     field: "Price",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
@@ -2967,7 +3003,7 @@
                     title: "LMP",
                     field: "lmp_price",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: shopifyB2cNumberSorter(function(d) { return parseFloat(d.lmp_price); }, true),
                     width: 100,
                     headerTooltip: "Google LMP from /repricer/google-search (manual add supported)",
                     formatter: function(cell) {
@@ -3032,16 +3068,12 @@
                     hozAlign: "center",
                     width: 70,
                     headerTooltip: "(Google LMP − Price) / LMP × 100. When S PRC ≠ Price, Diff previews S PRC (what push will use).",
-                    sorter: function(a, b, aRow, bRow) {
-                        const calc = function(rd) {
-                            if (isShopifyB2cParentRow(rd)) return -Infinity;
-                            const lmp = parseFloat(rd.lmp_price || 0);
-                            const price = shopifyB2cDiffComparePrice(rd);
-                            if (!lmp || lmp <= 0) return -Infinity;
-                            return ((lmp - price) / lmp) * 100;
-                        };
-                        return calc(aRow.getData()) - calc(bRow.getData());
-                    },
+                    sorter: shopifyB2cNumberSorter(function(rd) {
+                        if (isShopifyB2cParentRow(rd)) return null;
+                        const lmp = parseFloat(rd.lmp_price || 0);
+                        if (!(lmp > 0)) return null;
+                        return ((lmp - shopifyB2cDiffComparePrice(rd)) / lmp) * 100;
+                    }, false),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) return '';
@@ -3091,7 +3123,7 @@
                     title: "A Prc",
                     field: "A Price",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: shopifyB2cNumberSorter(function(d) { return shopifyB2cAmzPrice(d); }, true),
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue());
                         if (value === null || value === 0 || isNaN(value)) {
@@ -3106,6 +3138,7 @@
                     field: "ROI%",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     formatter: function(cell) {
                         const percent = parseFloat(cell.getValue());
                         if (percent === null || percent === undefined || !isFinite(percent)) return '';
@@ -3118,6 +3151,7 @@
                     field: "GPFT%",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     formatter: function(cell) {
                         const percent = parseFloat(cell.getValue());
                         if (percent === null || percent === undefined || !isFinite(percent)) return '';
@@ -3129,7 +3163,7 @@
                     title: "NPFT%",
                     field: "NPFT%",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: shopifyB2cNumberSorter(function(d) { return (parseFloat(d['GPFT%']) || 0) - (parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0); }, false),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const ads = parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
@@ -3142,7 +3176,7 @@
                     title: "NROI%",
                     field: "NROI%",
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: shopifyB2cNumberSorter(function(d) { return shopifyComputeNetRoi(d['Price'], d['LP_productmaster'], d['Ship_productmaster'], shopifyChannelAdsPct()); }, false),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const nroi = shopifyComputeNetRoi(
@@ -3160,6 +3194,7 @@
                     field: "Profit",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
@@ -3173,6 +3208,7 @@
                     field: "Sales L30",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
@@ -3185,6 +3221,7 @@
                     field: "LP_productmaster",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
@@ -3197,6 +3234,7 @@
                     field: "Ship_productmaster",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: { alignEmptyValues: "bottom" },
                     visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
@@ -3225,7 +3263,7 @@
                     field: "SPRICE",
                     hozAlign: "center",
                     editable: false,
-                    sorter: "number",
+                    sorter: shopifyB2cNumberSorter(function(d) { return isShopifyB2cParentRow(d) ? null : shopifyB2cShownSprice(d); }, true),
                     headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), Capped at LMP first (when SGROI at LMP ≥ 20%), then Amz cap: LMP below A Price → A Price; price below A Price → A Price; above A Price stays. Saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP. Amz = using A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
