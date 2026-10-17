@@ -2688,8 +2688,50 @@
                         if (norm === 'all' && chartSyncedAllMetrics[metric]) return;
                         lastDotPairByKey[norm + '_' + metric] = [v1, v2];
                         lastDotColorByKey[norm + '_' + metric] = colorFromDotPair(v1, v2, metric);
+                        delete dotFallbackKeys[norm + '_' + metric];
                     });
                 });
+            }
+            // Y / T column dots with fewer than two saved history days have no "previous day"
+            // pair, so they stayed gray. Until history exists, compare against the channel's
+            // own L30 level (same rule as the cell text colour and the Yesterday badges).
+            var dotFallbackKeys = {};
+            function setL30FallbackDot(channelKey, metric, baseline, current) {
+                if (!channelKey) return;
+                var k = channelKey + '_' + metric;
+                var existing = lastDotPairByKey[k];
+                var hasReal = existing && existing[0] != null && existing[1] != null
+                    && !isNaN(existing[0]) && !isNaN(existing[1]) && !dotFallbackKeys[k];
+                if (hasReal) return;
+                if (baseline == null || current == null || !isFinite(baseline) || !isFinite(current)) return;
+                lastDotPairByKey[k] = [baseline, current];
+                lastDotColorByKey[k] = colorFromDotPair(baseline, current, metric);
+                dotFallbackKeys[k] = true;
+            }
+            function applyL30FallbackDots() {
+                if (!table || typeof table.getData !== 'function') return;
+                var rows = table.getData() || [];
+                rows.forEach(function(row) {
+                    var key = snapshotChannelKey(row['Channel '] || '');
+                    if (!key) return;
+                    var l30Orders = parseNumber(row['L30 Orders'] || 0);
+                    var l30Views = parseNumber(row['Total Views'] || 0);
+                    var hasY = row['Y Orders'] !== undefined && row['Y Orders'] !== null && row['Y Orders'] !== '';
+                    if (hasY) setL30FallbackDot(key, 'y_orders', l30Orders / 30, parseNumber(row['Y Orders']));
+                    if (row['Y Views'] !== undefined && row['Y Views'] !== null && row['Y Views'] !== '' && l30Views > 0) {
+                        setL30FallbackDot(key, 'y_views', l30Views / 30, parseNumber(row['Y Views']));
+                    }
+                    if (row['Y CVR'] !== undefined && row['Y CVR'] !== null && row['Y CVR'] !== '') {
+                        var listing = listingCvrFromRow(row);
+                        if (listing != null && isFinite(listing)) {
+                            setL30FallbackDot(key, 'y_cvr', listing, parseNumber(row['Y CVR']));
+                        }
+                    }
+                    var t = todayPartsFromRow(row);
+                    setL30FallbackDot(key, 't_orders', l30Orders / 30, t.orders);
+                    if (l30Views > 0) setL30FallbackDot(key, 't_views', l30Views / 30, t.views);
+                });
+                paintMetricDots(channelKeysFromTableData());
             }
             function colorFromDotPair(v1, v2, metric) {
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
@@ -2752,8 +2794,9 @@
 
                     if (metric) {
                         var text = formatMetricDiffText(metric, getMetricDiffAmount(ch, metric));
+                        var isFallback = !!dotFallbackKeys[snapshotChannelKey(ch) + '_' + metric];
                         el.title = text
-                            ? (text + ' vs previous day — click for chart')
+                            ? (text + (isFallback ? ' vs L30 average (no previous day saved yet) — click for chart' : ' vs previous day — click for chart'))
                             : 'View Chart';
                     }
                 });
@@ -2775,6 +2818,7 @@
                 if (channels && Object.keys(channels).length) {
                     applyDotTrendsMap(channels);
                     if (table) {
+                        applyL30FallbackDots();
                         paintMetricDots(Object.keys(channels));
                     }
                 }
@@ -6029,6 +6073,7 @@
                     if (channels && Object.keys(channels).length) {
                         applyDotTrendsMap(channels);
                     }
+                    applyL30FallbackDots();
                     paintMetricDots(channelKeys);
                 }
 
@@ -7087,6 +7132,7 @@
                     buildColumnDropdown();
                     fitAmmColumnsToData();
                     if (typeof applyYOrdersToTable === 'function') applyYOrdersToTable();
+                    if (typeof applyL30FallbackDots === 'function') applyL30FallbackDots();
                 }, 100);
                 if (!dotTrendsLoadedOnce && table.getData && table.getData().length) {
                     dotTrendsLoadedOnce = true;
@@ -9040,6 +9086,7 @@
                         'Y Views': cvrRec ? cvrRec.views : null
                     });
                 });
+                applyL30FallbackDots();
             }
 
             function applyYOrdersBadge(rows) {
