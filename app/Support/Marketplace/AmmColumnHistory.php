@@ -103,6 +103,39 @@ class AmmColumnHistory
         return $total;
     }
 
+    /**
+     * Reverb Y Views used to be saved as raw impressions (÷1000 is what the page shows).
+     * Drops those rows (and the All totals / CVR built from them) so they get re-recorded
+     * scaled. Self-limiting: only fires while an unscaled Reverb value is still saved.
+     */
+    public static function purgeUnscaledReverbYHistory(): bool
+    {
+        try {
+            $reverbPage = self::PAGE_PREFIX.'reverb';
+            $unscaled = BadgeDataHistory::query()
+                ->where('page_name', $reverbPage)
+                ->where('field', 'y_views')
+                ->where('value', '>', 100000)
+                ->exists();
+            if (! $unscaled) {
+                return false;
+            }
+
+            BadgeDataHistory::query()
+                ->where('page_name', $reverbPage)
+                ->whereIn('field', ['y_views', 'y_cvr'])
+                ->delete();
+            BadgeDataHistory::query()
+                ->where('page_name', self::ALL_PAGE)
+                ->whereIn('field', ['y_views', 'y_cvr'])
+                ->delete();
+
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     public static function pageFor(string $channelKey): string
     {
         return $channelKey === 'all' ? self::ALL_PAGE : self::PAGE_PREFIX.$channelKey;

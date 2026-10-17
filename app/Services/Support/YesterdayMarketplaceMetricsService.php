@@ -1227,6 +1227,11 @@ class YesterdayMarketplaceMetricsService
         $qty = (int) ($m['qty'] ?? 0);
         $views = $m['views'] ?? null;
         $views = ($views === null || $views === '') ? null : (int) $views;
+        // Reverb views are bump impressions; /all-marketplace-master and /reverb-pricing show
+        // them ÷ 1000 (and CVR from that scaled number), so Y Views / Y CVR must match.
+        if ($views !== null && $this->key($name) === 'reverb') {
+            $views = (int) round(\App\Support\ReverbPricingViews::scale($views));
+        }
         $cvr = ($views !== null && $views > 0) ? ($qty / $views) * 100 : null;
 
         $gpftBase = $sales > 0 ? $sales : $gpftSales;

@@ -203,7 +203,12 @@ class CalculateChannelMasterData extends Command
                 }
                 try {
                    
-                    if ($this->option('force') && \App\Support\Marketplace\AmmColumnHistory::yHistoryIsThin()) {
+                    $purged = $this->option('force')
+                        && \App\Support\Marketplace\AmmColumnHistory::purgeUnscaledReverbYHistory();
+                    if ($purged) {
+                        $this->info('Removed old unscaled Reverb Y Views history (now saved ÷1000).');
+                    }
+                    if ($this->option('force') && ($purged || \App\Support\Marketplace\AmmColumnHistory::yHistoryIsThin())) {
                         $this->info('Backfilling last 30 days of Y Orders / Y Views / Y CVR history...');
                         $filled = \App\Support\Marketplace\AmmColumnHistory::backfillYesterday(30);
                         $this->info("✓ Y column history backfill saved: {$filled}");
