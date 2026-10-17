@@ -37,7 +37,7 @@ class Shopifyb2cController extends Controller
         'gpft_percent', 'groi_percent', 'nroi_percent', 'npft_percent', 'tcos_percent',
         'total_l30', 'total_views', 'cvr_percent', 'total_b2b_l30',
         'zero_sold_count', 'sold_count', 'missing_count', 'less_amz_count', 'more_amz_count',
-        'blue_triangle_count',
+        'blue_triangle_count', 'purple_triangle_count',
         'lmp_missing_count', 'prc_gt_lmp_count', 'price_lt80_lmp_count',
         'avg_price', 'total_inv',
     ];
@@ -1052,6 +1052,7 @@ class Shopifyb2cController extends Controller
             $processedItem["SPRICE_STATUS"] = null;
             $processedItem["has_custom_sprice"] = false;
             $processedItem["AMZ_SUGG_APPLIED"] = false;
+            $processedItem["AMZ_CAPPED"] = false;
             $processedItem["cpn_pct"] = 0;
 
             $valuesArr = $viewBySku[$skuKey] ?? ($viewBySku[$sku] ?? null);
@@ -1060,6 +1061,7 @@ class Shopifyb2cController extends Controller
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
                 $processedItem["has_custom_sprice"] = $processedItem["SPRICE"] > 0;
                 $processedItem["AMZ_SUGG_APPLIED"] = !empty($valuesArr["AMZ_SUGG_APPLIED"]);
+                $processedItem["AMZ_CAPPED"] = !empty($valuesArr["AMZ_CAPPED"]);
                 $processedItem["cpn_pct"] = isset($valuesArr["PEF_CPN_PCT"]) && is_numeric($valuesArr["PEF_CPN_PCT"])
                     ? round((float) $valuesArr["PEF_CPN_PCT"], 2)
                     : 0;
@@ -1646,6 +1648,7 @@ class Shopifyb2cController extends Controller
             $prcGtLmp = 0;
             $priceLt80 = 0;
             $blueTriangle = 0;
+            $purpleTriangle = 0;
             foreach ($children as $row) {
                 $price = floatval($row['Price'] ?? 0);
                 $lmp = floatval($row['lmp_price'] ?? ($row['LMP'] ?? 0));
@@ -1662,6 +1665,11 @@ class Shopifyb2cController extends Controller
                 $sprice = floatval($row['SPRICE'] ?? 0);
                 if ($sprice > 0 && $price > 0 && round($sprice, 2) !== round($price, 2)) {
                     $blueTriangle++;
+                }
+                // Amz cap: S PRC was raised to A Price (never below Amazon price).
+                $amz = floatval($row['A Price'] ?? 0);
+                if (!empty($row['AMZ_CAPPED']) && $sprice > 0 && $amz > 0 && abs($sprice - $amz) <= 0.015) {
+                    $purpleTriangle++;
                 }
             }
 
@@ -1682,6 +1690,7 @@ class Shopifyb2cController extends Controller
                 'less_amz_count' => $lessAmzCount,
                 'more_amz_count' => $moreAmzCount,
                 'blue_triangle_count' => $blueTriangle,
+                'purple_triangle_count' => $purpleTriangle,
                 'lmp_missing_count' => $lmpMissing,
                 'prc_gt_lmp_count' => $prcGtLmp,
                 'price_lt80_lmp_count' => $priceLt80,

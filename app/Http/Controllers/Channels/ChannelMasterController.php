@@ -208,6 +208,9 @@ class ChannelMasterController extends Controller
             'TikTok Shop 2' => '/tiktok-2-pricing',
             'Tiktok Shop 2' => '/tiktok-2-pricing',
             'Depop' => '/depop/pricing',
+            'Shopify' => '/shopify-b2c-pricing',
+            'Shopify B2C' => '/shopify-b2c-pricing',
+            'ShopifyB2C' => '/shopify-b2c-pricing',
             'Shopify B2B' => '/shopify-b2b/daily-sales',
             'ShopifyB2B' => '/shopify-b2b/daily-sales',
         ];

@@ -23,7 +23,7 @@ class ShopifyB2cSprcDilAutoPushCommand extends Command
         {--limit= : Max SKUs (for testing)}
         {--sku=* : Only these SKUs (for testing)}';
 
-    protected $description = 'Shopify B2C Std prc vs dil (LMP cap) → SPRICE → Shopify (4:50 AM + 8:50 PM IST).';
+    protected $description = 'Shopify B2C Std prc vs dil (LMP cap, Amz cap) → SPRICE → Shopify (4:50 AM + 8:50 PM IST).';
 
     protected string $monitorJobName = 'Shopify B2C Sprc Dil Auto Push';
 
@@ -49,7 +49,7 @@ class ShopifyB2cSprcDilAutoPushCommand extends Command
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('Shopify B2C Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
         $this->info('Schedule: 04:50 and 20:50 Asia/Kolkata (IST)');
-        $this->info('Rules: shopify_b2c_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + LMP cap');
+        $this->info('Rules: shopify_b2c_std_prc_vs_dil (Age/Dil/B/0 Sold/CVR/Rev Disc) + LMP cap + Amz cap (never below A Price)');
         $this->info('Push: Shopify live price — only when S PRC differs from Price');
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 

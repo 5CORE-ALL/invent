@@ -724,6 +724,11 @@
                             style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                             title="Blue triangle: INV > 0 and S PRC ≠ Price (needs push). The server saves S PRC from Std prc vs dil and pushes it twice daily (04:50 / 20:50 IST). Click to show only those SKUs.">
                             <span class="summary-trend-dot none" data-metric="blue_triangle_count" title="Rolling history"></span><i class="fas fa-exclamation-triangle"></i> 0</span>
+                        <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
+                            data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
+                            style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
+                            title="Amz cap: S PRC was raised to A Price (never below Amazon price). Click badge to filter. Click dot for rolling history.">
+                            <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span>Amz 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price', 'pglTitle' => 'Price or S PRC > non-ignored LMP (red triangle), INV > 0 only. Click badge to filter. Click dot for rolling history.'])
                         @include('partials.price-lt80-lmp-badge', ['pltBadgeId' => 'shopifyb2c-price-lt80-lmp-badge', 'pltChannelKey' => 'shopifyb2c', 'pltPriceField' => 'Price'])
@@ -876,18 +881,18 @@
         total_l30: 'L30', total_views: 'Views', cvr_percent: 'CVR%', total_b2b_l30: 'B2C L30',
         zero_sold_count: '0 Sold', sold_count: '> 0 Sold',
         less_amz_count: '< Amz', more_amz_count: '> Amz',
-        blue_triangle_count: 'S PRC ≠ Price',
+        blue_triangle_count: 'S PRC ≠ Price', purple_triangle_count: 'S PRC raised to A Price',
         lmp_missing_count: 'LMP M.', prc_gt_lmp_count: 'Price > LMP', price_lt80_lmp_count: 'Price < 80% LMP',
         avg_price: 'Price', total_inv: 'INV'
     };
     const shopifyB2cBadgeInvertMetrics = {
         tcos_percent: true, zero_sold_count: true, less_amz_count: true,
-        blue_triangle_count: true, lmp_missing_count: true,
+        blue_triangle_count: true, purple_triangle_count: true, lmp_missing_count: true,
         prc_gt_lmp_count: true, price_lt80_lmp_count: true
     };
     const shopifyB2cFilterBadgeIds = {
         'zero-sold-count-badge': 1, 'more-sold-count-badge': 1,
-        'shopifyb2c-blue-triangle-badge': 1,
+        'shopifyb2c-blue-triangle-badge': 1, 'shopifyb2c-purple-triangle-badge': 1,
         'shopifyb2c-lmp-missing-badge': 1, 'shopifyb2c-price-gt-lmp-badge': 1,
         'shopifyb2c-price-lt80-lmp-badge': 1, 'less-amz-badge': 1, 'more-amz-badge': 1
     };
@@ -1296,6 +1301,16 @@
     }
     window.shopifyB2cShownSprice = shopifyB2cShownSprice;
 
+    /** Amz cap: S PRC was raised to A Price (server flag AMZ_CAPPED, saved S PRC equals A Price). */
+    function shopifyB2cHasAmzCap(data) {
+        if (!data || isShopifyB2cParentRow(data)) return false;
+        const amz = shopifyB2cAmzPrice(data);
+        const shown = shopifyB2cDisplayedSprice(data);
+        if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
+        const f = data.AMZ_CAPPED;
+        return f === true || f === 1 || f === '1' || f === 'true';
+    }
+
     function shopifyB2cHasBlueTriangle(data) {
         if (!data || isShopifyB2cParentRow(data)) return false;
         const sku = String(data['(Child) sku'] || data.sku || '').trim().toUpperCase();
@@ -1321,11 +1336,19 @@
         return copy;
     }
 
+    function syncShopifyB2cPurpleTriangleBadgeState() {
+        $('#shopifyb2c-purple-triangle-badge').css({
+            outline: purpleTriangleFilterActive ? '3px solid #ffc107' : '',
+            outlineOffset: purpleTriangleFilterActive ? '2px' : ''
+        });
+    }
+
     function syncShopifyB2cTriangleBadgeState() {
         $('#shopifyb2c-blue-triangle-badge').css({
             outline: blueTriangleFilterActive ? '3px solid #ffc107' : '',
             outlineOffset: blueTriangleFilterActive ? '2px' : ''
         });
+        syncShopifyB2cPurpleTriangleBadgeState();
     }
 
     /** Std Prc vs Amz/channel price: reduce / hold / increase → red / yellow / green. */
@@ -1585,6 +1608,7 @@
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let blueTriangleFilterActive = false;
+    let purpleTriangleFilterActive = false;
     let decreaseModeActive = true;
     let increaseModeActive = false;
     let samePriceModeActive = false;
@@ -2224,6 +2248,7 @@
             if ($(e.target).closest('.summary-trend-dot').length) return;
             lessAmzFilterActive = !lessAmzFilterActive;
             moreAmzFilterActive = false; // Deactivate the other filter
+            if (lessAmzFilterActive) purpleTriangleFilterActive = false;
             applyFilters();
         });
 
@@ -2233,6 +2258,7 @@
             if ($(e.target).closest('.summary-trend-dot').length) return;
             moreAmzFilterActive = !moreAmzFilterActive;
             lessAmzFilterActive = false; // Deactivate the other filter
+            if (moreAmzFilterActive) purpleTriangleFilterActive = false;
             applyFilters();
         });
 
@@ -3180,7 +3206,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), capped at LMP, saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at LMP.",
+                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), capped at LMP, then never below A Price (Amz cap). Saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at LMP. Amz = raised to A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
@@ -3202,7 +3228,7 @@
                             return '';
                         }
 
-                        const overLmp = shopifyB2cCents(lmp) > 0 && shopifyB2cCents(value) >= shopifyB2cCents(lmp);
+                        const overLmp = !shopifyB2cHasAmzCap(rowData) && shopifyB2cCents(lmp) > 0 && shopifyB2cCents(value) >= shopifyB2cCents(lmp);
                         const redTri = overLmp
                             ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $' + lmp.toFixed(2) + '"></i>'
                             : '';
@@ -3211,12 +3237,16 @@
                         if (overLmp) {
                             priceHtml = `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
                         }
+                        const amzLbl = shopifyB2cHasAmzCap(rowData)
+                            ? '<span class="shopifyb2c-sprice-amz-lbl" title="S PRC raised to A Price $'
+                                + shopifyB2cAmzPrice(rowData).toFixed(2) + ' (Amz cap: never below Amazon price)">Amz</span>'
+                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                             : '';
 
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${amzLbl}${redTri}${blueTri}</span>`;
                     }
                 },
                 {
@@ -3590,6 +3620,12 @@
                     return shopifyB2cHasBlueTriangle(data);
                 });
             }
+            // Amz cap: S PRC was raised to A Price.
+            if (purpleTriangleFilterActive) {
+                table.addFilter(function(data) {
+                    return shopifyB2cHasAmzCap(data);
+                });
+            }
 
             // Row type filter: All Rows / Parents / SKUs (same as Amazon)
             const parentFilter = $('#parent-filter').val();
@@ -3636,6 +3672,7 @@
                     lmpMissingFilterActive = on;
                     if (on) {
                         blueTriangleFilterActive = false;
+                        purpleTriangleFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -3643,6 +3680,7 @@
         }
         function shopifyB2cClearPriceGtLmpCompetingFilters() {
             blueTriangleFilterActive = false;
+            purpleTriangleFilterActive = false;
             priceLt80LmpFilterActive = false;
             lmpMissingFilterActive = false;
             lessAmzFilterActive = false;
@@ -3694,6 +3732,7 @@
                     priceLt80LmpFilterActive = on;
                     if (on) {
                         blueTriangleFilterActive = false;
+                        purpleTriangleFilterActive = false;
                     }
                     applyFilters();
                 }
@@ -3706,6 +3745,20 @@
                 lmpMissingFilterActive = false;
                 priceGtLmpFilterActive = false;
                 priceLt80LmpFilterActive = false;
+                purpleTriangleFilterActive = false;
+                lessAmzFilterActive = false;
+                moreAmzFilterActive = false;
+            }
+            applyFilters();
+        });
+        $('#shopifyb2c-purple-triangle-badge').on('click', function(e) {
+            if ($(e.target).closest('.summary-trend-dot').length) return;
+            purpleTriangleFilterActive = !purpleTriangleFilterActive;
+            if (purpleTriangleFilterActive) {
+                lmpMissingFilterActive = false;
+                priceGtLmpFilterActive = false;
+                priceLt80LmpFilterActive = false;
+                blueTriangleFilterActive = false;
                 lessAmzFilterActive = false;
                 moreAmzFilterActive = false;
             }
@@ -3840,16 +3893,24 @@
                 PriceLt80LmpBadge.update('#shopifyb2c-price-lt80-lmp-badge', allData, 'shopifyb2c', 'Price');
             }
             let blueTriangleCount = 0;
+            let amzCapCount = 0;
             const blueSrc = (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length)
                 ? allTableData
                 : allData;
             blueSrc.forEach(function(row) {
                 if (shopifyB2cHasBlueTriangle(row)) blueTriangleCount++;
+                if (shopifyB2cHasAmzCap(row)) amzCapCount++;
             });
             setShopifyB2cSummaryBadge(
                 $('#shopifyb2c-blue-triangle-badge'),
                 '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString(),
                 blueTriangleCount,
+                true
+            );
+            setShopifyB2cSummaryBadge(
+                $('#shopifyb2c-purple-triangle-badge'),
+                'Amz ' + amzCapCount.toLocaleString(),
+                amzCapCount,
                 true
             );
             syncShopifyB2cTriangleBadgeState();

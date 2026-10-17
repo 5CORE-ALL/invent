@@ -21,7 +21,10 @@ use Throwable;
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  Clearance SKUs keep the discount price.
  *
- * This is the only S PRC rule on /shopify-b2c-pricing. Sprc Dil (Dil → Target NROI), the Amz floor,
+ * Then the Amz cap: S PRC is never below A Price (Amazon price). It wins over the LMP cap.
+ * AMZ_CAPPED / SPRICE_UNCAPPED are saved so the page can show the "Amz" label without recalculating.
+ *
+ * This is the only S PRC rule on /shopify-b2c-pricing. Sprc Dil (Dil → Target NROI),
  * Dil vs PRMT / CVR vs CPN and the 0 Sold coupon were removed.
  *
  * Rows come from Shopifyb2cController::getViewShopifyB2cTabularData(), the same rows the page shows
@@ -49,7 +52,7 @@ class ShopifyB2cSprcDilAutoPushService
         $pricer = StdPrcVsDilPricer::forChannel('shopify_b2c');
         $adsPct = $this->channelAdsPercent();
 
-        $this->log($logger, 'Loaded Shopify B2C Std prc vs dil (shopify_b2c_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap. Ads%='.$adsPct);
+        $this->log($logger, 'Loaded Shopify B2C Std prc vs dil (shopify_b2c_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap + Amz cap. Ads%='.$adsPct);
 
         $stats = [
             'candidates' => 0,
@@ -130,10 +133,11 @@ class ShopifyB2cSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule, then LMP cap, Std is the maximum.
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, then LMP cap (Std is the maximum), then the
+     * Amz cap (never below A Price).
      *
      * @param  array<string, mixed>  $row
-     * @return array{sprice:float,lmp_capped:bool,base:float,sgpft:float,snpft:float,sroi:float,snroi:float}|null
+     * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,sgpft:float,snpft:float,sroi:float,snroi:float}|null
      */
     public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null, float $adsPct = 0.0): ?array
     {
@@ -180,10 +184,20 @@ class ShopifyB2cSprcDilAutoPushService
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
 
-        if (! is_finite($capped) || $capped < 0.01) {
+        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), 0.0, $std);
+
+        // Amz cap: S PRC is never below the Amazon price (A Price). It wins over the LMP cap.
+        $amz = round((float) ($row['amz'] ?? 0), 2);
+        $amzCapped = $amz > 0 && $capped + 0.0001 < $amz;
+        $final = $amzCapped ? $amz : $capped;
+        if ($amzCapped) {
+            $lmpCapped = false;
+        }
+
+        if (! is_finite($final) || $final < 0.01) {
             return null;
         }
-        $sprice = round($capped, 2);
+        $sprice = round($final, 2);
 
         // Same S-metrics the page and Shopifyb2cController::calculateAndSaveSprice write.
         $gross = ($sprice * $margin) - $lp - $ship;
@@ -193,6 +207,8 @@ class ShopifyB2cSprcDilAutoPushService
 
         return [
             'sprice' => $sprice,
+            'uncapped' => round($uncapped, 2),
+            'amz_capped' => $amzCapped,
             'lmp_capped' => $lmpCapped,
             'base' => round($std, 2),
             'sgpft' => $sgpft,
@@ -273,10 +289,12 @@ class ShopifyB2cSprcDilAutoPushService
                 'cvr' => $views > 0 ? ($b2cL30 / $views) * 100 : 0.0,
                 'lp' => (float) ($r['LP_productmaster'] ?? 0),
                 'ship' => (float) ($r['Ship_productmaster'] ?? 0),
+                'amz' => (float) ($r['A Price'] ?? 0),
                 'lmp' => (float) ($r['lmp_price'] ?? 0),
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
                 'sprice' => (float) ($r['SPRICE'] ?? 0),
+                'amz_capped' => ! empty($r['AMZ_CAPPED']),
             ];
 
             if ($limit !== null && $limit > 0 && count($out) >= $limit) {
@@ -297,14 +315,15 @@ class ShopifyB2cSprcDilAutoPushService
      */
     protected function isUnchanged(array $row, array $computed): bool
     {
-        return PushedListingPrice::same($row['sprice'] ?? 0, $computed['sprice']);
+        return PushedListingPrice::same($row['sprice'] ?? 0, $computed['sprice'])
+            && ! empty($row['amz_capped']) === ! empty($computed['amz_capped']);
     }
 
     /**
      * Save S PRC the way the page does (shopifyb2c_data_view.value): SPRICE + SGPFT / SNPFT / SROI / SNROI.
-     * Old rule leftovers (Amz pin, PRMT / CPN %) are cleared so nothing else overrides the Std rule.
+     * Old rule leftovers (PRMT / CPN %) are cleared so nothing else overrides the Std rule.
      *
-     * @param  array{sprice:float,sgpft:float,snpft:float,sroi:float,snroi:float}  $computed
+     * @param  array{sprice:float,uncapped:float,amz_capped:bool,sgpft:float,snpft:float,sroi:float,snroi:float}  $computed
      */
     protected function saveSprice(string $sku, array $computed): void
     {
@@ -325,6 +344,8 @@ class ShopifyB2cSprcDilAutoPushService
         $existing['SROI'] = $computed['sroi'];
         $existing['SNROI'] = $computed['snroi'];
         $existing['AMZ_SUGG_APPLIED'] = false;
+        $existing['AMZ_CAPPED'] = (bool) $computed['amz_capped'];
+        $existing['SPRICE_UNCAPPED'] = round((float) $computed['uncapped'], 2);
         $existing['PEF_PRMT_PCT'] = 0;
         $existing['PEF_CPN_PCT'] = 0;
         $existing['SPRICE_STATUS'] = 'saved';
