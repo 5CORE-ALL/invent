@@ -29,6 +29,52 @@ final class EbaySpricePush
         return isset(self::MAP[$channel]);
     }
 
+    /** Minutes eBay gets before a price it accepted but did not apply is pushed again. */
+    public const REJECTED_COOLDOWN_MINUTES = 180;
+
+    /**
+     * Set when a push succeeded but the pulled live price still differs (eBay ignored the revise), so the
+     * 10-minute catch-up does not re-push the same SKU at the same price over and over.
+     */
+    public static function cooldownKey(string $channel, string $sku, float $price): string
+    {
+        return 'ebay_sprice_push_cooldown:'.$channel.':'.strtoupper(trim($sku)).':'.number_format($price, 2, '.', '');
+    }
+
+    public static function inCooldown(string $channel, string $sku, float $price): bool
+    {
+        try {
+            return \Illuminate\Support\Facades\Cache::has(self::cooldownKey($channel, $sku, $price));
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public static function startCooldown(string $channel, string $sku, float $price): void
+    {
+        try {
+            \Illuminate\Support\Facades\Cache::put(
+                self::cooldownKey($channel, $sku, $price),
+                1,
+                now()->addMinutes(self::REJECTED_COOLDOWN_MINUTES)
+            );
+        } catch (\Throwable) {
+            // ignore
+        }
+    }
+
+    /** @return class-string|null */
+    public static function metricClass(string $channel): ?string
+    {
+        return self::MAP[$channel][0] ?? null;
+    }
+
+    /** @return class-string|null */
+    public static function viewClass(string $channel): ?string
+    {
+        return self::MAP[$channel][1] ?? null;
+    }
+
     /**
      * Returns a block reason, or null when the push may go ahead.
      */

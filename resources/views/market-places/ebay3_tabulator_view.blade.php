@@ -841,6 +841,8 @@
     const TABULATOR_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
     const EBAY3_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
     const EBAY3_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
+    // S PRC is saved + pushed by the server (ebay:push-blue-prices every 10 min). The page only shows it.
+    window.CH_STD_SERVER_OWNED = true;
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay3'])
     @include('campaign.partials.ebay-dil-sbid-rule', [
         'part' => 'script',

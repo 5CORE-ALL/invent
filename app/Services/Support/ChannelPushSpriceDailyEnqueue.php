@@ -12,6 +12,8 @@ use App\Models\TemuMetric;
 use App\Services\TemuShopifySalesService;
 use App\Services\ChannelPromoPricingService;
 use App\Services\DilRuleSpriceApplyService;
+use App\Support\Marketplace\EbayListingEnded;
+use App\Support\Marketplace\EbaySpricePush;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -22,11 +24,11 @@ use Illuminate\Support\Facades\Log;
  */
 class ChannelPushSpriceDailyEnqueue
 {
-    /** eBay 1/2/3 S PRC pushing was removed; no channel is queued by default. */
+    /** No channel is queued by the bare `channel:push-sprice-daily` (all) run. */
     public const CHANNELS = [];
 
-    /** Sprc Dil pages whose live push is not in the eBay or Dil channel lists. */
-    public const EXTRA_PUSH_CHANNELS = ['shopify_b2c', 'macys', 'newtemuone'];
+    /** Sprc Dil pages whose live push is not in the Dil channel list. */
+    public const EXTRA_PUSH_CHANNELS = ['shopify_b2c', 'macys', 'newtemuone', 'ebay1', 'ebay2', 'ebay3'];
 
     /**
      * @return list<string>
@@ -153,8 +155,76 @@ class ChannelPushSpriceDailyEnqueue
         if ($channel === 'newtemuone') {
             return $this->collectNewTemuonePushTasks();
         }
+        if (EbaySpricePush::supports($channel)) {
+            return $this->collectEbayPushTasks($channel);
+        }
 
         return [];
+    }
+
+    /**
+     * eBay 1/2/3 blue triangle: INV > 0, live listing, saved S PRC ≠ live Price.
+     * The listing is the same preferred (live) metric row the page and the push use.
+     *
+     * @return list<array{sku: string, price: float}>
+     */
+    private function collectEbayPushTasks(string $channel): array
+    {
+        $viewClass = EbaySpricePush::viewClass($channel);
+        $metricClass = EbaySpricePush::metricClass($channel);
+        if (! $viewClass || ! $metricClass) {
+            return [];
+        }
+        $out = [];
+        $seen = [];
+        $viewClass::query()
+            ->orderBy('id')
+            ->chunkById(400, function ($rows) use ($channel, $metricClass, &$out, &$seen) {
+                $saved = [];
+                foreach ($rows as $row) {
+                    $sku = strtoupper(trim((string) $row->sku));
+                    if ($sku === '' || str_contains($sku, 'PARENT') || isset($seen[$sku])) {
+                        continue;
+                    }
+                    $value = is_array($row->value) ? $row->value : (json_decode((string) ($row->value ?? ''), true) ?: []);
+                    $sprice = $value['SPRICE'] ?? null;
+                    if (! is_numeric($sprice) || ! ((float) $sprice > 0)) {
+                        continue;
+                    }
+                    $seen[$sku] = true;
+                    $saved[$sku] = round((float) $sprice, 2);
+                }
+                if ($saved === []) {
+                    return;
+                }
+                $keys = array_keys($saved);
+                $inv = [];
+                foreach (ShopifySku::query()->whereIn(DB::raw('UPPER(TRIM(sku))'), $keys)->get(['sku', 'inv']) as $s) {
+                    $inv[strtoupper(trim((string) $s->sku))] = (float) ($s->inv ?? 0);
+                }
+                $metrics = [];
+                foreach ($metricClass::query()->whereIn(DB::raw('UPPER(TRIM(sku))'), $keys)->orderBy('id')->get() as $m) {
+                    $metrics[strtoupper(trim((string) $m->sku))][] = $m;
+                }
+                foreach ($saved as $sku => $price) {
+                    if (($inv[$sku] ?? 0) <= 0 || empty($metrics[$sku])) {
+                        continue;
+                    }
+                    $metric = EbayListingEnded::preferLiveMetric($metrics[$sku]);
+                    if (! $metric || trim((string) ($metric->item_id ?? '')) === ''
+                        || EbayListingEnded::isEnded($metric->listing_status ?? null)) {
+                        continue;
+                    }
+                    $live = round((float) ($metric->ebay_price ?? 0), 2);
+                    if (! ($live > 0) || abs($price - $live) < 0.005
+                        || EbaySpricePush::inCooldown($channel, $sku, $price)) {
+                        continue;
+                    }
+                    $out[] = ['sku' => $sku, 'price' => $price];
+                }
+            });
+
+        return $out;
     }
 
     /**

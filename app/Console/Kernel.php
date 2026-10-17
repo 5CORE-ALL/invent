@@ -1165,6 +1165,19 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Headless "Push on reload" for /ebay-tabulator-view, /ebay2-tabulator-view, /ebay3-tabulator-view (same as
+        // amazon:push-blue-prices): re-prices every SKU, saves S PRC where it changed, pushes blue-triangle SKUs
+        // (INV > 0, Price ≠ S PRC) to eBay, then pulls the live price back. Every 10 min, 24/7 (no $ist()), page closed.
+        // The three accounts start 3 minutes apart so they do not load the tabulator rows together.
+        foreach (['ebay1' => '0-59/10', 'ebay2' => '3-59/10', 'ebay3' => '6-59/10'] as $ebayAccount => $ebayMinutes) {
+            $schedule->command('ebay:push-blue-prices '.$ebayAccount)
+                ->cron($ebayMinutes.' * * * *')
+                ->name($ebayAccount.'-push-blue-prices')
+                ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+                ->runInBackground()
+                ->appendOutputTo($log);
+        }
+
         // eBay 1 volume pricing (Buy 2/3/4 = Weight + Dil + Std NPFT) → eBay promotions. Only listings whose
         // discount changed are re-sent. /ebay-volume-pricing does not need to be open. Runs only when the
         // page has Rules On and Auto push On. Do NOT wrap 21:30 in $ist() — IST window ends at 20:00.

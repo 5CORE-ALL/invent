@@ -1041,6 +1041,8 @@
         const EBAY2_CHANNEL_ADS_PCT = {{ (float) ($channelAdsPercent ?? 0) }};
         /** Take-home from marketplace_percentages (EbayTwo). Used when a row has no percentage. */
         const EBAY2_TAKEHOME = {{ (float) ($ebayTakeHome ?? 1) }};
+        // S PRC is saved + pushed by the server (ebay:push-blue-prices every 10 min). The page only shows it.
+        window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'ebay2'])
         @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay2'])
         @include('campaign.partials.ebay-dil-sbid-rule', [

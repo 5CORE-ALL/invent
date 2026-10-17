@@ -328,6 +328,9 @@ class ChannelPushSpriceRunner
                             $live = $pulled;
                         }
                     }
+                    if (EbaySpricePush::supports($this->channel)) {
+                        $live = $this->pullEbayLivePrice($sku, (float) $price, is_numeric($live) ? (float) $live : (float) $price);
+                    }
                     $stamp = (float) $price;
                     if ($this->channel === 'newtemuone') {
                         $full = \App\Services\TemuShopifySalesService::computeFullTemuPrice($stamp);
@@ -414,6 +417,43 @@ class ChannelPushSpriceRunner
         }
 
         return 250000;
+    }
+
+    /**
+     * eBay accepted the revise. Pull the listing's real price (GetItem) and store it, so the Price column is what
+     * eBay has. When eBay still shows another price, hold this SKU/price for a few hours instead of re-pushing it
+     * on every 10-minute catch-up.
+     */
+    private function pullEbayLivePrice(string $sku, float $pushed, float $fallback): float
+    {
+        try {
+            $rows = app(\App\Services\ChannelPushedPricePullService::class)
+                ->pullSkus($this->channel, [$sku], [strtoupper(trim($sku)) => $pushed]);
+        } catch (\Throwable $e) {
+            Log::warning('eBay live price pull after S PRC push failed', [
+                'channel' => $this->channel,
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $fallback;
+        }
+        $row = $rows[0] ?? [];
+        $pulled = (float) ($row['price'] ?? 0);
+        if (empty($row['success']) || ! ($pulled > 0)) {
+            return $fallback;
+        }
+        if (abs($pulled - $pushed) > 0.05) {
+            EbaySpricePush::startCooldown($this->channel, $sku, $pushed);
+            Log::warning('eBay price still differs after S PRC push', [
+                'channel' => $this->channel,
+                'sku' => $sku,
+                'pushed' => $pushed,
+                'live' => $pulled,
+            ]);
+        }
+
+        return round($pulled, 2);
     }
 
     private function pullLivePriceAfterPush(string $sku, float $expected): float

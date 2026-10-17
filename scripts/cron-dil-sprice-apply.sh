@@ -54,6 +54,10 @@ case "$MODE" in
     CMD=(shopify-b2c:sprc-dil-auto-push)
     MODE=shopify_b2c
     ;;
+  ebay1|ebay2|ebay3)
+    # Saves S PRC, then queues the live eBay push and pulls the price back (the scheduler also runs this every 10 min).
+    CMD=(ebay:push-blue-prices "$MODE")
+    ;;
   macys|macy)
     CMD=(macys:rule-sprice-apply)
     if [[ "$PUSH" == "push" || "$PUSH" == "--push" ]]; then
