@@ -356,6 +356,10 @@ class ChannelPushSpriceRunner
                     'error' => $error,
                 ]);
                 $this->markListingEndedIfNeeded($sku, $error);
+                if (EbaySpricePush::supports($this->channel) && $sku !== '' && $price > 0) {
+                    // A SKU eBay refuses (e.g. multi-variation) is not retried on every 10-minute catch-up.
+                    EbaySpricePush::startCooldown($this->channel, $sku, (float) $price, 60);
+                }
             }
 
             $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi, $dupSkip) {

@@ -50,13 +50,13 @@ final class EbaySpricePush
         }
     }
 
-    public static function startCooldown(string $channel, string $sku, float $price): void
+    public static function startCooldown(string $channel, string $sku, float $price, int $minutes = self::REJECTED_COOLDOWN_MINUTES): void
     {
         try {
             \Illuminate\Support\Facades\Cache::put(
                 self::cooldownKey($channel, $sku, $price),
                 1,
-                now()->addMinutes(self::REJECTED_COOLDOWN_MINUTES)
+                now()->addMinutes($minutes)
             );
         } catch (\Throwable) {
             // ignore
