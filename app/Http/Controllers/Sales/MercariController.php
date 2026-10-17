@@ -543,7 +543,35 @@ class MercariController extends Controller
      */
     public function mercariTabulatorView()
     {
-        return view('sales.mercari_with_ship_daily_sales_data');
+        return view('sales.mercari_with_ship_daily_sales_data', $this->yesterdaySalesViewData());
+    }
+
+    /**
+     * Y Sales: yesterday's Mercari item price (Pacific = app timezone), excluding cancelled orders.
+     * Without-ship page only counts orders where the buyer paid shipping.
+     *
+     * @return array{salesYesterday: float, yesterdayLabel: string}
+     */
+    private function yesterdaySalesViewData(bool $withoutShipOnly = false): array
+    {
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        $sales = 0.0;
+
+        try {
+            $query = $this->mercariOrdersExcludingCancelled()
+                ->whereBetween('sold_date', [$yesterday->copy()->startOfDay(), $yesterday->copy()->endOfDay()]);
+            if ($withoutShipOnly) {
+                $query->where('buyer_shipping_fee', '>', 0);
+            }
+            $sales = (float) $query->sum('item_price');
+        } catch (\Throwable $e) {
+            Log::warning('Mercari Y Sales failed: ' . $e->getMessage());
+        }
+
+        return [
+            'salesYesterday' => round($sales, 2),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
+        ];
     }
 
     /**
@@ -551,7 +579,7 @@ class MercariController extends Controller
      */
     public function mercariWithoutShipView()
     {
-        return view('sales.mercari_without_ship_daily_sales_data');
+        return view('sales.mercari_without_ship_daily_sales_data', $this->yesterdaySalesViewData(true));
     }
 
     /**

@@ -12,7 +12,19 @@ class ShopifyWholesalesController extends Controller
 {
     public function index()
     {
-        return view('sales.shopify_wholesales_sales');
+        // Y Sales: yesterday (Pacific), price × qty of draft-order (wholesale) lines.
+        // order_date is stored as a plain date, so compare by date.
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        $salesYesterday = (float) DB::table('shopify_raw_orders')
+            ->where('source_name', '=', 'shopify_draft_order')
+            ->whereDate('order_date', $yesterday->toDateString())
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->value('revenue');
+
+        return view('sales.shopify_wholesales_sales', [
+            'salesYesterday' => round($salesYesterday, 2),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
+        ]);
     }
 
     public function getData(Request $request)

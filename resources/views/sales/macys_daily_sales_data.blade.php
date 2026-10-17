@@ -97,6 +97,9 @@
                             style="color: white; font-weight: bold;">Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge"
                             style="background-color: #17a2b8; color: white; font-weight: bold;">Sales: $0</span>
+                        <span class="badge fs-6 p-2" id="y-sales-badge"
+                            style="background-color: #0dcaf0; color: black; font-weight: bold;"
+                            title="Yesterday's sales ({{ $yesterdayLabel ?? '' }} Pacific) from Macy's orders — unit price × qty, excl. closed / channel-specific.">Y Sales: ${{ number_format((float) ($salesYesterday ?? 0), 2) }}</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (unit price × Qty × Macy's margin) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"

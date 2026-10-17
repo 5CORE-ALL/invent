@@ -14,7 +14,35 @@ class NeweggSalesController extends Controller
 {
     public function index()
     {
-        return view('sales.newegg_daily_sales_data');
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+
+        return view('sales.newegg_daily_sales_data', [
+            'salesYesterday' => $this->salesForPacificDay($yesterday),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
+        ]);
+    }
+
+    /**
+     * Y Sales: one complete Pacific day, using the page's sales definition
+     * (line amount, else unit price × qty; voided orders excluded).
+     */
+    private function salesForPacificDay(Carbon $day): float
+    {
+        $lines = $this->salesLines('l30', [$day->copy()->startOfDay(), $day->copy()->endOfDay()]);
+
+        $sales = 0.0;
+        foreach ($lines as $row) {
+            if (($row['sku'] ?? '') === '' || (int) ($row['quantity'] ?? 0) === 0) {
+                continue;
+            }
+            $sale = (float) ($row['sale_amount'] ?? 0);
+            if ($sale == 0.0) {
+                $sale = (float) ($row['price'] ?? 0) * (int) $row['quantity'];
+            }
+            $sales += $sale;
+        }
+
+        return round($sales, 2);
     }
 
     /**

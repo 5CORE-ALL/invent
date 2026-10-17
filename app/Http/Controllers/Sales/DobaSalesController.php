@@ -51,10 +51,31 @@ class DobaSalesController extends Controller
         $kwSpent = 0;
         $ptSpent = 0;
 
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+
         return view('sales.doba_daily_sales_data', [
             'kwSpent' => (float) $kwSpent,
-            'ptSpent' => (float) $ptSpent
+            'ptSpent' => (float) $ptSpent,
+            'salesYesterday' => $this->salesForPacificDay($yesterday),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
         ]);
+    }
+
+    /**
+     * Y Sales: one complete Pacific day. Same sales definition as the page
+     * (item price × qty once), excluding cancelled orders.
+     */
+    private function salesForPacificDay(Carbon $day): float
+    {
+        $cancelled = ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'];
+
+        return round((float) DobaDailyData::query()
+            ->whereBetween('order_time', [$day->copy()->startOfDay(), $day->copy()->endOfDay()])
+            ->where(function ($q) use ($cancelled) {
+                $q->whereNull('order_status')->orWhereNotIn('order_status', $cancelled);
+            })
+            ->selectRaw('COALESCE(SUM(item_price * quantity), 0) as revenue')
+            ->value('revenue'), 2);
     }
 
     public function getData(Request $request)

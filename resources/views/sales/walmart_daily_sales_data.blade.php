@@ -97,6 +97,7 @@
                             style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge"
                             style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0</span>
+                        @include('sales.partials.y-sales-badge', ['ySalesNote' => 'Walmart orders — unit price × qty, excl. cancelled, delivery only.'])
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"
                             style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (unit price × Qty × Walmart margin) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge"

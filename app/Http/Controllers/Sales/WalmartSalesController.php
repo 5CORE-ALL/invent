@@ -43,8 +43,19 @@ class WalmartSalesController extends Controller
         
         $walmartSpent = $walmartSpentData->sum('max_spend') ?? 0;
 
+        // Y Sales: yesterday (Pacific = app timezone), unit price × qty, same filters as the page.
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        $salesYesterday = (float) WalmartDailyData::query()
+            ->whereBetween('order_date', [$yesterday->copy()->startOfDay(), $yesterday->copy()->endOfDay()])
+            ->where('fulfillment_option', 'DELIVERY')
+            ->where('status', '!=', 'Cancelled')
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->value('revenue');
+
         return view('sales.walmart_daily_sales_data', [
             'walmartSpent' => (float) $walmartSpent,
+            'salesYesterday' => round($salesYesterday, 2),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
         ]);
     }
 

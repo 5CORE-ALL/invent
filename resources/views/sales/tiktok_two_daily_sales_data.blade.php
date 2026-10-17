@@ -75,6 +75,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-orders-badge" style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: white; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge fs-6 p-2" id="total-sales-badge" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0.00</span>
+                        @include('sales.partials.y-sales-badge', ['ySalesNote' => 'TikTok 2 orders — sale price × qty.'])
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge" style="color: white; font-weight: bold;" title="GPFT % = rounded PFT ÷ rounded sales. PFT = (sale price × Qty × TikTok Shop margin) − COGS − COGS Ship.">GPFT: 0%</span>
                         <span class="badge fs-6 p-2" id="roi-percentage-badge" style="background-color: purple; color: white; font-weight: bold;" title="GROI % = rounded PFT ÷ rounded COGS. COGS = LP × Qty.">GROI: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>

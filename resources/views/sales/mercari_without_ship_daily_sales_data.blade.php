@@ -124,6 +124,7 @@
                             style="color: white; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-sales-badge"
                             style="color: white; font-weight: bold;">Total Sales: $0.00</span>
+                        @include('sales.partials.y-sales-badge', ['ySalesNote' => 'Mercari orders with buyer shipping fee — item price, excl. cancelled.'])
                         <span class="badge bg-info fs-6 p-2" id="total-revenue-badge"
                             style="color: white; font-weight: bold;">Total Revenue: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="pft-percentage-badge"

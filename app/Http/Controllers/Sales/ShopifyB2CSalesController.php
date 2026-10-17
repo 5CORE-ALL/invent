@@ -23,8 +23,20 @@ class ShopifyB2CSalesController extends Controller
             ->where('advertising_channel_type', 'SHOPPING')
             ->sum('metrics_cost_micros') / 1000000; // Convert micros to dollars
 
+        // Y Sales: yesterday's price × qty, same filters as the page (no refunded, no PARENT SKUs).
+        $ySales = (float) ShopifyB2CDailyData::query()
+            ->whereBetween('order_date', [$yesterday->copy()->startOfDay(), $yesterday->copy()->endOfDay()])
+            ->where('financial_status', '!=', 'refunded')
+            ->where(function ($q) {
+                $q->whereNull('sku')->orWhere('sku', 'not like', '%PARENT%');
+            })
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->value('revenue');
+
         return view('sales.shopify_b2c_daily_sales_data', [
-            'googleSpent' => (float) $googleSpent
+            'googleSpent' => (float) $googleSpent,
+            'salesYesterday' => round($ySales, 2),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
         ]);
     }
 

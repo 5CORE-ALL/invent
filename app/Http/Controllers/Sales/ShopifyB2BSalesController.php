@@ -12,7 +12,18 @@ class ShopifyB2BSalesController extends Controller
 {
     public function index()
     {
-        return view('sales.shopify_b2b_daily_sales_data');
+        // Y Sales: yesterday (Pacific = app timezone), price × qty, same filter as the page.
+        $yesterday = \Carbon\Carbon::yesterday('America/Los_Angeles');
+        $salesYesterday = (float) ShopifyB2BDailyData::query()
+            ->countableSales()
+            ->whereBetween('order_date', [$yesterday->copy()->startOfDay(), $yesterday->copy()->endOfDay()])
+            ->selectRaw('COALESCE(SUM(price * quantity), 0) as revenue')
+            ->value('revenue');
+
+        return view('sales.shopify_b2b_daily_sales_data', [
+            'salesYesterday' => round($salesYesterday, 2),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
+        ]);
     }
 
     /**

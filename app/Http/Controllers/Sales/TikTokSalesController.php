@@ -139,7 +139,30 @@ class TikTokSalesController extends Controller
      */
     public function index()
     {
-        return view('sales.tiktok_daily_sales_data');
+        return view('sales.tiktok_daily_sales_data', self::yesterdaySalesViewData(TiktokOrder::class));
+    }
+
+    /**
+     * Y Sales: one complete California day, sale price × qty (same active orders as the page).
+     *
+     * @param  class-string<TiktokOrder>  $orderModel
+     * @return array{salesYesterday: float, yesterdayLabel: string}
+     */
+    private static function yesterdaySalesViewData(string $orderModel): array
+    {
+        $yesterday = Carbon::yesterday(TiktokOrder::TZ);
+        $sales = 0.0;
+
+        try {
+            $sales = $orderModel::salesAmountBetween($yesterday->copy()->startOfDay(), $yesterday->copy()->endOfDay());
+        } catch (\Throwable $e) {
+            Log::warning('TikTok Y Sales failed: ' . $e->getMessage());
+        }
+
+        return [
+            'salesYesterday' => round($sales, 2),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
+        ];
     }
 
     /**
@@ -262,7 +285,10 @@ class TikTokSalesController extends Controller
         $kwSpent = 0;
         $ptSpent = 0;
         $hlSpent = 0;
-        return view('sales.tiktok_two_daily_sales_data', compact('kwSpent', 'ptSpent', 'hlSpent'));
+        return view('sales.tiktok_two_daily_sales_data', array_merge(
+            compact('kwSpent', 'ptSpent', 'hlSpent'),
+            self::yesterdaySalesViewData(Tiktok2Order::class)
+        ));
     }
 
     /**

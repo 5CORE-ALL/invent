@@ -350,9 +350,51 @@ class SheinController extends Controller
      */
     public function sheinTabulatorView()
     {
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+
         return view('market-places.shein_tabulator_view', [
             'marginPercent' => (int) round($this->sheinMarketplaceMarginPercent()),
+            'salesYesterday' => $this->sheinSalesForPacificDay($yesterday),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
         ]);
+    }
+
+    /**
+     * Y Sales: one complete Pacific day from shein_daily_data. Same definition as the
+     * tabulator Total Revenue badge: product price × qty (qty min 1), skipping
+     * refunded / returned / cancelled / closed / exchanged orders.
+     */
+    private function sheinSalesForPacificDay(Carbon $day): float
+    {
+        try {
+            [$from, $to] = \App\Services\SheinApiService::shanghaiSqlBounds(
+                $day->copy()->startOfDay(),
+                $day->copy()->endOfDay()
+            );
+
+            $sales = 0.0;
+            SheinDailyData::query()
+                ->whereBetween('order_processed_on', [$from, $to])
+                ->get(['order_number', 'seller_sku', 'order_status', 'quantity', 'product_price'])
+                ->each(function ($row) use (&$sales) {
+                    if (trim((string) $row->order_number) === '' && trim((string) $row->seller_sku) === '') {
+                        return;
+                    }
+                    $status = strtolower((string) ($row->order_status ?? ''));
+                    foreach (['refund', 'return', 'cancel', 'closed', 'exchange'] as $skip) {
+                        if (str_contains($status, $skip)) {
+                            return;
+                        }
+                    }
+                    $sales += (float) ($row->product_price ?? 0) * max(1, (int) ($row->quantity ?? 0));
+                });
+
+            return round($sales, 2);
+        } catch (\Throwable $e) {
+            Log::warning('Shein Y Sales failed: '.$e->getMessage());
+
+            return 0.0;
+        }
     }
 
     /**

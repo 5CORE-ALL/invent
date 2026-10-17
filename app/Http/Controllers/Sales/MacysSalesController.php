@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MiraklDailyData;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +15,22 @@ class MacysSalesController extends Controller
 {
     public function index()
     {
-        return view('sales.macys_daily_sales_data');
+        // Y Sales = yesterday (California / Pacific, same as the Order Date column),
+        // unit price × qty, excluding CLOSED / CHANNEL_SPECIFIC like the page.
+        $yesterday = Carbon::yesterday('America/Los_Angeles');
+        [$startUtc, $endUtc] = MiraklDailyData::utcBoundsForPacificDate($yesterday->toDateString());
+
+        $salesYesterday = (float) MiraklDailyData::macys()
+            ->whereNotIn('status', ['CLOSED', 'CHANNEL_SPECIFIC'])
+            ->where('order_created_at', '>=', $startUtc)
+            ->where('order_created_at', '<=', $endUtc)
+            ->selectRaw('COALESCE(SUM(unit_price * quantity), 0) as revenue')
+            ->value('revenue');
+
+        return view('sales.macys_daily_sales_data', [
+            'salesYesterday' => round($salesYesterday, 2),
+            'yesterdayLabel' => $yesterday->format('M j, Y'),
+        ]);
     }
 
     /**
