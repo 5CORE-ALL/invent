@@ -21,8 +21,8 @@ use Throwable;
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  Clearance SKUs keep the discount price.
  *
- * Then the Amz cap (same as the old page): LMP below A Price → A Price; rule price above A Price stays;
- * rule price at/below A Price → A Price.
+ * Then the Amz cap (same as the old page), on the LMP-capped price: LMP below A Price → A Price;
+ * price above A Price stays; price at/below A Price → A Price.
  * AMZ_CAPPED / SPRICE_UNCAPPED are saved so the page can show the "Amz" label without recalculating.
  *
  * This is the only S PRC rule on /shopify-b2c-pricing. Sprc Dil (Dil → Target NROI),
@@ -60,6 +60,8 @@ class ShopifyB2cSprcDilAutoPushService
             'applied' => 0,
             'skipped_unchanged' => 0,
             'skipped' => 0,
+            // Saved, but the push skips them: SNROI is below 0 at this S PRC (NegativeSnroiPushGuard).
+            'neg_snroi' => 0,
             'errors' => [],
         ];
 
@@ -92,6 +94,16 @@ class ShopifyB2cSprcDilAutoPushService
                         $stats['skipped']++;
                         continue;
                     }
+                    // Only SKUs whose live Price differs from S PRC matter: those stay blue because the push skips them.
+                    if (($computed['snroi'] ?? 0) < 0 && ! PushedListingPrice::same($row['price'] ?? 0, $computed['sprice'])) {
+                        $stats['neg_snroi']++;
+                        if ($logger && $stats['neg_snroi'] <= 25) {
+                            $this->log($logger, sprintf(
+                                'neg SNROI %s: S PRC=%.2f LP=%.2f ship=%.2f A Price=%.2f LMP=%.2f Std=%.2f → SNROI %.1f%%',
+                                $row['sku'], $computed['sprice'], $row['lp'], $row['ship'], $row['amz'], $row['lmp'], $row['standard_price'], $computed['snroi']
+                            ));
+                        }
+                    }
                     if ($this->isUnchanged($row, $computed)) {
                         $stats['skipped_unchanged']++;
                         continue;
@@ -114,11 +126,12 @@ class ShopifyB2cSprcDilAutoPushService
             }
 
             $this->log($logger, sprintf(
-                'Done: candidates=%d applied=%d unchanged=%d skipped=%d errors=%d%s',
+                'Done: candidates=%d applied=%d unchanged=%d skipped=%d neg_snroi(not pushed)=%d errors=%d%s',
                 $stats['candidates'],
                 $stats['applied'],
                 $stats['skipped_unchanged'],
                 $stats['skipped'],
+                $stats['neg_snroi'],
                 count($stats['errors']),
                 $dryRun ? ' [dry run]' : ''
             ));
@@ -134,8 +147,7 @@ class ShopifyB2cSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule (Std is the maximum), then the Amz cap rules
-     * (A Price present), otherwise the LMP cap.
+     * Page S PRC formula (INV > 0 child SKUs): Std rule (Std is the maximum), LMP cap, then the Amz cap.
      *
      * @param  array<string, mixed>  $row
      * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,sgpft:float,snpft:float,sroi:float,snroi:float}|null
@@ -180,29 +192,30 @@ class ShopifyB2cSprcDilAutoPushService
             return null;
         }
 
-        // Same Amz capping /shopify-b2c-pricing always used (A Price from the Amazon datasheet):
-        //  - LMP below A Price            → S PRC = A Price
-        //  - rule price above A Price     → rule price stays (no LMP cap, Std Prc is the maximum)
-        //  - rule price at/below A Price  → S PRC = A Price
-        // With no A Price the normal LMP cap applies (SGROI at LMP ≥ 20%, Std Prc is the maximum).
+        // Same capping /shopify-b2c-pricing always used:
+        //  1. LMP cap on the rule price (LMP lower and SGROI at LMP ≥ 20%, Std Prc is the maximum).
+        //  2. Amz cap (A Price from the Amazon datasheet), on the LMP-capped price:
+        //       - LMP below A Price                → S PRC = A Price
+        //       - capped price above A Price       → capped price stays
+        //       - capped price at/below A Price    → S PRC = A Price
         $amz = round((float) ($row['amz'] ?? 0), 2);
         $effective = round($effective, 2);
         $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
-        $lmpBelowAmz = $amz > 0 && $lmp > 0 && $lmp + 0.0001 < $amz;
-        $lmpCapped = false;
+        $capped = round(AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std), 2);
+        $lmpCapped = $lmp > 0
+            && ($effective - $capped) > 0.009
+            && abs($capped - round($lmp, 2)) <= 0.02;
+        $amzCapped = false;
+        $final = $capped;
         if ($amz > 0) {
-            if ($lmpBelowAmz || $effective <= $amz + 0.0001) {
+            $lmpBelowAmz = $lmp > 0 && $lmp + 0.0001 < $amz;
+            if ($lmpBelowAmz || $capped <= $amz + 0.0001) {
                 $final = $amz;
-            } else {
-                $final = $uncapped;
+                $amzCapped = $lmpBelowAmz || abs($amz - $capped) > 0.004;
+                if ($amzCapped) {
+                    $lmpCapped = false;
+                }
             }
-            $amzCapped = $lmpBelowAmz || abs($final - $effective) > 0.004;
-        } else {
-            $final = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
-            $amzCapped = false;
-            $lmpCapped = $lmp > 0
-                && ($effective - $final) > 0.009
-                && abs($final - round($lmp, 2)) <= 0.02;
         }
 
         if (! is_finite($final) || $final < 0.01) {

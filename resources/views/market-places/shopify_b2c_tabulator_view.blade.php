@@ -727,7 +727,7 @@
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
                             data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Amz cap: S PRC is A Price because the rule price or LMP is below A Price. A rule price above A Price stays. Click badge to filter. Click dot for rolling history.">
+                            title="Amz cap: S PRC is A Price because the LMP-capped price or LMP is below A Price. A price above A Price stays. Click badge to filter. Click dot for rolling history.">
                             <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span>Amz 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price', 'pglTitle' => 'Price or S PRC > non-ignored LMP (red triangle), INV > 0 only. Click badge to filter. Click dot for rolling history.'])
@@ -3226,7 +3226,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), Amz cap: LMP below A Price → A Price; rule price below A Price → A Price; above A Price stays (no LMP cap). Without an A Price it is capped at LMP. Saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP. Amz = using A Price.",
+                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), Capped at LMP first (when SGROI at LMP ≥ 20%), then Amz cap: LMP below A Price → A Price; price below A Price → A Price; above A Price stays. Saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP. Amz = using A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {

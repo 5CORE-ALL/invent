@@ -117,14 +117,14 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertFalse($out['lmp_capped']);
     }
 
-    public function test_rule_price_above_a_price_stays_and_is_not_lmp_capped(): void
+    public function test_lmp_cap_still_applies_when_price_stays_above_a_price(): void
     {
-        // A Price 70 < LMP 80 < rule price 90 → the rule price stays (no LMP cap once A Price exists).
+        // A Price 70 < LMP 80 < rule price 90 → LMP cap to 80 (SGROI at LMP ≥ 20%), still above A Price.
         $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['lmp' => 80, 'amz' => 70]), $this->pricer());
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+        $this->assertEqualsWithDelta(80.00, $out['sprice'], 0.001);
         $this->assertFalse($out['amz_capped']);
-        $this->assertFalse($out['lmp_capped']);
+        $this->assertTrue($out['lmp_capped']);
     }
 }

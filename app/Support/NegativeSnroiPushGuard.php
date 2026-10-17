@@ -142,6 +142,10 @@ class NegativeSnroiPushGuard
         if (isset(self::$margin[$channel])) {
             return self::$margin[$channel];
         }
+        // Shopify B2C: the page and the S PRC job both use 0.95, so the guard must too.
+        if ($channel === 'shopify_b2c') {
+            return self::$margin[$channel] = \App\Services\ShopifyB2cSprcDilAutoPushService::MARGIN;
+        }
         try {
             $margin = MarketplacePercentage::takeHomeForPromoChannel($channel === 'amazon' ? 'amazon' : $channel);
         } catch (\Throwable) {
@@ -158,6 +162,10 @@ class NegativeSnroiPushGuard
     {
         if (isset(self::$ads[$channel])) {
             return self::$ads[$channel];
+        }
+        // Shopify B2C: same Ads% as the page SNROI column (TCOS snapshot), not the stored channel-master value.
+        if ($channel === 'shopify_b2c') {
+            return self::$ads[$channel] = app(\App\Services\ShopifyB2cSprcDilAutoPushService::class)->channelAdsPercent();
         }
         $live = self::pageAdsPercent($channel);
         if ($live > 0) {

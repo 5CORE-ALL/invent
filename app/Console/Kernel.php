@@ -1155,6 +1155,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Headless "Push on reload" for /shopify-b2c-pricing (same as bestbuy:push-blue-prices): re-prices every SKU,
+        // saves S PRC where it changed, then pushes blue-triangle SKUs (INV > 0, Price ≠ S PRC) to Shopify.
+        // Every 10 min, 24/7 on purpose (no $ist()), so a price change is pushed with the page closed.
+        $schedule->command('shopify-b2c:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('shopify-b2c-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // eBay 1 volume pricing (Buy 2/3/4 = Weight + Dil + Std NPFT) → eBay promotions. Only listings whose
         // discount changed are re-sent. /ebay-volume-pricing does not need to be open. Runs only when the
         // page has Rules On and Auto push On. Do NOT wrap 21:30 in $ist() — IST window ends at 20:00.

@@ -1404,6 +1404,12 @@
                 return typeof global.spriceActiveRule === 'function' && global.spriceActiveRule() === 'dil';
             }
             function chPushSpriceSavedFromRow(d) {
+                // Shopify B2C: S PRC is owned by the server (Std prc vs dil + LMP / Amz cap, saved on the row).
+                // Queue and SNROI-check exactly the S PRC the cell shows, not a fresh client-side rule price.
+                if (CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c' && typeof global.shopifyB2cShownSprice === 'function') {
+                    const shownB2c = chPushSpriceRound2(global.shopifyB2cShownSprice(d));
+                    if (shownB2c > 0) return shownB2c;
+                }
                 if (/^(ebay1|ebay2|ebay3)$/.test(CH_PUSH_SPRICE_CHANNEL)) {
                     // Saved S PRC is what the blue badge compares and the only price the server will push.
                     if (d && d.SPRICE_SERVER !== undefined) {
