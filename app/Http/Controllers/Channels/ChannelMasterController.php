@@ -19686,6 +19686,7 @@ class ChannelMasterController extends Controller
             }
             $filtered = $this->filterCachedDotTrends($all, $channelKeys);
             $this->overlayProjectedBadgeHistoryDots($filtered);
+            $this->overlayAmmColumnHistoryDots($filtered);
 
             return response()->json(['success' => true, 'channels' => $filtered === [] ? (object) [] : $filtered]);
         } catch (\Exception $e) {
@@ -19710,6 +19711,49 @@ class ChannelMasterController extends Controller
                     continue;
                 }
                 $filtered['all'][$field] = [$points[$n - 2]['value'], $points[$n - 1]['value']];
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Y / T Orders, Views and CVR column dots (per channel): last two days from
+     * badges_data_histories (page "amm-channel:{key}"). These metrics are not in the
+     * channel_master snapshots, so without this overlay every dot stays gray.
+     * The "all" row is skipped: the summary badges colour those against L30 on the page.
+     *
+     * @param  array<string, array<string, array{0: mixed, 1: mixed}>>  $filtered
+     */
+    private function overlayAmmColumnHistoryDots(array &$filtered): void
+    {
+        try {
+            $prefix = \App\Support\Marketplace\AmmColumnHistory::PAGE_PREFIX;
+            $since = now(\App\Models\BadgeDataHistory::TZ)->subDays(14)->toDateString();
+            $rows = \App\Models\BadgeDataHistory::query()
+                ->where('page_name', 'like', $prefix.'%')
+                ->whereIn('field', \App\Support\Marketplace\AmmColumnHistory::FIELDS)
+                ->whereDate('snapshot_date', '>=', $since)
+                ->orderBy('snapshot_date')
+                ->get(['page_name', 'field', 'snapshot_date', 'value']);
+
+            $series = [];
+            foreach ($rows as $row) {
+                $channel = substr((string) $row->page_name, strlen($prefix));
+                if ($channel === '') {
+                    continue;
+                }
+                $series[$channel][(string) $row->field][] = (float) $row->value;
+            }
+
+            foreach ($series as $channel => $fields) {
+                foreach ($fields as $field => $values) {
+                    $n = count($values);
+                    if ($n < 2) {
+                        continue;
+                    }
+                    $filtered[$channel][$field] = [$values[$n - 2], $values[$n - 1]];
+                }
             }
         } catch (\Throwable $e) {
             report($e);

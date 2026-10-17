@@ -184,6 +184,28 @@ class CalculateChannelMasterData extends Command
                 $this->info("✓ Data calculated at: {$calculatedAt}");
 
                 $this->storeSummaryData($response, $calculatedAt);
+                try {
+                    // Y / T Orders, Views, CVR history (graphs + dots on /all-marketplace-master).
+                    // The page's Y Orders / Y Views / Y CVR come from the yesterday service
+                    // (not from the channel rows), so read the same source and save it under
+                    // the day it measured.
+                    $yPayload = app(YesterdayMarketplaceMetricsService::class)->build();
+                    $yWritten = \App\Support\Marketplace\AmmColumnHistory::recordYesterday(
+                        $yPayload['rows'] ?? [],
+                        Carbon::parse((string) ($yPayload['date'] ?? now('America/Los_Angeles')->subDay()->toDateString()), 'America/Los_Angeles')->startOfDay()
+                    );
+                    $this->info("✓ Y column history values saved: {$yWritten}");
+                } catch (\Throwable $e) {
+                    $this->warn('Y column history save failed: '.$e->getMessage());
+                }
+                try {
+                    // T Orders / T Views / T CVR: same pace formulas as the page, from the rows just
+                    // calculated. Saved under today's Pacific date; the last run of the day wins.
+                    $tWritten = \App\Support\Marketplace\AmmColumnHistory::recordToday($channels);
+                    $this->info("✓ T column history values saved: {$tWritten}");
+                } catch (\Throwable $e) {
+                    $this->warn('T column history save failed: '.$e->getMessage());
+                }
                 $this->calculateAndStoreLqsData($calculatedAt, $chunkSize);
                 try {
                     $this->info('Warming /all-marketplace-master dot-trend cache...');

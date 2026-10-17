@@ -2643,8 +2643,10 @@
             var lastDotColorByKey = {};
             var lastDotPairByKey = {};
             var chartSyncedAllMetrics = {};
-            var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 'p_ads_pct', 'tat'];
-            var yVsL30DotMetrics = { y_sales: 1, y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1 };
+            var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 't_ads', 'p_ads_pct', 'tat'];
+            var yVsL30DotMetrics = { y_sales: 1, y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1,
+                // Today badges: today's pace vs the L30 baseline (daily average for counts, L30 % for ratios).
+                t_orders: 1, t_npft: 1, t_groi: 1, t_nroi: 1, t_ads: 1, t_views: 1 };
             var yOrdersExact = null;
             var yOrdersByChannel = null;
             var yCvrByChannel = null;
@@ -6197,6 +6199,7 @@
                 let totalTodayAdSpend = 0;
                 let totalTodayViews = 0;
                 let totalTodayOrders = 0;
+                const todayDotVals = {};
                 let totalPSales = 0;
                 let totalPGross = 0;
                 let totalL30Orders = 0;
@@ -6399,6 +6402,12 @@
                     const nroi = totalTodayCogs > 0 ? (totalTodayNet / totalTodayCogs) * 100 : 0;
                     const ads = totalTodaySales > 0 ? (totalTodayAdSpend / totalTodaySales) * 100 : 0;
                     const views = Math.round(totalTodayViews);
+                    todayDotVals.t_npft = npft;
+                    todayDotVals.t_groi = groi;
+                    todayDotVals.t_nroi = nroi;
+                    todayDotVals.t_ads = ads;
+                    todayDotVals.t_views = totalTodayViews;
+                    todayDotVals.t_orders = totalTodayOrders;
                     setBadgeExact($('#avg-t-npft'), pct1(npft));
                     setBadgeExact($('#avg-t-groi'), pct1(groi));
                     setBadgeExact($('#avg-t-nroi'), pct1(nroi));
@@ -6754,6 +6763,19 @@
                     pinSummaryDot('y_views', l30DailyViews, yViewsExact,
                         'Green when yesterday views are above the L30 daily average (L30 Views ÷ 30).');
                 }
+                // Today badges vs L30 baselines (same rule as the Yesterday badges).
+                pinSummaryDot('t_npft', avgNpft, todayDotVals.t_npft,
+                    'Green when today NPFT% is above the L30 NPFT%.');
+                pinSummaryDot('t_groi', avgGroi, todayDotVals.t_groi,
+                    'Green when today GROI% is above the L30 G ROI%.');
+                pinSummaryDot('t_nroi', avgNroi, todayDotVals.t_nroi,
+                    'Green when today NROI% is above the L30 NROI%.');
+                pinSummaryDot('t_ads', avgAdsPercent, todayDotVals.t_ads,
+                    'Green when today Ads% is below the L30 Ads%.');
+                pinSummaryDot('t_orders', totalL30Orders / 30, todayDotVals.t_orders,
+                    'Green when today orders are above the L30 daily average (L30 Orders ÷ 30).');
+                pinSummaryDot('t_views', totalViews / 30, todayDotVals.t_views,
+                    'Green when today views are above the L30 daily average (L30 Views ÷ 30).');
                 if (typeof colorSummaryBadgeDots === 'function') {
                     colorSummaryBadgeDots(channelKeysFromTableData());
                 }
