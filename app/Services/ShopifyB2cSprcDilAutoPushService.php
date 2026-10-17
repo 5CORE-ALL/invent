@@ -21,7 +21,8 @@ use Throwable;
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  Clearance SKUs keep the discount price.
  *
- * Then the Amz cap: S PRC is never below A Price (Amazon price). It wins over the LMP cap.
+ * Then the Amz cap (same as the old page): LMP below A Price → A Price; rule price above A Price stays;
+ * rule price at/below A Price → A Price.
  * AMZ_CAPPED / SPRICE_UNCAPPED are saved so the page can show the "Amz" label without recalculating.
  *
  * This is the only S PRC rule on /shopify-b2c-pricing. Sprc Dil (Dil → Target NROI),
@@ -133,8 +134,8 @@ class ShopifyB2cSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule, then LMP cap (Std is the maximum), then the
-     * Amz cap (never below A Price).
+     * Page S PRC formula (INV > 0 child SKUs): Std rule (Std is the maximum), then the Amz cap rules
+     * (A Price present), otherwise the LMP cap.
      *
      * @param  array<string, mixed>  $row
      * @return array{sprice:float,uncapped:float,amz_capped:bool,lmp_capped:bool,base:float,sgpft:float,snpft:float,sroi:float,snroi:float}|null
@@ -179,19 +180,29 @@ class ShopifyB2cSprcDilAutoPushService
             return null;
         }
 
-        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
-        $lmpCapped = $lmp > 0
-            && ($effective - $capped) > 0.009
-            && abs($capped - round($lmp, 2)) <= 0.02;
-
-        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), 0.0, $std);
-
-        // Amz cap: S PRC is never below the Amazon price (A Price). It wins over the LMP cap.
+        // Same Amz capping /shopify-b2c-pricing always used (A Price from the Amazon datasheet):
+        //  - LMP below A Price            → S PRC = A Price
+        //  - rule price above A Price     → rule price stays (no LMP cap, Std Prc is the maximum)
+        //  - rule price at/below A Price  → S PRC = A Price
+        // With no A Price the normal LMP cap applies (SGROI at LMP ≥ 20%, Std Prc is the maximum).
         $amz = round((float) ($row['amz'] ?? 0), 2);
-        $amzCapped = $amz > 0 && $capped + 0.0001 < $amz;
-        $final = $amzCapped ? $amz : $capped;
-        if ($amzCapped) {
-            $lmpCapped = false;
+        $effective = round($effective, 2);
+        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
+        $lmpBelowAmz = $amz > 0 && $lmp > 0 && $lmp + 0.0001 < $amz;
+        $lmpCapped = false;
+        if ($amz > 0) {
+            if ($lmpBelowAmz || $effective <= $amz + 0.0001) {
+                $final = $amz;
+            } else {
+                $final = $uncapped;
+            }
+            $amzCapped = $lmpBelowAmz || abs($final - $effective) > 0.004;
+        } else {
+            $final = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
+            $amzCapped = false;
+            $lmpCapped = $lmp > 0
+                && ($effective - $final) > 0.009
+                && abs($final - round($lmp, 2)) <= 0.02;
         }
 
         if (! is_finite($final) || $final < 0.01) {

@@ -727,7 +727,7 @@
                         <span class="badge fs-6 p-2 shopifyb2c-badge-chart shopifyb2c-badge-filter" id="shopifyb2c-purple-triangle-badge"
                             data-metric="purple_triangle_count" data-invert="1" data-format="number" data-live-value="0"
                             style="background-color:#6f42c1;color:#fff;font-weight:700;cursor:pointer;"
-                            title="Amz cap: S PRC was raised to A Price (never below Amazon price). Click badge to filter. Click dot for rolling history.">
+                            title="Amz cap: S PRC is A Price because the rule price or LMP is below A Price. A rule price above A Price stays. Click badge to filter. Click dot for rolling history.">
                             <span class="summary-trend-dot none" data-metric="purple_triangle_count" title="Rolling history"></span>Amz 0</span>
                         @include('partials.lmp-missing-badge', ['lmpBadgeId' => 'shopifyb2c-lmp-missing-badge', 'lmpChannelKey' => 'shopifyb2c'])
                         @include('partials.price-gt-lmp-badge', ['pglBadgeId' => 'shopifyb2c-price-gt-lmp-badge', 'pglChannelKey' => 'shopifyb2c', 'pglPriceField' => 'Price', 'pglTitle' => 'Price or S PRC > non-ignored LMP (red triangle), INV > 0 only. Click badge to filter. Click dot for rolling history.'])
@@ -1283,10 +1283,29 @@
      * S PRC to show / push. The server (shopify-b2c:sprc-dil-auto-push) owns S PRC: Std prc vs dil, LMP cap,
      * saved twice daily and pushed to Shopify. The page only shows the saved value.
      */
-    function shopifyB2cDisplayedSprice(data) {
+    function shopifyB2cRawSavedSprice(data) {
         if (!data || isShopifyB2cParentRow(data)) return 0;
         const stored = parseFloat(data.SPRICE) || 0;
         return stored > 0 ? Math.round(stored * 100) / 100 : 0;
+    }
+
+    /** LMP (non-ignored) is below A Price. */
+    function shopifyB2cLmpBelowAmz(data) {
+        const amz = shopifyB2cCents(shopifyB2cAmzPrice(data));
+        const lmp = shopifyB2cCents(shopifyB2cRowLmp(data));
+        return amz > 0 && lmp > 0 && lmp < amz;
+    }
+
+    /**
+     * Amz cap on display, before the next server run re-saves it:
+     *  LMP below A Price → A Price; saved S PRC under A Price → A Price; saved S PRC above A Price stays.
+     */
+    function shopifyB2cDisplayedSprice(data) {
+        const v = shopifyB2cRawSavedSprice(data);
+        if (!(v > 0)) return 0;
+        const amz = Math.round(shopifyB2cAmzPrice(data) * 100) / 100;
+        if (amz > 0 && (shopifyB2cLmpBelowAmz(data) || v + 0.0001 < amz)) return amz;
+        return v;
     }
 
     /** LMP cap only (manual edits). Std Prc vs dil is already applied by the server. */
@@ -1301,14 +1320,15 @@
     }
     window.shopifyB2cShownSprice = shopifyB2cShownSprice;
 
-    /** Amz cap: S PRC was raised to A Price (server flag AMZ_CAPPED, saved S PRC equals A Price). */
+    /** Amz cap: S PRC is A Price because the rule price or LMP was below it (server flag AMZ_CAPPED, or computed here). */
     function shopifyB2cHasAmzCap(data) {
         if (!data || isShopifyB2cParentRow(data)) return false;
         const amz = shopifyB2cAmzPrice(data);
         const shown = shopifyB2cDisplayedSprice(data);
         if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
         const f = data.AMZ_CAPPED;
-        return f === true || f === 1 || f === '1' || f === 'true';
+        const flag = f === true || f === 1 || f === '1' || f === 'true';
+        return flag || shopifyB2cLmpBelowAmz(data) || shopifyB2cRawSavedSprice(data) + 0.0001 < amz;
     }
 
     function shopifyB2cHasBlueTriangle(data) {
@@ -3206,7 +3226,7 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: "number",
-                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), capped at LMP, then never below A Price (Amz cap). Saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at LMP. Amz = raised to A Price.",
+                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), Amz cap: LMP below A Price → A Price; rule price below A Price → A Price; above A Price stays (no LMP cap). Without an A Price it is capped at LMP. Saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP. Amz = using A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {

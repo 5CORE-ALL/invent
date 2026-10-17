@@ -95,9 +95,9 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(59.44, $out['snpft'], 0.01);
     }
 
-    public function test_amz_cap_raises_a_price_floor_over_the_rule_price(): void
+    public function test_rule_price_below_a_price_uses_a_price(): void
     {
-        // Rule price 90, A Price 95 → S PRC never below A Price.
+        // Rule price 90, A Price 95.
         $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['amz' => 95]), $this->pricer());
 
         $this->assertNotNull($out);
@@ -106,9 +106,9 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(90.00, $out['uncapped'], 0.001);
     }
 
-    public function test_amz_cap_wins_over_lmp_cap(): void
+    public function test_lmp_below_a_price_uses_a_price(): void
     {
-        // LMP 80 would cap to 80, but A Price 85 is the floor.
+        // LMP 80 is below A Price 85 → S PRC = A Price, even though the rule price (90) is above it.
         $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['lmp' => 80, 'amz' => 85]), $this->pricer());
 
         $this->assertNotNull($out);
@@ -117,12 +117,14 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertFalse($out['lmp_capped']);
     }
 
-    public function test_amz_below_rule_price_does_not_cap(): void
+    public function test_rule_price_above_a_price_stays_and_is_not_lmp_capped(): void
     {
-        $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['amz' => 70]), $this->pricer());
+        // A Price 70 < LMP 80 < rule price 90 → the rule price stays (no LMP cap once A Price exists).
+        $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['lmp' => 80, 'amz' => 70]), $this->pricer());
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
         $this->assertFalse($out['amz_capped']);
+        $this->assertFalse($out['lmp_capped']);
     }
 }
