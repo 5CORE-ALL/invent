@@ -66,6 +66,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
 @endsection
 
 @section('content')
@@ -179,7 +180,7 @@
                 { title: "Country", field: "country", width: 130, visible: false },
                 { title: "Product Name", field: "product_name", width: 250, visible: false },
                 { title: "Option Name", field: "option_name", width: 120, visible: false },
-                { title: "SKU", field: "sku", width: 150 },
+                { title: "SKU", field: "sku", sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" }, width: 150 },
                 { title: "GTIN", field: "gtin", width: 130, visible: false },
                 { title: "Status", field: "status", width: 110 },
                 { title: "Sold", field: "quantity", width: 90, hozAlign: "center", sorter: "number" },

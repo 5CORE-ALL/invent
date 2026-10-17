@@ -542,6 +542,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 @endsection
 
@@ -2618,6 +2619,7 @@
                 {
                     title: "Parent",
                     field: "Parent",
+                    sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent...",
                     cssClass: "text-primary",
@@ -2643,6 +2645,7 @@
                 {
                     title: "SKU",
                     field: "(Child) sku",
+                    sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
                     cssClass: "text-primary fw-bold",
@@ -2802,6 +2805,7 @@
                 {
                     title: "Bump Bid",
                     field: "Bump",
+                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                     headerTooltip: "Live Reverb bump bid from GET /listings/{id}/bump (current_bid).",
                     hozAlign: "center",
                     width: 80,
@@ -2815,6 +2819,7 @@
                 {
                     title: "Recommended Bid",
                     field: "API_REC_BID",
+                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                     headerTooltip: "Reverb recommended bump bid from the listing bump API. Green when it matches live Bump Bid.",
                     hozAlign: "center",
                     width: 110,
@@ -2832,6 +2837,7 @@
                 {
                     title: "S Bump%",
                     field: "RE_BID",
+                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                     hozAlign: "center",
                     width: 70,
                     visible: false,

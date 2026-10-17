@@ -94,6 +94,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
 @endsection
 
 @section('content')
@@ -1553,6 +1554,7 @@
                 {
                     title: "Parent",
                     field: "Parent",
+                    sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent...",
                     cssClass: "text-primary",
@@ -1564,6 +1566,7 @@
                 {
                     title: "SKU",
                     field: "(Child) sku",
+                    sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
                     cssClass: "text-primary fw-bold",

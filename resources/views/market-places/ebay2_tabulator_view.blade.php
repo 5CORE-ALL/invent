@@ -443,6 +443,7 @@
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     @include('partials.lazy-chart-js')
 @endsection
 
@@ -3010,6 +3011,7 @@
                     {
                         title: "Parent",
                         field: "Parent",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search Parent...",
                         cssClass: "text-primary",
@@ -3077,6 +3079,7 @@
                     {
                         title: "SKU",
                         field: "(Child) sku",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
                         headerFilterFunc: function(headerValue, rowValue, rowData) {
@@ -3853,6 +3856,7 @@
                     {
                         title: "SGPFT%",
                         field: "SGPFT",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         headerTooltip: "S GPFT from S PRC (SPRICE), eBay 1 take-home formula.",
                         formatter: function(cell) {

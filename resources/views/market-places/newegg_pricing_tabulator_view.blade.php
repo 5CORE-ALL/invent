@@ -121,6 +121,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     @include('partials.lazy-chart-js')
 @endsection
 
@@ -1632,16 +1633,7 @@
                         width: 70,
                         headerSortStartingDir: "desc",
                         headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const calc = function(row) {
-                                const rd = row && row.getData ? (row.getData() || {}) : {};
-                                const lmp = parseFloat(rd.lmp_price || 0);
-                                const price = parseFloat(rd.price || 0);
-                                if (!lmp || lmp <= 0) return -Infinity;
-                                return ((lmp - price) / lmp) * 100;
-                            };
-                            return calc(aRow) - calc(bRow);
-                        },
+                        sorter: tabSortBlankLast(function(rd) { const lmp = parseFloat(rd.lmp_price || 0); const price = parseFloat(rd.price || 0); return (!lmp || lmp <= 0) ? null : ((lmp - price) / lmp) * 100; }),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const lmp = parseFloat(rowData.lmp_price || 0);
@@ -1761,11 +1753,7 @@
                     },
                     {
                         title: "SPrice", field: "sprice", hozAlign: "right", headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const ad = aRow && aRow.getData ? aRow.getData() : {};
-                            const bd = bRow && bRow.getData ? bRow.getData() : {};
-                            return (neShownSprice(ad) || 0) - (neShownSprice(bd) || 0);
-                        },
+                        sorter: tabSortBlankLast(function(rd) { return neShownSprice(rd || {}); }, true),
                         editable: false,
                         headerTooltip: "Not editable. If Sprc Dil is below A Price, S PRC uses A Price. If Sprc Dil is at or above A Price, S PRC keeps Sprc Dil. Blue triangle = S PRC ≠ Price. Red triangle = S PRC raised to Amz or capped at LMP.",
                         formatter: function(cell) {
@@ -1878,11 +1866,7 @@
                         accessor: function(value, data) {
                             return neSpriceMetrics(data).sroi;
                         },
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = neSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).sroi;
-                            const bv = neSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).sroi;
-                            return (av == null ? -Infinity : av) - (bv == null ? -Infinity : bv);
-                        },
+                        sorter: tabSortBlankLast(function(rd) { return neSpriceMetrics(rd || {}).sroi; }),
                         formatter: function(cell) {
                             const m = neSpriceMetrics(cell.getRow().getData());
                             if (m.sroi === null || !isFinite(m.sroi)) return '';
@@ -1900,11 +1884,7 @@
                         accessor: function(value, data) {
                             return neSpriceMetrics(data).spft;
                         },
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = neSpriceMetrics(aRow && aRow.getData ? aRow.getData() : {}).spft;
-                            const bv = neSpriceMetrics(bRow && bRow.getData ? bRow.getData() : {}).spft;
-                            return (av == null ? -Infinity : av) - (bv == null ? -Infinity : bv);
-                        },
+                        sorter: tabSortBlankLast(function(rd) { return neSpriceMetrics(rd || {}).spft; }),
                         formatter: function(cell) {
                             const m = neSpriceMetrics(cell.getRow().getData());
                             if (m.spft === null || !isFinite(m.spft)) return '';

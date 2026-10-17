@@ -282,6 +282,7 @@
 @section('script-bottom')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script>
@@ -447,6 +448,7 @@
                     {
                         title: "Parent",
                         field: "parent",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         width: 120,
                         frozen: true,
                         cssClass: "text-muted",
@@ -475,6 +477,7 @@
                     {
                         title: "SKU",
                         field: "sku",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         minWidth: 200,
                         frozen: true,
                         headerFilter: "input",

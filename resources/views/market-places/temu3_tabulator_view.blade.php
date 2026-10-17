@@ -169,6 +169,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 @endsection
 
@@ -351,6 +352,7 @@
 @section('script-bottom')
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+<script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
 <script>
     // Same margin as /temu-tabulator — marketplace_percentages.Temu (no hardcode)
     const TEMU_MARGIN = {{ (float) $temuMargin }};
@@ -561,6 +563,7 @@
                 {
                     title: "Parent",
                     field: "Parent",
+                    sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent...",
                     cssClass: "text-primary",
@@ -739,6 +742,7 @@
                 {
                     title: "Hdl Charge",
                     field: "handling_charge",
+                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                     headerTooltip: "Handling Charge saved on Shipping Master (included in Temu Ship)",
                     hozAlign: "center",
                     width: 50,
@@ -748,6 +752,7 @@
                 {
                     title: "O-Size Charge",
                     field: "o_size_charge",
+                    sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                     headerTooltip: "O-Size Charge saved on Shipping Master (included in Temu Ship)",
                     hozAlign: "center",
                     width: 50,

@@ -620,6 +620,7 @@
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
 @endsection
 
 @section('content')
@@ -4401,6 +4402,7 @@
                     {
                         title: "Parent",
                         field: "Parent",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search Parent...",
                         cssClass: "text-primary",
@@ -4461,6 +4463,7 @@
                     {
                         title: "SKU",
                         field: "(Child) sku",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
                         frozen: true,
@@ -4566,12 +4569,7 @@
                                     <span style="color: ${reviewColor};">(${count.toLocaleString()})</span>
                                 </span>`;
                         },
-                        sorter: function(a, b, aRow, bRow) {
-                            const ra = parseFloat(aRow.getData().amz_avg_rating) || 0;
-                            const rb = parseFloat(bRow.getData().amz_avg_rating) || 0;
-                            return ra - rb;
-                        }
-                    },
+                        sorter: amazonMetricSorter(function(d) { const r = parseFloat(d.amz_avg_rating); return r > 0 ? r : null; })},
                     {
                         title: "Buyer Link",
                         field: "asin",
@@ -4626,7 +4624,7 @@
                         field: "INV",
                         hozAlign: "center",
                         width: 50,
-                        sorter: "number",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sku = row['(Child) sku'] || '';
@@ -4643,7 +4641,7 @@
                         field: "INV_AMZ",
                         hozAlign: "center",
                         width: 65,
-                        sorter: "number",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue()) || 0;
                             const rowData = cell.getRow().getData();
@@ -4665,7 +4663,7 @@
                         field: "L30",
                         hozAlign: "center",
                         width: 50,
-                        sorter: "number",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const sku = row['(Child) sku'] || '';
@@ -4710,7 +4708,7 @@
                         field: "A_L30",
                         hozAlign: "center",
                         width: 50,
-                        sorter: "number",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         headerTooltip: "Amazon units sold L30 from real orders — same source and window as /amazon/daily-sales (Pacific, through yesterday, exclude canceled).",
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
@@ -4725,6 +4723,7 @@
                     {
                         title: "A DIL %",
                         field: "A DIL %",
+                        sorter: amazonMetricSorter(function(d) { const al30 = parseFloat(d.A_L30); const inv = parseFloat(d.INV); return (isFinite(al30) && isFinite(inv) && inv > 0) ? (al30 / inv) * 100 : null; }),
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -4746,7 +4745,7 @@
                         title: "View L30",
                         field: "Sess30",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         width: 55,
                         formatter: function(cell) {
                             const num = Math.round(cell.getValue() || 0);
@@ -4758,7 +4757,7 @@
                         title: "View L7",
                         field: "Sess7",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         width: 55,
                         formatter: function(cell) {
                             const num = Math.round(cell.getValue() || 0);
@@ -4775,7 +4774,7 @@
                         field: "STANDARD_PRICE",
                         hozAlign: "center",
                         headerSort: true,
-                        sorter: "number",
+                        sorter: amazonMetricSorter(function(d) { const n = parseFloat(d.STANDARD_PRICE); return n > 0 ? n : null; }),
                         headerTooltip: "Standard Price. Not editable here. Magnifying glass opens Std Prc, Std NROI%, and Std NPFT%. Orange triangle = LMP is above Std Prc.",
                         width: 108,
                         formatter: function(cell) {
@@ -4869,7 +4868,7 @@
                             }
                             return `<span style="font-weight: 700;">${priceFormatted}</span>` + purpleTri;
                         },
-                        sorter: "number",
+                        sorter: amazonMetricSorter(function(d) { const n = parseFloat(d.price); return n > 0 ? n : null; }),
                         width: 70
                     },
 
@@ -5024,9 +5023,7 @@
                         field: "MIN_PRICE",
                         hozAlign: "center",
                         headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            return (amazonMinBusinessPrice(aRow.getData()) || 0) - (amazonMinBusinessPrice(bRow.getData()) || 0);
-                        },
+                        sorter: amazonMetricSorter(function(d) { const n = amazonMinBusinessPrice(d); return n > 0 ? n : null; }),
                         headerTooltip: "Minimum seller price. 5% below the Sale price (S PRC). Stays under the sale so Amazon does not deactivate the offer.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -5043,9 +5040,7 @@
                         field: "BUSINESS_PRICE",
                         hozAlign: "center",
                         headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            return (amazonMinBusinessPrice(aRow.getData()) || 0) - (amazonMinBusinessPrice(bRow.getData()) || 0);
-                        },
+                        sorter: amazonMetricSorter(function(d) { const n = amazonMinBusinessPrice(d); return n > 0 ? n : null; }),
                         headerTooltip: "Amazon Business price. 5% below the S PRC in this row.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -5062,9 +5057,7 @@
                         field: "MAX_PRICE",
                         hozAlign: "center",
                         headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            return (amazonMaxPrice(aRow.getData()) || 0) - (amazonMaxPrice(bRow.getData()) || 0);
-                        },
+                        sorter: amazonMetricSorter(function(d) { const n = amazonMaxPrice(d); return n > 0 ? n : null; }),
                         headerTooltip: "Maximum seller price. 10% above the S PRC in this row.",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -5081,15 +5074,7 @@
                         field: "lmp_price",
                         hozAlign: "center",
                         headerSort: true,
-                        sorter: function(a, b, aRow, bRow) {
-                            const av = (typeof lmpWithShipping === 'function')
-                                ? (lmpWithShipping(aRow.getData()) || 0)
-                                : (parseFloat(a) || 0);
-                            const bv = (typeof lmpWithShipping === 'function')
-                                ? (lmpWithShipping(bRow.getData()) || 0)
-                                : (parseFloat(b) || 0);
-                            return av - bv;
-                        },
+                        sorter: amazonMetricSorter(function(d) { const n = (typeof lmpWithShipping === 'function') ? lmpWithShipping(d) : parseFloat(d.lmp_price); return n > 0 ? n : null; }),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
 
@@ -5160,7 +5145,7 @@
                         title: "LP",
                         field: "LP_productmaster",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         headerTooltip: "Landed price (product master)",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -5305,15 +5290,7 @@
                         hozAlign: "center",
                         width: 80,
                         headerSortStartingDir: "desc",
-                        sorter: function(a, b, aRow, bRow) {
-                            const calc = function(rd) {
-                                const lmp = lmpWithShipping(rd);
-                                const price = parseFloat(rd.price || 0);
-                                if (!lmp || lmp <= 0) return -Infinity;
-                                return ((lmp - price) / lmp) * 100;
-                            };
-                            return calc(aRow.getData()) - calc(bRow.getData());
-                        },
+                        sorter: amazonMetricSorter(function(rd) { const lmp = lmpWithShipping(rd); if (!lmp || lmp <= 0) return null; const price = parseFloat(rd.price || 0); return ((lmp - price) / lmp) * 100; }),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
 
@@ -5410,7 +5387,7 @@
                         title: "Ship",
                         field: "Ship_productmaster",
                         hozAlign: "center",
-                        sorter: "number",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         headerTooltip: "Shipping cost from CP Master / Shipping Master (Values.ship).",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();

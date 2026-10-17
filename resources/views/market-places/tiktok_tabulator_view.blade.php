@@ -331,6 +331,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 @endsection
 
@@ -2976,6 +2977,7 @@
                     {
                         title: "Parent",
                         field: "Parent",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search Parent...",
                         cssClass: "text-primary",
@@ -2998,6 +3000,7 @@
                     {
                         title: "SKU",
                         field: "(Child) sku",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
                         cssClass: "text-primary fw-bold",
@@ -3229,6 +3232,7 @@
                     {
                         title: "Price",
                         field: "ads_price",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "right",
                         width: 80,
                         visible: false,
@@ -3241,6 +3245,7 @@
                     {
                         title: "Budget",
                         field: "budget",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "right",
                         width: 100,
                         visible: false,
@@ -3259,6 +3264,7 @@
                     {
                         title: "Spend",
                         field: "spend",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "right",
                         width: 100,
                         visible: false,
@@ -3270,6 +3276,7 @@
                     {
                         title: "Ad Sold",
                         field: "ad_sold",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "right",
                         width: 100,
                         visible: false,
@@ -3281,6 +3288,7 @@
                     {
                         title: "Ad Clicks",
                         field: "ad_clicks",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "right",
                         width: 100,
                         visible: false,
@@ -3292,6 +3300,7 @@
                     {
                         title: "ACOS",
                         field: "acos",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "right",
                         width: 100,
                         visible: false,
@@ -3303,6 +3312,7 @@
                     {
                         title: "Out ROAS",
                         field: "out_roas",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "right",
                         width: 100,
                         visible: false,
@@ -3314,6 +3324,7 @@
                     {
                         title: "In ROAS",
                         field: "in_roas",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "right",
                         width: 100,
                         visible: false,
@@ -3833,15 +3844,7 @@
                         width: 70,
                         visible: true,
                         headerSortStartingDir: "desc",
-                        sorter: function(a, b, aRow, bRow) {
-                            const calc = function(rd) {
-                                const lmp = parseFloat(rd.lmp_price || 0);
-                                const price = parseFloat(rd['TT Price'] || 0);
-                                if (!lmp || lmp <= 0) return -Infinity;
-                                return ((lmp - price) / lmp) * 100;
-                            };
-                            return calc(aRow.getData()) - calc(bRow.getData());
-                        },
+                        sorter: tabSortBlankLast(function(rd) { const lmp = parseFloat(rd.lmp_price || 0); const price = parseFloat(rd['TT Price'] || 0); return (!lmp || lmp <= 0) ? null : ((lmp - price) / lmp) * 100; }),
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const isParent = ttIsParentRow(rowData);

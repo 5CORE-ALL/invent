@@ -374,6 +374,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
 @endsection
 
 @section('content')
@@ -1530,6 +1531,7 @@
                 {
                     title: "Parent",
                     field: "Parent",
+                    sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent...",
                     cssClass: "text-primary",
@@ -1554,6 +1556,7 @@
                 {
                     title: "SKU",
                     field: "(Child) sku",
+                    sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
                     cssClass: "text-primary fw-bold",
@@ -1823,16 +1826,7 @@
                     hozAlign: "center",
                     width: 70,
                     headerTooltip: "(Google LMP − Price) / LMP × 100. When S PRC ≠ Price, Diff previews S PRC (what push will use).",
-                    sorter: function(a, b, aRow, bRow) {
-                        const calc = function(rd) {
-                            if (isShopifyB2bParentRow(rd)) return -Infinity;
-                            const lmp = parseFloat(rd.lmp_price || 0);
-                            const price = shopifyB2bDiffComparePrice(rd);
-                            if (!lmp || lmp <= 0) return -Infinity;
-                            return ((lmp - price) / lmp) * 100;
-                        };
-                        return calc(aRow.getData()) - calc(bRow.getData());
-                    },
+                    sorter: tabSortBlankLast(function(rd) { if (isShopifyB2bParentRow(rd)) return null; const lmp = parseFloat(rd.lmp_price || 0); if (!lmp || lmp <= 0) return null; return ((lmp - shopifyB2bDiffComparePrice(rd)) / lmp) * 100; }),
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2bParentRow(rowData)) return '';

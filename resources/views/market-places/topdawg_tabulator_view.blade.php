@@ -23,6 +23,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
 @endsection
 
 @section('content')
@@ -883,14 +884,14 @@
                         return `<input type="checkbox" class="td-sku-chk" data-sku="${safe}" ${checked}>`;
                     }
                 },
-                { title: 'Parent', field: 'Parent', frozen: true, width: 150, visible: false },
+                { title: 'Parent', field: 'Parent', sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" }, frozen: true, width: 150, visible: false },
                 (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                 { title: 'Image', field: 'image_path', width: 80, headerSort: false,
                     formatter: c => {
                         const v = c.getValue();
                         return v ? `<img src="${v}" alt="Product" style="width:50px;height:50px;object-fit:cover;">` : '';
                     }},
-                { title: 'SKU', field: '(Child) sku', frozen: true, width: 250, headerFilter: 'input',
+                { title: 'SKU', field: '(Child) sku', sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" }, frozen: true, width: 250, headerFilter: 'input',
                     cssClass: 'text-primary fw-bold' },
                 {
                     title: 'Links', field: 'links_column', frozen: true, width: 55, hozAlign: 'center', headerSort: false, visible: true,

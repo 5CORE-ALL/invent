@@ -229,6 +229,7 @@
 
 @section('script')
     <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     @include('partials.lazy-chart-js')
 @endsection
 
@@ -1994,6 +1995,7 @@
                 columns: [{
                         title: "Parent",
                         field: "Parent",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search Parent...",
                         cssClass: "text-primary",
@@ -2041,6 +2043,7 @@
                     {
                         title: "Base SKU",
                         field: "base_sku",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         visible: false,
                         headerFilter: "input",
                         headerFilterPlaceholder: "Base SKU...",
@@ -2065,6 +2068,7 @@
                     {
                         title: "Open Box SKU",
                         field: "(Child) sku",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         headerFilter: "input",
                         headerFilterPlaceholder: "Search SKU...",
                         cssClass: "text-primary fw-bold",
@@ -2795,6 +2799,7 @@
                     {
                         title: "S PRC",
                         field: "SPRICE",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         editable: false,
                         formatter: function(cell) {
@@ -2861,6 +2866,7 @@
                     {
                         title: "S GPFT",
                         field: "SGPFT",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -3141,6 +3147,7 @@
                     {
                         title: "LBID",
                         field: "kw_last_sbid",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3266,6 +3273,7 @@
                     {
                         title: "SBID M",
                         field: "kw_sbid_m",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         editor: "input",
@@ -3286,6 +3294,7 @@
                     {
                         title: "APR BID",
                         field: "kw_apr_bid",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3369,6 +3378,7 @@
                     {
                         title: "PMT CBID",
                         field: "pmt_cbid",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3381,6 +3391,7 @@
                     {
                         title: "PMT ES BID",
                         field: "pmt_es_bid",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3393,6 +3404,7 @@
                     {
                         title: "PMT S BID",
                         field: "pmt_s_bid",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3413,6 +3425,7 @@
                     {
                         title: "PMT T Views",
                         field: "pmt_t_views",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3424,6 +3437,7 @@
                     {
                         title: "PMT L7 Views",
                         field: "pmt_l7_views",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3435,6 +3449,7 @@
                     {
                         title: "PMT SCVR",
                         field: "pmt_scvr",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3454,6 +3469,7 @@
                     {
                         title: "PMT ClkL7",
                         field: "pmt_clicks_l7",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3465,6 +3481,7 @@
                     {
                         title: "PMT Clk30",
                         field: "pmt_clicks_l30",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3476,6 +3493,7 @@
                     {
                         title: "PMT PFT",
                         field: "pmt_pft",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3490,6 +3508,7 @@
                     {
                         title: "PMT ROI",
                         field: "pmt_roi",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3504,6 +3523,7 @@
                     {
                         title: "PMT TPFT%",
                         field: "pmt_tpft",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {
@@ -3517,6 +3537,7 @@
                     {
                         title: "PMT TROI%",
                         field: "pmt_troi",
+                        sorter: "number", sorterParams: { alignEmptyValues: "bottom" },
                         hozAlign: "center",
                         visible: false,
                         formatter: function(cell) {

@@ -299,6 +299,7 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="{{ asset('js/tabulator-sort-defaults.js') }}?v={{ file_exists(public_path('js/tabulator-sort-defaults.js')) ? filemtime(public_path('js/tabulator-sort-defaults.js')) : '1' }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 @endsection
 
@@ -1770,11 +1771,12 @@
                             return '<div class="dws-img-hover-wrap"><img class="dws-thumb-sm" src="' + safe + '" alt="" loading="lazy" style="max-width:36px;max-height:36px;object-fit:contain;"></div>';
                         }
                     },
-                    { title: "Parent", field: "Parent", visible: false, width: 120 },
+                    { title: "Parent", field: "Parent", sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" }, visible: false, width: 120 },
                     (window.ParentExpand ? ParentExpand.columnDef() : { title: 'P', field: '_parent_expand', width: 36, frozen: true, headerSort: false }),
                     {
                         title: "SKU",
                         field: "(Child) sku",
+                        sorter: "alphanum", sorterParams: { alignEmptyValues: "bottom" },
                         // No explicit width — column auto-sizes to fit the longest
                         // SKU. widthGrow lets it claim its share of available space
                         // under fitColumns layout, minWidth prevents collapse, and
