@@ -355,7 +355,7 @@ class LmpOverallController extends Controller
     }
 
     /**
-     * One summary row per parent, placed above that parent's SKUs.
+     * One summary row per parent, placed below that parent's SKUs.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
@@ -379,11 +379,11 @@ class LmpOverallController extends Controller
 
         $data = [];
         foreach (collect($rows)->groupBy(fn ($row) => ($row['parent'] ?? '') !== '' ? $row['parent'] : '__none__') as $parentKey => $children) {
-            if ($parentKey !== '__none__') {
-                $data[] = $this->parentSummaryRow((string) $parentKey, $children, $parentImages);
-            }
             foreach ($children as $child) {
                 $data[] = $child;
+            }
+            if ($parentKey !== '__none__') {
+                $data[] = $this->parentSummaryRow((string) $parentKey, $children, $parentImages);
             }
         }
 
