@@ -20,7 +20,7 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with New Temu Two as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then capped at the lowest eBay price and the Amazon price (labels EB / Amz), same as the page.
+ *  No Amazon / eBay cap (same as New Temu One).
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  S PRC is the full Temu price. Temu takes a Base price, so the push sends the S Base Prc (same invert as the page).
  *  Skip when the live Base already equals the target Base. The 0.95 take-home on S R Price is the page's SGROI.
@@ -188,7 +188,7 @@ class NewTemutwoSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule, then eBay / Amazon caps, then LMP cap, Std is the maximum.
+     * Page S PRC formula (INV > 0 child SKUs): Std rule, then LMP cap, Std is the maximum.
      *
      * @param  array<string, mixed>  $row  Loaded candidate (see loadCandidates)
      * @return array{sprice:float,uncapped:float,lmp_capped:bool,labels:list<string>,base:float,full:float}|null
@@ -242,20 +242,9 @@ class NewTemutwoSprcDilAutoPushService
             return null;
         }
 
-        // eBay (lowest of eBay 1 / 2) and Amazon caps, same as the page: S PRC never sits above either price.
-        $ebay = (float) ($row['ebay'] ?? 0);
-        $amz = (float) ($row['amz'] ?? 0);
+        // No Amazon / eBay cap (same as New Temu One). Only the LMP cap below applies.
         $labels = [];
         $afterRefs = round($effective, 2);
-        if ($ebay > 0 && $afterRefs > round($ebay, 2)) {
-            $afterRefs = round($ebay, 2);
-            $labels[] = 'EB';
-        }
-        if ($amz > 0 && $afterRefs > round($amz, 2)) {
-            $afterRefs = round($amz, 2);
-            $labels = array_values(array_diff($labels, ['EB']));
-            $labels[] = 'Amz';
-        }
 
         $capped = $this->capToLmp($afterRefs, $lmp, $lp, $ship, $std);
         $lmpCapped = $lmp > 0
@@ -380,8 +369,6 @@ class NewTemutwoSprcDilAutoPushService
                 'margin' => (float) ($r['percentage'] ?? 0),
                 'ads_percent' => $adsPercent,
                 'lmp' => (float) ($r['lmp_raw'] ?? 0),
-                'ebay' => $this->lowestPositive((float) ($r['e_price'] ?? 0), (float) ($r['e2_price'] ?? 0)),
-                'amz' => (float) ($r['a_price'] ?? 0),
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
                 'sprice' => (float) ($r['sprice'] ?? 0),
@@ -401,15 +388,6 @@ class NewTemutwoSprcDilAutoPushService
         usort($out, static fn ($a, $b) => strnatcasecmp($a['sku'], $b['sku']));
 
         return $out;
-    }
-
-    protected function lowestPositive(float $a, float $b): float
-    {
-        if ($a > 0 && $b > 0) {
-            return min($a, $b);
-        }
-
-        return $a > 0 ? $a : max($b, 0.0);
     }
 
     protected function same(mixed $a, mixed $b): bool

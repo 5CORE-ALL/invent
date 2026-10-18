@@ -108,20 +108,15 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(80.0, $zero['sprice']);
     }
 
-    public function test_ebay_and_amazon_caps_still_apply_with_labels(): void
+    public function test_ebay_and_amazon_prices_do_not_cap_s_prc(): void
     {
         $svc = new NewTemutwoSprcDilAutoPushService();
 
-        $eb = $svc->computeTarget($this->row(['ebay' => 85]), $this->pricer());
-        $this->assertSame(85.0, $eb['sprice']);
-        $this->assertSame(['EB'], $eb['labels']);
+        $plain = $svc->computeTarget($this->row(), $this->pricer());
+        $lowRefs = $svc->computeTarget($this->row(['ebay' => 85, 'amz' => 80]), $this->pricer());
 
-        $amz = $svc->computeTarget($this->row(['ebay' => 85, 'amz' => 80]), $this->pricer());
-        $this->assertSame(80.0, $amz['sprice']);
-        $this->assertSame(['Amz'], $amz['labels']);
-
-        $above = $svc->computeTarget($this->row(['ebay' => 150, 'amz' => 150]), $this->pricer());
-        $this->assertSame(90.0, $above['sprice']);
-        $this->assertSame([], $above['labels']);
+        $this->assertSame(90.0, $plain['sprice']);
+        $this->assertSame(90.0, $lowRefs['sprice']);
+        $this->assertSame([], $lowRefs['labels']);
     }
 }

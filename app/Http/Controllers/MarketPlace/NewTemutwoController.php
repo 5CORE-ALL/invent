@@ -559,15 +559,6 @@ class NewTemutwoController extends Controller
         return $out;
     }
 
-    private function temuEbayRefPrice(float $ebay, float $ebay2): float
-    {
-        if ($ebay > 0 && $ebay2 > 0) {
-            return min($ebay, $ebay2);
-        }
-
-        return $ebay > 0 ? $ebay : $ebay2;
-    }
-
     private function productMasterLp(array $values, ProductMaster $pm): float
     {
         foreach ($values as $k => $v) {
