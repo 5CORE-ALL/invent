@@ -37,6 +37,17 @@ class NewTemuoneSuggestedPriceStore
 
     public const KEY_PUSH_STATUS = 'NTO_PUSH_STATUS';
 
+    /** Promotion % last enrolled on Temu (= Sum disc at that moment). */
+    public const KEY_PM_PCT = 'NTO_PM_PCT';
+
+    public const KEY_PM_AT = 'NTO_PM_AT';
+
+    public const KEY_PM_ACTIVITY = 'NTO_PM_ACTIVITY';
+
+    public const KEY_PM_DRAFT = 'NTO_PM_DRAFT';
+
+    public const KEY_PM_PRICE = 'NTO_PM_PRICE';
+
     /** @var array<string, TemuDataView> */
     private array $views = [];
 
@@ -140,6 +151,34 @@ class NewTemuoneSuggestedPriceStore
         $value[self::KEY_PUSHED_BASE] = round($base, 2);
         $value[self::KEY_PUSHED_AT] = now()->toDateTimeString();
         $value[self::KEY_PUSH_STATUS] = 'pushed';
+        $view->sku = $view->sku ?: $sku;
+        $view->value = $value;
+        $view->save();
+    }
+
+    /**
+     * Stamp a successful Temu promotion enroll. Does not touch S PRC / S Base keys.
+     */
+    public static function markPromotionApplied(string $sku, float $pct, float $price, string $activityId, ?string $draftId = null): void
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! ($pct > 0)) {
+            return;
+        }
+        $view = TemuDataView::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first()
+            ?? new TemuDataView(['sku' => $sku]);
+        $value = is_array($view->value) ? $view->value : [];
+        $value[self::KEY_PM_PCT] = round($pct, 2);
+        $value[self::KEY_PM_PRICE] = round($price, 2);
+        $value[self::KEY_PM_AT] = now()->toDateTimeString();
+        $value[self::KEY_PM_ACTIVITY] = $activityId;
+        if ($draftId !== null && $draftId !== '') {
+            $value[self::KEY_PM_DRAFT] = $draftId;
+        } else {
+            unset($value[self::KEY_PM_DRAFT]);
+        }
         $view->sku = $view->sku ?: $sku;
         $view->value = $value;
         $view->save();
@@ -432,6 +471,10 @@ class NewTemuoneSuggestedPriceStore
         $row['pushed_base'] = $pushedBase > 0 ? $pushedBase : null;
         $row['pushed_at'] = $saved[self::KEY_PUSHED_AT] ?? $saved['SPRICE_PUSHED_AT'] ?? null;
         $row['push_status'] = $matched ? 'pushed' : null;
+        $pmPct = is_numeric($saved[self::KEY_PM_PCT] ?? null) ? round((float) $saved[self::KEY_PM_PCT], 2) : 0.0;
+        $row['pm_applied_pct'] = $pmPct > 0 ? $pmPct : null;
+        $row['pm_applied_at'] = $pmPct > 0 ? ($saved[self::KEY_PM_AT] ?? null) : null;
+        $row['pm_activity_id'] = $pmPct > 0 ? ($saved[self::KEY_PM_ACTIVITY] ?? null) : null;
 
         return $row;
     }

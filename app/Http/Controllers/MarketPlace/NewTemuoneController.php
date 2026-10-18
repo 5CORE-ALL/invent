@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\Ebay2Metric;
 use App\Models\EbayMetric;
 use App\Models\ProductMaster;
@@ -19,6 +20,8 @@ use App\Services\DilRuleSpriceApplyService;
 use App\Services\LmpSkuGroupService;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Services\Support\NewTemuoneSuggestedPriceStore;
+use App\Services\TemuApiService;
+use App\Services\TemuPromotionApiService;
 use App\Services\TemuShopifySalesService;
 use App\Support\ProductMasterTemuShip;
 use App\Support\TemuGoodsIdHelper;
@@ -41,6 +44,7 @@ class NewTemuoneController extends Controller
             'temuAds' => $this->temuChannelAdsSummary(),
             'newtemuonePageReloadPushEnabled' => ChannelPromoPricingController::isPageReloadPushEnabled('newtemuone'),
             'newtemuonePushSpriceLive' => ChannelPushSpriceRunner::livePushAllowed(),
+            'newtemuonePromotionEnabled' => self::promotionEnabled(),
         ]);
     }
 
@@ -460,6 +464,9 @@ class NewTemuoneController extends Controller
                     'nto_pushed_base' => $suggested['pushed_base'] ?? null,
                     'nto_pushed_at' => $suggested['pushed_at'] ?? null,
                     'nto_push_status' => $suggested['push_status'] ?? null,
+                    'pm_applied_pct' => $suggested['pm_applied_pct'] ?? null,
+                    'pm_applied_at' => $suggested['pm_applied_at'] ?? null,
+                    'pm_activity_id' => $suggested['pm_activity_id'] ?? null,
                     'npft_percent' => $npftPercent,
                     'nroi_percent' => $nroiPercent,
                     'snpft_percent' => $snpftPercent,
@@ -583,6 +590,182 @@ class NewTemuoneController extends Controller
             'success' => true,
             'cleared' => $cleared,
             'saved' => $saved,
+        ]);
+    }
+
+    private const PROMOTION_SETTING_KEY = 'newtemuone_promotion';
+
+    /**
+     * Promotion switch (+ optional pinned activity). Defaults to OFF until someone turns it on.
+     *
+     * @return array{enabled: bool, activity_id: string|null}
+     */
+    public static function promotionSetting(): array
+    {
+        try {
+            $row = ChannelTabulatorColumnSetting::query()
+                ->where('channel_name', self::PROMOTION_SETTING_KEY)
+                ->first();
+        } catch (\Throwable) {
+            return ['enabled' => false, 'activity_id' => null];
+        }
+        $vis = is_array($row?->visibility) ? $row->visibility : [];
+        $activity = trim((string) ($vis['activity_id'] ?? ''));
+
+        return [
+            'enabled' => filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'activity_id' => $activity !== '' ? $activity : null,
+        ];
+    }
+
+    public static function promotionEnabled(): bool
+    {
+        return self::promotionSetting()['enabled'];
+    }
+
+    public function getPromotionSetting()
+    {
+        return response()->json(['success' => true] + self::promotionSetting());
+    }
+
+    public function savePromotionSetting(Request $request)
+    {
+        $current = self::promotionSetting();
+        $enabled = $request->has('enabled')
+            ? filter_var($request->input('enabled'), FILTER_VALIDATE_BOOLEAN)
+            : $current['enabled'];
+        $activity = $request->has('activity_id')
+            ? trim((string) $request->input('activity_id'))
+            : (string) ($current['activity_id'] ?? '');
+        if ($activity !== '' && ! ctype_digit($activity)) {
+            return response()->json(['success' => false, 'message' => 'activity_id must be numeric'], 422);
+        }
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => self::PROMOTION_SETTING_KEY],
+            ['visibility' => ['enabled' => $enabled, 'activity_id' => $activity !== '' ? $activity : null], 'column_order' => []]
+        );
+
+        return response()->json([
+            'success' => true,
+            'enabled' => $enabled,
+            'activity_id' => $activity !== '' ? $activity : null,
+        ]);
+    }
+
+    /** Open Temu promotion activities, so an activity_id can be pinned. */
+    public function promotionActivities(TemuPromotionApiService $promo)
+    {
+        $out = [];
+        foreach ([TemuPromotionApiService::STATUS_ONGOING, TemuPromotionApiService::STATUS_NOT_STARTED] as $status) {
+            $res = $promo->queryActivities(TemuPromotionApiService::TYPE_LIGHTNING_DEAL, $status);
+            if (! $res['success']) {
+                return response()->json(['success' => false, 'message' => $res['message']], 502);
+            }
+            $out = array_merge($out, $res['activities']);
+        }
+
+        return response()->json(['success' => true, 'activities' => $out]);
+    }
+
+    /**
+     * Enroll SKUs in a Temu promotion at Sum disc %.
+     * items: [{sku, pct}] where pct is the page's Sum disc. Refused while the switch is OFF.
+     */
+    public function pushPromotion(Request $request, TemuPromotionApiService $promo, TemuApiService $temu)
+    {
+        $setting = self::promotionSetting();
+        if (! $setting['enabled']) {
+            return response()->json(['success' => false, 'message' => 'Promotion switch is OFF. Turn it on to apply promotions.'], 409);
+        }
+
+        $items = $request->input('items');
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'items array required'], 422);
+        }
+        $items = array_slice($items, 0, 50);
+
+        $activityId = $setting['activity_id'];
+        if ($activityId === null) {
+            $resolved = $promo->resolveOpenActivity();
+            if (! $resolved['success']) {
+                return response()->json(['success' => false, 'message' => $resolved['message']], 502);
+            }
+            $activityId = (string) $resolved['activity']['activityId'];
+        }
+
+        $skus = [];
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        $inventory = ShopifySku::mapByProductSkus($skus);
+
+        $results = [];
+        $ok = 0;
+        $fail = 0;
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $pct = round((float) ($item['pct'] ?? 0), 2);
+            if ($sku === '') {
+                continue;
+            }
+            $markFail = function (string $message) use (&$results, &$fail, $sku, $pct): void {
+                $fail++;
+                $results[] = ['sku' => $sku, 'pct' => $pct, 'status' => 'failed', 'message' => $message];
+            };
+
+            if (! ($pct > 0) || $pct >= 100) {
+                $markFail('Sum disc must be between 0 and 100 to apply a promotion.');
+                continue;
+            }
+            $inv = (int) floor((float) ($inventory->get($sku)->inv ?? 0));
+            if ($inv < 1) {
+                $markFail('INV is 0 — nothing to put on promotion.');
+                continue;
+            }
+            $metric = TemuMetric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+            $base = (float) ($metric?->base_price ?? 0);
+            if (! ($base > 0)) {
+                $markFail('Temu base price not found for this SKU.');
+                continue;
+            }
+            $goodsId = $temu->getGoodsIdBySku($sku);
+            $skuId = $temu->getSkuIdBySku($sku);
+            if (! $goodsId || ! $skuId) {
+                $markFail('Temu goodsId / skuId not found for this SKU.');
+                continue;
+            }
+
+            $price = round($base * (1 - $pct / 100), 2);
+            $res = $promo->enrollSku($activityId, $goodsId, $skuId, $price, $inv, 'nto'.substr(md5($sku.$activityId.$pct), 0, 24));
+            if (! $res['success']) {
+                $markFail($res['message']);
+                continue;
+            }
+
+            NewTemuoneSuggestedPriceStore::markPromotionApplied($sku, $pct, $price, $activityId, $res['draft_id'] ?? null);
+            $ok++;
+            $results[] = [
+                'sku' => $sku,
+                'pct' => $pct,
+                'price' => $price,
+                'status' => 'ok',
+                'message' => $res['message'],
+                'applied_at' => now()->toDateTimeString(),
+                'activity_id' => $activityId,
+            ];
+        }
+
+        return response()->json([
+            'success' => $ok > 0 || $fail === 0,
+            'activity_id' => $activityId,
+            'ok' => $ok,
+            'failed' => $fail,
+            'results' => $results,
+            'message' => "Promotion: {$ok} applied".($fail ? ", {$fail} failed" : '').' (activity '.$activityId.').',
         ]);
     }
 

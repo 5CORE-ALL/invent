@@ -451,6 +451,16 @@
                 <input type="checkbox" role="switch" id="nto-reload-push-switch"
                     {{ !empty($newtemuonePageReloadPushEnabled) ? 'checked' : '' }}>
             </label>
+            <label class="nto-reload-push-switch{{ !empty($newtemuonePromotionEnabled) ? '' : ' is-off' }}"
+                id="nto-promo-wrap"
+                title="Temu Promotion API. When ON, every SKU is enrolled in an open Temu promotion at its Sum disc % (Sum disc 2 → promotion 2%). The PM column shows the % applied. OFF by default — nothing is sent to Temu while it is OFF.">
+                <span class="nto-reload-push-text">
+                    Promotion
+                    <span class="nto-reload-push-state" id="nto-promo-label">{{ !empty($newtemuonePromotionEnabled) ? 'On' : 'Off' }}</span>
+                </span>
+                <input type="checkbox" role="switch" id="nto-promo-switch"
+                    {{ !empty($newtemuonePromotionEnabled) ? 'checked' : '' }}>
+            </label>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
                 <div class="nto-reload-push-progress-track">
@@ -2398,6 +2408,217 @@
             showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Cancel failed', 'error');
         });
     }
+    // ---- Temu Promotion API (switch + PM column) -------------------------------------------------
+    // PM = Sum disc. Sum disc 2 → promotion 2%. Nothing is sent to Temu while the switch is OFF (default).
+    const NTO_PROMO_PUSH_URL = '/new-temuone-promotion-push';
+    const NTO_PROMO_SETTING_URL = '/new-temuone-promotion-setting';
+    const NTO_PROMO_CHUNK = 10;
+    const NTO_PROMO_FAIL_KEY = 'ntoPromoFailed';
+    const NTO_PROMO_FAIL_TTL_MS = 6 * 60 * 60 * 1000;
+    let ntoPromotionEnabled = @json(!empty($newtemuonePromotionEnabled));
+    let ntoPromoBusy = false;
+
+    function ntoPromotionAllowed() {
+        return ntoPromotionEnabled === true;
+    }
+    function syncNtoPromoSwitchUi() {
+        const on = ntoPromotionAllowed();
+        $('#nto-promo-wrap').toggleClass('is-off', !on);
+        $('#nto-promo-label').text(on ? 'On' : 'Off');
+        const $sw = $('#nto-promo-switch');
+        if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
+    }
+    function saveNtoPromotionSetting(enabled) {
+        ntoPromotionEnabled = !!enabled;
+        syncNtoPromoSwitchUi();
+        return $.ajax({
+            url: NTO_PROMO_SETTING_URL,
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
+            data: { _token: ntoPushCsrf(), enabled: enabled ? 1 : 0 },
+        });
+    }
+    /** PM = Sum disc of the row (child SKUs with stock only). */
+    function ntoRowPm(d) {
+        if (!d || d.is_parent_summary) return 0;
+        const sku = ntoRowSku(d);
+        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
+        if (typeof chStdSumDisc !== 'function') return 0;
+        const n = Number(chStdSumDisc(d)) || 0;
+        return n > 0 ? +n.toFixed(2) : 0;
+    }
+    function ntoRowPmApplied(d) {
+        const n = Number(d && d.pm_applied_pct) || 0;
+        return n > 0 ? n : 0;
+    }
+    function ntoRowPmIsApplied(d) {
+        const pm = ntoRowPm(d);
+        const applied = ntoRowPmApplied(d);
+        return pm > 0 && applied > 0 && Math.abs(applied - pm) < 0.01;
+    }
+    function ntoPmCellHtml(d) {
+        const pm = ntoRowPm(d);
+        if (!(pm > 0)) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
+        const shown = Math.round(pm * 10) / 10;
+        const esc = function(s) { return String(s || '').replace(/"/g, '&quot;'); };
+        if (d.pm_push_status === 'pushing') {
+            return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Applying ' + shown + '% promotion…"></i>';
+        }
+        if (d.pm_push_status === 'error') {
+            return '<span style="color:#dc3545;font-weight:700;" title="' + esc('Promotion failed: ' + (d.pm_error || 'unknown error')) + '">'
+                + shown + ' <i class="fas fa-times"></i></span>';
+        }
+        if (ntoRowPmIsApplied(d)) {
+            const when = d.pm_applied_at ? (' at ' + d.pm_applied_at) : '';
+            const act = d.pm_activity_id ? (' · activity ' + d.pm_activity_id) : '';
+            return '<span style="color:#15803d;font-weight:700;" title="' + esc('Promotion ' + shown + '% applied (= Sum disc)' + when + act) + '">'
+                + shown + ' <i class="fa-solid fa-check-double"></i></span>';
+        }
+        const applied = ntoRowPmApplied(d);
+        if (!ntoPromotionAllowed()) {
+            return '<span style="color:#94a3b8;font-weight:700;" title="' + esc('Promotion switch is OFF — not applied. Sum disc ' + shown + '% will be applied when it is turned on.'
+                + (applied > 0 ? (' Last applied: ' + applied + '%.') : '')) + '">' + shown + '</span>';
+        }
+        return '<span style="color:#0f172a;font-weight:700;" title="' + esc('Promotion ' + shown + '% waiting to be applied (= Sum disc)'
+            + (applied > 0 ? (' · last applied ' + applied + '%') : '')) + '">' + shown + '</span>';
+    }
+    function ntoPromoFailedMap() {
+        try { return JSON.parse(localStorage.getItem(NTO_PROMO_FAIL_KEY) || '{}') || {}; } catch (e) { return {}; }
+    }
+    function ntoPromoRememberFailure(sku, pct, on) {
+        try {
+            const map = ntoPromoFailedMap();
+            const key = String(sku).toUpperCase();
+            if (on) map[key] = { pct: pct, t: Date.now() };
+            else delete map[key];
+            localStorage.setItem(NTO_PROMO_FAIL_KEY, JSON.stringify(map));
+        } catch (e) { /* storage unavailable */ }
+    }
+    /** Rows whose Sum disc differs from what Temu was last given. */
+    function collectNtoPromotionItems(opts) {
+        opts = opts || {};
+        const failed = opts.manual ? {} : ntoPromoFailedMap();
+        const seen = {};
+        const items = [];
+        if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return items;
+        table.getRows().forEach(function(row) {
+            const d = row.getData() || {};
+            const sku = ntoRowSku(d);
+            const key = sku.toUpperCase();
+            if (!sku || seen[key]) return;
+            const pm = ntoRowPm(d);
+            if (!(pm > 0) || pm >= 100) return;
+            if (!((parseFloat(d.INV) || 0) >= 1)) return;
+            if (ntoRowPmIsApplied(d)) return;
+            const f = failed[key];
+            if (f && Math.abs((Number(f.pct) || 0) - pm) < 0.01 && (Date.now() - (Number(f.t) || 0)) < NTO_PROMO_FAIL_TTL_MS) return;
+            seen[key] = true;
+            items.push({ sku: sku, pct: pm });
+        });
+        return items;
+    }
+    function ntoApplyPromotions(opts) {
+        opts = opts || {};
+        if (!ntoPromotionAllowed() || ntoPromoBusy) return;
+        const items = collectNtoPromotionItems(opts);
+        if (!items.length) {
+            if (opts.manual) showToast('Promotion: every SKU already has its Sum disc applied.', 'success');
+            return;
+        }
+        ntoPromoBusy = true;
+        ntoPatchPushRows(items.map(function(i) { return i.sku; }), { pm_push_status: 'pushing', pm_error: null });
+        showToast('Promotion: applying Sum disc to ' + items.length + ' SKU(s)…', 'info');
+        let i = 0, ok = 0, fail = 0, lastError = '';
+        function finish() {
+            ntoPromoBusy = false;
+            showToast(
+                'Promotion: ' + ok + ' applied' + (fail ? (', ' + fail + ' failed' + (lastError ? (' — ' + lastError) : '')) : ''),
+                fail && !ok ? 'error' : 'success'
+            );
+        }
+        function failChunk(chunk, message, remember) {
+            if (remember !== false) chunk.forEach(function(it) { ntoPromoRememberFailure(it.sku, it.pct, true); });
+            ntoPatchPushRows(chunk.map(function(c) { return c.sku; }), { pm_push_status: 'error', pm_error: message });
+            fail += chunk.length;
+            lastError = message;
+        }
+        function next() {
+            if (!ntoPromotionAllowed() || i >= items.length) {
+                if (i < items.length) {
+                    ntoPatchPushRows(items.slice(i).map(function(it) { return it.sku; }), { pm_push_status: null });
+                }
+                return finish();
+            }
+            const chunk = items.slice(i, i + NTO_PROMO_CHUNK);
+            i += chunk.length;
+            $.ajax({
+                url: NTO_PROMO_PUSH_URL,
+                method: 'POST',
+                contentType: 'application/json',
+                dataType: 'json',
+                headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
+                data: JSON.stringify({ items: chunk }),
+                timeout: 180000,
+            }).done(function(resp) {
+                const byKey = {};
+                ((resp && resp.results) || []).forEach(function(r) { byKey[String(r.sku).toUpperCase()] = r; });
+                chunk.forEach(function(it) {
+                    const r = byKey[String(it.sku).toUpperCase()];
+                    if (r && r.status === 'ok') {
+                        ok++;
+                        ntoPromoRememberFailure(it.sku, it.pct, false);
+                        ntoPatchPushRows([it.sku], {
+                            pm_applied_pct: Number(r.pct) || it.pct,
+                            pm_applied_at: r.applied_at || '',
+                            pm_activity_id: r.activity_id || null,
+                            pm_push_status: null,
+                            pm_error: null,
+                        });
+                    } else {
+                        failChunk([it], (r && r.message) || 'No result returned');
+                    }
+                });
+                next();
+            }).fail(function(xhr) {
+                const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Promotion request failed';
+                const blocked = xhr.status === 409 || xhr.status === 502;
+                failChunk(chunk, msg, !blocked);
+                // Switch off (409) or no open Temu activity (502): the rest would fail the same way.
+                if (blocked) {
+                    ntoPatchPushRows(items.slice(i).map(function(it) { return it.sku; }), { pm_push_status: null });
+                    i = items.length;
+                }
+                next();
+            });
+        }
+        next();
+    }
+    window.ntoApplyPromotions = ntoApplyPromotions;
+    function initNtoPromotionUi() {
+        syncNtoPromoSwitchUi();
+        $('#nto-promo-switch').off('change.ntoPromo').on('change.ntoPromo', function() {
+            const on = !!this.checked;
+            const prev = ntoPromotionAllowed();
+            saveNtoPromotionSetting(on)
+                .done(function() {
+                    if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') {
+                        try { table.getRows().forEach(function(r) { r.reformat(); }); } catch (e) { /* ignore */ }
+                    }
+                    showToast(
+                        on
+                            ? 'Promotion on — each SKU is enrolled in a Temu promotion at its Sum disc %.'
+                            : 'Promotion off — nothing is sent to Temu.',
+                        'success'
+                    );
+                    if (on) ntoApplyPromotions({ manual: true });
+                })
+                .fail(function(xhr) {
+                    ntoPromotionEnabled = prev;
+                    syncNtoPromoSwitchUi();
+                    showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not save promotion switch', 'error');
+                });
+        });
+    }
     function initNtoReloadPushUi() {
         syncNtoReloadPushSwitchUi();
         $('#nto-reload-push-switch').off('change.ntoReload').on('change.ntoReload', function() {
@@ -2782,7 +3003,7 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|pm_discount|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -3532,6 +3753,21 @@
                     }
                 },
                 {
+                    title: 'PM',
+                    field: 'pm_discount',
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    width: 58,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return ntoRowPm(aRow.getData() || {}) - ntoRowPm(bRow.getData() || {});
+                    },
+                    headerTooltip: 'PM = Promotion % sent to the Temu Promotion API. Same as Sum disc (Sum disc 2 → promotion 2). Green with a double tick = applied on Temu. Grey = the Promotion switch is OFF, so it is not applied.',
+                    formatter: function(cell) {
+                        return ntoPmCellHtml(cell.getRow().getData() || {});
+                    }
+                },
+                {
                     title: 'SGROI%',
                     field: 'sgroi_percent',
                     hozAlign: 'center',
@@ -3629,10 +3865,12 @@
                     ntoPersistDisplayedSprice().catch(function() {});
                 }
                 ntoTryQueuePushOnReload();
+                if (ntoPromotionAllowed()) ntoApplyPromotions();
             }, 800);
         });
 
         initNtoReloadPushUi();
+        initNtoPromotionUi();
 
         // Every render starts from a clean memo, so a Sprc Dil slab edit (which redraws
         // the table) can never be served a stale cap.

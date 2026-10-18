@@ -5353,6 +5353,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/new-temuone-data-json', [NewTemuoneController::class, 'dataJson'])->name('newtemuone.data.json');
     Route::post('/new-temuone-save-links', [NewTemuoneController::class, 'saveLinks'])->name('newtemuone.save.links');
     Route::post('/new-temuone-save-sprice', [NewTemuoneController::class, 'saveSprice'])->name('newtemuone.save.sprice');
+    Route::get('/new-temuone-promotion-setting', [NewTemuoneController::class, 'getPromotionSetting'])->name('newtemuone.promotion.setting.get');
+    Route::post('/new-temuone-promotion-setting', [NewTemuoneController::class, 'savePromotionSetting'])->name('newtemuone.promotion.setting.save');
+    Route::get('/new-temuone-promotion-activities', [NewTemuoneController::class, 'promotionActivities'])->name('newtemuone.promotion.activities');
+    Route::post('/new-temuone-promotion-push', [NewTemuoneController::class, 'pushPromotion'])->name('newtemuone.promotion.push');
 
     Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
     Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
