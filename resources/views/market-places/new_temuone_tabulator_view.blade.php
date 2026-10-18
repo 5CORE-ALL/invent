@@ -2595,7 +2595,10 @@
             const f = failed[key];
             if (f && Math.abs((Number(f.pct) || 0) - pm) < 0.01 && (Date.now() - (Number(f.t) || 0)) < NTO_PROMO_FAIL_TTL_MS) return;
             seen[key] = true;
-            items.push({ sku: sku, pct: pm });
+            // The promotion is a Sum disc % off S PRC (the price the Std push was built from).
+            let sp = 0;
+            try { sp = Number(temuDisplayedSprice(d)) || 0; } catch (e) { sp = 0; }
+            items.push({ sku: sku, pct: pm, sprice: sp > 0 ? +sp.toFixed(2) : 0 });
         });
         return items;
     }

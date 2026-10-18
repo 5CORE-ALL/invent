@@ -719,6 +719,18 @@ class NewTemuoneController extends Controller
         return response()->json($payload);
     }
 
+    /** Same rule as the page's S Base Prc: S R = S × 0.88; S Base = S R − 2.99 when S R < 30. */
+    private static function promotionBaseFromSprice(float $sprice): float
+    {
+        $sR = round($sprice * 0.88, 2);
+        if (! ($sR > 0)) {
+            return 0.0;
+        }
+        $base = $sR < 30 ? round($sR - 2.99, 2) : $sR;
+
+        return $base > 0 ? $base : 0.0;
+    }
+
     /**
      * Enroll SKUs in a Temu promotion at Sum disc %.
      * items: [{sku, pct}] where pct is the page's Sum disc. Refused while the switch is OFF.
@@ -772,15 +784,17 @@ class NewTemuoneController extends Controller
                 $failItem($sku, $pct, 'Temu goodsId not found for this SKU.');
                 continue;
             }
-            $groups[$goodsId][] = ['sku' => $sku, 'pct' => $pct];
+            $groups[$goodsId][] = ['sku' => $sku, 'pct' => $pct, 'sprice' => round((float) ($item['sprice'] ?? 0), 2)];
         }
 
         foreach ($groups as $goodsId => $requested) {
             $goodsId = (string) $goodsId;
             $fallbackPct = (float) $requested[0]['pct'];
             $pctBySku = [];
+            $spriceBySku = [];
             foreach ($requested as $r) {
                 $pctBySku[strtoupper($r['sku'])] = (float) $r['pct'];
+                $spriceBySku[strtoupper($r['sku'])] = (float) ($r['sprice'] ?? 0);
             }
 
             // One entry per Temu skuId (the metrics table also holds alias names for the same skuId).
@@ -829,10 +843,12 @@ class NewTemuoneController extends Controller
             $bad = null;
             foreach ($siblings as $skuId => $sib) {
                 $pct = $fallbackPct;
+                $sprice = 0.0;
                 $inv = 0;
                 foreach ($sib['names'] as $n) {
                     if (isset($pctBySku[strtoupper($n)])) {
                         $pct = $pctBySku[strtoupper($n)];
+                        $sprice = (float) ($spriceBySku[strtoupper($n)] ?? 0);
                     }
                     $inv = max($inv, (int) floor((float) ($inventory->get($n)->inv ?? 0)));
                 }
@@ -840,7 +856,17 @@ class NewTemuoneController extends Controller
                     $bad = 'Temu base price not found for SKU '.($sib['names'][0] ?? $skuId).'.';
                     break;
                 }
-                $skuPrices[$skuId] = round($sib['base'] * (1 - $pct / 100), 2);
+                if ($sprice > 0) {
+                    // Promotion is Sum disc % off S PRC, then converted to a Temu base the same way
+                    // S Base Prc is (S R = S × 0.88; − $2.99 when S R < $30).
+                    $skuPrices[$skuId] = self::promotionBaseFromSprice($sprice * (1 - $pct / 100));
+                } else {
+                    $skuPrices[$skuId] = round($sib['base'] * (1 - $pct / 100), 2);
+                }
+                if (! ($skuPrices[$skuId] > 0)) {
+                    $bad = 'Promotion price is not positive for SKU '.($sib['names'][0] ?? $skuId).'.';
+                    break;
+                }
                 $quantity += $inv;
             }
             if ($bad === null && $quantity < 1) {
