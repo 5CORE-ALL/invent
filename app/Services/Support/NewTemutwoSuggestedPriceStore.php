@@ -222,9 +222,9 @@ class NewTemutwoSuggestedPriceStore
             return;
         }
         $inverted = ($lp > 0)
-            ? TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0)
+            ? TemuShopifySalesService::newTemuoneSgroiAtSprice($sprice, $lp, $ship)
             : null;
-        $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
+        $sBase = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
         $uncapped = $sprcDil > 0 ? round($sprcDil, 2) : $sprice;
         $cleanLabels = [];
         foreach ($labels as $label) {
@@ -264,10 +264,11 @@ class NewTemutwoSuggestedPriceStore
     {
         $sprice = is_numeric($saved[self::KEY_SPRICE] ?? null) ? round((float) $saved[self::KEY_SPRICE], 2) : 0.0;
         $sgroi = is_numeric($saved[self::KEY_SGROI] ?? null) ? (float) $saved[self::KEY_SGROI] : null;
-        $sBase = is_numeric($saved[self::KEY_S_BASE] ?? null) ? round((float) $saved[self::KEY_S_BASE], 2) : 0.0;
-        if ($sprice > 0 && ! ($sBase > 0)) {
-            $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
-        }
+        // S Base Prc = S R (S PRC × 0.88), minus $2.99 under $30. Always derived from the saved S PRC,
+        // so values saved under the old inversion never show or compare as the push base.
+        $sBase = $sprice > 0
+            ? TemuShopifySalesService::newTemuoneSBasePrice($sprice)
+            : (is_numeric($saved[self::KEY_S_BASE] ?? null) ? round((float) $saved[self::KEY_S_BASE], 2) : 0.0);
         $sprcDil = is_numeric($saved[self::KEY_SPRICE_DIL] ?? null)
             ? round((float) $saved[self::KEY_SPRICE_DIL], 2)
             : $sprice;
@@ -303,7 +304,7 @@ class NewTemutwoSuggestedPriceStore
         if (! ($pushedBase > 0) && is_numeric($saved['SPRICE_PUSHED_VALUE'] ?? null)) {
             $full = round((float) $saved['SPRICE_PUSHED_VALUE'], 2);
             if ($full > 0) {
-                $pushedBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($full), 2);
+                $pushedBase = TemuShopifySalesService::newTemuoneSBasePrice($full);
             }
         }
         $matched = $pushedBase > 0 && $sBase > 0 && abs($pushedBase - $sBase) < 0.015;

@@ -269,8 +269,8 @@ class NewTemutwoSprcDilAutoPushService
             return null;
         }
         $sprice = round($capped, 2);
-        // Temu takes a Base price. Same invert as the page (S Base Prc).
-        $base = TemuShopifySalesService::computePushBaseFromSprice($sprice);
+        // Temu takes a Base price. Same rule as the page (S Base Prc): S R = S PRC × 0.88, minus $2.99 under $30.
+        $base = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
         if ($base === null || ! ($base > 0)) {
             return null;
         }
@@ -297,7 +297,7 @@ class NewTemutwoSprcDilAutoPushService
             return $s;
         }
         if ($lmp > 0 && ($s + 0.0001) >= $lmp) {
-            $sgroiAtLmp = TemuShopifySalesService::sgroiAtSprice($lmp, $lp, $ship, 0.0);
+            $sgroiAtLmp = TemuShopifySalesService::newTemuoneSgroiAtSprice($lmp, $lp, $ship);
             if ($sgroiAtLmp === null || $sgroiAtLmp >= AmazonDilGroiRule::LMP_SGROI_MIN) {
                 $s = round($lmp, 2);
             }

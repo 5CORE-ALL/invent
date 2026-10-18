@@ -174,7 +174,10 @@ class ChannelLivePriceSync
 
         $value = $sprice;
         if (in_array($channel, ['temu', 'temu2', 'temu3'], true)) {
-            $base = TemuShopifySalesService::computePushBaseFromSprice($sprice);
+            // Temu 3 Analytics S Base Prc: S PRC × 0.88, − $2.99 under $30.
+            $base = $channel === 'temu3'
+                ? TemuShopifySalesService::newTemuoneSBasePrice($sprice)
+                : TemuShopifySalesService::computePushBaseFromSprice($sprice);
             if ($base === null || $base <= 0) {
                 return;
             }
