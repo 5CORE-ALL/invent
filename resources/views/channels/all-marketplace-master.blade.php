@@ -2644,9 +2644,11 @@
             var lastDotPairByKey = {};
             var chartSyncedAllMetrics = {};
             var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 't_ads', 'p_ads_pct', 'tat'];
-            // y_sales is intentionally NOT here: its badge dot/background must follow the Y Sales
-            // graph (last point vs the day before) so the badge and the graph never disagree.
-            var yVsL30DotMetrics = { y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1,
+            // These Y / Today dots start from a "vs L30 average" pair, but as soon as the badge's
+            // graph series is known (prefetched on load or opened by click) the dot is re-synced
+            // to the graph (last point vs the day before) — see syncAllBadgeDotWithChart.
+            var chartDotSynced = {};
+            var yVsL30DotMetrics = { y_sales: 1, y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1,
                 // Today badges: today's pace vs the L30 baseline (daily average for counts, L30 % for ratios).
                 t_orders: 1, t_npft: 1, t_groi: 1, t_nroi: 1, t_ads: 1, t_views: 1 };
             var yOrdersExact = null;
@@ -6441,7 +6443,10 @@
                     $el.closest('.badge').attr('title',
                         'Sum of Today Sales. Current Eastern calendar day from 12:00 AM EST/EDT through now. $' + val.toLocaleString('en-US') + '. Dot compares today with yesterday.');
                     setBadgeExact($el, val);
-                    lastDotPairByKey['all_today_sales'] = [totalYSales, totalTodaySales];
+                    if (!chartDotSynced['today_sales']) {
+                        lastDotPairByKey['all_today_sales'] = [totalYSales, totalTodaySales];
+                    }
+                    prefetchAllBadgeChartDot('today_sales', val);
                 })();
                 (function() {
                     const npft = totalTodaySales > 0 ? (totalTodayNet / totalTodaySales) * 100 : 0;
@@ -6478,6 +6483,13 @@
                     $('#total-t-orders').text(orders.toLocaleString('en-US'));
                     $('#total-t-orders').closest('.badge').attr('title',
                         'T Orders = Σ (L30 Orders × Today Sales ÷ L30 Sales). Same pace as Today Sales. ' + orders.toLocaleString('en-US'));
+                    // Colour each Today dot/badge from the same series its graph shows.
+                    prefetchAllBadgeChartDot('t_orders', orders);
+                    prefetchAllBadgeChartDot('t_npft_pct', pct1(npft));
+                    prefetchAllBadgeChartDot('t_groi_pct', pct1(groi));
+                    prefetchAllBadgeChartDot('t_nroi_pct', pct1(nroi));
+                    prefetchAllBadgeChartDot('t_ads_pct', pct1(ads));
+                    prefetchAllBadgeChartDot('t_views', views);
                 })();
                 (function() {
                     const val = Math.round(totalPSales);
@@ -6831,6 +6843,8 @@
 
             function pinSummaryDot(metric, baseline, current, title) {
                 if (!yVsL30DotMetrics[metric]) return;
+                // The graph's own series already decided this dot; do not overwrite it.
+                if (chartDotSynced[metric]) return;
                 if (baseline == null || current == null || !isFinite(baseline) || !isFinite(current)) return;
                 lastDotPairByKey['all_' + metric] = [baseline, current];
                 chartSyncedAllMetrics[metric] = true;
@@ -7561,13 +7575,17 @@
             // (graph dot = last value vs the day before). The dot-trend cache is built
             // from a different snapshot table and could disagree (green dot, red graph).
             function syncAllBadgeDotWithChart(metric, values) {
-                if (!metric || metric === 'today_sales' || /^t_/.test(metric) || yVsL30DotMetrics[metric] || !Array.isArray(values) || values.length < 2) return;
+                if (!metric || !Array.isArray(values) || values.length < 2) return;
+                // Today badges: the graph metric key differs from the dot's data-metric.
+                var dotMetricByChart = { t_npft_pct: 't_npft', t_groi_pct: 't_groi', t_nroi_pct: 't_nroi', t_ads_pct: 't_ads' };
+                var dotMetric = dotMetricByChart[metric] || metric;
                 var v1 = Number(values[values.length - 2]);
                 var v2 = Number(values[values.length - 1]);
                 if (!isFinite(v1) || !isFinite(v2)) return;
-                if (!$('#summary-stats .summary-trend-dot[data-metric="' + metric + '"]').length) return;
-                lastDotPairByKey['all_' + metric] = [v1, v2];
-                chartSyncedAllMetrics[metric] = true;
+                if (!$('#summary-stats .summary-trend-dot[data-metric="' + dotMetric + '"]').length) return;
+                lastDotPairByKey['all_' + dotMetric] = [v1, v2];
+                chartSyncedAllMetrics[dotMetric] = true;
+                chartDotSynced[dotMetric] = true;
                 colorSummaryBadgeDots(channelKeysFromTableData());
             }
 
