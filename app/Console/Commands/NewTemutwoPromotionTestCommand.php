@@ -18,7 +18,7 @@ use Illuminate\Http\Request;
 class NewTemutwoPromotionTestCommand extends Command
 {
     protected $signature = 'newtemutwo:promotion-test
-        {sku : Child SKU to test}
+        {sku? : Child SKU to test (leave out for the eligibility summary)}
         {--pct= : Promotion % (the page Sum disc for this SKU)}
         {--sprice= : S PRC the promotion is taken off (default: saved S PRC, else live base)}
         {--activity= : Pin an activity id (default: first open lightning deal)}
@@ -34,6 +34,9 @@ class NewTemutwoPromotionTestCommand extends Command
             $this->error('Temu 2 credentials (TEMU2_*) are not configured on this environment.');
 
             return self::FAILURE;
+        }
+        if ($sku === '') {
+            return $this->summary($temu);
         }
         if (! ($pct > 0 && $pct < 100)) {
             $this->error('Pass --pct=<Sum disc %> between 0 and 100.');
@@ -107,5 +110,62 @@ class NewTemutwoPromotionTestCommand extends Command
         $this->line(json_encode($response->getData(true), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         return $response->getStatusCode() < 400 ? self::SUCCESS : self::FAILURE;
+    }
+
+    /** Why does the page say "Not eligible"? Compare Temu's candidate list with our goods ids. */
+    protected function summary(Temu2ApiService $temu): int
+    {
+        $promo = new TemuPromotionApiService($temu);
+        $this->info('Temu 2 promotion activities');
+        foreach ([TemuPromotionApiService::STATUS_ONGOING => 'ongoing', TemuPromotionApiService::STATUS_NOT_STARTED => 'not started'] as $status => $label) {
+            $res = $promo->queryActivities(TemuPromotionApiService::TYPE_LIGHTNING_DEAL, $status);
+            if (! $res['success']) {
+                $this->error("  {$label}: ".$res['message']);
+                continue;
+            }
+            foreach ($res['activities'] as $a) {
+                $this->line(sprintf('  [%s] id=%s name=%s end=%s', $label, $a['activityId'] ?? '?', $a['activityName'] ?? '', ! empty($a['activityEndTime']) ? date('Y-m-d H:i', (int) $a['activityEndTime']) : '—'));
+            }
+            if ($res['activities'] === []) {
+                $this->line("  [{$label}] none");
+            }
+        }
+
+        $activityId = trim((string) $this->option('activity')) ?: (NewTemutwoController::promotionSetting()['activity_id'] ?? null);
+        if (! $activityId) {
+            $resolved = $promo->resolveOpenActivity();
+            if (! $resolved['success']) {
+                $this->error('No open activity: '.$resolved['message']);
+
+                return self::FAILURE;
+            }
+            $activityId = (string) $resolved['activity']['activityId'];
+        }
+        $this->line("Using activity {$activityId} (pin another with --activity=ID)");
+
+        $cand = $promo->candidateGoods($activityId);
+        if (! $cand['success']) {
+            $this->error('Candidate list failed: '.$cand['message']);
+
+            return self::FAILURE;
+        }
+        $goods = $cand['goods'];
+        $allowed = count(array_filter($goods, fn ($g) => ! empty($g['allowed'])));
+        $this->line('Temu candidate goods: '.count($goods)." (allowed to enroll: {$allowed})");
+        $this->line('  sample candidate goodsIds: '.implode(', ', array_slice(array_keys($goods), 0, 5)));
+
+        $ours = Temu2Metric::query()->whereNotNull('goods_id')->where('goods_id', '!=', '')->pluck('goods_id')->map(fn ($g) => (string) $g)->unique()->values();
+        $total = Temu2Metric::query()->count();
+        $this->line("Our temu2_metrics rows: {$total}, with a goods_id: ".$ours->count());
+        $this->line('  sample our goodsIds: '.$ours->take(5)->implode(', '));
+        $hit = $ours->filter(fn ($g) => isset($goods[$g]))->count();
+        $this->line("Our goods that are on Temu's candidate list: {$hit}");
+        if ($hit === 0) {
+            $this->warn(count($goods) === 0
+                ? 'Temu returned NO candidate goods for this activity — nothing is enrollable (try another activity).'
+                : 'No overlap — compare the sample ids above (format mismatch?) or the activity does not cover these goods.');
+        }
+
+        return self::SUCCESS;
     }
 }
