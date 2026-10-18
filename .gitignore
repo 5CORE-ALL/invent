@@ -86,3 +86,9 @@ vendor/symfony/polyfill-php83/Php83.php
 .htaccess
 composer.lock
 env
+
+# Server-only leftovers (backups, deps, runtime locks)
+.env.bak*
+*.bak-*
+/scripts/wayfair/node_modules/
+/scripts/wayfair/package-lock.json

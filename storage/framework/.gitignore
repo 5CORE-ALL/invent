@@ -9,3 +9,4 @@ schedule-*
 services.json
 amazon-ads-bgt-counts.lock
 amazon-ads-bgt-counts.rerun
+*.lock
