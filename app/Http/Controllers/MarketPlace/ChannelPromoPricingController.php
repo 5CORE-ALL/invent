@@ -173,10 +173,6 @@ class ChannelPromoPricingController extends Controller
     public static function isPageReloadPushEnabled(string $channel): bool
     {
         $channel = strtolower(trim($channel));
-        // New Temu One is always on, same as the headless newtemuone:push-blue-prices job (which ignores the switch).
-        if ($channel === 'newtemuone') {
-            return true;
-        }
         try {
             $row = ChannelTabulatorColumnSetting::query()
                 ->where('channel_name', $channel.'_page_reload_push')

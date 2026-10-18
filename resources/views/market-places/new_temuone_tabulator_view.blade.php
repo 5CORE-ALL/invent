@@ -449,14 +449,15 @@
     </style>
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
-            <label class="nto-reload-push-switch"
+            <label class="nto-reload-push-switch{{ !empty($newtemuonePageReloadPushEnabled) ? '' : ' is-off' }}"
                 id="nto-reload-push-wrap"
-                title="Auto-push is always ON: the server re-prices and pushes S Base Prc for blue-triangle SKUs (S PRC ≠ Temu Price) every 10 minutes, even with this page closed. This page also queues them on load. Progress shows in the bar.">
+                title="When ON, this page queues S Base Prc for blue-triangle SKUs (S PRC ≠ Temu Price) on load and when you flip the switch. When OFF, this page does not auto-queue (manual Push and the background job still work). Progress shows in the bar.">
                 <span class="nto-reload-push-text">
                     Auto push
-                    <span class="nto-reload-push-state" id="nto-reload-push-label">On</span>
+                    <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemuonePageReloadPushEnabled) ? 'On' : 'Off' }}</span>
                 </span>
-                <input type="checkbox" role="switch" id="nto-reload-push-switch" checked disabled>
+                <input type="checkbox" role="switch" id="nto-reload-push-switch"
+                    {{ !empty($newtemuonePageReloadPushEnabled) ? 'checked' : '' }}>
             </label>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
@@ -2110,8 +2111,7 @@
     const NTO_PUSH_SPRICE_URL = '/channel-push-sprice/newtemuone';
     const NTO_PUSH_SPRICE_LIVE = @json(!empty($newtemuonePushSpriceLive));
     const NTO_PUSH_SPRICE_CHUNK = 200;
-    // Always on (same as the background newtemuone:push-blue-prices job); the switch is locked to On.
-    let ntoPageReloadPushEnabled = true;
+    let ntoPageReloadPushEnabled = @json(!empty($newtemuonePageReloadPushEnabled));
     let ntoPushSpricePollTimer = null;
     let ntoPushSpriceExpecting = false;
     let ntoPushSpriceLastToastKey = '';
@@ -2122,7 +2122,7 @@
     // The server job (newtemuone:push-blue-prices, every 10 min) pushes with the page closed. This switch only
     // controls whether the page itself also queues blue-triangle SKUs when it loads.
     function ntoPageReloadPushAllowed() {
-        return true;
+        return ntoPageReloadPushEnabled !== false;
     }
     function syncNtoReloadPushSwitchUi() {
         const on = ntoPageReloadPushAllowed();
