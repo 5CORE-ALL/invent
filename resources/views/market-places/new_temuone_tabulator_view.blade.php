@@ -128,14 +128,6 @@
             z-index: 1080;
         }
 
-        .temu-sprice-cap-lbl {
-            color: #fd7e14;
-            font-weight: 800;
-            font-size: 10px;
-            line-height: 1;
-            margin-left: 3px;
-            cursor: help;
-        }
         #newtemuone-cvr-vs-cpn-btn {
             background: #20c997;
             border-color: #20c997;
@@ -644,14 +636,6 @@
                     <span class="badge fs-6 p-2" id="newtemuone-lmp-cap-badge"
                         style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
                         title="S PRC capped at LMP. Click to filter.">LMP cap 0</span>
-                    <span class="badge fs-6 p-2" id="temu-amz-cap-badge"
-                        style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
-                        title="S PRC capped to Amazon. Click to show only Amz rows."
-                        aria-label="S PRC capped to Amazon">Amz 0</span>
-                    <span class="badge fs-6 p-2" id="temu-eb-cap-badge"
-                        style="background-color:#fd7e14;color:#fff;font-weight:700;cursor:pointer;"
-                        title="S PRC capped to eBay. Click to show only EB rows."
-                        aria-label="S PRC capped to eBay">EB 0</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -1014,18 +998,6 @@
         return (isFinite(n) && n > 0) ? n : 0;
     }
 
-    function temuAmzRefPrice(row) {
-        return temuParseMoney(row && (row.a_price != null ? row.a_price
-            : (row['A Price'] != null ? row['A Price'] : row.amazon_price)));
-    }
-
-    function temuEbayRefPrice(row) {
-        const e = temuParseMoney(row && (row.e_price != null ? row.e_price : row.ebay_price));
-        const e2 = temuParseMoney(row && (row.e2_price != null ? row.e2_price : row.ebay2_price));
-        if (e > 0 && e2 > 0) return Math.min(e, e2);
-        return e > 0 ? e : e2;
-    }
-
     function temuLmpRefPrice(row) {
         return temuParseMoney(row && (row.lmp_raw != null ? row.lmp_raw : row.lmp));
     }
@@ -1083,7 +1055,7 @@
         return cap;
     }
 
-    /** S PRC = Dil (or STD fallback), then the lowest of eBay / Amazon / LMP when cheaper. */
+    /** S PRC = Dil (or STD fallback), capped at LMP when LMP is cheaper. No Amazon / eBay cap. */
     function temuSpriceCapCompute(row, rawSprice, extra) {
         extra = extra || {};
         const liveDiscounted = temuDiscountedPrice(row);
@@ -1094,43 +1066,32 @@
         } else if (liveDiscounted > 0) {
             discounted = +liveDiscounted.toFixed(2);
         }
-        const ebay = +temuEbayRefPrice(row).toFixed(2);
-        const amz = +temuAmzRefPrice(row).toFixed(2);
         const lmp = extra.skip_lmp_cap ? 0 : +temuLmpRefPrice(row).toFixed(2);
-        if (!(discounted > 0) && chPromoInv(row) > 0) {
-            const floor = [ebay, amz, lmp].filter(function(n) { return n > 0; });
-            if (floor.length) discounted = Math.min.apply(null, floor);
+        if (!(discounted > 0) && chPromoInv(row) > 0 && lmp > 0) {
+            discounted = lmp;
         }
         let sprice = discounted > 0 ? discounted : 0;
-        if (!(sprice > 0)) return { sprice: 0, labels: [], lmpAlert: false, amz: amz, ebay: ebay, lmp: lmp };
+        if (!(sprice > 0)) return { sprice: 0, labels: [], lmpAlert: false, lmp: lmp };
 
         const zeroSoldOwns = typeof chPromoTemuZeroSoldOwnsSprice === 'function'
             && chPromoTemuZeroSoldOwnsSprice(row);
 
         if (!zeroSoldOwns) {
-            if (ebay > 0 && sprice > ebay) sprice = +ebay.toFixed(2);
-            if (amz > 0 && sprice > amz) sprice = +amz.toFixed(2);
             if (lmp > 0 && sprice > lmp) sprice = +lmp.toFixed(2);
         }
 
-        const labels = [];
-        if (ebay > 0 && Math.abs(sprice - ebay) < 0.015 && discounted > ebay + 0.004) labels.push('EB');
-        if (amz > 0 && Math.abs(sprice - amz) < 0.015 && discounted > amz + 0.004) labels.push('Amz');
         const lmpAlert = lmp > 0 && +sprice.toFixed(2) === lmp && discounted > lmp;
-        return { sprice: +sprice.toFixed(2), labels: labels, lmpAlert: lmpAlert, amz: amz, ebay: ebay, lmp: lmp };
+        return { sprice: +sprice.toFixed(2), labels: [], lmpAlert: lmpAlert, lmp: lmp };
     }
 
     function temuSpriceCellModel(row) {
-        if (!row) return { value: 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
+        if (!row) return { value: 0, lmpAlert: false, lmp: 0 };
         const cap = temuSpriceCapResult(row);
         const value = (cap && cap.sprice > 0) ? cap.sprice : ntoSavedSprice(row);
         return {
             value: value,
-            labels: temuRowCapLabels(row),
             lmpAlert: !!(cap && cap.lmpAlert),
             lmp: (cap && cap.lmp) || 0,
-            amz: (cap && cap.amz) || 0,
-            ebay: (cap && cap.ebay) || 0,
         };
     }
 
@@ -1297,7 +1258,7 @@
             if (!(price > 0)) return;
             const current = ntoSavedSprice(d);
             if (Math.abs(current - price) < 0.015) return;
-            const labels = (cap && cap.labels) || (typeof temuRowCapLabels === 'function' ? temuRowCapLabels(d) : []);
+            const labels = [];
             updates.push({
                 sku: sku,
                 sprice: price,
@@ -1470,13 +1431,13 @@
         return (snpft / sprice) * 100;
     }
 
-    /** Dil + CVR Target NROI when S PRC is the Dil price (not eBay / Amazon / LMP capped). */
+    /** Dil + CVR Target NROI when S PRC is the Dil price (not LMP capped). */
     function temuSnroiFromRule(row) {
         if (typeof ebayDilGroiTargetGroi !== 'function') return null;
         const rule = ebayDilGroiTargetGroi(row);
         if (rule == null || !isFinite(rule)) return null;
         const cap = typeof temuSpriceCapResult === 'function' ? temuSpriceCapResult(row) : null;
-        if (cap && ((cap.labels && cap.labels.length) || cap.lmpAlert)) return null;
+        if (cap && cap.lmpAlert) return null;
         return rule;
     }
     function temuSnroiPercent(row) {
@@ -1920,7 +1881,7 @@
             if (cap && cap.sprice > 0) {
                 next.sprice = cap.sprice;
                 next.SPRICE = cap.sprice;
-                next.sprice_labels = cap.labels;
+                next.sprice_labels = [];
                 next.sprice_lmp_alert = cap.lmpAlert;
                 next.s_base_price = temuSBaseFromSprice(cap.sprice) || null;
                 next.s_r_price = temuSRPriceFromSprice(cap.sprice) || null;
@@ -2000,8 +1961,6 @@
 
     let blueTriangleFilterActive = false;
     let lmpCapFilterActive = false;
-    let amzCapFilterActive = false;
-    let ebCapFilterActive = false;
     let zeroSoldFilterActive = false;
     let moreSoldFilterActive = false;
     let priceGtLmpFilterActive = false;
@@ -2052,36 +2011,6 @@
     function temuHasPriceLt80Lmp(row) {
         return !!(window.PriceLt80LmpBadge
             && PriceLt80LmpBadge.hasPurpleTriangle(row, 'temu_price'));
-    }
-
-    function temuRowCapLabels(row) {
-        if (!row || row.is_parent_summary) return [];
-        const cap = temuSpriceCapResult(row);
-        const seen = {};
-        const out = [];
-        function add(label) {
-            const key = String(label || '').trim();
-            if (!key || seen[key]) return;
-            seen[key] = true;
-            out.push(key);
-        }
-        ((cap && cap.labels) || []).forEach(add);
-        (Array.isArray(row.sprice_labels) ? row.sprice_labels : []).forEach(add);
-        const sprice = (cap && cap.sprice > 0) ? cap.sprice : ntoSavedSprice(row);
-        const dil = typeof temuDiscountedPrice === 'function' ? temuDiscountedPrice(row) : 0;
-        const ebay = (cap && cap.ebay) || temuEbayRefPrice(row);
-        const amz = (cap && cap.amz) || temuAmzRefPrice(row);
-        if (ebay > 0 && sprice > 0 && Math.abs(sprice - ebay) < 0.015 && dil > ebay + 0.004) add('EB');
-        if (amz > 0 && sprice > 0 && Math.abs(sprice - amz) < 0.015 && dil > amz + 0.004) add('Amz');
-        return out;
-    }
-
-    function temuHasAmzCap(row) {
-        return temuRowCapLabels(row).indexOf('Amz') !== -1;
-    }
-
-    function temuHasEbCap(row) {
-        return temuRowCapLabels(row).indexOf('EB') !== -1;
     }
 
     function temuHasLmpCap(row) {
@@ -2568,8 +2497,6 @@
             ['#more-sold-count-badge', moreSoldFilterActive],
             ['#newtemuone-blue-triangle-badge', blueTriangleFilterActive],
             ['#newtemuone-lmp-cap-badge', lmpCapFilterActive],
-            ['#temu-amz-cap-badge', amzCapFilterActive],
-            ['#temu-eb-cap-badge', ebCapFilterActive],
             ['#newtemuone-missing-lmp-badge', missingLmpFilterActive]
         ];
         pairs.forEach(function(p) {
@@ -2636,8 +2563,6 @@
         let gpftLp = 0;
         let blueTriangle = 0;
         let lmpCapped = 0;
-        let amzCap = 0;
-        let ebCap = 0;
 
         rows.forEach(function(row) {
             rowsCount++;
@@ -2662,9 +2587,6 @@
             const sprice = (cap && cap.sprice > 0) ? cap.sprice : ntoSavedSprice(row);
             if (sprice > 0) {
                 if (cap && (cap.lmpAlert || (cap.lmp > 0 && sprice >= cap.lmp))) lmpCapped++;
-                const labels = temuRowCapLabels(row);
-                if (labels.indexOf('Amz') !== -1) amzCap++;
-                if (labels.indexOf('EB') !== -1) ebCap++;
             }
         });
 
@@ -2688,9 +2610,6 @@
             window._ntoLeftoverTimer = setTimeout(window.ntoPushLeftoverBlues, 2000);
         }
         $('#newtemuone-lmp-cap-badge').text('LMP cap ' + lmpCapped.toLocaleString());
-        $('#temu-amz-cap-badge').text('Amz ' + amzCap.toLocaleString());
-        $('#temu-eb-cap-badge').text('EB ' + ebCap.toLocaleString());
-
         // Counted over the whole dataset, not the filtered view — same as /temu2-decrease.
         const allRows = table.getData();
         if (window.PriceGtLmpBadge) {
@@ -2829,12 +2748,6 @@
         }
         if (lmpCapFilterActive) {
             table.addFilter(function(data) { return temuHasLmpCap(data); });
-        }
-        if (amzCapFilterActive) {
-            table.addFilter(function(data) { return temuHasAmzCap(data); });
-        }
-        if (ebCapFilterActive) {
-            table.addFilter(function(data) { return temuHasEbCap(data); });
         }
         if (priceGtLmpFilterActive) {
             table.addFilter(function(data) { return temuHasPriceGtLmp(data); });
@@ -3532,12 +3445,12 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, CVR, and Review discounts). Then the lowest of eBay, Amazon, and LMP. Sprc Dil does not set this cell.',
+                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, CVR, and Review discounts). Then capped at LMP when LMP is lower. Sprc Dil does not set this cell.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'
                             ? temuSpriceCellModel(rowData)
-                            : { value: parseFloat(cell.getValue()) || 0, labels: [], lmpAlert: false, lmp: 0, amz: 0, ebay: 0 };
+                            : { value: parseFloat(cell.getValue()) || 0, lmpAlert: false, lmp: 0 };
                         const value = model.value;
                         const live = typeof temuLiveListingPrice === 'function'
                             ? temuLiveListingPrice(rowData)
@@ -3559,15 +3472,8 @@
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ T Price $' + live.toFixed(2) + '"></i>'
                             : '';
-                        let capHtml = '';
-                        (model.labels || []).forEach(function(lbl) {
-                            const ref = lbl === 'Amz' ? model.amz : model.ebay;
-                            const name = lbl === 'Amz' ? 'Amazon' : 'eBay';
-                            capHtml += '<span class="temu-sprice-cap-lbl" title="S PRC capped to ' + name + ' $'
-                                + Number(ref).toFixed(2) + '">' + lbl + '</span>';
-                        });
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + priceHtml + capHtml + redTri + blueTri + '</span>';
+                            + priceHtml + redTri + blueTri + '</span>';
                     }
                 },
                 {
@@ -3847,8 +3753,6 @@
             ['#more-sold-count-badge', 'moreSold'],
             ['#newtemuone-blue-triangle-badge', 'blueTriangle'],
             ['#newtemuone-lmp-cap-badge', 'lmpCap'],
-            ['#temu-amz-cap-badge', 'amzCap'],
-            ['#temu-eb-cap-badge', 'ebCap'],
             ['#newtemuone-price-gt-lmp-badge', 'priceGtLmp'],
             ['#newtemuone-price-lt80-lmp-badge', 'priceLt80Lmp'],
             ['#newtemuone-missing-lmp-badge', 'missingLmp']
@@ -3863,8 +3767,6 @@
                     moreSold: false,
                     blueTriangle: false,
                     lmpCap: false,
-                    amzCap: false,
-                    ebCap: false,
                     priceGtLmp: false,
                     priceLt80Lmp: false,
                     missingLmp: false
@@ -3874,8 +3776,6 @@
                     moreSold: moreSoldFilterActive,
                     blueTriangle: blueTriangleFilterActive,
                     lmpCap: lmpCapFilterActive,
-                    amzCap: amzCapFilterActive,
-                    ebCap: ebCapFilterActive,
                     priceGtLmp: priceGtLmpFilterActive,
                     priceLt80Lmp: priceLt80LmpFilterActive,
                     missingLmp: missingLmpFilterActive
@@ -3885,8 +3785,6 @@
                 moreSoldFilterActive = next.moreSold;
                 blueTriangleFilterActive = next.blueTriangle;
                 lmpCapFilterActive = next.lmpCap;
-                amzCapFilterActive = next.amzCap;
-                ebCapFilterActive = next.ebCap;
                 priceGtLmpFilterActive = next.priceGtLmp;
                 priceLt80LmpFilterActive = next.priceLt80Lmp;
                 missingLmpFilterActive = next.missingLmp;

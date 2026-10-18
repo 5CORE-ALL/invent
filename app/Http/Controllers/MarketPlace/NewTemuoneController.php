@@ -142,7 +142,7 @@ class NewTemuoneController extends Controller
     }
 
     /**
-     * Hydrate /new-temuone rows and persist NTO_SPRICE (Dil + eBay/Amz/LMP cap).
+     * Hydrate /new-temuone rows and persist NTO_SPRICE (Dil + LMP cap).
      * Shared by the page and newtemuone:sprc-dil-auto-push so Dil $ lands
      * in temu_data_view even when the tab is closed.
      *
@@ -374,8 +374,6 @@ class NewTemuoneController extends Controller
                         'cvr' => $cvrPercent,
                         'cvr60' => $cvr60,
                         'ads' => $adsPercent,
-                        'ebay' => $this->temuEbayRefPrice($ebayPrice, $ebay2Price),
-                        'amz' => $amazonPrice,
                         'lmp' => $lmpInfo['raw'],
                     ],
                     $dilRules,
@@ -634,15 +632,6 @@ class NewTemuoneController extends Controller
         }
 
         return $out;
-    }
-
-    private function temuEbayRefPrice(float $ebay, float $ebay2): float
-    {
-        if ($ebay > 0 && $ebay2 > 0) {
-            return min($ebay, $ebay2);
-        }
-
-        return $ebay > 0 ? $ebay : $ebay2;
     }
 
     private function productMasterLp(array $values, ProductMaster $pm): float

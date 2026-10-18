@@ -94,8 +94,6 @@ class NewTemuoneSuggestedPriceStore
      *     sold?: float|int,
      *     cvr: float,
      *     cvr60: float,
-     *     ebay: float,
-     *     amz: float,
      *     lmp: float|int|string|null
      * }  $inputs
      * @param  list<array<string, mixed>>  $dilRules
@@ -212,7 +210,7 @@ class NewTemuoneSuggestedPriceStore
     /**
      * Persist the painted S PRC cell. Keep the current fingerprint so the next
      * load returns this same dollar until Dil / CVR / ads inputs change.
-     * $sprcDil is the uncapped Dil $; $labels are Amz/EB caps on the painted cell.
+     * $sprcDil is the uncapped Dil $; $labels are kept for old callers (Amz/EB caps no longer exist).
      *
      * @param  list<string>  $labels
      */
@@ -346,12 +344,7 @@ class NewTemuoneSuggestedPriceStore
         }
         $ads = (float) ($inputs['ads'] ?? 0);
         $sprcDil = self::priceFromExactSgroi($lp, $ship, $ruleSgroi, $ads);
-        $cap = $this->capSprice(
-            $sprcDil,
-            (float) ($inputs['ebay'] ?? 0),
-            (float) ($inputs['amz'] ?? 0),
-            $inputs['lmp'] ?? 0
-        );
+        $cap = $this->capSprice($sprcDil, $inputs['lmp'] ?? 0);
         $sprice = (float) $cap['sprice'];
         if (! ($sprice > 0)) {
             return $empty;
@@ -535,7 +528,8 @@ class NewTemuoneSuggestedPriceStore
         $cvr = AmazonDilGroiRule::normalizeCvrAdj($cvrAdj);
         $lmp = $inputs['lmp'] ?? 0;
         $payload = [
-            'v' => 8,
+            // v9: Amazon / eBay caps removed. Rows saved under v8 may be capped to those prices.
+            'v' => 9,
             'ads' => round((float) ($inputs['ads'] ?? 0), 2),
             'rules' => $normRules,
             'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),
@@ -551,8 +545,6 @@ class NewTemuoneSuggestedPriceStore
             'lp' => round((float) ($inputs['lp'] ?? 0), 2),
             'ship' => round((float) ($inputs['ship'] ?? 0), 2),
             'inv' => round((float) ($inputs['inv'] ?? 0), 2),
-            'ebay' => round((float) ($inputs['ebay'] ?? 0), 2),
-            'amz' => round((float) ($inputs['amz'] ?? 0), 2),
             'lmp' => (is_numeric($lmp) && (float) $lmp > 0) ? round((float) $lmp, 2) : 0.0,
         ];
 
@@ -562,35 +554,21 @@ class NewTemuoneSuggestedPriceStore
     /**
      * @return array{sprice: float, labels: list<string>, lmpAlert: bool}
      */
-    private function capSprice(float $discounted, float $ebay, float $amz, $lmp): array
+    private function capSprice(float $discounted, $lmp): array
     {
         $sprice = $discounted > 0 ? $discounted : 0.0;
         if (! ($sprice > 0)) {
             return ['sprice' => 0.0, 'labels' => [], 'lmpAlert' => false];
         }
-        $ebay = $ebay > 0 ? round($ebay, 2) : 0.0;
-        $amz = $amz > 0 ? round($amz, 2) : 0.0;
+        // Only LMP caps S PRC. Amazon / eBay prices no longer do.
         $lmp = (is_numeric($lmp) && (float) $lmp > 0) ? round((float) $lmp, 2) : 0.0;
-        if ($ebay > 0 && $sprice > $ebay) {
-            $sprice = round($ebay, 2);
-        }
-        if ($amz > 0 && $sprice > $amz) {
-            $sprice = round($amz, 2);
-        }
         if ($lmp > 0 && $sprice > $lmp) {
             $sprice = round($lmp, 2);
-        }
-        $labels = [];
-        if ($ebay > 0 && abs(round($sprice, 2) - $ebay) < 0.015 && $discounted > ($ebay + 0.004)) {
-            $labels[] = 'EB';
-        }
-        if ($amz > 0 && abs(round($sprice, 2) - $amz) < 0.015 && $discounted > ($amz + 0.004)) {
-            $labels[] = 'Amz';
         }
 
         return [
             'sprice' => round($sprice, 2),
-            'labels' => $labels,
+            'labels' => [],
             'lmpAlert' => $lmp > 0 && round($sprice, 2) === $lmp && $discounted > $lmp,
         ];
     }
