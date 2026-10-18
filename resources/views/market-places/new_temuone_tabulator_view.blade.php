@@ -449,10 +449,16 @@
     </style>
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
-            <span class="nto-server-push-note" id="nto-reload-push-wrap"
-                title="Auto-push is off. Prices push only when you click a push button.">
-                <i class="fas fa-hand-pointer"></i> Auto-push off - push by button
-            </span>
+            <label class="nto-reload-push-switch{{ !empty($newtemuonePageReloadPushEnabled) ? '' : ' is-off' }}"
+                id="nto-reload-push-wrap"
+                title="Auto-push: the server re-prices and pushes S Base Prc for blue-triangle SKUs (S PRC ≠ Temu Price) every 10 minutes, even with this page closed. When ON, this page also queues them on load and when you flip the switch. Progress shows in the bar.">
+                <span class="nto-reload-push-text">
+                    Auto push
+                    <span class="nto-reload-push-state" id="nto-reload-push-label">{{ !empty($newtemuonePageReloadPushEnabled) ? 'On' : 'Off' }}</span>
+                </span>
+                <input type="checkbox" role="switch" id="nto-reload-push-switch"
+                    {{ !empty($newtemuonePageReloadPushEnabled) ? 'checked' : '' }}>
+            </label>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
                 <div class="nto-reload-push-progress-track">
@@ -2113,9 +2119,10 @@
     function ntoPushCsrf() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     }
-    // Auto-push is permanently OFF: prices push only when the user clicks a push button.
+    // The server job (newtemuone:push-blue-prices, every 10 min) pushes with the page closed. This switch only
+    // controls whether the page itself also queues blue-triangle SKUs when it loads.
     function ntoPageReloadPushAllowed() {
-        return false;
+        return ntoPageReloadPushEnabled !== false;
     }
     function syncNtoReloadPushSwitchUi() {
         const on = ntoPageReloadPushAllowed();
@@ -2442,8 +2449,8 @@
     window.ntoPushLeftoverBlues = ntoPushLeftoverBlues;
     function ntoTryQueuePushOnReload(opts) {
         opts = opts || {};
-        // Only an explicit user action (e.g. Dil Save & push) may queue a push.
-        if (!opts.manual) return;
+        // A manual action (e.g. Dil Save & push) always queues; otherwise the Auto push switch decides.
+        if (!opts.manual && !ntoPageReloadPushAllowed()) return;
         if (window._ntoReloadPushQueued) return;
         const retry = opts.retry || 0;
         if (typeof table === 'undefined' || !table || typeof table.getDataCount !== 'function' || table.getDataCount() === 0) {

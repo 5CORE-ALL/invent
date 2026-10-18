@@ -178,11 +178,11 @@ class ChannelPromoPricingController extends Controller
                 ->where('channel_name', $channel.'_page_reload_push')
                 ->first();
         } catch (\Throwable) {
-            return ! in_array($channel, ['amazon', 'newtemuone', 'newtemutwo'], true);
+            return ! in_array($channel, ['amazon', 'newtemutwo'], true);
         }
         $vis = is_array($row?->visibility) ? $row->visibility : null;
         if (! is_array($vis) || ! array_key_exists('enabled', $vis)) {
-            return ! in_array($channel, ['amazon', 'newtemuone', 'newtemutwo'], true);
+            return ! in_array($channel, ['amazon', 'newtemutwo'], true);
         }
 
         return filter_var($vis['enabled'], FILTER_VALIDATE_BOOLEAN);

@@ -1370,7 +1370,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // New Temu One's own command still prices Dil→SNROI. Leave it off.
+        // Headless "Push on reload" for /new-temuone (same as amazon:push-blue-prices): re-prices every SKU, saves
+        // NTO_SPRICE where it changed, pushes blue-triangle SKUs (INV > 0, S Base ≠ Temu base). Every 10 min, 24/7
+        // on purpose (no $ist()), so a price change is pushed with the page closed.
+        $schedule->command('newtemuone:push-blue-prices')
+            ->everyTenMinutes()
+            ->name('newtemuone-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // The twice-daily command below is replaced by the 10-minute job above.
         // Temu 1 is priced by dil:rule-sprice-apply temu in the loop below.
         if (false) {
         // New Temu One Sprc Dil (Dil→SNROI) + CVR + eBay/Amz/LMP cap → NTO_SPRICE,
