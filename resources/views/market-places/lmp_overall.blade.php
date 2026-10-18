@@ -1364,11 +1364,20 @@
                 return '<span style="' + style + '">' + Math.round(pct) + '%</span>';
             }
 
-            function lmpPriceDiffPct(data) {
+            // Diff = Std Price - Avg LMP (positive when Avg LMP is lower than Std Price).
+            function lmpPriceDiff(data) {
                 const lmp = parseFloat(data && data.avg_lmp);
-                const price = parseFloat(data && data.avg_price);
-                if (!isFinite(lmp) || lmp <= 0 || !isFinite(price) || price <= 0) return null;
-                return ((lmp - price) / price) * 100;
+                const std = parseFloat(data && data.std_price);
+                if (!isFinite(lmp) || lmp <= 0 || !isFinite(std) || std <= 0) return null;
+                return std - lmp;
+            }
+
+            // Diff as % of Std Price; only used to pick the existing cell colour band.
+            function lmpPriceDiffPct(data) {
+                const diff = lmpPriceDiff(data);
+                const std = parseFloat(data && data.std_price);
+                if (diff == null || !isFinite(std) || std <= 0) return null;
+                return (diff / std) * 100;
             }
 
             function lmpPriceDiffClass(pct) {
@@ -1584,10 +1593,10 @@
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         minWidth: 56,
-                        headerTooltip: '(Avg LMP − Avg Price) / Avg Price',
+                        headerTooltip: 'Std Prc − Avg LMP (negative when Avg LMP is higher than Std Prc)',
                         sorter: function (a, b, aRow, bRow) {
-                            const av = lmpPriceDiffPct(aRow.getData());
-                            const bv = lmpPriceDiffPct(bRow.getData());
+                            const av = lmpPriceDiff(aRow.getData());
+                            const bv = lmpPriceDiff(bRow.getData());
                             if (av == null && bv == null) return 0;
                             if (av == null) return -1;
                             if (bv == null) return 1;
@@ -1598,11 +1607,12 @@
                             if (el) {
                                 el.classList.remove('lmp-diff-magenta', 'lmp-diff-red', 'lmp-diff-green', 'lmp-diff-yellow');
                             }
-                            const pct = lmpPriceDiffPct(cell.getRow().getData());
-                            const cls = lmpPriceDiffClass(pct);
+                            const rowData = cell.getRow().getData();
+                            const diff = lmpPriceDiff(rowData);
+                            const cls = lmpPriceDiffClass(lmpPriceDiffPct(rowData));
                             if (el && cls) el.classList.add(cls);
-                            if (pct == null) return '<span class="text-muted">—</span>';
-                            return Math.round(pct) + '%';
+                            if (diff == null) return '<span class="text-muted">—</span>';
+                            return (diff < 0 ? '-$' : '$') + Math.abs(diff).toFixed(2);
                         },
                     },
                     {

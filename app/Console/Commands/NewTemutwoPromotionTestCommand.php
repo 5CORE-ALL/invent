@@ -117,6 +117,7 @@ class NewTemutwoPromotionTestCommand extends Command
     {
         $promo = new TemuPromotionApiService($temu);
         $this->info('Temu 2 promotion activities');
+        $activities = [];
         foreach ([TemuPromotionApiService::STATUS_ONGOING => 'ongoing', TemuPromotionApiService::STATUS_NOT_STARTED => 'not started'] as $status => $label) {
             $res = $promo->queryActivities(TemuPromotionApiService::TYPE_LIGHTNING_DEAL, $status);
             if (! $res['success']) {
@@ -124,46 +125,55 @@ class NewTemutwoPromotionTestCommand extends Command
                 continue;
             }
             foreach ($res['activities'] as $a) {
-                $this->line(sprintf('  [%s] id=%s name=%s end=%s', $label, $a['activityId'] ?? '?', $a['activityName'] ?? '', ! empty($a['activityEndTime']) ? date('Y-m-d H:i', (int) $a['activityEndTime']) : '—'));
-            }
-            if ($res['activities'] === []) {
-                $this->line("  [{$label}] none");
+                if (! empty($a['activityId'])) {
+                    $activities[(string) $a['activityId']] = [
+                        'label' => $label,
+                        'name' => (string) ($a['activityName'] ?? ''),
+                        'end' => ! empty($a['activityEndTime']) ? date('Y-m-d H:i', (int) $a['activityEndTime']) : '—',
+                    ];
+                }
             }
         }
-
-        $activityId = trim((string) $this->option('activity')) ?: (NewTemutwoController::promotionSetting()['activity_id'] ?? null);
-        if (! $activityId) {
-            $resolved = $promo->resolveOpenActivity();
-            if (! $resolved['success']) {
-                $this->error('No open activity: '.$resolved['message']);
-
-                return self::FAILURE;
-            }
-            $activityId = (string) $resolved['activity']['activityId'];
-        }
-        $this->line("Using activity {$activityId} (pin another with --activity=ID)");
-
-        $cand = $promo->candidateGoods($activityId);
-        if (! $cand['success']) {
-            $this->error('Candidate list failed: '.$cand['message']);
+        if ($activities === []) {
+            $this->error('No open activities returned by Temu.');
 
             return self::FAILURE;
         }
-        $goods = $cand['goods'];
-        $allowed = count(array_filter($goods, fn ($g) => ! empty($g['allowed'])));
-        $this->line('Temu candidate goods: '.count($goods)." (allowed to enroll: {$allowed})");
-        $this->line('  sample candidate goodsIds: '.implode(', ', array_slice(array_keys($goods), 0, 5)));
 
         $ours = Temu2Metric::query()->whereNotNull('goods_id')->where('goods_id', '!=', '')->pluck('goods_id')->map(fn ($g) => (string) $g)->unique()->values();
         $total = Temu2Metric::query()->count();
         $this->line("Our temu2_metrics rows: {$total}, with a goods_id: ".$ours->count());
         $this->line('  sample our goodsIds: '.$ours->take(5)->implode(', '));
-        $hit = $ours->filter(fn ($g) => isset($goods[$g]))->count();
-        $this->line("Our goods that are on Temu's candidate list: {$hit}");
-        if ($hit === 0) {
-            $this->warn(count($goods) === 0
-                ? 'Temu returned NO candidate goods for this activity — nothing is enrollable (try another activity).'
-                : 'No overlap — compare the sample ids above (format mismatch?) or the activity does not cover these goods.');
+
+        $pinned = trim((string) $this->option('activity'));
+        $ids = $pinned !== '' ? [$pinned] : array_keys($activities);
+        $this->newLine();
+        $this->info('Candidate goods per activity (Temu list vs our goods ids)');
+        $best = null;
+        foreach ($ids as $id) {
+            $info = $activities[$id] ?? ['label' => '?', 'name' => '', 'end' => '—'];
+            $cand = $promo->candidateGoods($id);
+            if (! $cand['success']) {
+                $this->line(sprintf('  %s [%s] %s: FAILED %s', $id, $info['label'], $info['name'], $cand['message']));
+                continue;
+            }
+            $goods = $cand['goods'];
+            $allowed = count(array_filter($goods, fn ($g) => ! empty($g['allowed'])));
+            $hit = $ours->filter(fn ($g) => isset($goods[$g]))->count();
+            $this->line(sprintf('  %s [%s, ends %s] %s: candidates=%d allowed=%d ours-on-list=%d', $id, $info['label'], $info['end'], $info['name'], count($goods), $allowed, $hit));
+            if ($goods !== [] && $hit === 0) {
+                $this->line('      sample Temu goodsIds: '.implode(', ', array_slice(array_keys($goods), 0, 5)));
+            }
+            if ($hit > 0 && ($best === null || $hit > $best[1])) {
+                $best = [$id, $hit];
+            }
+        }
+        $this->newLine();
+        if ($best) {
+            $this->info("Best activity for Temu 2: {$best[0]} ({$best[1]} of our goods are on its candidate list).");
+            $this->line('Pin it on the page by POSTing activity_id to /new-temu2-promotion-setting, or tell me and I will add a picker.');
+        } else {
+            $this->warn('No open activity lists any of our goods as a candidate. Temu is not offering this account a promotion to join right now.');
         }
 
         return self::SUCCESS;
