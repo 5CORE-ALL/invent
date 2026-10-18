@@ -5322,10 +5322,9 @@
                 }
 
                 if (focusActive) {
-                    filters.push([
-                        {field:"assignor_name", type:"like", value:String(taskManagerSessionUserFocus).trim()},
-                        {field:"assignee_name", type:"like", value:String(taskManagerSessionUserFocus).trim()}
-                    ]);
+                    // The focused user is shown in the Assignee dropdown, so match on assignee only
+                    // (previously this also matched the assignor, showing tasks the user only assigned).
+                    filters.push({field:"assignee_name", type:"like", value:String(taskManagerSessionUserFocus).trim()});
                 }
 
                 replaceTableFilters(filters);
