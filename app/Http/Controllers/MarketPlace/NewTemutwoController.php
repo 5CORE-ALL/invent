@@ -208,11 +208,12 @@ class NewTemutwoController extends Controller
      * Enroll SKUs in a Temu 2 promotion at Sum disc %.
      * items: [{sku, pct, sprice}] where pct is the page's Sum disc. Refused while the switch is OFF.
      */
-    public function pushPromotion(Request $request, Temu2ApiService $temu)
+    public function pushPromotion(Request $request, Temu2ApiService $temu, bool $ignoreSwitch = false)
     {
         $promo = $this->promotionApi($temu);
         $setting = self::promotionSetting();
-        if (! $setting['enabled']) {
+        // $ignoreSwitch is only used by the newtemutwo:promotion-test --apply command.
+        if (! $ignoreSwitch && ! $setting['enabled']) {
             return response()->json(['success' => false, 'message' => 'Promotion switch is OFF. Turn it on to apply promotions.'], 409);
         }
 
