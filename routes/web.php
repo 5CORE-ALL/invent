@@ -5034,6 +5034,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay3/save-links', [EbayThreeController::class, 'saveLinks'])->name('ebay3.save.links');
     Route::get('/ebay3-data-json', [EbayThreeController::class, 'ebay3DataJson'])->name('ebay3.data.json');
     Route::get('/ebay3-badge-chart-data', [EbayThreeController::class, 'getEbay3BadgeChartData'])->name('ebay3.badge.chart.data');
+    Route::get('/ebay3-metrics-history', [EbayThreeController::class, 'getEbay3MetricsHistory'])->name('ebay3.metrics.history');
     Route::get('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'showEbay3'])->name('ebay3.column.visibility.get');
     Route::post('/ebay3-column-visibility', [ChannelTabulatorColumnController::class, 'storeEbay3'])->name('ebay3.column.visibility.set');
     Route::get('/tabulator-column-visibility', [ChannelTabulatorColumnController::class, 'show'])->name('tabulator.column.visibility.get');
@@ -7031,6 +7032,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/ebay3/campaign-ads/dil-rule', 'saveDilRule')->name('ebay3.campaign.ads.dil.rule.save');
         Route::get('/ebay3/campaign-ads/dil-sbid-rule', 'getDilSbidRule')->name('ebay3.campaign.ads.dil.sbid');
         Route::post('/ebay3/campaign-ads/dil-sbid-rule', 'saveDilSbidRule')->name('ebay3.campaign.ads.dil.sbid.save');
+        Route::get('/ebay3/sbid-slab-count-history', 'getSbidSlabCountHistory')->name('ebay3.sbid.slab.count.history');
+        Route::post('/ebay3/sbid-slab-count-snapshot', 'snapshotSbidSlabCounts')->name('ebay3.sbid.slab.count.snapshot');
         Route::get('/ebay3/campaign-ads/sbid-views-rule', 'getSbidViewsRule')->name('ebay3.campaign.ads.sbid.views.rule');
         Route::post('/ebay3/campaign-ads/sbid-views-rule', 'saveSbidViewsRule')->name('ebay3.campaign.ads.sbid.views.rule.save');
         Route::post('/ebay3/campaign-ads/push-selected', 'pushSelected')->name('ebay3.campaign.ads.push.selected');

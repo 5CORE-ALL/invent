@@ -51,6 +51,10 @@
         #dilSbidRuleModal td.text-end .dsb-input { margin-right: 0; margin-left: auto; }
         #dilSbidRuleModal .dsb-count { font-weight: 700; text-align: center; white-space: nowrap; }
         #dilSbidRuleModal .dsb-count .dil-sbid-dot { margin-left: 3px; }
+        #dilSbidRuleModal .dsb-hist-dot { display: inline-block; width: 9px; height: 9px; min-width: 9px; padding: 0; margin-left: 4px; border: 0; border-radius: 50%; vertical-align: middle; cursor: pointer; background: #9ca3af; }
+        #dilSbidRuleModal .dsb-hist-dot.up { background: #22c55e; }
+        #dilSbidRuleModal .dsb-hist-dot.down { background: #ef4444; }
+        #dilSbidRuleModal .dsb-hist-dot:hover { transform: scale(1.35); }
         #dilSbidRuleModal .dsb-add { margin-top: 6px; width: 100%; border-radius: 8px; border-style: dashed; font-weight: 600; font-size: 12px; padding: 2px 4px; }
         #dilSbidRuleModal .dsb-del { width: 18px; height: 18px; padding: 0; line-height: 1; border-radius: 5px; font-size: 12px; }
         #dilSbidRuleModal .dil-sbid-badge { min-width: 0; width: 44px; font-size: 9px; padding: 3px 0; }
@@ -439,6 +443,8 @@ let dilSbidSaveTimer = null;
 // Extended mode (eBay 1 analytics): Views, CVR, eBay Sold and Std NPFT % tables add to the Dil bid.
 const DIL_SBID_EXT = @json((bool) ($extended ?? false));
 const DIL_SBID_LISTING_WISE = @json((bool) ($listingWise ?? false));
+// Daily slab-count history (dot next to each Count + click for a chart). Only pages that pass urls use it (eBay 3).
+const DIL_SBID_COUNT_HIST = @json($countHistory ?? null);
 const DIL_SBID_TABLE_DEFAULTS = @json(\App\Support\DilVsSbidRule::defaultTables());
 const DIL_SBID_EXT_KEYS = ['views', 'cvr', 'sold', 'npft'];
 const DIL_SBID_EXT_LABELS = { views: 'Views', cvr: 'CVR', sold: 'eBay Sold', npft: 'Std NPFT' };
@@ -1776,7 +1782,10 @@ function dilSbidExtPaint() {
         if (tbody) {
             tbody.querySelectorAll('tr').forEach(function(tr, i) {
                 const el = tr.querySelector('.dil-sbid-x-count');
-                if (el) el.textContent = String(res.counts[i] || 0);
+                if (el) {
+                    el.textContent = String(res.counts[i] || 0);
+                    dilSbidHistDot(el.parentElement, key, slabs[i], res.counts[i] || 0);
+                }
             });
         }
         const slices = slabs.map(function(slab, i) {
@@ -1850,7 +1859,10 @@ function dilSbidPaintCounts() {
     const counts = dilSbidCounts();
     document.querySelectorAll('#dil-sbid-tbody tr').forEach(function(tr, i) {
         const el = tr.querySelector('.dil-sbid-count');
-        if (el) el.textContent = String(counts[i] || 0);
+        if (el) {
+            el.textContent = String(counts[i] || 0);
+            dilSbidHistDot(el.parentElement, 'dil', currentDilSbidSlabs[i], counts[i] || 0);
+        }
     });
     const cvrCounts = dilSbidCvrCounts();
     const down = document.getElementById('dil-sbid-cvr-down-count');
@@ -1878,6 +1890,102 @@ function dilSbidPaintCounts() {
     });
     if (DIL_SBID_EXT) dilSbidExtPaint();
 }
+// ── Daily slab-count history (opt-in via countHistory urls) ──
+let dilSbidCountTrend = {};
+let dilSbidCountTrendLoaded = false;
+let dilSbidHistSnapDone = false;
+function dilSbidHistEnabled() {
+    return !!(DIL_SBID_COUNT_HIST && DIL_SBID_COUNT_HIST.historyUrl && DIL_SBID_COUNT_HIST.snapshotUrl);
+}
+/** Stable key for one slab / range: "<table>|<from>|<to>" (table = dil, views, cvr, sold, npft). */
+function dilSbidBandKey(table, slab) {
+    return table + '|' + dilSbidRound(parseFloat(slab.min)) + '|' + dilSbidRound(parseFloat(slab.max));
+}
+function dilSbidHistTableLabel(table) {
+    return table === 'dil' ? 'Dil' : (DIL_SBID_EXT_LABELS[table] || table);
+}
+function dilSbidHistLoadTrend() {
+    if (!dilSbidHistEnabled() || dilSbidCountTrendLoaded) return;
+    dilSbidCountTrendLoaded = true;
+    $.get(DIL_SBID_COUNT_HIST.historyUrl, { trend: 1 }).done(function(resp) {
+        dilSbidCountTrend = (resp && resp.trend && typeof resp.trend === 'object') ? resp.trend : {};
+        if (dilSbidModalOpen()) dilSbidPaintCounts();
+    }).fail(function() {
+        dilSbidCountTrendLoaded = false;
+    });
+}
+/** Small trend dot after a Count: green = more than the last saved day, red = fewer, grey = same / no history. */
+function dilSbidHistDot(td, table, slab, count) {
+    if (!dilSbidHistEnabled() || !td || !slab) return;
+    const band = dilSbidBandKey(table, slab);
+    let dot = td.querySelector('.dsb-hist-dot');
+    if (!dot) {
+        dot = document.createElement('button');
+        dot.type = 'button';
+        td.appendChild(dot);
+    }
+    const prev = dilSbidCountTrend[band];
+    let dir = 'none';
+    let tip = 'No earlier day saved yet. Click for daily history.';
+    if (prev !== undefined && prev !== null && isFinite(Number(prev))) {
+        const p = Number(prev);
+        dir = count > p ? 'up' : (count < p ? 'down' : 'flat');
+        tip = 'Last saved day: ' + p + ' → now ' + count + '. Click for daily history.';
+    }
+    dot.className = 'dsb-hist-dot ' + dir;
+    dot.setAttribute('data-band', band);
+    dot.setAttribute('data-label', dilSbidHistTableLabel(table) + ' ' + dilSbidRangeLabel(slab));
+    dot.setAttribute('data-count', String(count));
+    dot.title = tip;
+}
+/** Live count for every slab / range, keyed by band. */
+function dilSbidHistAllCounts() {
+    const out = {};
+    const rows = dilSbidEligibleRows();
+    const dilCounts = dilSbidCounts();
+    currentDilSbidSlabs.forEach(function(slab, i) {
+        out[dilSbidBandKey('dil', slab)] = dilCounts[i] || 0;
+    });
+    if (DIL_SBID_EXT) {
+        DIL_SBID_EXT_KEYS.forEach(function(key) {
+            const res = dilSbidExtCounts(key, rows);
+            (currentDilSbidTables[key] || []).forEach(function(slab, i) {
+                out[dilSbidBandKey(key, slab)] = res.counts[i] || 0;
+            });
+        });
+    }
+    return out;
+}
+/** Save today's counts once per page load, after the rule and the grid rows are in. Latest save of the day wins. */
+function dilSbidHistSnapshot(tries) {
+    if (!dilSbidHistEnabled() || dilSbidHistSnapDone) return;
+    tries = tries || 0;
+    if (dilSbidEligibleRows().length === 0) {
+        if (tries < 30) setTimeout(function() { dilSbidHistSnapshot(tries + 1); }, 2000);
+        return;
+    }
+    dilSbidHistSnapDone = true;
+    // Let the grid finish loading all rows before counting.
+    setTimeout(function() {
+        const counts = dilSbidHistAllCounts();
+        $.ajax({
+            url: DIL_SBID_COUNT_HIST.snapshotUrl,
+            method: 'POST',
+            contentType: 'application/json',
+            headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+            data: JSON.stringify({ counts: counts })
+        });
+    }, 1500);
+}
+document.addEventListener('click', function(ev) {
+    const dot = ev.target.closest ? ev.target.closest('#dilSbidRuleModal .dsb-hist-dot') : null;
+    if (!dot) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (typeof window.dilSbidCountChartHook === 'function') {
+        window.dilSbidCountChartHook(dot.getAttribute('data-band'), dot.getAttribute('data-label'), parseInt(dot.getAttribute('data-count'), 10) || 0);
+    }
+});
 function dilSbidSave(thenApply) {
     const errEl = document.getElementById('dil-sbid-err');
     const statusEl = document.getElementById('dil-sbid-status');
@@ -2087,6 +2195,8 @@ $.get(DIL_SBID_GET_URL, function(data) {
     dilSbidPaintMode();
     renderDilSbidTable();
     dilSbidRefreshGrid();
+    dilSbidHistLoadTrend();
+    dilSbidHistSnapshot();
 });
 document.getElementById('dil-sbid-enabled').addEventListener('change', function() {
     dilSbidEnabled = !!this.checked;

@@ -191,6 +191,83 @@ class EbayThreeController extends Controller
     }
 
     /**
+     * Per-SKU daily L30 View / L7 View history for the eBay 3 tabulator (View / L7 View arrow click).
+     * Reads ebay3_sku_daily_data (written by CollectEbay3Metrics) and pins today's live
+     * ebay_3_metrics value last. eBay 3 only: it does not read any other channel's history.
+     */
+    public function getEbay3MetricsHistory(Request $request)
+    {
+        $sku = strtoupper(trim((string) $request->input('sku', '')));
+        if ($sku === '') {
+            return response()->json(['success' => false, 'message' => 'sku is required', 'data' => []], 422);
+        }
+
+        $days = (int) $request->input('days', 30); // 0 = lifetime
+        $tz = 'America/Los_Angeles';
+        $today = \Carbon\Carbon::now($tz)->startOfDay();
+        $start = null;
+        if ($days > 0) {
+            $days = max(7, $days);
+            $start = $today->copy()->subDays($days - 1);
+        }
+
+        $byDate = [];
+        try {
+            $query = \App\Models\Ebay3SkuDailyData::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])
+                ->where('record_date', '<=', $today->toDateString())
+                ->orderBy('record_date', 'asc');
+            if ($start) {
+                $query->where('record_date', '>=', $start->toDateString());
+            }
+            foreach ($query->get() as $record) {
+                $daily = is_array($record->daily_data) ? $record->daily_data : (json_decode((string) $record->daily_data, true) ?: []);
+                $date = \Carbon\Carbon::parse($record->record_date)->toDateString();
+                $views = (int) ($daily['views'] ?? 0);
+                $ebayL30 = (int) ($daily['ebay_l30'] ?? 0);
+                $byDate[$date] = [
+                    'date' => $date,
+                    'date_formatted' => \Carbon\Carbon::parse($date)->format('M d'),
+                    'price' => round((float) ($daily['price'] ?? 0), 2),
+                    'views' => $views,
+                    'l7_views' => (int) ($daily['l7_views'] ?? 0),
+                    'cvr_percent' => $views > 0
+                        ? round(($ebayL30 / $views) * 100, 2)
+                        : round((float) ($daily['cvr_percent'] ?? 0), 2),
+                    'ebay_l30' => $ebayL30,
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::info('No eBay3 daily metrics history available: '.$e->getMessage());
+        }
+
+        // Live overlay so the last point matches the View / L7 View columns right now.
+        try {
+            $live = Ebay3Metric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$sku])->first();
+            if ($live) {
+                $key = $today->toDateString();
+                $views = (int) ($live->views ?? 0);
+                $ebayL30 = (int) ($live->ebay_l30 ?? 0);
+                $byDate[$key] = array_merge($byDate[$key] ?? [], [
+                    'date' => $key,
+                    'date_formatted' => $today->format('M d'),
+                    'price' => round((float) ($live->ebay_price ?? 0), 2),
+                    'views' => $views,
+                    'l7_views' => (int) ($live->l7_views ?? 0),
+                    'cvr_percent' => $views > 0 ? round(($ebayL30 / $views) * 100, 2) : 0,
+                    'ebay_l30' => $ebayL30,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::info('eBay3 live metric overlay failed: '.$e->getMessage());
+        }
+
+        ksort($byDate);
+
+        return response()->json(['success' => true, 'data' => array_values($byDate)]);
+    }
+
+    /**
      * Normalize SKU so product_masters.sku matches ebay_3_metrics.sku when the DB row
      * differs only by case/spacing (whereIn still returns the row, but keyBy('sku') would not match PM).
      */

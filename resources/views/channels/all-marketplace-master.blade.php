@@ -1212,7 +1212,7 @@
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="tat" style="color: white; font-weight: bold; cursor:pointer;" title="TAT = inv ÷ L30 Sales (months of stock at current sales)">
                             <span class="summary-trend-dot none" data-metric="tat" title="Rolling history"></span>TAT: <span id="tat-badge">0</span>
                         </span>
-                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2" style="background-color:{{ $forecastBadges['available_bg'] }};color:{{ $forecastBadges['available_fg'] }};font-weight:bold;text-decoration:none;" title="Available % — child SKUs with INV &gt; 0.">Avail: {{ $forecastBadges['available_pct'] }}%</a>
+                        <a href="{{ route('forecast.analysis') }}" class="badge fs-6 p-2 badge-chart-link" data-metric="fa_avail" data-exact-value="{{ $forecastBadges['available_pct'] }}" style="background-color:{{ $forecastBadges['available_bg'] }};color:{{ $forecastBadges['available_fg'] }};font-weight:bold;text-decoration:none;cursor:pointer;" title="Available % — child SKUs with INV &gt; 0. Click for daily history (Ctrl/Cmd+click opens Forecast Analysis).">Avail: {{ $forecastBadges['available_pct'] }}%</a>
                         </div>
                         <div class="amm-inv-block-grid">
                             <div class="amm-inv-block-pair" style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:10px;align-items:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;">
@@ -7616,13 +7616,18 @@
             // global footer script, so wait for it, then colour it from the same series the graph
             // shows (last point vs the day before) — no click needed.
             function primeForecastBadgeDots() {
-                ['fa_msl_lp', 'fa_msl_sp', 'fa_ord', 'fa_mip', 'fa_r2s', 'fa_trn', 'fa_npft', 'fa_nroi'].forEach(function(metric) {
+                ['fa_msl_lp', 'fa_msl_sp', 'fa_ord', 'fa_mip', 'fa_r2s', 'fa_trn', 'fa_npft', 'fa_nroi', 'fa_avail'].forEach(function(metric) {
                     if (badgeChartDotPrefetched[metric]) return;
                     badgeChartDotPrefetched[metric] = { sig: 'forecast' };
+                    var reqData = { channel: 'all', metric: metric, days: 30 };
+                    if (metric === 'fa_avail') {
+                        var availVal = parseFloat($('.badge-chart-link[data-metric="fa_avail"]').attr('data-exact-value'));
+                        if (isFinite(availVal)) reqData.badge_value = availVal;
+                    }
                     $.ajax({
                         url: '/channel-metric-chart-data',
                         method: 'GET',
-                        data: { channel: 'all', metric: metric, days: 30 }
+                        data: reqData
                     }).done(function(response) {
                         var rows = response && response.success && Array.isArray(response.data) ? response.data : [];
                         var values = rows.map(function(r) { return Number(r.value); });
@@ -7818,6 +7823,7 @@
                 'fa_trn': 'Forecast Trn',
                 'fa_npft': 'Forecast NPFT%',
                 'fa_nroi': 'Forecast NROI%',
+                'fa_avail': 'Forecast Avail%',
                 'y_pft': 'Y PFT',
                 'y_npft_amt': 'Y NPFT',
                 'p_sales': 'P-Sales',
@@ -7950,6 +7956,7 @@
             }
             function ammInvNormalizeSlices(raw) {
                 const defs = [
+                    { key: 'zero', label: '0 Sold', color: '#6c757d' },
                     { key: 'red', label: 'Red <25%', color: '#a00211' },
                     { key: 'green', label: 'Green 25–50%', color: '#28a745' },
                     { key: 'pink', label: 'Pink ≥50%', color: '#e83e8c' },
@@ -8003,6 +8010,7 @@
             function ammInvBlockBandsHtml(slices, valueKey) {
                 const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
                 const tones = {
+                    zero: 'background:#e5e7eb;color:#374151;',
                     red: 'background:#fee2e2;color:#7f1d1d;',
                     green: 'background:#dcfce7;color:#14532d;',
                     pink: 'background:#fce7f3;color:#9d174d;'
@@ -8033,7 +8041,7 @@
                     ammInvBlockSpPieChart.destroy();
                     ammInvBlockSpPieChart = null;
                 }
-                const shortLabel = { red: 'Red', green: 'Green', pink: 'Pink' };
+                const shortLabel = { zero: '0 Sold', red: 'Red', green: 'Green', pink: 'Pink' };
                 const canvasBox = canvas.parentElement;
                 if (canvasBox) {
                     canvasBox.style.width = '220px';
@@ -8344,7 +8352,7 @@
                     }
                     if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'p_nroi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi'
                         || m === 't_npft_pct' || m === 't_groi_pct' || m === 't_nroi_pct' || m === 't_ads_pct' || m === 'p_ads_pct'
-                        || m === 'fa_npft' || m === 'fa_nroi') {
+                        || m === 'fa_npft' || m === 'fa_nroi' || m === 'fa_avail') {
                         return v.toFixed(1) + '%';
                     }
                     if (m === 'fa_msl_lp' || m === 'fa_msl_sp' || m === 'fa_ord' || m === 'fa_mip' || m === 'fa_r2s' || m === 'fa_trn') {

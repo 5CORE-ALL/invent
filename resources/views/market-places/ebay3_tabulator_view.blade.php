@@ -786,7 +786,7 @@
                     </div>
                     <div id="ebay3ChartNoData" class="text-center py-3" style="display: none;">
                         <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
-                        <p class="text-muted small mb-0">No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).</p>
+                        <p class="text-muted small mb-0" id="ebay3ChartNoDataMsg">No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).</p>
                     </div>
                 </div>
             </div>
@@ -851,6 +851,10 @@
         'getUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
         'saveUrl' => url('/ebay3/campaign-ads/dil-sbid-rule'),
         'applyUrl' => url('/ebay3/campaign-ads/push-selected'),
+        'countHistory' => [
+            'historyUrl' => url('/ebay3/sbid-slab-count-history'),
+            'snapshotUrl' => url('/ebay3/sbid-slab-count-snapshot'),
+        ],
     ])
     @include('partials.ebay-zero-sold-coupon', ['ebayZeroSoldPart' => 'script', 'ebayZeroSoldChannel' => 'ebay3'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
@@ -898,6 +902,41 @@
         if (v < avg) return { key: 'red', color: '#a00211' };
         if (v < avg * 2) return { key: 'green', color: '#28a745' };
         return { key: 'pink', color: '#d63384' };
+    }
+
+    /**
+     * L7 daily pace vs L30 daily pace. Same arrow the Dil vs SBid "L30 View up / down"
+     * overlay uses (DilVsSbidRule::viewsTrend): green = accelerating, red = slowing.
+     */
+    function viewsPaceVariation(rowData) {
+        const l30 = parseFloat(rowData && rowData.views) || 0;
+        const l7 = parseFloat(rowData && rowData.l7_views) || 0;
+        const l30Pace = l30 / 30;
+        const l7Pace = l7 / 7;
+        const tol = Math.max(0.05, l30Pace * 0.05);
+        if (l7Pace > l30Pace + tol) {
+            return { color: '#28a745', label: 'up', icon: 'fa-arrow-up', title: 'L7 pace > L30 pace (views accelerating)' };
+        }
+        if (l7Pace < l30Pace - tol) {
+            return { color: '#a00211', label: 'down', icon: 'fa-arrow-down', title: 'L7 pace < L30 pace (views slowing)' };
+        }
+        return { color: '#6c757d', label: 'flat', icon: 'fa-minus', title: 'L7 pace ≈ L30 pace (steady)' };
+    }
+
+    /** Arrow for child rows only (parent rows have no per-SKU pace). Click opens the eBay 3 daily history chart. */
+    function viewsPaceArrowHtml(rowData, metric) {
+        if (!rowData) return '';
+        const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+        const sku = rowData['(Child) sku'] || '';
+        if (!sku || isParent) return '';
+        const m = (metric === 'l7_views') ? 'l7_views' : 'views';
+        const label = m === 'l7_views' ? 'L7 View' : 'L30 View';
+        const v = viewsPaceVariation(rowData);
+        const skuAttr = String(sku).replace(/"/g, '&quot;');
+        return '<button type="button" class="btn btn-sm p-0 ebay3-views-chart align-middle" data-sku="' + skuAttr + '" data-metric="' + m + '"'
+            + ' title="' + v.title + ' (used by Dil vs SBid L30 View up / down) — click for ' + label + ' history"'
+            + ' style="border:none;background:none;cursor:pointer;padding:0 2px;line-height:1;vertical-align:middle;">'
+            + '<i class="fas ' + v.icon + '" style="color:' + v.color + ';font-size:12px;"></i></button>';
     }
 
     // Badge filter state variables
@@ -1046,6 +1085,16 @@
     let ebay3ChartAjax = null;
     let ebay3ChartDays = 30;
     let ebay3ChartMetricKey = '';
+    /** 'badge' = channel summary series; 'sku' = per-SKU L30 View / L7 View daily history (own endpoint). */
+    let ebay3ChartMode = 'badge';
+    let ebay3ChartSku = '';
+    /** 'sbid' mode: daily SKU count for one Dil vs SBid slab / range. */
+    let ebay3ChartSbidBand = '';
+    let ebay3ChartSbidLabel = '';
+    let ebay3ChartSbidLive = null;
+    const EBAY3_SKU_VIEW_LABELS = { views: 'L30 View', l7_views: 'L7 View' };
+    const EBAY3_NO_DATA_BADGE = 'No daily snapshots yet. Open this page on separate days to build history (auto-saved from summary).';
+    const EBAY3_NO_DATA_SKU = 'No historical data for this SKU yet. Data appears after the metrics collection job runs.';
 
     function ebay3FmtChartVal(v) {
         if (ebay3BadgeDollarMetrics.includes(ebay3ChartMetricKey)) {
@@ -1061,18 +1110,83 @@
         return Math.round(Number(v)).toLocaleString('en-US');
     }
 
-    function showEbay3MetricChart(metricKey) {
-        ebay3ChartMetricKey = metricKey;
-        ebay3ChartDays = 30;
-        $('#ebay3ChartRangeSelect').val('30');
-        const label = ebay3BadgeMetricLabels[metricKey] || metricKey;
-        $('#ebay3ChartModalTitle').text('eBay 3 — ' + label + ' (Daily snapshot)');
+    function ebay3OpenChartModal() {
         const modalEl = document.getElementById('ebay3MetricChartModal');
+        // Can open on top of the Dil vs SBid modal (count dots), which comes later in the DOM.
+        modalEl.style.zIndex = '1080';
+        $(modalEl).off('shown.bs.modal.ebay3z').on('shown.bs.modal.ebay3z', function() {
+            const backs = document.querySelectorAll('.modal-backdrop');
+            if (backs.length) backs[backs.length - 1].style.zIndex = '1075';
+        });
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
             bootstrap.Modal.getOrCreateInstance(modalEl).show();
         } else {
             $(modalEl).modal('show');
         }
+    }
+
+    function ebay3ChartTitle() {
+        if (ebay3ChartMode === 'sbid') {
+            return 'eBay 3 — Dil vs SBid SKU Count — ' + ebay3ChartSbidLabel + ' (Daily snapshot)';
+        }
+        if (ebay3ChartMode === 'sku') {
+            return 'eBay 3 — ' + (EBAY3_SKU_VIEW_LABELS[ebay3ChartMetricKey] || ebay3ChartMetricKey) + ' — ' + ebay3ChartSku + ' (Daily snapshot)';
+        }
+        return 'eBay 3 — ' + (ebay3BadgeMetricLabels[ebay3ChartMetricKey] || ebay3ChartMetricKey) + ' (Daily snapshot)';
+    }
+
+    function showEbay3MetricChart(metricKey) {
+        ebay3ChartMode = 'badge';
+        ebay3ChartSku = '';
+        ebay3ChartMetricKey = metricKey;
+        ebay3ChartDays = 30;
+        $('#ebay3ChartRangeSelect').val('30');
+        $('#ebay3ChartModalTitle').text(ebay3ChartTitle());
+        ebay3OpenChartModal();
+        loadEbay3MetricChart();
+    }
+
+    /** Daily SKU count for one Dil vs SBid slab / range (eBay 3 only: /ebay3/sbid-slab-count-history). */
+    function showEbay3SbidCountChart(band, label, liveCount) {
+        if (!band) return;
+        ebay3ChartMode = 'sbid';
+        ebay3ChartSku = '';
+        ebay3ChartSbidBand = String(band);
+        ebay3ChartSbidLabel = label || band;
+        ebay3ChartSbidLive = isFinite(Number(liveCount)) ? Number(liveCount) : null;
+        ebay3ChartMetricKey = 'sbid_count';
+        ebay3ChartDays = 30;
+        $('#ebay3ChartRangeSelect').val('30');
+        $('#ebay3ChartModalTitle').text(ebay3ChartTitle());
+        ebay3OpenChartModal();
+        loadEbay3MetricChart();
+    }
+    // The Dil vs SBid modal (shared partial) calls this when a count dot is clicked.
+    window.dilSbidCountChartHook = showEbay3SbidCountChart;
+
+    /** Add today's live count as the last point, replacing a saved point for the same day. */
+    function ebay3OverlaySbidLive(series) {
+        if (ebay3ChartSbidLive === null) return series;
+        const out = series.slice();
+        const today = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', timeZone: 'America/Los_Angeles' });
+        if (out.length && out[out.length - 1].date === today) {
+            out[out.length - 1] = { date: today, value: ebay3ChartSbidLive };
+        } else {
+            out.push({ date: today, value: ebay3ChartSbidLive });
+        }
+        return out;
+    }
+
+    /** Per-SKU L30 View / L7 View daily history (eBay 3 only: /ebay3-metrics-history). */
+    function showEbay3SkuViewsChart(sku, metricKey) {
+        if (!sku) return;
+        ebay3ChartMode = 'sku';
+        ebay3ChartSku = sku;
+        ebay3ChartMetricKey = (metricKey === 'l7_views') ? 'l7_views' : 'views';
+        ebay3ChartDays = 30;
+        $('#ebay3ChartRangeSelect').val('30');
+        $('#ebay3ChartModalTitle').text(ebay3ChartTitle());
+        ebay3OpenChartModal();
         loadEbay3MetricChart();
     }
 
@@ -1083,6 +1197,75 @@
         $('#ebay3ChartNoData').hide();
         $('#ebay3ChartContainer').hide();
         $('#ebay3ChartLoading').show();
+        $('#ebay3ChartNoDataMsg').text(ebay3ChartMode === 'sku' ? EBAY3_NO_DATA_SKU : EBAY3_NO_DATA_BADGE);
+
+        if (ebay3ChartMode === 'sbid') {
+            ebay3ChartAjax = $.ajax({
+                url: '/ebay3/sbid-slab-count-history',
+                method: 'GET',
+                data: { band: ebay3ChartSbidBand, days: ebay3ChartDays },
+                success: function(resp) {
+                    ebay3ChartAjax = null;
+                    $('#ebay3ChartLoading').hide();
+                    const rows = (resp && resp.success && Array.isArray(resp.data)) ? resp.data : [];
+                    const mapped = rows.filter(function(d) {
+                        return d && d.date && d.value != null && isFinite(Number(d.value));
+                    }).map(function(d) { return { date: d.date, value: Number(d.value) }; });
+                    const series = ebay3OverlaySbidLive(mapped);
+                    if (series.length) {
+                        $('#ebay3ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                        renderEbay3MetricChart(series);
+                    } else {
+                        $('#ebay3ChartNoData').show();
+                    }
+                },
+                error: function(xhr, status) {
+                    ebay3ChartAjax = null;
+                    if (status === 'abort') return;
+                    $('#ebay3ChartLoading').hide();
+                    const series = ebay3OverlaySbidLive([]);
+                    if (series.length) {
+                        $('#ebay3ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                        renderEbay3MetricChart(series);
+                    } else {
+                        $('#ebay3ChartNoData').show();
+                    }
+                }
+            });
+            return;
+        }
+
+        if (ebay3ChartMode === 'sku') {
+            const field = ebay3ChartMetricKey === 'l7_views' ? 'l7_views' : 'views';
+            ebay3ChartAjax = $.ajax({
+                url: '/ebay3-metrics-history',
+                method: 'GET',
+                data: { sku: ebay3ChartSku, days: ebay3ChartDays },
+                success: function(resp) {
+                    ebay3ChartAjax = null;
+                    $('#ebay3ChartLoading').hide();
+                    const rows = (resp && resp.success && Array.isArray(resp.data)) ? resp.data : [];
+                    const series = rows.filter(function(d) {
+                        return d && d.date && d[field] != null && d[field] !== '' && isFinite(Number(d[field]));
+                    }).map(function(d) {
+                        return { date: d.date_formatted || d.date, value: Number(d[field]) };
+                    });
+                    if (series.length) {
+                        $('#ebay3ChartContainer').css({ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }).show();
+                        renderEbay3MetricChart(series);
+                    } else {
+                        $('#ebay3ChartNoData').show();
+                    }
+                },
+                error: function(xhr, status) {
+                    ebay3ChartAjax = null;
+                    if (status === 'abort') return;
+                    $('#ebay3ChartLoading').hide();
+                    $('#ebay3ChartNoData').show();
+                }
+            });
+            return;
+        }
 
         ebay3ChartAjax = $.ajax({
             url: '/ebay3-badge-chart-data',
@@ -1252,6 +1435,12 @@
         if (m) {
             showEbay3MetricChart(m);
         }
+    });
+    // L30 View / L7 View arrow: per-SKU daily history (eBay 3 own endpoint).
+    $(document).on('click', '.ebay3-views-chart', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showEbay3SkuViewsChart($(this).attr('data-sku'), $(this).attr('data-metric') || 'views');
     });
     $(document).on('mouseenter', '.ebay3-hover-chart', function() {
         const metric = $(this).data('metric');
@@ -1596,8 +1785,7 @@
             const days = parseInt($(this).val(), 10);
             if (days === ebay3ChartDays) return;
             ebay3ChartDays = days;
-            const label = ebay3BadgeMetricLabels[ebay3ChartMetricKey] || ebay3ChartMetricKey;
-            $('#ebay3ChartModalTitle').text('eBay 3 — ' + label + ' (Daily snapshot)');
+            $('#ebay3ChartModalTitle').text(ebay3ChartTitle());
             loadEbay3MetricChart();
         });
 
@@ -2689,6 +2877,7 @@
                     field: "views",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "L30 views. Click the value or arrow for daily history. Arrow: L7 pace vs L30 pace (green up = accelerating, red down = slowing). Drives the Dil vs SBid L30 View up / down overlay.",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         let color = '';
@@ -2696,9 +2885,19 @@
                         if (value >= 30) color = '#28a745';
                         else color = '#a00211';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span>`;
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).toUpperCase().startsWith('PARENT');
+                        const sku = rowData['(Child) sku'] || '';
+                        const num = Math.round(value);
+                        const arrow = viewsPaceArrowHtml(rowData, 'views');
+                        // Child SKU: the number opens the same eBay 3 L30 View history as the arrow.
+                        if (sku && !isParent) {
+                            const skuAttr = String(sku).replace(/"/g, '&quot;');
+                            return `<span class="ebay3-views-chart" data-sku="${skuAttr}" data-metric="views" title="View L30 View history" style="color: ${color}; font-weight: 600; cursor: pointer; white-space: nowrap;">${num}</span> ` + arrow;
+                        }
+                        return `<span style="color: ${color}; font-weight: 600;">${num}</span> ` + arrow;
                     },
-                    width: 50
+                    width: 70
                 },
                 @include('partials.analytics-sku-reviews-column', ['marketplace' => 'ebay3'])
                 {
@@ -2706,13 +2905,14 @@
                     field: "l7_views",
                     hozAlign: "center",
                     sorter: "number",
+                    headerTooltip: "L7 views. Red = below avg L7, green = avg–2× avg, pink = ≥ 2× avg. Arrow = L7 pace vs L30 pace.",
                     formatter: function(cell) {
                         var value = parseInt(cell.getValue() || 0);
                         var color = l7ViewBand(value).color;
                         var style = color ? ` style="color: ${color}; font-weight: 600;"` : '';
-                        return `<span${style}>${value.toLocaleString()}</span>`;
+                        return `<span${style}>${value.toLocaleString()}</span> ` + viewsPaceArrowHtml(cell.getRow().getData(), 'l7_views');
                     },
-                    width: 70
+                    width: 80
                 },
                
                 {
@@ -3064,6 +3264,8 @@
                         return '<span class="eca-push-alert" title="' + safe + '" aria-label="' + safe + '">!</span>';
                     }
                 },
+                // Per-slab S Bid from the Dil vs SBid modal (Dil, Views, CVR %, eBay Sold, Std NPFT %, up / down, Sum).
+                ...(typeof ebaySbidDiffColumns === 'function' ? ebaySbidDiffColumns() : []),
                 {
                     title: "S BID",
                     field: "s_bid",
@@ -4108,7 +4310,7 @@
             const tl = t.toLowerCase();
 
             if (
-                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SGROI|SNROI|SNPFT|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc)$/i.test(f) ||
+                /^(eBay Price|STANDARD_PRICE|GPFT%|ROI%|lmp_price|linked_lmp_skus|linked_lmp_sku_add|SPRICE|SGPFT|SGROI|SNROI|SNPFT|E Dil%|SCVR|CVR_45|CVR_60|prmt_pct|cpn_pct|zero_sold|dsc|appr|push_prc|sbid_diff_.+|sbid_total_discount)$/i.test(f) ||
                 /\b(prc|price|std\s*prc|gpft|groi|lmp|t\s*prc|target|s\s*prc|s\s*gpft|s\s*groi|dil|cvr|push\s*std\s*prc|es\s*bid|c\s*bid|s\s*bid|alert)\b/i.test(tl) ||
                 /^\+$/i.test(t)
             ) {

@@ -6351,13 +6351,15 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * INV DIL slabs: red <25, green 25–50, pink ≥50 (same 3-color language as eBay Dil).
+     * INV DIL slabs: zero (in stock, 0 sold in L30), red <25, green 25–50, pink ≥50
+     * (same 3-color language as eBay Dil).
      *
      * @return array<string, array{label: string, color: string}>
      */
     private function invDilBandDefs(): array
     {
         return [
+            'zero' => ['label' => '0 Sold', 'color' => '#6c757d'],
             'red' => ['label' => 'Red <25%', 'color' => '#a00211'],
             'green' => ['label' => 'Green 25–50%', 'color' => '#28a745'],
             'pink' => ['label' => 'Pink ≥50%', 'color' => '#e83e8c'],
@@ -6368,6 +6370,9 @@ class ChannelMasterController extends Controller
     {
         if ($inv < 0.01) {
             return 'red';
+        }
+        if ($l30 < 0.01) {
+            return 'zero';
         }
         $dil = ($l30 / $inv) * 100;
         if ($dil < 25) {
@@ -6478,7 +6483,7 @@ class ChannelMasterController extends Controller
         foreach ($slices as $s) {
             $total += (float) ($s['inv_at_lp'] ?? 0);
         }
-        $names = ['red' => 'Red', 'green' => 'Green', 'pink' => 'Pink'];
+        $names = ['zero' => 'Zero', 'red' => 'Red', 'green' => 'Green', 'pink' => 'Pink'];
         $out = [];
         foreach ($slices as $s) {
             $value = (float) ($s['inv_at_lp'] ?? 0);
@@ -18602,6 +18607,34 @@ class ChannelMasterController extends Controller
                 'fa_npft' => ['all-marketplace-master', 'npft_pct'],
                 'fa_nroi' => ['all-marketplace-master', 'n_roi'],
             ];
+            // Avail% badge = 100 − zero_stock_pct (see allMarketplaceMaster()), so its history is
+            // the saved zero_stock_pct series inverted, with today's live badge value pinned last.
+            if ($metric === 'fa_avail') {
+                $live = $request->input('badge_value');
+                $liveAvail = ($live !== null && $live !== '' && is_numeric($live))
+                    ? max(0.0, min(100.0, (float) $live))
+                    : null;
+                $zeroSeries = $isAll
+                    ? \App\Models\BadgeDataHistory::series(
+                        'forecast-analysis',
+                        'zero_stock_pct',
+                        $days > 0 ? $days : 30,
+                        $liveAvail !== null ? 100.0 - $liveAvail : null
+                    )
+                    : [];
+
+                return response()->json([
+                    'success' => true,
+                    'data' => array_map(
+                        static fn (array $p) => [
+                            'date' => $p['date'],
+                            'value' => round(max(0.0, min(100.0, 100.0 - (float) $p['value'])), 2),
+                        ],
+                        $zeroSeries
+                    ),
+                ]);
+            }
+
             if (isset($forecastHistoryMap[$metric])) {
                 [$historyPage, $historyField] = $forecastHistoryMap[$metric];
                 $points = $isAll

@@ -160,6 +160,98 @@ class Ebay3CampaignAdsController extends Controller
         return response()->json($saved, ($saved['success'] ?? false) ? 200 : 422);
     }
 
+    private const SBID_COUNT_TABLE = 'ebay3_sbid_slab_count_snapshots';
+
+    /** Today's date in the same California day the other eBay 3 histories use. */
+    private function sbidCountToday(): string
+    {
+        return \Carbon\Carbon::now('America/Los_Angeles')->toDateString();
+    }
+
+    /**
+     * Daily counts per Dil vs SBid slab / range (eBay 3 only).
+     * ?band=<key>&days=N  -> { data: [{ date, full_date, value }] } for one band
+     * ?trend=1            -> { trend: { band: previousDayCount } } (latest snapshot before today)
+     */
+    public function getSbidSlabCountHistory(Request $request)
+    {
+        if (! Schema::hasTable(self::SBID_COUNT_TABLE)) {
+            return response()->json(['success' => true, 'data' => [], 'trend' => (object) []]);
+        }
+
+        $today = $this->sbidCountToday();
+
+        if ($request->boolean('trend')) {
+            $latest = DB::table(self::SBID_COUNT_TABLE)
+                ->where('snapshot_date', '<', $today)
+                ->select('band', DB::raw('MAX(snapshot_date) as d'))
+                ->groupBy('band')
+                ->get();
+            $trend = [];
+            foreach ($latest as $row) {
+                $value = DB::table(self::SBID_COUNT_TABLE)
+                    ->where('band', $row->band)
+                    ->where('snapshot_date', $row->d)
+                    ->value('count');
+                $trend[$row->band] = (int) $value;
+            }
+
+            return response()->json(['success' => true, 'trend' => (object) $trend]);
+        }
+
+        $band = trim((string) $request->input('band', ''));
+        if ($band === '' || strlen($band) > 64) {
+            return response()->json(['success' => false, 'message' => 'band is required', 'data' => []], 422);
+        }
+        $days = (int) $request->input('days', 30); // 0 = lifetime
+        $query = DB::table(self::SBID_COUNT_TABLE)->where('band', $band)->orderBy('snapshot_date');
+        if ($days > 0) {
+            $query->where('snapshot_date', '>=', \Carbon\Carbon::parse($today)->subDays(max(7, $days) - 1)->toDateString());
+        }
+        $data = $query->get(['snapshot_date', 'count'])->map(function ($r) {
+            $d = \Carbon\Carbon::parse($r->snapshot_date);
+
+            return ['date' => $d->format('M d'), 'full_date' => $d->toDateString(), 'value' => (int) $r->count];
+        })->values()->all();
+
+        return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    /** Save today's live counts: { counts: { "<band>": n, ... } }. Latest save of the day wins. */
+    public function snapshotSbidSlabCounts(Request $request)
+    {
+        if (! Schema::hasTable(self::SBID_COUNT_TABLE)) {
+            return response()->json(['success' => false, 'message' => 'Run the migration for ebay3_sbid_slab_count_snapshots'], 503);
+        }
+        $counts = $request->input('counts');
+        if (! is_array($counts) || $counts === [] || count($counts) > 80) {
+            return response()->json(['success' => false, 'message' => 'counts must be a non-empty object (max 80 bands)'], 422);
+        }
+
+        $today = $this->sbidCountToday();
+        $now = now();
+        $rows = [];
+        foreach ($counts as $band => $count) {
+            $band = trim((string) $band);
+            if ($band === '' || strlen($band) > 64 || ! is_numeric($count) || (float) $count < 0) {
+                continue;
+            }
+            $rows[] = [
+                'snapshot_date' => $today,
+                'band' => $band,
+                'count' => (int) $count,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        if ($rows === []) {
+            return response()->json(['success' => false, 'message' => 'No valid bands'], 422);
+        }
+        DB::table(self::SBID_COUNT_TABLE)->upsert($rows, ['snapshot_date', 'band'], ['count', 'updated_at']);
+
+        return response()->json(['success' => true, 'saved' => count($rows), 'date' => $today]);
+    }
+
     public function pushSelected(Request $request)
     {
         $listingIds = $request->input('listing_ids', []);
