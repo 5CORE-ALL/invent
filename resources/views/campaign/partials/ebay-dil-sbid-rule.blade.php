@@ -773,10 +773,39 @@ function dilSbidContains(dil, slab, prevMax, openTop) {
     const loOk = sharesEdge ? dil > min : dil >= min;
     return loOk && dil <= max;
 }
+let dilSbidFlatSrc = null;
+let dilSbidFlatLen = -1;
+let dilSbidFlatOut = null;
+/**
+ * Pages with a parent / child tree (eBay 3) keep the SKUs under `_children`. Counts, charts and
+ * the S Bid need every row, so walk the tree once per dataset. Flat pages (eBay 1, eBay 2) are returned as is.
+ */
+function dilSbidFlatten(src) {
+    if (!Array.isArray(src)) return [];
+    if (dilSbidFlatSrc === src && dilSbidFlatLen === src.length && dilSbidFlatOut) return dilSbidFlatOut;
+    let tree = false;
+    for (let i = 0; i < src.length; i++) {
+        if (src[i] && Array.isArray(src[i]._children) && src[i]._children.length) { tree = true; break; }
+    }
+    let out = src;
+    if (tree) {
+        out = [];
+        const walk = function(node) {
+            if (!node) return;
+            out.push(node);
+            if (Array.isArray(node._children)) node._children.forEach(walk);
+        };
+        src.forEach(walk);
+    }
+    dilSbidFlatSrc = src;
+    dilSbidFlatLen = src.length;
+    dilSbidFlatOut = out;
+    return out;
+}
 function dilSbidRows() {
     try {
-        if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) return allTableData;
-        if (typeof table !== 'undefined' && table && typeof table.getData === 'function') return table.getData() || [];
+        if (typeof allTableData !== 'undefined' && Array.isArray(allTableData) && allTableData.length) return dilSbidFlatten(allTableData);
+        if (typeof table !== 'undefined' && table && typeof table.getData === 'function') return dilSbidFlatten(table.getData() || []);
     } catch (e) {}
     return [];
 }
