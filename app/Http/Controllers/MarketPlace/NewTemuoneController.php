@@ -191,7 +191,7 @@ class NewTemuoneController extends Controller
             };
 
             $temuMetricsBySku = [];
-            foreach (TemuMetric::query()->get(['sku', 'base_price', 'goods_id', 'product_clicks_l30']) as $metric) {
+            foreach (TemuMetric::query()->get(['sku', 'base_price', 'goods_id', 'sku_id', 'product_clicks_l30']) as $metric) {
                 $key = $normalizeSku($metric->sku);
                 if ($key === '') {
                     continue;
@@ -439,6 +439,8 @@ class NewTemuoneController extends Controller
                     'Ship_productmaster' => $temuShip,
                     'percentage' => $percentage,
                     'base_price' => $basePrice,
+                    'temu_goods_id' => $temuMetric && $temuMetric->goods_id ? (string) $temuMetric->goods_id : null,
+                    'temu_sku_id' => $temuMetric && $temuMetric->sku_id ? (string) $temuMetric->sku_id : null,
                     'r_price' => $rPrice,
                     't_price' => $tPrice,
                     'temu_price' => $tPrice,
@@ -667,6 +669,54 @@ class NewTemuoneController extends Controller
         }
 
         return response()->json(['success' => true, 'activities' => $out]);
+    }
+
+    /**
+     * Which goods Temu lets us enroll in the promotion activity (candidate list).
+     * Read-only, cached for 10 minutes. A goods that is not in the list is "not eligible".
+     */
+    public function promotionEligibility(TemuPromotionApiService $promo)
+    {
+        $setting = self::promotionSetting();
+        $activityId = $setting['activity_id'];
+        $activityName = null;
+        if ($activityId === null) {
+            $resolved = $promo->resolveOpenActivity();
+            if (! $resolved['success']) {
+                return response()->json(['success' => false, 'message' => $resolved['message']], 502);
+            }
+            $activityId = (string) $resolved['activity']['activityId'];
+            $activityName = $resolved['activity']['activityName'] ?? null;
+        }
+
+        $cacheKey = 'newtemuone_promo_eligibility:'.$activityId;
+        try {
+            $cached = Cache::get($cacheKey);
+        } catch (\Throwable) {
+            $cached = null;
+        }
+        if (is_array($cached) && request()->query('refresh') !== '1') {
+            return response()->json($cached);
+        }
+
+        $res = $promo->candidateGoods($activityId);
+        if (! $res['success']) {
+            return response()->json(['success' => false, 'message' => $res['message']], 502);
+        }
+
+        $payload = [
+            'success' => true,
+            'activity_id' => $activityId,
+            'activity_name' => $activityName,
+            'goods' => $res['goods'],
+        ];
+        try {
+            Cache::put($cacheKey, $payload, now()->addMinutes(10));
+        } catch (\Throwable) {
+            // Cache unavailable — the answer is still correct for this request.
+        }
+
+        return response()->json($payload);
     }
 
     /**

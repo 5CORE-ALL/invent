@@ -5355,6 +5355,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/new-temuone-save-sprice', [NewTemuoneController::class, 'saveSprice'])->name('newtemuone.save.sprice');
     Route::get('/new-temuone-promotion-setting', [NewTemuoneController::class, 'getPromotionSetting'])->name('newtemuone.promotion.setting.get');
     Route::post('/new-temuone-promotion-setting', [NewTemuoneController::class, 'savePromotionSetting'])->name('newtemuone.promotion.setting.save');
+    Route::get('/new-temuone-promotion-eligibility', [NewTemuoneController::class, 'promotionEligibility'])->name('newtemuone.promotion.eligibility');
     Route::get('/new-temuone-promotion-activities', [NewTemuoneController::class, 'promotionActivities'])->name('newtemuone.promotion.activities');
     Route::post('/new-temuone-promotion-push', [NewTemuoneController::class, 'pushPromotion'])->name('newtemuone.promotion.push');
 

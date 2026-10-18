@@ -2496,6 +2496,70 @@
         return '<span style="color:#0f172a;font-weight:700;" title="' + esc('Promotion ' + shown + '% waiting to be applied (= Sum disc)'
             + (applied > 0 ? (' · last applied ' + applied + '%') : '')) + '">' + shown + '</span>';
     }
+    // Eligibility = Temu lists the goods as a candidate for the promotion activity.
+    // state: null = not loaded / Temu unavailable, otherwise { goods: {goodsId: {allowed, skus}}, activity_id, activity_name }
+    let ntoPromoEligibility = null;
+    let ntoPromoEligibilityError = '';
+    function ntoRowPromoEligible(d) {
+        // true = eligible, false = not eligible, null = unknown (not loaded yet / Temu unreachable)
+        if (!d || d.is_parent_summary) return null;
+        if (!ntoPromoEligibility || !ntoPromoEligibility.goods) return null;
+        const gid = String(d.temu_goods_id || '');
+        if (!gid) return false;
+        const g = ntoPromoEligibility.goods[gid];
+        return !!(g && g.allowed);
+    }
+    function ntoPromoEligibleHtml(d) {
+        if (!d || d.is_parent_summary) return '';
+        const sku = ntoRowSku(d);
+        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return '';
+        const esc = function(t) { return String(t || '').replace(/"/g, '&quot;'); };
+        const el = ntoRowPromoEligible(d);
+        if (el === null) {
+            const why = ntoPromoEligibilityError || 'Eligibility not loaded yet.';
+            return '<span style="color:#94a3b8;font-weight:600;" title="' + esc(why) + '">—</span>';
+        }
+        const act = ntoPromoEligibility.activity_name
+            ? (ntoPromoEligibility.activity_name + ' (' + ntoPromoEligibility.activity_id + ')')
+            : String(ntoPromoEligibility.activity_id || '');
+        if (el) {
+            const g = ntoPromoEligibility.goods[String(d.temu_goods_id)] || {};
+            const rec = Number((g.skus || {})[String(d.temu_sku_id || '')]) || 0;
+            const base = Number(d.base_price) || 0;
+            let tip = 'Eligible — Temu lists this goods as a candidate for ' + act + '.';
+            if (rec > 0) {
+                tip += ' Temu recommended promotion price $' + rec.toFixed(2)
+                    + (base > 0 ? (' (' + (Math.round((1 - rec / base) * 1000) / 10) + '% off base $' + base.toFixed(2) + ')') : '') + '.';
+            }
+            return '<span style="color:#15803d;font-weight:700;" title="' + esc(tip) + '"><i class="fas fa-check-circle"></i> Eligible</span>';
+        }
+        return '<span style="color:#dc3545;font-weight:700;" title="'
+            + esc('Not eligible — this goods is not on Temu\'s candidate list for ' + act + '. A promotion would be rejected.')
+            + '"><i class="fas fa-times-circle"></i> Not eligible</span>';
+    }
+    function loadNtoPromoEligibility(refresh) {
+        return $.ajax({
+            url: '/new-temuone-promotion-eligibility' + (refresh ? '?refresh=1' : ''),
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            timeout: 120000,
+        }).done(function(resp) {
+            if (resp && resp.success && resp.goods) {
+                ntoPromoEligibility = resp;
+                ntoPromoEligibilityError = '';
+            } else {
+                ntoPromoEligibility = null;
+                ntoPromoEligibilityError = (resp && resp.message) || 'Could not load Temu eligibility.';
+            }
+        }).fail(function(xhr) {
+            ntoPromoEligibility = null;
+            ntoPromoEligibilityError = (xhr.responseJSON && xhr.responseJSON.message) || 'Could not load Temu eligibility.';
+        }).always(function() {
+            if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+                try { table.getRows().forEach(function(r) { r.reformat(); }); } catch (e) { /* ignore */ }
+            }
+        });
+    }
     function ntoPromoFailedMap() {
         try { return JSON.parse(localStorage.getItem(NTO_PROMO_FAIL_KEY) || '{}') || {}; } catch (e) { return {}; }
     }
@@ -2526,6 +2590,8 @@
             if (ntoRowPmIsApplied(d)) return;
             // The promotion sits on the pushed Std price, so the S Base push has to be done first.
             if (ntoRowPushState(d) !== 'pushed') return;
+            // Temu would reject a goods that is not on its candidate list, so don't call it.
+            if (ntoRowPromoEligible(d) === false) return;
             const f = failed[key];
             if (f && Math.abs((Number(f.pct) || 0) - pm) < 0.01 && (Date.now() - (Number(f.t) || 0)) < NTO_PROMO_FAIL_TTL_MS) return;
             seen[key] = true;
@@ -2612,6 +2678,9 @@
     window.ntoApplyPromotions = ntoApplyPromotions;
     function initNtoPromotionUi() {
         syncNtoPromoSwitchUi();
+        loadNtoPromoEligibility(false).always(function() {
+            if (ntoPromotionAllowed()) ntoApplyPromotions();
+        });
         $('#nto-promo-switch').off('change.ntoPromo').on('change.ntoPromo', function() {
             const on = !!this.checked;
             const prev = ntoPromotionAllowed();
@@ -3035,7 +3104,7 @@
             return 'basics';
         }
         if (
-            /^(_push|pm_discount|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|pm_discount|pm_eligible|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -3797,6 +3866,25 @@
                     headerTooltip: 'PM = Promotion % sent to the Temu Promotion API. Same as Sum disc (Sum disc 2 → promotion 2). Green with a double tick = applied on Temu. Grey = the Promotion switch is OFF, so it is not applied.',
                     formatter: function(cell) {
                         return ntoPmCellHtml(cell.getRow().getData() || {});
+                    }
+                },
+                {
+                    title: 'PM Elig',
+                    field: 'pm_eligible',
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    width: 96,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        const rank = function(d) {
+                            const e = ntoRowPromoEligible(d);
+                            return e === true ? 2 : (e === false ? 1 : 0);
+                        };
+                        return rank(aRow.getData() || {}) - rank(bRow.getData() || {});
+                    },
+                    headerTooltip: 'Is this SKU eligible for the Temu promotion? Eligible = Temu lists the goods as a candidate for the open promotion activity (hover for its recommended price). Not eligible = a promotion would be rejected, so none is sent.',
+                    formatter: function(cell) {
+                        return ntoPromoEligibleHtml(cell.getRow().getData() || {});
                     }
                 },
                 {

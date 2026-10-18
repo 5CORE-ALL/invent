@@ -97,6 +97,51 @@ class TemuPromotionApiService
     }
 
     /**
+     * bg.promotion.activity.candidate.goods.query, every page.
+     * Goods Temu lists here can be enrolled in the activity; anything else is not eligible.
+     *
+     * @return array{success: bool, message: string, goods: array<string, array{allowed: bool, qty: int, skus: array<string, float>}>}
+     */
+    public function candidateGoods(int|string $activityId, int $maxPages = 30): array
+    {
+        $out = [];
+        for ($page = 1; $page <= $maxPages; $page++) {
+            $res = $this->post([
+                'type' => 'bg.promotion.activity.candidate.goods.query',
+                'activityId' => is_numeric($activityId) ? (int) $activityId : $activityId,
+                'pageNumber' => $page,
+                'pageSize' => 100,
+            ]);
+            if (! $res['success']) {
+                return ['success' => false, 'message' => $res['message'], 'goods' => $out];
+            }
+            $result = $res['data']['result'] ?? [];
+            $list = is_array($result['goodsList'] ?? null) ? $result['goodsList'] : [];
+            foreach ($list as $g) {
+                $goodsId = (string) ($g['goodsId'] ?? '');
+                if ($goodsId === '') {
+                    continue;
+                }
+                $skus = [];
+                foreach (($g['skuList'] ?? []) as $sku) {
+                    // recommendActivitySupplierPrice is in cents.
+                    $skus[(string) ($sku['skuId'] ?? '')] = round(((float) ($sku['recommendActivitySupplierPrice'] ?? 0)) / 100, 2);
+                }
+                $out[$goodsId] = [
+                    'allowed' => (bool) ($g['isAllowedEnroll'] ?? false),
+                    'qty' => (int) ($g['recommendActivityQuantity'] ?? 0),
+                    'skus' => $skus,
+                ];
+            }
+            if ($list === [] || $page * 100 >= (int) ($result['total'] ?? 0)) {
+                break;
+            }
+        }
+
+        return ['success' => true, 'message' => 'OK', 'goods' => $out];
+    }
+
+    /**
      * bg.promotion.activity.goods.enroll for one goods / one SKU.
      * Temu refuses a goods unless all its eligible SKUs are submitted together, so use enrollGoods()
      * for goods with several SKUs.
