@@ -2644,7 +2644,9 @@
             var lastDotPairByKey = {};
             var chartSyncedAllMetrics = {};
             var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 't_ads', 'p_ads_pct', 'tat'];
-            var yVsL30DotMetrics = { y_sales: 1, y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1,
+            // y_sales is intentionally NOT here: its badge dot/background must follow the Y Sales
+            // graph (last point vs the day before) so the badge and the graph never disagree.
+            var yVsL30DotMetrics = { y_orders: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, y_ads_pct: 1, y_views: 1,
                 // Today badges: today's pace vs the L30 baseline (daily average for counts, L30 % for ratios).
                 t_orders: 1, t_npft: 1, t_groi: 1, t_nroi: 1, t_ads: 1, t_views: 1 };
             var yOrdersExact = null;
