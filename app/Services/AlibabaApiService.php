@@ -1912,8 +1912,12 @@ class AlibabaApiService extends AliExpressApiService
         $productType = strtolower(trim((string) ($product['productType'] ?? $product['product_type'] ?? '')));
         $typeField = $productType !== '' && $productType !== 'sourcing' ? 'marketPrice' : 'scPrice';
 
+        // Order products (marketPrice): 1 = ladder price, 2 = SKU price. Alibaba rejects 3 for marketPrice with
+        // "marketPrice: input value not in expected range", so every SKU price push failed.
+        $typeValue = $typeField === 'marketPrice' ? '2' : '3';
+
         return '<itemSchema>'
-            .'<field id="'.$typeField.'" type="singleCheck"><value>3</value></field>'
+            .'<field id="'.$typeField.'" type="singleCheck"><value>'.$typeValue.'</value></field>'
             .$this->salePropField($saleProps)
             .'<field id="sku" type="multiComplex">'.$values.'</field>'
             .'</itemSchema>';

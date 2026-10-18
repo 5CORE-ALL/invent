@@ -134,7 +134,8 @@ class AlibabaListedPriceTest extends TestCase
             ],
         ], 13.09, 'CS 06 2W');
 
-        $this->assertStringContainsString('<field id="marketPrice" type="singleCheck"><value>3</value></field>', $xml);
+        // Order products: marketPrice 1 = ladder, 2 = SKU price (3 is rejected: "input value not in expected range").
+        $this->assertStringContainsString('<field id="marketPrice" type="singleCheck"><value>2</value></field>', $xml);
         $this->assertStringContainsString('<field id="skuId" type="input"><value>10001889397471</value></field>', $xml);
         $this->assertStringContainsString('<field id="price" type="input"><value>13.09</value></field>', $xml);
     }
