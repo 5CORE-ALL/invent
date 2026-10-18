@@ -40,8 +40,10 @@
         }
         #lmp-overall-wrap .tabulator .tabulator-cell { padding: 4px 4px !important; white-space: nowrap; }
         #lmp-overall-wrap .tabulator-row.tabulator-selectable:hover { cursor: default; background-color: transparent; }
+        #lmp-overall-wrap .tabulator-row.tabulator-row-odd,
+        #lmp-overall-wrap .tabulator-row.tabulator-row-even { background-color: #fff; }
         #lmp-overall-wrap .tabulator-row.tabulator-row-odd.tabulator-selectable:hover { background-color: #fff; }
-        #lmp-overall-wrap .tabulator-row.tabulator-row-even.tabulator-selectable:hover { background-color: #efefef; }
+        #lmp-overall-wrap .tabulator-row.tabulator-row-even.tabulator-selectable:hover { background-color: #fff; }
         #lmp-overall-wrap .tabulator-row .tabulator-cell input[type="checkbox"] { cursor: pointer; }
         #lmp-overall-wrap .tabulator-row.tabulator-selected { background: #e7f1ff !important; }
         .lmp-overall-thumb { width: 36px; height: 36px; object-fit: contain; border-radius: 4px; background: #fff; }
