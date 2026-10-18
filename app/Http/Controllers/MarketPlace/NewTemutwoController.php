@@ -5,11 +5,13 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\AmazonDatasheet;
 use App\Models\AmazonDataView;
+use App\Models\ChannelTabulatorColumnSetting;
 use App\Models\Ebay2Metric;
 use App\Models\EbayMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\Temu2CampaignReport;
+use App\Models\Temu2DataView;
 use App\Models\Temu2ListingStatus;
 use App\Models\TemuLmp;
 use App\Models\Temu2Metric;
@@ -19,7 +21,10 @@ use App\Models\Temu2ViewData;
 use App\Services\LmpSkuGroupService;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Services\Support\NewTemutwoSuggestedPriceStore;
+use App\Services\Temu2ApiService;
+use App\Services\TemuPromotionApiService;
 use App\Services\TemuShopifySalesService;
+use App\Support\DetachedArtisan;
 use App\Support\ProductMasterTemuShip;
 use App\Support\TemuGoodsIdHelper;
 use Carbon\Carbon;
@@ -40,6 +45,350 @@ class NewTemutwoController extends Controller
             'temuMargin' => TemuShopifySalesService::temu2MarginDecimal(),
             'temuAds' => $this->temuChannelAdsSummary(),
             'newtemutwoPushSpriceLive' => ChannelPushSpriceRunner::livePushAllowed(),
+            'newtemutwoPromotionEnabled' => self::promotionEnabled(),
+        ]);
+    }
+
+    private const PROMOTION_SETTING_KEY = 'newtemutwo_promotion';
+
+    /** Temu 2 promotions go through the Temu 2 account (TEMU2_* credentials), never Temu 1's. */
+    private function promotionApi(Temu2ApiService $temu): TemuPromotionApiService
+    {
+        return new TemuPromotionApiService($temu);
+    }
+
+    /**
+     * Promotion switch (+ optional pinned activity). Defaults to OFF until someone turns it on.
+     *
+     * @return array{enabled: bool, activity_id: string|null}
+     */
+    public static function promotionSetting(): array
+    {
+        try {
+            $row = ChannelTabulatorColumnSetting::query()
+                ->where('channel_name', self::PROMOTION_SETTING_KEY)
+                ->first();
+        } catch (\Throwable) {
+            return ['enabled' => false, 'activity_id' => null];
+        }
+        $vis = is_array($row?->visibility) ? $row->visibility : [];
+        $activity = trim((string) ($vis['activity_id'] ?? ''));
+
+        return [
+            'enabled' => filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'activity_id' => $activity !== '' ? $activity : null,
+        ];
+    }
+
+    public static function promotionEnabled(): bool
+    {
+        return self::promotionSetting()['enabled'];
+    }
+
+    public function getPromotionSetting()
+    {
+        return response()->json(['success' => true] + self::promotionSetting());
+    }
+
+    public function savePromotionSetting(Request $request)
+    {
+        $current = self::promotionSetting();
+        $enabled = $request->has('enabled')
+            ? filter_var($request->input('enabled'), FILTER_VALIDATE_BOOLEAN)
+            : $current['enabled'];
+        $activity = $request->has('activity_id')
+            ? trim((string) $request->input('activity_id'))
+            : (string) ($current['activity_id'] ?? '');
+        if ($activity !== '' && ! ctype_digit($activity)) {
+            return response()->json(['success' => false, 'message' => 'activity_id must be numeric'], 422);
+        }
+
+        ChannelTabulatorColumnSetting::query()->updateOrCreate(
+            ['channel_name' => self::PROMOTION_SETTING_KEY],
+            ['visibility' => ['enabled' => $enabled, 'activity_id' => $activity !== '' ? $activity : null], 'column_order' => []]
+        );
+
+        // S PRC is saved by the server job, and it follows this switch (ON = Std price, OFF = Std - Sum disc).
+        // Re-save it now in the background (no Temu push) so the page does not wait for the next scheduled run.
+        $recomputing = false;
+        if ($enabled !== $current['enabled']) {
+            try {
+                $recomputing = DetachedArtisan::spawn('newtemutwo:sprc-dil-auto-push', ['skip-push' => true]);
+            } catch (\Throwable $e) {
+                Log::warning('New Temu Two promotion switch: S PRC recompute not started: '.$e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'enabled' => $enabled,
+            'activity_id' => $activity !== '' ? $activity : null,
+            'recomputing' => $recomputing,
+        ]);
+    }
+
+    /** Open Temu 2 promotion activities, so an activity_id can be pinned. */
+    public function promotionActivities(Temu2ApiService $temu)
+    {
+        $promo = $this->promotionApi($temu);
+        $out = [];
+        foreach ([TemuPromotionApiService::STATUS_ONGOING, TemuPromotionApiService::STATUS_NOT_STARTED] as $status) {
+            $res = $promo->queryActivities(TemuPromotionApiService::TYPE_LIGHTNING_DEAL, $status);
+            if (! $res['success']) {
+                return response()->json(['success' => false, 'message' => $res['message']], 502);
+            }
+            $out = array_merge($out, $res['activities']);
+        }
+
+        return response()->json(['success' => true, 'activities' => $out]);
+    }
+
+    /**
+     * Which goods Temu 2 lets us enroll in the promotion activity (candidate list).
+     * Read-only, cached for 10 minutes. A goods that is not in the list is "not eligible".
+     */
+    public function promotionEligibility(Temu2ApiService $temu)
+    {
+        $promo = $this->promotionApi($temu);
+        $setting = self::promotionSetting();
+        $activityId = $setting['activity_id'];
+        $activityName = null;
+        if ($activityId === null) {
+            $resolved = $promo->resolveOpenActivity();
+            if (! $resolved['success']) {
+                return response()->json(['success' => false, 'message' => $resolved['message']], 502);
+            }
+            $activityId = (string) $resolved['activity']['activityId'];
+            $activityName = $resolved['activity']['activityName'] ?? null;
+        }
+
+        $cacheKey = 'newtemutwo_promo_eligibility:'.$activityId;
+        try {
+            $cached = Cache::get($cacheKey);
+        } catch (\Throwable) {
+            $cached = null;
+        }
+        if (is_array($cached) && request()->query('refresh') !== '1') {
+            return response()->json($cached);
+        }
+
+        $res = $promo->candidateGoods($activityId);
+        if (! $res['success']) {
+            return response()->json(['success' => false, 'message' => $res['message']], 502);
+        }
+
+        $payload = [
+            'success' => true,
+            'activity_id' => $activityId,
+            'activity_name' => $activityName,
+            'goods' => $res['goods'],
+        ];
+        try {
+            Cache::put($cacheKey, $payload, now()->addMinutes(10));
+        } catch (\Throwable) {
+            // Cache unavailable — the answer is still correct for this request.
+        }
+
+        return response()->json($payload);
+    }
+
+    /** Same rule as the page's S Base Prc: S R = S × 0.88; S Base = S R − 2.99 when S R < 30. */
+    private static function promotionBaseFromSprice(float $sprice): float
+    {
+        $sR = round($sprice * 0.88, 2);
+        if (! ($sR > 0)) {
+            return 0.0;
+        }
+        $base = $sR < 30 ? round($sR - 2.99, 2) : $sR;
+
+        return $base > 0 ? $base : 0.0;
+    }
+
+    /**
+     * Enroll SKUs in a Temu 2 promotion at Sum disc %.
+     * items: [{sku, pct, sprice}] where pct is the page's Sum disc. Refused while the switch is OFF.
+     */
+    public function pushPromotion(Request $request, Temu2ApiService $temu)
+    {
+        $promo = $this->promotionApi($temu);
+        $setting = self::promotionSetting();
+        if (! $setting['enabled']) {
+            return response()->json(['success' => false, 'message' => 'Promotion switch is OFF. Turn it on to apply promotions.'], 409);
+        }
+
+        $items = $request->input('items');
+        if (! is_array($items) || $items === []) {
+            return response()->json(['success' => false, 'message' => 'items array required'], 422);
+        }
+        $items = array_slice($items, 0, 50);
+
+        $activityId = $setting['activity_id'];
+        if ($activityId === null) {
+            $resolved = $promo->resolveOpenActivity();
+            if (! $resolved['success']) {
+                return response()->json(['success' => false, 'message' => $resolved['message']], 502);
+            }
+            $activityId = (string) $resolved['activity']['activityId'];
+        }
+
+        $results = [];
+        $ok = 0;
+        $fail = 0;
+        $failItem = function (string $sku, float $pct, string $message) use (&$results, &$fail): void {
+            $fail++;
+            $results[] = ['sku' => $sku, 'pct' => $pct, 'status' => 'failed', 'message' => $message];
+        };
+
+        // Temu only accepts a goods when ALL its eligible SKUs are submitted together, so
+        // requested SKUs are grouped by goodsId and every sibling SKU goes in the same call.
+        $groups = [];
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            $pct = round((float) ($item['pct'] ?? 0), 2);
+            if ($sku === '') {
+                continue;
+            }
+            if (! ($pct > 0) || $pct >= 100) {
+                $failItem($sku, $pct, 'Sum disc must be between 0 and 100 to apply a promotion.');
+                continue;
+            }
+            $metric = Temu2Metric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
+            $goodsId = trim((string) ($metric?->goods_id ?? '')) ?: (string) ($temu->getGoodsIdBySku($sku) ?? '');
+            if ($goodsId === '') {
+                $failItem($sku, $pct, 'Temu goodsId not found for this SKU.');
+                continue;
+            }
+            $groups[$goodsId][] = ['sku' => $sku, 'pct' => $pct, 'sprice' => round((float) ($item['sprice'] ?? 0), 2)];
+        }
+
+        foreach ($groups as $goodsId => $requested) {
+            $goodsId = (string) $goodsId;
+            $fallbackPct = (float) $requested[0]['pct'];
+            $pctBySku = [];
+            $spriceBySku = [];
+            foreach ($requested as $r) {
+                $pctBySku[strtoupper($r['sku'])] = (float) $r['pct'];
+                $spriceBySku[strtoupper($r['sku'])] = (float) ($r['sprice'] ?? 0);
+            }
+
+            // One entry per Temu skuId (the metrics table also holds alias names for the same skuId).
+            $siblings = [];
+            foreach (Temu2Metric::query()->where('goods_id', $goodsId)->get() as $row) {
+                $skuId = trim((string) ($row->sku_id ?? ''));
+                if ($skuId === '') {
+                    continue;
+                }
+                $siblings[$skuId]['names'][] = (string) $row->sku;
+                $siblings[$skuId]['base'] = (float) ($siblings[$skuId]['base'] ?? 0) > 0
+                    ? $siblings[$skuId]['base']
+                    : (float) ($row->base_price ?? 0);
+            }
+            // The promotion sits on the base we pushed from the Std price; Temu's synced base_price can lag behind it.
+            foreach ($siblings as $skuId => $sib) {
+                foreach ($sib['names'] as $n) {
+                    if (! isset($pctBySku[strtoupper($n)])) {
+                        continue;
+                    }
+                    $view = Temu2DataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($n))])->first();
+                    $pushed = is_array($view?->value) ? ($view->value[NewTemutwoSuggestedPriceStore::KEY_PUSHED_BASE] ?? null) : null;
+                    if (is_numeric($pushed) && (float) $pushed > 0) {
+                        $siblings[$skuId]['base'] = round((float) $pushed, 2);
+                        break;
+                    }
+                }
+            }
+            if ($siblings === []) {
+                foreach ($requested as $r) {
+                    $failItem($r['sku'], (float) $r['pct'], 'Temu skuId not found for this SKU.');
+                }
+                continue;
+            }
+
+            $allNames = [];
+            foreach ($siblings as $sib) {
+                foreach ($sib['names'] as $n) {
+                    $allNames[] = $n;
+                }
+            }
+            $inventory = ShopifySku::mapByProductSkus(array_values(array_unique($allNames)));
+
+            $skuPrices = [];
+            $quantity = 0;
+            $bad = null;
+            foreach ($siblings as $skuId => $sib) {
+                $pct = $fallbackPct;
+                $sprice = 0.0;
+                $inv = 0;
+                foreach ($sib['names'] as $n) {
+                    if (isset($pctBySku[strtoupper($n)])) {
+                        $pct = $pctBySku[strtoupper($n)];
+                        $sprice = (float) ($spriceBySku[strtoupper($n)] ?? 0);
+                    }
+                    $inv = max($inv, (int) floor((float) ($inventory->get($n)->inv ?? 0)));
+                }
+                if (! ($sib['base'] > 0)) {
+                    $bad = 'Temu base price not found for SKU '.($sib['names'][0] ?? $skuId).'.';
+                    break;
+                }
+                if ($sprice > 0) {
+                    // Promotion is Sum disc % off S PRC, then converted to a Temu base the same way
+                    // S Base Prc is (S R = S × 0.88; − $2.99 when S R < $30).
+                    $skuPrices[$skuId] = self::promotionBaseFromSprice($sprice * (1 - $pct / 100));
+                } else {
+                    $skuPrices[$skuId] = round($sib['base'] * (1 - $pct / 100), 2);
+                }
+                if (! ($skuPrices[$skuId] > 0)) {
+                    $bad = 'Promotion price is not positive for SKU '.($sib['names'][0] ?? $skuId).'.';
+                    break;
+                }
+                $quantity += $inv;
+            }
+            if ($bad === null && $quantity < 1) {
+                $bad = 'INV is 0 — nothing to put on promotion.';
+            }
+            if ($bad !== null) {
+                foreach ($requested as $r) {
+                    $failItem($r['sku'], (float) $r['pct'], $bad);
+                }
+                continue;
+            }
+
+            $res = $promo->enrollGoods($activityId, $goodsId, $skuPrices, $quantity, 'nt2'.substr(md5($goodsId.$activityId.json_encode($skuPrices)), 0, 24));
+            if (! $res['success']) {
+                foreach ($requested as $r) {
+                    $failItem($r['sku'], (float) $r['pct'], $res['message']);
+                }
+                continue;
+            }
+
+            foreach ($requested as $r) {
+                $price = 0.0;
+                foreach ($siblings as $skuId => $sib) {
+                    if (in_array(strtoupper($r['sku']), array_map('strtoupper', $sib['names']), true)) {
+                        $price = (float) $skuPrices[$skuId];
+                    }
+                }
+                NewTemutwoSuggestedPriceStore::markPromotionApplied($r['sku'], (float) $r['pct'], $price, $activityId, $res['draft_id'] ?? null);
+                $ok++;
+                $results[] = [
+                    'sku' => $r['sku'],
+                    'pct' => $r['pct'],
+                    'price' => $price,
+                    'status' => 'ok',
+                    'message' => $res['message'],
+                    'applied_at' => now()->toDateTimeString(),
+                    'activity_id' => $activityId,
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => $ok > 0 || $fail === 0,
+            'activity_id' => $activityId,
+            'ok' => $ok,
+            'failed' => $fail,
+            'results' => $results,
+            'message' => "Promotion: {$ok} applied".($fail ? ", {$fail} failed" : '').' (activity '.$activityId.').',
         ]);
     }
 
@@ -167,7 +516,7 @@ class NewTemutwoController extends Controller
             };
 
             $temuMetricsBySku = [];
-            foreach (Temu2Metric::query()->get(['sku', 'base_price', 'goods_id', 'product_clicks_l30']) as $metric) {
+            foreach (Temu2Metric::query()->get(['sku', 'base_price', 'goods_id', 'sku_id', 'product_clicks_l30']) as $metric) {
                 $key = $normalizeSku($metric->sku);
                 if ($key === '') {
                     continue;
@@ -425,6 +774,8 @@ class NewTemutwoController extends Controller
                     'Ship_productmaster' => $temuShip,
                     'percentage' => $percentage,
                     'base_price' => $basePrice,
+                    'temu_goods_id' => $temuMetric && $temuMetric->goods_id ? (string) $temuMetric->goods_id : null,
+                    'temu_sku_id' => $temuMetric && $temuMetric->sku_id ? (string) $temuMetric->sku_id : null,
                     'r_price' => $rPrice,
                     't_price' => $tPrice,
                     'temu_price' => $tPrice,
@@ -451,6 +802,9 @@ class NewTemutwoController extends Controller
                     'nto_pushed_at' => $suggested['pushed_at'] ?? null,
                     'nto_push_status' => $suggested['push_status'] ?? null,
                     'nto_push_error_at' => $suggested['push_error_at'] ?? null,
+                    'pm_applied_pct' => $suggested['pm_applied_pct'] ?? null,
+                    'pm_applied_at' => $suggested['pm_applied_at'] ?? null,
+                    'pm_activity_id' => $suggested['pm_activity_id'] ?? null,
                     'npft_percent' => $npftPercent,
                     'nroi_percent' => $nroiPercent,
                     'snpft_percent' => $snpftPercent,

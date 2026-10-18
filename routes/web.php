@@ -5363,6 +5363,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/new-temu2', [NewTemutwoController::class, 'index'])->name('newtemutwo.index');
     Route::get('/new-temu2-data-json', [NewTemutwoController::class, 'dataJson'])->name('newtemutwo.data.json');
     Route::post('/new-temu2-save-links', [NewTemutwoController::class, 'saveLinks'])->name('newtemutwo.save.links');
+    Route::get('/new-temu2-promotion-setting', [NewTemutwoController::class, 'getPromotionSetting'])->name('newtemutwo.promotion.setting.get');
+    Route::post('/new-temu2-promotion-setting', [NewTemutwoController::class, 'savePromotionSetting'])->name('newtemutwo.promotion.setting.save');
+    Route::get('/new-temu2-promotion-eligibility', [NewTemutwoController::class, 'promotionEligibility'])->name('newtemutwo.promotion.eligibility');
+    Route::get('/new-temu2-promotion-activities', [NewTemutwoController::class, 'promotionActivities'])->name('newtemutwo.promotion.activities');
+    Route::post('/new-temu2-promotion-push', [NewTemutwoController::class, 'pushPromotion'])->name('newtemutwo.promotion.push');
 
     // Temu Tabulator View
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');

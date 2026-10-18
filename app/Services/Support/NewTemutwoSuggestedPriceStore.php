@@ -38,6 +38,17 @@ class NewTemutwoSuggestedPriceStore
 
     public const KEY_PUSH_ERROR_AT = 'NT2_PUSH_ERROR_AT';
 
+    /** Promotion % last enrolled on Temu 2 (= Sum disc at that moment). */
+    public const KEY_PM_PCT = 'NT2_PM_PCT';
+
+    public const KEY_PM_AT = 'NT2_PM_AT';
+
+    public const KEY_PM_ACTIVITY = 'NT2_PM_ACTIVITY';
+
+    public const KEY_PM_DRAFT = 'NT2_PM_DRAFT';
+
+    public const KEY_PM_PRICE = 'NT2_PM_PRICE';
+
     /** @var array<string, Temu2DataView> */
     private array $views = [];
 
@@ -117,6 +128,34 @@ class NewTemutwoSuggestedPriceStore
         $value[self::KEY_PUSHED_AT] = now()->toDateTimeString();
         $value[self::KEY_PUSH_STATUS] = 'pushed';
         unset($value[self::KEY_PUSH_ERROR_AT]);
+        $view->sku = $view->sku ?: $sku;
+        $view->value = $value;
+        $view->save();
+    }
+
+    /**
+     * Stamp a successful Temu 2 promotion enroll. Does not touch S PRC / S Base keys.
+     */
+    public static function markPromotionApplied(string $sku, float $pct, float $price, string $activityId, ?string $draftId = null): void
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! ($pct > 0)) {
+            return;
+        }
+        $view = Temu2DataView::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first()
+            ?? new Temu2DataView(['sku' => $sku]);
+        $value = is_array($view->value) ? $view->value : [];
+        $value[self::KEY_PM_PCT] = round($pct, 2);
+        $value[self::KEY_PM_PRICE] = round($price, 2);
+        $value[self::KEY_PM_AT] = now()->toDateTimeString();
+        $value[self::KEY_PM_ACTIVITY] = $activityId;
+        if ($draftId !== null && $draftId !== '') {
+            $value[self::KEY_PM_DRAFT] = $draftId;
+        } else {
+            unset($value[self::KEY_PM_DRAFT]);
+        }
         $view->sku = $view->sku ?: $sku;
         $view->value = $value;
         $view->save();
@@ -319,6 +358,10 @@ class NewTemutwoSuggestedPriceStore
             $row['push_status'] = 'error';
             $row['push_error_at'] = $saved[self::KEY_PUSH_ERROR_AT] ?? null;
         }
+        $pmPct = is_numeric($saved[self::KEY_PM_PCT] ?? null) ? round((float) $saved[self::KEY_PM_PCT], 2) : 0.0;
+        $row['pm_applied_pct'] = $pmPct > 0 ? $pmPct : null;
+        $row['pm_applied_at'] = $pmPct > 0 ? ($saved[self::KEY_PM_AT] ?? null) : null;
+        $row['pm_activity_id'] = $pmPct > 0 ? ($saved[self::KEY_PM_ACTIVITY] ?? null) : null;
 
         return $row;
     }

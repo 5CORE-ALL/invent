@@ -33,6 +33,9 @@ class NewTemutwoSprcDilAutoPushService
 {
     public const LOCK_KEY = 'newtemutwo-sprc-dil-auto-push-run';
 
+    /** Promotion switch, read once per run (null = not read yet). */
+    protected ?bool $promotionOn = null;
+
     /**
      * @param  list<string>|null  $onlySkus  Uppercase SKUs; null = all listed candidates
      * @param  callable(string): void|null  $logger
@@ -49,6 +52,7 @@ class NewTemutwoSprcDilAutoPushService
         int $cooldownMinutes = 600
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('newtemutwo');
+        $this->promotionOn = null;
 
         $this->log($logger, 'Loaded New Temu Two Std prc vs dil (newtemutwo_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap');
 
@@ -237,7 +241,12 @@ class NewTemutwoSprcDilAutoPushService
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];
         }
-        $effective = $pricer->priceFromRow($pricerRow);
+        if ($this->promotionOn === null) {
+            $this->promotionOn = NewTemutwoController::promotionEnabled();
+        }
+        // Promotion ON: the Std price itself is pushed, and the Sum disc is applied afterwards as a
+        // Temu promotion (PM column) instead of being baked into S PRC. Same as New Temu One.
+        $effective = $this->promotionOn ? round($std, 2) : $pricer->priceFromRow($pricerRow);
         if ($effective === null || ! ($effective > 0)) {
             return null;
         }
