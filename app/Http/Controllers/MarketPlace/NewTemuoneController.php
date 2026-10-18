@@ -11,6 +11,7 @@ use App\Models\EbayMetric;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuAdsApiReport;
+use App\Models\TemuDataView;
 use App\Models\TemuListingStatus;
 use App\Models\TemuLmp;
 use App\Models\TemuMetric;
@@ -694,69 +695,141 @@ class NewTemuoneController extends Controller
             $activityId = (string) $resolved['activity']['activityId'];
         }
 
-        $skus = [];
-        foreach ($items as $item) {
-            $sku = trim((string) ($item['sku'] ?? ''));
-            if ($sku !== '') {
-                $skus[] = $sku;
-            }
-        }
-        $inventory = ShopifySku::mapByProductSkus($skus);
-
         $results = [];
         $ok = 0;
         $fail = 0;
+        $failItem = function (string $sku, float $pct, string $message) use (&$results, &$fail): void {
+            $fail++;
+            $results[] = ['sku' => $sku, 'pct' => $pct, 'status' => 'failed', 'message' => $message];
+        };
+
+        // Temu only accepts a goods when ALL its eligible SKUs are submitted together, so
+        // requested SKUs are grouped by goodsId and every sibling SKU goes in the same call.
+        $groups = [];
         foreach ($items as $item) {
             $sku = trim((string) ($item['sku'] ?? ''));
             $pct = round((float) ($item['pct'] ?? 0), 2);
             if ($sku === '') {
                 continue;
             }
-            $markFail = function (string $message) use (&$results, &$fail, $sku, $pct): void {
-                $fail++;
-                $results[] = ['sku' => $sku, 'pct' => $pct, 'status' => 'failed', 'message' => $message];
-            };
-
             if (! ($pct > 0) || $pct >= 100) {
-                $markFail('Sum disc must be between 0 and 100 to apply a promotion.');
-                continue;
-            }
-            $inv = (int) floor((float) ($inventory->get($sku)->inv ?? 0));
-            if ($inv < 1) {
-                $markFail('INV is 0 — nothing to put on promotion.');
+                $failItem($sku, $pct, 'Sum disc must be between 0 and 100 to apply a promotion.');
                 continue;
             }
             $metric = TemuMetric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])->first();
-            $base = (float) ($metric?->base_price ?? 0);
-            if (! ($base > 0)) {
-                $markFail('Temu base price not found for this SKU.');
+            $goodsId = trim((string) ($metric?->goods_id ?? '')) ?: (string) ($temu->getGoodsIdBySku($sku) ?? '');
+            if ($goodsId === '') {
+                $failItem($sku, $pct, 'Temu goodsId not found for this SKU.');
                 continue;
             }
-            $goodsId = $temu->getGoodsIdBySku($sku);
-            $skuId = $temu->getSkuIdBySku($sku);
-            if (! $goodsId || ! $skuId) {
-                $markFail('Temu goodsId / skuId not found for this SKU.');
+            $groups[$goodsId][] = ['sku' => $sku, 'pct' => $pct];
+        }
+
+        foreach ($groups as $goodsId => $requested) {
+            $goodsId = (string) $goodsId;
+            $fallbackPct = (float) $requested[0]['pct'];
+            $pctBySku = [];
+            foreach ($requested as $r) {
+                $pctBySku[strtoupper($r['sku'])] = (float) $r['pct'];
+            }
+
+            // One entry per Temu skuId (the metrics table also holds alias names for the same skuId).
+            $siblings = [];
+            foreach (TemuMetric::query()->where('goods_id', $goodsId)->get() as $row) {
+                $skuId = trim((string) ($row->sku_id ?? ''));
+                if ($skuId === '') {
+                    continue;
+                }
+                $siblings[$skuId]['names'][] = (string) $row->sku;
+                $siblings[$skuId]['base'] = (float) ($siblings[$skuId]['base'] ?? 0) > 0
+                    ? $siblings[$skuId]['base']
+                    : (float) ($row->base_price ?? 0);
+            }
+            // The promotion sits on the base we pushed from the Std price; Temu's synced base_price can lag behind it.
+            foreach ($siblings as $skuId => $sib) {
+                foreach ($sib['names'] as $n) {
+                    if (! isset($pctBySku[strtoupper($n)])) {
+                        continue;
+                    }
+                    $view = TemuDataView::query()->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($n))])->first();
+                    $pushed = is_array($view?->value) ? ($view->value[NewTemuoneSuggestedPriceStore::KEY_PUSHED_BASE] ?? null) : null;
+                    if (is_numeric($pushed) && (float) $pushed > 0) {
+                        $siblings[$skuId]['base'] = round((float) $pushed, 2);
+                        break;
+                    }
+                }
+            }
+            if ($siblings === []) {
+                foreach ($requested as $r) {
+                    $failItem($r['sku'], (float) $r['pct'], 'Temu skuId not found for this SKU.');
+                }
                 continue;
             }
 
-            $price = round($base * (1 - $pct / 100), 2);
-            $res = $promo->enrollSku($activityId, $goodsId, $skuId, $price, $inv, 'nto'.substr(md5($sku.$activityId.$pct), 0, 24));
+            $allNames = [];
+            foreach ($siblings as $sib) {
+                foreach ($sib['names'] as $n) {
+                    $allNames[] = $n;
+                }
+            }
+            $inventory = ShopifySku::mapByProductSkus(array_values(array_unique($allNames)));
+
+            $skuPrices = [];
+            $quantity = 0;
+            $bad = null;
+            foreach ($siblings as $skuId => $sib) {
+                $pct = $fallbackPct;
+                $inv = 0;
+                foreach ($sib['names'] as $n) {
+                    if (isset($pctBySku[strtoupper($n)])) {
+                        $pct = $pctBySku[strtoupper($n)];
+                    }
+                    $inv = max($inv, (int) floor((float) ($inventory->get($n)->inv ?? 0)));
+                }
+                if (! ($sib['base'] > 0)) {
+                    $bad = 'Temu base price not found for SKU '.($sib['names'][0] ?? $skuId).'.';
+                    break;
+                }
+                $skuPrices[$skuId] = round($sib['base'] * (1 - $pct / 100), 2);
+                $quantity += $inv;
+            }
+            if ($bad === null && $quantity < 1) {
+                $bad = 'INV is 0 — nothing to put on promotion.';
+            }
+            if ($bad !== null) {
+                foreach ($requested as $r) {
+                    $failItem($r['sku'], (float) $r['pct'], $bad);
+                }
+                continue;
+            }
+
+            $res = $promo->enrollGoods($activityId, $goodsId, $skuPrices, $quantity, 'nto'.substr(md5($goodsId.$activityId.json_encode($skuPrices)), 0, 24));
             if (! $res['success']) {
-                $markFail($res['message']);
+                foreach ($requested as $r) {
+                    $failItem($r['sku'], (float) $r['pct'], $res['message']);
+                }
                 continue;
             }
 
-            NewTemuoneSuggestedPriceStore::markPromotionApplied($sku, $pct, $price, $activityId, $res['draft_id'] ?? null);
-            $ok++;
-            $results[] = [
-                'sku' => $sku,
-                'pct' => $pct,
-                'price' => $price,
-                'status' => 'ok',
-                'message' => $res['message'],
-                'applied_at' => now()->toDateTimeString(),
-                'activity_id' => $activityId,
-            ];
+            foreach ($requested as $r) {
+                $price = 0.0;
+                foreach ($siblings as $skuId => $sib) {
+                    if (in_array(strtoupper($r['sku']), array_map('strtoupper', $sib['names']), true)) {
+                        $price = (float) $skuPrices[$skuId];
+                    }
+                }
+                NewTemuoneSuggestedPriceStore::markPromotionApplied($r['sku'], (float) $r['pct'], $price, $activityId, $res['draft_id'] ?? null);
+                $ok++;
+                $results[] = [
+                    'sku' => $r['sku'],
+                    'pct' => $r['pct'],
+                    'price' => $price,
+                    'status' => 'ok',
+                    'message' => $res['message'],
+                    'applied_at' => now()->toDateTimeString(),
+                    'activity_id' => $activityId,
+                ];
+            }
         }
 
         return response()->json([

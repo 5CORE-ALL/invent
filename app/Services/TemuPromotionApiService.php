@@ -43,7 +43,8 @@ class TemuPromotionApiService
             'activityType' => $activityType,
             'pageNumber' => $page,
             'pageSize' => min(100, max(1, $pageSize)),
-            'onlyQueryJoinedActivity' => false,
+            // onlyQueryJoinedActivity is optional and left out on purpose: TemuApiService::generateSignValue()
+            // stringifies false as "" while Temu signs "false", which makes the sign invalid.
         ];
         if ($status !== null) {
             $body['activityStatus'] = $status;
@@ -97,26 +98,47 @@ class TemuPromotionApiService
 
     /**
      * bg.promotion.activity.goods.enroll for one goods / one SKU.
-     * activitySupplierPrice is an integer in minor units (cents), same as Temu's examples (1999 = $19.99).
+     * Temu refuses a goods unless all its eligible SKUs are submitted together, so use enrollGoods()
+     * for goods with several SKUs.
      *
      * @return array{success: bool, message: string, draft_id?: string|null, response?: mixed}
      */
     public function enrollSku(int|string $activityId, int|string $goodsId, int|string $skuId, float $activityPrice, int $quantity, string $traceCode = ''): array
     {
-        if (! ($activityPrice > 0)) {
-            return ['success' => false, 'message' => 'Promotion price must be greater than 0.'];
+        return $this->enrollGoods($activityId, $goodsId, [(string) $skuId => $activityPrice], $quantity, $traceCode);
+    }
+
+    /**
+     * bg.promotion.activity.goods.enroll for one goods with all of its SKUs.
+     * activitySupplierPrice is an integer in minor units (cents), same as Temu's examples (1999 = $19.99).
+     *
+     * @param  array<int|string, float>  $skuPrices  skuId => promotion price in dollars
+     * @return array{success: bool, message: string, draft_id?: string|null, response?: mixed}
+     */
+    public function enrollGoods(int|string $activityId, int|string $goodsId, array $skuPrices, int $quantity, string $traceCode = ''): array
+    {
+        if ($skuPrices === []) {
+            return ['success' => false, 'message' => 'No SKUs to enroll.'];
         }
         if ($quantity < 1) {
             return ['success' => false, 'message' => 'Promotion quantity must be at least 1.'];
         }
 
+        $skuList = [];
+        foreach ($skuPrices as $skuId => $price) {
+            if (! ((float) $price > 0)) {
+                return ['success' => false, 'message' => 'Promotion price must be greater than 0.'];
+            }
+            $skuList[] = [
+                'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
+                'activitySupplierPrice' => (int) round(((float) $price) * 100),
+            ];
+        }
+
         $enrollGoods = [
             'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
             'activityQuantity' => $quantity,
-            'enrollSkuList' => [[
-                'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
-                'activitySupplierPrice' => (int) round($activityPrice * 100),
-            ]],
+            'enrollSkuList' => $skuList,
         ];
         if ($traceCode !== '') {
             // Idempotency key, max 32 chars.

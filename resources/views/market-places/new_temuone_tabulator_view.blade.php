@@ -1038,7 +1038,17 @@
         if (!row) return 0;
         if (typeof window.chStdPriceForRow === 'function') {
             const stdRule = Number(window.chStdPriceForRow(row)) || 0;
-            if (stdRule > 0) return +stdRule.toFixed(2);
+            if (stdRule > 0) {
+                // Promotion ON: the Std price itself is pushed, and the Sum disc is applied afterwards
+                // as a Temu promotion (PM column) instead of being baked into S PRC.
+                let promoOn = false;
+                try { promoOn = typeof ntoPromotionAllowed === 'function' && ntoPromotionAllowed(); } catch (e) { promoOn = false; }
+                if (promoOn && typeof chPromoStdBase === 'function') {
+                    const std = Number(chPromoStdBase(row)) || 0;
+                    if (std > 0) return +std.toFixed(2);
+                }
+                return +stdRule.toFixed(2);
+            }
         }
         return 0;
     }
@@ -2281,6 +2291,7 @@
                     );
                 }
                 setTimeout(ntoPushLeftoverBlues, 1500);
+                if (typeof ntoApplyPromotions === 'function') setTimeout(ntoApplyPromotions, 2500);
             }
         });
     }
@@ -2479,6 +2490,9 @@
             return '<span style="color:#94a3b8;font-weight:700;" title="' + esc('Promotion switch is OFF — not applied. Sum disc ' + shown + '% will be applied when it is turned on.'
                 + (applied > 0 ? (' Last applied: ' + applied + '%.') : '')) + '">' + shown + '</span>';
         }
+        if (ntoRowPushState(d) !== 'pushed') {
+            return '<span style="color:#b45309;font-weight:700;" title="' + esc('Promotion ' + shown + '% waits until the Std price (S Base Prc) is pushed to Temu.') + '">' + shown + '</span>';
+        }
         return '<span style="color:#0f172a;font-weight:700;" title="' + esc('Promotion ' + shown + '% waiting to be applied (= Sum disc)'
             + (applied > 0 ? (' · last applied ' + applied + '%') : '')) + '">' + shown + '</span>';
     }
@@ -2510,6 +2524,8 @@
             if (!(pm > 0) || pm >= 100) return;
             if (!((parseFloat(d.INV) || 0) >= 1)) return;
             if (ntoRowPmIsApplied(d)) return;
+            // The promotion sits on the pushed Std price, so the S Base push has to be done first.
+            if (ntoRowPushState(d) !== 'pushed') return;
             const f = failed[key];
             if (f && Math.abs((Number(f.pct) || 0) - pm) < 0.01 && (Date.now() - (Number(f.t) || 0)) < NTO_PROMO_FAIL_TTL_MS) return;
             seen[key] = true;
@@ -2601,16 +2617,32 @@
             const prev = ntoPromotionAllowed();
             saveNtoPromotionSetting(on)
                 .done(function() {
-                    if (typeof table !== 'undefined' && table && typeof table.redraw === 'function') {
-                        try { table.getRows().forEach(function(r) { r.reformat(); }); } catch (e) { /* ignore */ }
-                    }
+                    // S PRC now follows the switch (Std price when ON, Std − Sum disc when OFF).
+                    temuClearCapMemo();
+                    const repaint = function() {
+                        temuClearCapMemo();
+                        if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+                            try { table.getRows().forEach(function(r) { r.reformat(); }); } catch (e) { /* ignore */ }
+                        }
+                        if (typeof updateSummary === 'function') { try { updateSummary(); } catch (e) { /* ignore */ } }
+                    };
+                    repaint();
+                    Promise.resolve(typeof ntoPersistDisplayedSprice === 'function' ? ntoPersistDisplayedSprice() : 0)
+                        .catch(function() { return 0; })
+                        .then(function() {
+                            repaint();
+                            if (on) {
+                                window._ntoReloadPushQueued = false;
+                                ntoTryQueuePushOnReload();
+                                ntoApplyPromotions({ manual: true });
+                            }
+                        });
                     showToast(
                         on
-                            ? 'Promotion on — each SKU is enrolled in a Temu promotion at its Sum disc %.'
-                            : 'Promotion off — nothing is sent to Temu.',
+                            ? 'Promotion on — S PRC = Std price. After the Std price is pushed, each SKU gets a Temu promotion at its Sum disc %.'
+                            : 'Promotion off — S PRC = Std price − Sum disc. Nothing is sent to Temu.',
                         'success'
                     );
-                    if (on) ntoApplyPromotions({ manual: true });
                 })
                 .fail(function(xhr) {
                     ntoPromotionEnabled = prev;
