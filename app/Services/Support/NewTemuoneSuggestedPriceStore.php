@@ -230,9 +230,9 @@ class NewTemuoneSuggestedPriceStore
             return;
         }
         $inverted = ($lp > 0)
-            ? TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0)
+            ? TemuShopifySalesService::newTemuoneSgroiAtSprice($sprice, $lp, $ship)
             : null;
-        $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
+        $sBase = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
         $uncapped = $sprcDil > 0 ? round($sprcDil, 2) : $sprice;
         $cleanLabels = [];
         foreach ($labels as $label) {
@@ -350,9 +350,9 @@ class NewTemuoneSuggestedPriceStore
             return $empty;
         }
         $capped = $sprcDil > 0 && round($sprice, 2) !== round($sprcDil, 2);
-        $inverted = TemuShopifySalesService::sgroiAtSprice($sprice, $lp, $ship, 0.0);
+        $inverted = TemuShopifySalesService::newTemuoneSgroiAtSprice($sprice, $lp, $ship);
         $sgroi = $inverted !== null ? round($inverted, 2) : $ruleSgroi;
-        $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
+        $sBase = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
 
         return [
             'sgroi' => $sgroi,
@@ -385,7 +385,7 @@ class NewTemuoneSuggestedPriceStore
         $sgroi = is_numeric($saved[self::KEY_SGROI] ?? null) ? (float) $saved[self::KEY_SGROI] : null;
         $sBase = is_numeric($saved[self::KEY_S_BASE] ?? null) ? round((float) $saved[self::KEY_S_BASE], 2) : 0.0;
         if ($sprice > 0 && ! ($sBase > 0)) {
-            $sBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($sprice), 2);
+            $sBase = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
         }
         $sprcDil = is_numeric($saved[self::KEY_SPRICE_DIL] ?? null)
             ? round((float) $saved[self::KEY_SPRICE_DIL], 2)
@@ -422,7 +422,7 @@ class NewTemuoneSuggestedPriceStore
         if (! ($pushedBase > 0) && is_numeric($saved['SPRICE_PUSHED_VALUE'] ?? null)) {
             $full = round((float) $saved['SPRICE_PUSHED_VALUE'], 2);
             if ($full > 0) {
-                $pushedBase = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($full), 2);
+                $pushedBase = TemuShopifySalesService::newTemuoneSBasePrice($full);
             }
         }
         $matched = $pushedBase > 0 && $sBase > 0 && abs($pushedBase - $sBase) < 0.015;
@@ -529,7 +529,8 @@ class NewTemuoneSuggestedPriceStore
         $lmp = $inputs['lmp'] ?? 0;
         $payload = [
             // v9: Amazon / eBay caps removed. Rows saved under v8 may be capped to those prices.
-            'v' => 9,
+            // v10: S R Prc = S PRC × 0.88, S Base = S R (− $2.99 under $30). Saved NTO_S_BASE / SGROI used the old inversion.
+            'v' => 10,
             'ads' => round((float) ($inputs['ads'] ?? 0), 2),
             'rules' => $normRules,
             'temu_l30' => (int) ($inputs['temu_l30'] ?? $inputs['sold'] ?? 0),

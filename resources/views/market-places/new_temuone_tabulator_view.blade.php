@@ -1101,35 +1101,25 @@
         return ntoSavedSprice(row);
     }
 
-    /** S Base Prc: invert S PRC through the T Price rule — the Base Price equivalent of S PRC. */
-    function temuSBaseFromSprice(sprice) {
+    /**
+     * S R Prc = S PRC × 0.88. When S PRC is showing the LMP (capped at LMP), S PRC is the LMP,
+     * so the same rule applies to it. Mirrors TemuShopifySalesService::newTemuoneSRPrice().
+     */
+    function temuSRPriceFromSprice(sprice) {
         const s = parseFloat(sprice) || 0;
         if (!(s > 0)) return 0;
-        const mult = 1.1364;
-        const candidates = [(s - 2.99) / mult, s / mult];
-        let best = 0;
-        let bestErr = Infinity;
-        candidates.forEach(function(base) {
-            if (!(base > 0)) return;
-            let full = base * mult;
-            if (full <= 26.99) full += 2.99;
-            const err = Math.abs(full - s);
-            if (err < bestErr - 1e-6) {
-                bestErr = err;
-                best = base;
-            } else if (Math.abs(err - bestErr) <= 1e-6 && base < best) {
-                best = base;
-            }
-        });
-        if (!(best > 0) || bestErr > 0.05) return 0;
-        return +best.toFixed(2);
+        return +(Math.round(s * 0.88 * 100) / 100).toFixed(2);
     }
 
-    /** S R Prc: S Base Prc + $2.99 when that base ≤ $26.99 — same rule as R Price. */
-    function temuSRPriceFromSprice(sprice) {
-        const base = temuSBaseFromSprice(sprice);
-        if (!(base > 0)) return 0;
-        return +(base <= 26.99 ? base + 2.99 : base).toFixed(2);
+    /**
+     * S Base Prc = S R Prc; when S R Prc < $30 it is S R Prc − $2.99.
+     * Mirrors TemuShopifySalesService::newTemuoneSBasePrice().
+     */
+    function temuSBaseFromSprice(sprice) {
+        const sR = temuSRPriceFromSprice(sprice);
+        if (!(sR > 0)) return 0;
+        const base = sR < 30 ? Math.round((sR - 2.99) * 100) / 100 : sR;
+        return base > 0 ? +base.toFixed(2) : 0;
     }
     window.temuSBaseFromSprice = temuSBaseFromSprice;
     window.temuSRPriceFromSprice = temuSRPriceFromSprice;
@@ -3477,12 +3467,33 @@
                     }
                 },
                 {
+                    title: 'S R Prc',
+                    field: 's_r_price',
+                    hozAlign: 'center',
+                    width: 70,
+                    sorter: 'number',
+                    headerTooltip: 'S R Prc = S PRC × 0.88. When S PRC is showing the LMP, the same rule applies to the LMP.',
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sprice = typeof temuDisplayedSprice === 'function'
+                            ? temuDisplayedSprice(rowData)
+                            : (parseFloat(rowData.sprice) || 0);
+                        const sBase = ntoRowSBase(rowData);
+                        const sRPrice = temuSRPriceFromSprice(sprice);
+                        if (!(sRPrice > 0)) {
+                            return '<span style="color: #6c757d;">—</span>';
+                        }
+                        const tip = 'S R Prc = S PRC × 0.88 → $' + Number(sprice).toFixed(2) + ' × 0.88 = $' + sRPrice.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + sRPrice.toFixed(2) + '</span>';
+                    }
+                },
+                {
                     title: 'S Base Prc',
                     field: 's_base_price',
                     hozAlign: 'center',
                     width: 96,
                     sorter: 'number',
-                    headerTooltip: 'Base Price equivalent of S PRC: S PRC inverted through the T Price rule (÷ 1.1364, less $2.99 when S PRC included it).',
+                    headerTooltip: 'S Base Prc = S R Prc. When S R Prc is under $30, S Base Prc = S R Prc − $2.99. This is the base that gets pushed.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = typeof temuDisplayedSprice === 'function'
@@ -3492,8 +3503,10 @@
                         if (!(sBase > 0)) {
                             return '<span style="color: #6c757d;">—</span>';
                         }
-                        const tip = 'S Base Prc from S PRC $' + sprice.toFixed(2)
-                            + ' → $' + sBase.toFixed(2);
+                        const sRForTip = temuSRPriceFromSprice(sprice);
+                        const tip = sRForTip < 30
+                            ? ('S Base Prc = S R Prc − $2.99 (S R Prc < $30) → $' + sRForTip.toFixed(2) + ' − $2.99 = $' + sBase.toFixed(2))
+                            : ('S Base Prc = S R Prc (S R Prc ≥ $30) → $' + sBase.toFixed(2));
                         return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + sBase.toFixed(2) + '</span>';
                     }
                 },
@@ -3516,29 +3529,6 @@
                     headerTooltip: 'Push S Base Prc to Temu. Double tick = this S Base was already pushed. Arrow = not pushed, or S Base changed after the last push. Checked rows push together.',
                     formatter: function(cell) {
                         return ntoPushCellHtml(cell.getRow().getData());
-                    }
-                },
-                {
-                    title: 'S R Prc',
-                    field: 's_r_price',
-                    hozAlign: 'center',
-                    width: 70,
-                    sorter: 'number',
-                    headerTooltip: 'R Price equivalent of S PRC: S Base Prc + $2.99 when that base ≤ $26.99',
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sprice = typeof temuDisplayedSprice === 'function'
-                            ? temuDisplayedSprice(rowData)
-                            : (parseFloat(rowData.sprice) || 0);
-                        const sBase = ntoRowSBase(rowData);
-                        const sRPrice = temuSRPriceFromSprice(sprice);
-                        if (!(sRPrice > 0)) {
-                            return '<span style="color: #6c757d;">—</span>';
-                        }
-                        const tip = sBase <= 26.99
-                            ? ('S R Prc = S Base Prc + $2.99 → $' + sBase.toFixed(2) + ' + $2.99 = $' + sRPrice.toFixed(2))
-                            : ('S R Prc = S Base Prc (no +$2.99, base > $26.99) → $' + sBase.toFixed(2));
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + sRPrice.toFixed(2) + '</span>';
                     }
                 },
                 {

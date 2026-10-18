@@ -88,6 +88,36 @@ class NewTemuoneSuggestedPriceStoreTest extends TestCase
         $this->assertSame(1, $store->pendingWriteCount());
     }
 
+    public function test_s_r_prc_is_sprice_times_088(): void
+    {
+        $this->assertSame(0.0, TemuShopifySalesService::newTemuoneSRPrice(0.0));
+        $this->assertEqualsWithDelta(88.0, TemuShopifySalesService::newTemuoneSRPrice(100.0), 0.001);
+        $this->assertEqualsWithDelta(19.09, TemuShopifySalesService::newTemuoneSRPrice(21.69), 0.001);
+    }
+
+    public function test_s_base_prc_is_s_r_and_drops_299_under_30(): void
+    {
+        // S R 88.00 (>= $30): S Base = S R.
+        $this->assertEqualsWithDelta(88.0, TemuShopifySalesService::newTemuoneSBasePrice(100.0), 0.001);
+        // S R 19.09 (< $30): S Base = S R - 2.99.
+        $this->assertEqualsWithDelta(16.10, TemuShopifySalesService::newTemuoneSBasePrice(21.69), 0.001);
+        // Boundary: S R exactly $30.00 keeps S R, just under drops $2.99.
+        $this->assertEqualsWithDelta(30.0, TemuShopifySalesService::newTemuoneSBasePrice(30.0 / 0.88), 0.011);
+        $this->assertEqualsWithDelta(26.99, TemuShopifySalesService::newTemuoneSBasePrice(29.99 / 0.88), 0.011);
+        // S R at or below $2.99 would give no base.
+        $this->assertSame(0.0, TemuShopifySalesService::newTemuoneSBasePrice(3.0));
+    }
+
+    public function test_lmp_as_sprice_follows_the_same_rule(): void
+    {
+        $lmp = 45.50;
+        $this->assertEqualsWithDelta(40.04, TemuShopifySalesService::newTemuoneSRPrice($lmp), 0.001);
+        $this->assertEqualsWithDelta(40.04, TemuShopifySalesService::newTemuoneSBasePrice($lmp), 0.001);
+        $lmpLow = 30.0;
+        $this->assertEqualsWithDelta(26.4, TemuShopifySalesService::newTemuoneSRPrice($lmpLow), 0.001);
+        $this->assertEqualsWithDelta(23.41, TemuShopifySalesService::newTemuoneSBasePrice($lmpLow), 0.001);
+    }
+
     public function test_sprc_dil_auto_push_command_is_registered(): void
     {
         $this->assertArrayHasKey('newtemuone:sprc-dil-auto-push', Artisan::all());

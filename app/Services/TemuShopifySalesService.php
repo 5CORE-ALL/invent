@@ -430,6 +430,57 @@ class TemuShopifySalesService
         return $base > 0 ? round($base, 2) : null;
     }
 
+    /** Temu 1: S Base Prc drops $2.99 when S R Prc is below this. */
+    public const NTO_SBASE_SR_THRESHOLD = 30.0;
+
+    public const NTO_SBASE_DEDUCT = 2.99;
+
+    /**
+     * Temu 1 (/new-temuone) S R Prc = S PRC × 0.88.
+     * When S PRC is the LMP (capped at LMP), pass the LMP and the same rule applies.
+     */
+    public static function newTemuoneSRPrice(float $sprice): float
+    {
+        if (! ($sprice > 0) || ! is_finite($sprice)) {
+            return 0.0;
+        }
+
+        return round($sprice * self::S_RECOVERY_RATE, 2);
+    }
+
+    /**
+     * Temu 1 S Base Prc (the base that is pushed): S R Prc, or S R Prc − $2.99 when S R Prc < $30.
+     */
+    public static function newTemuoneSBasePrice(float $sprice): float
+    {
+        $sR = self::newTemuoneSRPrice($sprice);
+        if (! ($sR > 0)) {
+            return 0.0;
+        }
+        $base = $sR < self::NTO_SBASE_SR_THRESHOLD ? round($sR - self::NTO_SBASE_DEDUCT, 2) : $sR;
+
+        return $base > 0 ? $base : 0.0;
+    }
+
+    /**
+     * Temu 1 SGROI% at S PRC: ((S R Prc × 0.95) − ship − LP) / LP × 100, with S R Prc = S PRC × 0.88.
+     */
+    public static function newTemuoneSgroiAtSprice(float $sprice, float $lp, float $ship): ?float
+    {
+        if (! ($lp > 0) || ! is_finite($lp)) {
+            return null;
+        }
+        $sR = self::newTemuoneSRPrice($sprice);
+        if (! ($sR > 0)) {
+            return null;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+
+        return (($sR * self::DECREASE_TAKEHOME) - $ship - $lp) / $lp * 100;
+    }
+
     /**
      * GROI on Temu R Price (no 0.88):
      *   Profit = (R Price × margin) − LP − ship

@@ -382,7 +382,8 @@ class NewTemuoneController extends Controller
                 $sprcDil = (float) ($suggested['sprc_dil'] ?? 0);
                 $sprice = (float) ($suggested['sprice'] ?? 0);
                 $sBasePrice = (float) ($suggested['s_base'] ?? 0);
-                $sRPrice = TemuShopifySalesService::computeRPrice($sBasePrice);
+                // S R Prc = S PRC × 0.88 (S PRC may be the LMP when capped). S Base is S R, or S R − $2.99 under $30.
+                $sRPrice = TemuShopifySalesService::newTemuoneSRPrice($sprice);
                 $spriceCap = [
                     'sprice' => $sprice,
                     'labels' => $suggested['labels'] ?? [],

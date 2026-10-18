@@ -320,7 +320,7 @@ class ChannelPushSpriceDailyEnqueue
                     $full = is_numeric($value['NTO_SPRICE'] ?? null) ? (float) $value['NTO_SPRICE'] : 0.0;
                     $base = is_numeric($value['NTO_S_BASE'] ?? null) ? round((float) $value['NTO_S_BASE'], 2) : 0.0;
                     if (! ($base > 0) && $full > 0) {
-                        $base = round(TemuShopifySalesService::computeBaseFromFullTemuPrice($full), 2);
+                        $base = TemuShopifySalesService::newTemuoneSBasePrice($full);
                     }
                     if ($base > 0) {
                         $bases[$sku] = $base;
