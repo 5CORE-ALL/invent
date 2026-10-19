@@ -2271,7 +2271,11 @@
             e.stopPropagation();
             const openChart = (typeof showMetricChart === 'function') ? showMetricChart : window.showMetricChart;
             if (typeof openChart === 'function') {
-                openChart($(e.target).data('channel'), $(e.target).data('metric'), null);
+                // Pin the graph's newest point to the number the cell shows.
+                const cellVal = cell.getValue();
+                const liveVal = (cellVal === null || cellVal === undefined || cellVal === '' || !isFinite(Number(cellVal)))
+                    ? null : Number(cellVal);
+                openChart($(e.target).data('channel'), $(e.target).data('metric'), liveVal);
             }
         }
         var METRIC_DIFF_PCT = {

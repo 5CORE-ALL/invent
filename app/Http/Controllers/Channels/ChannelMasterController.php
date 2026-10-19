@@ -18565,8 +18565,9 @@ class ChannelMasterController extends Controller
             if (in_array($metric, $ammBadgeFields, true)
                 || in_array($metric, \App\Support\Marketplace\AmmColumnHistory::FIELDS, true)) {
                 $live = $request->input('badge_value');
-                $liveValue = ($isAll
-                    && in_array($metric, $ammBadgeFields, true)
+                // T Orders / T Views / T CVR cells: the cell value is today's point (per channel too).
+                $isTodayColumn = in_array($metric, ['t_orders', 't_views', 't_cvr'], true);
+                $liveValue = ((($isAll && in_array($metric, $ammBadgeFields, true)) || $isTodayColumn)
                     && $live !== null && $live !== '' && is_numeric($live))
                     ? (float) $live
                     : null;
