@@ -24,6 +24,15 @@ class FetchAmazonOrders extends Command
     /** Default rolling window (Pacific) for --last-days and --auto-sync-within-days */
     private const DEFAULT_RECENT_DAYS = 35;
 
+    /** Replaced once when SP-API says the LWA access token is expired. */
+    private ?string $liveAccessToken = null;
+
+    private bool $amazonAuthRetried = false;
+
+    private bool $amazonAuthBlocked = false;
+
+    private int $failedDaysThisRun = 0;
+
     /**
      * LastUpdated lookback for the incremental pass. Cron already re-fetches the
      * last 3 Pacific days by CreatedAfter; this only needs recent *changes*
@@ -118,7 +127,7 @@ class FetchAmazonOrders extends Command
             $this->info('✅ Access Token obtained successfully');
             $this->refreshOrdersUpdatedSince($accessToken);
             $this->queueShopifyImportsIfEnabled();
-            return;
+            return $this->exitCodeAfterSync();
         }
 
         // Initialize days tracking
@@ -133,7 +142,7 @@ class FetchAmazonOrders extends Command
             $this->input->setOption('no-incremental-refresh', true);
             $this->closePacificYesterday();
             $this->queueShopifyImportsIfEnabled();
-            return;
+            return $this->exitCodeAfterSync();
         }
 
         // Re-sync specific date
@@ -143,7 +152,7 @@ class FetchAmazonOrders extends Command
             $date = Carbon::parse($this->option('resync-date'), 'America/Los_Angeles');
             $this->resyncSpecificDate($date);
             $this->queueShopifyImportsIfEnabled();
-            return;
+            return $this->exitCodeAfterSync();
         }
 
         // Re-sync last N days
@@ -151,7 +160,7 @@ class FetchAmazonOrders extends Command
             $days = (int) $this->option('resync-last-days');
             $this->resyncLastDays($days);
             $this->queueShopifyImportsIfEnabled();
-            return;
+            return $this->exitCodeAfterSync();
         }
 
         $accessToken = $this->getAccessToken();
@@ -170,7 +179,7 @@ class FetchAmazonOrders extends Command
         // Auto-sync mode: Process pending/failed days
         if ($this->option('auto-sync')) {
             $this->autoSyncPendingDays($accessToken);
-            return;
+            return $this->exitCodeAfterSync();
         }
 
         // Determine dates to sync
@@ -183,6 +192,9 @@ class FetchAmazonOrders extends Command
 
             foreach ($datesToSync as $date) {
                 $this->syncSingleDay($accessToken, $date);
+                if ($this->amazonAuthBlocked) {
+                    break;
+                }
 
                 if (count($datesToSync) > 1) {
                     sleep(2);
@@ -195,6 +207,8 @@ class FetchAmazonOrders extends Command
         $this->info("\n🎉 All days processed!");
         $this->showSyncStatus();
         $this->queueShopifyImportsIfEnabled();
+
+        return $this->exitCodeAfterSync();
     }
 
     /**
@@ -520,6 +534,10 @@ class FetchAmazonOrders extends Command
 
     private function refreshOrdersUpdatedSince(string $accessToken): void
     {
+        if (is_string($this->liveAccessToken) && $this->liveAccessToken !== '') {
+            $accessToken = $this->liveAccessToken;
+        }
+
         $marketplaceId = config('services.amazon_sp.marketplace_id');
         $delay = (int) ($this->option('delay') ?: 3);
         $maxRetries = (int) ($this->option('max-retries') ?: 3);
@@ -582,6 +600,16 @@ class FetchAmazonOrders extends Command
                     $errorCode = $body['errors'][0]['code'] ?? '';
                     $errorMessage = $body['errors'][0]['message'] ?? $response->body();
 
+                    $tokenFate = $this->recoverExpiredAmazonToken($response, $accessToken);
+                    if ($tokenFate === 'retry') {
+                        continue;
+                    }
+                    if ($tokenFate === 'stop') {
+                        $shouldStop = true;
+                        $abortAll = true;
+                        break;
+                    }
+
                     if ($statusCode === 429 || $errorCode === 'QuotaExceeded') {
                         $this->error('   ⚠️ Incremental: rate limit / quota. Stopping.');
                         Log::error('Amazon incremental orders quota', ['error' => $errorMessage]);
@@ -625,13 +653,19 @@ class FetchAmazonOrders extends Command
             }
         }
 
+        if ($this->amazonAuthBlocked) {
+            $this->error('   Incremental refresh stopped: Amazon rejected the LWA token.');
+
+            return;
+        }
+
         $suffix = $this->option('with-items') ? ", {$grandItems} item rows" : '';
         $this->info("   ✅ Incremental done: +{$grandInserted} new, {$grandUpdated} updated{$suffix}");
     }
 
     private function maybeRunIncrementalOrderRefresh(?string $accessToken): void
     {
-        if (!$accessToken || $this->option('no-incremental-refresh')) {
+        if ($this->amazonAuthBlocked || !$accessToken || $this->option('no-incremental-refresh')) {
             return;
         }
         $this->refreshOrdersUpdatedSince($accessToken);
@@ -704,6 +738,10 @@ class FetchAmazonOrders extends Command
      */
     private function executeDailySync($accessToken, $sync, $date)
     {
+        if (is_string($this->liveAccessToken) && $this->liveAccessToken !== '') {
+            $accessToken = $this->liveAccessToken;
+        }
+
         $marketplaceId = config('services.amazon_sp.marketplace_id');
         $delay = (int) $this->option('delay') ?: 3;
         $maxRetries = (int) $this->option('max-retries') ?: 3;
@@ -766,6 +804,29 @@ class FetchAmazonOrders extends Command
                 $body = $response->json();
                 $errorCode = $body['errors'][0]['code'] ?? '';
                 $errorMessage = $body['errors'][0]['message'] ?? $response->body();
+                $errorDetails = trim((string) ($body['errors'][0]['details'] ?? ''));
+                if ($errorDetails !== '') {
+                    $errorMessage = trim($errorMessage.' '.$errorDetails);
+                }
+
+                $tokenFate = $this->recoverExpiredAmazonToken($response, $accessToken);
+                if ($tokenFate === 'retry') {
+                    continue;
+                }
+                if ($tokenFate === 'stop') {
+                    $sync->update([
+                        'status' => AmazonDailySync::STATUS_FAILED,
+                        'error_message' => 'LWA token rejected: '.$errorMessage,
+                        'orders_fetched' => $totalOrdersFetched,
+                        'pages_fetched' => $totalPagesFetched,
+                        'items_fetched' => $totalItemsFetched,
+                        'last_page_at' => now(),
+                        'retry_count' => $sync->retry_count + 1,
+                    ]);
+                    $this->failedDaysThisRun++;
+                    $shouldStop = true;
+                    break;
+                }
 
                 // Handle quota exceeded or rate limited - STOP SAFELY
                 if ($statusCode === 429 || $errorCode === 'QuotaExceeded') {
@@ -792,6 +853,7 @@ class FetchAmazonOrders extends Command
                     
                     $this->info("   ✅ Progress saved. Run command again to resume.");
                     
+                    $this->failedDaysThisRun++;
                     $shouldStop = true;
                     break; // Exit retry loop
                 }
@@ -815,6 +877,7 @@ class FetchAmazonOrders extends Command
                         'last_page_at' => now(),
                         'retry_count' => $sync->retry_count + 1,
                     ]);
+                    $this->failedDaysThisRun++;
                     $shouldStop = true;
                 }
             }
@@ -895,7 +958,74 @@ class FetchAmazonOrders extends Command
         // If sync is still in progress (didn't complete), it failed
         if ($sync->status === AmazonDailySync::STATUS_IN_PROGRESS) {
             $sync->update(['status' => AmazonDailySync::STATUS_FAILED]);
+            $this->failedDaysThisRun++;
         }
+    }
+
+    /**
+     * SP-API returns 403 "LWA secret token you provided has expired" even for a
+     * token LWA just issued when the client secret/refresh token is dead.
+     * Refresh once; if Amazon still rejects it, stop instead of failing every day.
+     *
+     * @return 'ok'|'retry'|'stop'
+     */
+    private function recoverExpiredAmazonToken($response, string &$accessToken): string
+    {
+        $status = $response->status();
+        $body = $response->json();
+        $code = trim((string) ($body['errors'][0]['code'] ?? ''));
+        $message = trim((string) ($body['errors'][0]['message'] ?? ''));
+        $details = trim((string) ($body['errors'][0]['details'] ?? ''));
+        $combined = $code.' '.$message.' '.$details;
+        $tokenDead = $status === 401 || ($status === 403 && (
+            stripos($combined, 'expired') !== false || stripos($combined, 'LWA') !== false
+        ));
+        if (! $tokenDead) {
+            return 'ok';
+        }
+
+        if (! $this->amazonAuthRetried) {
+            $this->amazonAuthRetried = true;
+            $this->warn('   Amazon rejected the LWA token'.($details !== '' ? " ({$details})" : '').'. Requesting a new access token...');
+            try {
+                $fresh = app(\App\Services\AmazonSpApiService::class)->forceRefreshAccessToken();
+                if (is_string($fresh) && $fresh !== '') {
+                    $accessToken = $fresh;
+                    $this->liveAccessToken = $fresh;
+
+                    return 'retry';
+                }
+            } catch (\Throwable $e) {
+                $this->error('   Could not refresh Amazon token: '.$e->getMessage());
+            }
+        }
+
+        $this->amazonAuthBlocked = true;
+        $this->error('   Amazon SP-API rejected the access token. '.$message.($details !== '' ? ' '.$details : ''));
+        Log::error('Amazon Orders API rejected LWA token', [
+            'status' => $status,
+            'code' => $code,
+            'message' => $message,
+            'details' => $details,
+        ]);
+
+        return 'stop';
+    }
+
+    private function exitCodeAfterSync(): int
+    {
+        if ($this->amazonAuthBlocked) {
+            $this->error('Amazon SP-API is rejecting the LWA access token as expired. Rotate SPAPI_CLIENT_SECRET and SPAPI_REFRESH_TOKEN in Seller Central, update them on the server, then rerun.');
+
+            return self::FAILURE;
+        }
+        if ($this->failedDaysThisRun > 0) {
+            $this->error("Amazon sync finished with {$this->failedDaysThisRun} failed day(s).");
+
+            return self::FAILURE;
+        }
+
+        return self::SUCCESS;
     }
 
     /**
@@ -1088,9 +1218,17 @@ class FetchAmazonOrders extends Command
             $this->info('↻ Closing Pacific yesterday with a full-day API window...');
             $this->resetSyncForFullDayPull($yesterday->toDateString());
             $this->syncSingleDay($accessToken, $yesterday);
+            if ($this->amazonAuthBlocked) {
+                $this->showSyncStatus();
+                return;
+            }
         }
 
         $this->syncSingleDay($accessToken, $today);
+        if ($this->amazonAuthBlocked) {
+            $this->showSyncStatus();
+            return;
+        }
 
         $query = AmazonDailySync::needsSync()->orderBy('sync_date', 'desc');
 
@@ -1117,6 +1255,10 @@ class FetchAmazonOrders extends Command
 
             $date = Carbon::parse($sync->sync_date, 'America/Los_Angeles');
             $this->syncSingleDay($accessToken, $date);
+            if ($this->amazonAuthBlocked) {
+                $this->showSyncStatus();
+                return;
+            }
             sleep(2);
             $sync->refresh();
 

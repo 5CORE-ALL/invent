@@ -115,12 +115,9 @@ class FetchShopifyB2CMetrics extends Command
     private function verifyCredentials()
     {
         $this->info("Testing Shopify API connection...");
-        
+
         try {
-            $response = Http::withHeaders([
-                'X-Shopify-Access-Token' => $this->shopifyAccessToken,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->get(
+            $response = $this->shopifyGetWithRateLimitRetry(
                 "https://{$this->shopifyStoreUrl}/admin/api/2024-10/orders.json",
                 ['limit' => 1, 'status' => 'any']
             );
@@ -128,16 +125,51 @@ class FetchShopifyB2CMetrics extends Command
             if ($response->successful()) {
                 $this->info("✅ Shopify API Connection Successful!");
                 return true;
-            } else {
-                $this->error("❌ Shopify API Connection Failed!");
-                $this->error("Status: " . $response->status());
-                $this->error("Response: " . $response->body());
-                return false;
             }
+
+            $this->error("❌ Shopify API Connection Failed!");
+            $this->error("Status: " . $response->status());
+            $this->error("Response: " . $response->body());
+            return false;
         } catch (\Exception $e) {
             $this->error("Connection test failed: " . $e->getMessage());
             return false;
         }
+    }
+
+    private function shopifyGet(string $url, array $query)
+    {
+        return Http::withHeaders([
+            'X-Shopify-Access-Token' => $this->shopifyAccessToken,
+            'Content-Type' => 'application/json',
+        ])->timeout(120)->get($url, $query);
+    }
+
+    /**
+     * Shopify B2C allows 2 calls/second. A 429 on the credential check used to
+     * abort the whole metrics run even after shopify:sync-orders had succeeded.
+     */
+    private function shopifyGetWithRateLimitRetry(string $url, array $query, int $maxAttempts = 6)
+    {
+        $response = $this->shopifyGet($url, $query);
+        for ($attempt = 1; $attempt < $maxAttempts && $response->status() === 429; $attempt++) {
+            $wait = $this->shopifyRetryWaitSeconds($response, $attempt);
+            $this->warn("Shopify rate limit (429). Waiting {$wait}s (attempt {$attempt}/{$maxAttempts})...");
+            sleep($wait);
+            $response = $this->shopifyGet($url, $query);
+        }
+
+        return $response;
+    }
+
+    private function shopifyRetryWaitSeconds($response, int $attempt): int
+    {
+        $retryAfter = (int) $response->header('Retry-After');
+        if ($retryAfter > 0) {
+            return min($retryAfter, 30);
+        }
+
+        return min(2 * $attempt, 20);
     }
 
     private function fetchOrders($fromDate, $toDate)
@@ -166,10 +198,7 @@ class FetchShopifyB2CMetrics extends Command
             }
 
             try {
-                $response = Http::withHeaders([
-                    'X-Shopify-Access-Token' => $this->shopifyAccessToken,
-                    'Content-Type' => 'application/json',
-                ])->timeout(120)->retry(3, 1000)->get(
+                $response = $this->shopifyGetWithRateLimitRetry(
                     "https://{$this->shopifyStoreUrl}/admin/api/2024-10/orders.json",
                     $queryParams
                 );
