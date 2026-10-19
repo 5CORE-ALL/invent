@@ -10,6 +10,8 @@ use App\Support\EbayBidPercentage;
 use App\Support\EbayCampaignAdLiveBid;
 use App\Support\EbayMarketingPushRetry;
 use App\Support\EbayStdNpftLookup;
+use App\Support\Marketplace\EbayCampaignEndedListingRemap;
+use App\Support\Marketplace\EbayListingEnded;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -29,6 +31,9 @@ class DilVsSbidApplyService
     /** @var callable(int): void|null */
     public $sleeper = null;
 
+    /** @var class-string|null Metrics model of the account being pushed (for relist lookups). */
+    private ?string $metricClass = null;
+
     /**
      * @param  class-string  $metricClass
      * @param  class-string  $apiServiceClass
@@ -42,6 +47,7 @@ class DilVsSbidApplyService
             return ['success' => 0, 'failed' => 0, 'skipped' => 0, 'results' => [], 'error' => 'No listings to apply'];
         }
 
+        $this->metricClass = $metricClass;
         $stored = DilVsSbidRule::load($ruleKey);
         $useDil = ! empty($stored['enabled']);
         $slabs = $stored['slabs'];
@@ -133,6 +139,7 @@ class DilVsSbidApplyService
                     'listingId' => $lid,
                     'adId' => $ad->ad_id ? (string) $ad->ad_id : null,
                     'bidPercentage' => $wanted['formatted'],
+                    'sku' => trim((string) (($ad->sku ?? '') !== '' ? $ad->sku : ($rolled['metric']->sku ?? ''))),
                 ];
             }
         }
@@ -493,7 +500,17 @@ class DilVsSbidApplyService
                     $this->resumeAds($http, $adsTable, $campaignId, $needPush);
                 }
                 $sent = $this->sendBids($http, $adsTable, $campaignId, $needPush);
+                $byId = [];
+                foreach ($needPush as $np) {
+                    $byId[(string) $np['listingId']] = $np;
+                }
                 foreach ($sent['failed'] as $fail) {
+                    $req = $byId[(string) $fail['listingId']] ?? null;
+                    if ($req !== null
+                        && EbayCampaignEndedListingRemap::isEndedListingError((string) $fail['reason'])
+                        && $this->recoverInvalidListing($http, $adsTable, $campaignId, $req, (string) $fail['reason'], $results, $success)) {
+                        continue;
+                    }
                     $results[] = ['listing_id' => $fail['listingId'], 'status' => 'failed', 'reason' => $fail['reason']];
                     $failed++;
                 }
@@ -524,6 +541,9 @@ class DilVsSbidApplyService
                 }
                 if ($got !== null) {
                     $this->storeLiveBid($adsTable, $campaignId, $r, (float) $got);
+                } elseif ($this->listingIsDead((string) $r['listingId'])
+                    && $this->recoverInvalidListing($http, $adsTable, $campaignId, $r, 'Ad not found on ended listing', $results, $success)) {
+                    continue;
                 }
                 $liveText = $got !== null ? number_format((float) $got, 1, '.', '').'%' : 'empty';
                 $results[] = [
@@ -706,9 +726,11 @@ class DilVsSbidApplyService
             }
         }
 
+        // One invalid / ended listing can reject the whole batch; split until it is isolated.
         $bidRejected = $max !== null
             || str_contains(strtolower($reason), 'bidpercentage')
-            || str_contains(strtolower($reason), 'bid percentage');
+            || str_contains(strtolower($reason), 'bid percentage')
+            || EbayCampaignEndedListingRemap::isEndedListingError($reason);
         if ($bidRejected && count($requests) > 1 && $depth < 6) {
             $mid = intdiv(count($requests), 2);
             $left = $this->sendBids($http, $adsTable, $campaignId, array_slice($requests, 0, $mid), $depth + 1);
@@ -726,6 +748,151 @@ class DilVsSbidApplyService
         }
 
         return ['accepted' => [], 'failed' => $failed];
+    }
+
+    /** Local metrics say this item_id is ended (or unknown), so an empty live pull means the listing is gone. */
+    private function listingIsDead(string $listingId): bool
+    {
+        if ($this->metricClass === null) {
+            return false;
+        }
+        $statuses = $this->metricClass::where('item_id', $listingId)->pluck('listing_status');
+        if ($statuses->isEmpty()) {
+            return true;
+        }
+        foreach ($statuses as $status) {
+            if (! EbayListingEnded::isEnded($status)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The listing id on the ad is invalid / ended. Pull the SKU's current live
+     * listing id, move the ad row to it, and put it in the same campaign with
+     * the wanted bid (or just update the bid when it is already advertised).
+     *
+     * @param  array{listingId:string,adId:?string,bidPercentage:string,sku?:string}  $r
+     * @param  array<int, array<string, mixed>>  $results
+     * @return bool true when the SKU ended up pushed on the new listing id
+     */
+    private function recoverInvalidListing(EbayMarketingPushRetry $http, string $adsTable, string $campaignId, array $r, string $reason, array &$results, int &$success): bool
+    {
+        $oldId = (string) $r['listingId'];
+        $sku = trim((string) ($r['sku'] ?? ''));
+        if ($sku === '' || $this->metricClass === null) {
+            return false;
+        }
+
+        try {
+            $live = EbayCampaignEndedListingRemap::resolveLiveListing($sku, $oldId, $http->token(), $this->metricClass);
+            $newId = trim((string) ($live['listing_id'] ?? ''));
+            if ($newId === '' || $newId === $oldId) {
+                return false;
+            }
+            $newSku = trim((string) ($live['sku'] ?? '')) !== '' ? trim((string) $live['sku']) : $sku;
+
+            $newId = EbayCampaignEndedListingRemap::remapAdsRow($adsTable, $oldId, $newId, $newSku);
+            // A listing can have several rows (unique per listing + campaign on ebay2/3);
+            // prefer the one already live in a campaign, else the fresh remapped row.
+            $rows = DB::table($adsTable)->where('listing_id', $newId)->get();
+            $row = $rows->first(fn ($x) => trim((string) ($x->campaign_id ?? '')) !== ''
+                    && in_array(strtoupper(trim((string) ($x->campaign_status ?? ''))), ['RUNNING', 'PAUSED', 'SYSTEM_PAUSED'], true))
+                ?? $rows->first();
+            $rowCampaign = trim((string) ($row->campaign_id ?? ''));
+            $rowStatus = strtoupper(trim((string) ($row->campaign_status ?? '')));
+            $targetCampaign = ($rowCampaign !== '' && in_array($rowStatus, ['RUNNING', 'PAUSED', 'SYSTEM_PAUSED'], true))
+                ? $rowCampaign
+                : $campaignId;
+            $bid = (string) $r['bidPercentage'];
+
+            $adId = $row->ad_id ?? null;
+            if ($targetCampaign === $rowCampaign && $adId) {
+                $sent = $this->sendBids($http, $adsTable, $targetCampaign, [[
+                    'listingId' => $newId,
+                    'adId' => (string) $adId,
+                    'bidPercentage' => $bid,
+                    'sku' => $newSku,
+                ]]);
+                if ($sent['accepted'] === []) {
+                    Log::warning('Dil vs SBid relist bid update failed', ['old' => $oldId, 'new' => $newId, 'reason' => $sent['failed'][0]['reason'] ?? '']);
+
+                    return false;
+                }
+            } else {
+                $created = $http->post("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$targetCampaign}/ad", [
+                    'listingId' => $newId,
+                    'bidPercentage' => $bid,
+                ]);
+                $createdBody = $created['response']?->json();
+                $err = is_array($createdBody) ? (string) ($createdBody['errors'][0]['message'] ?? '') : '';
+                if (! $created['ok']) {
+                    if (stripos($err, 'already exists') === false) {
+                        Log::warning('Dil vs SBid relist ad create failed', ['old' => $oldId, 'new' => $newId, 'reason' => $created['error'] ?? $err]);
+
+                        return false;
+                    }
+                    $sent = $this->sendBids($http, $adsTable, $targetCampaign, [[
+                        'listingId' => $newId,
+                        'adId' => null,
+                        'bidPercentage' => $bid,
+                        'sku' => $newSku,
+                    ]]);
+                    if ($sent['accepted'] === []) {
+                        return false;
+                    }
+                } else {
+                    $adId = is_array($createdBody) ? ($createdBody['adId'] ?? null) : null;
+                    if (! $adId) {
+                        $location = (string) ($created['response']?->header('Location') ?? '');
+                        $adId = $location !== '' ? basename(parse_url($location, PHP_URL_PATH) ?: $location) : null;
+                    }
+                }
+            }
+
+            $update = [
+                'campaign_id' => $targetCampaign,
+                'funding_strategy' => 'COST_PER_SALE',
+                'campaign_status' => 'RUNNING',
+                'bid_percentage' => round((float) $bid, 1),
+                'promote_with_ad' => 'AD_ALREADY_CREATED',
+                'updated_at' => now(),
+            ];
+            if ($adId) {
+                $update['ad_id'] = (string) $adId;
+            }
+            // Drop the blank remapped row when this listing + campaign already has its own row
+            // (unique key), then write onto the campaign row or the blank one.
+            $hasCampaignRow = DB::table($adsTable)->where('listing_id', $newId)->where('campaign_id', $targetCampaign)->exists();
+            $blank = fn () => DB::table($adsTable)->where('listing_id', $newId)
+                ->where(fn ($q) => $q->whereNull('campaign_id')->orWhere('campaign_id', ''));
+            if ($hasCampaignRow) {
+                $blank()->delete();
+                DB::table($adsTable)->where('listing_id', $newId)->where('campaign_id', $targetCampaign)->update($update);
+            } elseif ($blank()->update($update) === 0) {
+                DB::table($adsTable)->insert($update + [
+                    'listing_id' => $newId,
+                    'sku' => $newSku,
+                    'created_at' => now(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Dil vs SBid relist recovery failed', ['old' => $oldId, 'sku' => $sku, 'error' => $e->getMessage()]);
+
+            return false;
+        }
+
+        $results[] = [
+            'listing_id' => $newId,
+            'status' => 'pushed',
+            'bid' => number_format((float) $bid, 1, '.', '').'%',
+            'reason' => 'Listing '.$oldId.' invalid ('.$reason.'); pulled new listing id '.$newId,
+        ];
+        $success++;
+
+        return true;
     }
 
     private function storeLiveBid(string $adsTable, string $campaignId, array $r, float $live): void
