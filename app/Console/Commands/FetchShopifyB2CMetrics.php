@@ -85,7 +85,10 @@ class FetchShopifyB2CMetrics extends Command
 
             // Fetch orders from Shopify API
             $this->info('Step 1/3: Fetching orders from Shopify API...');
-            $this->fetchOrders($fromDate, $toDate);
+            if (! $this->fetchOrders($fromDate, $toDate)) {
+                $this->error('Shopify B2C fetch stopped before the last page.');
+                return 1;
+            }
 
             // Update period labels (L30/L60)
             $this->info('Step 2/3: Updating period labels...');
@@ -149,7 +152,7 @@ class FetchShopifyB2CMetrics extends Command
      * Shopify B2C allows 2 calls/second. A 429 on the credential check used to
      * abort the whole metrics run even after shopify:sync-orders had succeeded.
      */
-    private function shopifyGetWithRateLimitRetry(string $url, array $query, int $maxAttempts = 6)
+    private function shopifyGetWithRateLimitRetry(string $url, array $query, int $maxAttempts = 8)
     {
         $response = $this->shopifyGet($url, $query);
         for ($attempt = 1; $attempt < $maxAttempts && $response->status() === 429; $attempt++) {
@@ -165,11 +168,9 @@ class FetchShopifyB2CMetrics extends Command
     private function shopifyRetryWaitSeconds($response, int $attempt): int
     {
         $retryAfter = (int) $response->header('Retry-After');
-        if ($retryAfter > 0) {
-            return min($retryAfter, 30);
-        }
+        $backoff = min(2 ** $attempt, 20);
 
-        return min(2 * $attempt, 20);
+        return min(30, max($retryAfter, $backoff));
     }
 
     private function fetchOrders($fromDate, $toDate)
@@ -182,6 +183,7 @@ class FetchShopifyB2CMetrics extends Command
         $pageInfo = null;
         $hasMore = true;
         $pageCount = 0;
+        $completed = true;
 
         while ($hasMore) {
             $pageCount++;
@@ -210,6 +212,7 @@ class FetchShopifyB2CMetrics extends Command
                         'status' => $response->status(),
                         'body' => $response->body()
                     ]);
+                    $completed = false;
                     break;
                 }
 
@@ -228,7 +231,7 @@ class FetchShopifyB2CMetrics extends Command
                 $hasMore = (bool) $pageInfo;
 
                 if ($hasMore) {
-                    usleep(600000); // 0.6 second delay to respect rate limits (2 calls/sec max)
+                    usleep(1100000);
                 }
 
             } catch (\Exception $e) {
@@ -243,6 +246,7 @@ class FetchShopifyB2CMetrics extends Command
                     'page' => $pageCount,
                     'error' => $e->getMessage()
                 ]);
+                $completed = false;
                 break;
             }
         }
@@ -250,6 +254,8 @@ class FetchShopifyB2CMetrics extends Command
         $this->info("✅ Fetched {$this->totalFetched} orders across {$pageCount} pages");
         $this->info("   Shopify B2C: Inserted: {$this->totalInserted} | Updated: {$this->totalUpdated}");
         $this->info("   Marketplace Orders Skipped: {$this->totalSkipped} (TikTok, Amazon, eBay, etc.)");
+
+        return $completed;
     }
 
     private function processOrder($order)
