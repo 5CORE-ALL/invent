@@ -258,11 +258,15 @@ class AmmColumnHistory
             ];
 
             if ($ratio > 0 && $views > 0) {
-                $cvr = self::listingCvr($key, $row, $views);
-                if ($cvr !== null) {
-                    $data['t_cvr'] = round($cvr, 4);
-                    $totViews += $views * $ratio;
-                    $totUnits += $views * $ratio * $cvr / 100;
+                $tViews = $views * $ratio;
+                // Today CVR = T Orders ÷ T Views; fall back to listing CVR when the channel has no orders.
+                $tUnits = $l30Orders > 0
+                    ? $l30Orders * $ratio
+                    : (($cvr = self::listingCvr($key, $row, $views)) !== null ? $tViews * $cvr / 100 : null);
+                if ($tUnits !== null) {
+                    $data['t_cvr'] = round(($tUnits / $tViews) * 100, 4);
+                    $totViews += $tViews;
+                    $totUnits += $tUnits;
                 }
             }
 

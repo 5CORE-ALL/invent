@@ -1595,10 +1595,10 @@
                         hozAlign: 'center',
                         headerHozAlign: 'center',
                         minWidth: 56,
-                        headerTooltip: 'Std Prc − Avg LMP (negative when Avg LMP is higher than Std Prc)',
+                        headerTooltip: '(Std Prc − Avg LMP) / Std Prc × 100 (negative when Avg LMP is higher than Std Prc)',
                         sorter: function (a, b, aRow, bRow) {
-                            const av = lmpPriceDiff(aRow.getData());
-                            const bv = lmpPriceDiff(bRow.getData());
+                            const av = lmpPriceDiffPct(aRow.getData());
+                            const bv = lmpPriceDiffPct(bRow.getData());
                             if (av == null && bv == null) return 0;
                             if (av == null) return -1;
                             if (bv == null) return 1;
@@ -1610,11 +1610,11 @@
                                 el.classList.remove('lmp-diff-magenta', 'lmp-diff-red', 'lmp-diff-green', 'lmp-diff-yellow');
                             }
                             const rowData = cell.getRow().getData();
-                            const diff = lmpPriceDiff(rowData);
-                            const cls = lmpPriceDiffClass(lmpPriceDiffPct(rowData));
+                            const pct = lmpPriceDiffPct(rowData);
+                            const cls = lmpPriceDiffClass(pct);
                             if (el && cls) el.classList.add(cls);
-                            if (diff == null) return '<span class="text-muted">—</span>';
-                            return (diff < 0 ? '-$' : '$') + Math.abs(diff).toFixed(2);
+                            if (pct == null) return '<span class="text-muted">—</span>';
+                            return Math.round(pct) + '%';
                         },
                     },
                     {

@@ -2225,8 +2225,12 @@
             const ratio = sales / l30;
             const views = parseNumber(row['Total Views'] || 0) * ratio;
             const key = snapshotChannelKey(row['Channel '] || '');
+            const l30Orders = parseNumber(row['L30 Orders'] || 0);
             let units;
-            if (key === 'amazon' || key === 'reverb') {
+            if (l30Orders > 0) {
+                // Today CVR = T Orders ÷ T Views (the two Today columns next to it).
+                units = l30Orders * ratio;
+            } else if (key === 'amazon' || key === 'reverb') {
                 units = (parseNumber(row['Qty'] || 0) || parseNumber(row['L30 Orders'] || 0)) * ratio;
             } else if (row['CVR'] !== undefined && row['CVR'] !== null && row['CVR'] !== '') {
                 units = (parseNumber(row['CVR']) / 100) * views;
@@ -2238,7 +2242,7 @@
         function tCvrFromRow(row) {
             if (parseNumber(row['Today Sales'] || 0) <= 0) return null;
             const parts = tCvrPartsFromRow(row);
-            if (parts.views <= 0) return listingCvrFromRow(row);
+            if (parts.views <= 0) return null;
             return (parts.units / parts.views) * 100;
         }
         function formatCvrCell(value, color) {
@@ -3801,7 +3805,7 @@
                     {
                         title: "T CVR",
                         field: "T CVR",
-                        headerTooltip: "T CVR uses the same listing CVR as the CVR column, weighted by Today Sales ÷ L30 Sales. Blank when Today Sales is 0.",
+                        headerTooltip: "Today CVR% = T Orders ÷ T Views × 100. Blank when Today Sales is 0.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
