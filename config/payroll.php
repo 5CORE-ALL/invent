@@ -68,6 +68,16 @@ return [
     ],
 
     /*
+    | Software-logger cutover (YYYY-MM-DD). Employees who already have TeamLogger hours
+    | saved for a month keep those hours as-is (frozen, TeamLogger API is no longer
+    | called for that month). Hours our own software logged from this date onward are
+    | ADDED on top. If the software has no hours from this date, the TeamLogger hours
+    | stay unchanged. Employees with no TeamLogger hours keep using the software logger
+    | for the whole month. Set to null/empty to switch the cutover off.
+    */
+    'software_logger_from' => env('PAYROLL_SOFTWARE_LOGGER_FROM', '2026-10-18'),
+
+    /*
     | Standard hours divisor for pro-rata salary (matches Team Management export).
     */
     'hours_divisor' => 200,

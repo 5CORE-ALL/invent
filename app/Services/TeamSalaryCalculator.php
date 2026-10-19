@@ -33,10 +33,47 @@ class TeamSalaryCalculator
         return $mapping[$key] ?? $key;
     }
 
+    /** Cutover date (Y-m-d) from which our own software logger adds hours, or null when off. */
+    public function softwareLoggerFrom(): ?string
+    {
+        $from = config('payroll.software_logger_from');
+        if (! is_string($from) || trim($from) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($from)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * True when the payroll month (e.g. "October 2026") ends on/after the software cutover.
+     * For those months the saved TeamLogger hours are frozen: the TeamLogger API is not called.
+     */
+    public function monthIsFrozenForTeamLogger(string $monthLabel): bool
+    {
+        $from = $this->softwareLoggerFrom();
+        if ($from === null) {
+            return false;
+        }
+
+        try {
+            $monthEnd = Carbon::parse('first day of '.$monthLabel)->endOfMonth()->toDateString();
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $monthEnd >= $from;
+    }
+
     public function teamLoggerDataForMonth(string $monthLabel, bool $useCache = true, bool $preferApi = false): array
     {
-        $service = new TeamLoggerService();
-        $data = $service->fetchByMonth($monthLabel, $useCache);
+        // Frozen month: use only the saved TeamLogger hours, never the API.
+        $data = $this->monthIsFrozenForTeamLogger($monthLabel)
+            ? []
+            : (new TeamLoggerService())->fetchByMonth($monthLabel, $useCache);
 
         foreach (TeamLoggerHours::where('month', $monthLabel)->get() as $record) {
             $email = strtolower($record->employee_email);

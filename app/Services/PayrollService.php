@@ -237,7 +237,7 @@ class PayrollService
 
         [$start, $end] = $range;
         $userIds = $users->pluck('id')->map(fn ($id) => (int) $id)->all();
-        $attendance = $this->builtLoggerHoursForRange($userIds, $start, $end, sessionsStartedInRange: true);
+        $attendance = $this->attendanceHoursForMonth($month, $userIds);
 
         $hours = [];
         foreach ($users as $user) {
@@ -246,6 +246,7 @@ class PayrollService
             $worked = (float) ($built['hours'] ?? 0);
 
             $hours[$userId] = [
+                'cutover_hours' => array_key_exists('cutover_hours', $built) ? (float) $built['cutover_hours'] : null,
                 'hours' => $worked,
                 'days' => (int) ($built['days'] ?? 0),
                 'team_hours' => 0.0,
@@ -298,8 +299,13 @@ class PayrollService
                 $attendanceHours = (float) ($hours[$userId]['hours'] ?? 0);
                 $hours[$userId]['team_hours'] = $teamMonthHours;
                 $hours[$userId]['second_hours'] = $attendanceHours;
-                // Same days can exist in both loggers. Pay the larger source, not the sum.
-                $hours[$userId]['final_hours'] = max($teamMonthHours, $attendanceHours);
+                // Cutover month: frozen TeamLogger + software hours from the cutover date.
+                // Otherwise the same days can exist in both loggers: pay the larger, not the sum.
+                $hours[$userId]['final_hours'] = $this->combineHoursValues(
+                    $teamMonthHours,
+                    $attendanceHours,
+                    $hours[$userId]['cutover_hours'] ?? null
+                );
                 $hours[$userId]['has_data'] = ! empty($hours[$userId]['has_data']) || $hasTeam;
             }
         }
@@ -1103,7 +1109,8 @@ class PayrollService
             ? ($attendanceUsers + count($teamLogger))
             : count($teamLogger);
 
-        if ($freshFromApi && $teamLogger !== []) {
+        // Frozen (cutover) months keep the saved TeamLogger snapshot untouched.
+        if ($freshFromApi && $teamLogger !== [] && ! $this->teamSalary->monthIsFrozenForTeamLogger($month->month_label)) {
             $this->persistTeamLoggerHours($month->month_label, $teamLogger);
         }
 
@@ -1131,7 +1138,10 @@ class PayrollService
                 }
                 $attendanceHours = $hasAttendance ? (float) $attendanceEntry['hours'] : 0.0;
                 $teamHours = $hasTeam ? $this->liveHoursForUser($row->user, $teamLogger) : 0.0;
-                $hours = max($teamHours, $attendanceHours);
+                $cutoverHours = ($attendanceEntry && array_key_exists('cutover_hours', $attendanceEntry))
+                    ? (float) $attendanceEntry['cutover_hours']
+                    : null;
+                $hours = $this->combineHoursValues($teamHours, $attendanceHours, $cutoverHours);
             } elseif (! $hasTeam) {
                 $stats['skipped_no_data']++;
                 continue;
@@ -1178,7 +1188,54 @@ class PayrollService
             return [];
         }
 
-        return $this->builtLoggerHoursForRange($userIds, $range[0], $range[1], sessionsStartedInRange: true);
+        $full = $this->builtLoggerHoursForRange($userIds, $range[0], $range[1], sessionsStartedInRange: true);
+
+        $cutoverStart = $this->softwareCutoverStart($month);
+        if ($cutoverStart === null) {
+            return $full;
+        }
+
+        // Hours our software logged from the cutover date onward. These are ADDED to the
+        // frozen TeamLogger hours; they stay separate from the full-month figure above.
+        $after = $this->builtLoggerHoursForRange($userIds, $cutoverStart, $range[1], sessionsStartedInRange: true);
+        foreach ($full as $userId => $entry) {
+            $afterHours = (float) ($after[$userId]['hours'] ?? 0);
+            $full[$userId]['cutover_hours'] = $afterHours > 0 ? $afterHours : 0.0;
+        }
+
+        return $full;
+    }
+
+    /**
+     * First day of the month window in which software hours are added to TeamLogger hours
+     * (the later of the cutover date and the month start), or null when this month is not
+     * affected by the software cutover.
+     */
+    public function softwareCutoverStart(PayrollMonth $month): ?string
+    {
+        $from = $this->teamSalary->softwareLoggerFrom();
+        $range = $this->monthPeriodRange($month);
+        if ($from === null || ! $range || $from > $range[1]) {
+            return null;
+        }
+
+        return max($from, $range[0]);
+    }
+
+    /**
+     * Final sheet hours for one user.
+     *
+     * - Cutover month and the user has frozen TeamLogger hours: TeamLogger + software hours
+     *   logged from the cutover date. No software hours from that date => TeamLogger as-is.
+     * - Otherwise: the larger of TeamLogger and full-month software hours (previous rule).
+     */
+    protected function combineHoursValues(float $teamHours, float $attendanceFullHours, ?float $cutoverHours): float
+    {
+        if ($cutoverHours !== null && $teamHours > 0) {
+            return $teamHours + $cutoverHours;
+        }
+
+        return max($teamHours, $attendanceFullHours);
     }
 
     /**
@@ -1207,8 +1264,9 @@ class PayrollService
     {
         $entry = $attendance[(int) $user->id] ?? null;
         $attendanceHours = ($entry && ! empty($entry['has_data'])) ? (float) ($entry['hours'] ?? 0) : 0.0;
+        $cutoverHours = ($entry && array_key_exists('cutover_hours', $entry)) ? (float) $entry['cutover_hours'] : null;
 
-        return max($this->liveHoursForUser($user, $teamLogger), $attendanceHours);
+        return $this->combineHoursValues($this->liveHoursForUser($user, $teamLogger), $attendanceHours, $cutoverHours);
     }
 
     /** @param  array<string, array<string, mixed>>  $teamLogger */
