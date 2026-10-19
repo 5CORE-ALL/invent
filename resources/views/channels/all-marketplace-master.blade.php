@@ -8056,14 +8056,17 @@
                     green: 'background:#dcfce7;color:#14532d;',
                     pink: 'background:#fce7f3;color:#9d174d;'
                 };
-                return '<div style="display:flex;flex-wrap:nowrap;gap:8px;min-width:0;">' + slices.map(function(s) {
+                // Equal-width cells that wrap instead of clipping: label, count, then "$ · %" on its own line(s).
+                return '<div style="display:grid;grid-template-columns:repeat(' + Math.max(1, slices.length) + ',minmax(0,1fr));gap:6px;min-width:0;">' + slices.map(function(s) {
                     const n = Number(s[valueKey]) || 0;
                     const pct = total > 0 ? Math.round((n / total) * 100) : 0;
                     const tone = tones[s.key] || tones.red;
-                    return '<div style="flex:1 1 0;min-width:0;border-radius:8px;padding:8px 10px;' + tone + '">'
-                        + '<div style="font-size:12px;font-weight:800;white-space:nowrap;">' + s.label + '</div>'
-                        + '<div style="font-size:13px;font-weight:700;white-space:nowrap;margin-top:2px;">' + (s.count || 0) + '</div>'
-                        + '<div style="font-size:13px;font-weight:700;white-space:nowrap;">' + ammInvMoneyCompact(n) + ' · ' + pct + '%</div>'
+                    return '<div style="min-width:0;border-radius:8px;padding:6px 8px;line-height:1.25;' + tone + '">'
+                        + '<div style="font-size:11px;font-weight:800;overflow-wrap:anywhere;">' + s.label + '</div>'
+                        + '<div style="font-size:13px;font-weight:700;margin-top:2px;">' + (s.count || 0) + '</div>'
+                        + '<div style="font-size:12px;font-weight:700;display:flex;flex-wrap:wrap;column-gap:4px;">'
+                        + '<span style="white-space:nowrap;">' + ammInvMoneyCompact(n) + '</span>'
+                        + '<span style="white-space:nowrap;opacity:.8;">' + pct + '%</span></div>'
                         + '</div>';
                 }).join('') + '</div>';
             }
