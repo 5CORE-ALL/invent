@@ -19789,12 +19789,29 @@ class ChannelMasterController extends Controller
                 if ($channel === '') {
                     continue;
                 }
-                $series[$channel][(string) $row->field][] = (float) $row->value;
+                $ymd = $row->snapshot_date instanceof \DateTimeInterface
+                    ? $row->snapshot_date->format('Y-m-d')
+                    : substr((string) $row->snapshot_date, 0, 10);
+                $series[$channel][(string) $row->field][] = [$ymd, (float) $row->value];
             }
 
+            $today = now(\App\Models\BadgeDataHistory::TZ)->toDateString();
             foreach ($series as $channel => $fields) {
-                foreach ($fields as $field => $values) {
+                foreach ($fields as $field => $points) {
+                    $values = array_column($points, 1);
                     $n = count($values);
+                    if (in_array($field, ['t_orders', 't_views', 't_cvr'], true)) {
+                        // Graph = saved earlier days + today's live cell value, so the dot's
+                        // baseline is the last day before today (the page supplies today's value).
+                        $before = array_values(array_filter($points, static fn ($p) => $p[0] < $today));
+                        if ($before === []) {
+                            continue;
+                        }
+                        $prev = $before[count($before) - 1][1];
+                        $last = $points[$n - 1][0] === $today ? $points[$n - 1][1] : $prev;
+                        $filtered[$channel][$field] = [$prev, $last];
+                        continue;
+                    }
                     if ($n < 2) {
                         continue;
                     }
@@ -19812,7 +19829,8 @@ class ChannelMasterController extends Controller
         // v11: All badges keep the blended pair; eBay 3 included from calculated_data.
         // v14: Amazon / Temu 2 last point follows the table cell, not live orders.
         // v15: Temu 2 L30 Sales dot = last two live rolling points (same as the graph).
-        return 'amm_dot_trends_v15_w'.$window;
+        // v16: T Orders / Views / CVR dots use the last day before today as baseline.
+        return 'amm_dot_trends_v16_w'.$window;
     }
 
     /**

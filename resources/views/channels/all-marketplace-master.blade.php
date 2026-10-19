@@ -2703,6 +2703,7 @@
                         delete dotFallbackKeys[norm + '_' + metric];
                     });
                 });
+                applyTodayLiveDots();
             }
             // Y / T column dots with fewer than two saved history days have no "previous day"
             // pair, so they stayed gray. Until history exists, compare against the channel's
@@ -2720,8 +2721,31 @@
                 lastDotColorByKey[k] = colorFromDotPair(baseline, current, metric);
                 dotFallbackKeys[k] = true;
             }
+            // The graph's newest point is the live cell value (today) vs the last saved earlier day,
+            // so the dot pair must use the live cell value too or dot and graph disagree.
+            function applyTodayLiveDots() {
+                if (typeof table === 'undefined' || !table || typeof table.getData !== 'function') return;
+                var rows = table.getData() || [];
+                rows.forEach(function(row) {
+                    var key = snapshotChannelKey(row['Channel '] || '');
+                    if (!key) return;
+                    var live = { t_cvr: row['T CVR'], t_orders: row['T Orders'], t_views: row['T Views'] };
+                    Object.keys(live).forEach(function(metric) {
+                        var v = live[metric];
+                        if (v === null || v === undefined || v === '' || !isFinite(Number(v))) return;
+                        var k = key + '_' + metric;
+                        var pair = lastDotPairByKey[k];
+                        if (!pair || pair[0] == null || isNaN(pair[0]) || dotFallbackKeys[k]) return;
+                        var cur = Math.round(Number(v) * 100) / 100;
+                        var base = Math.round(Number(pair[0]) * 100) / 100;
+                        lastDotPairByKey[k] = [base, cur];
+                        lastDotColorByKey[k] = colorFromDotPair(base, cur, metric);
+                    });
+                });
+            }
             function applyL30FallbackDots() {
                 if (!table || typeof table.getData !== 'function') return;
+                applyTodayLiveDots();
                 var rows = table.getData() || [];
                 rows.forEach(function(row) {
                     var key = snapshotChannelKey(row['Channel '] || '');
@@ -2798,6 +2822,15 @@
                     var color = getMetricDotColor(ch, metric || 'ad_spend');
                     el.style.color = color;
                     el.style.display = '';
+                    // T CVR number takes the same colour as its dot / graph (today vs previous day).
+                    if (metric === 't_cvr') {
+                        var tcPair = lastDotPairByKey[snapshotChannelKey(ch) + '_t_cvr'];
+                        var tcText = el.previousElementSibling;
+                        if (tcPair && tcPair[0] != null && tcPair[1] != null && !isNaN(tcPair[0]) && !isNaN(tcPair[1])
+                            && tcText && tcText.tagName === 'SPAN') {
+                            tcText.style.color = color;
+                        }
+                    }
 
                     var prev = el.previousElementSibling;
                     if (prev && prev.classList && prev.classList.contains('metric-diff-value')) {
