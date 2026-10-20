@@ -873,7 +873,15 @@
                         if (!item) return false;
                         const row = typeof chPushSpriceFindRowBySku === 'function' ? chPushSpriceFindRowBySku(item.sku) : null;
                         const d = (row && typeof row.getData === 'function') ? (row.getData() || {}) : {};
-                        return !global.chPromoSnroiPushBlocked(d, item.price);
+                        const blocked = global.chPromoSnroiPushBlocked(d, item.price);
+                        if (blocked && row) {
+                            // Row was marked queued before this filter ran; clear it so the spinner doesn't stick.
+                            try {
+                                chPushSafeRowUpdate(row, { PUSH_PRC_STATUS: 'saved', SPRICE_STATUS: 'saved', push_prc: 'saved' });
+                                if (typeof chPushPaintRowColumns === 'function') chPushPaintRowColumns(row);
+                            } catch (e) { /* ignore */ }
+                        }
+                        return !blocked;
                     });
                     const droppedN = beforeN - items.length;
                     if (droppedN > 0 && !opts.silent) {

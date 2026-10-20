@@ -16,6 +16,9 @@ class NegativeSnroiPushGuard
     /** @var array<string, bool> */
     private static array $enabled = [];
 
+    /** @var array<string, int> unix time each switch value was read; re-read after a few seconds so workers see toggles. */
+    private static array $enabledAt = [];
+
     /** @var array<string, float> */
     private static array $margin = [];
 
@@ -31,9 +34,10 @@ class NegativeSnroiPushGuard
         if ($channel === '') {
             return false;
         }
-        if (array_key_exists($channel, self::$enabled)) {
+        if (array_key_exists($channel, self::$enabled) && (time() - (self::$enabledAt[$channel] ?? 0)) < 10) {
             return self::$enabled[$channel];
         }
+        self::$enabledAt[$channel] = time();
         try {
             $row = ChannelTabulatorColumnSetting::query()
                 ->where('channel_name', $channel.'_ignore_neg_snroi')
@@ -51,7 +55,9 @@ class NegativeSnroiPushGuard
 
     public static function remember(string $channel, bool $on): void
     {
-        self::$enabled[strtolower(trim($channel))] = $on;
+        $channel = strtolower(trim($channel));
+        self::$enabled[$channel] = $on;
+        self::$enabledAt[$channel] = time();
     }
 
     public static function percent(float $price, float $margin, float $lp, float $ship, float $adsPct): ?float
