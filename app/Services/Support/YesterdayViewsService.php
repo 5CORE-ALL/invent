@@ -47,6 +47,35 @@ class YesterdayViewsService
      * Raw impressions: the metrics service applies the same ÷1000 scale the page uses.
      */
     /**
+     * Real Reverb one-day views for a Pacific day: the change in each SKU's lifetime listing
+     * page-view counter (reverb_listing_page_views, saved by reverb:fetch on every run)
+     * between the end of the previous day and the end of $ymd. Only SKUs present on both days
+     * count. Returns null when either day is missing or the later scan was partial.
+     */
+    public function reverbPageViewsForDate(string $ymd): ?int
+    {
+        if (! Schema::hasTable('reverb_listing_page_views')) {
+            return null;
+        }
+        $prev = Carbon::parse($ymd, self::TZ)->subDay()->toDateString();
+
+        $cur = DB::table('reverb_listing_page_views')->where('record_date', $ymd)->pluck('page_views', 'sku');
+        $old = DB::table('reverb_listing_page_views')->where('record_date', $prev)->pluck('page_views', 'sku');
+        if ($cur->isEmpty() || $old->isEmpty() || $cur->count() < $old->count() * 0.9) {
+            return null;
+        }
+
+        $sum = 0;
+        foreach ($cur as $sku => $views) {
+            if (isset($old[$sku])) {
+                $sum += max(0, (int) $views - (int) $old[$sku]);
+            }
+        }
+
+        return $sum;
+    }
+
+    /**
      * Reverb daily average for one saved day: that day's reverb_sku_daily_data snapshot
      * (rolling L30 impressions, summed over SKUs) ÷ 30. Half-captured snapshot days (total
      * far below the neighbouring days) return null instead of a wrong number.
@@ -405,7 +434,7 @@ class YesterdayViewsService
         try {
             $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeUnbackedAmazonYViews());
             // Doba has no views source at all: it must not keep invented history points.
-            // (Reverb is excluded: it saves its own daily-average points below.)
+            // (Reverb is excluded: it saves its real daily page-view points below.)
             $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeChannelYViews('doba'));
         } catch (\Throwable $e) {
             Log::warning('Amazon Y views history purge failed: '.$e->getMessage());

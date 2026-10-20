@@ -88,6 +88,7 @@ class FetchReverbData extends Command
             $listingMap[$sku] = $item;
         }
         $this->info('Found ' . count($listingMap) . ' total listings with SKUs.');
+        $this->savePageViewSnapshot($listingMap);
         if ($duplicateSkuCount > 0) {
             $this->warn("Merged {$duplicateSkuCount} duplicate SKU listing(s) (e.g. NBSP vs space); kept live/newest per SKU.");
         }
@@ -173,6 +174,56 @@ class FetchReverbData extends Command
         $endTime = microtime(true);
         $duration = round($endTime - $startTime, 2);
         $this->info("Reverb data stored successfully in {$duration} seconds.");
+    }
+
+    /**
+     * Save each listing's lifetime page views (stats.views) for today (Pacific).
+     * The day-over-day change is the real Reverb Y Views (bump impressions are only a rolling L30).
+     * Runs several times a day; the last run of the Pacific day wins (upsert on sku + date).
+     * Never throws: a snapshot problem must not break the listings/orders sync.
+     *
+     * @param  array<string, array<string, mixed>>  $listingMap
+     */
+    protected function savePageViewSnapshot(array $listingMap): void
+    {
+        try {
+            if (! Schema::hasTable('reverb_listing_page_views') || $listingMap === []) {
+                return;
+            }
+
+            $date = Carbon::now('America/Los_Angeles')->toDateString();
+            $now = now();
+            $rows = [];
+            foreach ($listingMap as $sku => $listing) {
+                if (stripos((string) $sku, 'PARENT') !== false || ! isset($listing['stats']['views'])) {
+                    continue;
+                }
+                $rows[] = [
+                    'sku' => (string) $sku,
+                    'listing_id' => (string) ($listing['id'] ?? ''),
+                    'record_date' => $date,
+                    'page_views' => max(0, (int) $listing['stats']['views']),
+                    'watches' => isset($listing['stats']['watches']) ? max(0, (int) $listing['stats']['watches']) : null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            // A partial listings fetch must not overwrite a fuller snapshot already saved today.
+            $existing = DB::table('reverb_listing_page_views')->where('record_date', $date)->count();
+            if ($rows === [] || ($existing > 0 && count($rows) < $existing * 0.9)) {
+                $this->warn('Page-view snapshot skipped: '.count($rows)." SKUs vs {$existing} already saved for {$date}.");
+
+                return;
+            }
+
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('reverb_listing_page_views')->upsert($chunk, ['sku', 'record_date'], ['listing_id', 'page_views', 'watches', 'updated_at']);
+            }
+            $this->info('Saved '.count($rows)." Reverb page-view counters for {$date}.");
+        } catch (\Throwable $e) {
+            $this->warn('Page-view snapshot failed: '.$e->getMessage());
+        }
     }
 
     /**

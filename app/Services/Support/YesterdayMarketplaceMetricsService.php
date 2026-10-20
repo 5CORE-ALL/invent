@@ -109,16 +109,22 @@ class YesterdayMarketplaceMetricsService
             $m['views'] = $this->viewsForChannel($name, $viewsByChannel);
             $m['views_as_of'] = null;
             $m['views_estimate'] = false;
+            $m['views_unscaled'] = false;
             if ($m['views'] === null && $this->windowDays < 7 && $this->key($name) === 'reverb') {
                 try {
                     $viewsSvcR = app(YesterdayViewsService::class);
-                    $avg = $viewsSvcR->reverbDailyAverageForDate($date) ?? $viewsSvcR->reverbL30DailyAverage();
+                    // Real one-day listing page views (day-over-day change of Reverb's lifetime
+                    // counter) once two daily snapshots exist; until then the L30 average estimate.
+                    $real = $viewsSvcR->reverbPageViewsForDate($date);
+                    $avg = $real ?? ($viewsSvcR->reverbDailyAverageForDate($date) ?? $viewsSvcR->reverbL30DailyAverage());
                 } catch (\Throwable $e) {
+                    $real = null;
                     $avg = null;
                 }
                 if ($avg !== null) {
                     $m['views'] = $avg;
-                    $m['views_estimate'] = true;
+                    $m['views_estimate'] = $real === null;
+                    $m['views_unscaled'] = $real !== null;
                 }
             }
             // Amazon traffic only settles ~3 days after a day ends, so the latest complete
@@ -228,10 +234,12 @@ class YesterdayMarketplaceMetricsService
         if ($views !== null) {
             $m['views'] = $views;
         } elseif ($this->key($channelKey) === 'reverb') {
-            // Reverb: that day's saved L30 snapshot ÷ 30 (a daily average; no real 1-day source).
-            $avg = app(YesterdayViewsService::class)->reverbDailyAverageForDate($date);
-            if ($avg !== null) {
-                $m['views'] = $avg;
+            // Reverb: only the real one-day page views go into history (no averages, which
+            // would mix a different unit into the series).
+            $real = app(YesterdayViewsService::class)->reverbPageViewsForDate($date);
+            if ($real !== null) {
+                $m['views'] = $real;
+                $m['views_unscaled'] = true;
             }
         }
 
@@ -1259,7 +1267,7 @@ class YesterdayMarketplaceMetricsService
         $views = ($views === null || $views === '') ? null : (int) $views;
         // Reverb views are bump impressions; /all-marketplace-master and /reverb-pricing show
         // them ÷ 1000 (and CVR from that scaled number), so Y Views / Y CVR must match.
-        if ($views !== null && $this->key($name) === 'reverb') {
+        if ($views !== null && $this->key($name) === 'reverb' && empty($m['views_unscaled'])) {
             $views = (int) round(\App\Support\ReverbPricingViews::scale($views));
         }
         $viewsAsOf = $m['views_as_of'] ?? null;
