@@ -3594,7 +3594,7 @@
                             let views = 0, qty = 0, l30Units = 0, l30Views = 0;
                             data.forEach(function(row) {
                                 const rec = yCvrByChannel[snapshotChannelKey(row['Channel '] || '')];
-                                if (rec) {
+                                if (rec && !rec.asOf) {
                                     views += rec.views;
                                     qty += rec.qty;
                                 }
@@ -3635,7 +3635,10 @@
                             }
                             const value = Math.round(parseNumber(cell.getValue() || 0));
                             const color = belowL30AvgColor(value, row['Total Views'] || 0);
-                            return `<span style="font-weight:600;color:${color};">${value.toLocaleString('en-US')}</span>${ammHistoryDot(channel, 'y_views')}`;
+                            const asOf = row['Y Views As Of'];
+                            const asOfTitle = asOf ? ` title="Amazon traffic settles ~3 days late. Latest settled day: ${asOf}"` : '';
+                            const asOfMark = asOf ? '<sup style="color:#6c757d;">*</sup>' : '';
+                            return `<span style="font-weight:600;color:${color};"${asOfTitle}>${value.toLocaleString('en-US')}${asOfMark}</span>${ammHistoryDot(channel, 'y_views')}`;
                         },
                         cellClick: ammOpenHistoryDot,
                         bottomCalc: function(values, data) {
@@ -9336,7 +9339,8 @@
                     tRow.update({
                         'Y Orders': orders,
                         'Y CVR': cvrRec ? cvrRec.cvr : null,
-                        'Y Views': cvrRec ? cvrRec.views : null
+                        'Y Views': cvrRec ? cvrRec.views : null,
+                        'Y Views As Of': cvrRec ? cvrRec.asOf : null
                     });
                 });
                 applyL30FallbackDots();
@@ -9358,7 +9362,9 @@
                     if (key) {
                         yOrdersByChannel[key] = orders;
                         // No view source (e.g. Doba) -> keep null so the Y Views cell shows "—", not 0.
-                        yCvrByChannel[key] = { cvr: cvr, views: (row.views == null || row.views === '') ? null : views, qty: qty };
+                        // views_as_of: Amazon shows its newest settled day (traffic settles ~3 days late);
+                        // that day's views are kept out of the Y CVR footer, which divides yesterday's qty.
+                        yCvrByChannel[key] = { cvr: cvr, views: (row.views == null || row.views === '') ? null : views, qty: qty, asOf: row.views_as_of || null };
                     }
                     sum += orders;
                 });

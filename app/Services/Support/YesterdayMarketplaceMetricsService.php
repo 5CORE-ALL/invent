@@ -107,6 +107,17 @@ class YesterdayMarketplaceMetricsService
                 $m = $this->emptyMetrics();
             }
             $m['views'] = $this->viewsForChannel($name, $viewsByChannel);
+            $m['views_as_of'] = null;
+            // Amazon traffic only settles ~3 days after a day ends, so the latest complete
+            // day has no value yet. Show the newest saved settled day instead of "-",
+            // and say which day it is (that value is not saved under this day's history).
+            if ($m['views'] === null && $this->windowDays < 7 && $this->key($name) === 'amazon') {
+                $latest = $this->latestSettledAmazonViews($date);
+                if ($latest !== null) {
+                    $m['views'] = $latest['views'];
+                    $m['views_as_of'] = $latest['date'];
+                }
+            }
             $rows[] = $this->formatRow($name, $m);
         }
 
@@ -1232,7 +1243,9 @@ class YesterdayMarketplaceMetricsService
         if ($views !== null && $this->key($name) === 'reverb') {
             $views = (int) round(\App\Support\ReverbPricingViews::scale($views));
         }
-        $cvr = ($views !== null && $views > 0) ? ($qty / $views) * 100 : null;
+        $viewsAsOf = $m['views_as_of'] ?? null;
+        // Views from an older settled day must not be divided into this day's orders.
+        $cvr = ($views !== null && $views > 0 && $viewsAsOf === null) ? ($qty / $views) * 100 : null;
 
         $gpftBase = $sales > 0 ? $sales : $gpftSales;
         // Sales basis the channel's own Gprofit% divides by on /all-marketplace-master.
@@ -1264,6 +1277,7 @@ class YesterdayMarketplaceMetricsService
             'ads_pct' => $adsPct,
             'acos' => $acos,
             'views' => $views,
+            'views_as_of' => $viewsAsOf,
             'cvr' => $cvr,
             'orders' => (int) ($m['orders'] ?? 0),
             'qty' => $qty,
@@ -1615,6 +1629,35 @@ class YesterdayMarketplaceMetricsService
         $tWeight = $wt * $quantity;
 
         return $tWeight < 20 ? $ship / $quantity : $ship;
+    }
+
+    /**
+     * Newest saved settled Amazon day on or before $ymd (within 10 days).
+     *
+     * @return array{views: int, date: string}|null
+     */
+    private function latestSettledAmazonViews(string $ymd): ?array
+    {
+        if (! Schema::hasTable('channel_yesterday_views')) {
+            return null;
+        }
+        $row = ChannelYesterdayView::query()
+            ->where('channel', 'amazon')
+            ->where('views', '>', 0)
+            ->whereDate('snapshot_date', '<=', $ymd)
+            ->whereDate('snapshot_date', '>=', Carbon::parse($ymd, self::TZ)->subDays(10)->toDateString())
+            ->orderByDesc('snapshot_date')
+            ->first(['snapshot_date', 'views']);
+        if (! $row) {
+            return null;
+        }
+
+        return [
+            'views' => (int) $row->views,
+            'date' => $row->snapshot_date instanceof \DateTimeInterface
+                ? $row->snapshot_date->format('Y-m-d')
+                : substr((string) $row->snapshot_date, 0, 10),
+        ];
     }
 
     private function storedViewsForDate(string $name, string $ymd): ?int

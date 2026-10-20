@@ -342,6 +342,10 @@ class AmmColumnHistory
                 $anyOrders = true;
             }
             $views = $row['views'] ?? null;
+            // Views carried from an older settled day (Amazon) belong to that day's history point.
+            if (! empty($row['views_as_of'])) {
+                $views = null;
+            }
             if ($views !== null && $views !== '') {
                 $data['y_views'] = (float) $views;
                 $totViews += (float) $views;
