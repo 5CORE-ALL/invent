@@ -8110,7 +8110,8 @@ class CvrMasterController extends Controller
                 // Keep original SKU case. Mirakl OF21 sku match is case-sensitive.
                 $response = $this->pushToPurchasingPower($skuRaw !== '' ? $skuRaw : $sku, $price);
             } elseif ($marketplace === 'wayfair') {
-                $response = $this->pushToWayfair($sku, $price);
+                // Keep original SKU case: Wayfair supplier part numbers are matched as sent.
+                $response = $this->pushToWayfair($skuRaw !== '' ? $skuRaw : $sku, $price);
             } elseif ($marketplace === 'topdawg') {
                 $response = $this->pushToTopDawg($sku, $price);
             } elseif ($marketplace === 'faire') {
@@ -9036,39 +9037,47 @@ class CvrMasterController extends Controller
     }
 
     /**
-     * Push price to Wayfair via the pricing feed API.
+     * "Push" a Wayfair price.
+     *
+     * Wayfair has no live price API for us (the old pricing-feed endpoint returns 404), so a push
+     * saves the S PRC the upload file is built from and updates the Price column right away.
+     * wayfair:daily-price-upload (every 30 min) then sends the changed prices to Partner Home.
      */
     private function pushToWayfair($sku, $price)
     {
         try {
-            $result = app(\App\Services\WayfairApiService::class)->updatePrice($sku, $price);
-            $failed = is_array($result) && (
-                ! empty($result['error'])
-                || ! empty($result['errors'])
-                || (isset($result['success']) && $result['success'] === false)
-            );
-            if (! $failed) {
-                $this->savePricePushStatus($sku, 'wayfair', 'pushed', $price);
-                return response()->json([
-                    'success' => true,
-                    'message' => is_array($result)
-                        ? (string) ($result['message'] ?? ("Price $" . number_format($price, 2) . " pushed to Wayfair for SKU: $sku"))
-                        : ("Price $" . number_format($price, 2) . " pushed to Wayfair for SKU: $sku"),
-                    'result' => $result,
-                ]);
+            $price = round((float) $price, 2);
+            if (! ($price > 0)) {
+                return response()->json(['success' => false, 'message' => 'Cannot push — price is 0 or empty.'], 400);
             }
-            $this->savePricePushStatus($sku, 'wayfair', 'error', $price);
-            $message = is_array($result)
-                ? (string) (($result['message'] ?? null) ?: ($result['error'] ?? 'Failed to push price to Wayfair'))
-                : 'Failed to push price to Wayfair';
+
+            // The upload file is built from the saved S PRC, so make sure it equals the pushed price.
+            $view = \App\Models\WayfairDataView::query()
+                ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $sku))])
+                ->first() ?: new \App\Models\WayfairDataView(['sku' => $sku]);
+            $stored = is_array($view->value) ? $view->value : (json_decode((string) $view->value, true) ?: []);
+            if (! isset($stored['SPRICE']) || abs((float) $stored['SPRICE'] - $price) >= 0.005) {
+                $stored['SPRICE'] = $price;
+                $view->value = $stored;
+                $view->save();
+            }
+
+            // Price column = wayfair_pricing_prices.price. Keep the Wayfair stock already stored.
+            \App\Models\WayfairPricingPrice::upsertBySku((string) $sku, ['price' => $price]);
+
+            $this->savePricePushStatus($sku, 'wayfair', 'pushed', $price);
+
             return response()->json([
-                'success' => false,
-                'message' => $message,
-            ], 400);
-        } catch (\Exception $e) {
+                'success' => true,
+                'price' => $price,
+                'message' => 'Price $' . number_format($price, 2) . ' saved for Wayfair SKU: ' . $sku
+                    . '. It goes to Wayfair in the next price upload (every 30 min).',
+            ]);
+        } catch (\Throwable $e) {
             $this->savePricePushStatus($sku, 'wayfair', 'error', $price);
             Log::error('CVR Master - Wayfair push exception', ['sku' => $sku, 'error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Wayfair API error: ' . $e->getMessage()], 500);
+
+            return response()->json(['success' => false, 'message' => 'Wayfair push error: ' . $e->getMessage()], 500);
         }
     }
 

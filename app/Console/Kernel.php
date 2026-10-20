@@ -1442,11 +1442,13 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Every 30 minutes (was once a day at 05:00). The command skips when nothing changed
+        // and never re-uploads a file that is already queued / in progress / successful.
         $schedule->command('wayfair:daily-price-upload')
-            ->dailyAt((string) config('wayfair_upload.schedule_time', '05:00'))
+            ->cron((string) config('wayfair_upload.schedule_cron', '*/30 * * * *'))
             ->timezone(config('app.timezone'))
             ->name('wayfair-daily-price-upload')
-            ->withoutOverlapping(30)
+            ->withoutOverlapping(25)
             ->runInBackground()
             ->appendOutputTo($log);
 

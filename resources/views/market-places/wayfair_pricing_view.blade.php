@@ -1515,6 +1515,11 @@
                     {
                         // Miss L — same role as Amazon Miss L / ML badge.
                         title: 'Miss L', field: 'missing', hozAlign: 'center',
+                        // Sort by the same rule the L badge and ML filter use (the raw `missing` flag ignores INV).
+                        sorter: function(a, b, aRow, bRow) {
+                            const flag = function(row) { return wfRowIsMissing(row.getData()) ? 1 : 0; };
+                            return flag(aRow) - flag(bRow);
+                        },
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -1642,7 +1647,22 @@
                         width: 78
                     },
                     {
-                        title: 'S PRC', field: 'sprice', sorter: 'number', hozAlign: 'right',
+                        title: 'S PRC', field: 'sprice', hozAlign: 'right',
+                        // Sort by the value the cell shows (Sprc Dil / promo S PRC), not the raw saved `sprice`.
+                        sorter: function(a, b, aRow, bRow) {
+                            const val = function(row) {
+                                const d = row.getData();
+                                if (d.is_parent) return -Infinity;
+                                let v = (typeof chPromoTableSprice === 'function')
+                                    ? Number(chPromoTableSprice(d)) || 0
+                                    : 0;
+                                if (!(v > 0)) v = parseFloat(d.sprice) || 0;
+                                return v;
+                            };
+                            const x = val(aRow), y = val(bRow);
+                            if (x === y) return 0;
+                            return x < y ? -1 : 1;
+                        },
                         editable: false,
                         headerTooltip: 'Not editable. S PRC from Sprc Dil. A L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                         formatter: function(cell) {

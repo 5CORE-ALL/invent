@@ -167,25 +167,73 @@ class WayfairApiService
         return $this->unscopedToken;
     }
 
+    /**
+     * Push one SKU price through the Wayfair pricing feed.
+     *
+     * Always returns ['success' => bool, 'message' => string, ...]. It used to return the raw
+     * response JSON, which is null for an empty / non-JSON / error body, so callers treated every
+     * rejected push as "pushed" and stamped the new price as live on the pricing page.
+     *
+     * @return array{success: bool, message: string, status?: int, body?: mixed}
+     */
     public function updatePrice(string $sku, float $price)
     {
+        $sku = trim($sku);
+        if ($sku === '' || ! ($price > 0)) {
+            return ['success' => false, 'message' => 'Wayfair price push needs a SKU and a price above 0.'];
+        }
+
+        $partNumber = htmlspecialchars($sku, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $amount = number_format($price, 2, '.', '');
+
         // Build XML for pricing feed
         $xml = <<<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <PriceFeed xmlns="http://api.wayfair.com/v1/pricefeed.xsd">
     <Price>
-        <SupplierPartNumber>{$sku}</SupplierPartNumber>
-        <PriceAmount>{$price}</PriceAmount>
+        <SupplierPartNumber>{$partNumber}</SupplierPartNumber>
+        <PriceAmount>{$amount}</PriceAmount>
         <CurrencyCode>USD</CurrencyCode>
     </Price>
 </PriceFeed>
 XML;
 
-        $response = Http::withToken($this->authenticate())
+        $response = $this->apiHttpClient()
+            ->withToken($this->authenticate())
             ->attach('file', $xml, 'price_feed.xml')
             ->post('https://api.wayfair.com/v1/feeds/pricing');
 
-        return $response->json();
+        $json = $response->json();
+        $status = $response->status();
+        $apiErrors = is_array($json) ? ($json['errors'] ?? $json['error'] ?? null) : null;
+
+        if ($response->failed() || ! empty($apiErrors)) {
+            $detail = is_array($apiErrors)
+                ? $this->formatWayfairGraphqlErrors(array_is_list($apiErrors) ? $apiErrors : [$apiErrors])
+                : (is_string($apiErrors) && $apiErrors !== '' ? $apiErrors : mb_substr(trim((string) $response->body()), 0, 300));
+            Log::warning('Wayfair price push rejected', [
+                'sku' => $sku,
+                'price' => $amount,
+                'status' => $status,
+                'body' => mb_substr((string) $response->body(), 0, 500),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => $status,
+                'message' => 'Wayfair rejected the price push (HTTP '.$status.')'.($detail !== '' ? ': '.$detail : '.'),
+                'body' => $json,
+            ];
+        }
+
+        Log::info('Wayfair price push accepted', ['sku' => $sku, 'price' => $amount, 'status' => $status]);
+
+        return [
+            'success' => true,
+            'status' => $status,
+            'message' => 'Price $'.$amount.' submitted to Wayfair for SKU: '.$sku,
+            'body' => $json,
+        ];
     }
 
 

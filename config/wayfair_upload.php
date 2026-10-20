@@ -38,7 +38,13 @@ return [
     'status_check_delay' => (int) env('WAYFAIR_STATUS_CHECK_DELAY', 180),
     'stuck_after' => (int) env('WAYFAIR_UPLOAD_STUCK_AFTER', 300),
 
-    // App timezone (config/app.php, currently America/Los_Angeles).
+    // Scheduler cadence for wayfair:daily-price-upload. Every 30 minutes by default.
+    // Safe to run often: only changed prices are written, and a file identical to one already
+    // queued / uploading / processing / successful is skipped.
+    'schedule_cron' => env('WAYFAIR_PRICE_UPLOAD_CRON', '*/30 * * * *'),
+    'schedule_label' => env('WAYFAIR_PRICE_UPLOAD_LABEL', 'Every 30 min'),
+
+    // Legacy once-a-day time. No longer used by the scheduler.
     'schedule_time' => env('WAYFAIR_PRICE_UPLOAD_TIME', '05:00'),
 
     /*
