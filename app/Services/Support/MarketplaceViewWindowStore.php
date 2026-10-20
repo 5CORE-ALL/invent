@@ -55,16 +55,8 @@ class MarketplaceViewWindowStore
 
             return $row;
         });
-        if ($includeAmazon) {
-            $safe('amazon', function () use ($date, $viewsApi) {
-                $row = $this->storeAmazonL1($date, $viewsApi);
-                if ($row === null) {
-                    throw new \RuntimeException('Amazon L1 views unavailable');
-                }
-
-                return $row;
-            });
-        }
+        // Amazon is not stored here: its SP-API sessions for "yesterday" are not available yet
+        // (0 sessions), so storing it wrote 0 rows. See YesterdayViewsService::collectAmazonSettled().
 
         foreach ($out as $channel => $row) {
             $viewsApi->store($channel, $date, (int) $row['l1'], $row['source']);
@@ -339,37 +331,6 @@ class MarketplaceViewWindowStore
         }
 
         return '';
-    }
-
-    /**
-     * @return array{l1: int, l7: int, source: string}|null
-     */
-    private function storeAmazonL1(string $date, YesterdayViewsService $viewsApi): ?array
-    {
-        $byAsin = $viewsApi->amazonSessionsByAsin($date);
-        if ($byAsin === null) {
-            return null;
-        }
-
-        if (Schema::hasColumn('amazon_datsheets', 'sessions_l1')) {
-            foreach (array_chunk($byAsin, 200, true) as $chunk) {
-                $asins = array_keys($chunk);
-                AmazonDatasheet::query()->whereIn('asin', $asins)->get(['id', 'asin'])->each(function ($row) use ($chunk) {
-                    $asin = (string) $row->asin;
-                    if (isset($chunk[$asin])) {
-                        $row->sessions_l1 = $chunk[$asin];
-                        $row->save();
-                    }
-                });
-            }
-        }
-
-        $l7 = 0;
-        if (Schema::hasColumn('amazon_datsheets', 'sessions_l7')) {
-            $l7 = (int) AmazonDatasheet::query()->sum('sessions_l7');
-        }
-
-        return ['l1' => array_sum($byAsin), 'l7' => $l7, 'source' => 'sp_api_l1'];
     }
 
     /**

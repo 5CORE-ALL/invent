@@ -22345,6 +22345,10 @@ class ChannelMasterController extends Controller
             $date = $row->snapshot_date instanceof \DateTimeInterface
                 ? $row->snapshot_date->format('Y-m-d')
                 : (string) $row->snapshot_date;
+            // Amazon: 0 means the SP-API day had not settled yet, not zero views.
+            if ($key === 'amazon' && (int) $row->views <= 0) {
+                continue;
+            }
             $map[$key][$date] = (int) $row->views;
         }
 

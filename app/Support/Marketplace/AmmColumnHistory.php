@@ -264,6 +264,52 @@ class AmmColumnHistory
         }
     }
 
+    /**
+     * Amazon Y Views / Y CVR points that no settled SP-API day backs: older runs saved 0 or
+     * copied the rolling amazon_datsheets.sessions_l1 total (the same number for days).
+     * Deletes them so the chart only plots real daily values.
+     *
+     * @return list<string> Pacific dates whose Amazon points were removed (their all-channel
+     *                      totals need re-saving)
+     */
+    public static function purgeUnbackedAmazonYViews(int $days = 45): array
+    {
+        try {
+            if (! \Illuminate\Support\Facades\Schema::hasTable('channel_yesterday_views')) {
+                return [];
+            }
+            $since = now(BadgeDataHistory::TZ)->subDays($days)->toDateString();
+            $backed = \App\Models\ChannelYesterdayView::query()
+                ->where('channel', 'amazon')
+                ->where('views', '>', 0)
+                ->whereDate('snapshot_date', '>=', $since)
+                ->get(['snapshot_date'])
+                ->map(fn ($r) => $r->snapshot_date instanceof \DateTimeInterface
+                    ? $r->snapshot_date->format('Y-m-d')
+                    : (string) $r->snapshot_date)
+                ->all();
+
+            $q = BadgeDataHistory::query()
+                ->where('page_name', self::PAGE_PREFIX.'amazon')
+                ->whereIn('field', ['y_views', 'y_cvr'])
+                ->whereDate('snapshot_date', '>=', $since);
+            if ($backed !== []) {
+                $q->whereNotIn('snapshot_date', $backed);
+            }
+
+            $dates = (clone $q)->distinct()->pluck('snapshot_date')
+                ->map(fn ($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : substr((string) $d, 0, 10))
+                ->all();
+            if ($dates !== []) {
+                $q->delete();
+            }
+
+            return array_values($dates);
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
     public static function pageFor(string $channelKey): string
     {
         return $channelKey === 'all' ? self::ALL_PAGE : self::PAGE_PREFIX.$channelKey;

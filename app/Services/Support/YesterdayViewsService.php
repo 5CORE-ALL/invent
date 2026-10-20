@@ -18,6 +18,12 @@ class YesterdayViewsService
 {
     private const TZ = 'America/Los_Angeles';
 
+    /** Amazon traffic is only complete about this many Pacific days after the day ends. */
+    public const AMAZON_SETTLE_DAYS = 3;
+
+    /** SP-API createReport is throttled (~1/min), so cap Amazon reports per run. */
+    public const AMAZON_MAX_REPORTS = 4;
+
     /**
      * Channels with no listing-views source. Their Y Views / T Views / CVR must stay
      * blank — Doba's sheet `views` column is not real traffic (Total Views is 0 on
@@ -54,6 +60,12 @@ class YesterdayViewsService
     {
         $date = $date ?: Carbon::yesterday(self::TZ)->toDateString();
         $map = $this->sumStoredMarketplaceL1();
+
+        // Amazon only has a real value for a day once SP-API traffic has settled (see
+        // collectAmazonSettled). amazon_datsheets.sessions_l1 is a rolling column that
+        // holds whichever day was fetched last, so using it here made Y Views repeat the
+        // same number for days. Amazon comes from channel_yesterday_views only.
+        unset($map['amazon']);
 
         if (Schema::hasTable('channel_yesterday_views')) {
             foreach (ChannelYesterdayView::query()->whereDate('snapshot_date', $date)->get() as $row) {
@@ -198,25 +210,155 @@ class YesterdayViewsService
      *
      * @return array<string, array{views: int, source: string}>
      */
-    public function collect(?string $date = null, bool $includeAmazon = true): array
+    public function collect(?string $date = null, bool $includeAmazon = true, int $amazonBackfillDays = 3, bool $onlyAmazon = false): array
     {
         $date = $date ?: Carbon::yesterday(self::TZ)->toDateString();
         $out = [];
 
-        try {
-            $windows = app(MarketplaceViewWindowStore::class)->storeAll($date, $this, $includeAmazon);
-            foreach ($windows as $channel => $row) {
-                $out[$channel] = [
-                    'views' => (int) $row['l1'],
-                    'l7_views' => (int) $row['l7'],
-                    'source' => $row['source'],
-                ];
+        if (! $onlyAmazon) {
+            try {
+                $windows = app(MarketplaceViewWindowStore::class)->storeAll($date, $this, false);
+                foreach ($windows as $channel => $row) {
+                    $out[$channel] = [
+                        'views' => (int) $row['l1'],
+                        'l7_views' => (int) $row['l7'],
+                        'source' => $row['source'],
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Marketplace L1/L7 view store failed: '.$e->getMessage());
             }
-        } catch (\Throwable $e) {
-            Log::warning('Marketplace L1/L7 view store failed: '.$e->getMessage());
+        }
+
+        if ($includeAmazon) {
+            try {
+                $days = $this->collectAmazonSettled($date, $amazonBackfillDays, $onlyAmazon ? $amazonBackfillDays + 3 : self::AMAZON_MAX_REPORTS);
+                if ($days !== []) {
+                    krsort($days);
+                    $out['amazon'] = [
+                        'views' => (int) reset($days),
+                        'l7_views' => 0,
+                        'source' => 'sp_api_settled '.implode(', ', array_map(
+                            fn ($d, $v) => $d.'='.number_format($v),
+                            array_keys($days),
+                            $days
+                        )),
+                    ];
+                }
+                $this->rebuildAmazonYHistory(array_keys($days));
+            } catch (\Throwable $e) {
+                Log::warning('Amazon settled views collect failed: '.$e->getMessage());
+            }
         }
 
         return $out;
+    }
+
+    /**
+     * Amazon's Sales & Traffic report returns no (or partial) sessions for a day that just
+     * ended: at 06:00 PT the previous day came back with 74 ASINs / 0 sessions, two days
+     * back was still partial, and three days back was complete. Storing "yesterday" at that
+     * time produced 0 (and Y Views then fell back to a stale rolling column). So only days
+     * that have settled are stored, one per run, plus a re-fetch of an older day to replace
+     * any early value and a few retries for days that were missed.
+     *
+     * @return array<string, int> Pacific date => sessions stored this run
+     */
+    public function collectAmazonSettled(string $yesterday, int $backfillDays = 3, int $maxReports = self::AMAZON_MAX_REPORTS): array
+    {
+        $newest = Carbon::parse($yesterday, self::TZ)->subDays(self::AMAZON_SETTLE_DAYS - 1);
+        $newestYmd = $newest->toDateString();
+        $stored = $this->storedAmazonViews($newest->copy()->subDays($backfillDays + 3)->toDateString());
+
+        $targets = [];
+        if (($stored[$newestYmd] ?? 0) <= 0) {
+            $targets[] = $newestYmd;
+        }
+        // Final value: re-fetch a day that has had two more days to fill in.
+        $targets[] = $newest->copy()->subDays(2)->toDateString();
+        for ($i = 1; $i <= $backfillDays; $i++) {
+            $d = $newest->copy()->subDays($i)->toDateString();
+            if (($stored[$d] ?? 0) <= 0) {
+                $targets[] = $d;
+            }
+        }
+        $targets = array_slice(array_values(array_unique($targets)), 0, max(1, $maxReports));
+
+        $done = [];
+        foreach ($targets as $d) {
+            $byAsin = $this->amazonSessionsWithRetry($d);
+            if ($byAsin === null) {
+                continue;
+            }
+            $sum = (int) array_sum($byAsin);
+            if ($sum <= 0) {
+                Log::info("Amazon sessions for {$d} not available yet (".count($byAsin).' ASINs, 0 sessions)');
+                continue;
+            }
+            $this->store('amazon', $d, $sum, 'sp_api_settled');
+            $done[$d] = $sum;
+        }
+
+        return $done;
+    }
+
+    /**
+     * @return array<string, int> Pacific date => stored Amazon views (> 0 only)
+     */
+    private function storedAmazonViews(string $since): array
+    {
+        if (! Schema::hasTable('channel_yesterday_views')) {
+            return [];
+        }
+        $out = [];
+        foreach (ChannelYesterdayView::query()->where('channel', 'amazon')->whereDate('snapshot_date', '>=', $since)->get(['snapshot_date', 'views']) as $row) {
+            $d = $row->snapshot_date instanceof \DateTimeInterface ? $row->snapshot_date->format('Y-m-d') : (string) $row->snapshot_date;
+            $out[$d] = (int) $row->views;
+        }
+
+        return $out;
+    }
+
+    private function amazonSessionsWithRetry(string $date, int $attempts = 3): ?array
+    {
+        for ($try = 1; $try <= $attempts; $try++) {
+            try {
+                return $this->amazonSessionsByAsin($date);
+            } catch (\Throwable $e) {
+                Log::warning("Amazon sessions {$date} attempt {$try}/{$attempts} failed: ".$e->getMessage());
+                if ($try === $attempts || ! str_contains($e->getMessage(), 'QuotaExceeded')) {
+                    return null;
+                }
+                sleep(65);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Re-save Y Orders / Y Views / Y CVR history for the days whose Amazon views just landed,
+     * and drop Amazon Y Views / Y CVR points that were never backed by a real daily value
+     * (they were copies of the rolling sessions_l1 column or 0).
+     *
+     * @param  list<string>  $settledDates
+     */
+    private function rebuildAmazonYHistory(array $settledDates): void
+    {
+        $dates = $settledDates;
+        try {
+            $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeUnbackedAmazonYViews());
+        } catch (\Throwable $e) {
+            Log::warning('Amazon Y views history purge failed: '.$e->getMessage());
+        }
+
+        foreach (array_values(array_unique($dates)) as $d) {
+            try {
+                \App\Support\Marketplace\AmmColumnHistory::backfillYesterday(1, Carbon::parse($d, self::TZ));
+            } catch (\Throwable $e) {
+                Log::warning("Amazon Y views history rebuild failed for {$d}: ".$e->getMessage());
+            }
+        }
     }
 
     public function shopifyViewsPublic(string $date): ?int

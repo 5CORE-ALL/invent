@@ -1647,6 +1647,11 @@ class YesterdayMarketplaceMetricsService
             return null;
         }
 
+        // Amazon traffic for a recent day is "not available yet", not 0 views.
+        if ($lookup === 'amazon' && $this->viewsByDateCache[$lookup][$ymd] <= 0) {
+            return null;
+        }
+
         return $this->viewsByDateCache[$lookup][$ymd];
     }
 
