@@ -178,7 +178,11 @@ class TemuAdsController extends Controller
                 'roas' => $r->roas,
                 'acos' => $r->acos,
                 'ad_status' => $r->displayAdStatus(),
-                'ad_create_reject' => $hasCreateReject ? trim((string) ($r->ad_create_reject ?? '')) : '',
+                // A create-ad reject is only meaningful while the ad does not exist on Temu.
+                // If the ad is now Active/Inactive/Paused, the stored reject is stale — hide it.
+                'ad_create_reject' => ($hasCreateReject && ! in_array((string) $r->ad_status, ['Active', 'Inactive', 'Paused'], true))
+                    ? trim((string) ($r->ad_create_reject ?? ''))
+                    : '',
                 'pause_run_ok' => $hasPauseRunOk ? $r->pause_run_ok : null,
                 'pause_run_error' => $hasPauseRunOk ? trim((string) ($r->pause_run_error ?? '')) : '',
                 'pause_run_at' => $hasPauseRunOk && $r->pause_run_at ? optional($r->pause_run_at)->toDateTimeString() : null,

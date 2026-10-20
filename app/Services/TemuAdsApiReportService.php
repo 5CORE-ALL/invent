@@ -357,6 +357,13 @@ class TemuAdsApiReportService
                 $updates = ['fetched_at' => $fetchedAt];
                 if ($status !== null) {
                     $updates['ad_status'] = $status;
+                    // Ad exists on Temu now (created here or elsewhere): drop the stale create-ad reject alert.
+                    if (in_array($status, ['Active', 'Inactive', 'Paused'], true)
+                        && Schema::hasColumn('temu_ads_api_reports', 'ad_create_reject')
+                        && ($row->ad_create_reject ?? null) !== null) {
+                        $updates['ad_create_reject'] = null;
+                        $updates['ad_create_reject_at'] = null;
+                    }
                 }
                 if (is_array($detail)) {
                     $updates['raw_response'] = $this->mergeAdDetailIntoRaw($row->raw_response, $detail);
