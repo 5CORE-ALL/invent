@@ -1306,6 +1306,36 @@ class CvrMasterController extends Controller
                 'ebay3_metrics' => $ebay3Metrics->count()
             ]);
 
+            // PEF: Doba Pre-Paid L30 (pickup-with-prepaid-label orders only) — same query as /doba_withoutship
+            $dobaPickupL30BySku = [];
+            $dobaRegularL30BySku = null; // null = doba_daily_data unavailable → keep metric quantity_l30
+            if ($forPef) {
+                try {
+                    if (Schema::hasTable('doba_daily_data')) {
+                        $dobaRegularL30BySku = DB::table('doba_daily_data')
+                            ->selectRaw('UPPER(TRIM(sku)) as k, SUM(quantity) as q')
+                            ->whereRaw("LOWER(period) = 'l30'")
+                            ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%CANCEL%'")
+                            ->whereRaw('LOWER(TRIM(COALESCE(order_type, ?))) <> ?', ['', 'pickup with a prepaid label'])
+                            ->groupByRaw('UPPER(TRIM(sku))')
+                            ->pluck('q', 'k')
+                            ->map(fn ($q) => (int) $q)
+                            ->all();
+                        $dobaPickupL30BySku = DB::table('doba_daily_data')
+                            ->selectRaw('UPPER(TRIM(sku)) as k, SUM(quantity) as q')
+                            ->whereRaw("LOWER(period) = 'l30'")
+                            ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%CANCEL%'")
+                            ->whereRaw('LOWER(TRIM(COALESCE(order_type, ?))) = ?', ['', 'pickup with a prepaid label'])
+                            ->groupByRaw('UPPER(TRIM(sku))')
+                            ->pluck('q', 'k')
+                            ->map(fn ($q) => (int) $q)
+                            ->all();
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('PEF Doba Pre-Paid L30 map failed: ' . $e->getMessage());
+                }
+            }
+
             // PEF: bulk-load SPRICE data views + channel Ads% (same as /price-increase modal)
             $pefDvBySku = [];
             $sb2bPercentagePef = 0.95;
@@ -2394,6 +2424,10 @@ class CvrMasterController extends Controller
                 $macyL30 = $macyProduct ? intval($macyProduct->m_l30 ?? 0) : 0;
                 $reverbL30 = $reverbProduct ? intval($reverbProduct->r_l30 ?? 0) : 0;
                 $dobaL30 = $dobaMetric ? intval($dobaMetric->quantity_l30 ?? 0) : 0;
+                if ($dobaRegularL30BySku !== null) {
+                    // same as /doba-tabulator: live L30 excluding pickup-prepaid orders
+                    $dobaL30 = (int) ($dobaRegularL30BySku[strtoupper(trim((string) $sku))] ?? 0);
+                }
                 
                 // Total L30 across marketplaces (Walmart / Tiendamia excluded)
                 $totalL30 = $amazonL30 + $ebay1L30 + $ebay2L30 + $ebay3L30 + $temuL30 + $temu2L30
@@ -2846,14 +2880,17 @@ class CvrMasterController extends Controller
                         return $viewsQty > 0 ? round(($l30Qty / $viewsQty) * 100, 2) : 0.0;
                     };
                     $aeViewsPef = 0; // AliExpress views not in this bulk path
+                    // Temu 1 / Temu 2: channel Ads% (spend ÷ order sales) — same as /new-temuone & /new-temu2
+                    $pefTemuAds1 = $this->temuChannelAdsPercentForCvr(false);
+                    $pefTemuAds2 = $this->temuChannelAdsPercentForCvr(true);
                     $pefChannels = [
                         // Amazon: tacos_ch = channel Ads% (NPFT); ad = SKU AD% (SPFT when L30>0) — same as modal
                         ['marketplace' => 'Amazon', 'price' => $amazonPrice, 'sprice' => $amazonSpPef, 'lp' => $lp, 'ship' => $ship, 'margin' => $amazonPercentage, 'ad' => round($amazonAD, 2), 'tacos_ch' => $amzAdsPef, 'l30' => $amazonL30, 'views' => $amazonViews, 'cvr' => $pefCvr((float) $amazonL30, (float) $amazonViews), 'push_status' => null],
                         ['marketplace' => 'Ebay1', 'price' => $ebay1Price, 'sprice' => $ebay1Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay1Percentage, 'ad' => $ebay1ChannelAdsPct, 'tacos_ch' => $ebay1ChannelAdsPct, 'l30' => $ebay1L30, 'views' => $ebay1Views, 'cvr' => $pefCvr((float) $ebay1L30, (float) $ebay1Views), 'push_status' => $ebay1St],
                         ['marketplace' => 'Ebay2', 'price' => $ebay2Price, 'sprice' => $ebay2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay2Percentage, 'ad' => $ebay2ChannelAdsPct, 'tacos_ch' => $ebay2ChannelAdsPct, 'l30' => $ebay2L30, 'views' => $ebay2Views, 'cvr' => $pefCvr((float) $ebay2L30, (float) $ebay2Views), 'push_status' => $ebay2St],
                         ['marketplace' => 'Ebay3', 'price' => $ebay3Price, 'sprice' => $ebay3Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $ebay3Percentage, 'ad' => $ebay3ChannelAdsPct, 'tacos_ch' => $ebay3ChannelAdsPct, 'l30' => $ebay3L30, 'views' => $ebay3Views, 'cvr' => $pefCvr((float) $ebay3L30, (float) $ebay3Views), 'push_status' => $ebay3St],
-                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'base_price' => $temuBasePrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $temuAD, 'tacos_ch' => $temuAD, 'l30' => $temuL30, 'views' => $temuViews, 'cvr' => $pefCvr((float) $temuL30, (float) $temuViews), 'push_status' => null, 'goods_id' => $goodsId, 'sku_id' => $temuSkuId],
-                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'base_price' => $temu2BasePrice, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $temu2L30, 'views' => $temu2Views, 'cvr' => $pefCvr((float) $temu2L30, (float) $temu2Views), 'push_status' => $temu2St, 'goods_id' => $temu2Pricing ? ($temu2Pricing->goods_id ?? null) : null, 'sku_id' => $temu2Pricing ? ($temu2Pricing->sku_id ?? null) : null],
+                        ['marketplace' => 'Temu', 'price' => $temuPrice, 'base_price' => $temuBasePrice, 'sprice' => $temuSpPef, 'lp' => $lp, 'ship' => $temuShip, 'margin' => $temuPercentage, 'ad' => $pefTemuAds1, 'tacos_ch' => $pefTemuAds1, 'l30' => $temuL30, 'views' => $temuViews, 'cvr' => $pefCvr((float) $temuL30, (float) $temuViews), 'push_status' => null, 'goods_id' => $goodsId, 'sku_id' => $temuSkuId],
+                        ['marketplace' => 'Temu2', 'price' => $temu2Price, 'base_price' => $temu2BasePrice, 'sprice' => $temu2Sp, 'lp' => $lp, 'ship' => $temuShip, 'margin' => TemuShopifySalesService::temu2MarginDecimal(), 'ad' => $pefTemuAds2, 'tacos_ch' => $pefTemuAds2, 'l30' => $temu2L30, 'views' => $temu2Views, 'cvr' => $pefCvr((float) $temu2L30, (float) $temu2Views), 'push_status' => $temu2St, 'goods_id' => $temu2Pricing ? ($temu2Pricing->goods_id ?? null) : null, 'sku_id' => $temu2Pricing ? ($temu2Pricing->sku_id ?? null) : null],
                         ['marketplace' => 'Doba', 'price' => $dobaPrice, 'sprice' => $dobaSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $dobaPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $dobaL30, 'views' => $dobaViews, 'cvr' => $pefCvr((float) $dobaL30, (float) $dobaViews), 'push_status' => $dobaSt],
                         ['marketplace' => 'TikTok', 'price' => $tiktokPrice, 'sprice' => $ttSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktokPercentage, 'ad' => round($tiktokAD, 2), 'tacos_ch' => round($tiktokAD, 2), 'l30' => $tiktokL30, 'views' => $tiktokViews, 'cvr' => $pefCvr((float) $tiktokL30, (float) $tiktokViews), 'push_status' => $ttSt],
                         ['marketplace' => 'TikTok 2', 'price' => $tiktok2Price, 'sprice' => $tt2Sp, 'lp' => $lp, 'ship' => $ship, 'margin' => $tiktok2Percentage, 'ad' => $tt2AdsPef, 'tacos_ch' => $tt2AdsPef, 'l30' => $tiktok2L30, 'views' => $tiktok2Views, 'cvr' => $pefCvr((float) $tiktok2L30, (float) $tiktok2Views), 'push_status' => $tt2St],
@@ -2867,7 +2904,16 @@ class CvrMasterController extends Controller
                         ['marketplace' => 'AliExpress', 'price' => $aePrice, 'sprice' => $aeSp, 'lp' => $lp, 'ship' => $ship, 'margin' => $aePercentage, 'ad' => $aeAdsPef, 'tacos_ch' => $aeAdsPef, 'l30' => $aeL30, 'views' => $aeViewsPef, 'cvr' => $pefCvr((float) $aeL30, (float) $aeViewsPef), 'push_status' => $aeSt],
                         ['marketplace' => 'PPower', 'price' => $ppPrice, 'sprice' => $ppSp, 'lp' => $lp, 'ship' => $shipBb, 'margin' => $ppPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $ppL30, 'views' => 0, 'cvr' => 0, 'push_status' => $ppSt],
                         ['marketplace' => 'TopDawg', 'price' => $tdPrice, 'sprice' => $tdSp, 'lp' => $lp, 'ship' => 0, 'margin' => $tdPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $tdL30, 'views' => $tdViews, 'cvr' => $pefCvr((float) $tdL30, (float) $tdViews), 'push_status' => $tdSt],
+                        // Depop — /depop/pricing (no ship, no ads)
+                        ['marketplace' => 'Depop', 'price' => $depopPrice, 'sprice' => $depopSprice, 'lp' => $lp, 'ship' => 0, 'margin' => $depopMargin, 'ad' => 0, 'tacos_ch' => 0, 'l30' => $depopL30, 'views' => null, 'push_status' => null],
                     ];
+                    // Doba Pre-Paid — /doba_withoutship (self-pick price, pickup orders only, no ship, no ads)
+                    $pefDobaPpPrice = $dobaMetric ? floatval($dobaMetric->self_pick_price ?? 0) : 0;
+                    $pefChannels[] = ['marketplace' => 'Doba Pre-Paid', 'price' => $pefDobaPpPrice, 'sprice' => 0, 'lp' => $lp, 'ship' => 0, 'margin' => $dobaPercentage, 'ad' => 0, 'tacos_ch' => 0, 'l30' => (int) ($dobaPickupL30BySku[strtoupper(trim((string) $sku))] ?? 0), 'views' => null, 'push_status' => null];
+                    // Analytics-menu channels: Vinted, Instagram Shop, Wayfair, Temu 3, Alibaba, Mercari ×2, FB Marketplace, PLS, Newegg, Walmart
+                    foreach ($extraChannelRows as $pefExtraRow) {
+                        $pefChannels[] = PricingMasterExtraChannels::breakdownRow($pefExtraRow, (string) $sku, (float) $lp);
+                    }
                     // LMP + LMP diff% = (Price − LMP) / LMP × 100 — for LMP vs DISC
                     $pefLmpDiff = static function ($price, $lmp): ?float {
                         $p = (float) $price;
@@ -12175,6 +12221,19 @@ class CvrMasterController extends Controller
             'shein' => 'Shein',
             'faire' => 'Faire',
             'aliexpress' => 'AliExpress',
+            'depop' => 'Depop',
+            'doba_prepaid' => 'Doba Pre-Paid',
+            'vinted' => 'Vinted',
+            'instagram' => 'Instagram Shop',
+            'wayfair' => 'Wayfair',
+            'temu3' => 'Temu 3',
+            'alibaba' => 'Alibaba',
+            'mercari_wship' => 'Mercari w Ship',
+            'mercari_woship' => 'Mercari w/o Ship',
+            'fbmarketplace' => 'FB Marketplace',
+            'pls' => 'PLS',
+            'newegg' => 'Newegg',
+            'walmart' => 'Walmart',
         ];
     }
 

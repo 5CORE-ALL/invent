@@ -40,6 +40,27 @@ class PricingErrorsFixCvrCacheBuilder
         'shein' => ['shein', 'shein', 'Shein'],
         'faire' => ['faire', 'faire', 'Faire'],
         'aliexpress' => ['aliexpress', 'aliexpress', 'AliExpress'],
+        'depop' => ['depop', 'depop', 'Depop'],
+        'dobapre-paid' => ['doba_prepaid', 'doba_prepaid', 'Doba Pre-Paid'],
+        'vinted' => ['vinted', 'vinted', 'Vinted'],
+        'instagramshop' => ['instagram', 'instagram', 'Instagram Shop'],
+        'wayfair' => ['wayfair', 'wayfair', 'Wayfair'],
+        'temu3' => ['temu3', 'temu3', 'Temu 3'],
+        'alibaba' => ['alibaba', 'alibaba', 'Alibaba'],
+        'mercariwship' => ['mercari_wship', 'mercari_wship', 'Mercari w Ship'],
+        'mercariw/oship' => ['mercari_woship', 'mercari_woship', 'Mercari w/o Ship'],
+        'mercariwoship' => ['mercari_woship', 'mercari_woship', 'Mercari w/o Ship'],
+        'fbmarketplace' => ['fbmarketplace', 'fbmarketplace', 'FB Marketplace'],
+        'pls' => ['pls', 'pls', 'PLS'],
+        'newegg' => ['newegg', 'newegg', 'Newegg'],
+        'walmart' => ['walmart', 'walmart', 'Walmart'],
+    ];
+
+    /** Channels with no marketplace ads — NPFT = GPFT, NROI = GROI (same as the SKU modal). */
+    private const NO_ADS_NORMS = [
+        'doba', 'dobapre-paid', 'ppower', 'topdawg', 'topdog', 'shein', 'faire', 'depop',
+        'vinted', 'instagramshop', 'wayfair', 'temu3', 'alibaba', 'mercariwship',
+        'mercariw/oship', 'mercariwoship', 'fbmarketplace', 'pls', 'newegg', 'walmart',
     ];
 
     public function __construct(
@@ -327,7 +348,7 @@ class PricingErrorsFixCvrCacheBuilder
         } elseif ($norm === 'tiktok2' || $norm === 'tiktokshop2') {
             $norm = 'tiktok2';
         }
-        if ($norm === 'fba' || $norm === 'walmart') {
+        if ($norm === 'fba') {
             return null;
         }
         if (! isset(self::MP_MAP[$norm])) {
@@ -386,6 +407,10 @@ class PricingErrorsFixCvrCacheBuilder
         $metrics = $this->computeLikePriceIncreaseModal(
             $norm, $price, $sprice, $lp, $ship, $margin, $tacosCh, $l30, $adSku, $basePrice
         );
+        // Temu 1/2 show the Full Temu Price (base × 1.1364, +$2.99 if ≤ $26.99), like /new-temuone & /new-temu2
+        if (isset($metrics['price']) && $metrics['price'] > 0) {
+            $price = (float) $metrics['price'];
+        }
 
         $goodsId = $item['goods_id'] ?? $item['temu_goods_id'] ?? null;
         $skuId = $item['sku_id'] ?? $item['temu_sku_id'] ?? null;
@@ -468,6 +493,7 @@ class PricingErrorsFixCvrCacheBuilder
             'temu' => TemuShopifySalesService::temuMarginDecimal(),
             'temu2' => TemuShopifySalesService::temu2MarginDecimal(),
             'temu3' => TemuShopifySalesService::temu3MarginDecimal(),
+            'dobapre-paid' => 0.95,
             default => 0.80,
         };
     }
@@ -475,7 +501,7 @@ class PricingErrorsFixCvrCacheBuilder
     /**
      * Same math as price_increase_view.blade.php renderMarketplaceData (~4420–4466).
      *
-     * @return array{groi:?float,nroi:?float,gpft:?float,npft:?float,sroi:?float,sgpft:?float,snroi:?float,snpft:?float}
+     * @return array{groi:?float,nroi:?float,gpft:?float,npft:?float,sroi:?float,sgpft:?float,snroi:?float,snpft:?float,price?:float}
      */
     private function computeLikePriceIncreaseModal(
         string $norm,
@@ -502,38 +528,40 @@ class PricingErrorsFixCvrCacheBuilder
         if ($isTopdawg) {
             $ship = 0.0;
         }
-        $isNoAds = in_array($norm, [
-            'doba', 'ppower', 'topdawg', 'shein', 'faire',
-        ], true);
+        $isNoAds = in_array($norm, self::NO_ADS_NORMS, true);
         $isEbay = in_array($norm, ['ebay1', 'ebay2', 'ebay3'], true);
         $isReverb = ($norm === 'reverb');
         $isTiktok = ($norm === 'tiktok');
 
-        if ($price > 0 && $lp > 0 && $margin > 0) {
+        $isTemuAny = ($isTemu || $isTemu2);
+        if ($isTemuAny && $lp > 0 && $margin > 0) {
+            // /new-temuone & /new-temu2: Price = Full Temu Price; GPFT$ / GROI on R Price;
+            // GPFT% = GPFT$ ÷ Temu Price; NPFT/NROI subtract channel Ads% (Temu 2 included).
+            $inferredBase = $basePrice > 0
+                ? $basePrice
+                : ($price > 29.98 ? $price : max(0.0, $price - 2.99));
+            $temuPrice = round(TemuShopifySalesService::computeFullTemuPrice($inferredBase), 2);
+            $rPrice = TemuShopifySalesService::computeRPrice($inferredBase);
+            if ($temuPrice > 0) {
+                $gpftDollar = TemuShopifySalesService::computeGroiProfit($rPrice, $margin, $lp, $ship);
+                $adsDollar = $temuPrice * ($tacosCh / 100);
+                $out['price'] = $temuPrice;
+                $out['gpft'] = round(($gpftDollar / $temuPrice) * 100, 2);
+                $out['groi'] = round(($gpftDollar / $lp) * 100, 2);
+                $out['npft'] = round((($gpftDollar - $adsDollar) / $temuPrice) * 100, 2);
+                $out['nroi'] = round((($gpftDollar - $adsDollar) / $lp) * 100, 2);
+            }
+        } elseif ($price > 0 && $lp > 0 && $margin > 0) {
             $gross = ($price * $margin) - $lp - $ship;
             $groi = round(($gross / $lp) * 100, 2);
             $out['groi'] = $groi;
-            // Temu/Temu2 GPFT% on Full Temu Price — same as /temu-decrease
-            if ($isTemu || $isTemu2) {
-                $inferredBase = $basePrice > 0
-                    ? $basePrice
-                    : ($price > 29.98 ? $price : max(0.0, $price - 2.99));
-                $full = TemuShopifySalesService::computeFullTemuPrice($inferredBase);
-                $gpft = $full > 0
-                    ? round(TemuShopifySalesService::computeGpftPercent($full, $margin, $lp, $ship), 2)
-                    : 0.0;
-            } else {
-                $gpft = round(($gross / $price) * 100, 2);
-            }
+            $gpft = round(($gross / $price) * 100, 2);
             $out['gpft'] = $gpft;
 
-            // NPFT% = GPFT% − tacos_ch; Temu2/no-ads channels skip subtract
-            if ($isNoAds || $isTemu2) {
+            // NPFT% = GPFT% − Ads%; NROI uses Ads$ = price × Ads%; no-ads channels: NPFT = GPFT, NROI = GROI
+            if ($isNoAds) {
                 $out['npft'] = $gpft;
                 $out['nroi'] = $groi;
-            } elseif ($isTemu) {
-                $out['npft'] = ($tacosCh == 100.0) ? $gpft : round($gpft - $tacosCh, 2);
-                $out['nroi'] = ($tacosCh == 100.0) ? $groi : round($groi - $tacosCh, 2);
             } else {
                 $out['npft'] = round($gpft - $tacosCh, 2);
                 $adsPerUnit = $price * ($tacosCh / 100);
@@ -547,7 +575,7 @@ class PricingErrorsFixCvrCacheBuilder
 
             if ($isTemuMp) {
                 $temuSug = TemuShopifySalesService::suggestedPercents(
-                    $sprice, $margin, $lp, $ship, $tacosCh, $isTemu2
+                    $sprice, $margin, $lp, $ship, $tacosCh, false
                 );
                 $sgpft = $temuSug['sgpft'];
                 $sroi = $temuSug['sroi'];
@@ -561,12 +589,12 @@ class PricingErrorsFixCvrCacheBuilder
 
             // SPFT: TikTok/Temu/Reverb/eBay → tacos_ch; Amazon-style → item.ad (SKU), L30==0 skip
             // SNROI: Temu → SROI−tacos; else dollar ads from tacos_ch (modal)
-            if ($isNoAds || $isTemu2) {
+            if ($isNoAds) {
                 $out['snpft'] = $sgpft;
                 $out['snroi'] = $sroi;
-            } elseif ($isTiktok || $isTemu || $isReverb || $isEbay) {
+            } elseif ($isTiktok || $isTemuMp || $isReverb || $isEbay) {
                 $out['snpft'] = ($tacosCh == 100.0) ? $sgpft : round($sgpft - $tacosCh, 2);
-                if ($isTemu) {
+                if ($isTemuMp) {
                     $out['snroi'] = ($tacosCh == 100.0) ? $sroi : round($sroi - $tacosCh, 2);
                 } else {
                     $sGross2 = ($calcSp * $margin) - $lp - $ship;

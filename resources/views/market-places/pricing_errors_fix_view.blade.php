@@ -160,8 +160,6 @@
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"] {
             cursor: default !important;
         }
-        .tabulator-row .tabulator-cell[tabulator-field="cpn_dollar"],
-        .tabulator-row .tabulator-cell[tabulator-field="cpn_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="prmt_pct"],
         .tabulator-row .tabulator-cell[tabulator-field="dsc"],
         .tabulator-row .tabulator-cell[tabulator-field="appr"] {
@@ -1436,7 +1434,7 @@
         if (m > 0 && m <= 1) return m;
         const takehomeKey = MARKETPLACE_TAKEHOME.hasOwnProperty(mp)
             ? mp
-            : (mp.indexOf('ebay') !== -1 ? 'ebay1' : (mp.indexOf('temu2') !== -1 ? 'temu2' : (mp.indexOf('temu') !== -1 ? 'temu' : '')));
+            : (mp.indexOf('ebay') !== -1 ? 'ebay1' : (mp === 'temu2' ? 'temu2' : (mp === 'temu' ? 'temu' : '')));
         if (takehomeKey && MARKETPLACE_TAKEHOME.hasOwnProperty(takehomeKey)) {
             const t = Number(MARKETPLACE_TAKEHOME[takehomeKey]);
             if (isFinite(t) && t > 0) return t > 1 ? t / 100 : t;
@@ -2110,11 +2108,25 @@
     function pefMetricShip(d) {
         return pefIsTopdawg(d) ? 0 : (Number(d.ship || 0) || 0);
     }
+    function pefMpKey(d) {
+        return String(d.marketplace || d.channel_key || '').toLowerCase().replace(/\s+/g, '');
+    }
+    /** Temu 1 / Temu 2 only (Temu 3 is a plain no-ads channel). */
     function pefIsTemu(d) {
-        return String(d.marketplace || d.channel_key || '').toLowerCase().indexOf('temu') !== -1;
+        const mp = pefMpKey(d);
+        return mp === 'temu' || mp === 'temu2';
     }
     function pefIsTemu2(d) {
-        return String(d.marketplace || d.channel_key || '').toLowerCase().indexOf('temu2') !== -1;
+        return pefMpKey(d) === 'temu2';
+    }
+    /** Channels with no marketplace ads: NPFT = GPFT, NROI = GROI (same as the SKU modal). */
+    const PEF_NO_ADS_CHANNELS = [
+        'doba', 'doba_prepaid', 'ppower', 'purchasingpower', 'topdawg', 'topdog', 'shein', 'faire', 'depop',
+        'vinted', 'instagram', 'wayfair', 'temu3', 'alibaba', 'mercari_wship', 'mercari_woship',
+        'fbmarketplace', 'pls', 'newegg', 'walmart'
+    ];
+    function pefIsNoAds(d) {
+        return PEF_NO_ADS_CHANNELS.indexOf(pefMpKey(d)) !== -1;
     }
     function pefTemuFullPriceFromBase(basePrice) {
         const b = parseFloat(basePrice) || 0;
@@ -2169,7 +2181,7 @@
         const lp = Number(d.lp || 0);
         const ship = pefMetricShip(d);
         const margin = rowMargin(d);
-        const adsPct = pefIsTopdawg(d) ? 0 : rowAdsPct(d);
+        const adsPct = pefIsNoAds(d) ? 0 : rowAdsPct(d);
         if (!(sprice > 0) || !(margin > 0) || !(lp > 0)) {
             return { sroi: null, sgpft: null, snroi: null, snpft: null };
         }
@@ -2180,7 +2192,7 @@
             return { sroi: sroi, sgpft: sgpft, snroi: sroi, snpft: sgpft };
         }
         if (pefIsTemu(d)) {
-            const ads = pefIsTemu2(d) ? 0 : adsPct;
+            const ads = adsPct;
             const pftProfit = (sprice * margin) - lp - ship;
             const sProfit = (sprice * TEMU_S_RECOVERY_RATE * margin) - lp - ship;
             const sgpft = round2((pftProfit / sprice) * 100);
@@ -2204,7 +2216,7 @@
         const lp = Number(d.lp || 0);
         const ship = pefMetricShip(d);
         const margin = rowMargin(d);
-        const adsPct = pefIsTopdawg(d) ? 0 : rowAdsPct(d);
+        const adsPct = pefIsNoAds(d) ? 0 : rowAdsPct(d);
         if (!(price > 0) || !(margin > 0) || !(lp > 0)) {
             return { groi: null, gpft: null, nroi: null, npft: null };
         }
@@ -2215,13 +2227,22 @@
             return { groi: groi, gpft: gpft, nroi: groi, npft: gpft };
         }
         if (pefIsTemu(d)) {
-            const ads = pefIsTemu2(d) ? 0 : adsPct;
-            const fullPrice = pefTemuFullPrice(d, price);
-            const gpft = fullPrice > 0 ? round2(((fullPrice * margin - lp - ship) / fullPrice) * 100) : 0;
-            const groi = round2(((price * margin - lp - ship) / lp) * 100);
-            const npft = ads === 100 ? gpft : round2(gpft - ads);
-            const nroi = ads === 100 ? groi : round2(groi - ads);
-            return { groi: groi, gpft: gpft, nroi: nroi, npft: npft };
+            // /new-temuone & /new-temu2: Price = Full Temu Price; GPFT$ on R Price;
+            // GPFT% = GPFT$ / Temu Price; NPFT/NROI subtract channel Ads% (Temu 2 included).
+            let base = Number(d.base_price || 0);
+            if (!(base > 0)) base = pefTemuBaseFromFullPrice(price) || pefTemuBaseFromRPrice(price);
+            const fullPrice = round2(pefTemuFullPriceFromBase(base));
+            const rPrice = base > 0 ? round2(base <= 26.99 ? base + 2.99 : base) : 0;
+            if (!(fullPrice > 0)) return { groi: null, gpft: null, nroi: null, npft: null };
+            const gpftDollar = (rPrice * margin) - lp - ship;
+            const adsDollar = fullPrice * (adsPct / 100);
+            return {
+                price: fullPrice,
+                groi: round2((gpftDollar / lp) * 100),
+                gpft: round2((gpftDollar / fullPrice) * 100),
+                nroi: round2(((gpftDollar - adsDollar) / lp) * 100),
+                npft: round2(((gpftDollar - adsDollar) / fullPrice) * 100)
+            };
         }
         const gross = (price * margin) - lp - ship;
         const gpft = round2((gross / price) * 100);
@@ -3191,24 +3212,6 @@
                     headerTooltip: 'Channel listing price',
                     formatter: fmtMoney,
                     accessorDownload: function(value) { return value; },
-                },
-                {
-                    title: 'CPN $',
-                    field: 'cpn_dollar',
-                    width: 62,
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    headerSort: false,
-                    visible: false,
-                    editable: true,
-                    editor: 'input',
-                    headerTooltip: '$ less on checked channels (same as /price-increase CPN $ → saves SPRICE)',
-                    formatter: function(cell) {
-                        return fmtPefPromoCell(cell.getValue(), '$');
-                    },
-                    cellEdited: function(cell) {
-                        applyPefPromoFromCell(cell, 'cpn', 'dollar');
-                    },
                 },
                 {
                     title: 'PRMT %',
@@ -4202,8 +4205,10 @@
         }
         const patch = { success: 'pushed', push_error: null, push_message: 'pushed' };
         if (newPrice > 0) {
-            const live = recalcLiveForRow(Object.assign({}, d, { price: newPrice }));
-            Object.assign(patch, { price: newPrice }, live);
+            const livePatch = { price: newPrice };
+            if (mp === 'temu' || mp === 'temu2') livePatch.base_price = newPrice;
+            const live = recalcLiveForRow(Object.assign({}, d, livePatch));
+            Object.assign(patch, { price: newPrice }, livePatch.base_price ? { base_price: newPrice } : {}, live);
         }
         if (sprice > 0) {
             patch.sprice = sprice;
