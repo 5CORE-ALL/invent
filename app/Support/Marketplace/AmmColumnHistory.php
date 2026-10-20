@@ -32,6 +32,55 @@ class AmmColumnHistory
     ];
 
     /**
+     * Channels whose yesterday ad spend comes from a real per-day campaign report
+     * (see YesterdayMarketplaceMetricsService: Amazon, eBay 1/2/3, Temu 1/2, Shopify Google Ads).
+     * Every other channel reports 0 spend there, which is "no source", not "no ads".
+     */
+    private const YESTERDAY_ADS_SOURCES = [
+        'amazon', 'ebay', 'ebay2', 'ebaytwo', 'ebay3', 'ebaythree',
+        'temu', 'temu2', 'shopify', 'shopifyb2c',
+    ];
+
+    public static function hasYesterdayAdsSource(string $channel): bool
+    {
+        $key = strtolower(str_replace([' ', '-', '&', '/'], '', trim($channel)));
+
+        return in_array($key, self::YESTERDAY_ADS_SOURCES, true);
+    }
+
+    /**
+     * True when the saved y_ad_spend is a trustworthy one-day figure for Y Ads% / T Ads%.
+     */
+    public static function yesterdayAdsMeasured(string $channel, mixed $ySpend, mixed $yDaySales): bool
+    {
+        if (! self::hasYesterdayAdsSource($channel) || $ySpend === null || $yDaySales === null) {
+            return false;
+        }
+        $sales = (float) $yDaySales;
+        $spend = (float) $ySpend;
+
+        return $sales > 0 && $spend >= 0 && $spend <= $sales;
+    }
+
+    /**
+     * Measured yesterday Ads% for a channel payload row, or null when the row has no trustworthy one.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    public static function measuredAdsRate(array $row): ?float
+    {
+        if (empty($row['Y Ads Measured'])) {
+            return null;
+        }
+        $sales = self::num($row['Y Day Sales'] ?? 0);
+        if ($sales <= 0) {
+            return null;
+        }
+
+        return (self::num($row['Y Ad Spend'] ?? 0) / $sales) * 100;
+    }
+
+    /**
      * Save today's Inv@SP / Inv@LP $ per DIL band under the all-channels page so the INV band
      * dots open the same standard history graph as every other badge.
      *
@@ -258,10 +307,12 @@ class AmmColumnHistory
             }
 
             // Y Ads% = yesterday ad spend ÷ yesterday sales (only for channels with yesterday sales).
-            $ySales = (float) ($row['sales'] ?? 0);
-            if (! empty($row['computed']) && $ySales > 0) {
-                $data['y_ads_pct'] = round((float) ($row['ads_pct'] ?? 0), 4);
-                $totAdSpend += (float) ($row['ad_spend'] ?? 0);
+            // Same basis as the page's Y Day Sales; channels without a real daily ad source are skipped.
+            $ySales = (float) (($row['pft_sales'] ?? 0) > 0 ? $row['pft_sales'] : ($row['sales'] ?? 0));
+            $ySpend = (float) ($row['ad_spend'] ?? 0);
+            if (! empty($row['computed']) && self::yesterdayAdsMeasured((string) ($row['channel'] ?? ''), $ySpend, $ySales)) {
+                $data['y_ads_pct'] = round(($ySpend / $ySales) * 100, 4);
+                $totAdSpend += $ySpend;
                 $totAdSales += $ySales;
             }
 
@@ -326,8 +377,10 @@ class AmmColumnHistory
 
             // Today Ads% = the channel's Ads% applied to today's sales (same as todayPartsFromRow()).
             if ($sales > 0) {
-                $adsRaw = $row['Ads%'] ?? ($row['TACOS'] ?? 0);
-                $data['t_ads_pct'] = round(self::num($adsRaw), 4);
+                // Rate = latest measured day's Ads% where the channel has a real daily ad source
+                // (ad platforms do not report today live); otherwise the channel's L30 Ads%.
+                $adsRaw = self::measuredAdsRate($row) ?? self::num($row['Ads%'] ?? ($row['TACOS'] ?? 0));
+                $data['t_ads_pct'] = round((float) $adsRaw, 4);
             }
 
             if ($ratio > 0 && $views > 0) {

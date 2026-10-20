@@ -313,6 +313,8 @@ class AllMarketplaceMasterBadgeAggregator
             $gp = self::rowNumber($row, 'Gprofit%');
             $npft = self::rowNumber($row, 'N PFT');
             $ads = self::rowNumber($row, 'Ads%', 'TACOS');
+            // Today Ads%: latest measured day's rate when the channel has a real daily ad source.
+            $adsRate = \App\Support\Marketplace\AmmColumnHistory::measuredAdsRate($row) ?? $ads;
             $l30 = self::rowNumber($row, 'L30 Sales');
             $cogsL30 = self::rowNumber($row, 'cogs');
             $views = self::rowNumber($row, 'Total Views');
@@ -323,7 +325,7 @@ class AllMarketplaceMasterBadgeAggregator
                 : $sales * max(0.0, 1 - $gp / 100);
             $totalGross += $sales * $gp / 100;
             $totalNet += $sales * $npft / 100;
-            $totalSpend += $sales * $ads / 100;
+            $totalSpend += $sales * $adsRate / 100;
             $totalViews += ($l30 > 0 && $views > 0) ? $views * ($sales / $l30) : 0.0;
             $totalOrders += ($l30 > 0 && $l30Orders > 0) ? $l30Orders * ($sales / $l30) : 0.0;
         }

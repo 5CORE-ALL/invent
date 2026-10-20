@@ -1057,7 +1057,7 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="t_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS.">
                             <span class="summary-trend-dot none" data-metric="t_nroi" title="Vs L30 NROI%"></span>NROI%: <span id="avg-t-nroi">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="t_ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="t_ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="T Ads% = Σ (Today Sales × ad rate) ÷ Σ Today Sales. Rate = latest measured day’s Ads% where the channel has a daily ad report, else L30 Ads%.">
                             <span class="summary-trend-dot none" data-metric="t_ads" title="Vs L30 Ads%"></span>Ads%: <span id="avg-t-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="t_views" style="background-color: #0dcaf0; color: #111; font-weight: bold; cursor:pointer;" title="T Views = Σ (Views × Today Sales ÷ L30 Sales). Same pace as Today Sales.">
@@ -1095,7 +1095,7 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="y_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
                             <span class="summary-trend-dot none" data-metric="y_nroi_pct" title="Rolling history"></span>NROI%: <span id="avg-y-nroi">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is the real one-day campaign spend for channels with a daily ad report, else the channel’s L30 Ads%.">
                             <span class="summary-trend-dot none" data-metric="y_ads_pct" title="Vs L30 Ads%"></span>Ads%: <span id="avg-y-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_views" style="background-color: #0dcaf0; color: #111; font-weight: bold; cursor:pointer;" title="Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30).">
@@ -2185,7 +2185,19 @@
             if (!ySales) return null;
             return parseNumber(row['N PFT'] || 0);
         }
+        // Real one-day ad spend (campaign reports) for channels that have a daily ad source.
+        // Null for the rest, which fall back to the channel's L30 Ads%.
+        function measuredYAdsRateFromRow(row) {
+            if (!row || row['Y Ads Measured'] !== true) return null;
+            const sales = parseNumber(row['Y Day Sales'] || 0);
+            if (sales <= 0) return null;
+            return (parseNumber(row['Y Ad Spend'] || 0) / sales) * 100;
+        }
         function yAdsPartsFromRow(row) {
+            if (row && row['Y Ads Measured'] === true) {
+                const mSales = parseNumber(row['Y Day Sales'] || 0);
+                if (mSales > 0) return { spend: parseNumber(row['Y Ad Spend'] || 0), sales: mSales };
+            }
             const m = yMeasuredFromRow(row);
             if (m && m.sales > 0) {
                 return { spend: m.spend, sales: m.sales };
@@ -2200,7 +2212,12 @@
             if (sales <= 0) return { sales: 0, gross: 0, net: 0, cogs: 0, spend: 0, views: 0, orders: 0 };
             const gp = parseNumber(row['Gprofit%'] || 0);
             const npft = parseNumber(row['N PFT'] || 0);
-            const ads = parseNumber(row['Ads%'] != null ? row['Ads%'] : (row['TACOS'] || 0));
+            // Ad platforms do not report today live, so today's spend uses the latest measured day's
+            // Ads% where the channel has a real daily ad source, else the channel's L30 Ads%.
+            const measuredRate = measuredYAdsRateFromRow(row);
+            const ads = measuredRate != null
+                ? measuredRate
+                : parseNumber(row['Ads%'] != null ? row['Ads%'] : (row['TACOS'] || 0));
             const l30 = parseNumber(row['L30 Sales'] || 0);
             const cogsL30 = parseNumber(row['cogs'] || 0);
             const views = parseNumber(row['Total Views'] || 0);
@@ -3727,7 +3744,7 @@
                     {
                         title: "Y Ads%",
                         field: "Y Ads%",
-                        headerTooltip: "Yesterday Ads% = yesterday ad spend ÷ yesterday sales × 100. Spend is the channel's Ads% applied to yesterday's sales. NYS when a channel had no yesterday sales. Dot: green = lower than the previous day.",
+                        headerTooltip: "Yesterday Ads% = yesterday's real ad spend (campaign reports) ÷ yesterday sales × 100 for Amazon, eBay 1/2/3, Temu 1/2 and Shopify. Other channels have no daily ad report, so they use their L30 Ads%. NYS when a channel had no yesterday sales. Dot: green = lower than the previous day.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 80,
@@ -3990,7 +4007,7 @@
                     {
                         title: "T Ads%",
                         field: "T Ads%",
-                        headerTooltip: "Today Ads% = the channel's Ads% applied to Today Sales (spend ÷ today sales × 100). Blank when Today Sales is 0. Dot: green = lower than the previous day.",
+                        headerTooltip: "Today Ads% = ad rate applied to Today Sales. Ad platforms do not report today live, so the rate is the latest measured day's Ads% (Amazon, eBay 1/2/3, Temu 1/2, Shopify); other channels use their L30 Ads%. Blank when Today Sales is 0. Dot: green = lower than the previous day.",
                         hozAlign: "center",
                         sorter: "number",
                         width: 80,
@@ -6627,7 +6644,7 @@
                     $('#avg-t-npft').closest('.badge').attr('title', 'T Nprft% = Σ (Today Sales × NPFT%) ÷ Σ Today Sales. ' + pct1(npft).toFixed(1) + '%');
                     $('#avg-t-groi').closest('.badge').attr('title', 'TGroi% = Σ (Today Sales × GPFT%) ÷ Σ today COGS. Today COGS = L30 COGS × (Today Sales ÷ L30 Sales). ' + pct1(groi).toFixed(1) + '%');
                     $('#avg-t-nroi').closest('.badge').attr('title', 'TNROI% = Σ (Today Sales × NPFT%) ÷ Σ today COGS. ' + pct1(nroi).toFixed(1) + '%');
-                    $('#avg-t-ads').closest('.badge').attr('title', 'T Ads% = Σ (Today Sales × Ads%) ÷ Σ Today Sales. ' + pct1(ads).toFixed(1) + '%');
+                    $('#avg-t-ads').closest('.badge').attr('title', 'T Ads% = Σ (Today Sales × ad rate) ÷ Σ Today Sales. Rate = latest measured day’s Ads% where the channel has a daily ad report, else L30 Ads%. ' + pct1(ads).toFixed(1) + '%');
                     $('#total-t-views').closest('.badge').attr('title', 'T Views = Σ (Views × Today Sales ÷ L30 Sales). ' + views.toLocaleString('en-US'));
                     const orders = Math.round(totalTodayOrders);
                     $('#total-t-orders').text(orders.toLocaleString('en-US'));
@@ -6907,7 +6924,7 @@
                         setBadgeExact($el, null);
                     }
                     $el.closest('.badge').attr('title',
-                        'Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales. '
+                        'Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is the real one-day campaign spend for channels with a daily ad report, else the channel’s L30 Ads%. '
                         + (totalYAdSales > 0 ? val.toFixed(1) + '%' : 'No yesterday sales.'));
                 })();
                 (function() {

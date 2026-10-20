@@ -8838,6 +8838,15 @@ class ChannelMasterController extends Controller
                     'Y Spend' => $channel->y_pft !== null
                         ? $this->yesterdayAdSpend($channel->y_day_sales, $channel->ads_percentage)
                         : null,
+                    // Real one-day ad spend (campaign reports) for the Y Ads% / T Ads% columns. Only
+                    // flagged measured for channels that have a daily ad source and where the
+                    // spend does not exceed that day's sales (a larger figure means mismatched pulls).
+                    'Y Ad Spend' => $channel->y_ad_spend !== null ? (float) $channel->y_ad_spend : null,
+                    'Y Ads Measured' => \App\Support\Marketplace\AmmColumnHistory::yesterdayAdsMeasured(
+                        (string) $channel->channel,
+                        $channel->y_ad_spend,
+                        $channel->y_day_sales
+                    ),
                     'Growth' => round($channel->growth, 2) . '%',
                     'L7 vs 30 pace %' => $channel->l7_vs_30_pace,
                     
