@@ -3856,12 +3856,35 @@ class CvrMasterController extends Controller
             } catch (\Throwable $e) {
                 Log::warning('CVR breakdown Amazon L30 failed for '.$fullSku.': '.$e->getMessage());
             }
-            $amazonGPFT = $amazonPrice > 0 ? (($amazonPrice * 0.80 - $ship - $lp) / $amazonPrice) * 100 : 0;
+            $amazonPrice = (float) $amazonPrice;
 
-            // Ads% / NPFT% are overwritten below from AMM channel Ads% (same as the analytics page).
-            $amazonAD = (float) $getChannelAdsPercent('Amazon');
-            $amazonNPFT = round($amazonGPFT - $amazonAD, 2);
-            
+            // Price: Amazon.com listing price (Buy Box) when available — same as /amazon-tabulator-view
+            if ($amazonData && Schema::hasTable('amazon_buybox_data')) {
+                try {
+                    $siteKeys = [];
+                    $siteClean = strtoupper(str_replace("\xC2\xA0", ' ', trim((string) $fullSku)));
+                    foreach ([strtoupper((string) $fullSku), $siteClean, str_replace(' ', '', $siteClean), AmazonDatasheet::normalizeSkuForLookup((string) $fullSku)] as $k) {
+                        if ($k !== '') {
+                            $siteKeys[$k] = true;
+                        }
+                    }
+                    $sitePrice = null;
+                    foreach (DB::table('amazon_buybox_data')->where('our_listing_price', '>', 0)->get(['sku', 'our_listing_price']) as $bb) {
+                        $bbSku = strtoupper(trim(str_replace("\xC2\xA0", ' ', (string) $bb->sku)));
+                        $bbCompact = AmazonDatasheet::normalizeSkuForLookup($bbSku);
+                        if (isset($siteKeys[$bbSku]) || ($bbCompact !== '' && isset($siteKeys[$bbCompact]))) {
+                            $sitePrice = round((float) $bb->our_listing_price, 2);
+                            break;
+                        }
+                    }
+                    if ($sitePrice !== null && $sitePrice > 0) {
+                        $amazonPrice = $sitePrice;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('CVR breakdown Amazon site price failed for '.$fullSku.': '.$e->getMessage());
+                }
+            }
+
             // Get Amazon suggested data from amazon_data_view
             $amazonDataView = AmazonDataView::where('sku', $fullSku)->first();
             $amazonSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
@@ -3894,8 +3917,31 @@ class CvrMasterController extends Controller
                             $amazonPushedAt = null;
                         }
                     }
+
+                    // Live pulled price / pushed Sale price — same as /amazon-tabulator-view
+                    $pushedSale = \App\Services\AmazonPushedPricePullService::pushedSaleFromValue($val);
+                    $pulledLive = isset($val['PRICE_PULLED_VALUE']) && is_numeric($val['PRICE_PULLED_VALUE'])
+                        ? round((float) $val['PRICE_PULLED_VALUE'], 2) : 0.0;
+                    $pullStatus = strtolower((string) ($val['PRICE_PULL_STATUS'] ?? ''));
+                    $pushSt = strtolower((string) ($val['PUSH_PRC_STATUS'] ?? $val['SPRICE_STATUS'] ?? ''));
+                    if ($pulledLive > 0 && $pullStatus === 'pulled') {
+                        $amazonPrice = $pulledLive;
+                    } elseif ($pushedSale !== null && $pushedSale > 0 && in_array($pushSt, ['pushed', 'applied'], true)) {
+                        $amazonPrice = \App\Services\AmazonPushedPricePullService::tabulatorPriceAfterPush(
+                            $amazonPrice > 0 ? $amazonPrice : null,
+                            $pushedSale
+                        );
+                    }
                 }
             }
+
+            // GPFT% = ((price × 0.80 − ship − lp) / price) × 100; Ads% = Amazon channel Ads%; NPFT% = GPFT% − Ads%
+            $amazonGPFT = $amazonPrice > 0 ? round((($amazonPrice * 0.80 - $ship - $lp) / $amazonPrice) * 100, 2) : 0;
+            $amazonAD = (float) (ChannelMasterCalculatedData::where('channel', 'Amazon')->value('ads_percentage')
+                ?? ChannelMasterCalculatedData::where('channel', 'like', 'Amazon%')->value('ads_percentage')
+                ?? 0);
+            $amazonNPFT = round($amazonGPFT - $amazonAD, 2);
+
             // SP from Sku Link LMP siblings when this SKU has none (same as /amazon-standard-price)
             if ($amazonStandardPrice === null) {
                 $amazonStandardPrice = $this->resolveAmazonStandardPriceFromSkuLinkGroup($fullSku);
@@ -5822,6 +5868,11 @@ class CvrMasterController extends Controller
                             ? round($sgpftVal, 2)
                             : round($sgpftVal - $adsPct, 2);
                     }
+                } elseif ($mp === 'amazon') {
+                    // Ads% / NPFT% already set from /amazon-tabulator-view source above
+                    $adsPct = (float) ($row['ad'] ?? 0);
+                    $row['tacos_ch'] = $adsPct;
+                    $row['npft'] = round($gpftPct - $adsPct, 2);
                 } else {
                     $adsPct = (float) $getChannelAdsPercent($row['marketplace'] ?? '');
                     $row['tacos_ch'] = $adsPct;
@@ -5830,7 +5881,14 @@ class CvrMasterController extends Controller
 
                 $lmpChannel = null;
                 $lmpPrice = null;
-                if (in_array($mp, ['amazon', 'fba'], true)) {
+                if ($mp === 'amazon') {
+                    // L1 LMP across the Sku Link LMP group, ignored ASINs skipped — same as /amazon-tabulator-view
+                    $lmpChannel = 'amazon';
+                    $lmpSvc = app(LmpSkuGroupService::class);
+                    $lmpSvc->prepareForSkus([$fullSku]);
+                    $lmpGroup = $lmpSvc->groupContaining((string) $fullSku);
+                    $lmpPrice = AmazonSkuCompetitor::lowestLandedForSkuGroup($lmpGroup ?: [$fullSku], 'amazon');
+                } elseif ($mp === 'fba') {
                     $lmpChannel = 'amazon';
                     $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
                     $lmpPrice = $resolveAmazonLmpPrice($rowSku) ?? $amazonLmpPrice;

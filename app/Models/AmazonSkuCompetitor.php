@@ -360,7 +360,7 @@ class AmazonSkuCompetitor extends Model
     /**
      * @param  list<string>  $skus
      */
-    public static function getCompetitorsForSkus(array $skus, string $marketplace = 'amazon'): \Illuminate\Support\Collection
+    public static function getCompetitorsForSkus(array $skus, string $marketplace = 'amazon', bool $dedupe = true): \Illuminate\Support\Collection
     {
         $rawSkus = array_values(array_unique(array_filter(array_map(
             static fn ($sku) => trim((string) $sku),
@@ -398,6 +398,30 @@ class AmazonSkuCompetitor extends Model
             ->filter(static fn ($item) => isset($keySet[self::normalizeSkuKey($item->sku ?? '')]))
             ->values();
 
-        return self::dedupeByAsin($competitors);
+        return $dedupe ? self::dedupeByAsin($competitors) : $competitors;
+    }
+
+    /**
+     * Landed L1 LMP for a Sku Link LMP group — same steps as /amazon-tabulator-view:
+     * ignore all copies of an ignored ASIN, dedupe by ASIN, lowest non-ignored landed price.
+     *
+     * @param  list<string>  $groupSkus
+     */
+    public static function lowestLandedForSkuGroup(array $groupSkus, string $marketplace = 'amazon'): ?float
+    {
+        $entries = self::getCompetitorsForSkus($groupSkus, $marketplace, false);
+        $entries = self::dedupeByAsin(self::applyIgnoreToSameAsins($entries));
+        $lowest = null;
+        foreach ($entries as $entry) {
+            if (self::isIgnored($entry)) {
+                continue;
+            }
+            $landed = self::landedPrice($entry);
+            if ($landed !== null && $landed > 0 && ($lowest === null || $landed < $lowest)) {
+                $lowest = $landed;
+            }
+        }
+
+        return $lowest;
     }
 }
