@@ -3374,6 +3374,95 @@ class CvrMasterController extends Controller
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
+    /**
+     * eBay L1 LMP across the Sku Link LMP group — same merge as /ebay-tabulator-view (applyLinkedGroupToRow).
+     */
+    private function ebayLinkedGroupLmpPrice(string $sku, ?string $fallbackSku = null): ?float
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        $svc = app(LmpSkuGroupService::class);
+        $svc->prepareForSkus(array_values(array_filter([$sku, $fallbackSku])));
+        $group = $svc->groupContaining($sku);
+        if (! is_array($group) || $group === []) {
+            $group = [$sku];
+        }
+        $seen = [];
+        $members = [];
+        foreach ($group as $m) {
+            $display = trim((string) $m);
+            $norm = strtoupper($display);
+            if ($norm === '' || isset($seen[$norm])) {
+                continue;
+            }
+            $seen[$norm] = true;
+            $members[] = $display;
+        }
+        $details = collect();
+        foreach ($members as $member) {
+            $memberFallback = (strcasecmp($member, $sku) === 0) ? $fallbackSku : null;
+            foreach (EbaySkuCompetitor::resolveLookupKeys($member, $memberFallback) as $key) {
+                $entries = EbaySkuCompetitor::getCompetitorsForSku($key, 'ebay');
+                if ($entries->isNotEmpty()) {
+                    $details->put($key, $entries);
+                }
+            }
+        }
+        $row = [];
+        EbaySkuCompetitor::applyLinkedGroupToRow($row, $sku, $details, $members, $fallbackSku);
+        $price = $row['lmp_price'] ?? null;
+
+        return ($price !== null && (float) $price > 0) ? round((float) $price, 2) : null;
+    }
+
+    /**
+     * Shein views (shein_metrics.views, max across normalized-SKU matches) — same as /shein-pricing.
+     */
+    private function sheinViewsForSku(string $sku): ?int
+    {
+        try {
+            if (! Schema::hasTable('shein_metrics') || ! Schema::hasColumn('shein_metrics', 'views')) {
+                return null;
+            }
+            $compact = strtoupper(preg_replace('/\s+/', '', str_replace("\xC2\xA0", ' ', $sku)));
+            if ($compact === '') {
+                return null;
+            }
+            $max = DB::table('shein_metrics')
+                ->whereRaw("UPPER(REPLACE(sku, ' ', '')) = ?", [$compact])
+                ->max('views');
+
+            return $max === null ? null : (int) $max;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Faire views (faire_products_sheets.views) — same as /faire-pricing.
+     */
+    private function faireViewsForSku(string $sku): ?int
+    {
+        try {
+            if (! Schema::hasTable('faire_products_sheets') || ! Schema::hasColumn('faire_products_sheets', 'views')) {
+                return null;
+            }
+            $compact = strtoupper(preg_replace('/\s+/', '', str_replace("\xC2\xA0", ' ', $sku)));
+            if ($compact === '') {
+                return null;
+            }
+            $max = DB::table('faire_products_sheets')
+                ->whereRaw("UPPER(REPLACE(sku, ' ', '')) = ?", [$compact])
+                ->max('views');
+
+            return $max === null ? null : (int) $max;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     public function getBreakdownData(Request $request)
     {
         try {
@@ -3831,6 +3920,13 @@ class CvrMasterController extends Controller
                     if (strtolower($k) === "wt_act") $actWt = floatval($v);
                 }
             }
+            // Same fallback as the tabulators: product_master lp / ship columns when Values has none
+            if ($productMaster && $lp == 0 && isset($productMaster->lp)) {
+                $lp = floatval($productMaster->lp);
+            }
+            if ($productMaster && $ship == 0 && !(is_array($values) && isset($values['ship'])) && isset($productMaster->ship)) {
+                $ship = floatval($productMaster->ship);
+            }
 
             // Fetch views data from views_pull_data for marketplaces that use it
             $viewsPullData = ViewsPullData::where('sku', $fullSku)->first();
@@ -3991,9 +4087,16 @@ class CvrMasterController extends Controller
             $ebayData = EbayMetric::where('sku', $fullSku)->first();
             $ebay1Margin = MarketplacePercentage::takeHomeDecimal('Ebay');
             $ebay1Price = $ebayData->ebay_price ?? 0;
-            $ebay1L30 = $ebayData->ebay_l30 ?? 0;
-            $ebay1GPFT = $ebay1Price > 0 ? (($ebay1Price * $ebay1Margin - $ship - $lp) / $ebay1Price) * 100 : 0;
-            $ebay1AD = (float) app(ChannelMasterController::class)->getEbayMasterAdsPercent();
+            // E L30 prefers live ebay_orders (period l30, cancelled/refunded excluded) — same as /ebay-tabulator-view
+            $ebay1L30 = (int) ($ebayData->ebay_l30 ?? 0);
+            $ebay1OrderQty = $this->ebay1L30OrderQtyForSku($fullSku, $ebayData ? (string) ($ebayData->item_id ?? '') : '');
+            if ($ebay1OrderQty['sku'] > 0) {
+                $ebay1L30 = $ebay1OrderQty['sku'];
+            } elseif ($ebay1OrderQty['item'] > 0) {
+                $ebay1L30 = $ebay1OrderQty['item'];
+            }
+            $ebay1GPFT = $ebay1Price > 0 ? round((($ebay1Price * $ebay1Margin - $ship - $lp) / $ebay1Price) * 100, 2) : 0;
+            $ebay1AD = (float) app(\App\Http\Controllers\MarketPlace\EbayController::class)->tabulatorChannelAdsPercent();
             $ebay1NPFT = round($ebay1GPFT - $ebay1AD, 2);
             
             $ebayDataView = EbayDataView::where('sku', $fullSku)->first();
@@ -4054,12 +4157,9 @@ class CvrMasterController extends Controller
             // Check exact match first
             $ebay2Data = Ebay2Metric::where('sku', $fullSku)->first();
             
-            // If not found, check for variations (OPEN BOX, USED, etc.)
+            // Same exact-SKU match as /ebay2-tabulator-view (no OPEN BOX / USED LIKE fallback)
             if (!$ebay2Data) {
-                $ebay2Data = Ebay2Metric::where('sku', 'LIKE', '%' . $fullSku . '%')
-                    ->orWhere('sku', 'LIKE', 'OPEN BOX ' . $fullSku . '%')
-                    ->orWhere('sku', 'LIKE', 'USED ' . $fullSku . '%')
-                    ->first();
+                $ebay2Data = Ebay2Metric::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim((string) $fullSku))])->first();
             }
             
             $ebay2Margin = MarketplacePercentage::takeHomeDecimal('EbayTwo');
@@ -4069,7 +4169,7 @@ class CvrMasterController extends Controller
             $ebay2GPFT = $ebay2Price > 0
                 ? round((($ebay2Price * $ebay2Margin - $lp - $ship) / $ebay2Price) * 100, 2)
                 : 0;
-            $ebay2AD = (float) app(ChannelMasterController::class)->getEbaytwoMasterAdsPercent();
+            $ebay2AD = (float) app(\App\Http\Controllers\MarketPlace\EbayTwoController::class)->tabulatorChannelAdsPercent();
             $ebay2NPFT = round($ebay2GPFT - $ebay2AD, 2);
             
             $ebay2DataView = $ebay2Data ? EbayTwoDataView::where('sku', $ebay2Data->sku)->first() : null;
@@ -4215,7 +4315,23 @@ class CvrMasterController extends Controller
                 : 0;
             $dobaNPFT = $dobaGPFT; // no ads — same as /doba-tabulator
             
-            $hasDobaData = (bool) $dobaMetric && ($dobaPrice > 0 || intval($dobaMetric->quantity_l30 ?? 0) > 0);
+            // L30 = doba_daily_data (same query as /doba-tabulator): L30 period, not cancelled,
+            // pickup-with-prepaid-label orders excluded
+            $dobaL30 = $dobaMetric ? intval($dobaMetric->quantity_l30 ?? 0) : 0;
+            try {
+                if (Schema::hasTable('doba_daily_data')) {
+                    $dobaL30 = (int) DB::table('doba_daily_data')
+                        ->whereRaw("LOWER(period) = 'l30'")
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$dobaSkuNorm])
+                        ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%CANCEL%'")
+                        ->whereRaw('LOWER(TRIM(COALESCE(order_type, ?))) <> ?', ['', 'pickup with a prepaid label'])
+                        ->sum('quantity');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR breakdown Doba L30 (doba_daily_data) failed: ' . $e->getMessage());
+            }
+
+            $hasDobaData = (bool) $dobaMetric && ($dobaPrice > 0 || $dobaL30 > 0);
             
             // SPRICE from doba_data_view (with-ship table — same as /doba-tabulator)
             $dobaDataView = DobaDataView::where('sku', $fullSku)->first()
@@ -4257,7 +4373,7 @@ class CvrMasterController extends Controller
                 'sku' => $hasDobaData ? $fullSku : 'Not Listed',
                 'price' => $dobaPrice,
                 'views' => $dobaMetric ? intval($dobaMetric->impressions ?? 0) : null,
-                'l30' => $dobaMetric ? intval($dobaMetric->quantity_l30 ?? 0) : 0,
+                'l30' => $dobaL30,
                 'gpft' => $dobaGPFT,
                 'ad' => 0,
                 'tacos_ch' => 0,
@@ -4283,9 +4399,68 @@ class CvrMasterController extends Controller
                 'seller_link' => $dobaLinks[1],
             ];
 
+            // Doba Pre-Paid — same as /doba_withoutship: price = self-pick price, only
+            // "pickup with a prepaid label" orders for L30, ship excluded from PFT/ROI, no ads.
+            $dobaPpPrice = $dobaMetric ? floatval($dobaMetric->self_pick_price ?? 0) : 0;
+            $dobaPpL30 = 0;
+            try {
+                if (Schema::hasTable('doba_daily_data')) {
+                    $dobaPpL30 = (int) DB::table('doba_daily_data')
+                        ->whereRaw("LOWER(period) = 'l30'")
+                        ->whereRaw('UPPER(TRIM(sku)) = ?', [$dobaSkuNorm])
+                        ->whereRaw("UPPER(COALESCE(order_status, '')) NOT LIKE '%CANCEL%'")
+                        ->whereRaw('LOWER(TRIM(COALESCE(order_type, ?))) = ?', ['', 'pickup with a prepaid label'])
+                        ->sum('quantity');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR breakdown Doba Pre-Paid L30 failed: ' . $e->getMessage());
+            }
+            $dobaPpGPFT = $dobaPpPrice > 0 ? round((($dobaPpPrice * $dobaPercentage - $lp) / $dobaPpPrice) * 100, 2) : 0;
+            $dobaPpROI = ($lp > 0 && $dobaPpPrice > 0) ? round((($dobaPpPrice * $dobaPercentage - $lp) / $lp) * 100, 2) : 0;
+            $dobaPpSprice = 0.0;
+            try {
+                $dobaPpView = \App\Models\DobaWithoutShipDataView::where('sku', $fullSku)->first()
+                    ?? \App\Models\DobaWithoutShipDataView::whereRaw('UPPER(TRIM(sku)) = ?', [$dobaSkuNorm])->first();
+                if ($dobaPpView) {
+                    $ppVal = is_array($dobaPpView->value) ? $dobaPpView->value : json_decode($dobaPpView->value, true);
+                    $dobaPpSprice = is_array($ppVal) ? floatval($ppVal['SPRICE'] ?? 0) : 0.0;
+                }
+            } catch (\Throwable $e) {
+                // leave 0
+            }
+            $dobaPpSgpft = $dobaPpSprice > 0 ? round((($dobaPpSprice * $dobaPercentage - $lp) / $dobaPpSprice) * 100, 2) : 0;
+            $hasDobaPpData = (bool) $dobaMetric && ($dobaPpPrice > 0 || $dobaPpL30 > 0);
+            $breakdownData[] = [
+                'marketplace' => 'Doba Pre-Paid',
+                'sku' => $hasDobaPpData ? $fullSku : 'Not Listed',
+                'price' => $dobaPpPrice,
+                'views' => null,
+                'l30' => $dobaPpL30,
+                'gpft' => $dobaPpGPFT,
+                'ad' => 0,
+                'tacos_ch' => 0,
+                'npft' => $dobaPpGPFT,
+                'groi' => $dobaPpROI,
+                'nroi' => $dobaPpROI,
+                'is_listed' => $hasDobaPpData,
+                'sprice' => $dobaPpSprice,
+                'sgpft' => $dobaPpSgpft,
+                'sroi' => ($lp > 0 && $dobaPpSprice > 0) ? round((($dobaPpSprice * $dobaPercentage - $lp) / $lp) * 100, 2) : 0,
+                'spft' => $dobaPpSgpft,
+                'lp' => $lp,
+                'ship' => 0,
+                'margin' => $dobaPercentage,
+                'pushed_by' => null,
+                'pushed_at' => null,
+                'buyer_link' => $dobaLinks[0],
+                'seller_link' => $dobaLinks[1],
+            ];
+
             // Fetch TikTok data — same sources/formulas as /tiktok-pricing (TikTokPricingController)
-            $tiktokData = TikTokProduct::where('sku', strtoupper($fullSku))->first();
             $skuNormTt = strtoupper(str_replace("\u{00a0}", ' ', trim((string) $fullSku)));
+            // Row pick + Ship exactly like /tiktok-pricing (NBSP-safe SKU, live listing first, Shipping Master Ship)
+            $tiktokData = $this->pickTiktokListingForSku(TikTokProduct::class, $skuNormTt);
+            $ttShip = \App\Support\ProductMasterShip::forPricing(is_array($values) ? $values : [], $productMaster);
 
             // Margin: marketplace_percentages.marketplace = TiktokShop only
             $tiktokMarketplace = MarketplacePercentage::where('marketplace', 'TiktokShop')->first();
@@ -4298,7 +4473,13 @@ class CvrMasterController extends Controller
             $ttPrice = $tiktokData ? floatval($tiktokData->price ?? 0) : 0;
 
             // T views = (video_views || views) + ads_views + affl_views; shop data view may override components
-            $ttVideoViews = $tiktokData ? intval($tiktokData->video_views ?? $tiktokData->views ?? 0) : 0;
+            $ttVideoViews = 0;
+            if ($tiktokData) {
+                $ttVideoViews = (int) ($tiktokData->video_views ?? 0);
+                if ($ttVideoViews <= 0) {
+                    $ttVideoViews = (int) ($tiktokData->views ?? 0);
+                }
+            }
             $ttAdsViews = $tiktokData ? intval($tiktokData->ads_views ?? 0) : 0;
             $ttAfflViews = $tiktokData ? intval($tiktokData->affl_views ?? 0) : 0;
 
@@ -4310,13 +4491,14 @@ class CvrMasterController extends Controller
                 $tiktokValArr = is_array($ttShopRow->value)
                     ? $ttShopRow->value
                     : (json_decode($ttShopRow->value ?? '{}', true) ?: []);
-                if (array_key_exists('video_views', $tiktokValArr)) {
+                // Shop JSON often holds 0 from SPRICE saves — only override with positive values (same as the page)
+                if (intval($tiktokValArr['video_views'] ?? 0) > 0) {
                     $ttVideoViews = intval($tiktokValArr['video_views']);
                 }
-                if (array_key_exists('ads_views', $tiktokValArr)) {
+                if (intval($tiktokValArr['ads_views'] ?? 0) > 0) {
                     $ttAdsViews = intval($tiktokValArr['ads_views']);
                 }
-                if (array_key_exists('affl_views', $tiktokValArr)) {
+                if (intval($tiktokValArr['affl_views'] ?? 0) > 0) {
                     $ttAfflViews = intval($tiktokValArr['affl_views']);
                 }
                 $tiktokSuggested = [
@@ -4341,36 +4523,15 @@ class CvrMasterController extends Controller
 
             $ttViews = $ttVideoViews + $ttAdsViews + $ttAfflViews;
 
-            // GPFT% uses normal product_master ship (same as Amazon)
+            // GPFT% uses Shipping Master Ship (same as /tiktok-pricing)
             $ttGPFT = $ttPrice > 0
-                ? round((($ttPrice * $tiktokPercentage - $lp - $ship) / $ttPrice) * 100, 2)
+                ? round((($ttPrice * $tiktokPercentage - $lp - $ttShip) / $ttPrice) * 100, 2)
                 : 0;
 
-            // SKU TACOS% from tiktok_campaign_reports (campaign_name = SKU), L30+L7 Product card — same as /tiktok-pricing
-            $ttSpend = 0.0;
-            try {
-                $skuUpperTt = strtoupper(trim($fullSku));
-                $ttSpendL30 = (float) TiktokCampaignReport::where('report_range', 'L30')
-                    ->where('creative_type', 'Product card')
-                    ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
-                    ->whereNotNull('product_id')->where('product_id', '!=', '')
-                    ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpperTt])
-                    ->sum('cost');
-                $ttSpendL7 = (float) TiktokCampaignReport::where('report_range', 'L7')
-                    ->where('creative_type', 'Product card')
-                    ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
-                    ->whereNotNull('product_id')->where('product_id', '!=', '')
-                    ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpperTt])
-                    ->sum('cost');
-                // Match /tiktok-pricing spend: L30 cost + L7 cost
-                $ttSpend = $ttSpendL30 + $ttSpendL7;
-            } catch (\Throwable $e) {
-                Log::warning('TikTok breakdown TACOS fetch failed for ' . $fullSku . ': ' . $e->getMessage());
-            }
+            // SKU TACOS% — ads spend (L30 + L7 Product card, SKU resolved via product_id) ÷ (L30 × price), like /tiktok-pricing
+            $ttSpend = $this->tiktokSkuAdSpend($skuNormTt);
             $ttSalesValue = $tiktokL30 * $ttPrice;
-            $ttTacos = $ttSalesValue > 0
-                ? round(($ttSpend / $ttSalesValue) * 100, 2)
-                : ($ttSpend > 0 ? 100.0 : 0.0);
+            $ttTacos = $ttSalesValue > 0 ? round(($ttSpend / $ttSalesValue) * 100, 2) : 0.0;
             $ttNPFT = round($ttGPFT - $ttTacos, 2);
             // SPFT = SGPFT − TACOS% (recomputed like /tiktok-pricing)
             if (($tiktokSuggested['sprice'] ?? 0) > 0 || ($tiktokSuggested['sgpft'] ?? 0) != 0) {
@@ -4410,7 +4571,7 @@ class CvrMasterController extends Controller
                 'sroi' => $tiktokSuggested['sroi'],
                 'spft' => $tiktokSuggested['spft'],
                 'lp' => $lp,
-                'ship' => $ship, // normal product_master ship — same as Amazon
+                'ship' => $ttShip, // Shipping Master Ship — same as /tiktok-pricing
                 'margin' => $tiktokPercentage,
                 'pushed_by' => null,
                 'pushed_at' => null,
@@ -4425,7 +4586,10 @@ class CvrMasterController extends Controller
             $tiktok2L30Bd = 0;
             try {
                 if (Schema::hasTable('tiktok_products_two')) {
-                    $tt2ProductBd = TikTokProductTwo::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($fullSku))])->first();
+                    $tt2ProductBd = $this->pickTiktokListingForSku(
+                        TikTokProductTwo::class,
+                        strtoupper(str_replace("\u{00a0}", ' ', trim((string) $fullSku)))
+                    );
                 }
                 if (Tiktok2Order::tableReady()) {
                     $tiktok2L30Bd = (int) (Tiktok2Order::soldQtyL30([strtoupper(trim($fullSku))], 30)[strtoupper(trim($fullSku))] ?? 0);
@@ -4434,8 +4598,8 @@ class CvrMasterController extends Controller
                 Log::warning('TikTok 2 breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
             $tt2PriceBd = $tt2ProductBd ? floatval($tt2ProductBd->price ?? 0) : 0;
-            // Product-master ship (same as Amazon / TikTok 1 in OV L30)
-            $tt2ShipBd = $ship;
+            // Shipping Master Ship (same as /tiktok-2-pricing)
+            $tt2ShipBd = \App\Support\ProductMasterShip::forPricing(is_array($values) ? $values : [], $productMaster);
             $tt2GPFTBd = $tt2PriceBd > 0
                 ? round((($tt2PriceBd * $tiktok2MarginBd - $lp - $tt2ShipBd) / $tt2PriceBd) * 100, 2)
                 : 0;
@@ -4464,7 +4628,11 @@ class CvrMasterController extends Controller
                     }
                 }
                 if ($tt2ProductBd) {
-                    $tt2ViewsBd = intval($tt2ProductBd->video_views ?? $tt2ProductBd->views ?? 0)
+                    $tt2Video = (int) ($tt2ProductBd->video_views ?? 0);
+                    if ($tt2Video <= 0) {
+                        $tt2Video = (int) ($tt2ProductBd->views ?? 0);
+                    }
+                    $tt2ViewsBd = $tt2Video
                         + intval($tt2ProductBd->ads_views ?? 0)
                         + intval($tt2ProductBd->affl_views ?? 0);
                 }
@@ -4473,6 +4641,10 @@ class CvrMasterController extends Controller
                 Log::warning('TikTok 2 DataView/ListingStatus fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
             $hasTikTok2Data = (bool) $tt2ProductBd || $tt2PriceBd > 0 || $tiktok2L30Bd > 0 || ($tt2SuggestedBd['sprice'] > 0);
+            // Per-SKU TACOS% like /tiktok-2-pricing: ads spend ÷ (TT2 L30 × TT2 price); PFT = GPFT − TACOS
+            $tt2Spend = $this->tiktokSkuAdSpend(strtoupper(str_replace("\u{00a0}", ' ', trim((string) $fullSku))));
+            $tt2SalesValue = $tiktok2L30Bd * $tt2PriceBd;
+            $tt2Tacos = $tt2SalesValue > 0 ? round(($tt2Spend / $tt2SalesValue) * 100, 2) : 0.0;
 
             $breakdownData[] = [
                 'marketplace' => 'TikTok 2',
@@ -4481,9 +4653,10 @@ class CvrMasterController extends Controller
                 'views' => $hasTikTok2Data ? $tt2ViewsBd : null,
                 'l30' => $tiktok2L30Bd,
                 'gpft' => $tt2GPFTBd,
-                'ad' => 0, // set to channel Ads% in enrich (Amazon-style NPFT/SPFT)
-                'tacos_ch' => 0,
-                'npft' => $tt2GPFTBd,
+                'ad' => $tt2Tacos,
+                'tacos_ch' => $tt2Tacos,
+                'ads_locked' => true,
+                'npft' => round($tt2GPFTBd - $tt2Tacos, 2),
                 'is_listed' => $hasTikTok2Data,
                 'sprice' => $tt2SuggestedBd['sprice'],
                 'sgpft' => $tt2SuggestedBd['sgpft'],
@@ -4510,8 +4683,11 @@ class CvrMasterController extends Controller
             // Shopify L30 product page sessions; null when no shopify_skus row → N/A
             $sb2cViews = $shopifySku ? intval($shopifySku->views ?? 0) : null;
             
-            // L30: Count rows in shopify_b2c_daily_data (not sum quantity)
-            $sb2cL30 = ShopifyB2CDailyData::where('sku', $fullSku)->count();
+            // L30: same as /shopify-b2c-pricing — SUM(quantity), period l30, refunded excluded
+            $sb2cL30 = (int) ShopifyB2CDailyData::where('sku', $fullSku)
+                ->where('period', 'l30')
+                ->where('financial_status', '!=', 'refunded')
+                ->sum('quantity');
             
             // Get Shopify B2C percentage
             $sb2cMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2C')->first();
@@ -4765,7 +4941,8 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Reverb',
                 'sku' => $hasReverbData ? $fullSku : 'Not Listed',
                 'price' => $rvPrice,
-                'views' => $reverbProduct ? intval($reverbProduct->views ?? 0) : null,
+                // Same as /reverb-pricing: bump impressions ÷ 1000
+                'views' => $reverbProduct ? (int) round(\App\Support\ReverbPricingViews::scale((int) ($reverbProduct->views ?? 0))) : null,
                 'l30' => $reverbL30,
                 'gpft' => $rvGPFT,
                 'ad' => $reverbAdsPct,
@@ -4900,7 +5077,31 @@ class CvrMasterController extends Controller
                 }
             }
 
-            $breakdownData[] = [
+            // Display values from /new-temuone (T price, R-price GPFT/GROI, channel Ads%, recovery LMP)
+            $temuExtra = ['ads_locked' => false];
+            try {
+                if ($productMaster) {
+                    $nt1 = $this->temuPageMetricsForModal($productMaster, false);
+                    if (!empty($nt1['listed'])) {
+                        $temuPrice = $nt1['price'];
+                        $temuBasePriceBr = (float) ($nt1['base_price'] ?? 0);
+                        $temuViews = $nt1['views'];
+                        $temuL30 = $nt1['l30'];
+                        $temuGPFT = $nt1['gpft'];
+                        $temuADS = $nt1['ads'];
+                        $temuNPFT = $nt1['npft'];
+                        $temuMargin = $nt1['margin'];
+                        $temuExtra = [
+                            'ads_locked' => true,
+                            'groi_pct' => $nt1['groi'],
+                            'nroi_pct' => $nt1['nroi'],
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR breakdown Temu (new-temuone metrics): ' . $e->getMessage());
+            }
+            $breakdownData[] = $temuExtra + [
                 'marketplace' => 'Temu',
                 'sku' => $temuPricing ? $fullSku : 'Not Listed',
                 'price' => $temuPrice,
@@ -5000,9 +5201,34 @@ class CvrMasterController extends Controller
             $temu2HasListSignal = ($temu2PricingRow && (float) ($temu2PricingRow->base_price ?? 0) > 0)
                 || $temu2L30Br > 0
                 || $suggSpT2 > 0.01;
-            // Temu 2: no Ads% / NPFT-from-ads (same as /temu2-decrease)
+            // Temu 2: display values from /new-temu2 (T price, R-price GPFT/GROI, channel Ads%, recovery LMP)
             $temu2NPFTBr = round($temu2GPFTBr, 2);
-            $breakdownData[] = [
+            $temu2AdsPct = 0;
+            $temu2Extra = ['ads_locked' => false];
+            try {
+                if ($productMaster) {
+                    $nt2 = $this->temuPageMetricsForModal($productMaster, true);
+                    if (!empty($nt2['listed'])) {
+                        $temu2PriceBr = $nt2['price'];
+                        $temu2BaseBr = (float) ($nt2['base_price'] ?? 0);
+                        $temu2ViewsBr = $nt2['views'];
+                        $temu2L30Br = $nt2['l30'];
+                        $temu2GPFTBr = $nt2['gpft'];
+                        $temu2AdsPct = $nt2['ads'];
+                        $temu2NPFTBr = $nt2['npft'];
+                        $temu2Margin = $nt2['margin'];
+                        $temu2HasListSignal = true;
+                        $temu2Extra = [
+                            'ads_locked' => true,
+                            'groi_pct' => $nt2['groi'],
+                            'nroi_pct' => $nt2['nroi'],
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR breakdown Temu2 (new-temu2 metrics): ' . $e->getMessage());
+            }
+            $breakdownData[] = $temu2Extra + [
                 'marketplace' => 'Temu2',
                 'sku' => $temu2HasListSignal ? $fullSku : 'Not Listed',
                 'price' => $temu2PriceBr,
@@ -5010,8 +5236,8 @@ class CvrMasterController extends Controller
                 'views' => $temu2ViewsBr,
                 'l30' => $temu2L30Br,
                 'gpft' => $temu2GPFTBr,
-                'ad' => 0,
-                'tacos_ch' => 0,
+                'ad' => $temu2AdsPct,
+                'tacos_ch' => $temu2AdsPct,
                 'npft' => $temu2NPFTBr,
                 'is_listed' => $temu2HasListSignal,
                 'sprice' => $temu2Suggested['sprice'],
@@ -5164,7 +5390,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Shein',
                 'sku'         => $hasSheinData ? $fullSku : 'Not Listed',
                 'price'       => round($sheinPriceBd, 2),
-                'views'       => null, // /shein-pricing does not track views
+                'views'       => $this->sheinViewsForSku((string) $fullSku), // shein_metrics.views — same as /shein-pricing
                 'l30'         => $sheinL30Bd,
                 'gpft'        => $sheinGPFTBd,
                 'ad'          => 0,
@@ -5273,7 +5499,7 @@ class CvrMasterController extends Controller
                 'marketplace' => 'Faire',
                 'sku'         => $hasFaireData ? $fullSku : 'Not Listed',
                 'price'       => round($fairePriceBd, 2),
-                'views'       => null, // /faire-pricing does not track views
+                'views'       => $this->faireViewsForSku((string) $fullSku), // faire_products_sheets.views — same as /faire-pricing
                 'l30'         => $faireL30Bd,
                 'gpft'        => $faireGPFTBd,
                 'ad'          => 0,
@@ -5348,21 +5574,68 @@ class CvrMasterController extends Controller
             }
 
             // Add AliExpress
-            $aeMarketplacePerc = MarketplacePercentage::where('marketplace', 'Aliexpress')
-                ->orWhere('marketplace', 'AliExpress')->first();
-            $aeMarginBd = $aeMarketplacePerc ? ($aeMarketplacePerc->percentage / 100) : 1.00;
+            // Same as /aliexpress-pricing: keep-rate from marketplace_percentages (default 89%),
+            // L30 from aliexpress_daily_data minus refund/return/cancel/closed orders,
+            // price from aliexpress_pricing_prices (0 when the listing is offline), views from aliexpress_metric.
+            $aeMarketplacePerc = MarketplacePercentage::query()
+                ->whereRaw('LOWER(TRIM(marketplace)) = ?', ['aliexpress'])
+                ->orderBy('id')->first();
+            $aeMarginBd = ($aeMarketplacePerc && is_numeric($aeMarketplacePerc->percentage ?? null) && (float) $aeMarketplacePerc->percentage > 0)
+                ? ((float) $aeMarketplacePerc->percentage / 100)
+                : 0.89;
             $aePricingRowBd = null;
             $aeL30Bd = 0;
+            $aeViewsBd = null;
+            $aeOfflineBd = false;
             try {
-                $aePricingRowBd = \App\Models\AliexpressPricingPrice::where('sku', $fullSku)->first();
-                $aeL30Bd = (int) (\App\Models\AliexpressDailyData::where('sku_code', $fullSku)
-                    ->selectRaw('SUM(COALESCE(quantity, 0)) as l30')
-                    ->value('l30') ?? 0);
+                $aeSkuExact = static function ($v) {
+                    $v = str_replace(["\xC2\xA0", "\xE2\x80\xAF", "\xA0"], ' ', trim((string) $v));
+                    $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $v);
+
+                    return strtoupper(preg_replace('/\s+/u', ' ', $clean !== false ? $clean : $v));
+                };
+                $aeKey = $aeSkuExact($fullSku);
+                $aePricingRowBd = \App\Models\AliexpressPricingPrice::where('sku', $fullSku)->first()
+                    ?? \App\Models\AliexpressPricingPrice::whereRaw('UPPER(TRIM(sku)) = ?', [$aeKey])->first();
+                $aeL30Query = \App\Models\AliexpressDailyData::query()
+                    ->whereRaw('UPPER(TRIM(sku_code)) = ?', [$aeKey])
+                    ->where(function ($query) {
+                        foreach (['refund', 'return', 'cancel', 'closed'] as $status) {
+                            $query->whereRaw('LOWER(COALESCE(order_status, "")) NOT LIKE ?', ['%' . $status . '%']);
+                        }
+                    });
+                $aeL30Bd = (int) ($aeL30Query->selectRaw('SUM(COALESCE(quantity, 0)) as l30')->value('l30') ?? 0);
+
+                if (Schema::hasTable('aliexpress_metric')) {
+                    $aeHasViews = Schema::hasColumn('aliexpress_metric', 'views');
+                    $aeHasStatus = Schema::hasColumn('aliexpress_metric', 'listing_status');
+                    $aeCols = ['sku'];
+                    if ($aeHasViews) {
+                        $aeCols[] = 'views';
+                    }
+                    if ($aeHasStatus) {
+                        $aeCols[] = 'listing_status';
+                    }
+                    $aeStatus = '';
+                    foreach (\App\Models\AliexpressMetric::query()->whereRaw('UPPER(TRIM(sku)) = ?', [$aeKey])->get($aeCols) as $aeMetric) {
+                        if ($aeHasViews) {
+                            $aeViewsBd = max((int) ($aeViewsBd ?? 0), (int) ($aeMetric->views ?? 0));
+                        }
+                        if ($aeHasStatus) {
+                            $st = strtolower(trim((string) ($aeMetric->listing_status ?? '')));
+                            if ($st !== '' && ($aeStatus === '' || $st === 'onselling')) {
+                                $aeStatus = $st;
+                            }
+                        }
+                    }
+                    $aeOfflineBd = in_array($aeStatus, ['offline', 'service_delete'], true);
+                }
             } catch (\Exception $e) {
                 Log::warning('AliExpress breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
-            $aePriceBd = $aePricingRowBd ? floatval($aePricingRowBd->price ?? 0) : 0;
-            $aeGPFTBd  = $aePriceBd > 0 ? (($aePriceBd * $aeMarginBd - $lp - $ship) / $aePriceBd) * 100 : 0;
+            $aePriceBd = ($aePricingRowBd && ! $aeOfflineBd) ? floatval($aePricingRowBd->price ?? 0) : 0;
+            // /aliexpress-pricing shows whole-number GPFT%
+            $aeGPFTBd  = $aePriceBd > 0 ? round((($aePriceBd * $aeMarginBd - $lp - $ship) / $aePriceBd) * 100) : 0;
             $aeNPFTBd  = $aeGPFTBd; // No ads for AliExpress
             $aeSuggestedBd = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
             $aeBuyerLink = null;
@@ -5385,15 +5658,6 @@ class CvrMasterController extends Controller
                 Log::warning('AliExpress DataView/ListingStatus fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
             $hasAeData = $aePricingRowBd && ($aePriceBd > 0 || $aeL30Bd > 0);
-            $aeViewsBd = null;
-            try {
-                $aeSheetBd = \App\Models\AliExpressSheetData::where('sku', $fullSku)->first();
-                if ($aeSheetBd && ($aeSheetBd->views !== null && $aeSheetBd->views !== '')) {
-                    $aeViewsBd = intval($aeSheetBd->views);
-                }
-            } catch (\Exception $e) {
-                // leave N/A
-            }
 
             $breakdownData[] = [
                 'marketplace' => 'AliExpress',
@@ -5431,34 +5695,32 @@ class CvrMasterController extends Controller
                 $ppSkuUpper = strtoupper((string) $fullSku);
                 $ppProductBd = \App\Models\PurchasingPowerProduct::whereRaw('UPPER(sku) = ?', [$ppSkuUpper])->first()
                     ?? \App\Models\PurchasingPowerProduct::where('sku', $fullSku)->first();
-                $ppSalesSum = \App\Models\PurchasingPowerSale::whereNotIn('status', ['Canceled', 'canceled'])
+                // L30: same Pacific L30 window as /purchasing-power-pricing (not all-time)
+                [$ppL30Start, $ppL30End] = \App\Http\Controllers\MarketPlace\PurchasingPowerController::purchasingPowerL30Window();
+                [$ppFromUtc, $ppToUtc] = \App\Http\Controllers\MarketPlace\PurchasingPowerController::purchasingPowerUtcRange($ppL30Start, $ppL30End);
+                $ppSalesSum = \App\Models\PurchasingPowerSale::query()
+                    ->where(fn ($q) => \App\Http\Controllers\MarketPlace\PurchasingPowerController::applyPurchasingPowerSaleFilter($q))
                     ->whereRaw('UPPER(offer_sku) = ?', [$ppSkuUpper])
+                    ->where('date_created', '>=', $ppFromUtc)
+                    ->where('date_created', '<=', $ppToUtc)
                     ->sum('quantity');
                 $ppL30Bd = $ppSalesSum !== null && $ppSalesSum !== ''
                     ? (int) $ppSalesSum
                     : (int) ($ppProductBd->m_l30 ?? 0);
 
-                // Price: MCM OF21 first, else macys_price_data fallback (same as PP pricing page)
-                $mcmPriceBd = ($ppProductBd && $ppProductBd->price !== null && $ppProductBd->price !== '')
-                    ? floatval($ppProductBd->price)
-                    : 0.0;
-                if ($mcmPriceBd > 0) {
-                    $ppPriceBd = $mcmPriceBd;
-                } else {
-                    $ppOfferBd = MacysPriceData::query()
-                        ->where(function ($q) use ($ppSkuUpper, $fullSku) {
-                            $q->whereRaw('UPPER(sku) = ?', [$ppSkuUpper])
-                                ->orWhereRaw('UPPER(offer_sku) = ?', [$ppSkuUpper])
-                                ->orWhere('sku', $fullSku)
-                                ->orWhere('offer_sku', $fullSku);
-                        })
-                        ->first();
-                    if ($ppOfferBd && floatval($ppOfferBd->price ?? 0) > 0) {
-                        $ppPriceBd = floatval($ppOfferBd->price);
-                    } else {
-                        $ppPriceBd = $ppProductBd ? floatval($ppProductBd->price ?? 0) : 0;
-                    }
-                }
+                // Price: live PP MCM offer only — same resolveListedPrice as /purchasing-power-pricing
+                $ppListingStatusBd = Schema::hasTable('purchasing_power_listing_statuses')
+                    ? \App\Models\PurchasingPowerListingStatus::where('sku', $fullSku)->first()
+                    : null;
+                $ppResolvedBd = \App\Http\Controllers\MarketPlace\PurchasingPowerController::resolveListedPrice(
+                    $ppProductBd,
+                    \App\Http\Controllers\MarketPlace\PurchasingPowerController::productIsLiveOffer(
+                        $ppProductBd,
+                        \App\Http\Controllers\MarketPlace\PurchasingPowerController::latestMcmFreshAfter()
+                    ),
+                    \App\Http\Controllers\MarketPlace\PurchasingPowerController::isListingMarkedInactive($ppListingStatusBd)
+                );
+                $ppPriceBd = (float) ($ppResolvedBd['price'] ?? 0);
             } catch (\Exception $e) {
                 Log::warning('PP breakdown data fetch skipped for SKU ' . $fullSku . ': ' . $e->getMessage());
             }
@@ -5806,7 +6068,7 @@ class CvrMasterController extends Controller
                     // Every row: aggregate Ads% (~2.6%) — same as /temu-decrease ADS% column (badgeAvgAds)
                     // Keep 100% when already set (spend > 0, L30 = 0)
                     $adsPct = (float) ($row['ad'] ?? $row['tacos_ch'] ?? 0);
-                    if ($adsPct != 100) {
+                    if ($adsPct != 100 && empty($row['ads_locked'])) {
                         $adsPct = round($this->resolveTemuAggregateAdsPercent('L30'), 2);
                     }
                     $row['ad'] = $adsPct;
@@ -5828,13 +6090,13 @@ class CvrMasterController extends Controller
                     // Channel Ads% on every row — same as /ebay-tabulator-view (+ ebay2/ebay3)
                     $cmc = app(ChannelMasterController::class);
                     if (in_array($mp, ['ebaytwo', 'ebay2'], true)) {
-                        $adsPct = (float) $cmc->getEbaytwoMasterAdsPercent();
+                        $adsPct = (float) app(\App\Http\Controllers\MarketPlace\EbayTwoController::class)->tabulatorChannelAdsPercent();
                     } elseif (in_array($mp, ['ebaythree', 'ebay3'], true)) {
                         $adsPct = method_exists($cmc, 'getEbaythreeMasterAdsPercent')
                             ? (float) $cmc->getEbaythreeMasterAdsPercent()
                             : 0.0;
                     } else {
-                        $adsPct = (float) $cmc->getEbayMasterAdsPercent();
+                        $adsPct = (float) app(\App\Http\Controllers\MarketPlace\EbayController::class)->tabulatorChannelAdsPercent();
                     }
                     $row['ad'] = $adsPct;
                     $row['tacos_ch'] = $adsPct;
@@ -5844,13 +6106,25 @@ class CvrMasterController extends Controller
                     if ($spriceVal > 0 || $sgpftVal != 0) {
                         $row['spft'] = round($sgpftVal - $adsPct, 2);
                     }
-                } elseif (in_array($mp, ['temu2', 'doba', 'ppower', 'purchasingpower', 'purchase', 'topdawg', 'shein', 'faire', 'depop', 'vinted', 'instagram shop', 'wayfair', 'temu 3', 'alibaba', 'mercari w ship', 'mercari w/o ship', 'fb marketplace', 'pls', 'newegg', 'walmart'], true)) {
+                } elseif ($mp === 'temu2' && !empty($row['ads_locked'])) {
+                    // Temu 2: channel Ads% from /new-temu2 (temu2 ads spend ÷ temu2 order sales)
+                    $adsPct = (float) ($row['ad'] ?? 0);
+                    $row['ad'] = $adsPct;
+                    $row['tacos_ch'] = $adsPct;
+                    $row['npft'] = round($gpftPct - $adsPct, 2);
+                } elseif (in_array($mp, ['macy', 'macys', 'bestbuy', 'bestbuyusa', 'aliexpress', 'temu2', 'doba', 'doba pre-paid', 'ppower', 'purchasingpower', 'purchase', 'topdawg', 'shein', 'faire', 'depop', 'vinted', 'instagram shop', 'wayfair', 'temu 3', 'alibaba', 'mercari w ship', 'mercari w/o ship', 'fb marketplace', 'pls', 'newegg', 'walmart'], true)) {
                     // Temu2 / Doba / PPower / TopDawg / Shein / Faire: no ads (match channel pricing pages)
                     $row['ad'] = 0;
                     $row['tacos_ch'] = 0;
                     $row['npft'] = round($gpftPct, 2);
                     // TopDawg / Faire keep product-master ship for SP Apply only.
                     // PPower GPFT/ROI use Ship BB (same as /purchasing-power-pricing).
+                } elseif (in_array($mp, ['tiktok2', 'tiktok 2'], true) && !empty($row['ads_locked'])) {
+                    // TikTok 2: per-SKU TACOS% from /tiktok-2-pricing (already on the row)
+                    $adsPct = (float) ($row['tacos_ch'] ?? 0);
+                    $row['ad'] = $adsPct;
+                    $row['tacos_ch'] = $adsPct;
+                    $row['npft'] = round($gpftPct - $adsPct, 2);
                 } elseif (in_array($mp, ['tiktok2', 'tiktok 2'], true)) {
                     // TikTok 2: same as Amazon — product-master ship already on row; Ads% from AMM;
                     // NPFT/SPFT = GPFT/SGPFT − Ads when L30 > 0
@@ -5895,18 +6169,8 @@ class CvrMasterController extends Controller
                 } elseif (in_array($mp, ['ebay', 'ebay1', 'ebaytwo', 'ebay2', 'ebaythree', 'ebay3'], true)) {
                     $lmpChannel = 'ebay';
                     $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
-                    $lmpPrice = $resolveEbayLmpPrice($rowSku);
-                    if ($lmpPrice === null) {
-                        foreach (EbaySkuCompetitor::resolveLookupKeys($rowSku, $fullSku) as $ebayKey) {
-                            $lmpPrice = $resolveEbayLmpPrice($ebayKey);
-                            if ($lmpPrice !== null) {
-                                break;
-                            }
-                        }
-                    }
-                    if ($lmpPrice === null) {
-                        $lmpPrice = $ebayLmpPrice;
-                    }
+                    // Same merge as /ebay-tabulator-view: Sku Link LMP group, ignored item ids, pack family, landed total
+                    $lmpPrice = $this->ebayLinkedGroupLmpPrice((string) $rowSku, (string) $fullSku);
                 } elseif ($mp === 'google') {
                     $lmpChannel = 'google';
                     $lmpPrice = $googleLmpPrice;
@@ -5960,6 +6224,10 @@ class CvrMasterController extends Controller
                     $lmpChannel = 'temu';
                     $rowSku = ($row['sku'] ?? null) && ($row['sku'] !== 'Not Listed') ? $row['sku'] : $fullSku;
                     $lmpPrice = $resolveTemuLmpPrice($rowSku) ?? $temuLmpPrice;
+                    // /new-temuone & /new-temu2 show the recovery price of the LMP (85%, +$2.99 when ≤ $27)
+                    if (!empty($row['ads_locked'])) {
+                        $lmpPrice = $this->temuLmpRecoveryPriceForCvr($lmpPrice);
+                    }
                 } elseif (in_array($mp, ['tiktok', 'tiktok2', 'tiktok 2'], true)) {
                     // Same tiktok_sku_competitors + Sku Link LMP groups as /tiktok-pricing
                     $lmpChannel = 'tiktok';
@@ -10716,6 +10984,352 @@ class CvrMasterController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Live eBay 1 L30 units for one SKU from ebay_orders / ebay_order_items (same exclusions
+     * as /ebay-tabulator-view: CANCELED and FULLY_REFUNDED orders are dropped).
+     *
+     * @return array{sku: int, item: int}
+     */
+    private function ebay1L30OrderQtyForSku(string $sku, string $itemId = ''): array
+    {
+        $out = ['sku' => 0, 'item' => 0];
+        $skuUpper = strtoupper(trim($sku));
+        $skuNoSpace = str_replace(' ', '', $skuUpper);
+        $itemId = trim($itemId);
+        if ($skuUpper === '' || ! Schema::hasTable('ebay_orders') || ! Schema::hasTable('ebay_order_items')) {
+            return $out;
+        }
+        try {
+            $norm = ShopifySku::normalizeSkuForShopifyLookup($sku);
+            $useItem = ($itemId !== '' && $itemId !== '0');
+            $rows = DB::table('ebay_order_items as i')
+                ->join('ebay_orders as o', 'o.id', '=', 'i.ebay_order_id')
+                ->where('o.period', 'l30')
+                ->where(function ($q) use ($skuUpper, $skuNoSpace, $itemId, $useItem) {
+                    $q->whereRaw('UPPER(TRIM(i.sku)) = ?', [$skuUpper])
+                        ->orWhereRaw("REPLACE(UPPER(TRIM(i.sku)), ' ', '') = ?", [$skuNoSpace]);
+                    if ($useItem) {
+                        $q->orWhere('i.item_id', $itemId);
+                    }
+                })
+                ->get(['i.sku', 'i.item_id', 'i.quantity', 'o.raw_data']);
+            foreach ($rows as $row) {
+                $raw = is_array($row->raw_data) ? $row->raw_data : json_decode((string) $row->raw_data, true);
+                if (is_array($raw)) {
+                    $cancelState = $raw['cancelStatus']['cancelState'] ?? '';
+                    $paymentStatus = $raw['orderPaymentStatus'] ?? '';
+                    if ($cancelState === 'CANCELED' || $paymentStatus === 'FULLY_REFUNDED') {
+                        continue;
+                    }
+                }
+                $qty = (int) ($row->quantity ?? 0);
+                if ($qty <= 0) {
+                    continue;
+                }
+                if (ShopifySku::normalizeSkuForShopifyLookup((string) ($row->sku ?? '')) === $norm) {
+                    $out['sku'] += $qty;
+                }
+                if ($useItem && trim((string) ($row->item_id ?? '')) === $itemId) {
+                    $out['item'] += $qty;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('CVR breakdown eBay1 L30 (ebay_orders) failed: ' . $e->getMessage());
+        }
+
+        return $out;
+    }
+
+    /**
+     * Pick the tiktok_products(_two) row the pricing page uses for a SKU:
+     * NBSP-safe SKU match, live listing first, then one with a price.
+     */
+    private function pickTiktokListingForSku(string $modelClass, string $skuNorm)
+    {
+        if ($skuNorm === '') {
+            return null;
+        }
+        $best = null;
+        $rows = $modelClass::query()
+            ->whereRaw("UPPER(TRIM(REPLACE(sku, ?, ' '))) = ?", ["\u{00a0}", $skuNorm])
+            ->get();
+        foreach ($rows as $item) {
+            $itemLive = \App\Services\TikTokShopService::isLiveListingStatus($item->listing_status ?? '');
+            $bestLive = $best
+                ? \App\Services\TikTokShopService::isLiveListingStatus($best->listing_status ?? '')
+                : false;
+            if ($best === null
+                || ($itemLive && ! $bestLive)
+                || ((float) ($best->price ?? 0) <= 0 && (float) ($item->price ?? 0) > 0 && $itemLive === $bestLive)) {
+                $best = $item;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * L30 + L7 Product-card ad spend for one SKU, campaigns resolved to the SKU the way
+     * /tiktok-pricing does (product_id → seller SKU, else campaign name).
+     */
+    private function tiktokSkuAdSpend(string $skuUpper): float
+    {
+        if ($skuUpper === '' || ! Schema::hasTable('tiktok_campaign_reports')) {
+            return 0.0;
+        }
+        try {
+            $productIds = [];
+            foreach (\App\Support\TikTokAdsSkuResolver::productIdToSkuMap() as $pid => $mappedSku) {
+                if (strtoupper(trim((string) $mappedSku)) === $skuUpper) {
+                    $productIds[] = (string) $pid;
+                }
+            }
+            $rows = TiktokCampaignReport::query()
+                ->whereIn('report_range', ['L30', 'L7'])
+                ->where('creative_type', 'Product card')
+                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                ->whereNotNull('product_id')->where('product_id', '!=', '')
+                ->where(function ($q) use ($skuUpper, $productIds) {
+                    $q->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpper]);
+                    if ($productIds !== []) {
+                        $q->orWhereIn('product_id', $productIds);
+                    }
+                })
+                ->get(['campaign_name', 'product_id', 'cost']);
+            $spend = 0.0;
+            foreach ($rows as $r) {
+                if (\App\Support\TikTokAdsSkuResolver::skuFor($r->product_id, $r->campaign_name) === $skuUpper) {
+                    $spend += (float) ($r->cost ?? 0);
+                }
+            }
+
+            return round($spend, 2);
+        } catch (\Throwable $e) {
+            Log::warning('CVR breakdown TikTok ad spend failed for ' . $skuUpper . ': ' . $e->getMessage());
+
+            return 0.0;
+        }
+    }
+
+    private function temuLmpRecoveryPriceForCvr($price): ?float
+    {
+        if ($price === null || $price === '' || ! is_numeric($price)) {
+            return null;
+        }
+        $p = (float) $price;
+        if (! ($p > 0)) {
+            return null;
+        }
+        if ($p <= 27) {
+            return round(($p * 0.85) + 2.99, 2);
+        }
+
+        return round($p * 0.85, 2);
+    }
+
+    /**
+     * Channel Ads% for /new-temuone ($second = false) or /new-temu2 ($second = true):
+     * L30 ads spend ÷ L30 order revenue (channel-master window).
+     */
+    private function temuChannelAdsPercentForCvr(bool $second): float
+    {
+        static $memo = [];
+        $memoKey = $second ? 'temu2' : 'temu';
+        if (isset($memo[$memoKey])) {
+            return $memo[$memoKey];
+        }
+
+        $spend = 0.0;
+        $sales = 0.0;
+        try {
+            if ($second) {
+                if (Schema::hasTable('temu2_campaign_reports')) {
+                    $spend = (float) (Temu2CampaignReport::badgeTotals('L30')['spend'] ?? 0);
+                }
+            } elseif (Schema::hasTable('temu_ads_api_reports')) {
+                $spend = (float) (\App\Models\TemuAdsApiReport::badgeTotals('L30')['spend'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('CVR breakdown Temu ads spend failed: ' . $e->getMessage());
+        }
+        try {
+            [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
+            $m = TemuShopifySalesService::computeMetricsFromOrders($start, $end, $second);
+            // /new-temuone uses 'sales'; /new-temu2 uses 'base_sales' (falls back to 'sales')
+            $sales = $second
+                ? (float) ($m['base_sales'] ?? $m['sales'] ?? 0)
+                : (float) ($m['sales'] ?? 0);
+        } catch (\Throwable $e) {
+            Log::warning('CVR breakdown Temu ads sales failed: ' . $e->getMessage());
+        }
+
+        return $memo[$memoKey] = ($sales > 0 ? round(($spend / $sales) * 100, 2) : 0.0);
+    }
+
+    /**
+     * Modal values for Temu / Temu 2 calculated like the /new-temuone and /new-temu2 grids:
+     * T price, R-price GPFT/GROI, channel Ads%, views and L30 from the page's own tables.
+     *
+     * @return array<string, mixed>
+     */
+    private function temuPageMetricsForModal(ProductMaster $pm, bool $second): array
+    {
+        $sku = (string) $pm->sku;
+        $normalizeSku = static function ($s) use ($second) {
+            if ($second) {
+                return TemuShopifySalesService::normalizeTemuSku((string) $s);
+            }
+            $s = strtoupper(trim((string) $s));
+            $s = preg_replace('/(\d+)\s*(PCS?|PIECES?)$/i', '$1PC', $s);
+
+            return preg_replace('/\s+/', ' ', $s);
+        };
+        $key = $normalizeSku($sku);
+        $keyNoSpace = str_replace(' ', '', $key);
+
+        $metricModel = $second ? Temu2Metric::class : TemuMetric::class;
+        $temuMetric = null;
+        foreach ($metricModel::query()->get(['sku', 'base_price', 'goods_id', 'sku_id', 'product_clicks_l30']) as $metric) {
+            if ($normalizeSku($metric->sku) !== $key) {
+                continue;
+            }
+            $price = (float) ($metric->base_price ?? 0);
+            if ($temuMetric === null || ($price > 0 && (float) ($temuMetric->base_price ?? 0) <= 0)) {
+                $temuMetric = $metric;
+            }
+        }
+
+        // L30 units: temu_orders / temu2_orders, channel-master L30 window
+        $orderTable = $second ? 'temu2_orders' : 'temu_orders';
+        $l30 = 0;
+        if (Schema::hasTable($orderTable)) {
+            [$start, $end] = TemuShopifySalesService::channelMasterL30Window();
+            $appTz = config('app.timezone');
+            $orderModel = $second ? \App\Models\Temu2Order::class : \App\Models\TemuOrder::class;
+            $rows = $orderModel::query()
+                ->whereBetween('parent_order_time', [$start->copy()->setTimezone($appTz), $end->copy()->setTimezone($appTz)])
+                ->where(function ($q) {
+                    $q->whereNull('order_status_text')
+                        ->orWhereRaw('UPPER(order_status_text) NOT IN (?, ?)', ['CANCELED', 'CANCELLED']);
+                })
+                ->selectRaw('ext_code, display_sku, SUM(quantity) as units')
+                ->groupBy('ext_code', 'display_sku')
+                ->get();
+            foreach ($rows as $row) {
+                $raw = trim((string) ($row->ext_code ?? ''));
+                if ($raw === '') {
+                    $raw = trim((string) ($row->display_sku ?? ''));
+                }
+                if ($raw === '') {
+                    continue;
+                }
+                $n = $normalizeSku($raw);
+                if ($n === $key || str_replace(' ', '', $n) === $keyNoSpace) {
+                    $l30 += (int) $row->units;
+                }
+            }
+        }
+
+        // Views: *_view_data clicks, else metric clicks + ads clicks
+        $goodsIdKey = $temuMetric ? TemuGoodsIdHelper::normalizeKey($temuMetric->goods_id ?? null) : null;
+        $viewTable = $second ? 'temu2_view_data' : 'temu_view_data';
+        $oClicks = 0;
+        $viewRowFound = false;
+        if ($goodsIdKey && Schema::hasTable($viewTable)) {
+            $viewModel = $second ? Temu2ViewData::class : TemuViewData::class;
+            $viewRow = $viewModel::selectRaw('goods_id, SUM(product_clicks) as product_clicks')
+                ->groupBy('goods_id')
+                ->get()
+                ->first(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id) === $goodsIdKey);
+            if ($viewRow) {
+                $viewRowFound = true;
+                $oClicks = max(0, (int) $viewRow->product_clicks);
+            }
+        }
+        $productClicks = $viewRowFound ? $oClicks : max(0, (int) ($temuMetric?->product_clicks_l30 ?? 0));
+        $adsViews = 0;
+        if ($goodsIdKey) {
+            try {
+                if ($second) {
+                    if (Schema::hasTable('temu2_campaign_reports')) {
+                        $ids = Temu2CampaignReport::latestRowIdsByGoodsId('L30');
+                        if ($ids->isNotEmpty()) {
+                            $adsRow = Temu2CampaignReport::query()
+                                ->whereIn('id', $ids)
+                                ->whereRaw("LOWER(TRIM(COALESCE(status, ''))) != 'not created'")
+                                ->whereNotNull('goods_id')
+                                ->get(['goods_id', 'clicks'])
+                                ->first(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id) === $goodsIdKey);
+                            $adsViews = $adsRow ? max(0, (int) ($adsRow->clicks ?? 0)) : 0;
+                        }
+                    }
+                } elseif (Schema::hasTable('temu_ads_api_reports')) {
+                    $adsRow = \App\Models\TemuAdsApiReport::query()
+                        ->liveAds()
+                        ->inLatestWindow('L30')
+                        ->whereNotNull('goods_id')
+                        ->get(['goods_id', 'clicks'])
+                        ->first(fn ($r) => TemuGoodsIdHelper::normalizeKey($r->goods_id) === $goodsIdKey);
+                    $adsViews = $adsRow ? max(0, (int) ($adsRow->clicks ?? 0)) : 0;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('CVR breakdown Temu ads views failed: ' . $e->getMessage());
+            }
+        }
+        $views = $oClicks > 0 ? $oClicks : ($productClicks + $adsViews);
+
+        $values = is_array($pm->Values)
+            ? $pm->Values
+            : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+        $lp = 0.0;
+        foreach ($values as $k => $v) {
+            if (strtolower((string) $k) === 'lp' && is_numeric($v)) {
+                $lp = (float) $v;
+                break;
+            }
+        }
+        if ($lp <= 0 && isset($pm->lp) && is_numeric($pm->lp)) {
+            $lp = (float) $pm->lp;
+        }
+        $temuShip = ProductMasterTemuShip::forPricing($values, $pm);
+        $margin = $second ? TemuShopifySalesService::temu2MarginDecimal() : TemuShopifySalesService::temuMarginDecimal();
+        $adsPercent = $this->temuChannelAdsPercentForCvr($second);
+
+        $basePrice = $temuMetric ? (float) ($temuMetric->base_price ?? 0) : 0.0;
+        if ($second && Schema::hasTable('temu2_pricing')) {
+            // temu2_pricing upload (Up Pricing sheet) wins over the API base price
+            foreach (Temu2Pricing::query()->get(['sku', 'base_price']) as $sheet) {
+                if ($normalizeSku($sheet->sku) === $key && is_numeric($sheet->base_price) && (float) $sheet->base_price > 0) {
+                    $basePrice = (float) $sheet->base_price;
+                    break;
+                }
+            }
+        }
+        $rPrice = TemuShopifySalesService::computeRPrice($basePrice);
+        $tPrice = $basePrice > 0 ? round(TemuShopifySalesService::computeFullTemuPrice($basePrice), 2) : 0.0;
+
+        $gpftDollars = TemuShopifySalesService::computeGroiProfit($rPrice, $margin, $lp, $temuShip);
+        $gpft = ($rPrice > 0 && $tPrice > 0) ? round(($gpftDollars / $tPrice) * 100, 2) : 0.0;
+        $groi = ($rPrice > 0 && $lp > 0) ? round(($gpftDollars / $lp) * 100, 2) : 0.0;
+        $npftDollars = $gpftDollars - ($tPrice * ($adsPercent / 100));
+        $npft = ($rPrice > 0 && $tPrice > 0) ? round(($npftDollars / $tPrice) * 100, 2) : 0.0;
+        $nroi = ($rPrice > 0 && $lp > 0) ? round(($npftDollars / $lp) * 100, 2) : 0.0;
+
+        return [
+            'listed' => $temuMetric !== null || $basePrice > 0,
+            'price' => $tPrice,
+            'base_price' => $basePrice > 0 ? round($basePrice, 2) : null,
+            'views' => $views,
+            'l30' => $l30,
+            'gpft' => $gpft,
+            'groi' => $groi,
+            'ads' => $adsPercent,
+            'npft' => $npft,
+            'nroi' => $nroi,
+            'margin' => $margin,
+        ];
     }
 
     /**

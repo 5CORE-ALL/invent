@@ -2228,9 +2228,9 @@
             showToast('Siblings Apply ON — will update ' + modalSiblingSkus.length + ' sibling(s)', 'success');
         });
         // Group: A = Amazon + others (exclude Temu, Doba, B2B); D = Doba; T = Temu
-        const MODAL_GROUP_EXCLUDE_FROM_A = ['temu', 'temu2', 'doba', 'sb2b', 'shopifyb2b', 'shopify_b2b'];
+        const MODAL_GROUP_EXCLUDE_FROM_A = ['temu', 'temu2', 'doba', 'dobapre-paid', 'sb2b', 'shopifyb2b', 'shopify_b2b'];
         const MODAL_GROUP_CHANNELS = {
-            D: ['doba'],
+            D: ['doba', 'dobapre-paid'],
             T: ['temu', 'temu2'],
         };
 
@@ -2554,6 +2554,7 @@
             'temu 3': @json(route('temu3.decrease')),
             temu3: @json(route('temu3.decrease')),
             doba: @json(url('/doba-tabulator')),
+            'doba pre-paid': @json(url('/doba_withoutship')),
             tiktok: @json(route('tiktok.pricing')),
             'tiktok 2': @json(route('tiktok2.pricing')),
             tiktok2: @json(route('tiktok2.pricing')),
@@ -2653,18 +2654,21 @@
                 const isFaireMp = mpLower === 'faire';
                 const isDepopMp = mpLower === 'depop';
                 const isTiktok2Mp = mpLower === 'tiktok2' || mpLower === 'tiktok 2';
-                const isNoShipExtraMp = ['instagram shop', 'wayfair', 'alibaba', 'mercari w/o ship', 'fb marketplace'].includes(mpLower);
-                const isNoAdsExtraMp = ['vinted', 'instagram shop', 'wayfair', 'temu 3', 'alibaba', 'mercari w ship', 'mercari w/o ship', 'fb marketplace', 'pls', 'newegg', 'walmart'].includes(mpLower);
+                const isNoShipExtraMp = ['doba pre-paid', 'instagram shop', 'wayfair', 'alibaba', 'mercari w/o ship', 'fb marketplace'].includes(mpLower);
+                const isNoAdsExtraMp = ['doba pre-paid', 'vinted', 'instagram shop', 'wayfair', 'temu 3', 'alibaba', 'mercari w ship', 'mercari w/o ship', 'fb marketplace', 'pls', 'newegg', 'walmart'].includes(mpLower);
                 // Doba/PPower/TopDawg/Shein/Depop and the added analytics channels: Ads% = 0
-                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp || isFaireMp || isDepopMp || isTiktok2Mp || isNoAdsExtraMp;
+                // TikTok 2 shows its per-SKU TACOS% when the server sends it (ads_locked)
+                const isNoAdsMp = isDobaMp || isPpMp || isTdMp || isSheinMp || isFaireMp || isDepopMp || (isTiktok2Mp && item.ads_locked !== true) || isNoAdsExtraMp;
                 // Temu: every row uses aggregate Ads% (~2.6%) — same as /temu-decrease badgeAvgAds
                 const isTemuMpRow = mpLower === 'temu';
                 const isTemu2MpRow = mpLower === 'temu2';
-                const tacosCh = (isNoAdsMp || isTemu2MpRow) ? 0 : parseFloat(item.tacos_ch || 0);
+                // Temu 2 uses the channel Ads% from /new-temu2 when the server sends it (ads_locked)
+                const temu2NoAds = isTemu2MpRow && item.ads_locked !== true;
+                const tacosCh = (isNoAdsMp || temu2NoAds) ? 0 : parseFloat(item.tacos_ch || 0);
                 const adsDisplay = tacosCh;
                 // NPFT% = GPFT% − Ads%; Temu skips subtract when Ads%=100 (same as /temu-decrease)
                 let npft;
-                if (isNoAdsMp || isTemu2MpRow) {
+                if (isNoAdsMp || temu2NoAds) {
                     npft = gpft;
                 } else if (isTemuMpRow && tacosCh === 100) {
                     npft = gpft;
@@ -2690,7 +2694,7 @@
                 if (lp > 0 && price > 0) {
                     const grossProfit = price * margin - lp - ship;
                     groi = (grossProfit / lp) * 100;
-                    if (isNoAdsMp || isTemu2MpRow) {
+                    if (isNoAdsMp || temu2NoAds) {
                         nroi = groi;
                     } else if (isTemuMpRow) {
                         nroi = (tacosCh === 100) ? groi : (groi - tacosCh);
@@ -2698,6 +2702,13 @@
                         const adsPerUnit = price * (tacosCh / 100);
                         nroi = ((grossProfit - adsPerUnit) / lp) * 100;
                     }
+                }
+                // Temu / Temu 2: GROI / NROI come from /new-temuone & /new-temu2 (R-price profit ÷ LP)
+                if (item.groi_pct !== undefined && item.groi_pct !== null && item.groi_pct !== '') {
+                    groi = parseFloat(item.groi_pct) || 0;
+                }
+                if (item.nroi_pct !== undefined && item.nroi_pct !== null && item.nroi_pct !== '') {
+                    nroi = parseFloat(item.nroi_pct) || 0;
                 }
                 let sgpft = 0, spft = 0, sroi = 0, snroi = 0;
                 if (sprice > 0) {
