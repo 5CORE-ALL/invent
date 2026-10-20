@@ -157,7 +157,21 @@ class ShopifyB2CSalesController extends Controller
     {
         $percentageValue = 0.95;
 
-        $orders = ShopifyB2CDailyData::where('period', $period)
+        // Window by order_date, not the stored `period` label. The label is only rewritten at the
+        // end of a fully successful app:fetch-shopify-b2c-metrics run, so after a 429/failed run
+        // old orders kept their 'l30' label and inflated L30 Orders / Qty / Sales.
+        // Boundaries match FetchShopifyB2CMetrics::updatePeriodLabels().
+        $today = \Carbon\Carbon::today();
+        $l30Start = $today->copy()->subDays(30);
+        $query = ShopifyB2CDailyData::query();
+        if ($period === 'l60') {
+            $query->where('order_date', '>=', $today->copy()->subDays(60))
+                ->where('order_date', '<', $l30Start);
+        } else {
+            $query->where('order_date', '>=', $l30Start);
+        }
+
+        $orders = $query
             ->where('financial_status', '!=', 'refunded')
             ->orderBy('order_date', 'desc')
             ->get()

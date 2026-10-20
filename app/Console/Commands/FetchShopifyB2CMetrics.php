@@ -89,6 +89,9 @@ class FetchShopifyB2CMetrics extends Command
             $this->info('Step 1/3: Fetching orders from Shopify API...');
             if (! $this->fetchOrders($fromDate, $toDate)) {
                 $this->error('Shopify B2C fetch stopped before the last page.');
+                // Still re-label by date so orders that aged out of the 30-day window stop
+                // counting as L30 even though this run could not finish.
+                $this->updatePeriodLabels();
                 return 1;
             }
 
