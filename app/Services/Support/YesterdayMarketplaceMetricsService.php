@@ -111,7 +111,8 @@ class YesterdayMarketplaceMetricsService
             $m['views_estimate'] = false;
             if ($m['views'] === null && $this->windowDays < 7 && $this->key($name) === 'reverb') {
                 try {
-                    $avg = app(YesterdayViewsService::class)->reverbL30DailyAverage();
+                    $viewsSvcR = app(YesterdayViewsService::class);
+                    $avg = $viewsSvcR->reverbDailyAverageForDate($date) ?? $viewsSvcR->reverbL30DailyAverage();
                 } catch (\Throwable $e) {
                     $avg = null;
                 }
@@ -226,6 +227,12 @@ class YesterdayMarketplaceMetricsService
         $views = $this->storedViewsForDate($channelKey, $date);
         if ($views !== null) {
             $m['views'] = $views;
+        } elseif ($this->key($channelKey) === 'reverb') {
+            // Reverb: that day's saved L30 snapshot ÷ 30 (a daily average; no real 1-day source).
+            $avg = app(YesterdayViewsService::class)->reverbDailyAverageForDate($date);
+            if ($avg !== null) {
+                $m['views'] = $avg;
+            }
         }
 
         if (! ($m['computed'] ?? false) && ($m['views'] ?? null) === null) {

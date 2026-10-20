@@ -46,6 +46,42 @@ class YesterdayViewsService
      * ÷ 30 as a clearly marked daily average (never saved to history, never used for CVR).
      * Raw impressions: the metrics service applies the same ÷1000 scale the page uses.
      */
+    /**
+     * Reverb daily average for one saved day: that day's reverb_sku_daily_data snapshot
+     * (rolling L30 impressions, summed over SKUs) ÷ 30. Half-captured snapshot days (total
+     * far below the neighbouring days) return null instead of a wrong number.
+     * Raw impressions: the metrics service applies the ÷1000 page scale.
+     */
+    public function reverbDailyAverageForDate(string $ymd): ?int
+    {
+        if (! Schema::hasTable('reverb_sku_daily_data')) {
+            return null;
+        }
+        $day = Carbon::parse($ymd, self::TZ);
+        $rows = DB::table('reverb_sku_daily_data')
+            ->whereBetween('record_date', [$day->copy()->subDays(7)->toDateString(), $day->copy()->addDays(7)->toDateString()])
+            ->selectRaw("record_date, SUM(CAST(JSON_UNQUOTE(JSON_EXTRACT(daily_data, '$.views')) AS UNSIGNED)) AS v")
+            ->groupBy('record_date')
+            ->get();
+
+        $sums = [];
+        foreach ($rows as $r) {
+            $sums[substr((string) $r->record_date, 0, 10)] = (float) $r->v;
+        }
+        $mine = $sums[$ymd] ?? 0.0;
+        if ($mine <= 0) {
+            return null;
+        }
+        $vals = array_values(array_filter($sums, fn ($v) => $v > 0));
+        sort($vals);
+        $median = $vals[(int) floor((count($vals) - 1) / 2)] ?? $mine;
+        if ($mine < $median * 0.8) {
+            return null;
+        }
+
+        return (int) round($mine / 30);
+    }
+
     public function reverbL30DailyAverage(): ?int
     {
         if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'views')) {
@@ -368,13 +404,15 @@ class YesterdayViewsService
         $dates = $settledDates;
         try {
             $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeUnbackedAmazonYViews());
-            // Channels with no real one-day views source must not keep invented history points.
-            foreach (self::NO_VIEW_CHANNELS as $noViewChannel) {
-                $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeChannelYViews($noViewChannel));
-            }
+            // Doba has no views source at all: it must not keep invented history points.
+            // (Reverb is excluded: it saves its own daily-average points below.)
+            $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeChannelYViews('doba'));
         } catch (\Throwable $e) {
             Log::warning('Amazon Y views history purge failed: '.$e->getMessage());
         }
+
+        // Reverb: save yesterday's daily-average point (from the saved daily L30 snapshot).
+        $dates[] = Carbon::yesterday(self::TZ)->toDateString();
 
         foreach (array_values(array_unique($dates)) as $d) {
             try {
