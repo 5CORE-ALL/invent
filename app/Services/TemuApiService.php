@@ -3873,6 +3873,22 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
                 return trim($text);
             }
         }
+        // Temu answers "Skc/Sku supply price has not changed" when the listing already has this price.
+        // That is not a failure: the price the caller wants is already live.
+        $reasonMap = $result['failedSkuReasonMap'] ?? null;
+        if (is_array($reasonMap) && $reasonMap !== []) {
+            $failedIds = (array) ($result['failedSkuList'] ?? []);
+            $allUnchanged = true;
+            foreach ($reasonMap as $reason) {
+                if (! is_string($reason) || ! preg_match('/price\s+has\s+not\s+changed/i', $reason)) {
+                    $allUnchanged = false;
+                    break;
+                }
+            }
+            if ($allUnchanged && count($reasonMap) >= count($failedIds)) {
+                return null;
+            }
+        }
         foreach (['failList', 'failedList', 'failSkuList', 'failedSkuList', 'errorList'] as $key) {
             if (! empty($result[$key]) && is_array($result[$key])) {
                 return 'Temu rejected part of the update: '.mb_substr((string) json_encode($result[$key], JSON_UNESCAPED_UNICODE), 0, 400);

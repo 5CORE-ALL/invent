@@ -2300,12 +2300,15 @@
         ntoPushSpricePollTimer = setInterval(pollNtoPushSpriceStatus, 1500);
         pollNtoPushSpriceStatus();
     }
-    function postNtoPushSpriceItems(items) {
+    function postNtoPushSpriceItems(items, opts) {
+        opts = opts || {};
         if (!items || !items.length) return $.Deferred().resolve(null).promise();
+        // Show the whole batch (e.g. 637), not just this 200-SKU chunk, so the bar matches the blue badge.
+        const progressTotal = Number(opts.progressTotal) > 0 ? Number(opts.progressTotal) : items.length;
         setNtoPushSpriceProgress({
             active: true,
-            done: 0,
-            total: items.length,
+            done: Number(opts.progressDone) || 0,
+            total: progressTotal,
             ok: 0,
             fail: 0,
             pct: 0,
@@ -2323,7 +2326,7 @@
                 setNtoPushSpriceProgress({
                     active: !!resp.active,
                     done: Number(resp.done_count) || 0,
-                    total: Number(resp.total) || items.length,
+                    total: Number(resp.total) || progressTotal,
                     ok: Number(resp.ok_count) || 0,
                     fail: Number(resp.fail_count) || 0,
                     pct: Number(resp.pct) || 0,
@@ -2364,9 +2367,10 @@
         let i = 0;
         function nextChunk() {
             if (i >= items.length) return;
+            const start = i;
             const chunk = items.slice(i, i + NTO_PUSH_SPRICE_CHUNK);
             i += chunk.length;
-            postNtoPushSpriceItems(chunk).always(nextChunk);
+            postNtoPushSpriceItems(chunk, { progressTotal: items.length, progressDone: start }).always(nextChunk);
         }
         nextChunk();
     }
