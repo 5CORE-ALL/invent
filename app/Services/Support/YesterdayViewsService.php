@@ -28,8 +28,13 @@ class YesterdayViewsService
      * Channels with no listing-views source. Their Y Views / T Views / CVR must stay
      * blank — Doba's sheet `views` column is not real traffic (Total Views is 0 on
      * /all-marketplace-master), and dividing it by 30 invented a Y Views number.
+     *
+     * Reverb: its "views" are bump-ad impressions for a rolling window. The Reverb bump
+     * API ignores start/end dates and the daily snapshots rise and fall (and are sometimes
+     * half-captured), so there is no real one-day figure. L30 ÷ 30 showed the same ~909
+     * every day.
      */
-    public const NO_VIEW_CHANNELS = ['doba'];
+    public const NO_VIEW_CHANNELS = ['doba', 'reverb'];
 
     public static function hasViewSource(string $key): bool
     {
@@ -348,6 +353,10 @@ class YesterdayViewsService
         $dates = $settledDates;
         try {
             $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeUnbackedAmazonYViews());
+            // Channels with no real one-day views source must not keep invented history points.
+            foreach (self::NO_VIEW_CHANNELS as $noViewChannel) {
+                $dates = array_merge($dates, \App\Support\Marketplace\AmmColumnHistory::purgeChannelYViews($noViewChannel));
+            }
         } catch (\Throwable $e) {
             Log::warning('Amazon Y views history purge failed: '.$e->getMessage());
         }

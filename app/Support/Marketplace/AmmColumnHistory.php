@@ -310,6 +310,35 @@ class AmmColumnHistory
         }
     }
 
+    /**
+     * Remove every saved Y Views / Y CVR point for a channel that has no real one-day views
+     * source (see YesterdayViewsService::NO_VIEW_CHANNELS). Self-limiting: once the rows are
+     * gone there is nothing left to delete.
+     *
+     * @return list<string> Pacific dates removed (all-channel totals need re-saving)
+     */
+    public static function purgeChannelYViews(string $channelKey, int $days = 60): array
+    {
+        try {
+            $since = now(BadgeDataHistory::TZ)->subDays($days)->toDateString();
+            $q = BadgeDataHistory::query()
+                ->where('page_name', self::PAGE_PREFIX.$channelKey)
+                ->whereIn('field', ['y_views', 'y_cvr'])
+                ->whereDate('snapshot_date', '>=', $since);
+
+            $dates = (clone $q)->distinct()->pluck('snapshot_date')
+                ->map(fn ($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : substr((string) $d, 0, 10))
+                ->all();
+            if ($dates !== []) {
+                $q->delete();
+            }
+
+            return array_values($dates);
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
     public static function pageFor(string $channelKey): string
     {
         return $channelKey === 'all' ? self::ALL_PAGE : self::PAGE_PREFIX.$channelKey;
