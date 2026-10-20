@@ -2043,7 +2043,14 @@
             ? (temuSpriceCellModel(row).value || 0)
             : temuDisplayedSprice(row);
         const live = temuLiveListingPrice(row);
-        return sprice > 0 && live > 0 && Math.round(sprice * 100) !== Math.round(live * 100);
+        if (!(sprice > 0 && live > 0 && Math.round(sprice * 100) !== Math.round(live * 100))) return false;
+        // Same as Amazon: once S Base Prc is pushed (or being pushed), the SKU leaves the blue badge and the
+        // queue even though the live T Price is only refreshed later. Failed rows stay blue so they retry.
+        if (typeof ntoRowPushState === 'function') {
+            const st = ntoRowPushState(row);
+            if (st === 'pushed' || st === 'pushing') return false;
+        }
+        return true;
     }
     window.temuHasBlueTriangle = temuHasBlueTriangle;
 
@@ -2193,7 +2200,12 @@
             const st = String(task.status || '');
             const price = parseFloat(task.price) || 0;
             const next = {};
-            if (st === 'ok' || st === 'pushed') {
+            if ((st === 'ok' || st === 'pushed') && String(task.message || '') === 'negative SNROI') {
+                // Skipped by the negative-SNROI guard: nothing was sent, so it is not "pushed". Remember it so the
+                // blue-badge queue does not keep re-adding it.
+                window._ntoNegSkip = window._ntoNegSkip || {};
+                window._ntoNegSkip[ntoRowSku(d).toUpperCase() + '|' + price.toFixed(2)] = true;
+            } else if (st === 'ok' || st === 'pushed') {
                 next.nto_push_status = 'pushed';
                 if (price > 0) next.nto_pushed_base = +price.toFixed(2);
                 next.nto_pushed_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -2239,6 +2251,7 @@
             const sprice = temuDisplayedSprice(d);
             const base = temuSBaseFromSprice(sprice);
             if (!(base > 0)) return;
+            if (window._ntoNegSkip && window._ntoNegSkip[key + '|' + (+base).toFixed(2)]) return;
             seen[key] = true;
             items.push({ sku: sku, price: base });
         }
@@ -2364,18 +2377,15 @@
                 pct: 0,
             });
         }
-        let i = 0;
-        function nextChunk() {
-            if (i >= items.length) return;
-            const start = i;
-            const chunk = items.slice(i, i + NTO_PUSH_SPRICE_CHUNK);
-            i += chunk.length;
-            postNtoPushSpriceItems(chunk, { progressTotal: items.length, progressDone: start }).always(nextChunk);
-        }
-        nextChunk();
+        // One POST with every SKU (same as Amazon) so the bar total equals the blue badge and the server
+        // queue is created once, instead of 200-SKU chunks that each re-queue and respawn the worker.
+        postNtoPushSpriceItems(items, { progressTotal: items.length, progressDone: 0 });
     }
     function ntoPushLeftoverBlues() {
         if (!ntoPageReloadPushAllowed()) return;
+        // A job is already running/polling: re-queuing now only re-appends the same SKUs. The poll calls this
+        // again when the job finishes.
+        if (ntoPushSpricePollTimer || ntoPushSpriceExpecting) return;
         const items = collectNtoReloadPushItems();
         if (!items.length) {
             window._ntoLeftoverLastN = 0;

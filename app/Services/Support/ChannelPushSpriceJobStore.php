@@ -422,6 +422,7 @@ class ChannelPushSpriceJobStore
                 'price' => $task['price'] ?? null,
                 'ebay_price' => $task['ebay_price'] ?? null,
                 'error' => $task['error'] ?? null,
+                'message' => $task['message'] ?? null,
             ];
         }
 
