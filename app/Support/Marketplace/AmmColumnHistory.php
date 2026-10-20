@@ -24,7 +24,7 @@ class AmmColumnHistory
     public const ALL_PAGE = 'all-marketplace-master';
 
     /** Chart metric keys that read from this history. */
-    public const FIELDS = ['y_orders', 'y_views', 'y_cvr', 't_orders', 't_views', 't_cvr'];
+    public const FIELDS = ['y_orders', 'y_views', 'y_cvr', 'y_ads_pct', 't_orders', 't_views', 't_cvr', 't_ads_pct'];
 
     /**
      * True when the all-channels Y history has too few distinct days for a trend dot / graph.
@@ -177,6 +177,8 @@ class AmmColumnHistory
         $totViewQty = 0.0;
         $anyOrders = false;
         $anyViews = false;
+        $totAdSpend = 0.0;
+        $totAdSales = 0.0;
 
         foreach ($rows as $row) {
             $key = AllMarketplaceMasterBadgeCalculator::snapshotKey((string) ($row['channel'] ?? ''));
@@ -201,6 +203,14 @@ class AmmColumnHistory
                 }
             }
 
+            // Y Ads% = yesterday ad spend ÷ yesterday sales (only for channels with yesterday sales).
+            $ySales = (float) ($row['sales'] ?? 0);
+            if (! empty($row['computed']) && $ySales > 0) {
+                $data['y_ads_pct'] = round((float) ($row['ads_pct'] ?? 0), 4);
+                $totAdSpend += (float) ($row['ad_spend'] ?? 0);
+                $totAdSales += $ySales;
+            }
+
             if ($data !== []) {
                 BadgeDataHistory::recordPage(self::PAGE_PREFIX.$key, $data, $day);
                 $written += count($data);
@@ -208,6 +218,9 @@ class AmmColumnHistory
         }
 
         $all = [];
+        if ($totAdSales > 0) {
+            $all['y_ads_pct'] = round(($totAdSpend / $totAdSales) * 100, 4);
+        }
         if ($anyOrders) {
             $all['y_orders'] = $totOrders;
         }
@@ -256,6 +269,12 @@ class AmmColumnHistory
                 't_orders' => ($ratio > 0 && $l30Orders > 0) ? $l30Orders * $ratio : 0.0,
                 't_views' => ($ratio > 0 && $views > 0) ? $views * $ratio : 0.0,
             ];
+
+            // Today Ads% = the channel's Ads% applied to today's sales (same as todayPartsFromRow()).
+            if ($sales > 0) {
+                $adsRaw = $row['Ads%'] ?? ($row['TACOS'] ?? 0);
+                $data['t_ads_pct'] = round(self::num($adsRaw), 4);
+            }
 
             if ($ratio > 0 && $views > 0) {
                 $tViews = $views * $ratio;

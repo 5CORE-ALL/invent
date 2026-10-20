@@ -18566,7 +18566,7 @@ class ChannelMasterController extends Controller
                 || in_array($metric, \App\Support\Marketplace\AmmColumnHistory::FIELDS, true)) {
                 $live = $request->input('badge_value');
                 // T Orders / T Views / T CVR cells: the cell value is today's point (per channel too).
-                $isTodayColumn = in_array($metric, ['t_orders', 't_views', 't_cvr'], true);
+                $isTodayColumn = in_array($metric, ['t_orders', 't_views', 't_cvr', 't_ads_pct'], true);
                 $liveValue = ((($isAll && in_array($metric, $ammBadgeFields, true)) || $isTodayColumn)
                     && $live !== null && $live !== '' && is_numeric($live))
                     ? (float) $live
@@ -19800,7 +19800,7 @@ class ChannelMasterController extends Controller
                 foreach ($fields as $field => $points) {
                     $values = array_column($points, 1);
                     $n = count($values);
-                    if (in_array($field, ['t_orders', 't_views', 't_cvr'], true)) {
+                    if (in_array($field, ['t_orders', 't_views', 't_cvr', 't_ads_pct'], true)) {
                         // Graph = saved earlier days + today's live cell value, so the dot's
                         // baseline is the last day before today (the page supplies today's value).
                         $before = array_values(array_filter($points, static fn ($p) => $p[0] < $today));

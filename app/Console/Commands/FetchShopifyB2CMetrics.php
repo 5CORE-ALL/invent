@@ -36,6 +36,8 @@ class FetchShopifyB2CMetrics extends Command
     private $totalInserted = 0;
     private $totalUpdated = 0;
     private $totalSkipped = 0; // Orders skipped due to marketplace tags
+    private $totalRemoved = 0; // Previously saved rows removed because the order is no longer pure B2C
+    private $rejectedOrderIds = [];
 
     /**
      * Execute the console command.
@@ -222,9 +224,11 @@ class FetchShopifyB2CMetrics extends Command
 
                 $this->info("  Page {$pageCount}: Processing {$orderCount} orders (Total fetched: {$this->totalFetched})");
 
+                $this->rejectedOrderIds = [];
                 foreach ($orders as $order) {
                     $this->processOrder($order);
                 }
+                $this->purgeRejectedOrders();
 
                 // Get next page info from Link header
                 $pageInfo = $this->getNextPageInfo($response);
@@ -254,8 +258,26 @@ class FetchShopifyB2CMetrics extends Command
         $this->info("✅ Fetched {$this->totalFetched} orders across {$pageCount} pages");
         $this->info("   Shopify B2C: Inserted: {$this->totalInserted} | Updated: {$this->totalUpdated}");
         $this->info("   Marketplace Orders Skipped: {$this->totalSkipped} (TikTok, Amazon, eBay, etc.)");
+        $this->info("   Stale non-B2C rows removed: {$this->totalRemoved}");
 
         return $completed;
+    }
+
+    /**
+     * Delete saved rows for orders Shopify now reports as non-B2C (marketplace tag, blank tag,
+     * draft, cancelled). Without this, an order that was B2C when first fetched keeps counting
+     * in L30 Orders / Qty / Sales after it is re-tagged or cancelled.
+     */
+    private function purgeRejectedOrders(): void
+    {
+        $ids = array_values(array_unique($this->rejectedOrderIds));
+        $this->rejectedOrderIds = [];
+        foreach (array_chunk($ids, 500) as $chunk) {
+            $removed = ShopifyB2CDailyData::whereIn('order_id', $chunk)->delete();
+            if ($removed > 0) {
+                $this->totalRemoved += $removed;
+            }
+        }
     }
 
     private function processOrder($order)
@@ -302,8 +324,16 @@ class FetchShopifyB2CMetrics extends Command
         $isBlankTag = empty(trim($tags));
         $isNotShopifyB2C = (trim($tags) !== 'Shopify B2C');
         
-        if ($isBlankTag || $isExcludedOrder || stripos($sourceName, 'draft_order') !== false || $isNotShopifyB2C) {
+        // Cancelled orders are not sales, so they never belong in the B2C counts.
+        $isCancelled = !empty($order['cancelled_at']);
+
+        if ($isBlankTag || $isExcludedOrder || stripos($sourceName, 'draft_order') !== false || $isNotShopifyB2C || $isCancelled) {
             $this->totalSkipped++;
+            // An order saved earlier may have been re-tagged (e.g. to a marketplace) or cancelled
+            // since. Queue it so its stale B2C rows are removed at the end of the page.
+            if ($orderId) {
+                $this->rejectedOrderIds[] = (string) $orderId;
+            }
             return; // Skip this order
         }
         // =====================================================
@@ -430,6 +460,13 @@ class FetchShopifyB2CMetrics extends Command
             ->where('order_date', '<', $l30Start)
             ->update(['period' => 'l60']);
         $this->info("  Updated {$l60Updated} records to L60 period");
+
+        // Rows older than 60 days kept their old 'l60' label forever and were counted in L60
+        // Orders / Sales. Clear the label so only the real 31-60 day window is L60.
+        $aged = ShopifyB2CDailyData::where('order_date', '<', $l60Start)
+            ->whereNotNull('period')
+            ->update(['period' => null]);
+        $this->info("  Cleared period on {$aged} records older than 60 days");
 
         Log::info('Updated period labels', [
             'l30_count' => $l30Updated,

@@ -39,10 +39,12 @@ class NegativeSnroiPushGuard
                 ->where('channel_name', $channel.'_ignore_neg_snroi')
                 ->first();
         } catch (\Throwable) {
-            return self::$enabled[$channel] = false;
+            return self::$enabled[$channel] = true;
         }
+        // No saved setting yet = ON (default). Only an explicit OFF disables the guard.
         $vis = is_array($row?->visibility) ? $row->visibility : null;
-        $on = is_array($vis) && filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $on = ! is_array($vis) || ! array_key_exists('enabled', $vis)
+            || filter_var($vis['enabled'], FILTER_VALIDATE_BOOLEAN);
 
         return self::$enabled[$channel] = $on;
     }
@@ -68,6 +70,9 @@ class NegativeSnroiPushGuard
     public static function shouldSkip(string $channel, string $sku, float $price): bool
     {
         if (! ($price > 0)) {
+            return false;
+        }
+        if (! self::enabled($channel)) {
             return false;
         }
         $cost = self::costForSku($sku, self::usesShipBb($channel));

@@ -826,6 +826,19 @@
             box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.12);
         }
         #ammInvModal .amm-inv-hist-dot:hover { transform: scale(1.35); }
+        #summary-stats .amm-inv-block-hist-dot {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            border: 1px solid #fff;
+            padding: 0;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+        }
+        #summary-stats .amm-inv-block-hist-dot:hover { transform: scale(1.4); }
         #ammInvModal .amm-inv-hist-wrap {
             display: none;
             margin: 0 0 6px;
@@ -1082,7 +1095,7 @@
                         <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="y_nroi_pct" style="color: white; font-weight: bold; cursor:pointer;" title="YNROI% = (Σ yesterday net PFT $) ÷ (Σ yesterday COGS), measured from yesterday's orders alone.">
                             <span class="summary-trend-dot none" data-metric="y_nroi_pct" title="Rolling history"></span>NROI%: <span id="avg-y-nroi">0.0%</span>
                         </span>
-                        <span class="badge fs-6 p-2" data-metric="y_ads_pct" style="background-color: #d63384; color: white; font-weight: bold;" title="Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales.">
+                        <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_ads_pct" style="background-color: #d63384; color: white; font-weight: bold; cursor:pointer;" title="Y Ads% = Σ yesterday ad spend ÷ Σ yesterday sales × 100. Spend is each channel’s Ads% on yesterday’s sales.">
                             <span class="summary-trend-dot none" data-metric="y_ads_pct" title="Vs L30 Ads%"></span>Ads%: <span id="avg-y-ads">0.0%</span>
                         </span>
                         <span class="badge fs-6 p-2 badge-chart-link" data-metric="y_views" style="background-color: #0dcaf0; color: #111; font-weight: bold; cursor:pointer;" title="Y Views = sum of yesterday listing views across channels (1-day Pacific, not L30).">
@@ -1292,6 +1305,22 @@
                         <span style="color:#e83e8c;font-weight:700;">Pink ≥50%</span>.
                         Count is SKUs. Pies are inventory $ at LP and SP.
                     </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="ammInvBandHistModal" tabindex="-1" aria-labelledby="ammInvBandHistTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title fs-6" id="ammInvBandHistTitle">INV history</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <div id="ammInvBandHistEmpty" class="text-center text-muted small py-2" style="display:none;">No history saved yet — it builds up one point per day.</div>
+                    <div style="height:280px;"><canvas id="amm-inv-band-hist"></canvas></div>
+                    <p class="small text-muted mb-0 mt-2">Dot colour: green = moved the good way vs the previous day (0 Sold / Red down, Green / Pink up), red = the bad way, gray = flat.</p>
                 </div>
             </div>
         </div>
@@ -1925,6 +1954,10 @@
         var ammInvHistChart = null;
         var ammInvLiveSlices = [];
         var ammInvLiveHistory = [];
+        // Daily Inv@SP band history for the dots + graph on the INV block (same series as the INV modal).
+        var ammInvBlockHistory = [];
+        var ammInvBlockHistFetching = false;
+        var ammInvBlockHistChart = null;
 
         function snapshotChannelKey(name) {
             var k = (name || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2203,6 +2236,16 @@
                 orders: todayOrders
             };
         }
+        // Y Ads% = yesterday ad spend ÷ yesterday sales; null (shown as NYS) with no yesterday sales.
+        function yAdsPctFromRow(row) {
+            const p = yAdsPartsFromRow(row);
+            return p.sales > 0 ? (p.spend / p.sales) * 100 : null;
+        }
+        // Today Ads% = Σ(Today Sales × Ads%) ÷ Σ Today Sales per channel, i.e. the channel's Ads%.
+        function tAdsPctFromRow(row) {
+            const p = todayPartsFromRow(row);
+            return p.sales > 0 ? (p.spend / p.sales) * 100 : null;
+        }
         function listingCvrFromRow(row) {
             const channel = (row['Channel '] || '').trim();
             const views = parseNumber(row['Total Views'] || 0);
@@ -2279,7 +2322,7 @@
             }
         }
         var METRIC_DIFF_PCT = {
-            gprofit: 1, groi: 1, npft: 1, p_npft: 1, p_groi_pct: 1, p_nroi_pct: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, nroi: 1, ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
+            gprofit: 1, groi: 1, npft: 1, p_npft: 1, p_groi_pct: 1, p_nroi_pct: 1, y_npft_pct: 1, y_groi_pct: 1, y_nroi_pct: 1, nroi: 1, ads_pct: 1, y_ads_pct: 1, t_ads_pct: 1, acos: 1, cvr: 1, ads_cvr: 1
         };
 
         function formatMetricDiffText(metric, diff) {
@@ -2395,7 +2438,7 @@
             return null;
         }
         function ammMetricCellColor(metric, value) {
-            if (metric === 'ads_pct') return ammAdsPctBandColor(value);
+            if (metric === 'ads_pct' || metric === 'y_ads_pct' || metric === 't_ads_pct') return ammAdsPctBandColor(value);
             const kind = ammMetricKind(metric);
             if (!kind) return null;
             if (window.MetricPctColors) {
@@ -2404,7 +2447,7 @@
             return ammFallbackBandColor(kind, value);
         }
         function ammMetricCellStyle(metric, value) {
-            if (metric === 'ads_pct') return ammAdsPctBandStyle(value);
+            if (metric === 'ads_pct' || metric === 'y_ads_pct' || metric === 't_ads_pct') return ammAdsPctBandStyle(value);
             const kind = ammMetricKind(metric);
             if (!kind) return '';
             let band = null;
@@ -2651,7 +2694,7 @@
             var lastDotColorByKey = {};
             var lastDotPairByKey = {};
             var chartSyncedAllMetrics = {};
-            var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 't_ads', 'p_ads_pct', 'tat'];
+            var invertedDotMetrics = ['acos', 'ads_pct', 'y_ads_pct', 't_ads', 't_ads_pct', 'p_ads_pct', 'tat'];
             // These Y / Today dots start from a "vs L30 average" pair, but as soon as the badge's
             // graph series is known (prefetched on load or opened by click) the dot is re-synced
             // to the graph (last point vs the day before) — see syncAllBadgeDotWithChart.
@@ -2729,7 +2772,7 @@
                 rows.forEach(function(row) {
                     var key = snapshotChannelKey(row['Channel '] || '');
                     if (!key) return;
-                    var live = { t_cvr: row['T CVR'], t_orders: row['T Orders'], t_views: row['T Views'] };
+                    var live = { t_cvr: row['T CVR'], t_orders: row['T Orders'], t_views: row['T Views'], t_ads_pct: row['T Ads%'] };
                     Object.keys(live).forEach(function(metric) {
                         var v = live[metric];
                         if (v === null || v === undefined || v === '' || !isFinite(Number(v))) return;
@@ -2766,6 +2809,12 @@
                     var t = todayPartsFromRow(row);
                     setL30FallbackDot(key, 't_orders', l30Orders / 30, t.orders);
                     if (l30Views > 0) setL30FallbackDot(key, 't_views', l30Views / 30, t.views);
+                    // Y / T Ads%: compare with the channel's own L30 Ads% until history exists (lower is better).
+                    var l30AdsPct = parseNumber(row['Ads%'] != null ? row['Ads%'] : (row['TACOS'] || 0));
+                    var yAdsVal = yAdsPctFromRow(row);
+                    if (yAdsVal != null && isFinite(yAdsVal)) setL30FallbackDot(key, 'y_ads_pct', l30AdsPct, yAdsVal);
+                    var tAdsVal = tAdsPctFromRow(row);
+                    if (tAdsVal != null && isFinite(tAdsVal)) setL30FallbackDot(key, 't_ads_pct', l30AdsPct, tAdsVal);
                 });
                 paintMetricDots(channelKeysFromTableData());
             }
@@ -2773,7 +2822,7 @@
                 if (v1 == null || v2 == null || isNaN(v1) || isNaN(v2)) return DEFAULT_DOT_GRAY;
                 var eps = (metric === 'cvr' || metric === 'ads_cvr' || metric === 'gprofit' || metric === 'groi'
                     || metric === 'npft' || metric === 'p_npft' || metric === 'p_groi_pct' || metric === 'p_nroi_pct' || metric === 'y_npft_pct' || metric === 'y_groi_pct' || metric === 'y_nroi_pct'
-                    || metric === 'nroi' || metric === 'ads_pct' || metric === 'acos') ? 0.005 : 0.01;
+                    || metric === 'nroi' || metric === 'ads_pct' || metric === 'y_ads_pct' || metric === 't_ads_pct' || metric === 'acos') ? 0.005 : 0.01;
                 if (Math.abs(v2 - v1) <= eps) return DEFAULT_DOT_GRAY;
                 var isInverted = invertedDotMetrics.indexOf(metric) >= 0;
                 return isInverted ? (v2 < v1 ? '#28a745' : '#dc3545') : (v2 > v1 ? '#28a745' : '#dc3545');
@@ -3692,6 +3741,44 @@
                         }
                     },
                     {
+                        title: "Y Ads%",
+                        field: "Y Ads%",
+                        headerTooltip: "Yesterday Ads% = yesterday ad spend ÷ yesterday sales × 100. Spend is the channel's Ads% applied to yesterday's sales. NYS when a channel had no yesterday sales. Dot: green = lower than the previous day.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        mutator: function(value, data) {
+                            return yAdsPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const value = cell.getValue();
+                            const channel = (row['Channel '] || '').trim();
+                            const chartIcon = ammHistoryDot(channel, 'y_ads_pct');
+                            if (value === null || value === undefined || value === '' || !isFinite(Number(value))) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No Yesterday Sales">NYS</span>${chartIcon}`;
+                            }
+                            return `<span style="${ammMetricCellStyle('y_ads_pct', parseNumber(value))}font-weight:600;">${parseNumber(value).toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: ammOpenHistoryDot,
+                        bottomCalc: function(values, data) {
+                            let spend = 0, sales = 0;
+                            data.forEach(function(row) {
+                                const p = yAdsPartsFromRow(row);
+                                spend += p.spend;
+                                sales += p.sales;
+                            });
+                            return sales > 0 ? (spend / sales) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;" title="No Yesterday Sales">NYS</strong>';
+                            }
+                            return `<strong style="${ammMetricCellStyle('y_ads_pct', parseNumber(value))}">${parseNumber(value).toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
                         title: "Y PFT",
                         field: "Y PFT",
                         visible: false,
@@ -3914,6 +4001,44 @@
                         bottomCalcFormatter: function(cell) {
                             const color = tViewsFooterBelowAvg ? '#dc3545' : '#166534';
                             return `<strong style="color:${color};">${Math.round(parseNumber(cell.getValue() || 0)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "T Ads%",
+                        field: "T Ads%",
+                        headerTooltip: "Today Ads% = the channel's Ads% applied to Today Sales (spend ÷ today sales × 100). Blank when Today Sales is 0. Dot: green = lower than the previous day.",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        mutator: function(value, data) {
+                            return tAdsPctFromRow(data);
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const value = cell.getValue();
+                            const channel = (row['Channel '] || '').trim();
+                            const chartIcon = ammHistoryDot(channel, 't_ads_pct');
+                            if (value === null || value === undefined || value === '' || !isFinite(Number(value))) {
+                                return `<span style="color:#adb5bd;font-weight:600;" title="No sales yet today (Eastern)">—</span>${chartIcon}`;
+                            }
+                            return `<span style="${ammMetricCellStyle('t_ads_pct', parseNumber(value))}font-weight:600;">${parseNumber(value).toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: ammOpenHistoryDot,
+                        bottomCalc: function(values, data) {
+                            let spend = 0, sales = 0;
+                            data.forEach(function(row) {
+                                const p = todayPartsFromRow(row);
+                                spend += p.spend;
+                                sales += p.sales;
+                            });
+                            return sales > 0 ? (spend / sales) * 100 : null;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined || !isFinite(parseNumber(value))) {
+                                return '<strong style="color:#adb5bd;">—</strong>';
+                            }
+                            return `<strong style="${ammMetricCellStyle('t_ads_pct', parseNumber(value))}">${parseNumber(value).toFixed(1)}%</strong>`;
                         }
                     },
                     {
@@ -7041,8 +7166,8 @@
             // Build Column Visibility Dropdown — grouped, with a header checkbox per group.
             const COLUMN_MENU_GROUPS = [
                 { id: 'basic', label: 'Basic', fields: ['logo', 'Channel ', 'type', 'brand_authorisation'] },
-                { id: 'today', label: 'Today', fields: ['Today Sales', 'T Orders', 'T CVR', 'T Views'] },
-                { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y Orders', 'Y CVR', 'Y Views', 'Y GROI%', 'YNPFT%'] },
+                { id: 'today', label: 'Today', fields: ['Today Sales', 'T Orders', 'T CVR', 'T Views', 'T Ads%'] },
+                { id: 'yesterday', label: 'Yesterday', fields: ['Y Sales', 'Y Orders', 'Y CVR', 'Y Views', 'Y GROI%', 'YNPFT%', 'Y Ads%'] },
                 { id: 'l30', label: 'L30', fields: ['L30 Sales', 'L30 Orders', 'Qty', 'G Roi', 'Gprofit%', 'N ROI', 'N PFT', 'Total Views', 'CVR'] },
                 { id: 'projected', label: 'Projected', fields: ['P-Sales', 'P Growth', 'P GROI%', 'PNPFT%'] },
                 { id: 'ads', label: 'Advertisement', fields: ['Total Ad Spend', 'Ads%'] },
@@ -7856,6 +7981,7 @@
                 'y_orders': 'Y Orders',
                 'y_views': 'Y Views',
                 'y_cvr': 'Y CVR',
+                'y_ads_pct': 'Y Ads%',
                 'fa_msl_lp': 'Forecast MSL_LP',
                 'fa_msl_sp': 'Forecast MSL_SP',
                 'fa_ord': 'Forecast Ord',
@@ -8048,6 +8174,18 @@
                             + '</div>';
                     }).join('');
             }
+            // Dot colour = latest saved day vs the day before (green = good move, red = bad, gray = flat / no history).
+            // 0 Sold and Red inventory growing is bad; Green and Pink growing is good.
+            function ammInvBandDotColor(band, field) {
+                const rows = ammInvBlockHistory || [];
+                if (rows.length < 2) return '#6c757d';
+                const prev = Number(rows[rows.length - 2][field]);
+                const cur = Number(rows[rows.length - 1][field]);
+                if (!isFinite(prev) || !isFinite(cur) || Math.abs(cur - prev) < 0.5) return '#6c757d';
+                const lowerIsBetter = band === 'zero' || band === 'red';
+                const good = lowerIsBetter ? cur < prev : cur > prev;
+                return good ? '#28a745' : '#dc3545';
+            }
             function ammInvBlockBandsHtml(slices, valueKey) {
                 const total = slices.reduce(function(sum, s) { return sum + (Number(s[valueKey]) || 0); }, 0);
                 const tones = {
@@ -8061,8 +8199,12 @@
                     const n = Number(s[valueKey]) || 0;
                     const pct = total > 0 ? Math.round((n / total) * 100) : 0;
                     const tone = tones[s.key] || tones.red;
-                    return '<div style="min-width:0;border-radius:8px;padding:6px 8px;line-height:1.25;' + tone + '">'
-                        + '<div style="font-size:11px;font-weight:800;overflow-wrap:anywhere;">' + s.label + '</div>'
+                    const histField = s.key + (valueKey === 'inv_at_sp' ? '_sp' : '_lp');
+                    const dotColor = ammInvBandDotColor(s.key, histField);
+                    return '<div style="position:relative;min-width:0;border-radius:8px;padding:6px 8px;line-height:1.25;' + tone + '">'
+                        + '<button type="button" class="amm-inv-block-hist-dot" data-chart="' + (valueKey === 'inv_at_sp' ? 'sp' : 'lp') + '" data-band="' + s.key + '" '
+                        + 'style="background:' + dotColor + ';" title="' + s.label + ' — click for daily history"></button>'
+                        + '<div style="font-size:11px;font-weight:800;overflow-wrap:anywhere;padding-right:12px;">' + s.label + '</div>'
                         + '<div style="font-size:13px;font-weight:700;margin-top:2px;">' + (s.count || 0) + '</div>'
                         + '<div style="font-size:12px;font-weight:700;display:flex;flex-wrap:wrap;column-gap:4px;">'
                         + '<span style="white-space:nowrap;">' + ammInvMoneyCompact(n) + '</span>'
@@ -8074,6 +8216,18 @@
                 const raw = (payload && payload.slices) || [];
                 if (!raw.length) return;
                 const slices = ammInvNormalizeSlices(raw);
+                if (Array.isArray(payload.history) && payload.history.length) {
+                    ammInvBlockHistory = payload.history;
+                } else if (!ammInvBlockHistory.length && !ammInvBlockHistFetching && typeof ammInvPiesUrl !== 'undefined') {
+                    // Payload came without history: fetch it once so the dots can be coloured.
+                    ammInvBlockHistFetching = true;
+                    $.getJSON(ammInvPiesUrl).done(function(res) {
+                        if (res && Array.isArray(res.history) && res.history.length) {
+                            ammInvBlockHistory = res.history;
+                            ammInvRenderBlock({ slices: raw, history: res.history });
+                        }
+                    }).always(function() { ammInvBlockHistFetching = false; });
+                }
                 $('#amm-inv-block-sp').html(ammInvBlockBandsHtml(slices, 'inv_at_sp'));
                 ammInvDrawColumn('amm-inv-block-sp-pie', slices, 'inv_at_sp');
             }
@@ -8190,7 +8344,7 @@
                 lastInventoryPies = { slices: slices, history: ammInvLiveHistory };
                 $('#amm-inv-lp-legend').html(ammInvLegendHtml('lp', slices, 'inv_at_lp'));
                 $('#amm-inv-sp-legend').html(ammInvLegendHtml('sp', slices, 'inv_at_sp'));
-                ammInvRenderBlock({ slices: slices });
+                ammInvRenderBlock({ slices: slices, history: ammInvLiveHistory });
                 ammInvDrawPie('amm-inv-lp-pie', 'lp', slices, 'inv_at_lp');
                 ammInvDrawPie('amm-inv-sp-pie', 'sp', slices, 'inv_at_sp');
             }
@@ -8286,6 +8440,88 @@
             });
             $(document).on('click', '#amm-inv-hist-close', function() {
                 $('#amm-inv-hist-wrap').removeClass('is-open');
+            });
+
+            // History dot on each INV band card -> daily graph of that band's inventory $ (and SKU count in the tooltip).
+            function ammInvBandHistDraw(chart, band) {
+                const spec = ammInvNormalizeSlices((lastInventoryPies && lastInventoryPies.slices) || [])
+                    .find(function(s) { return s.key === band; }) || { key: band, label: band, color: '#111827' };
+                const valueField = band + (chart === 'sp' ? '_sp' : '_lp');
+                const rows = (ammInvBlockHistory || []).slice();
+                $('#ammInvBandHistTitle').text((chart === 'sp' ? 'Inv@SP ' : 'Inv@LP ') + spec.label + ' — daily history');
+                $('#ammInvBandHistEmpty').toggle(rows.length === 0);
+                const canvas = document.getElementById('amm-inv-band-hist');
+                if (!canvas || typeof Chart === 'undefined') return;
+                if (ammInvBlockHistChart) { ammInvBlockHistChart.destroy(); ammInvBlockHistChart = null; }
+                const vals = rows.map(function(r) { return Number(r[valueField]) || 0; });
+                const counts = rows.map(function(r) { return Number(r[band]) || 0; });
+                const lowerIsBetter = band === 'zero' || band === 'red';
+                // Point colour = day-over-day move (green good / red bad), like the other history dots.
+                const pointColors = vals.map(function(v, i) {
+                    if (i === 0 || Math.abs(v - vals[i - 1]) < 0.5) return '#6c757d';
+                    const good = lowerIsBetter ? v < vals[i - 1] : v > vals[i - 1];
+                    return good ? '#28a745' : '#dc3545';
+                });
+                ammInvBlockHistChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: rows.map(function(r) { return r.label || r.date; }),
+                        datasets: [{
+                            data: vals,
+                            borderColor: spec.color,
+                            backgroundColor: spec.color + '22',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: pointColors,
+                            pointBorderColor: pointColors,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return ' ' + ammInvMoneyCompact(ctx.raw) + '  ·  ' + (counts[ctx.dataIndex] || 0) + ' SKUs';
+                                    },
+                                },
+                            },
+                        },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { font: { size: 10 }, callback: function(v) { return ammInvMoneyCompact(v); } } },
+                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } } },
+                        },
+                    },
+                });
+            }
+            $(document).on('click', '.amm-inv-block-hist-dot', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const chart = $(this).data('chart');
+                const band = $(this).data('band');
+                const modalEl = document.getElementById('ammInvBandHistModal');
+                const draw = function() { ammInvBandHistDraw(chart, band); };
+                // Chart.js needs a visible canvas to size itself: draw once the modal is shown.
+                $(modalEl).off('shown.bs.modal.ammInvBand').one('shown.bs.modal.ammInvBand', draw);
+                if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                } else {
+                    $(modalEl).modal('show');
+                }
+                if (!ammInvBlockHistory.length && typeof ammInvPiesUrl !== 'undefined') {
+                    $.getJSON(ammInvPiesUrl).done(function(res) {
+                        if (res && Array.isArray(res.history) && res.history.length) {
+                            ammInvBlockHistory = res.history;
+                            if (res.slices && res.slices.length) lastInventoryPies = res;
+                            draw();
+                        }
+                    });
+                }
             });
 
             // Badge click handler — show overall (all channels) metric trend
@@ -8395,7 +8631,7 @@
                         return v.toFixed(2) + '%';
                     }
                     if (m === 'acos' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'p_npft' || m === 'p_groi_pct' || m === 'p_nroi_pct' || m === 'y_npft_pct' || m === 'y_groi_pct' || m === 'y_nroi_pct' || m === 'nroi'
-                        || m === 't_npft_pct' || m === 't_groi_pct' || m === 't_nroi_pct' || m === 't_ads_pct' || m === 'p_ads_pct'
+                        || m === 't_npft_pct' || m === 't_groi_pct' || m === 't_nroi_pct' || m === 't_ads_pct' || m === 'y_ads_pct' || m === 'p_ads_pct'
                         || m === 'fa_npft' || m === 'fa_nroi' || m === 'fa_avail') {
                         return v.toFixed(1) + '%';
                     }
@@ -8408,7 +8644,7 @@
                 };
 
                 // --- Dot colors: green=UP red=DOWN. ACOS, TAcos %, and TAT invert (lower is better). ---
-                const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'p_ads_pct', 'tat'];
+                const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'y_ads_pct', 'p_ads_pct', 'tat'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
                 if (currentChartMode === 'metric' && currentChartChannel === 'all') {

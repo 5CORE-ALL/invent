@@ -54,7 +54,7 @@ class ShopifyB2CSalesController extends Controller
     public static function dailySalesBadgeTotals(string $period = 'l30', bool $withAds = true): array
     {
         $lines = app(self::class)->salesLinesForPeriod($period);
-        $orders = 0;
+        $orderIds = [];
         $qty = 0;
         $revenue = 0.0;
         $pft = 0.0;
@@ -66,7 +66,8 @@ class ShopifyB2CSalesController extends Controller
             if (($row['sku'] ?? '') === '') {
                 continue;
             }
-            $orders++;
+            // Each row is a line item; an order with 3 SKUs must count as 1 order, not 3.
+            $orderIds[(string) ($row['order_id'] ?? '')] = true;
             $qty += (int) ($row['quantity'] ?? 0);
             $revenue += (float) ($row['total_amount'] ?? 0);
             $pft += (float) ($row['pft'] ?? 0);
@@ -75,6 +76,7 @@ class ShopifyB2CSalesController extends Controller
             $ship += (float) ($row['ship_cost'] ?? 0);
         }
 
+        $orders = count($orderIds);
         $pftRounded = (int) round($pft);
         $salesRounded = (int) round($sales);
         $cogsRounded = (int) round($cogs);
