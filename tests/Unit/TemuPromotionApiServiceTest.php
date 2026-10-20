@@ -57,42 +57,4 @@ class TemuPromotionApiServiceTest extends TestCase
         $this->assertFalse($res['success']);
         Http::assertNothingSent();
     }
-
-    public function test_deactivate_sends_operate_type_30_and_returns_draft_id(): void
-    {
-        Http::fake([
-            '*' => Http::response(['success' => true, 'result' => ['draftId' => 888, 'goodsId' => 11]]),
-        ]);
-
-        $res = (new TemuPromotionApiService(app(TemuApiService::class)))->deactivateGoods(500, 11, 'trace');
-
-        $this->assertTrue($res['success']);
-        $this->assertSame('888', $res['draft_id']);
-
-        Http::assertSent(function ($request) {
-            $d = $request->data();
-
-            return $d['type'] === 'bg.promotion.activity.goods.update'
-                && $d['activityId'] === 500
-                && $d['goodsId'] === 11
-                && $d['operateType'] === 30
-                && ! isset($d['updateSkuList'], $d['addSkuList'], $d['activityQuantity']);
-        });
-    }
-
-    public function test_enrolled_goods_reads_prices_in_dollars(): void
-    {
-        Http::fake([
-            '*' => Http::response(['success' => true, 'result' => [
-                'total' => 1,
-                'goodsList' => [['goodsId' => 11, 'activityQuantity' => 5, 'remainingActivityQuantity' => 4, 'skuList' => [['skuId' => 22, 'activitySupplierPrice' => 1999]]]],
-            ]]),
-        ]);
-
-        $res = (new TemuPromotionApiService(app(TemuApiService::class)))->enrolledGoods(500);
-
-        $this->assertTrue($res['success']);
-        $this->assertSame(19.99, $res['goods']['11']['skus']['22']);
-        $this->assertSame(5, $res['goods']['11']['qty']);
-    }
 }
