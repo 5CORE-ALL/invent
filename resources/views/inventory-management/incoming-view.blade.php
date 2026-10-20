@@ -575,9 +575,9 @@
                 document.body.style.zoom = "75%";
             }
 
-            if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-                navigator.serviceWorker.register(@json(asset('service-worker-incoming.js'))).catch(function () { /* optional PWA */ });
-            }
+            // Service worker is registered once globally in layouts/vertical.blade.php (/sw.js).
+            // Do NOT register another worker here: two workers on the same scope replace each
+            // other on every page switch and trigger the "has an update. Reload now?" prompt in a loop.
 
             // Show loader immediately
             document.getElementById('rainbow-loader').style.display = 'block';

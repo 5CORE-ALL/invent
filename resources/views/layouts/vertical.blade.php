@@ -1330,25 +1330,9 @@
         window.__inventPwaInstall = null;
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/sw.js').then(function(registration) {
-                    registration.addEventListener('updatefound', function() {
-                        var worker = registration.installing;
-                        if (!worker) return;
-                        worker.addEventListener('statechange', function() {
-                            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-                                if (confirm('5Core Chat has an update. Reload now?')) {
-                                    worker.postMessage({ type: 'SKIP_WAITING' });
-                                }
-                            }
-                        });
-                    });
-                }).catch(function() {});
-                var refreshing = false;
-                navigator.serviceWorker.addEventListener('controllerchange', function() {
-                    if (refreshing) return;
-                    refreshing = true;
-                    window.location.reload();
-                });
+                // sw.js calls skipWaiting() itself and only caches a few static assets (HTML is never cached),
+                // so a new version needs no confirm prompt and no forced reload; it applies on the next navigation.
+                navigator.serviceWorker.register('/sw.js').catch(function() {});
             });
         }
 
