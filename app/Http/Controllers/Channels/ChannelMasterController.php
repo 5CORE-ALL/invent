@@ -18589,9 +18589,17 @@ class ChannelMasterController extends Controller
                 // the cell shows (same idea as pinAllYSalesChartLastPoint for Y Sales), so a
                 // graph and its cell can never disagree on the latest day.
                 if (in_array($metric, \App\Support\Marketplace\AmmColumnHistory::FIELDS, true)
-                    && $points !== []
                     && $live !== null && $live !== '' && is_numeric($live)) {
-                    $points[array_key_last($points)]['value'] = round((float) $live, 2);
+                    if ($points !== []) {
+                        $points[array_key_last($points)]['value'] = round((float) $live, 2);
+                    } else {
+                        // No saved days yet: still show today's current value as the first point.
+                        $points[] = [
+                            'date' => now(\App\Models\BadgeDataHistory::TZ)->format('M j'),
+                            'value' => round((float) $live, 2),
+                            'tone' => 'gray',
+                        ];
+                    }
                 }
 
                 return response()->json([
