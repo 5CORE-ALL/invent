@@ -2317,8 +2317,14 @@
             if (typeof openChart === 'function') {
                 // Pin the graph's newest point to the number the cell shows.
                 const cellVal = cell.getValue();
-                const liveVal = (cellVal === null || cellVal === undefined || cellVal === '' || !isFinite(Number(cellVal)))
+                let liveVal = (cellVal === null || cellVal === undefined || cellVal === '' || !isFinite(Number(cellVal)))
                     ? null : Number(cellVal);
+                // An estimate (Reverb L30 ÷ 30) or an older settled day (Amazon) is not this
+                // day's real value, so it must not be pinned as the chart's newest point.
+                if ($(e.target).data('metric') === 'y_views') {
+                    const rd = cell.getRow().getData();
+                    if (rd['Y Views Est'] || rd['Y Views As Of']) liveVal = null;
+                }
                 openChart($(e.target).data('channel'), $(e.target).data('metric'), liveVal);
             }
         }
