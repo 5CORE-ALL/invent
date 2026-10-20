@@ -6437,6 +6437,13 @@ class ChannelMasterController extends Controller
             }
             $hist[$today] = $day;
             ksort($hist);
+            // Same numbers into badges_data_histories (standard badge graph). The first run also
+            // copies the older cache-only days across.
+            if (! \Cache::get('channel_master_inv_band_hist_migrated')) {
+                \App\Support\Marketplace\AmmColumnHistory::backfillInvBandsFromCache($hist);
+                \Cache::forever('channel_master_inv_band_hist_migrated', 1);
+            }
+            \App\Support\Marketplace\AmmColumnHistory::recordInvBands($slices);
             $keys = array_keys($hist);
             while (count($keys) > 90) {
                 unset($hist[$keys[0]]);

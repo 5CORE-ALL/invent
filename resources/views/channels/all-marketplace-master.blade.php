@@ -1310,22 +1310,6 @@
         </div>
     </div>
 
-    <div class="modal fade" id="ammInvBandHistModal" tabindex="-1" aria-labelledby="ammInvBandHistTitle" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title fs-6" id="ammInvBandHistTitle">INV history</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body py-2">
-                    <div id="ammInvBandHistEmpty" class="text-center text-muted small py-2" style="display:none;">No history saved yet — it builds up one point per day.</div>
-                    <div style="height:280px;"><canvas id="amm-inv-band-hist"></canvas></div>
-                    <p class="small text-muted mb-0 mt-2">Dot colour: green = moved the good way vs the previous day (0 Sold / Red down, Green / Pink up), red = the bad way, gray = flat.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Add Channel Modal -->
     <div class="modal fade" id="addChannelModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
@@ -8022,6 +8006,14 @@
                 'total_views': 'views',
                 'inv_at_lp': 'Inv@LP',
                 'inv_at_sp': 'Inv@SP',
+                'inv_sp_zero': 'Inv@SP 0 Sold',
+                'inv_sp_red': 'Inv@SP Red <25%',
+                'inv_sp_green': 'Inv@SP Green 25–50%',
+                'inv_sp_pink': 'Inv@SP Pink ≥50%',
+                'inv_lp_zero': 'Inv@LP 0 Sold',
+                'inv_lp_red': 'Inv@LP Red <25%',
+                'inv_lp_green': 'Inv@LP Green 25–50%',
+                'inv_lp_pink': 'Inv@LP Pink ≥50%',
                 'inventory': 'inv',
                 'tat': 'TAT',
                 'reviews': 'Reviews',
@@ -8442,86 +8434,17 @@
                 $('#amm-inv-hist-wrap').removeClass('is-open');
             });
 
-            // History dot on each INV band card -> daily graph of that band's inventory $ (and SKU count in the tooltip).
-            function ammInvBandHistDraw(chart, band) {
-                const spec = ammInvNormalizeSlices((lastInventoryPies && lastInventoryPies.slices) || [])
-                    .find(function(s) { return s.key === band; }) || { key: band, label: band, color: '#111827' };
-                const valueField = band + (chart === 'sp' ? '_sp' : '_lp');
-                const rows = (ammInvBlockHistory || []).slice();
-                $('#ammInvBandHistTitle').text((chart === 'sp' ? 'Inv@SP ' : 'Inv@LP ') + spec.label + ' — daily history');
-                $('#ammInvBandHistEmpty').toggle(rows.length === 0);
-                const canvas = document.getElementById('amm-inv-band-hist');
-                if (!canvas || typeof Chart === 'undefined') return;
-                if (ammInvBlockHistChart) { ammInvBlockHistChart.destroy(); ammInvBlockHistChart = null; }
-                const vals = rows.map(function(r) { return Number(r[valueField]) || 0; });
-                const counts = rows.map(function(r) { return Number(r[band]) || 0; });
-                const lowerIsBetter = band === 'zero' || band === 'red';
-                // Point colour = day-over-day move (green good / red bad), like the other history dots.
-                const pointColors = vals.map(function(v, i) {
-                    if (i === 0 || Math.abs(v - vals[i - 1]) < 0.5) return '#6c757d';
-                    const good = lowerIsBetter ? v < vals[i - 1] : v > vals[i - 1];
-                    return good ? '#28a745' : '#dc3545';
-                });
-                ammInvBlockHistChart = new Chart(canvas.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: rows.map(function(r) { return r.label || r.date; }),
-                        datasets: [{
-                            data: vals,
-                            borderColor: spec.color,
-                            backgroundColor: spec.color + '22',
-                            fill: true,
-                            tension: 0.3,
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            pointBackgroundColor: pointColors,
-                            pointBorderColor: pointColors,
-                        }],
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(ctx) {
-                                        return ' ' + ammInvMoneyCompact(ctx.raw) + '  ·  ' + (counts[ctx.dataIndex] || 0) + ' SKUs';
-                                    },
-                                },
-                            },
-                        },
-                        scales: {
-                            y: { beginAtZero: true, ticks: { font: { size: 10 }, callback: function(v) { return ammInvMoneyCompact(v); } } },
-                            x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } } },
-                        },
-                    },
-                });
-            }
+            // History dot on each INV band card -> the standard metric history graph
+            // (same modal as every badge: rolling range, High / Median / Low, coloured day-over-day dots).
             $(document).on('click', '.amm-inv-block-hist-dot', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                const chart = $(this).data('chart');
-                const band = $(this).data('band');
-                const modalEl = document.getElementById('ammInvBandHistModal');
-                const draw = function() { ammInvBandHistDraw(chart, band); };
-                // Chart.js needs a visible canvas to size itself: draw once the modal is shown.
-                $(modalEl).off('shown.bs.modal.ammInvBand').one('shown.bs.modal.ammInvBand', draw);
-                if (window.bootstrap && bootstrap.Modal) {
-                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-                } else {
-                    $(modalEl).modal('show');
-                }
-                if (!ammInvBlockHistory.length && typeof ammInvPiesUrl !== 'undefined') {
-                    $.getJSON(ammInvPiesUrl).done(function(res) {
-                        if (res && Array.isArray(res.history) && res.history.length) {
-                            ammInvBlockHistory = res.history;
-                            if (res.slices && res.slices.length) lastInventoryPies = res;
-                            draw();
-                        }
-                    });
-                }
+                const chart = $(this).data('chart') === 'lp' ? 'lp' : 'sp';
+                const band = String($(this).data('band'));
+                const slice = ammInvNormalizeSlices((lastInventoryPies && lastInventoryPies.slices) || [])
+                    .find(function(s) { return s.key === band; });
+                const live = slice ? Number(chart === 'sp' ? slice.inv_at_sp : slice.inv_at_lp) : null;
+                showMetricChart('All', 'inv_' + chart + '_' + band, (live != null && isFinite(live)) ? Math.round(live) : null);
             });
 
             // Badge click handler — show overall (all channels) metric trend
@@ -8622,6 +8545,9 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
+                    if (/^inv_(sp|lp)_/.test(m)) {
+                        return '$' + Math.round(v).toLocaleString('en-US');
+                    }
                     if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'y_sales' || m === 'today_sales' || m === 'y_pft' || m === 'y_npft_amt' || m === 'p_sales' || m === 'p_npft_amt' || m === 'l7_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft' || m === 'inv_at_lp' || m === 'inv_at_sp' || m === 'inventory') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
@@ -8644,7 +8570,9 @@
                 };
 
                 // --- Dot colors: green=UP red=DOWN. ACOS, TAcos %, and TAT invert (lower is better). ---
-                const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'y_ads_pct', 'p_ads_pct', 'tat'];
+                // 0 Sold / Red inventory growing is the bad direction, so those two invert too.
+                const invertedMetrics = ['acos', 'ads_pct', 't_ads_pct', 'y_ads_pct', 'p_ads_pct', 'tat',
+                    'inv_sp_zero', 'inv_sp_red', 'inv_lp_zero', 'inv_lp_red'];
                 const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = metricChartDotColors(values, isInverted, currentChartMetric);
                 if (currentChartMode === 'metric' && currentChartChannel === 'all') {

@@ -24,7 +24,61 @@ class AmmColumnHistory
     public const ALL_PAGE = 'all-marketplace-master';
 
     /** Chart metric keys that read from this history. */
-    public const FIELDS = ['y_orders', 'y_views', 'y_cvr', 'y_ads_pct', 't_orders', 't_views', 't_cvr', 't_ads_pct'];
+    public const FIELDS = [
+        'y_orders', 'y_views', 'y_cvr', 'y_ads_pct', 't_orders', 't_views', 't_cvr', 't_ads_pct',
+        // INV block: Inv@SP / Inv@LP $ per DIL band (all channels), one point per day.
+        'inv_sp_zero', 'inv_sp_red', 'inv_sp_green', 'inv_sp_pink',
+        'inv_lp_zero', 'inv_lp_red', 'inv_lp_green', 'inv_lp_pink',
+    ];
+
+    /**
+     * Save today's Inv@SP / Inv@LP $ per DIL band under the all-channels page so the INV band
+     * dots open the same standard history graph as every other badge.
+     *
+     * @param  list<array<string, mixed>>  $slices  inventoryDilPiesFromMetrics() slices
+     */
+    public static function recordInvBands(array $slices, ?Carbon $day = null): void
+    {
+        $data = [];
+        foreach ($slices as $s) {
+            $key = (string) ($s['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $data['inv_sp_'.$key] = (float) ($s['inv_at_sp'] ?? 0);
+            $data['inv_lp_'.$key] = (float) ($s['inv_at_lp'] ?? 0);
+        }
+        if ($data !== []) {
+            BadgeDataHistory::recordPage(self::ALL_PAGE, $data, $day);
+        }
+    }
+
+    /**
+     * One-time copy of the older cache-only band history (channel_master_inv_dil_hist)
+     * into badges_data_histories so existing days are not lost from the graph.
+     *
+     * @param  array<string, array<string, mixed>>  $hist  date => ['red_sp' => ..., 'red_lp' => ...]
+     */
+    public static function backfillInvBandsFromCache(array $hist): void
+    {
+        foreach ($hist as $date => $row) {
+            if (! is_array($row) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date)) {
+                continue;
+            }
+            $data = [];
+            foreach (['zero', 'red', 'green', 'pink'] as $band) {
+                if (isset($row[$band.'_sp'])) {
+                    $data['inv_sp_'.$band] = (float) $row[$band.'_sp'];
+                }
+                if (isset($row[$band.'_lp'])) {
+                    $data['inv_lp_'.$band] = (float) $row[$band.'_lp'];
+                }
+            }
+            if ($data !== []) {
+                BadgeDataHistory::recordPage(self::ALL_PAGE, $data, Carbon::parse((string) $date, BadgeDataHistory::TZ));
+            }
+        }
+    }
 
     /**
      * True when the all-channels Y history has too few distinct days for a trend dot / graph.
