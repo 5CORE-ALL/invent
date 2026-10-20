@@ -78,6 +78,13 @@ return [
     'software_logger_from' => env('PAYROLL_SOFTWARE_LOGGER_FROM', '2026-10-18'),
 
     /*
+    | In a software-cutover month the old (TeamLogger) hours are taken as the TeamLogger
+    | TOTAL, idle included, and software hours from the cutover date are added on top.
+    | Set to false to use productive hours (total − idle) as the base again.
+    */
+    'cutover_include_idle' => env('PAYROLL_CUTOVER_INCLUDE_IDLE', true),
+
+    /*
     | Standard hours divisor for pro-rata salary (matches Team Management export).
     */
     'hours_divisor' => 200,

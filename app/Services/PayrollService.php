@@ -302,7 +302,7 @@ class PayrollService
                 // Cutover month: frozen TeamLogger + software hours from the cutover date.
                 // Otherwise the same days can exist in both loggers: pay the larger, not the sum.
                 $hours[$userId]['final_hours'] = $this->combineHoursValues(
-                    $teamMonthHours,
+                    $this->baseTeamHours($user, $teamLogger, $hours[$userId]['cutover_hours'] ?? null, $teamMonthHours),
                     $attendanceHours,
                     $hours[$userId]['cutover_hours'] ?? null
                 );
@@ -1137,10 +1137,12 @@ class PayrollService
                     continue;
                 }
                 $attendanceHours = $hasAttendance ? (float) $attendanceEntry['hours'] : 0.0;
-                $teamHours = $hasTeam ? $this->liveHoursForUser($row->user, $teamLogger) : 0.0;
                 $cutoverHours = ($attendanceEntry && array_key_exists('cutover_hours', $attendanceEntry))
                     ? (float) $attendanceEntry['cutover_hours']
                     : null;
+                $teamHours = $hasTeam
+                    ? $this->baseTeamHours($row->user, $teamLogger, $cutoverHours, $this->liveHoursForUser($row->user, $teamLogger))
+                    : 0.0;
                 $hours = $this->combineHoursValues($teamHours, $attendanceHours, $cutoverHours);
             } elseif (! $hasTeam) {
                 $stats['skipped_no_data']++;
@@ -1266,7 +1268,31 @@ class PayrollService
         $attendanceHours = ($entry && ! empty($entry['has_data'])) ? (float) ($entry['hours'] ?? 0) : 0.0;
         $cutoverHours = ($entry && array_key_exists('cutover_hours', $entry)) ? (float) $entry['cutover_hours'] : null;
 
-        return $this->combineHoursValues($this->liveHoursForUser($user, $teamLogger), $attendanceHours, $cutoverHours);
+        return $this->combineHoursValues(
+            $this->baseTeamHours($user, $teamLogger, $cutoverHours, $this->liveHoursForUser($user, $teamLogger)),
+            $attendanceHours,
+            $cutoverHours
+        );
+    }
+
+    /**
+     * Old (TeamLogger) hours that the software hours are added on top of.
+     *
+     * In a software-cutover month (cutoverHours !== null) the base is the TeamLogger TOTAL,
+     * idle time included. Every other month keeps the productive hours (total − idle).
+     *
+     * @param  array<string, array<string, mixed>>  $teamLogger
+     */
+    protected function baseTeamHours(User $user, array $teamLogger, ?float $cutoverHours, float $productiveHours): float
+    {
+        if ($cutoverHours === null || ! config('payroll.cutover_include_idle', true)) {
+            return $productiveHours;
+        }
+
+        $email = $this->resolveTeamLoggerEmail($user->email);
+        $total = (float) ($teamLogger[$email]['total_hours'] ?? 0);
+
+        return $total > 0 ? (float) (int) round($total) : $productiveHours;
     }
 
     /** @param  array<string, array<string, mixed>>  $teamLogger */
