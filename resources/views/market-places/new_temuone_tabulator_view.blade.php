@@ -2545,7 +2545,7 @@
                 tip += ' Temu recommended promotion price $' + rec.toFixed(2)
                     + (base > 0 ? (' (' + (Math.round((1 - rec / base) * 1000) / 10) + '% off base $' + base.toFixed(2) + ')') : '') + '.';
             }
-            tip += ' Click to push the promotion for this SKU.';
+            tip += ' Click to push the S Base Prc for this SKU.';
             return '<span class="nto-promo-elig-btn" data-sku="' + esc(sku) + '" style="color:#15803d;font-weight:700;cursor:pointer;" title="' + esc(tip) + '"><i class="fas fa-check-circle"></i> Eligible</span>';
         }
         return '<span style="color:#dc3545;font-weight:700;" title="'
@@ -2766,20 +2766,12 @@
             e.preventDefault();
             cancelNtoPushSpriceJob();
         });
-        // Click "Eligible" (PM Elig column) → push the promotion (Sum disc %) for that SKU.
+        // Click "Eligible" (PM Elig column) → push the S Base Prc for that SKU (no promotion is sent).
         $(document).off('click.ntoPromoElig', '.nto-promo-elig-btn').on('click.ntoPromoElig', '.nto-promo-elig-btn', function(e) {
             e.preventDefault();
             e.stopPropagation();
             const sku = String($(this).attr('data-sku') || '').trim();
             if (!sku) return;
-            if (ntoPromoBusy) {
-                showToast('Promotion push already in progress…', 'info');
-                return;
-            }
-            if (!ntoPromotionAllowed()) {
-                showToast('Promotion switch is OFF — turn it on to push promotions.', 'error');
-                return;
-            }
             let rowData = null;
             if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
                 table.getRows().some(function(row) {
@@ -2788,15 +2780,14 @@
                     return false;
                 });
             }
-            if (rowData) {
-                if (!(ntoRowPm(rowData) > 0)) { showToast('No Sum disc (PM) to push for ' + sku, 'error'); return; }
-                if (ntoRowPmIsApplied(rowData)) { showToast('Promotion already applied for ' + sku, 'success'); return; }
-                if (ntoRowPushState(rowData) !== 'pushed') {
-                    showToast('Push the S Base Prc for ' + sku + ' first — the promotion sits on the pushed Std price.', 'error');
-                    return;
-                }
+            const base = rowData ? ntoRowSBase(rowData) : 0;
+            if (!(base > 0)) {
+                showToast('No S Base Prc to push for ' + sku, 'error');
+                return;
             }
-            ntoApplyPromotions({ manual: true, onlySku: sku });
+            if (rowData && ntoRowPushState(rowData) === 'pushing') return;
+            ntoPatchPushRows([sku], { nto_push_status: 'pushing' });
+            queueNtoPushSpriceItems([{ sku: sku, price: base }]);
         });
         $(document).off('click.ntoSinglePush', '.nto-push-single-btn').on('click.ntoSinglePush', '.nto-push-single-btn', function(e) {
             e.preventDefault();
