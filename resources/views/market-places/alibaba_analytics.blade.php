@@ -271,6 +271,11 @@
                             <ul class="dropdown-menu dropdown-menu-end" id="ab-column-dropdown-menu"></ul>
                         </div>
                         @include('partials.channel-pef-promo', ['channelPromoPart' => 'buttons', 'channelPromoChannel' => 'alibaba'])
+                        <span class="badge bg-secondary" id="ab-selected-count" title="SKUs checked for bulk Push Prc">0 selected</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="ab-clear-selection-btn" style="display:none;">Clear</button>
+                        <button type="button" class="btn btn-sm btn-warning" id="ab-bulk-push-btn" disabled title="Push S PRC to Alibaba for the checked SKUs">
+                            <i class="fas fa-upload me-1"></i> Push selected
+                        </button>
                         <a href="{{ route('alibaba.analytics.export') }}" class="btn btn-sm btn-success" id="ab-export-btn">
                             <i class="fas fa-file-export me-1"></i> Export
                         </a>
@@ -526,6 +531,50 @@
             }
         }
 
+        // Row selection for bulk Push Prc (same idea as the Amazon page). The shared promo script reads
+        // `selectedSkus` and the checked .sku-select-checkbox boxes to find the selected rows.
+        const AB_SELECT_FIELD = '_ab_select';
+        let selectedSkus = new Set();
+
+        function abEsc(v) {
+            return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        /** Child rows on the current pagination page (selections on other pages are kept). */
+        function abCurrentPageChildRows() {
+            if (!abTable) return [];
+            const active = (abTable.getRows('active') || []).filter(function (r) { return !isAbParentRow(r.getData() || {}); });
+            let size = typeof abTable.getPageSize === 'function' ? abTable.getPageSize() : 0;
+            const page = (typeof abTable.getPage === 'function' ? abTable.getPage() : 1) || 1;
+            size = Number(size) || 0;
+            if (!size || size >= active.length) return active;
+            return active.slice((page - 1) * size, (page - 1) * size + size);
+        }
+
+        function abUpdateSelectionUi() {
+            const n = selectedSkus.size;
+            const countEl = document.getElementById('ab-selected-count');
+            if (countEl) countEl.textContent = n + ' selected';
+            const clearBtn = document.getElementById('ab-clear-selection-btn');
+            if (clearBtn) clearBtn.style.display = n > 0 ? '' : 'none';
+            const pushBtn = document.getElementById('ab-bulk-push-btn');
+            if (pushBtn) pushBtn.disabled = n === 0;
+            const all = document.getElementById('ab-select-all');
+            if (!all) return;
+            const rows = abCurrentPageChildRows();
+            let sel = 0;
+            rows.forEach(function (r) { if (selectedSkus.has(String((r.getData() || {}).sku || ''))) sel++; });
+            all.checked = rows.length > 0 && sel === rows.length;
+            all.indeterminate = sel > 0 && sel < rows.length;
+        }
+
+        function abSyncRowCheckboxes() {
+            document.querySelectorAll('#alibaba-analytics-table .sku-select-checkbox').forEach(function (cb) {
+                cb.checked = selectedSkus.has(cb.getAttribute('data-sku') || '');
+            });
+            abUpdateSelectionUi();
+        }
+
         const AB_COL_GROUPS = ['basic', 'price', 'other'];
         const AB_COL_LABELS = { basic: 'Basic', price: 'Price', other: 'Other' };
 
@@ -602,7 +651,7 @@
             abTable.getColumns().forEach(function (col) {
                 const field = col.getField();
                 const title = col.getDefinition().title;
-                if (!field || !title) return;
+                if (!field || !title || field === AB_SELECT_FIELD) return;
                 const cat = abClassifyColumn(field);
                 const li = document.createElement('li');
                 li.className = 'col-vis-item';
@@ -628,7 +677,7 @@
             const visibility = {};
             abTable.getColumns().forEach(function (col) {
                 const field = col.getField();
-                if (field) visibility[field] = col.isVisible();
+                if (field && field !== AB_SELECT_FIELD) visibility[field] = col.isVisible();
             });
             fetch("{{ route('alibaba.analytics.column.set') }}", {
                 method: 'POST',
@@ -647,6 +696,7 @@
                 .then(function (visibility) {
                     if (!abTable || !visibility || !Object.keys(visibility).length) return;
                     Object.keys(visibility).forEach(function (field) {
+                        if (field === AB_SELECT_FIELD) return;
                         const col = abTable.getColumn(field);
                         if (!col) return;
                         abColumnShown(visibility[field]) ? col.show() : col.hide();
@@ -729,6 +779,19 @@
                         }
                     },
                     columns: [
+                        {
+                            title: "<input type='checkbox' id='ab-select-all' title='Select / clear all SKUs on this page' style='width:16px;height:16px;cursor:pointer;'>",
+                            field: AB_SELECT_FIELD, hozAlign: 'center', headerSort: false, headerHozAlign: 'center',
+                            width: 40, frozen: true,
+                            formatter: function (cell) {
+                                const d = cell.getRow().getData() || {};
+                                if (isAbParentRow(d) || !d.sku) return '';
+                                const sku = String(d.sku);
+                                return "<input type='checkbox' class='sku-select-checkbox' data-sku='" + abEsc(sku) + "' style='width:16px;height:16px;cursor:pointer;'"
+                                    + (selectedSkus.has(sku) ? ' checked' : '') + '>';
+                            },
+                            cellClick: function (e) { e.stopPropagation(); }
+                        },
                         {
                             title: 'Parent', field: 'Parent', hozAlign: 'left', width: 110, frozen: true,
                             formatter: function (cell) {
@@ -880,10 +943,20 @@
                         (function () {
                             if (typeof channelPromoPushPrcColumn !== 'function') return { title: 'Push Prc', field: 'push_prc', visible: false };
                             const col = channelPromoPushPrcColumn();
-                            delete col.titleFormatter;
-                            delete col.headerClick;
+                            // No delete (X) button here, but the header still bulk-pushes the checked SKUs like Amazon.
+                            col.titleFormatter = function () {
+                                return '<button type="button" class="btn btn-sm p-0 ab-push-prc-header-btn" title="Bulk Push S PRC for the checked SKUs" '
+                                    + 'style="border:none;background:none;cursor:pointer;color:#000;font-weight:700;font-size:11px;line-height:1.15;">Push Prc</button>';
+                            };
+                            col.headerClick = function (e) {
+                                if (!e.target.closest('.ab-push-prc-header-btn')) return;
+                                e.stopPropagation();
+                                e.preventDefault();
+                                if (typeof bulkPushChannelPrcSelected === 'function') bulkPushChannelPrcSelected();
+                                return false;
+                            };
                             col.width = 96;
-                            col.headerTooltip = 'Push S PRC to the Alibaba listing. Upload = not on the listing yet. Green check = Price already matches S PRC.';
+                            col.headerTooltip = 'Push S PRC to the Alibaba listing. Check SKUs, then click this header to push them. Upload = not on the listing yet. Green check = Price already matches S PRC.';
                             return col;
                         })(),
                         {
@@ -934,7 +1007,9 @@
                 table = abTable;
                 window.table = abTable;
                 abTable.on('renderComplete', function () {
+                    abSyncRowCheckboxes();
                 });
+                abTable.on('pageLoaded', abUpdateSelectionUi);
                 abApplyColumnVisibility();
                 updateSummary((abAllRows || []).filter(abRowMatches));
             })
@@ -1006,6 +1081,35 @@
                     loader.style.display = 'none';
                 });
         });
+
+        // Header checkbox: select / clear every SKU on the current page (other pages keep their selection).
+        document.addEventListener('change', function (e) {
+            const t = e.target;
+            if (!t) return;
+            if (t.id === 'ab-select-all') {
+                abCurrentPageChildRows().forEach(function (r) {
+                    const sku = String((r.getData() || {}).sku || '');
+                    if (!sku) return;
+                    if (t.checked) selectedSkus.add(sku); else selectedSkus.delete(sku);
+                });
+                abSyncRowCheckboxes();
+                return;
+            }
+            if (t.classList && t.classList.contains('sku-select-checkbox')) {
+                const sku = t.getAttribute('data-sku') || '';
+                if (!sku) return;
+                if (t.checked) selectedSkus.add(sku); else selectedSkus.delete(sku);
+                abUpdateSelectionUi();
+            }
+        });
+        document.getElementById('ab-clear-selection-btn').addEventListener('click', function () {
+            selectedSkus.clear();
+            abSyncRowCheckboxes();
+        });
+        document.getElementById('ab-bulk-push-btn').addEventListener('click', function () {
+            if (typeof bulkPushChannelPrcSelected === 'function') bulkPushChannelPrcSelected();
+        });
+        abUpdateSelectionUi();
 
         loadTable();
     </script>
