@@ -108,6 +108,18 @@ class YesterdayMarketplaceMetricsService
             }
             $m['views'] = $this->viewsForChannel($name, $viewsByChannel);
             $m['views_as_of'] = null;
+            $m['views_estimate'] = false;
+            if ($m['views'] === null && $this->windowDays < 7 && $this->key($name) === 'reverb') {
+                try {
+                    $avg = app(YesterdayViewsService::class)->reverbL30DailyAverage();
+                } catch (\Throwable $e) {
+                    $avg = null;
+                }
+                if ($avg !== null) {
+                    $m['views'] = $avg;
+                    $m['views_estimate'] = true;
+                }
+            }
             // Amazon traffic only settles ~3 days after a day ends, so the latest complete
             // day has no value yet. Show the newest saved settled day instead of "-",
             // and say which day it is (that value is not saved under this day's history).
@@ -1245,7 +1257,8 @@ class YesterdayMarketplaceMetricsService
         }
         $viewsAsOf = $m['views_as_of'] ?? null;
         // Views from an older settled day must not be divided into this day's orders.
-        $cvr = ($views !== null && $views > 0 && $viewsAsOf === null) ? ($qty / $views) * 100 : null;
+        $viewsEstimate = (bool) ($m['views_estimate'] ?? false);
+        $cvr = ($views !== null && $views > 0 && $viewsAsOf === null && ! $viewsEstimate) ? ($qty / $views) * 100 : null;
 
         $gpftBase = $sales > 0 ? $sales : $gpftSales;
         // Sales basis the channel's own Gprofit% divides by on /all-marketplace-master.
@@ -1278,6 +1291,7 @@ class YesterdayMarketplaceMetricsService
             'acos' => $acos,
             'views' => $views,
             'views_as_of' => $viewsAsOf,
+            'views_estimate' => $viewsEstimate,
             'cvr' => $cvr,
             'orders' => (int) ($m['orders'] ?? 0),
             'qty' => $qty,

@@ -3594,7 +3594,7 @@
                             let views = 0, qty = 0, l30Units = 0, l30Views = 0;
                             data.forEach(function(row) {
                                 const rec = yCvrByChannel[snapshotChannelKey(row['Channel '] || '')];
-                                if (rec && !rec.asOf) {
+                                if (rec && !rec.asOf && !rec.est) {
                                     views += rec.views;
                                     qty += rec.qty;
                                 }
@@ -3636,8 +3636,11 @@
                             const value = Math.round(parseNumber(cell.getValue() || 0));
                             const color = belowL30AvgColor(value, row['Total Views'] || 0);
                             const asOf = row['Y Views As Of'];
-                            const asOfTitle = asOf ? ` title="Amazon traffic settles ~3 days late. Latest settled day: ${asOf}"` : '';
-                            const asOfMark = asOf ? '<sup style="color:#6c757d;">*</sup>' : '';
+                            const isEst = !!row['Y Views Est'];
+                            const asOfTitle = asOf
+                                ? ` title="Amazon traffic settles ~3 days late. Latest settled day: ${asOf}"`
+                                : (isEst ? ' title="Estimate: Reverb has no one-day views, so this is L30 views ÷ 30 (daily average)."' : '');
+                            const asOfMark = (asOf || isEst) ? '<sup style="color:#6c757d;">' + (isEst ? '~' : '*') + '</sup>' : '';
                             return `<span style="font-weight:600;color:${color};"${asOfTitle}>${value.toLocaleString('en-US')}${asOfMark}</span>${ammHistoryDot(channel, 'y_views')}`;
                         },
                         cellClick: ammOpenHistoryDot,
@@ -9340,7 +9343,8 @@
                         'Y Orders': orders,
                         'Y CVR': cvrRec ? cvrRec.cvr : null,
                         'Y Views': cvrRec ? cvrRec.views : null,
-                        'Y Views As Of': cvrRec ? cvrRec.asOf : null
+                        'Y Views As Of': cvrRec ? cvrRec.asOf : null,
+                        'Y Views Est': cvrRec ? !!cvrRec.est : false
                     });
                 });
                 applyL30FallbackDots();
@@ -9364,7 +9368,7 @@
                         // No view source (e.g. Doba) -> keep null so the Y Views cell shows "—", not 0.
                         // views_as_of: Amazon shows its newest settled day (traffic settles ~3 days late);
                         // that day's views are kept out of the Y CVR footer, which divides yesterday's qty.
-                        yCvrByChannel[key] = { cvr: cvr, views: (row.views == null || row.views === '') ? null : views, qty: qty, asOf: row.views_as_of || null };
+                        yCvrByChannel[key] = { cvr: cvr, views: (row.views == null || row.views === '') ? null : views, qty: qty, asOf: row.views_as_of || null, est: !!row.views_estimate };
                     }
                     sum += orders;
                 });

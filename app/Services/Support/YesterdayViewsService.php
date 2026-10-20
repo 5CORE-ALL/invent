@@ -42,6 +42,21 @@ class YesterdayViewsService
     }
 
     /**
+     * Reverb has no one-day views source, so the Y Views cell shows its L30 impressions
+     * ÷ 30 as a clearly marked daily average (never saved to history, never used for CVR).
+     * Raw impressions: the metrics service applies the same ÷1000 scale the page uses.
+     */
+    public function reverbL30DailyAverage(): ?int
+    {
+        if (! Schema::hasTable('reverb_products') || ! Schema::hasColumn('reverb_products', 'views')) {
+            return null;
+        }
+        $l30 = (int) DB::table('reverb_products')->sum('views');
+
+        return $l30 > 0 ? (int) round($l30 / 30) : null;
+    }
+
+    /**
      * @param  array<string, int>  $map
      * @return array<string, int>
      */

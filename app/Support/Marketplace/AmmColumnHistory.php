@@ -372,7 +372,7 @@ class AmmColumnHistory
             }
             $views = $row['views'] ?? null;
             // Views carried from an older settled day (Amazon) belong to that day's history point.
-            if (! empty($row['views_as_of'])) {
+            if (! empty($row['views_as_of']) || ! empty($row['views_estimate'])) {
                 $views = null;
             }
             if ($views !== null && $views !== '') {
