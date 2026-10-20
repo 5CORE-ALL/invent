@@ -2545,7 +2545,8 @@
                 tip += ' Temu recommended promotion price $' + rec.toFixed(2)
                     + (base > 0 ? (' (' + (Math.round((1 - rec / base) * 1000) / 10) + '% off base $' + base.toFixed(2) + ')') : '') + '.';
             }
-            return '<span style="color:#15803d;font-weight:700;" title="' + esc(tip) + '"><i class="fas fa-check-circle"></i> Eligible</span>';
+            tip += ' Click to push the promotion for this SKU.';
+            return '<span class="nto-promo-elig-btn" data-sku="' + esc(sku) + '" style="color:#15803d;font-weight:700;cursor:pointer;" title="' + esc(tip) + '"><i class="fas fa-check-circle"></i> Eligible</span>';
         }
         return '<span style="color:#dc3545;font-weight:700;" title="'
             + esc('Not eligible — this goods is not on Temu\'s candidate list for ' + act + '. A promotion would be rejected.')
@@ -2598,6 +2599,7 @@
             const sku = ntoRowSku(d);
             const key = sku.toUpperCase();
             if (!sku || seen[key]) return;
+            if (opts.onlySku && key !== String(opts.onlySku).toUpperCase()) return;
             const pm = ntoRowPm(d);
             if (!(pm > 0) || pm >= 100) return;
             if (!((parseFloat(d.INV) || 0) >= 1)) return;
@@ -2763,6 +2765,38 @@
         $('#nto-reload-push-progress-cancel').off('click.ntoReload').on('click.ntoReload', function(e) {
             e.preventDefault();
             cancelNtoPushSpriceJob();
+        });
+        // Click "Eligible" (PM Elig column) → push the promotion (Sum disc %) for that SKU.
+        $(document).off('click.ntoPromoElig', '.nto-promo-elig-btn').on('click.ntoPromoElig', '.nto-promo-elig-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = String($(this).attr('data-sku') || '').trim();
+            if (!sku) return;
+            if (ntoPromoBusy) {
+                showToast('Promotion push already in progress…', 'info');
+                return;
+            }
+            if (!ntoPromotionAllowed()) {
+                showToast('Promotion switch is OFF — turn it on to push promotions.', 'error');
+                return;
+            }
+            let rowData = null;
+            if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
+                table.getRows().some(function(row) {
+                    const d = row.getData() || {};
+                    if (ntoRowSku(d).toUpperCase() === sku.toUpperCase()) { rowData = d; return true; }
+                    return false;
+                });
+            }
+            if (rowData) {
+                if (!(ntoRowPm(rowData) > 0)) { showToast('No Sum disc (PM) to push for ' + sku, 'error'); return; }
+                if (ntoRowPmIsApplied(rowData)) { showToast('Promotion already applied for ' + sku, 'success'); return; }
+                if (ntoRowPushState(rowData) !== 'pushed') {
+                    showToast('Push the S Base Prc for ' + sku + ' first — the promotion sits on the pushed Std price.', 'error');
+                    return;
+                }
+            }
+            ntoApplyPromotions({ manual: true, onlySku: sku });
         });
         $(document).off('click.ntoSinglePush', '.nto-push-single-btn').on('click.ntoSinglePush', '.nto-push-single-btn', function(e) {
             e.preventDefault();
