@@ -559,7 +559,7 @@
                         'pglBadgeId' => 'newtemutwo-price-gt-lmp-badge',
                         'pglChannelKey' => '',
                         'pglPriceField' => 'temu_price',
-                        'pglTitle' => 'LMP Alert Prc: SKUs where LMP is lower than S Promo Prc. Click to filter.',
+                        'pglTitle' => 'LMP Alert Prc with INV > 0: LMP is lower than S Promo Prc. Click to filter.',
                     ])
                     @include('partials.price-lt80-lmp-badge', [
                         'pltBadgeId' => 'newtemutwo-price-lt80-lmp-badge',
@@ -1793,6 +1793,7 @@
     }
 
     function temuHasPriceGtLmp(row) {
+        if (!((parseFloat(row && row.INV) || 0) > 0)) return false;
         return ntoRowLmpAlertPrc(row) != null;
     }
 
@@ -2695,7 +2696,7 @@
         const allRows = table.getData();
         let lmpAlertCount = 0;
         (allRows || []).forEach(function(row) {
-            if (ntoRowLmpAlertPrc(row) != null) lmpAlertCount++;
+            if (temuHasPriceGtLmp(row)) lmpAlertCount++;
         });
         const alertBadge = document.getElementById('newtemutwo-price-gt-lmp-badge');
         if (alertBadge) {
