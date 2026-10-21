@@ -2688,8 +2688,11 @@
         );
         // Counted over the whole dataset, not the filtered view — same as /temu2-decrease.
         const allRows = table.getData();
+        // Only rows that are showing in the grid now, same rows that display the red alert in LMP Alert Prc.
         let lmpAlertCount = 0;
-        (allRows || []).forEach(function(row) {
+        let lmpAlertRows = [];
+        try { lmpAlertRows = table.getData('active') || []; } catch (e) { lmpAlertRows = []; }
+        lmpAlertRows.forEach(function(row) {
             if (temuHasLmpAlert(row)) lmpAlertCount++;
         });
         $('#newtemutwo-lmp-alert-badge').html(
