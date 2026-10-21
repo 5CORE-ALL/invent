@@ -1568,7 +1568,8 @@
             '<input type="text" class="form-control form-control-sm lmp-link border-0 bg-transparent" placeholder="https://...">' +
             '<a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></div></td>' +
             '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore-cb" title="Ignore for L1"></td>' +
-            '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
+            '<td class="align-middle text-nowrap"><button type="button" class="btn btn-sm btn-outline-warning lmp-edit-row me-1" title="Edit Price / Delivery / Link"><i class="fas fa-pencil-alt"></i></button>' +
+            '<button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
         tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
         tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
         tr.find('.lmp-link').val(link || '');
@@ -4081,6 +4082,10 @@
             scheduleLmpAutosave();
         });
 
+        $(document).on('click', '#lmpEntriesContainer .lmp-edit-row', function() {
+            // Price/Delivery/Link are always-live inputs — Edit just focuses Price so typing starts right away.
+            $(this).closest('tr').find('.lmp-price').trigger('focus').select();
+        });
         $(document).on('click', '#lmpEntriesContainer .lmp-remove-row', function() {
             $(this).closest('tr').remove();
             renumberLmpRows();
