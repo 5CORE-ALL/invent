@@ -183,6 +183,32 @@ final class AmazonAdsCampaignSkuMetrics
         return true;
     }
 
+    /**
+     * Same Inv replacement as /amazon-ads/all. A campaign name such as
+     * "KEYBOARD STAND HL" is not a stocked SKU, so name-based Inv is empty.
+     * The grid then uses the sum of the SKUs linked on the campaign. SBGT
+     * (Bgt Dil / Bgt Inv) has to use that sum too, or the cron pushes a lower budget.
+     *
+     * @param  array<string, mixed>  $metrics
+     * @param  array<string, mixed>|null  $skuInvHit  shopifyInvForCampaignIds row
+     * @return array<string, mixed>
+     */
+    public static function overlayCampaignInventory(array $metrics, ?array $skuInvHit): array
+    {
+        $nameInv = isset($metrics['inv']) && is_numeric($metrics['inv']) ? (float) $metrics['inv'] : null;
+        $campaignInv = (is_array($skuInvHit) && isset($skuInvHit['sum']) && is_numeric($skuInvHit['sum']))
+            ? (float) $skuInvHit['sum']
+            : null;
+        if ($campaignInv !== null && $campaignInv > 0 && ($nameInv === null || $nameInv <= 0)) {
+            $metrics['inv'] = (float) $skuInvHit['sum'];
+            if (isset($skuInvHit['ovl30']) && is_numeric($skuInvHit['ovl30'])) {
+                $metrics['ovl30'] = (float) $skuInvHit['ovl30'];
+            }
+        }
+
+        return $metrics;
+    }
+
     public static function tabulatorDil(?float $inv, ?float $ovl30): ?float
     {
         if ($inv === null && $ovl30 === null) {

@@ -10,6 +10,7 @@ use Throwable;
 /**
  * 7-part SBGT (same rules as /amazon-ads/all) for cron/sync rows.
  * BGT ACOS uses lifetime ACOS, the same input as the SBGT column.
+ * Inv and Dil use linked campaign SKUs when the campaign name has no stock.
  */
 final class AmazonAdsDesiredSbgtResolver
 {
@@ -56,6 +57,7 @@ final class AmazonAdsDesiredSbgtResolver
 
         $pageCvr = [];
         $metricsByName = [];
+        $invByCid = [];
         $ratingsByCid = self::reviewRatingsForCampaigns(array_keys($rows), $reviewRatingByCid);
         try {
             $pageCvr = AmazonAdsCampaignSkuMetrics::parentListingCvrForCampaignNames($names);
@@ -63,6 +65,12 @@ final class AmazonAdsDesiredSbgtResolver
         } catch (Throwable) {
             $pageCvr = [];
             $metricsByName = [];
+        }
+        try {
+            // Linked campaign SKUs, same Inv the grid shows. Name lookup misses HL rows.
+            $invByCid = AmazonAdsCampaignSkuMetrics::shopifyInvForCampaignIds(array_keys($rows));
+        } catch (Throwable) {
+            $invByCid = [];
         }
 
         $out = [];
@@ -72,11 +80,15 @@ final class AmazonAdsDesiredSbgtResolver
             $mSku = (isset($metricsByName[$name]) && is_array($metricsByName[$name]))
                 ? $metricsByName[$name]
                 : [];
+            $digits = preg_replace('/\D+/', '', (string) $cid) ?: '';
+            $mSku = AmazonAdsCampaignSkuMetrics::overlayCampaignInventory(
+                $mSku,
+                $digits !== '' ? ($invByCid[$digits] ?? null) : null
+            );
             $gm = AmazonAdsCampaignSkuMetrics::gridMetricsForPause($mSku);
             $inv = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
             $ovl = isset($mSku['ovl30']) && is_numeric($mSku['ovl30']) ? (float) $mSku['ovl30'] : null;
             $dilVal = AmazonAdsCampaignSkuMetrics::tabulatorDil($inv, $ovl);
-            $digits = preg_replace('/\D+/', '', (string) $cid) ?: '';
             $fromAds = $digits !== '' ? ($ratingsByCid[$digits] ?? null) : null;
             $rating = is_array($fromAds) && isset($fromAds['rating']) && is_numeric($fromAds['rating'])
                 ? (float) $fromAds['rating']

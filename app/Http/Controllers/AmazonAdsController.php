@@ -7370,18 +7370,7 @@ class AmazonAdsController extends Controller
      */
     private static function withCampaignInventory(array $mSku, ?array $skuInvHit): array
     {
-        $nameInv = isset($mSku['inv']) && is_numeric($mSku['inv']) ? (float) $mSku['inv'] : null;
-        $campaignInv = (is_array($skuInvHit) && isset($skuInvHit['sum']) && is_numeric($skuInvHit['sum']))
-            ? (float) $skuInvHit['sum']
-            : null;
-        if ($campaignInv !== null && $campaignInv > 0 && ($nameInv === null || $nameInv <= 0)) {
-            $mSku['inv'] = (float) $skuInvHit['sum'];
-            if (isset($skuInvHit['ovl30']) && is_numeric($skuInvHit['ovl30'])) {
-                $mSku['ovl30'] = (float) $skuInvHit['ovl30'];
-            }
-        }
-
-        return $mSku;
+        return AmazonAdsCampaignSkuMetrics::overlayCampaignInventory($mSku, $skuInvHit);
     }
 
     /**

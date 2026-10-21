@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\AmazonAdsController;
+use App\Support\AmazonAdsCampaignSkuMetrics;
+use App\Support\AmazonAdsSbgt;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
@@ -18,6 +20,20 @@ class AmazonAdsSortPageTest extends TestCase
         $this->assertSame(54.0, $out['inv']);
         $this->assertSame(12.0, $out['ovl30']);
         $this->assertSame(10, $out['price']);
+    }
+
+    public function test_hl_campaign_inventory_supplies_the_dil_dollar_the_name_misses(): void
+    {
+        $overlaid = AmazonAdsCampaignSkuMetrics::overlayCampaignInventory(
+            ['inv' => null, 'ovl30' => null],
+            ['sum' => 995, 'ovl30' => 88]
+        );
+        $dil = AmazonAdsCampaignSkuMetrics::tabulatorDil((float) $overlaid['inv'], (float) $overlaid['ovl30']);
+
+        $this->assertEqualsWithDelta(8.84, $dil, 0.01);
+        // Name-only metrics drop Bgt Dil. Linked SKUs (Inv 995, OV L30 88) add that $1, so SBGT is 2 not 1.
+        $this->assertSame(1, AmazonAdsSbgt::sumFromParts(1, 0, 0, null, 0, null, null));
+        $this->assertSame(2, AmazonAdsSbgt::sumFromParts(1, 0, 0, null, 0, 1, 0));
     }
 
     public function test_positive_name_inv_is_kept(): void
