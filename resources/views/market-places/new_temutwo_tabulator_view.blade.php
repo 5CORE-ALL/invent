@@ -240,79 +240,6 @@
             line-height: 1.2;
             margin: 0;
         }
-        .nto-reload-push-switch {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            flex: 0 0 auto;
-            white-space: nowrap;
-            padding: 4px 10px 4px 12px;
-            border: 1px solid #86efac;
-            border-radius: 999px;
-            background: #f0fdf4;
-            font-size: 12px;
-            font-weight: 700;
-            color: #15803d;
-            line-height: 1.2;
-            cursor: pointer;
-            user-select: none;
-            margin: 0;
-        }
-        .nto-reload-push-switch.is-off {
-            border-color: #cbd5e1;
-            background: #f8fafc;
-            color: #64748b;
-        }
-        .nto-reload-push-switch .nto-reload-push-text {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .nto-reload-push-switch .nto-reload-push-state {
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: .04em;
-            text-transform: uppercase;
-            color: #16a34a;
-        }
-        .nto-reload-push-switch.is-off .nto-reload-push-state {
-            color: #94a3b8;
-        }
-        .nto-reload-push-switch > input[type="checkbox"] {
-            appearance: none;
-            -webkit-appearance: none;
-            position: relative !important;
-            float: none !important;
-            left: auto !important;
-            margin: 0 !important;
-            flex: 0 0 36px;
-            width: 36px;
-            height: 20px;
-            border: 0;
-            border-radius: 999px;
-            background: #86efac;
-            box-shadow: inset 0 0 0 1px #4ade80;
-            cursor: pointer;
-        }
-        .nto-reload-push-switch.is-off > input[type="checkbox"] {
-            background: #cbd5e1;
-            box-shadow: inset 0 0 0 1px #94a3b8;
-        }
-        .nto-reload-push-switch > input[type="checkbox"]::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #fff;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, .25);
-            transition: left .15s ease;
-        }
-        .nto-reload-push-switch > input[type="checkbox"]:checked::after {
-            left: 18px;
-        }
         .nto-reload-push-cluster {
             display: inline-flex;
             align-items: center;
@@ -436,20 +363,15 @@
     </style>
     @push('page-title-after')
         <div class="nto-reload-push-cluster" id="nto-reload-push-cluster">
-            <span class="nto-server-push-note"
-                title="Auto-push is off. Prices push only when you click a push button.">
-                <i class="fas fa-hand-pointer"></i> Auto-push off - push by button
+            <span class="nto-server-push-note" id="nto-auto-note"
+                title="Auto-push is ON: the server pushes S Base Prc at 04:20 / 20:20 IST and this page applies promotions. Click Pause to stop automatic pushes; the push buttons still work.">
+                <i class="fas fa-bolt"></i> <span id="nto-auto-note-text">{{ !empty($newtemutwoAutoPaused) ? 'Auto-push paused' : 'Auto-push on' }}</span>
             </span>
-            <label class="nto-reload-push-switch{{ !empty($newtemutwoPromotionEnabled) ? '' : ' is-off' }}"
-                id="nto-promo-wrap"
-                title="Temu 2 Promotion API. When ON, every SKU is enrolled in an open Temu 2 promotion at its Sum disc % (Sum disc 2 → promotion 2%), and S PRC becomes the Std price. The PM column shows the % applied. OFF by default — nothing is sent to Temu while it is OFF.">
-                <span class="nto-reload-push-text">
-                    Promotion
-                    <span class="nto-reload-push-state" id="nto-promo-label">{{ !empty($newtemutwoPromotionEnabled) ? 'On' : 'Off' }}</span>
-                </span>
-                <input type="checkbox" role="switch" id="nto-promo-switch"
-                    {{ !empty($newtemutwoPromotionEnabled) ? 'checked' : '' }}>
-            </label>
+            <button type="button" class="btn btn-sm {{ !empty($newtemutwoAutoPaused) ? 'btn-success' : 'btn-warning' }}" id="nto-auto-pause-btn"
+                title="Pause stops every automatic push (server schedule + page). Resume turns auto-push back on.">
+                <i class="fas {{ !empty($newtemutwoAutoPaused) ? 'fa-play' : 'fa-pause' }}"></i>
+                <span id="nto-auto-pause-label">{{ !empty($newtemutwoAutoPaused) ? 'Resume' : 'Pause' }}</span>
+            </button>
             <div id="nto-reload-push-progress" class="nto-reload-push-progress"
                 aria-live="polite" title="Blue-triangle S Base Prc push progress">
                 <div class="nto-reload-push-progress-track">
@@ -1949,12 +1871,21 @@
     function ntoRowSku(d) {
         return String((d && (d['(Child) sku'] || d.SKU || d.sku)) || '').trim();
     }
-    function ntoRowSBase(d) {
+    /** Promo base = S PRC (the Promo Price) as a Temu base: S R Prc, − $2.99 under $30. Sent as the Temu promotion price. */
+    function ntoRowPromoBase(d) {
         if (!d || d.is_parent_summary) return 0;
         const sku = ntoRowSku(d);
         if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
         return typeof temuSBaseFromSprice === 'function' ? temuSBaseFromSprice(sprice) : 0;
+    }
+    /** Full (regular) price base = Std Price as a Temu base. This is what the Push column pushes as the Temu base price. */
+    function ntoRowSBase(d) {
+        if (!d || d.is_parent_summary) return 0;
+        const sku = ntoRowSku(d);
+        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
+        const std = temuParseMoney(d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price);
+        return (std > 0 && typeof temuSBaseFromSprice === 'function') ? temuSBaseFromSprice(std) : 0;
     }
     function ntoMoneyEq(a, b) {
         return Math.round((Number(a) || 0) * 100) === Math.round((Number(b) || 0) * 100);
@@ -1976,12 +1907,12 @@
         const esc = String(sku).replace(/"/g, '&quot;');
         const state = ntoRowPushState(d);
         if (state === 'pushing') {
-            return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing S Base Prc $'
+            return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing full price (Std) base $'
                 + sBase.toFixed(2) + '…"></i>';
         }
         if (state === 'pushed') {
             const when = d.nto_pushed_at ? String(d.nto_pushed_at) : '';
-            const tip = 'Pushed S Base Prc $' + sBase.toFixed(2)
+            const tip = 'Pushed full price (Std) base $' + sBase.toFixed(2)
                 + (when ? ' at ' + when : '');
             return '<i class="fa-solid fa-check-double nto-push-ok" title="'
                 + tip.replace(/"/g, '&quot;') + '"></i>';
@@ -1992,7 +1923,7 @@
                 + '<i class="fas fa-times nto-push-fail"></i></button>';
         }
         return '<button type="button" class="nto-push-single-btn" data-sku="' + esc
-            + '" data-price="' + sBase + '" title="Push S Base Prc $' + sBase.toFixed(2)
+            + '" data-price="' + sBase + '" title="Push full price (Std) base $' + sBase.toFixed(2)
             + ' — or all checked SKUs"><i class="fas fa-upload"></i></button>';
     }
     function ntoPatchPushRows(skus, patch) {
@@ -2187,34 +2118,30 @@
             showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Cancel failed', 'error');
         });
     }
-    // ---- Temu 2 Promotion API (switch + PM column) -------------------------------------------------
-    // PM = Sum disc. Sum disc 2 → promotion 2%. Nothing is sent to Temu while the switch is OFF (default).
+    // ---- Temu 2 Promotion API (PM column) -------------------------------------------------
+    // PM = Sum disc. Sum disc 2 → promotion 2%. Promotion is always ON: every SKU with a Sum disc is enrolled. Pause (top bar) stops the automatic pushes.
     const NTO_PROMO_PUSH_URL = '/new-temu2-promotion-push';
     const NTO_PROMO_SETTING_URL = '/new-temu2-promotion-setting';
     const NTO_PROMO_CHUNK = 10;
     const NTO_PROMO_FAIL_KEY = 'nt2PromoFailed';
     const NTO_PROMO_FAIL_TTL_MS = 6 * 60 * 60 * 1000;
-    let ntoPromotionEnabled = @json(!empty($newtemutwoPromotionEnabled));
+    let ntoAutoPaused = @json(!empty($newtemutwoAutoPaused));
     let ntoPromoBusy = false;
 
-    function ntoPromotionAllowed() {
-        return ntoPromotionEnabled === true;
+    function syncNtoAutoPauseUi() {
+        $('#nto-auto-note-text').text(ntoAutoPaused ? 'Auto-push paused' : 'Auto-push on');
+        $('#nto-auto-pause-btn')
+            .toggleClass('btn-success', ntoAutoPaused)
+            .toggleClass('btn-warning', !ntoAutoPaused)
+            .find('i').attr('class', 'fas ' + (ntoAutoPaused ? 'fa-play' : 'fa-pause'));
+        $('#nto-auto-pause-label').text(ntoAutoPaused ? 'Resume' : 'Pause');
     }
-    function syncNtoPromoSwitchUi() {
-        const on = ntoPromotionAllowed();
-        $('#nto-promo-wrap').toggleClass('is-off', !on);
-        $('#nto-promo-label').text(on ? 'On' : 'Off');
-        const $sw = $('#nto-promo-switch');
-        if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
-    }
-    function saveNtoPromotionSetting(enabled) {
-        ntoPromotionEnabled = !!enabled;
-        syncNtoPromoSwitchUi();
+    function saveNtoAutoPaused(paused) {
         return $.ajax({
             url: NTO_PROMO_SETTING_URL,
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
-            data: { _token: ntoPushCsrf(), enabled: enabled ? 1 : 0 },
+            data: { _token: ntoPushCsrf(), paused: paused ? 1 : 0 },
         });
     }
     /** PM = Sum disc of the row (child SKUs with stock only). */
@@ -2226,6 +2153,13 @@
         const n = Number(chStdSumDisc(d)) || 0;
         return n > 0 ? +n.toFixed(2) : 0;
     }
+    /** Disc $ = Std Price × Disc % (Disc % = Sum disc = PM). */
+    function ntoRowDiscAmt(d) {
+        const pm = ntoRowPm(d);
+        const std = parseFloat(d && d.STANDARD_PRICE) || 0;
+        if (!(pm > 0) || !(std > 0)) return 0;
+        return +(std * pm / 100).toFixed(2);
+    }
     function ntoRowPmApplied(d) {
         const n = Number(d && d.pm_applied_pct) || 0;
         return n > 0 ? n : 0;
@@ -2233,7 +2167,12 @@
     function ntoRowPmIsApplied(d) {
         const pm = ntoRowPm(d);
         const applied = ntoRowPmApplied(d);
-        return pm > 0 && applied > 0 && Math.abs(applied - pm) < 0.01;
+        if (!(pm > 0 && applied > 0 && Math.abs(applied - pm) < 0.01)) return false;
+        // S PRC (the promo price) changed since the promotion was sent → send it again.
+        const promoBase = ntoRowPromoBase(d);
+        const appliedPrice = Number(d && d.pm_applied_price) || 0;
+        if (promoBase > 0 && appliedPrice > 0 && !ntoMoneyEq(promoBase, appliedPrice)) return false;
+        return true;
     }
     function ntoPmCellHtml(d) {
         const pm = ntoRowPm(d);
@@ -2254,12 +2193,8 @@
                 + shown + ' <i class="fa-solid fa-check-double"></i></span>';
         }
         const applied = ntoRowPmApplied(d);
-        if (!ntoPromotionAllowed()) {
-            return '<span style="color:#94a3b8;font-weight:700;" title="' + esc('Promotion switch is OFF — not applied. Sum disc ' + shown + '% will be applied when it is turned on.'
-                + (applied > 0 ? (' Last applied: ' + applied + '%.') : '')) + '">' + shown + '</span>';
-        }
         if (ntoRowPushState(d) !== 'pushed') {
-            return '<span style="color:#b45309;font-weight:700;" title="' + esc('Promotion ' + shown + '% waits until the Std price (S Base Prc) is pushed to Temu.') + '">' + shown + '</span>';
+            return '<span style="color:#b45309;font-weight:700;" title="' + esc('Promotion ' + shown + '% waits until the full price (Std base) is pushed to Temu.') + '">' + shown + '</span>';
         }
         return '<span style="color:#0f172a;font-weight:700;" title="' + esc('Promotion ' + shown + '% waiting to be applied (= Sum disc)'
             + (applied > 0 ? (' · last applied ' + applied + '%') : '')) + '">' + shown + '</span>';
@@ -2381,23 +2316,28 @@
             if (ntoRowPmIsApplied(d)) return;
             // The promotion sits on the pushed Std price, so the S Base push has to be done first.
             if (ntoRowPushState(d) !== 'pushed') return;
-            // S PRC is saved by the server and follows the switch. Don't enroll on a still-discounted S PRC.
-            if (!ntoPromoSpriceReady(d)) return;
+            // S PRC is the Promo Price (saved by the server). It has to be a real discount under the Std (full) price.
+            const promoBase = ntoRowPromoBase(d);
+            const fullBase = ntoRowSBase(d);
+            if (!(promoBase > 0) || !(fullBase > 0) || promoBase >= fullBase - 0.001) return;
             // Temu would reject a goods that is not on its candidate list, so don't call it.
             if (ntoRowPromoEligible(d) === false) return;
             const f = failed[key];
             if (f && Math.abs((Number(f.pct) || 0) - pm) < 0.01 && (Date.now() - (Number(f.t) || 0)) < NTO_PROMO_FAIL_TTL_MS) return;
             seen[key] = true;
-            // The promotion is a Sum disc % off S PRC (the price the Std push was built from).
+            // The promotion price is S PRC (Promo Price). The server turns it into the Temu promo base.
             let sp = 0;
             try { sp = Number(temuDisplayedSprice(d)) || 0; } catch (e) { sp = 0; }
-            items.push({ sku: sku, pct: pm, sprice: sp > 0 ? +sp.toFixed(2) : 0 });
+            const stdPrice = temuParseMoney(d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price);
+            items.push({ sku: sku, pct: pm, std: stdPrice > 0 ? +stdPrice.toFixed(2) : 0, sprice: sp > 0 ? +sp.toFixed(2) : 0 });
         });
         return items;
     }
     function ntoApplyPromotions(opts) {
         opts = opts || {};
-        if (!ntoPromotionAllowed() || ntoPromoBusy) return;
+        if (ntoPromoBusy) return;
+        // Paused: no automatic promotion pushes. A person clicking (opts.manual) still goes through.
+        if (ntoAutoPaused && !opts.manual) return;
         const items = collectNtoPromotionItems(opts);
         if (!items.length) {
             if (opts.manual) showToast('Promotion: every SKU already has its Sum disc applied.', 'success');
@@ -2421,7 +2361,7 @@
             lastError = message;
         }
         function next() {
-            if (!ntoPromotionAllowed() || i >= items.length) {
+            if (i >= items.length) {
                 if (i < items.length) {
                     ntoPatchPushRows(items.slice(i).map(function(it) { return it.sku; }), { pm_push_status: null });
                 }
@@ -2435,7 +2375,7 @@
                 contentType: 'application/json',
                 dataType: 'json',
                 headers: { 'X-CSRF-TOKEN': ntoPushCsrf(), 'Accept': 'application/json' },
-                data: JSON.stringify({ items: chunk }),
+                data: JSON.stringify({ items: chunk, manual: opts.manual ? 1 : 0 }),
                 timeout: 180000,
             }).done(function(resp) {
                 const byKey = {};
@@ -2447,6 +2387,7 @@
                         ntoPromoRememberFailure(it.sku, it.pct, false);
                         ntoPatchPushRows([it.sku], {
                             pm_applied_pct: Number(r.pct) || it.pct,
+                            pm_applied_price: Number(r.price) || null,
                             pm_applied_at: r.applied_at || '',
                             pm_activity_id: r.activity_id || null,
                             pm_push_status: null,
@@ -2461,7 +2402,7 @@
                 const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Promotion request failed';
                 const blocked = xhr.status === 409 || xhr.status === 502;
                 failChunk(chunk, msg, !blocked);
-                // Switch off (409) or no open Temu activity (502): the rest would fail the same way.
+                // Auto-push paused (409) or no open Temu activity (502): the rest would fail the same way.
                 if (blocked) {
                     ntoPatchPushRows(items.slice(i).map(function(it) { return it.sku; }), { pm_push_status: null });
                     i = items.length;
@@ -2473,35 +2414,26 @@
     }
     window.ntoApplyPromotions = ntoApplyPromotions;
     function initNtoPromotionUi() {
-        syncNtoPromoSwitchUi();
-        loadNtoPromoEligibility(false).always(function() {
-            if (ntoPromotionAllowed()) ntoApplyPromotions();
-        });
-        $('#nto-promo-switch').off('change.ntoPromo').on('change.ntoPromo', function() {
-            const on = !!this.checked;
-            const prev = ntoPromotionAllowed();
-            saveNtoPromotionSetting(on)
-                .done(function(resp) {
-                    // S PRC follows the switch (Std price when ON, Std − Sum disc when OFF). The server re-saves it.
-                    temuClearCapMemo();
-                    if (typeof table !== 'undefined' && table && typeof table.getRows === 'function') {
-                        try { table.getRows().forEach(function(r) { r.reformat(); }); } catch (e) { /* ignore */ }
-                    }
-                    if (typeof updateSummary === 'function') { try { updateSummary(); } catch (e) { /* ignore */ } }
-                    if (resp && resp.recomputing) ntoReloadAfterRecompute();
-                    if (on) ntoApplyPromotions({ manual: true });
-                    showToast(
-                        on
-                            ? 'Promotion on — S PRC is being set to the Std price. Push it, then each SKU gets a Temu 2 promotion at its Sum disc %.'
-                            : 'Promotion off — S PRC is being set back to Std price − Sum disc. Nothing is sent to Temu.',
-                        'success'
-                    );
+        syncNtoAutoPauseUi();
+        $('#nto-auto-pause-btn').off('click.ntoPause').on('click.ntoPause', function() {
+            const next = !ntoAutoPaused;
+            const $btn = $(this).prop('disabled', true);
+            saveNtoAutoPaused(next)
+                .done(function() {
+                    ntoAutoPaused = next;
+                    syncNtoAutoPauseUi();
+                    showToast(next
+                        ? 'Auto-push paused — nothing is pushed automatically. The push buttons still work.'
+                        : 'Auto-push resumed.', 'success');
+                    if (!next) ntoApplyPromotions();
                 })
                 .fail(function(xhr) {
-                    ntoPromotionEnabled = prev;
-                    syncNtoPromoSwitchUi();
-                    showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not save promotion switch', 'error');
-                });
+                    showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Could not change auto-push', 'error');
+                })
+                .always(function() { $btn.prop('disabled', false); });
+        });
+        loadNtoPromoEligibility(false).always(function() {
+            ntoApplyPromotions();
         });
     }
     function initNtoReloadPushUi() {
@@ -3050,7 +2982,7 @@
                         : ((typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : v);
                     v = shown > 0 ? +Number(shown).toFixed(2) : '';
                 } else if (field === 's_base_price') {
-                    const base = (typeof ntoRowSBase === 'function') ? ntoRowSBase(row) : 0;
+                    const base = (typeof ntoRowPromoBase === 'function') ? ntoRowPromoBase(row) : 0;
                     v = base > 0 ? base : '';
                 } else if (field === 's_r_price') {
                     const sprice = (typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : 0;
@@ -3293,12 +3225,12 @@
                     }
                 },
                 {
-                    title: 'Temu Price',
+                    title: 'Promo Price',
                     field: 't_price',
                     hozAlign: 'center',
                     width: 70,
                     sorter: 'number',
-                    headerTooltip: 'Temu Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99',
+                    headerTooltip: 'Promo Price = (Base × 1.1364); +$2.99 if that result ≤ $26.99',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const base = parseFloat(row.base_price) || 0;
@@ -3308,8 +3240,8 @@
                         }
                         const afterMult = +(base * 1.1364).toFixed(2);
                         const tip = afterMult <= 26.99
-                            ? ('Temu Price = (Base × 1.1364) + $2.99 → $' + base.toFixed(2) + ' × 1.1364 = $' + afterMult.toFixed(2) + ' + $2.99 = $' + tPrice.toFixed(2))
-                            : ('Temu Price = (Base × 1.1364) → $' + base.toFixed(2) + ' × 1.1364 = $' + tPrice.toFixed(2) + ' (no +$2.99, result > $26.99)');
+                            ? ('Promo Price = (Base × 1.1364) + $2.99 → $' + base.toFixed(2) + ' × 1.1364 = $' + afterMult.toFixed(2) + ' + $2.99 = $' + tPrice.toFixed(2))
+                            : ('Promo Price = (Base × 1.1364) → $' + base.toFixed(2) + ' × 1.1364 = $' + tPrice.toFixed(2) + ' (no +$2.99, result > $26.99)');
                         const live = parseFloat(row.temu_price || tPrice) || tPrice;
                         const lmp = temuBadgeLmpValue(row);
                         const redTri = (window.PriceGtLmpBadge
@@ -3365,9 +3297,30 @@
                     sorter: function(a, b, aRow, bRow) {
                         return ntoRowPm(aRow.getData() || {}) - ntoRowPm(bRow.getData() || {});
                     },
-                    headerTooltip: 'PM = Promotion % sent to the Temu 2 Promotion API. Same as Sum disc (Sum disc 2 → promotion 2). Green with a double tick = applied on Temu. Grey = the Promotion switch is OFF, so it is not applied.',
+                    headerTooltip: 'PM = Promotion % sent to the Temu 2 Promotion API. Same as Sum disc (Sum disc 2 → promotion 2). Green with a double tick = applied on Temu. Black/orange = waiting to be applied (auto-push paused or S Base Prc not pushed yet).',
                     formatter: function(cell) {
                         return ntoPmCellHtml(cell.getRow().getData() || {});
+                    }
+                },
+                {
+                    title: 'Disc $',
+                    field: 'disc_amt',
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    width: 66,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return ntoRowDiscAmt(aRow.getData() || {}) - ntoRowDiscAmt(bRow.getData() || {});
+                    },
+                    headerTooltip: 'Disc $ = Std Price × Disc % (Disc % = Sum disc = PM). Promo Price pushed to Temu = (Std × 0.88) − Disc $; Base = Price − $2.99 when Price is under $30.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const amt = ntoRowDiscAmt(row);
+                        if (!(amt > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const std = parseFloat(row.STANDARD_PRICE) || 0;
+                        const pm = ntoRowPm(row);
+                        const tip = 'Disc $ = Std Price × Disc % → $' + std.toFixed(2) + ' × ' + pm + '% = $' + amt.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + amt.toFixed(2) + '</span>';
                     }
                 },
                 {
@@ -3512,13 +3465,13 @@
                     hozAlign: 'center',
                     width: 96,
                     sorter: 'number',
-                    headerTooltip: 'S Base Prc = S R Prc. When S R Prc is under $30, S Base Prc = S R Prc − $2.99. This is the base that gets pushed.',
+                    headerTooltip: 'S Base Prc = S R Prc. When S R Prc is under $30, S Base Prc = S R Prc − $2.99. This is the PROMO price sent to Temu (S PRC = Promo Price). The full price on Temu is the Std Price (Push column).',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sprice = typeof temuDisplayedSprice === 'function'
                             ? temuDisplayedSprice(rowData)
                             : (parseFloat(rowData.sprice) || 0);
-                        const sBase = ntoRowSBase(rowData);
+                        const sBase = ntoRowPromoBase(rowData);
                         if (!(sBase > 0)) {
                             return '<span style="color: #6c757d;">—</span>';
                         }
@@ -3545,7 +3498,7 @@
                         };
                         return rank(aRow.getData()) - rank(bRow.getData());
                     },
-                    headerTooltip: 'Push S Base Prc to Temu. Double tick = this S Base was already pushed. Arrow = not pushed, or S Base changed after the last push. Checked rows push together.',
+                    headerTooltip: 'Push the FULL price to Temu = Std Price as a base (Std × 0.88, − $2.99 under $30). The promo price (S PRC / S Base Prc) is sent by the Promotion push (PM column). Double tick = already pushed. Checked rows push together.',
                     formatter: function(cell) {
                         return ntoPushCellHtml(cell.getRow().getData());
                     }
@@ -3675,7 +3628,7 @@
             setTimeout(function() {
                 temuClearCapMemo();
                 if (typeof updateSummary === 'function') updateSummary();
-                if (ntoPromotionAllowed()) ntoApplyPromotions();
+                ntoApplyPromotions();
             }, 800);
         });
 

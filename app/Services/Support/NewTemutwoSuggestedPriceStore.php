@@ -360,6 +360,8 @@ class NewTemutwoSuggestedPriceStore
         }
         $pmPct = is_numeric($saved[self::KEY_PM_PCT] ?? null) ? round((float) $saved[self::KEY_PM_PCT], 2) : 0.0;
         $row['pm_applied_pct'] = $pmPct > 0 ? $pmPct : null;
+        $pmPrice = is_numeric($saved[self::KEY_PM_PRICE] ?? null) ? round((float) $saved[self::KEY_PM_PRICE], 2) : 0.0;
+        $row['pm_applied_price'] = $pmPct > 0 && $pmPrice > 0 ? $pmPrice : null;
         $row['pm_applied_at'] = $pmPct > 0 ? ($saved[self::KEY_PM_AT] ?? null) : null;
         $row['pm_activity_id'] = $pmPct > 0 ? ($saved[self::KEY_PM_ACTIVITY] ?? null) : null;
 

@@ -45,7 +45,7 @@ class NewTemutwoController extends Controller
             'temuMargin' => TemuShopifySalesService::temu2MarginDecimal(),
             'temuAds' => $this->temuChannelAdsSummary(),
             'newtemutwoPushSpriceLive' => ChannelPushSpriceRunner::livePushAllowed(),
-            'newtemutwoPromotionEnabled' => self::promotionEnabled(),
+            'newtemutwoAutoPaused' => self::autoPushPaused(),
         ]);
     }
 
@@ -58,9 +58,11 @@ class NewTemutwoController extends Controller
     }
 
     /**
-     * Promotion switch (+ optional pinned activity). Defaults to OFF until someone turns it on.
+     * Promotion settings (optional pinned activity). Promotion itself is always ON — there is no off switch.
+     * `paused` is the Pause button: while true nothing is pushed automatically (scheduled job or page),
+     * only the manual push buttons still work.
      *
-     * @return array{enabled: bool, activity_id: string|null}
+     * @return array{enabled: bool, activity_id: string|null, paused: bool}
      */
     public static function promotionSetting(): array
     {
@@ -69,15 +71,21 @@ class NewTemutwoController extends Controller
                 ->where('channel_name', self::PROMOTION_SETTING_KEY)
                 ->first();
         } catch (\Throwable) {
-            return ['enabled' => false, 'activity_id' => null];
+            return ['enabled' => true, 'activity_id' => null, 'paused' => false];
         }
         $vis = is_array($row?->visibility) ? $row->visibility : [];
         $activity = trim((string) ($vis['activity_id'] ?? ''));
 
         return [
-            'enabled' => filter_var($vis['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'enabled' => true,
             'activity_id' => $activity !== '' ? $activity : null,
+            'paused' => filter_var($vis['paused'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ];
+    }
+
+    public static function autoPushPaused(): bool
+    {
+        return self::promotionSetting()['paused'];
     }
 
     public static function promotionEnabled(): bool
@@ -93,9 +101,10 @@ class NewTemutwoController extends Controller
     public function savePromotionSetting(Request $request)
     {
         $current = self::promotionSetting();
-        $enabled = $request->has('enabled')
-            ? filter_var($request->input('enabled'), FILTER_VALIDATE_BOOLEAN)
-            : $current['enabled'];
+        $enabled = true; // Promotion is always ON.
+        $paused = $request->has('paused')
+            ? filter_var($request->input('paused'), FILTER_VALIDATE_BOOLEAN)
+            : $current['paused'];
         $activity = $request->has('activity_id')
             ? trim((string) $request->input('activity_id'))
             : (string) ($current['activity_id'] ?? '');
@@ -105,25 +114,14 @@ class NewTemutwoController extends Controller
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => self::PROMOTION_SETTING_KEY],
-            ['visibility' => ['enabled' => $enabled, 'activity_id' => $activity !== '' ? $activity : null], 'column_order' => []]
+            ['visibility' => ['enabled' => $enabled, 'activity_id' => $activity !== '' ? $activity : null, 'paused' => $paused], 'column_order' => []]
         );
-
-        // S PRC is saved by the server job, and it follows this switch (ON = Std price, OFF = Std - Sum disc).
-        // Re-save it now in the background (no Temu push) so the page does not wait for the next scheduled run.
-        $recomputing = false;
-        if ($enabled !== $current['enabled']) {
-            try {
-                $recomputing = DetachedArtisan::spawn('newtemutwo:sprc-dil-auto-push', ['skip-push' => true]);
-            } catch (\Throwable $e) {
-                Log::warning('New Temu Two promotion switch: S PRC recompute not started: '.$e->getMessage());
-            }
-        }
 
         return response()->json([
             'success' => true,
             'enabled' => $enabled,
             'activity_id' => $activity !== '' ? $activity : null,
-            'recomputing' => $recomputing,
+            'paused' => $paused,
         ]);
     }
 
@@ -205,16 +203,37 @@ class NewTemutwoController extends Controller
     }
 
     /**
+     * Promo Price (S PRC rule): Price = (Std × 0.88) − (Std × Disc %), where Std × Disc % is the Disc $ column.
+     * Base sent to Temu = Price − $2.99 when Price is under $30, otherwise Price.
+     */
+    public static function promoBaseFromStd(float $std, float $pct): float
+    {
+        if (! ($std > 0) || ! ($pct > 0)) {
+            return 0.0;
+        }
+        $price = round(($std * 0.88) - ($std * $pct / 100), 2);
+        if (! ($price > 0)) {
+            return 0.0;
+        }
+        $base = $price < 30 ? round($price - 2.99, 2) : $price;
+
+        return $base > 0 ? $base : 0.0;
+    }
+
+    /**
      * Enroll SKUs in a Temu 2 promotion at Sum disc %.
-     * items: [{sku, pct, sprice}] where pct is the page's Sum disc. Refused while the switch is OFF.
+     * items: [{sku, pct, std, sprice}] where pct is the page's Sum disc and std is the Std Price.
+     * Promo price = Std × 0.88 − Std × Disc % (see promoBaseFromStd). Refused for unattended requests while auto-push is paused.
      */
     public function pushPromotion(Request $request, Temu2ApiService $temu, bool $ignoreSwitch = false)
     {
         $promo = $this->promotionApi($temu);
         $setting = self::promotionSetting();
-        // $ignoreSwitch is only used by the newtemutwo:promotion-test --apply command.
-        if (! $ignoreSwitch && ! $setting['enabled']) {
-            return response()->json(['success' => false, 'message' => 'Promotion switch is OFF. Turn it on to apply promotions.'], 409);
+        // $ignoreSwitch is only used by the newtemutwo:promotion-test --apply command (skips the Pause check).
+
+        // Auto-push is paused: only a manual request (a person clicked) may enroll.
+        if (! $ignoreSwitch && $setting['paused'] && ! $request->boolean('manual')) {
+            return response()->json(['success' => false, 'message' => 'Auto-push is paused. Resume it to apply promotions automatically.'], 409);
         }
 
         $items = $request->input('items');
@@ -259,7 +278,12 @@ class NewTemutwoController extends Controller
                 $failItem($sku, $pct, 'Temu goodsId not found for this SKU.');
                 continue;
             }
-            $groups[$goodsId][] = ['sku' => $sku, 'pct' => $pct, 'sprice' => round((float) ($item['sprice'] ?? 0), 2)];
+            $groups[$goodsId][] = [
+                'sku' => $sku,
+                'pct' => $pct,
+                'std' => round((float) ($item['std'] ?? 0), 2),
+                'sprice' => round((float) ($item['sprice'] ?? 0), 2),
+            ];
         }
 
         foreach ($groups as $goodsId => $requested) {
@@ -267,7 +291,9 @@ class NewTemutwoController extends Controller
             $fallbackPct = (float) $requested[0]['pct'];
             $pctBySku = [];
             $spriceBySku = [];
+            $stdBySku = [];
             foreach ($requested as $r) {
+                $stdBySku[strtoupper($r['sku'])] = (float) ($r['std'] ?? 0);
                 $pctBySku[strtoupper($r['sku'])] = (float) $r['pct'];
                 $spriceBySku[strtoupper($r['sku'])] = (float) ($r['sprice'] ?? 0);
             }
@@ -319,11 +345,13 @@ class NewTemutwoController extends Controller
             foreach ($siblings as $skuId => $sib) {
                 $pct = $fallbackPct;
                 $sprice = 0.0;
+                $std = 0.0;
                 $inv = 0;
                 foreach ($sib['names'] as $n) {
                     if (isset($pctBySku[strtoupper($n)])) {
                         $pct = $pctBySku[strtoupper($n)];
                         $sprice = (float) ($spriceBySku[strtoupper($n)] ?? 0);
+                        $std = (float) ($stdBySku[strtoupper($n)] ?? 0);
                     }
                     $inv = max($inv, (int) floor((float) ($inventory->get($n)->inv ?? 0)));
                 }
@@ -332,11 +360,18 @@ class NewTemutwoController extends Controller
                     break;
                 }
                 if ($sprice > 0) {
-                    // Promotion is Sum disc % off S PRC, then converted to a Temu base the same way
-                    // S Base Prc is (S R = S × 0.88; − $2.99 when S R < $30).
-                    $skuPrices[$skuId] = self::promotionBaseFromSprice($sprice * (1 - $pct / 100));
+                    // S PRC is the Promo Price (Std × 0.88 − Std × Disc %, LMP-capped). Temu base = S R Prc, − $2.99 under $30.
+                    $skuPrices[$skuId] = self::promotionBaseFromSprice($sprice);
+                } elseif ($std > 0) {
+                    // No S PRC sent: same rule straight from Std.
+                    $skuPrices[$skuId] = self::promoBaseFromStd($std, $pct);
                 } else {
                     $skuPrices[$skuId] = round($sib['base'] * (1 - $pct / 100), 2);
+                }
+                if ($std > 0 && $skuPrices[$skuId] > 0
+                    && $skuPrices[$skuId] >= self::promotionBaseFromSprice($std) - 0.001) {
+                    $bad = 'Promo price is not below the Std (full) price for SKU '.($sib['names'][0] ?? $skuId).'.';
+                    break;
                 }
                 if (! ($skuPrices[$skuId] > 0)) {
                     $bad = 'Promotion price is not positive for SKU '.($sib['names'][0] ?? $skuId).'.';
@@ -804,6 +839,7 @@ class NewTemutwoController extends Controller
                     'nto_push_status' => $suggested['push_status'] ?? null,
                     'nto_push_error_at' => $suggested['push_error_at'] ?? null,
                     'pm_applied_pct' => $suggested['pm_applied_pct'] ?? null,
+                    'pm_applied_price' => $suggested['pm_applied_price'] ?? null,
                     'pm_applied_at' => $suggested['pm_applied_at'] ?? null,
                     'pm_activity_id' => $suggested['pm_activity_id'] ?? null,
                     'npft_percent' => $npftPercent,

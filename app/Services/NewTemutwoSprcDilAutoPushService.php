@@ -33,9 +33,6 @@ class NewTemutwoSprcDilAutoPushService
 {
     public const LOCK_KEY = 'newtemutwo-sprc-dil-auto-push-run';
 
-    /** Promotion switch, read once per run (null = not read yet). */
-    protected ?bool $promotionOn = null;
-
     /**
      * @param  list<string>|null  $onlySkus  Uppercase SKUs; null = all listed candidates
      * @param  callable(string): void|null  $logger
@@ -52,7 +49,6 @@ class NewTemutwoSprcDilAutoPushService
         int $cooldownMinutes = 600
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('newtemutwo');
-        $this->promotionOn = null;
 
         $this->log($logger, 'Loaded New Temu Two Std prc vs dil (newtemutwo_std_prc_vs_dil) → Age/Dil/B/0 Sold/CVR/Rev Disc + LMP cap');
 
@@ -87,6 +83,12 @@ class NewTemutwoSprcDilAutoPushService
         $this->log($logger, "Found {$stats['candidates']} candidate SKU(s) with INV > 0 listed on Temu 2");
 
         $canPush = ! $dryRun && ! $skipPush;
+        if ($canPush && NewTemutwoController::autoPushPaused()) {
+            // Pause button on /new-temu2: keep saving S PRC, but push nothing to Temu.
+            $stats['errors'][] = 'auto-push paused';
+            $this->log($logger, '⏸ Auto-push is paused on /new-temu2 — saving S PRC only, no push');
+            $canPush = false;
+        }
         if ($canPush && ! ChannelPushSpriceRunner::livePushAllowed()) {
             $stats['errors'][] = 'live push disabled in local (CHANNEL_PUSH_SPRICE_ALLOW_LOCAL)';
             $this->log($logger, '✗ Live push is disabled on this environment — saving S PRC only, no push');
@@ -241,13 +243,16 @@ class NewTemutwoSprcDilAutoPushService
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];
         }
-        if ($this->promotionOn === null) {
-            $this->promotionOn = NewTemutwoController::promotionEnabled();
+        // S PRC = Promo Price. The Std price is the full (regular) Temu price; S PRC is pushed as the Temu promotion.
+        // Rule: Price = (Std × 0.88) − (Std × Disc %); Base = Price − $2.99 under $30. The pricer gives
+        // Std × (1 − Disc %), and the page derives S R Prc = S PRC × 0.88, so S PRC = Std − (Std × Disc %) ÷ 0.88.
+        $discounted = $pricer->priceFromRow($pricerRow);
+        if ($discounted === null || ! ($discounted > 0)) {
+            return null;
         }
-        // Promotion ON: the Std price itself is pushed, and the Sum disc is applied afterwards as a
-        // Temu promotion (PM column) instead of being baked into S PRC. Same as New Temu One.
-        $effective = $this->promotionOn ? round($std, 2) : $pricer->priceFromRow($pricerRow);
-        if ($effective === null || ! ($effective > 0)) {
+        $discAmt = max(0.0, $std - $discounted);
+        $effective = round($std - ($discAmt / TemuShopifySalesService::S_RECOVERY_RATE), 2);
+        if (! ($effective > 0)) {
             return null;
         }
 
@@ -267,9 +272,11 @@ class NewTemutwoSprcDilAutoPushService
             return null;
         }
         $sprice = round($capped, 2);
-        // Temu takes a Base price. Same rule as the page (S Base Prc): S R = S PRC × 0.88, minus $2.99 under $30.
-        $base = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
-        if ($base === null || ! ($base > 0)) {
+        // Temu takes a Base price. Same rule as the page: S R = price × 0.88, minus $2.99 under $30.
+        // `base` is what gets pushed as the regular (full) price = Std. `promo_base` is S PRC as the promotion price.
+        $base = TemuShopifySalesService::newTemuoneSBasePrice($std);
+        $promoBase = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
+        if (! ($base > 0) || ! ($promoBase > 0)) {
             return null;
         }
 
@@ -279,6 +286,7 @@ class NewTemutwoSprcDilAutoPushService
             'lmp_capped' => $lmpCapped,
             'labels' => $labels,
             'base' => round($base, 2),
+            'promo_base' => round($promoBase, 2),
             'full' => round(TemuShopifySalesService::computeFullTemuPrice($base), 2),
         ];
     }
