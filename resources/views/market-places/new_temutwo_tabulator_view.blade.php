@@ -2622,17 +2622,26 @@
         return (parent || sku).toUpperCase();
     }
 
-    /** One Views number per Parent — variants share the same listing clicks. */
+    /**
+     * Views are Goods ID level (variants of one listing share the same clicks), so each Goods ID counts once.
+     * Same as /temu2-decrease. A Parent can hold several listings, so counting once per Parent under-counts Views
+     * and pushes CVR too high. Rows with no Goods ID add their own Views.
+     */
     function ntoViewsForBadge(rows) {
-        const byParent = {};
+        const byGoods = {};
+        let noGoods = 0;
         (rows || []).forEach(function(row) {
-            const key = ntoParentKey(row);
-            if (!key) return;
+            if (!row || row.is_parent_summary) return;
             const v = ntoRowViews(row);
-            if (!(key in byParent) || v > byParent[key]) byParent[key] = v;
+            const gid = String((row.temu_goods_id != null ? row.temu_goods_id : row.goods_id) || '').trim();
+            if (gid === '') {
+                noGoods += v;
+                return;
+            }
+            if (!(gid in byGoods) || v > byGoods[gid]) byGoods[gid] = v;
         });
-        let total = 0;
-        Object.keys(byParent).forEach(function(k) { total += byParent[k]; });
+        let total = noGoods;
+        Object.keys(byGoods).forEach(function(k) { total += byGoods[k]; });
         return total;
     }
 
