@@ -709,8 +709,6 @@
                     field: "sku",
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search SKU...",
-                    cssClass: "text-primary fw-bold",
-                    tooltip: true,
                     frozen: true,
                     width: 200,
                     sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
@@ -720,13 +718,23 @@
                         return aVal.localeCompare(bVal);
                     },
                     formatter: function(cell) {
-                        const sku = cell.getValue();
-                        let html = `<span>${sku}</span>`;
-                        html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
-                                   style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
-                                   data-sku="${sku}"
-                                   title="Copy SKU"></i>`;
-                        return html;
+                        // Same layout as /amazon-tabulator-view: SKU (ellipsis) + copy button on one line.
+                        const sku = cell.getValue() || '';
+                        const rowData = cell.getRow().getData();
+                        const escAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+                            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                        // No copy button on parent rows
+                        if (plsIsParentRow(rowData)) {
+                            return `<span style="font-weight: bold;">${sku}</span>`;
+                        }
+
+                        return `<div style="display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; min-width: 0; max-width: 100%;">
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;" title="${escAttr(sku)}">${sku}</span>
+                            <button class="btn btn-sm btn-link copy-sku-btn p-0 flex-shrink-0" data-sku="${escAttr(sku)}" title="Copy SKU">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>`;
                     }
                 },
                 {
