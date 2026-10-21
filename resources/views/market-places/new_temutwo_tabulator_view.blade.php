@@ -2688,16 +2688,7 @@
         );
         // Counted over the whole dataset, not the filtered view — same as /temu2-decrease.
         const allRows = table.getData();
-        // Only rows that are showing in the grid now, same rows that display the red alert in LMP Alert Prc.
-        let lmpAlertCount = 0;
-        let lmpAlertRows = [];
-        try { lmpAlertRows = table.getData('active') || []; } catch (e) { lmpAlertRows = []; }
-        lmpAlertRows.forEach(function(row) {
-            if (temuHasLmpAlert(row)) lmpAlertCount++;
-        });
-        $('#newtemutwo-lmp-alert-badge').html(
-            '<i class="fas fa-exclamation-triangle"></i> ' + lmpAlertCount.toLocaleString()
-        );
+        ntoRefreshLmpAlertBadge(true);
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.update('#newtemutwo-price-lt80-lmp-badge', allRows, '', 'temu_price');
         }
@@ -2723,9 +2714,51 @@
         }
     }
     window.updateSummary = updateSummary;
+
+    /**
+     * Red alert badge = rows showing in the grid that have a LMP Alert Prc, INV > 0.
+     * The alert depends on Sum disc, so it is only counted once the discount rules are loaded; counting
+     * earlier gives a bigger number (every discount is 0). Safe to call often: it is independent of updateSummary.
+     */
+    let ntoLmpAlertReadyFallback = false;
+    let ntoLmpAlertTimer = null;
+    function ntoLmpAlertRulesReady() {
+        if (ntoLmpAlertReadyFallback) return true;
+        return (typeof chStdAutoApplied === 'undefined') || chStdAutoApplied === true;
+    }
+    function ntoRefreshLmpAlertBadge(now) {
+        if (!now) {
+            clearTimeout(ntoLmpAlertTimer);
+            ntoLmpAlertTimer = setTimeout(function() { ntoRefreshLmpAlertBadge(true); }, 120);
+            return;
+        }
+        try {
+            if (!table || typeof table.getData !== 'function') return;
+            const $badge = $('#newtemutwo-lmp-alert-badge');
+            if (!ntoLmpAlertRulesReady()) {
+                $badge.html('<i class="fas fa-exclamation-triangle"></i> …');
+                return;
+            }
+            let rows = [];
+            try { rows = table.getData('active') || []; } catch (e) { rows = []; }
+            let count = 0;
+            rows.forEach(function(row) {
+                if (temuHasLmpAlert(row)) count++;
+            });
+            $badge.html('<i class="fas fa-exclamation-triangle"></i> ' + count.toLocaleString());
+        } catch (err) {
+            if (window.console && console.warn) console.warn('LMP alert badge', err);
+        }
+    }
+    window.ntoRefreshLmpAlertBadge = ntoRefreshLmpAlertBadge;
     $(document).off('chStd:settled.ntoLmpAlert').on('chStd:settled.ntoLmpAlert', function() {
+        // The grid is redrawn right after this event, so count again once it has settled.
+        ntoRefreshLmpAlertBadge(true);
+        [300, 1200, 3000].forEach(function(ms) { setTimeout(function() { ntoRefreshLmpAlertBadge(true); }, ms); });
         if (typeof updateSummary === 'function') updateSummary();
     });
+    // If the rules event never arrives, still show a count instead of staying on "…".
+    setTimeout(function() { ntoLmpAlertReadyFallback = true; ntoRefreshLmpAlertBadge(true); }, 8000);
 
     function applyFilters() {
         if (!table) return;
@@ -4010,6 +4043,9 @@
         // Authoritative badge refresh: fires after Tabulator finishes filtering.
         table.on('dataFiltered', function() {
             updateSummary();
+        });
+        ['dataSorted', 'renderComplete', 'dataLoaded'].forEach(function(evt) {
+            table.on(evt, function() { ntoRefreshLmpAlertBadge(); });
         });
 
         $('#sku-search, #parent-search').on('keyup', applyFilters);
