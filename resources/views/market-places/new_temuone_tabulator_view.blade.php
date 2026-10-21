@@ -620,11 +620,10 @@
                     <span class="badge fs-6 p-2" id="newtemuone-missing-lmp-badge"
                         style="background-color:#28a745;color:#fff;font-weight:700;cursor:pointer;"
                         title="M LMP: SKUs with INV &gt; 0 and no LMP. Green = none missing. Click to filter.">M LMP: 0</span>
-                    @include('partials.price-gt-lmp-badge', [
-                        'pglBadgeId' => 'newtemuone-price-gt-lmp-badge',
-                        'pglChannelKey' => '',
-                        'pglPriceField' => 'temu_price',
-                    ])
+                    <span class="badge fs-6 p-2" id="newtemuone-lmp-alert-badge"
+                        style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
+                        title="LMP Alert Prc with INV &gt; 0. Click to filter."><i class="fas fa-exclamation-triangle"></i> 0</span>
+                    @include('partials.price-gt-lmp-badge-script')
                     @include('partials.price-lt80-lmp-badge', [
                         'pltBadgeId' => 'newtemuone-price-lt80-lmp-badge',
                         'pltChannelKey' => '',
@@ -633,9 +632,6 @@
                     <span class="badge fs-6 p-2" id="newtemuone-blue-triangle-badge"
                         style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                         title="Blue triangle: S PRC ≠ T Price. Click to filter."><i class="fas fa-exclamation-triangle"></i> 0</span>
-                    <span class="badge fs-6 p-2" id="newtemuone-lmp-cap-badge"
-                        style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                        title="S PRC capped at LMP. Click to filter.">LMP cap 0</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -1324,16 +1320,13 @@
         return (rPrice * temuRowMargin(row)) - ship - lp;
     }
 
-    /** SPFT$ = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease. */
-    function temuSpftDollars(row, spriceOverride) {
-        const sprice = spriceOverride != null
-            ? (parseFloat(spriceOverride) || 0)
-            : temuDisplayedSprice(row);
-        const sR = temuSRPriceFromSprice(sprice);
-        if (!(sR > 0)) return null;
+    /** SPFT$ = (S Promo Prc × 0.95) − Temu Ship − LP. S Promo Prc is the overwritten price when LMP Alert Prc is set. */
+    function temuSpftDollars(row) {
+        const pad = (typeof ntoRowSPriceAfterDisc === 'function') ? ntoRowSPriceAfterDisc(row) : null;
+        if (pad == null || !(pad > 0)) return null;
         const lp = parseFloat(row && row.lp) || 0;
         const ship = parseFloat(row && row.temu_ship) || 0;
-        return (sR * 0.95) - ship - lp;
+        return (pad * 0.95) - ship - lp;
     }
 
     function temuGpftPercent(row) {
@@ -1351,8 +1344,8 @@
     }
 
     function temuSgpftPercent(row) {
-        const sprice = temuDisplayedSprice(row);
-        const spft = temuSpftDollars(row, sprice);
+        const sprice = ntoRowSpriceStart(row);
+        const spft = temuSpftDollars(row);
         if (spft == null || !(sprice > 0)) return null;
         return (spft / sprice) * 100;
     }
@@ -1392,13 +1385,13 @@
         return gpft - (tPrice * (temuAdsPercentForNet() / 100));
     }
 
-    /** SNPFT$ = SPFT$ − (S PRC × Ads%). */
+    /** SNPFT$ = SPFT$ − (Std Prc × Ads%). */
     function temuSnpftDollars(row, spriceOverride) {
-        const spft = temuSpftDollars(row, spriceOverride);
+        const spft = temuSpftDollars(row);
         if (spft == null) return null;
         const sprice = spriceOverride != null
             ? (parseFloat(spriceOverride) || 0)
-            : temuDisplayedSprice(row);
+            : (ntoRowSpriceStart(row) || 0);
         return spft - ((sprice > 0 ? sprice : 0) * (temuAdsPercentForNet() / 100));
     }
 
@@ -1417,7 +1410,7 @@
     }
 
     function temuSnpftPercent(row) {
-        const sprice = temuDisplayedSprice(row);
+        const sprice = ntoRowSpriceStart(row);
         const snpft = temuSnpftDollars(row, sprice);
         if (snpft == null || !(sprice > 0)) return null;
         return (snpft / sprice) * 100;
@@ -1958,6 +1951,7 @@
     let priceGtLmpFilterActive = false;
     let priceLt80LmpFilterActive = false;
     let missingLmpFilterActive = false;
+    let lmpAlertFilterActive = false;
 
     // Same LMP basis /temu2-decrease passes in: lmp is the recovery price, lmp_raw the landed one.
     function temuBadgeLmpValue(row) {
@@ -2003,6 +1997,13 @@
     function temuHasPriceLt80Lmp(row) {
         return !!(window.PriceLt80LmpBadge
             && PriceLt80LmpBadge.hasPurpleTriangle(row, 'temu_price'));
+    }
+
+    /** Red alert: a child SKU with INV > 0 that shows a LMP Alert Prc (LMP below S Promo Prc). */
+    function temuHasLmpAlert(row) {
+        if (!row || row.is_parent_summary) return false;
+        if (!((parseFloat(row.INV) || 0) > 0)) return false;
+        return typeof ntoRowLmpAlertPrc === 'function' && ntoRowLmpAlertPrc(row) != null;
     }
 
     function temuHasLmpCap(row) {
@@ -2118,6 +2119,89 @@
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
         return typeof temuSBaseFromSprice === 'function' ? temuSBaseFromSprice(sprice) : 0;
     }
+    /** PM = Sum disc of the row (child SKUs with stock only). */
+    function ntoRowPm(d) {
+        if (!d || d.is_parent_summary) return 0;
+        const sku = ntoRowSku(d);
+        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
+        if (typeof chStdSumDisc !== 'function') return 0;
+        const n = Number(chStdSumDisc(d)) || 0;
+        return n > 0 ? +n.toFixed(2) : 0;
+    }
+    /** Std Prc for the S breakup. Same STANDARD_PRICE as the Std Price column. */
+    function ntoRowSpriceStart(d) {
+        if (!d || d.is_parent_summary) return null;
+        const sku = ntoRowSku(d);
+        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return null;
+        const std = temuParseMoney(d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price);
+        return std > 0 ? +Number(std).toFixed(2) : null;
+    }
+    /** S 12% $ = Std Prc × 12%. */
+    function ntoRowSTwelvePct(d) {
+        const s = ntoRowSpriceStart(d);
+        return s > 0 ? +(s * 0.12).toFixed(2) : 0;
+    }
+    /** S Disc $ = Std Prc × Disc % (Disc % = Sum disc = PM). */
+    function ntoRowSDiscAmt(d) {
+        const s = ntoRowSpriceStart(d);
+        const pm = ntoRowPm(d);
+        if (!(s > 0) || !(pm > 0)) return 0;
+        return +(s * pm / 100).toFixed(2);
+    }
+    /** S Promo Prc before the LMP alert overwrite: Std Prc − S 12% $ − S Disc $. */
+    function ntoRowSPromoPrcBase(d) {
+        const s = ntoRowSpriceStart(d);
+        if (s == null) return null;
+        return +(s - ntoRowSTwelvePct(d) - ntoRowSDiscAmt(d)).toFixed(2);
+    }
+    /** LMP Alert Prc = LMP × 0.87 when the LMP column is lower than the base S Promo Prc. Otherwise blank. */
+    function ntoRowLmpAlertPrc(d) {
+        const promo = ntoRowSPromoPrcBase(d);
+        const lmp = typeof temuLmpRefPrice === 'function' ? temuLmpRefPrice(d) : 0;
+        if (promo == null || !(lmp > 0) || !(lmp < promo)) return null;
+        return +(lmp * 0.87).toFixed(2);
+    }
+    /** Shown S Promo Prc. An LMP alert overwrites it with LMP Alert Prc × 0.98. */
+    function ntoRowSPriceAfterDisc(d) {
+        const base = ntoRowSPromoPrcBase(d);
+        if (base == null) return null;
+        const alert = ntoRowLmpAlertPrc(d);
+        if (alert == null) return base;
+        return +(alert * 0.98).toFixed(2);
+    }
+    /** S Ship Disc = $2.99 when S Promo Prc is $30 or less, otherwise 0. */
+    function ntoRowSShipDisc(d) {
+        const p = ntoRowSPriceAfterDisc(d);
+        if (p == null) return null;
+        return p <= 30 ? 2.99 : 0;
+    }
+    /** S Promo Base Prc = S Promo Prc − S Ship Disc. */
+    function ntoRowSPromoBasePrc(d) {
+        const p = ntoRowSPriceAfterDisc(d);
+        if (p == null) return null;
+        return +(p - (ntoRowSShipDisc(d) || 0)).toFixed(2);
+    }
+    /** Price the Push column sends: the S Promo Base Prc cell. */
+    function ntoRowPushPrice(d) {
+        const n = ntoRowSPromoBasePrc(d);
+        return (n != null && n > 0) ? n : 0;
+    }
+    /** MOQ, Req M (MOQ ÷ 4) and Dil MOQ % (OV L30 ÷ Req M). */
+    function ntoRowMoq(d) {
+        const n = Number(d && d.moq);
+        return (d && d.moq != null && d.moq !== '' && isFinite(n)) ? n : null;
+    }
+    function ntoRowReqM(d) {
+        const moq = ntoRowMoq(d);
+        if (moq == null) return null;
+        return +(moq / 4).toFixed(2);
+    }
+    function ntoRowDilMoq(d) {
+        const req = ntoRowReqM(d);
+        if (!(req > 0)) return null;
+        const ov = parseFloat(d && d.L30) || 0;
+        return Math.round((ov / req) * 100);
+    }
     function ntoMoneyEq(a, b) {
         return Math.round((Number(a) || 0) * 100) === Math.round((Number(b) || 0) * 100);
     }
@@ -2126,24 +2210,24 @@
         const queued = String(d.nto_push_status || '');
         if (queued === 'pushing') return 'pushing';
         if (queued === 'error') return 'error';
-        const sBase = ntoRowSBase(d);
+        const sBase = ntoRowPushPrice(d);
         const pushed = parseFloat(d.nto_pushed_base);
         if (sBase > 0 && pushed > 0 && ntoMoneyEq(sBase, pushed)) return 'pushed';
         return '';
     }
     function ntoPushCellHtml(d) {
-        const sBase = ntoRowSBase(d);
+        const sBase = ntoRowPushPrice(d);
         if (!(sBase > 0)) return '';
         const sku = ntoRowSku(d);
         const esc = String(sku).replace(/"/g, '&quot;');
         const state = ntoRowPushState(d);
         if (state === 'pushing') {
-            return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing S Base Prc $'
+            return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing S Promo Base Prc $'
                 + sBase.toFixed(2) + '…"></i>';
         }
         if (state === 'pushed') {
             const when = d.nto_pushed_at ? String(d.nto_pushed_at) : '';
-            const tip = 'Pushed S Base Prc $' + sBase.toFixed(2)
+            const tip = 'Pushed S Promo Base Prc $' + sBase.toFixed(2)
                 + (when ? ' at ' + when : '');
             return '<i class="fa-solid fa-check-double nto-push-ok" title="'
                 + tip.replace(/"/g, '&quot;') + '"></i>';
@@ -2154,7 +2238,7 @@
                 + '<i class="fas fa-times nto-push-fail"></i></button>';
         }
         return '<button type="button" class="nto-push-single-btn" data-sku="' + esc
-            + '" data-price="' + sBase + '" title="Push S Base Prc $' + sBase.toFixed(2)
+            + '" data-price="' + sBase + '" title="Push S Promo Base Prc $' + sBase.toFixed(2)
             + ' — or all checked SKUs"><i class="fas fa-upload"></i></button>';
     }
     function ntoPatchPushRows(skus, patch) {
@@ -2210,7 +2294,7 @@
             const sku = ntoRowSku(d);
             const key = sku.toUpperCase();
             if (!sku || seen[key] || key.indexOf('PARENT') === 0) return;
-            const base = ntoRowSBase(d);
+            const base = ntoRowPushPrice(d);
             if (!(base > 0)) return;
             seen[key] = true;
             items.push({ sku: sku, price: base });
@@ -2230,8 +2314,7 @@
             const key = sku.toUpperCase();
             if (!sku || seen[key] || key.indexOf('PARENT') === 0) return;
             if (!temuHasBlueTriangle(d)) return;
-            const sprice = temuDisplayedSprice(d);
-            const base = temuSBaseFromSprice(sprice);
+            const base = ntoRowPushPrice(d);
             if (!(base > 0)) return;
             if (window._ntoNegSkip && window._ntoNegSkip[key + '|' + (+base).toFixed(2)]) return;
             seen[key] = true;
@@ -2281,7 +2364,7 @@
                 if (toastKey !== ntoPushSpriceLastToastKey && (Number(resp.total) || 0) > 0) {
                     ntoPushSpriceLastToastKey = toastKey;
                     showToast(
-                        resp.message || ('S Base Prc: ' + (resp.ok_count || 0) + ' ok'),
+                        resp.message || ('S Promo Base Prc: ' + (resp.ok_count || 0) + ' ok'),
                         (Number(resp.fail_count) || 0) && !(Number(resp.ok_count) || 0) ? 'error' : 'success'
                     );
                 }
@@ -2423,7 +2506,7 @@
                 .done(function() {
                     showToast(
                         on
-                            ? 'Push on reload on — blue-triangle SKUs will queue S Base Prc (S PRC ≠ Temu Price).'
+                            ? 'Push on reload on — blue-triangle SKUs will queue S Promo Base Prc (S PRC ≠ Temu Price).'
                             : 'Push on reload off — nothing auto-pushes.',
                         'success'
                     );
@@ -2450,7 +2533,7 @@
             if (selected.length) {
                 ntoPatchPushRows(selected.map(function(i) { return i.sku; }), { nto_push_status: 'pushing' });
                 queueNtoPushSpriceItems(selected);
-                showToast('Queued S Base Prc for ' + selected.length + ' selected SKU(s)', 'success');
+                showToast('Queued S Promo Base Prc for ' + selected.length + ' selected SKU(s)', 'success');
                 return;
             }
             const sku = String($btn.attr('data-sku') || '').trim();
@@ -2466,9 +2549,9 @@
                     return false;
                 });
             }
-            const base = rowData ? ntoRowSBase(rowData) : (parseFloat($btn.attr('data-price')) || 0);
+            const base = rowData ? ntoRowPushPrice(rowData) : (parseFloat($btn.attr('data-price')) || 0);
             if (!(base > 0)) {
-                showToast('No S Base Prc to push for ' + sku, 'error');
+                showToast('No S Promo Base Prc to push for ' + sku, 'error');
                 return;
             }
             ntoPatchPushRows([sku], { nto_push_status: 'pushing' });
@@ -2502,18 +2585,13 @@
             ['#zero-sold-count-badge', zeroSoldFilterActive],
             ['#more-sold-count-badge', moreSoldFilterActive],
             ['#newtemuone-blue-triangle-badge', blueTriangleFilterActive],
-            ['#newtemuone-lmp-cap-badge', lmpCapFilterActive],
-            ['#newtemuone-missing-lmp-badge', missingLmpFilterActive]
+            ['#newtemuone-missing-lmp-badge', missingLmpFilterActive],
+            ['#newtemuone-lmp-alert-badge', lmpAlertFilterActive]
         ];
         pairs.forEach(function(p) {
             $(p[0]).css('box-shadow', p[1] ? '0 0 0 3px rgba(13,110,253,0.55)' : 'none');
         });
-        // These two paint their own active state (yellow outline) via the shared modules.
-        if (window.PriceGtLmpBadge) {
-            PriceGtLmpBadge.setOutline(
-                document.getElementById('newtemuone-price-gt-lmp-badge'), priceGtLmpFilterActive
-            );
-        }
+        // This one paints its own active state (yellow outline) via the shared module.
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.setOutline(
                 document.getElementById('newtemuone-price-lt80-lmp-badge'), priceLt80LmpFilterActive
@@ -2541,16 +2619,26 @@
         return (parent || sku).toUpperCase();
     }
 
+    /**
+     * Views are Goods ID level (variants of one listing share the same clicks), so each Goods ID counts once.
+     * A Parent can hold several listings, so counting once per Parent under-counts Views and pushes CVR too high.
+     * Rows with no Goods ID add their own Views.
+     */
     function ntoViewsForBadge(rows) {
-        const byParent = {};
+        const byGoods = {};
+        let noGoods = 0;
         (rows || []).forEach(function(row) {
-            const key = ntoParentKey(row);
-            if (!key) return;
+            if (!row || row.is_parent_summary) return;
             const v = ntoRowViews(row);
-            if (!(key in byParent) || v > byParent[key]) byParent[key] = v;
+            const gid = String((row.temu_goods_id != null ? row.temu_goods_id : row.goods_id) || '').trim();
+            if (gid === '') {
+                noGoods += v;
+                return;
+            }
+            if (!(gid in byGoods) || v > byGoods[gid]) byGoods[gid] = v;
         });
-        let total = 0;
-        Object.keys(byParent).forEach(function(k) { total += byParent[k]; });
+        let total = noGoods;
+        Object.keys(byGoods).forEach(function(k) { total += byGoods[k]; });
         return total;
     }
 
@@ -2568,7 +2656,6 @@
         let gpftBase = 0;
         let gpftLp = 0;
         let blueTriangle = 0;
-        let lmpCapped = 0;
 
         rows.forEach(function(row) {
             rowsCount++;
@@ -2589,11 +2676,6 @@
             }
 
             if (temuHasBlueTriangle(row)) blueTriangle++;
-            const cap = temuSpriceCapResult(row);
-            const sprice = (cap && cap.sprice > 0) ? cap.sprice : ntoSavedSprice(row);
-            if (sprice > 0) {
-                if (cap && (cap.lmpAlert || (cap.lmp > 0 && sprice >= cap.lmp))) lmpCapped++;
-            }
         });
 
         totalViews = ntoViewsForBadge(rows);
@@ -2615,14 +2697,9 @@
             clearTimeout(window._ntoLeftoverTimer);
             window._ntoLeftoverTimer = setTimeout(window.ntoPushLeftoverBlues, 2000);
         }
-        $('#newtemuone-lmp-cap-badge').text('LMP cap ' + lmpCapped.toLocaleString());
+        ntoRefreshLmpAlertBadge(true);
         // Counted over the whole dataset, not the filtered view — same as /temu2-decrease.
         const allRows = table.getData();
-        if (window.PriceGtLmpBadge) {
-            PriceGtLmpBadge.update(
-                '#newtemuone-price-gt-lmp-badge', allRows, '', 'temu_price', temuBadgeLmpValue
-            );
-        }
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.update('#newtemuone-price-lt80-lmp-badge', allRows, '', 'temu_price');
         }
@@ -2648,6 +2725,51 @@
         }
     }
     window.updateSummary = updateSummary;
+
+    /**
+     * Red alert badge = rows showing in the grid that have a LMP Alert Prc, INV > 0.
+     * The alert depends on Sum disc, so it is only counted once the discount rules are loaded; counting
+     * earlier gives a bigger number (every discount is 0). Safe to call often: it is independent of updateSummary.
+     */
+    let ntoLmpAlertReadyFallback = false;
+    let ntoLmpAlertTimer = null;
+    function ntoLmpAlertRulesReady() {
+        if (ntoLmpAlertReadyFallback) return true;
+        return (typeof chStdAutoApplied === 'undefined') || chStdAutoApplied === true;
+    }
+    function ntoRefreshLmpAlertBadge(now) {
+        if (!now) {
+            clearTimeout(ntoLmpAlertTimer);
+            ntoLmpAlertTimer = setTimeout(function() { ntoRefreshLmpAlertBadge(true); }, 120);
+            return;
+        }
+        try {
+            if (!table || typeof table.getData !== 'function') return;
+            const $badge = $('#newtemuone-lmp-alert-badge');
+            if (!ntoLmpAlertRulesReady()) {
+                $badge.html('<i class="fas fa-exclamation-triangle"></i> …');
+                return;
+            }
+            let rows = [];
+            try { rows = table.getData('active') || []; } catch (e) { rows = []; }
+            let count = 0;
+            rows.forEach(function(row) {
+                if (temuHasLmpAlert(row)) count++;
+            });
+            $badge.html('<i class="fas fa-exclamation-triangle"></i> ' + count.toLocaleString());
+        } catch (err) {
+            if (window.console && console.warn) console.warn('LMP alert badge', err);
+        }
+    }
+    window.ntoRefreshLmpAlertBadge = ntoRefreshLmpAlertBadge;
+    $(document).off('chStd:settled.ntoLmpAlert').on('chStd:settled.ntoLmpAlert', function() {
+        // The grid is redrawn right after this event, so count again once it has settled.
+        ntoRefreshLmpAlertBadge(true);
+        [300, 1200, 3000].forEach(function(ms) { setTimeout(function() { ntoRefreshLmpAlertBadge(true); }, ms); });
+        if (typeof updateSummary === 'function') updateSummary();
+    });
+    // If the rules event never arrives, still show a count instead of staying on "…".
+    setTimeout(function() { ntoLmpAlertReadyFallback = true; ntoRefreshLmpAlertBadge(true); }, 8000);
 
     function applyFilters() {
         if (!table) return;
@@ -2752,17 +2874,14 @@
         if (blueTriangleFilterActive) {
             table.addFilter(function(data) { return temuHasBlueTriangle(data); });
         }
-        if (lmpCapFilterActive) {
-            table.addFilter(function(data) { return temuHasLmpCap(data); });
-        }
-        if (priceGtLmpFilterActive) {
-            table.addFilter(function(data) { return temuHasPriceGtLmp(data); });
-        }
         if (priceLt80LmpFilterActive) {
             table.addFilter(function(data) { return temuHasPriceLt80Lmp(data); });
         }
         if (missingLmpFilterActive) {
             table.addFilter(function(data) { return temuIsMissingLmp(data); });
+        }
+        if (lmpAlertFilterActive) {
+            table.addFilter(function(data) { return temuHasLmpAlert(data); });
         }
 
         updateSummary();
@@ -2798,7 +2917,7 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprc_dil|sprice|s_base_price|s_r_price|lmp_alert_prc|s_twelve|s_disc_amt|s_price_after_disc|s_ship_disc|s_promo_base_prc|req_m|dil_moq|moq|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -2975,18 +3094,32 @@
                 } else if (field === 'cpn_pct') {
                     v = temuCpnForRow(row);
                 } else if (field === 'sprice') {
-                    const model = (typeof temuSpriceCellModel === 'function') ? temuSpriceCellModel(row) : null;
-                    const shown = (model && model.value > 0)
-                        ? model.value
-                        : ((typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : v);
-                    v = shown > 0 ? +Number(shown).toFixed(2) : '';
-                } else if (field === 's_base_price') {
-                    const base = (typeof ntoRowSBase === 'function') ? ntoRowSBase(row) : 0;
-                    v = base > 0 ? base : '';
-                } else if (field === 's_r_price') {
-                    const sprice = (typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : 0;
-                    const sR = (typeof temuSRPriceFromSprice === 'function') ? temuSRPriceFromSprice(sprice) : 0;
-                    v = sR > 0 ? sR : '';
+                    const std = ntoRowSpriceStart(row);
+                    v = std > 0 ? std : '';
+                } else if (field === 's_twelve') {
+                    const amt = ntoRowSTwelvePct(row);
+                    v = amt > 0 ? amt : '';
+                } else if (field === 's_disc_amt') {
+                    const amt = ntoRowSDiscAmt(row);
+                    v = amt > 0 ? amt : '';
+                } else if (field === 's_price_after_disc') {
+                    const amt = ntoRowSPriceAfterDisc(row);
+                    v = amt == null ? '' : amt;
+                } else if (field === 'lmp_alert_prc') {
+                    const amt = ntoRowLmpAlertPrc(row);
+                    v = amt == null ? '' : amt;
+                } else if (field === 's_ship_disc') {
+                    const amt = ntoRowSShipDisc(row);
+                    v = amt > 0 ? amt : '';
+                } else if (field === 's_promo_base_prc') {
+                    const amt = ntoRowSPromoBasePrc(row);
+                    v = amt == null ? '' : amt;
+                } else if (field === 'req_m') {
+                    const n = ntoRowReqM(row);
+                    v = n == null ? '' : n;
+                } else if (field === 'dil_moq') {
+                    const n = ntoRowDilMoq(row);
+                    v = n == null ? '' : n;
                 } else if (field === 'Dil%') {
                     const inv = parseFloat(row.INV) || 0;
                     const ov = parseFloat(row.L30) || 0;
@@ -3178,6 +3311,64 @@
                     width: 50,
                     sorter: 'number',
                     headerTooltip: 'Temu L30 qty from temu_orders — same sales table and Pacific L30 window as /temu-tabulator Qty Purchased'
+                },
+                {
+                    title: 'MOQ',
+                    field: 'moq',
+                    hozAlign: 'center',
+                    width: 56,
+                    sorter: 'number',
+                    headerTooltip: 'MOQ from Forecast Analysis (/forecast.analysis). Approved qty when it is set, otherwise the product master MOQ.',
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        if (raw === null || raw === undefined || raw === '' || !isFinite(Number(raw))) {
+                            return '<span style="color: #6c757d;">—</span>';
+                        }
+                        const n = Number(raw);
+                        const shown = Math.abs(n - Math.round(n)) < 0.001 ? String(Math.round(n)) : n.toFixed(2);
+                        return '<span style="font-weight: 600;">' + shown + '</span>';
+                    }
+                },
+                {
+                    title: 'Req M',
+                    field: 'req_m',
+                    hozAlign: 'center',
+                    width: 56,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowReqM(aRow.getData() || {});
+                        const y = ntoRowReqM(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'Req M = MOQ ÷ 4.',
+                    formatter: function(cell) {
+                        const n = ntoRowReqM(cell.getRow().getData() || {});
+                        if (n == null) return '<span style="color: #6c757d;">—</span>';
+                        const shown = Math.abs(n - Math.round(n)) < 0.001 ? String(Math.round(n)) : String(n);
+                        const moq = ntoRowMoq(cell.getRow().getData() || {});
+                        const tip = 'MOQ ' + moq + ' ÷ 4 = ' + shown;
+                        return '<span style="font-weight: 600;" title="' + tip + '">' + shown + '</span>';
+                    }
+                },
+                {
+                    title: 'Dil MOQ',
+                    field: 'dil_moq',
+                    hozAlign: 'center',
+                    width: 62,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowDilMoq(aRow.getData() || {});
+                        const y = ntoRowDilMoq(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'Dil MOQ = OV L30 ÷ Req M, as a percent.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const pct = ntoRowDilMoq(row);
+                        if (pct == null) return '<span style="color: #6c757d;">—</span>';
+                        const ov = parseFloat(row.L30) || 0;
+                        const req = ntoRowReqM(row);
+                        const tip = 'OV L30 ' + ov + ' ÷ Req M ' + req + ' = ' + pct + '%';
+                        return '<span style="font-weight: 600;" title="' + tip + '">' + pct + '%</span>';
+                    }
                 },
                 {
                     title: 'Views',
@@ -3446,84 +3637,149 @@
                     }
                 },
                 {
-                    title: 'S PRC',
+                    title: 'Std Prc',
                     field: 'sprice',
                     hozAlign: 'center',
-                    width: 88,
-                    sorter: 'number',
-                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, CVR, and Review discounts). Then capped at LMP when LMP is lower. Sprc Dil does not set this cell.',
+                    width: 78,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowSpriceStart(aRow.getData() || {}) || 0;
+                        const y = ntoRowSpriceStart(bRow.getData() || {}) || 0;
+                        return x - y;
+                    },
+                    headerTooltip: 'Std Prc — same Standard Price as the Std Price column (amazon_data_view.STANDARD_PRICE).',
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const model = typeof temuSpriceCellModel === 'function'
-                            ? temuSpriceCellModel(rowData)
-                            : { value: parseFloat(cell.getValue()) || 0, lmpAlert: false, lmp: 0 };
-                        const value = model.value;
-                        const live = typeof temuLiveListingPrice === 'function'
-                            ? temuLiveListingPrice(rowData)
-                            : (parseFloat(rowData.temu_price || rowData.t_price) || 0);
-                        const lmp = model.lmp || temuParseMoney(rowData.lmp_raw);
+                        const value = ntoRowSpriceStart(cell.getRow().getData() || {});
                         if (!(value > 0)) return '<span style="color: #6c757d;">—</span>';
-                        const formatted = '$' + value.toFixed(2);
-                        const overLmp = model.lmpAlert || (lmp > 0 && value >= lmp);
-                        const priceHtml = overLmp
-                            ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
-                            : formatted;
-                        const redTri = overLmp
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                + Number(lmp || 0).toFixed(2) + '"></i>'
-                            : '';
-                        const blueTri = (typeof temuHasBlueTriangle === 'function'
-                            ? temuHasBlueTriangle(rowData)
-                            : (live > 0 && Math.round(value * 100) !== Math.round(live * 100)))
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + value.toFixed(2) + ' ≠ T Price $' + live.toFixed(2) + '"></i>'
-                            : '';
-                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + priceHtml + redTri + blueTri + '</span>';
+                        return '<span style="font-weight: 600;">$' + value.toFixed(2) + '</span>';
                     }
                 },
                 {
-                    title: 'S R Prc',
-                    field: 's_r_price',
+                    title: 'S 12% $',
+                    field: 's_twelve',
                     hozAlign: 'center',
-                    width: 70,
-                    sorter: 'number',
-                    headerTooltip: 'S R Prc = S PRC × 0.88. When S PRC is showing the LMP, the same rule applies to the LMP.',
+                    width: 66,
+                    sorter: function(a, b, aRow, bRow) {
+                        return ntoRowSTwelvePct(aRow.getData() || {}) - ntoRowSTwelvePct(bRow.getData() || {});
+                    },
+                    headerTooltip: 'S 12% $ = Std Prc × 12%. Std Prc is the same Standard Price as the Std Price column.',
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sprice = typeof temuDisplayedSprice === 'function'
-                            ? temuDisplayedSprice(rowData)
-                            : (parseFloat(rowData.sprice) || 0);
-                        const sBase = ntoRowSBase(rowData);
-                        const sRPrice = temuSRPriceFromSprice(sprice);
-                        if (!(sRPrice > 0)) {
-                            return '<span style="color: #6c757d;">—</span>';
-                        }
-                        const tip = 'S R Prc = S PRC × 0.88 → $' + Number(sprice).toFixed(2) + ' × 0.88 = $' + sRPrice.toFixed(2);
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + sRPrice.toFixed(2) + '</span>';
+                        const row = cell.getRow().getData() || {};
+                        const s = ntoRowSpriceStart(row);
+                        if (!(s > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const amt = ntoRowSTwelvePct(row);
+                        const tip = '12% of Std Prc → $' + s.toFixed(2) + ' × 12% = $' + amt.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + amt.toFixed(2) + '</span>';
                     }
                 },
                 {
-                    title: 'S Base Prc',
-                    field: 's_base_price',
+                    title: 'S Disc $',
+                    field: 's_disc_amt',
                     hozAlign: 'center',
-                    width: 96,
-                    sorter: 'number',
-                    headerTooltip: 'S Base Prc = S R Prc. When S R Prc is under $30, S Base Prc = S R Prc − $2.99. This is the base that gets pushed.',
+                    width: 66,
+                    sorter: function(a, b, aRow, bRow) {
+                        return ntoRowSDiscAmt(aRow.getData() || {}) - ntoRowSDiscAmt(bRow.getData() || {});
+                    },
+                    headerTooltip: 'S Disc $ = Std Prc × Disc % (Disc % = Sum disc).',
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sprice = typeof temuDisplayedSprice === 'function'
-                            ? temuDisplayedSprice(rowData)
-                            : (parseFloat(rowData.sprice) || 0);
-                        const sBase = ntoRowSBase(rowData);
-                        if (!(sBase > 0)) {
-                            return '<span style="color: #6c757d;">—</span>';
+                        const row = cell.getRow().getData() || {};
+                        const amt = ntoRowSDiscAmt(row);
+                        if (!(amt > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const s = ntoRowSpriceStart(row) || 0;
+                        const pm = ntoRowPm(row);
+                        const tip = 'S Disc $ = Std Prc × Disc % → $' + s.toFixed(2) + ' × ' + pm + '% = $' + amt.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + amt.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'S Promo Prc',
+                    field: 's_price_after_disc',
+                    hozAlign: 'center',
+                    width: 100,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowSPriceAfterDisc(aRow.getData() || {});
+                        const y = ntoRowSPriceAfterDisc(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'S Promo Prc = Std Prc − S 12% $ − S Disc $. When LMP Alert Prc is showing, this cell is LMP Alert Prc × 0.98. SPFT, SGROI%, SGPFT%, SNROI%, and SNPFT% use this price.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const p = ntoRowSPriceAfterDisc(row);
+                        if (p == null) return '<span style="color: #6c757d;">—</span>';
+                        const alert = ntoRowLmpAlertPrc(row);
+                        let tip;
+                        if (alert != null) {
+                            tip = 'LMP Alert Prc $' + alert.toFixed(2) + ' × 0.98 = $' + p.toFixed(2);
+                        } else {
+                            const s = ntoRowSpriceStart(row) || 0;
+                            tip = 'Std Prc $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
+                                + ' − S Disc $' + ntoRowSDiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
                         }
-                        const sRForTip = temuSRPriceFromSprice(sprice);
-                        const tip = sRForTip < 30
-                            ? ('S Base Prc = S R Prc − $2.99 (S R Prc < $30) → $' + sRForTip.toFixed(2) + ' − $2.99 = $' + sBase.toFixed(2))
-                            : ('S Base Prc = S R Prc (S R Prc ≥ $30) → $' + sBase.toFixed(2));
-                        return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + sBase.toFixed(2) + '</span>';
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + p.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'LMP Alert Prc',
+                    field: 'lmp_alert_prc',
+                    hozAlign: 'center',
+                    width: 110,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowLmpAlertPrc(aRow.getData() || {});
+                        const y = ntoRowLmpAlertPrc(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'LMP Alert Prc = LMP × 0.87 when LMP is lower than S Promo Prc. A red triangle marks that alert.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const alert = ntoRowLmpAlertPrc(row);
+                        if (alert == null) return '<span style="color: #6c757d;">—</span>';
+                        const lmp = temuLmpRefPrice(row);
+                        const promo = ntoRowSPromoPrcBase(row) || 0;
+                        const tip = 'LMP $' + lmp.toFixed(2) + ' is below S Promo Prc $' + promo.toFixed(2)
+                            + ' → $' + lmp.toFixed(2) + ' × 0.87 = $' + alert.toFixed(2);
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;font-weight:600;" title="' + tip + '">$'
+                            + alert.toFixed(2)
+                            + '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="'
+                            + tip.replace(/"/g, '&quot;') + '"></i></span>';
+                    }
+                },
+                {
+                    title: 'S Ship Disc',
+                    field: 's_ship_disc',
+                    hozAlign: 'center',
+                    width: 66,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowSShipDisc(aRow.getData() || {});
+                        const y = ntoRowSShipDisc(bRow.getData() || {});
+                        return (x == null ? -1 : x) - (y == null ? -1 : y);
+                    },
+                    headerTooltip: 'S Ship Disc = $2.99 when S Promo Prc is $30 or less. Otherwise blank.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const v = ntoRowSShipDisc(row);
+                        if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const p = ntoRowSPriceAfterDisc(row);
+                        const tip = 'S Promo Prc $' + p.toFixed(2) + ' ≤ $30 → S Ship Disc $' + v.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'S Promo Base Prc',
+                    field: 's_promo_base_prc',
+                    hozAlign: 'center',
+                    width: 80,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowSPromoBasePrc(aRow.getData() || {});
+                        const y = ntoRowSPromoBasePrc(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'S Promo Base Prc = S Promo Prc − S Ship Disc.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const v = ntoRowSPromoBasePrc(row);
+                        if (v == null) return '<span style="color: #6c757d;">—</span>';
+                        const tip = 'S Promo Prc $' + ntoRowSPriceAfterDisc(row).toFixed(2)
+                            + ' − S Ship Disc $' + (ntoRowSShipDisc(row) || 0).toFixed(2) + ' = $' + v.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
                     }
                 },
                 {
@@ -3538,11 +3794,11 @@
                             if (st === 'pushed') return 4;
                             if (st === 'pushing') return 3;
                             if (st === 'error') return 2;
-                            return ntoRowSBase(d) > 0 ? 1 : 0;
+                            return ntoRowPushPrice(d) > 0 ? 1 : 0;
                         };
                         return rank(aRow.getData()) - rank(bRow.getData());
                     },
-                    headerTooltip: 'Push S Base Prc to Temu. Double tick = this S Base was already pushed. Arrow = not pushed, or S Base changed after the last push. Checked rows push together.',
+                    headerTooltip: 'Push S Promo Base Prc to Temu. Double tick = that price is already pushed. Arrow = not pushed, or the price changed after the last push. Checked rows push together.',
                     formatter: function(cell) {
                         return ntoPushCellHtml(cell.getRow().getData());
                     }
@@ -3553,7 +3809,7 @@
                     hozAlign: 'center',
                     width: 65,
                     sorter: temuComputedSorter(temuSgroiPercent),
-                    headerTooltip: 'SGROI% = SPFT ÷ LP. Live ROI at S PRC: (S R Prc × 0.95 − Temu Ship − LP) / LP. Dil + CVR set SNROI, not this column.',
+                    headerTooltip: 'SGROI% = SPFT ÷ LP. SPFT = (S Promo Prc × 0.95) − Temu Ship − LP.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgroiPercent(row);
@@ -3570,15 +3826,15 @@
                     hozAlign: 'center',
                     width: 65,
                     sorter: temuComputedSorter(temuSgpftPercent),
-                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as Sprc Dil / /temu2-decrease.',
+                    headerTooltip: 'SGPFT% = SPFT ÷ Std Prc. SPFT = (S Promo Prc × 0.95) − Temu Ship − LP.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgpftPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
                         const spft = temuSpftDollars(row);
                         const tip = 'SPFT $' + spft.toFixed(2)
-                            + ' ÷ S PRC $' + temuDisplayedSprice(row).toFixed(2)
-                            + ' (0.95 take-home)';
+                            + ' = S Promo Prc $' + (ntoRowSPriceAfterDisc(row) == null ? '—' : ntoRowSPriceAfterDisc(row).toFixed(2)) + ' × 0.95 − Temu Ship − LP'
+                            + ' ÷ Std Prc $' + (ntoRowSpriceStart(row) || 0).toFixed(2);
                         return temuPercentCell(value, 'pft', tip);
                     }
                 },
@@ -3588,22 +3844,14 @@
                     hozAlign: 'center',
                     width: 70,
                     sorter: temuComputedSorter(temuSnroiPercent),
-                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. S PRC is solved so this matches the Dil + CVR target. SGROI is the gross ROI on that same price.',
+                    headerTooltip: 'SNROI% = live SNPFT ÷ LP. SNPFT uses Std Prc. SGROI is the gross ROI on that same price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnroiPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const fromRule = temuSnroiFromRule(row);
-                        let tip;
-                        if (fromRule != null && typeof ebayDilGroiTipText === 'function') {
-                            const meta = ebayDilGroiMetaForRow(row);
-                            tip = ebayDilGroiTipText(meta) || ('Target NROI ' + fromRule + '%');
-                        } else {
-                            const snpft = temuSnpftDollars(row);
-                            tip = 'SNPFT $' + (snpft != null ? snpft.toFixed(2) : '—')
-                                + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2)
-                                + ' (capped S PRC)';
-                        }
+                        const snpft = temuSnpftDollars(row);
+                        const tip = 'SNPFT $' + (snpft != null ? snpft.toFixed(2) : '—')
+                            + ' ÷ LP $' + (parseFloat(row.lp) || 0).toFixed(2);
                         return temuPercentCell(value, 'roi', tip);
                     }
                 },
@@ -3613,15 +3861,15 @@
                     hozAlign: 'center',
                     width: 65,
                     sorter: temuComputedSorter(temuSnpftPercent),
-                    headerTooltip: 'SNPFT% = SNPFT ÷ S PRC. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
+                    headerTooltip: 'SNPFT% = SNPFT ÷ Std Prc. SNPFT = SPFT − (Std Prc × Ads%). Same formula as /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnpftPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const sprice = temuDisplayedSprice(row);
+                        const sprice = ntoRowSpriceStart(row) || 0;
                         const snpft = temuSnpftDollars(row, sprice);
                         const tip = 'SNPFT $' + snpft.toFixed(2)
-                            + ' ÷ S PRC $' + sprice.toFixed(2)
+                            + ' ÷ Std Prc $' + sprice.toFixed(2)
                             + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
                         return temuPercentCell(value, 'pft', tip);
                     }
@@ -3758,10 +4006,9 @@
             ['#zero-sold-count-badge', 'zeroSold'],
             ['#more-sold-count-badge', 'moreSold'],
             ['#newtemuone-blue-triangle-badge', 'blueTriangle'],
-            ['#newtemuone-lmp-cap-badge', 'lmpCap'],
-            ['#newtemuone-price-gt-lmp-badge', 'priceGtLmp'],
             ['#newtemuone-price-lt80-lmp-badge', 'priceLt80Lmp'],
-            ['#newtemuone-missing-lmp-badge', 'missingLmp']
+            ['#newtemuone-missing-lmp-badge', 'missingLmp'],
+            ['#newtemuone-lmp-alert-badge', 'lmpAlert']
         ];
         badgeFilters.forEach(function(pair) {
             $(document).on('click', pair[0], function(e) {
@@ -3772,28 +4019,25 @@
                     zeroSold: false,
                     moreSold: false,
                     blueTriangle: false,
-                    lmpCap: false,
-                    priceGtLmp: false,
                     priceLt80Lmp: false,
-                    missingLmp: false
+                    missingLmp: false,
+                    lmpAlert: false
                 };
                 const current = {
                     zeroSold: zeroSoldFilterActive,
                     moreSold: moreSoldFilterActive,
                     blueTriangle: blueTriangleFilterActive,
-                    lmpCap: lmpCapFilterActive,
-                    priceGtLmp: priceGtLmpFilterActive,
                     priceLt80Lmp: priceLt80LmpFilterActive,
-                    missingLmp: missingLmpFilterActive
+                    missingLmp: missingLmpFilterActive,
+                    lmpAlert: lmpAlertFilterActive
                 };
                 next[want] = !current[want];
                 zeroSoldFilterActive = next.zeroSold;
                 moreSoldFilterActive = next.moreSold;
                 blueTriangleFilterActive = next.blueTriangle;
-                lmpCapFilterActive = next.lmpCap;
-                priceGtLmpFilterActive = next.priceGtLmp;
                 priceLt80LmpFilterActive = next.priceLt80Lmp;
                 missingLmpFilterActive = next.missingLmp;
+                lmpAlertFilterActive = next.lmpAlert;
                 applyFilters();
             });
         });

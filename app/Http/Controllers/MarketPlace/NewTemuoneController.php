@@ -28,6 +28,7 @@ use App\Support\TemuGoodsIdHelper;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -298,6 +299,8 @@ class NewTemuoneController extends Controller
                 }
             }
 
+            $forecastApprovedBySku = $this->forecastApprovedQtyBySku();
+
             $result = [];
 
             foreach ($productMasters as $pm) {
@@ -346,6 +349,7 @@ class NewTemuoneController extends Controller
                     ? $pm->Values
                     : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
                 $lp = $this->productMasterLp($values, $pm);
+                $moq = $this->forecastMoq($sku, $values, $forecastApprovedBySku);
                 $temuShip = ProductMasterTemuShip::forPricing($values, $pm);
                 $basePrice = $temuMetric ? (float) ($temuMetric->base_price ?? 0) : 0.0;
                 $rPrice = TemuShopifySalesService::computeRPrice($basePrice);
@@ -422,6 +426,7 @@ class NewTemuoneController extends Controller
                     'INV' => $inv,
                     'inventory' => $inv,
                     'L30' => $ovL30,
+                    'moq' => $moq,
                     'temu_l30' => $temuL30,
                     'temu_l45' => $temuL45,
                     'temu_l60' => $temuL60,
@@ -638,6 +643,86 @@ class NewTemuoneController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Same MOQ /forecast.analysis shows: forecast_analysis.approved_qty when it is set,
+     * otherwise product_master Values.moq.
+     *
+     * @param  array<string, mixed>  $approvedBySku
+     */
+    private function forecastMoq(string $sku, array $values, array $approvedBySku): ?float
+    {
+        $master = null;
+        foreach ($values as $key => $value) {
+            if (strtolower((string) $key) === 'moq' && $value !== '' && $value !== null && is_numeric($value)) {
+                $master = (float) $value;
+                break;
+            }
+        }
+        $key = $this->forecastSkuKey($sku);
+        $approved = $key !== '' ? ($approvedBySku[$key] ?? $approvedBySku[str_replace(' ', '', $key)] ?? null) : null;
+        $raw = ($approved !== null && $approved !== '') ? $approved : $master;
+        if ($raw === null || $raw === '' || ! is_numeric($raw)) {
+            return null;
+        }
+
+        return round((float) $raw, 2);
+    }
+
+    /**
+     * approved_qty keyed the same way Forecast Analysis matches a SKU.
+     * Several rows for one SKU: prefer a stage, then an nr, then the first row.
+     *
+     * @return array<string, mixed>
+     */
+    private function forecastApprovedQtyBySku(): array
+    {
+        if (! $this->hasTable('forecast_analysis')) {
+            return [];
+        }
+        $groups = [];
+        foreach (DB::table('forecast_analysis')->get(['sku', 'approved_qty', 'stage', 'nr']) as $row) {
+            $key = $this->forecastSkuKey($row->sku ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $groups[$key][] = $row;
+        }
+        $out = [];
+        foreach ($groups as $key => $group) {
+            $pick = $group[0];
+            foreach ($group as $row) {
+                if (trim((string) ($row->stage ?? '')) !== '') {
+                    $pick = $row;
+                    break;
+                }
+            }
+            if (trim((string) ($pick->stage ?? '')) === '') {
+                foreach ($group as $row) {
+                    if (trim((string) ($row->nr ?? '')) !== '') {
+                        $pick = $row;
+                        break;
+                    }
+                }
+            }
+            $out[$key] = $pick->approved_qty;
+            $out[str_replace(' ', '', $key)] = $pick->approved_qty;
+        }
+
+        return $out;
+    }
+
+    private function forecastSkuKey(mixed $sku): string
+    {
+        $sku = strtoupper(trim((string) $sku));
+        if ($sku === '') {
+            return '';
+        }
+        $sku = preg_replace('/\s+/u', ' ', $sku) ?? $sku;
+        $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku) ?? $sku;
+
+        return trim($sku);
     }
 
     private function productMasterLp(array $values, ProductMaster $pm): float
