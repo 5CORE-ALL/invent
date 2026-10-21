@@ -2187,6 +2187,44 @@
         if (p == null) return null;
         return +(p - (ntoRowShipDisc(d) || 0)).toFixed(2);
     }
+    /** S PRC is the Std Price for the Sprice breakup. Child SKUs with a saved S PRC only. */
+    function ntoRowSpriceStart(d) {
+        if (!d || d.is_parent_summary) return null;
+        const sku = ntoRowSku(d);
+        if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return null;
+        const s = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d && d.sprice) || 0);
+        return s > 0 ? +Number(s).toFixed(2) : null;
+    }
+    /** S 12% $ = S PRC × 12%. */
+    function ntoRowSTwelvePct(d) {
+        const s = ntoRowSpriceStart(d);
+        return s > 0 ? +(s * 0.12).toFixed(2) : 0;
+    }
+    /** S Disc $ = S PRC × Disc % (Disc % = Sum disc = PM). */
+    function ntoRowSDiscAmt(d) {
+        const s = ntoRowSpriceStart(d);
+        const pm = ntoRowPm(d);
+        if (!(s > 0) || !(pm > 0)) return 0;
+        return +(s * pm / 100).toFixed(2);
+    }
+    /** S Price After Discount = S PRC − S 12% $ − S Disc $. */
+    function ntoRowSPriceAfterDisc(d) {
+        const s = ntoRowSpriceStart(d);
+        if (s == null) return null;
+        return +(s - ntoRowSTwelvePct(d) - ntoRowSDiscAmt(d)).toFixed(2);
+    }
+    /** S Ship Disc = $2.99 when S Price After Discount is $30 or less, otherwise 0. */
+    function ntoRowSShipDisc(d) {
+        const p = ntoRowSPriceAfterDisc(d);
+        if (p == null) return null;
+        return p <= 30 ? 2.99 : 0;
+    }
+    /** S Promo Base Prc = S Price After Discount − S Ship Disc. */
+    function ntoRowSPromoBasePrc(d) {
+        const p = ntoRowSPriceAfterDisc(d);
+        if (p == null) return null;
+        return +(p - (ntoRowSShipDisc(d) || 0)).toFixed(2);
+    }
     function ntoRowPmApplied(d) {
         const n = Number(d && d.pm_applied_pct) || 0;
         return n > 0 ? n : 0;
@@ -2826,7 +2864,7 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprice|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprice|s_twelve|s_disc_amt|s_price_after_disc|s_ship_disc|s_promo_base_prc|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -3008,6 +3046,21 @@
                         ? model.value
                         : ((typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : v);
                     v = shown > 0 ? +Number(shown).toFixed(2) : '';
+                } else if (field === 's_twelve') {
+                    const amt = ntoRowSTwelvePct(row);
+                    v = amt > 0 ? amt : '';
+                } else if (field === 's_disc_amt') {
+                    const amt = ntoRowSDiscAmt(row);
+                    v = amt > 0 ? amt : '';
+                } else if (field === 's_price_after_disc') {
+                    const amt = ntoRowSPriceAfterDisc(row);
+                    v = amt == null ? '' : amt;
+                } else if (field === 's_ship_disc') {
+                    const amt = ntoRowSShipDisc(row);
+                    v = amt > 0 ? amt : '';
+                } else if (field === 's_promo_base_prc') {
+                    const amt = ntoRowSPromoBasePrc(row);
+                    v = amt == null ? '' : amt;
                 } else if (field === 's_base_price') {
                     const base = (typeof ntoRowPromoBase === 'function') ? ntoRowPromoBase(row) : 0;
                     v = base > 0 ? base : '';
@@ -3593,6 +3646,104 @@
                             : '';
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
                             + priceHtml + redTri + blueTri + '</span>';
+                    }
+                },
+                {
+                    title: 'S 12% $',
+                    field: 's_twelve',
+                    hozAlign: 'center',
+                    width: 66,
+                    sorter: function(a, b, aRow, bRow) {
+                        return ntoRowSTwelvePct(aRow.getData() || {}) - ntoRowSTwelvePct(bRow.getData() || {});
+                    },
+                    headerTooltip: 'S 12% $ = S PRC × 12%. S PRC is the Std Price for this breakup.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const s = ntoRowSpriceStart(row);
+                        if (!(s > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const amt = ntoRowSTwelvePct(row);
+                        const tip = '12% of S PRC → $' + s.toFixed(2) + ' × 12% = $' + amt.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + amt.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'S Disc $',
+                    field: 's_disc_amt',
+                    hozAlign: 'center',
+                    width: 66,
+                    sorter: function(a, b, aRow, bRow) {
+                        return ntoRowSDiscAmt(aRow.getData() || {}) - ntoRowSDiscAmt(bRow.getData() || {});
+                    },
+                    headerTooltip: 'S Disc $ = S PRC × Disc % (Disc % = Sum disc).',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const amt = ntoRowSDiscAmt(row);
+                        if (!(amt > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const s = ntoRowSpriceStart(row) || 0;
+                        const pm = ntoRowPm(row);
+                        const tip = 'S Disc $ = S PRC × Disc % → $' + s.toFixed(2) + ' × ' + pm + '% = $' + amt.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + amt.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'S Price After Discount',
+                    field: 's_price_after_disc',
+                    hozAlign: 'center',
+                    width: 80,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowSPriceAfterDisc(aRow.getData() || {});
+                        const y = ntoRowSPriceAfterDisc(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'S Price After Discount = S PRC − S 12% $ − S Disc $.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const p = ntoRowSPriceAfterDisc(row);
+                        if (p == null) return '<span style="color: #6c757d;">—</span>';
+                        const s = ntoRowSpriceStart(row) || 0;
+                        const tip = 'S PRC $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
+                            + ' − S Disc $' + ntoRowSDiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + p.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'S Ship Disc',
+                    field: 's_ship_disc',
+                    hozAlign: 'center',
+                    width: 66,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowSShipDisc(aRow.getData() || {});
+                        const y = ntoRowSShipDisc(bRow.getData() || {});
+                        return (x == null ? -1 : x) - (y == null ? -1 : y);
+                    },
+                    headerTooltip: 'S Ship Disc = $2.99 when S Price After Discount is $30 or less. Otherwise blank.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const v = ntoRowSShipDisc(row);
+                        if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const p = ntoRowSPriceAfterDisc(row);
+                        const tip = 'S Price After Discount $' + p.toFixed(2) + ' ≤ $30 → S Ship Disc $' + v.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'S Promo Base Prc',
+                    field: 's_promo_base_prc',
+                    hozAlign: 'center',
+                    width: 80,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowSPromoBasePrc(aRow.getData() || {});
+                        const y = ntoRowSPromoBasePrc(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'S Promo Base Prc = S Price After Discount − S Ship Disc.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const v = ntoRowSPromoBasePrc(row);
+                        if (v == null) return '<span style="color: #6c757d;">—</span>';
+                        const tip = 'S Price After Discount $' + ntoRowSPriceAfterDisc(row).toFixed(2)
+                            + ' − S Ship Disc $' + (ntoRowSShipDisc(row) || 0).toFixed(2) + ' = $' + v.toFixed(2);
+                        return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
                     }
                 },
                 {
