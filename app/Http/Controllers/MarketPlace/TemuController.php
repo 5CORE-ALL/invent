@@ -4324,12 +4324,14 @@ class TemuController extends Controller
             'price' => 'required|numeric|min:0.01',
             'goods_id' => 'nullable|string',
             'sku_id' => 'nullable|string',
+            'list_price' => 'nullable|numeric|min:0.01',
         ]);
 
         $sku = trim((string) $request->input('sku'));
         $price = (float) $request->input('price');
         $goodsId = $request->input('goods_id');
         $skuId = $request->input('sku_id');
+        $listPrice = $request->filled('list_price') ? (float) $request->input('list_price') : null;
 
         try {
             $result = $temuApi->updateSkuBasePrice(
@@ -4353,12 +4355,38 @@ class TemuController extends Controller
                 $this->persistPushedTemuListingBase($sku, $price, false);
             }
 
+            // Cross (strikethrough) price = Std Prc. Only sent when the caller passes list_price and it is above the base.
+            $message = $result['message'] ?? 'Price pushed to Temu';
+            $listPriceError = null;
+            $listPricePushed = null;
+            if ($listPrice !== null && $listPrice > $price) {
+                $listRes = $temuApi->updateSkuListPrice(
+                    $sku,
+                    $listPrice,
+                    (string) ($result['goods_id'] ?? $goodsId ?? ''),
+                    (string) ($result['sku_id'] ?? $skuId ?? '')
+                );
+                if ($listRes['success'] ?? false) {
+                    $listPricePushed = $listPrice;
+                    $message .= ' Cross price $'.number_format($listPrice, 2).' set.';
+                } else {
+                    $listPriceError = (string) ($listRes['message'] ?? 'List price push failed');
+                    $message .= ' Cross price NOT set: '.$listPriceError;
+                    Log::warning('Temu list (cross) price push failed', ['sku' => $sku, 'list_price' => $listPrice, 'error' => $listPriceError]);
+                }
+            } elseif ($listPrice !== null) {
+                $listPriceError = 'Std Prc $'.number_format($listPrice, 2).' is not above the base price $'.number_format($price, 2).'; cross price skipped.';
+                $message .= ' '.$listPriceError;
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => $result['message'] ?? 'Price pushed to Temu',
+                'message' => $message,
                 'data' => [
                     'sku' => $sku,
                     'price' => $price,
+                    'list_price' => $listPricePushed,
+                    'list_price_error' => $listPriceError,
                     'goods_id' => $result['goods_id'] ?? $goodsId,
                     'sku_id' => $result['sku_id'] ?? $skuId,
                 ],

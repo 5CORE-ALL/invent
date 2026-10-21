@@ -781,6 +781,42 @@ class NewTemuoneController extends Controller
     }
 
     /**
+     * Std Prc for one SKU (amazon_data_view.STANDARD_PRICE, same value as the Std Prc column).
+     * Falls back to the SKUs linked to it in the LMP group. Used as the Temu cross (list) price on push.
+     */
+    public function standardPriceForSku(string $sku): ?float
+    {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return null;
+        }
+        $this->lmpSkuGroupService->prepareForSkus([$sku]);
+        $candidates = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => trim((string) $s),
+            array_merge([$sku], $this->lmpSkuGroupService->groupContaining($sku))
+        ))));
+
+        $byUpper = [];
+        foreach (AmazonDataView::whereIn('sku', $candidates)->get(['sku', 'value']) as $adv) {
+            $val = is_array($adv->value)
+                ? $adv->value
+                : (json_decode((string) ($adv->value ?? ''), true) ?: []);
+            $std = $val['STANDARD_PRICE'] ?? null;
+            if (is_numeric($std) && (float) $std > 0) {
+                $byUpper[strtoupper(trim((string) $adv->sku))] = round((float) $std, 2);
+            }
+        }
+        foreach ($candidates as $candidate) {
+            $hit = $byUpper[strtoupper($candidate)] ?? null;
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Same Std Prc source as /temu2-decrease: amazon_data_view.STANDARD_PRICE.
      */
     private function buildStdPriceLookup(array $skus, callable $normalizeSku): \Closure

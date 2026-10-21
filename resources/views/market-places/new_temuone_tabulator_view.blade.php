@@ -3962,7 +3962,7 @@
                         };
                         return rank(aRow.getData()) - rank(bRow.getData());
                     },
-                    headerTooltip: 'Push S Promo Base Prc to Temu. Double tick = that price is already pushed. Arrow = not pushed, or the price changed after the last push. Checked rows push together.',
+                    headerTooltip: 'Push to Temu: Std Prc as the cross (strikethrough) price and S Promo Base Prc as the base price. Double tick = that price is already pushed. Arrow = not pushed, or the price changed after the last push. Checked rows push together.',
                     formatter: function(cell) {
                         return ntoPushCellHtml(cell.getRow().getData());
                     }

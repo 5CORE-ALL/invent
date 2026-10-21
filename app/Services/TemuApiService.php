@@ -2047,6 +2047,91 @@ public function fetchAllAdsData(array $goodsIds, $period = 'L30')
     }
 
     /**
+     * Set the crossed-out (strikethrough) list price of one SKU via bg.local.goods.partial.update.
+     * The base price (supplier price) is a separate call: updateSkuBasePrice().
+     * Temu requires listPrice > basePrice; listPriceType is left out so the amount we send is used.
+     *
+     * @return array{success: bool, message: string, goods_id?: string, sku_id?: string, response?: mixed}
+     */
+    public function updateSkuListPrice(
+        string $sku,
+        float $listPrice,
+        ?string $goodsId = null,
+        ?string $skuId = null,
+        string $currency = 'USD'
+    ): array {
+        $sku = trim($sku);
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+        if ($listPrice <= 0) {
+            return ['success' => false, 'message' => 'List price must be greater than 0.'];
+        }
+
+        $goodsId = $goodsId !== null && $goodsId !== '' ? (string) $goodsId : $this->getGoodsIdBySku($sku);
+        if (! $goodsId) {
+            return ['success' => false, 'message' => 'goodsId not found for SKU. Run app:fetch-temu-metrics first.'];
+        }
+        $skuId = $skuId !== null && $skuId !== '' ? (string) $skuId : $this->getSkuIdBySku($sku);
+        if (! $skuId) {
+            return ['success' => false, 'message' => 'skuId not found for SKU. Run app:fetch-temu-metrics --only=skus first.'];
+        }
+
+        $amount = number_format($listPrice, 2, '.', '');
+        $currency = strtoupper(trim($currency)) ?: 'USD';
+        $apiType = $this->temuCfg('goods_update_type', 'bg.local.goods.partial.update');
+
+        $requestBody = [
+            'type' => $apiType,
+            'language' => 'en',
+            'goodsId' => is_numeric($goodsId) ? (int) $goodsId : $goodsId,
+            'skuList' => [[
+                'skuId' => is_numeric($skuId) ? (int) $skuId : $skuId,
+                'listPrice' => [
+                    'amount' => $amount,
+                    'currency' => $currency,
+                ],
+            ]],
+        ];
+
+        $request = Http::withHeaders(['Content-Type' => 'application/json'])->timeout(60);
+        if (config('filesystems.default') === 'local') {
+            $request = $request->withoutVerifying();
+        }
+
+        try {
+            Log::info('Temu updateSkuListPrice request', [
+                'sku' => $sku, 'goodsId' => $goodsId, 'skuId' => $skuId, 'amount' => $amount,
+            ]);
+
+            $response = $request->post($this->openApiRouterUrl(), $this->generateSignValue($requestBody));
+            $data = $response->json() ?? [];
+
+            Log::info('Temu updateSkuListPrice response', [
+                'sku' => $sku, 'status' => $response->status(), 'body' => $response->body(),
+            ]);
+
+            $outcome = $this->temuWriteOutcome(
+                is_array($data) ? $data : null,
+                "List (cross) price updated on Temu for SKU: {$sku} → {$amount} {$currency}.",
+                $response->status()
+            );
+
+            return [
+                'success' => (bool) $outcome['success'],
+                'message' => $outcome['message'],
+                'goods_id' => (string) $goodsId,
+                'sku_id' => (string) $skuId,
+                'response' => $data['result'] ?? $data,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Temu updateSkuListPrice exception', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => 'Temu list price push failed: '.$e->getMessage()];
+        }
+    }
+
+    /**
      * Live supplier/base prices via bg.local.goods.sku.list.price.query.
      *
      * @param  list<array{goodsId:int|string, skuIdList:list<int|string>}>  $queryList

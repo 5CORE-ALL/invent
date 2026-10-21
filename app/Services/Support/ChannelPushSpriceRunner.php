@@ -321,6 +321,10 @@ class ChannelPushSpriceRunner
                         ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
                         : $price;
                     $ok = true;
+                    $listPriceError = is_array($payload) ? ($payload['data']['list_price_error'] ?? null) : null;
+                    if ($listPriceError) {
+                        $store->appendMessage('Cross price '.$sku.': '.$listPriceError);
+                    }
                     if ($this->channel === 'alibaba') {
                         // Push and pull together, same as Amazon: record the push and read the live price now.
                         $this->alibabaPullAfterPush($sku, (float) $price);
@@ -665,11 +669,17 @@ class ChannelPushSpriceRunner
         }
 
         if ($this->channel === 'newtemuone') {
-            $temuReq = Request::create('/temu/push-price', 'POST', [
+            $temuParams = [
                 'sku' => $sku,
                 'price' => $pushPrice,
                 'skip_local_base' => 1,
-            ]);
+            ];
+            // Cross (strikethrough) price = Std Prc, base price = S Promo Base Prc.
+            $std = app(\App\Http\Controllers\MarketPlace\NewTemuoneController::class)->standardPriceForSku($sku);
+            if ($std !== null && $std > 0) {
+                $temuParams['list_price'] = $std;
+            }
+            $temuReq = Request::create('/temu/push-price', 'POST', $temuParams);
 
             return app(TemuController::class)->pushTemuPrice($temuReq, app(TemuApiService::class));
         }
