@@ -343,7 +343,7 @@
                                     </div>
                                     <div class="col-12 mb-2">
                                         <label for="assignor_id" class="form-label fw-bold" style="font-size: 12px;">Assignor <span class="text-danger">*</span></label>
-                                        @if(strtolower(Auth::user()->role ?? '') === 'admin')
+                                        @if(\App\Policies\TaskPolicy::userCanChangeTaskAssignor(auth()->user()))
                                             <select class="form-select form-select-sm select2 @error('assignor_id') is-invalid @enderror" 
                                                     id="assignor_id" name="assignor_id">
                                                 @foreach($users as $user)

@@ -29,6 +29,7 @@ class TaskPolicy
         'mgr-content@5core.com',        // Srimanta
         'support@5core.com',            // Jisan
         'mgr-advertisement@5core.com',  // Nishtha
+        'hr@5core.com',                 // HR
     ];
 
     /**
@@ -67,6 +68,7 @@ class TaskPolicy
         'presiden@5core.com',       // Known typo login used by President
         'inventory@5core.com',      // Ritu
         'ritu.kaur013@gmail.com',   // Ritu
+        'hr@5core.com',             // HR
     ];
 
     public static function userCanDeleteAnyTask(?User $user): bool
@@ -83,6 +85,23 @@ class TaskPolicy
     public static function userCanDeleteCorrectiveTasks(?User $user): bool
     {
         return self::userCanDeleteAnyTask($user);
+    }
+
+    /**
+     * May set a task's assignor to someone else.
+     * Admins already can. HR can as well, on any task.
+     */
+    public static function userCanChangeTaskAssignor(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        if (SuperAdminAccess::isTaskAdmin($user)) {
+            return true;
+        }
+
+        return strtolower(trim((string) ($user->email ?? ''))) === 'hr@5core.com';
     }
 
     public static function taskIsCorrectiveAction(Task $task): bool
@@ -243,7 +262,9 @@ class TaskPolicy
 
     /**
      * Single source of truth for delete (row + bulk).
-     * president@5core.com and Ritu can delete any task (including CA); everyone else can delete only their own non-CA tasks.
+     * president@5core.com, Ritu, and HR can delete any task (including CA).
+     * The assignee can delete a corrective-action task assigned to them.
+     * Everyone else can delete only their own non-CA tasks.
      */
     public static function userCanDeleteTask(User $user, Task $task): bool
     {
@@ -252,7 +273,7 @@ class TaskPolicy
         }
 
         if (self::taskIsCorrectiveAction($task)) {
-            return false;
+            return self::userIsListedAssignee($user, $task->assign_to ?? null);
         }
 
         return self::userIsAssignor($user, $task->assignor);

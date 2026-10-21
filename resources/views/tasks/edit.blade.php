@@ -9,6 +9,7 @@
     // True for assignor / admin / president override; false when an assignee
     // opens this page only to attach links.
     $canEditAll = $canEditAll ?? false;
+    $canChangeTaskAssignor = $canChangeTaskAssignor ?? false;
     $lockedAttr = $canEditAll ? '' : 'readonly disabled';
     $lockedTitle = $canEditAll ? '' : 'Only the task creator can change this. You can still add reference links below.';
 @endphp
@@ -134,7 +135,7 @@
                                     </div>
                                     <div class="col-12 mb-2">
                                         <label for="assignor_id" class="form-label fw-bold" style="font-size: 12px;">Assignor <span class="text-danger">*</span></label>
-                                        @if($canEditAll && strtolower(Auth::user()->role ?? '') === 'admin')
+                                        @if($canEditAll && !empty($canChangeTaskAssignor))
                                             <select class="form-select form-select-sm select2 @error('assignor_id') is-invalid @enderror" 
                                                     id="assignor_id" name="assignor_id">
                                                 @foreach($users as $user)
@@ -237,29 +238,27 @@
 
                         </form>
 
-                        @if($canEditAll)
-                            @php
-                                $isCorrectiveTask = (bool) ($task->is_corrective_action ?? false);
-                                $canShowDelete = ! empty($canDeleteThisTask);
-                                $viewerIsAssignor = \App\Policies\TaskPolicy::userIsAssignor(auth()->user(), $task->assignor ?? '');
-                            @endphp
-                            @if($canShowDelete || ($isCorrectiveTask && $viewerIsAssignor))
-                            <div class="row mt-2">
-                                <div class="col-12">
-                                    @if($canShowDelete)
-                                        <button type="button" id="delete-task-btn" class="btn btn-sm btn-outline-danger w-100"
-                                                data-id="{{ $task->id }}">
-                                            <i class="mdi mdi-delete me-1"></i> Delete Task
-                                        </button>
-                                    @else
-                                        <button type="button" class="btn btn-sm btn-outline-secondary w-100" disabled
-                                                title="Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com">
-                                            <i class="mdi mdi-lock-outline me-1"></i> Delete locked (CA)
-                                        </button>
-                                    @endif
-                                </div>
+                        @php
+                            $isCorrectiveTask = (bool) ($task->is_corrective_action ?? false);
+                            $canShowDelete = ! empty($canDeleteThisTask);
+                            $viewerIsAssignor = \App\Policies\TaskPolicy::userIsAssignor(auth()->user(), $task->assignor ?? '');
+                        @endphp
+                        @if($canShowDelete || ($canEditAll && $isCorrectiveTask && $viewerIsAssignor))
+                        <div class="row mt-2">
+                            <div class="col-12">
+                                @if($canShowDelete)
+                                    <button type="button" id="delete-task-btn" class="btn btn-sm btn-outline-danger w-100"
+                                            data-id="{{ $task->id }}">
+                                        <i class="mdi mdi-delete me-1"></i> Delete Task
+                                    </button>
+                                @else
+                                    <button type="button" class="btn btn-sm btn-outline-secondary w-100" disabled
+                                            title="Corrective action tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com">
+                                        <i class="mdi mdi-lock-outline me-1"></i> Delete locked (CA)
+                                    </button>
+                                @endif
                             </div>
-                            @endif
+                        </div>
                         @endif
 
                     </div> <!-- end card-body-->

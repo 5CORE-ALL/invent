@@ -2795,7 +2795,7 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
-                        <small class="d-block text-muted">{{ !empty($canDeleteOthersTasks) ? 'You can delete any selected task' : 'You can only delete tasks you assigned' }}{{ empty($canDeleteCorrectiveTasks) ? '. CA tasks can only be deleted by president@5core.com or inventory@5core.com' : '' }}</small>
+                        <small class="d-block text-muted">{{ !empty($canDeleteOthersTasks) ? 'You can delete any selected task' : 'You can only delete tasks you assigned. You can also delete corrective action tasks assigned to you' }}{{ empty($canDeleteCorrectiveTasks) ? '. Other CA tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com' : '' }}</small>
                     </a>
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-assign-assignee-btn">
                         <i class="mdi mdi-account-plus text-success me-2"></i>
@@ -3187,7 +3187,7 @@
                 </div>
                 <div class="mb-2">
                     <label for="tf_assignor_id" class="form-label fw-bold" style="font-size: 12px;">Assignor <span class="text-danger">*</span></label>
-                    @if($isAdmin)
+                    @if($isAdmin || !empty($canChangeTaskAssignor))
                         <select class="form-select form-select-sm tf-select2" id="tf_assignor_id" name="assignor_id">
                             <option value="">Please Select</option>
                             @foreach($users as $user)
@@ -3337,10 +3337,11 @@
 
             function userCanDeleteTaskRow(rowData) {
                 if (!rowData) return false;
-                var baseCan = canDeleteOthersTasks || currentUserIsAssignorOnTask(rowData);
-                if (!baseCan) return false;
-                if (taskIsCorrectiveAction(rowData) && !canDeleteCorrectiveTasks) return false;
-                return true;
+                if (canDeleteOthersTasks) return true;
+                if (taskIsCorrectiveAction(rowData)) {
+                    return currentUserIsAssigneeOnTask(rowData);
+                }
+                return currentUserIsAssignorOnTask(rowData);
             }
 
             function taskScreenshotNames(data) {
@@ -4757,7 +4758,7 @@
                                 `;
                             } else if (wouldDeleteWithoutCa && taskIsCorrectiveAction(rowData)) {
                                 buttons += `
-                                    <button type="button" class="action-btn-icon action-btn-delete-disabled" disabled title="Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com">
+                                    <button type="button" class="action-btn-icon action-btn-delete-disabled" disabled title="Corrective action tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com">
                                         <i class="mdi mdi-lock-outline"></i>
                                     </button>
                                 `;
@@ -7659,7 +7660,7 @@
                 var rowData = null;
                 try { rowData = table.getRow(taskId) ? table.getRow(taskId).getData() : null; } catch (e) { rowData = null; }
                 if (rowData && !userCanDeleteTaskRow(rowData)) {
-                    alert('Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com.');
+                    alert('Corrective action tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com.');
                     return;
                 }
                 if (!confirm('Delete this task? This action cannot be undone.')) return;
@@ -7727,7 +7728,7 @@
                 var rowData = null;
                 try { rowData = table.getRow(taskId) ? table.getRow(taskId).getData() : null; } catch (e) { rowData = null; }
                 if (rowData && !userCanDeleteTaskRow(rowData) && !(selectedTasks.length > 1)) {
-                    alert('Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com.');
+                    alert('Corrective action tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com.');
                     return;
                 }
                 var selectedIdSet = new Set((selectedTasks || []).map(function(sid) { return String(sid); }));

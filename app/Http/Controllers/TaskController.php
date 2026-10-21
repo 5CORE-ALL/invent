@@ -259,6 +259,7 @@ class TaskController extends Controller
         $canDeleteAnyTask = TaskPolicy::userHasSpecialTaskPermission($user);
         $canDeleteOthersTasks = TaskPolicy::userCanDeleteAnyTask($user);
         $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks($user);
+        $canChangeTaskAssignor = TaskPolicy::userCanChangeTaskAssignor($user);
         $canShowTaskMaintenanceButtons = TaskPolicy::userCanAccessTaskMaintenanceTools($user);
 
         // AVG SCORE: always the logged-in user's performance average (not task "selected user" filter)
@@ -287,6 +288,7 @@ class TaskController extends Controller
             'canDeleteAnyTask',
             'canDeleteOthersTasks',
             'canDeleteCorrectiveTasks',
+            'canChangeTaskAssignor',
             'canShowTaskMaintenanceButtons',
             'tatChartData',
             'missedChartData',
@@ -2654,10 +2656,9 @@ class TaskController extends Controller
 
         // Map to old table field names
         $user = Auth::user();
-        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
-        
+
         // Get assignor email
-        if ($isAdmin && $request->has('assignor_id')) {
+        if (TaskPolicy::userCanChangeTaskAssignor($user) && $request->has('assignor_id')) {
             $assignorUser = User::find($validated['assignor_id']);
             $assignorEmail = $assignorUser ? $assignorUser->email : $user->email;
         } else {
@@ -3465,8 +3466,9 @@ class TaskController extends Controller
         $editor = Auth::user();
         $canDeleteCorrectiveTasks = TaskPolicy::userCanDeleteCorrectiveTasks($editor);
         $canDeleteThisTask = TaskPolicy::userCanDeleteTask($editor, $taskModel);
+        $canChangeTaskAssignor = TaskPolicy::userCanChangeTaskAssignor($editor);
 
-        return view('tasks.edit', compact('task', 'users', 'canEditAll', 'canDeleteCorrectiveTasks', 'canDeleteThisTask'));
+        return view('tasks.edit', compact('task', 'users', 'canEditAll', 'canDeleteCorrectiveTasks', 'canDeleteThisTask', 'canChangeTaskAssignor'));
     }
 
     public function update(Request $request, $id)
@@ -3531,7 +3533,6 @@ class TaskController extends Controller
             ]);
         }
 
-        $isAdmin = \App\Support\SuperAdminAccess::isTaskAdmin($user);
         $splitIntoCopies = false;
         $assigneeIds = [];
         $assigneesById = collect();
@@ -3539,7 +3540,7 @@ class TaskController extends Controller
 
         if ($canEditAll) {
             // Get assignor email
-            if ($isAdmin && $request->has('assignor_id')) {
+            if (TaskPolicy::userCanChangeTaskAssignor($user) && $request->has('assignor_id')) {
                 $assignorUser = User::find($validated['assignor_id']);
                 $assignorEmail = $assignorUser ? $assignorUser->email : $task->assignor;
             } else {
@@ -3703,7 +3704,7 @@ class TaskController extends Controller
         // Checked before authorize() so Gate::before cannot restore delete-any for seniors or super-admins.
         if (! TaskPolicy::userCanDeleteTask($user, $task)) {
             $message = TaskPolicy::taskIsCorrectiveAction($task)
-                ? 'Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com.'
+                ? 'Corrective action tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com.'
                 : 'You can only delete tasks you assigned.';
 
             return response()->json([
@@ -3726,7 +3727,7 @@ class TaskController extends Controller
         $skippedCaSubtasks = 0;
         $deletedSubtasks = 0;
         foreach ($subtasks as $subtask) {
-            if (TaskPolicy::taskIsCorrectiveAction($subtask) && ! TaskPolicy::userCanDeleteCorrectiveTasks($user)) {
+            if (TaskPolicy::taskIsCorrectiveAction($subtask) && ! TaskPolicy::userCanDeleteTask($user, $subtask)) {
                 $skippedCaSubtasks++;
                 continue;
             }
@@ -3741,7 +3742,7 @@ class TaskController extends Controller
             $message = 'Task and ' . $deletedSubtasks . ' subtask(s) deleted successfully!';
         }
         if ($skippedCaSubtasks > 0) {
-            $message .= ' '.$skippedCaSubtasks.' corrective action subtask(s) were left — only president@5core.com or inventory@5core.com can delete those.';
+            $message .= ' '.$skippedCaSubtasks.' corrective action subtask(s) were left — only the assignee, president@5core.com, inventory@5core.com, or hr@5core.com can delete those.';
         }
 
         return response()->json(['success' => true, 'message' => $message]);
@@ -4660,7 +4661,7 @@ class TaskController extends Controller
                         $selectedTasks = Task::whereIn('id', $taskIds)->get();
                         $skippedCa = $selectedTasks
                             ->filter(fn ($task) => TaskPolicy::taskIsCorrectiveAction($task)
-                                && ! TaskPolicy::userCanDeleteCorrectiveTasks($user))
+                                && ! TaskPolicy::userCanDeleteTask($user, $task))
                             ->count();
                         $tasksToDelete = $selectedTasks
                             ->filter(fn ($task) => TaskPolicy::userCanDeleteTask($user, $task))
@@ -4671,7 +4672,7 @@ class TaskController extends Controller
 
                         if ($deletedCount === 0) {
                             $message = $skippedCa > 0
-                                ? 'Corrective action tasks can only be deleted by president@5core.com or inventory@5core.com.'
+                                ? 'Corrective action tasks can only be deleted by the assignee, president@5core.com, inventory@5core.com, or hr@5core.com.'
                                 : 'You can only delete tasks you assigned. None of the selected tasks belong to you.';
 
                             return response()->json([
@@ -4726,7 +4727,7 @@ class TaskController extends Controller
                                 $skipReasons[] = $otherSkipped.' task(s) skipped — you can only delete tasks you assigned';
                             }
                             if ($skippedCa > 0) {
-                                $skipReasons[] = $skippedCa.' corrective action task(s) skipped — only president@5core.com or inventory@5core.com can delete those';
+                                $skipReasons[] = $skippedCa.' corrective action task(s) skipped — only the assignee, president@5core.com, inventory@5core.com, or hr@5core.com can delete those';
                             }
                             if ($skipReasons !== []) {
                                 $message .= ' ('.implode('; ', $skipReasons).')';
