@@ -34,7 +34,6 @@ use App\Services\Support\ChannelPushCpnJobStore;
 use App\Services\Support\ChannelPushPrmtJobStore;
 use App\Services\Support\ChannelPushSpriceDailyEnqueue;
 use App\Services\Support\ChannelPushSpriceJobStore;
-use App\Console\Commands\PushChannelBlueSpriceCommand;
 use App\Services\Support\ChannelPushSpriceRunner;
 use App\Support\AmazonDilGroiRule;
 use Carbon\Carbon;
@@ -342,16 +341,8 @@ class ChannelPromoPricingController extends Controller
         }
 
         $payload = $store->toApiResponse($state);
-        $scanning = Cache::get(PushChannelBlueSpriceCommand::SCANNING_PREFIX.$channel) === true;
-        $payload['scanning'] = $scanning;
-        if ($scanning && empty($payload['active'])) {
-            $payload['message'] = 'Scanning blue SKUs…';
-        } elseif (empty($payload['active'])) {
-            $scanMessage = Cache::get(PushChannelBlueSpriceCommand::RESULT_PREFIX.$channel);
-            if (is_string($scanMessage) && $scanMessage !== '') {
-                $payload['scan_message'] = $scanMessage;
-            }
-        }
+        // The blue-SKU scan command was removed, so nothing is ever scanning.
+        $payload['scanning'] = false;
 
         return response()->json($payload);
     }
