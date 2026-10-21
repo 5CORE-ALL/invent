@@ -51,6 +51,31 @@ class AlibabaListedPriceTest extends TestCase
         $this->assertEqualsWithDelta(3.62, $rows[0]['price'], 0.001);
     }
 
+    public function test_custom_material_attribute_is_sent_as_the_system_material_attribute(): void
+    {
+        $xml = app(AlibabaApiService::class)->listedPriceUpdateXml([
+            'productType' => 'wholesale',
+            'priceType' => 'sku_price',
+            'productSku' => [
+                'skuAttributes' => [[
+                    'attributeId' => -10001,
+                    'attributeName' => 'Material',
+                    'values' => [['valueId' => -101, 'systemValueName' => 'Aluminum']],
+                ]],
+                'skus' => [[
+                    'skuCode' => 'GSS AL BLU',
+                    'skuId' => 10001757419204,
+                    'attr2Value' => ['-10001' => -101],
+                    'bulkDiscountPrices' => [['startQuantity' => -1, 'price' => '6.37']],
+                ]],
+            ],
+        ], 13.12, 'GSS AL BLU');
+
+        $this->assertStringContainsString('propId="191284014"', $xml);
+        $this->assertStringContainsString('<field id="p-191284014" name="Material" type="multiCheck">', $xml);
+        $this->assertStringNotContainsString('-10001', $xml);
+    }
+
     public function test_range_price_push_sets_sku_price_not_the_fob_range(): void
     {
         $xml = app(AlibabaApiService::class)->listedPriceUpdateXml([

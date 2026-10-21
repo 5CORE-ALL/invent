@@ -1988,6 +1988,17 @@ class AlibabaApiService extends AliExpressApiService
     protected function skuPropFields(array $node, array $catalog): array
     {
         $pairs = [];
+        $present = [];
+        foreach ($node as $key => $value) {
+            if (is_string($key) && preg_match('/^attr\d+Value$/', $key) === 1 && is_array($value)) {
+                foreach (array_keys($value) as $attrId) {
+                    $present[trim((string) $attrId)] = true;
+                }
+            }
+        }
+        // A seller-defined (negative id) attribute with a system twin is sent as the system attribute.
+        // Alibaba answers a custom id such as -10001 "Material" with "SYS_ERROR", so the price never saves.
+        $systemTwin = ['color' => '191288010', 'material' => '191284014'];
         foreach ($node as $key => $value) {
             if (! is_string($key) || preg_match('/^attr\d+Value$/', $key) !== 1 || ! is_array($value)) {
                 continue;
@@ -2001,8 +2012,10 @@ class AlibabaApiService extends AliExpressApiService
                 $known = $catalog[$attrId] ?? null;
                 $name = is_array($known) ? (string) $known['name'] : '';
                 $valueName = is_array($known) ? (string) ($known['values'][$valueId] ?? '') : '';
-                if ((int) $attrId < 0 && strcasecmp($name, 'Color') === 0) {
-                    $attrId = '191288010';
+                $twin = $systemTwin[strtolower($name)] ?? null;
+                if ((int) $attrId < 0 && $twin !== null && ! isset($present[$twin])) {
+                    $attrId = $twin;
+                    $present[$twin] = true;
                 }
                 $pairs[] = [
                     'id' => $attrId,
