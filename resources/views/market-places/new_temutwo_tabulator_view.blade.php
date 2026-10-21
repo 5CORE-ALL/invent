@@ -3356,6 +3356,21 @@
                     }
                 },
                 {
+                    title: 'PM',
+                    field: 'pm_discount',
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    width: 58,
+                    headerSort: true,
+                    sorter: function(a, b, aRow, bRow) {
+                        return ntoRowPm(aRow.getData() || {}) - ntoRowPm(bRow.getData() || {});
+                    },
+                    headerTooltip: 'PM = Promotion % sent to the Temu 2 Promotion API. Same as Sum disc (Sum disc 2 → promotion 2). Green with a double tick = applied on Temu. Grey = the Promotion switch is OFF, so it is not applied.',
+                    formatter: function(cell) {
+                        return ntoPmCellHtml(cell.getRow().getData() || {});
+                    }
+                },
+                {
                     title: 'GROI%',
                     field: 'roi_percent',
                     hozAlign: 'center',
@@ -3533,21 +3548,6 @@
                     headerTooltip: 'Push S Base Prc to Temu. Double tick = this S Base was already pushed. Arrow = not pushed, or S Base changed after the last push. Checked rows push together.',
                     formatter: function(cell) {
                         return ntoPushCellHtml(cell.getRow().getData());
-                    }
-                },
-                {
-                    title: 'PM',
-                    field: 'pm_discount',
-                    hozAlign: 'center',
-                    vertAlign: 'middle',
-                    width: 58,
-                    headerSort: true,
-                    sorter: function(a, b, aRow, bRow) {
-                        return ntoRowPm(aRow.getData() || {}) - ntoRowPm(bRow.getData() || {});
-                    },
-                    headerTooltip: 'PM = Promotion % sent to the Temu 2 Promotion API. Same as Sum disc (Sum disc 2 → promotion 2). Green with a double tick = applied on Temu. Grey = the Promotion switch is OFF, so it is not applied.',
-                    formatter: function(cell) {
-                        return ntoPmCellHtml(cell.getRow().getData() || {});
                     }
                 },
                 {
