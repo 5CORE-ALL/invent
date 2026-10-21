@@ -2730,6 +2730,11 @@
         }
     }
     window.updateSummary = updateSummary;
+    // Discount rules load after the first paint. Recount LMP Alert Prc once they are in,
+    // so the badge matches the column without waiting for a click.
+    $(document).off('chStd:settled.ntoLmpAlert').on('chStd:settled.ntoLmpAlert', function() {
+        if (typeof updateSummary === 'function') updateSummary();
+    });
 
     function applyFilters() {
         if (!table) return;
