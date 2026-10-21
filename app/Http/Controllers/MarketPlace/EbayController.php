@@ -3389,10 +3389,7 @@ class EbayController extends Controller
                 ? round(($prevQty / $prevViews) * 100, 1)
                 : floatval($s['cvr_percent'] ?? 0);
 
-            return response()->json([
-                'success' => true,
-                'date' => $prevDate,
-                'metrics' => [
+            $metrics = [
                     'zero_sold_count' => floatval($s['zero_sold_count'] ?? 0),
                     'sold_count' => floatval($s['sold_count'] ?? 0),
                     'total_sales_amt' => floatval($s['total_sales_amt'] ?? 0),
@@ -3416,7 +3413,34 @@ class EbayController extends Controller
                     // Snapshots saved before they were stored have no key: null keeps the dot grey.
                     'y_spend' => array_key_exists('y_spend', $s) ? floatval($s['y_spend']) : null,
                     'y_ads_percent' => array_key_exists('y_ads_percent', $s) ? floatval($s['y_ads_percent']) : null,
-                ],
+            ];
+
+            // The history chart swaps the saved snapshot value for the real-orders figure of that day
+            // (marketplace_daily_metrics). The badge dot has to compare against the same number, or the
+            // dot colour and the chart colour disagree for Sales / Qty / GPFT / GROI / Ads% / NPFT / NROI.
+            if (Schema::hasTable('marketplace_daily_metrics')) {
+                $asOfDate = $this->ebay1ChartAsOfLabel($prevDate)['full_date'];
+                $mdmRows = DB::table('marketplace_daily_metrics')
+                    ->where('channel', 'eBay')
+                    ->whereIn('date', [$prevDate, $asOfDate])
+                    ->get();
+                $mdmByDate = [];
+                foreach ($mdmRows as $m) {
+                    $mdmByDate[Carbon::parse($m->date)->toDateString()] = $m;
+                }
+                $mdm = $mdmByDate[$prevDate] ?? $mdmByDate[$asOfDate] ?? null;
+                foreach (['total_sales_amt', 'total_ebay_l30', 'gpft_percent', 'groi_percent', 'nroi_percent', 'npft_percent', 'tcos_percent'] as $key) {
+                    $val = $this->ebay1MetricFromMarketplaceDaily($mdm, $key);
+                    if ($val !== null && $val > 0) {
+                        $metrics[$key] = $val;
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'date' => $prevDate,
+                'metrics' => $metrics,
             ]);
         } catch (\Throwable $e) {
             Log::error('getEbayBadgePrevDay error: ' . $e->getMessage());

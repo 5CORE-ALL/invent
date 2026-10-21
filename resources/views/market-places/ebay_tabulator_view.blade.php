@@ -2019,9 +2019,8 @@
                 const cls = ebay1TrendClass(v, values[i - 1], dotInvert);
                 return cls === 'up' ? '#22c55e' : (cls === 'down' ? '#ef4444' : '#9ca3af');
             });
-            const labelColors = values.map(function(v) {
-                return v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d';
-            });
+            // Value labels take the colour of their dot, so a green (improving) point never has a red number.
+            const labelColors = dotColors;
 
             const medianLinePlugin = {
                 id: 'ebay1MedianLine',
@@ -6096,16 +6095,16 @@
                     }
                 }
 
-                setSummaryBadge($('#groi-percent-badge'), 'GROI: ' + Math.round(ORDERS_L30_GROI) + '%', Math.round(ORDERS_L30_GROI));
+                setSummaryBadge($('#groi-percent-badge'), 'GROI: ' + Math.round(ORDERS_L30_GROI) + '%', Math.round(ORDERS_L30_GROI * 10) / 10);
                 // NPFT% = GPFT% − Ads%. NROI% = (GPFT$ − Ad Spend) / COGS × 100 (Amazon formula).
                 const npftBadge = Math.round((ORDERS_L30_GPFT - EBAY_CHANNEL_ADS_PCT) * 10) / 10;
                 setSummaryBadge($('#npft-percent-badge'), 'NPFT: ' + npftBadge.toFixed(1) + '%', npftBadge);
                 const nroiBadge = (ORDERS_L30_COGS > 0)
                     ? ((ORDERS_L30_PFT - EBAY_AD_SPEND) / ORDERS_L30_COGS) * 100
                     : ORDERS_L30_NROI;
-                setSummaryBadge($('#nroi-percent-badge'), 'NROI: ' + Math.round(nroiBadge) + '%', Math.round(nroiBadge));
-                setSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%', Math.round(ORDERS_L30_GPFT));
-                setSummaryBadge($('#ads-percent-badge'), 'Ads ' + Math.round(EBAY_CHANNEL_ADS_PCT) + '%', Math.round(EBAY_CHANNEL_ADS_PCT));
+                setSummaryBadge($('#nroi-percent-badge'), 'NROI: ' + Math.round(nroiBadge) + '%', Math.round(nroiBadge * 10) / 10);
+                setSummaryBadge($('#avg-gpft-badge'), 'GPFT: ' + Math.round(ORDERS_L30_GPFT) + '%', Math.round(ORDERS_L30_GPFT * 10) / 10);
+                setSummaryBadge($('#ads-percent-badge'), 'Ads ' + Math.round(EBAY_CHANNEL_ADS_PCT) + '%', Math.round(EBAY_CHANNEL_ADS_PCT * 10) / 10);
                 setSummaryBadge($('#y-spend-badge'), 'Y Spend: $' + Math.round(Y_SPEND_TOTAL).toLocaleString(), Math.round(Y_SPEND_TOTAL));
                 const yAdsShown = Math.round(Y_ADS_PERCENT * 10) / 10;
                 setSummaryBadge($('#y-ads-percent-badge'), 'Y Ads%: ' + yAdsShown.toFixed(1) + '%', yAdsShown);
