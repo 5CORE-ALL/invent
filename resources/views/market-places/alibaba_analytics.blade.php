@@ -760,8 +760,11 @@
             .then(json => {
                 abAllRows = json.data || [];
                 window.allTableData = abAllRows;
+                // New rows (Sync from API): queue the blue SKUs again once they are on the page.
+                window._abReloadPushQueued = false;
                 if (abTable) {
                     applyFilters();
+                    if (typeof abQueuePushOnReload === 'function') abQueuePushOnReload();
                     return;
                 }
                 abTable = new Tabulator('#alibaba-analytics-table', {
@@ -1110,6 +1113,26 @@
             if (typeof bulkPushChannelPrcSelected === 'function') bulkPushChannelPrcSelected();
         });
         abUpdateSelectionUi();
+
+        /**
+         * Push on reload, same as /amazon-tabulator-view: once the rows and the Std prc vs dil rules are loaded, every
+         * blue-triangle SKU (INV > 0, Price ≠ S PRC) is queued for the background push. Nothing else started it
+         * on this page, so the switch showed On and no push ever began after a reload.
+         */
+        window._abRulesSettled = false;
+        window._abReloadPushQueued = false;
+        function abQueuePushOnReload() {
+            if (!window._abRulesSettled || window._abReloadPushQueued) return;
+            if (typeof chPromoPageReloadPushAllowed === 'function' && !chPromoPageReloadPushAllowed()) return;
+            if (typeof chPromoQueueReloadSpricePush !== 'function') return;
+            window._abReloadPushQueued = true;
+            chPromoQueueReloadSpricePush({ delay: 300 });
+        }
+        window.abQueuePushOnReload = abQueuePushOnReload;
+        $(document).off('chStd:settled.abReloadPush').on('chStd:settled.abReloadPush', function () {
+            window._abRulesSettled = true;
+            abQueuePushOnReload();
+        });
 
         loadTable();
     </script>
