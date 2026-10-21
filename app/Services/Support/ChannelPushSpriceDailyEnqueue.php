@@ -300,7 +300,7 @@ class ChannelPushSpriceDailyEnqueue
     }
 
     /**
-     * Temu 1 analytics pushes S Base (the listing base), not the full S PRC.
+     * Temu 1 analytics pushes S Promo Base Prc (saved by the page as NTO_S_PROMO_BASE).
      *
      * @return list<array{sku: string, price: float}>
      */
@@ -317,12 +317,13 @@ class ChannelPushSpriceDailyEnqueue
                         continue;
                     }
                     $value = is_array($row->value) ? $row->value : [];
-                    $full = is_numeric($value['NTO_SPRICE'] ?? null) ? (float) $value['NTO_SPRICE'] : 0.0;
-                    $base = is_numeric($value['NTO_S_BASE'] ?? null) ? round((float) $value['NTO_S_BASE'], 2) : 0.0;
-                    if (! ($base > 0) && $full > 0) {
-                        $base = TemuShopifySalesService::newTemuoneSBasePrice($full);
-                    }
-                    if ($base > 0) {
+                    // S Promo Base Prc the page painted (the price the Push column sends). No fallback to the
+                    // old S Base: that is a different price, so a SKU the page has not priced yet is skipped.
+                    $base = is_numeric($value['NTO_S_PROMO_BASE'] ?? null) ? round((float) $value['NTO_S_PROMO_BASE'], 2) : 0.0;
+                    $pushed = is_numeric($value['NTO_PUSHED_BASE'] ?? null) ? round((float) $value['NTO_PUSHED_BASE'], 2) : 0.0;
+                    if ($base > 0 && ! ($pushed > 0 && abs($pushed - $base) < 0.015)) {
+                        // Already pushed at this S Promo Base Prc: Temu holds the change for review, so the live base
+                        // lags; do not queue the same price again every run.
                         $bases[$sku] = $base;
                     }
                 }

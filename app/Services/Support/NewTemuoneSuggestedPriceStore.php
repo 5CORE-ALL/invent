@@ -31,6 +31,11 @@ class NewTemuoneSuggestedPriceStore
 
     public const KEY_LMP_ALERT = 'NTO_LMP_ALERT';
 
+    /** S Promo Base Prc the page painted (Std − 12% − Disc − ship disc). The headless push sends this as the base. */
+    public const KEY_S_PROMO_BASE = 'NTO_S_PROMO_BASE';
+
+    public const KEY_S_PROMO_AT = 'NTO_S_PROMO_AT';
+
     public const KEY_PUSHED_BASE = 'NTO_PUSHED_BASE';
 
     public const KEY_PUSHED_AT = 'NTO_PUSHED_AT';
@@ -143,6 +148,52 @@ class NewTemuoneSuggestedPriceStore
         $view->sku = $view->sku ?: $sku;
         $view->value = $value;
         $view->save();
+    }
+
+    /**
+     * Save the S Promo Base Prc the page shows (0 clears it). Other keys on the row are kept.
+     *
+     * @param  list<array{sku: string, promo_base: float|int|string}>  $items
+     * @return int rows written
+     */
+    public static function savePromoBases(array $items): int
+    {
+        $bySku = [];
+        foreach ($items as $item) {
+            $sku = trim((string) ($item['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+            $bySku[strtoupper($sku)] = ['sku' => $sku, 'promo_base' => round((float) ($item['promo_base'] ?? 0), 2)];
+        }
+        if ($bySku === []) {
+            return 0;
+        }
+        $written = 0;
+        foreach (array_chunk($bySku, 200, true) as $chunk) {
+            $views = [];
+            foreach (TemuDataView::query()->whereIn(DB::raw('UPPER(TRIM(sku))'), array_keys($chunk))->get() as $view) {
+                $views[strtoupper(trim((string) $view->sku))] = $view;
+            }
+            DB::transaction(function () use ($chunk, $views, &$written) {
+                foreach ($chunk as $key => $item) {
+                    $view = $views[$key] ?? new TemuDataView(['sku' => $item['sku']]);
+                    $value = is_array($view->value) ? $view->value : [];
+                    if ($item['promo_base'] > 0) {
+                        $value[self::KEY_S_PROMO_BASE] = $item['promo_base'];
+                        $value[self::KEY_S_PROMO_AT] = now()->toDateTimeString();
+                    } else {
+                        unset($value[self::KEY_S_PROMO_BASE], $value[self::KEY_S_PROMO_AT]);
+                    }
+                    $view->sku = $view->sku ?: $item['sku'];
+                    $view->value = $value;
+                    $view->save();
+                    $written++;
+                }
+            });
+        }
+
+        return $written;
     }
 
     public function pendingWriteCount(): int
@@ -429,6 +480,7 @@ class NewTemuoneSuggestedPriceStore
         if (! $matched && $sprice > 0 && is_numeric($saved['SPRICE_PUSHED_VALUE'] ?? null)) {
             $matched = abs(round((float) $saved['SPRICE_PUSHED_VALUE'], 2) - round($sprice, 2)) < 0.015;
         }
+        $row['s_promo_base'] = is_numeric($saved[self::KEY_S_PROMO_BASE] ?? null) ? round((float) $saved[self::KEY_S_PROMO_BASE], 2) : null;
         $row['pushed_base'] = $pushedBase > 0 ? $pushedBase : null;
         $row['pushed_at'] = $saved[self::KEY_PUSHED_AT] ?? $saved['SPRICE_PUSHED_AT'] ?? null;
         $row['push_status'] = $matched ? 'pushed' : null;

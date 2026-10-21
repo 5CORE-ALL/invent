@@ -254,7 +254,14 @@ class ChannelPushSpriceRunner
                     $live = round($price, 2);
                     EbaySpricePush::storeAcceptedPriceFor($this->channel, $sku, $live);
                     $store->appendMessage('Skip '.$sku.': already pushed at $'.number_format($price, 2));
-                } elseif (NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
+                } elseif ($this->channel === 'newtemuone'
+                    ? NegativeSnroiPushGuard::shouldSkipTemuPromoBase(
+                        $this->channel,
+                        $sku,
+                        $price,
+                        app(\App\Http\Controllers\MarketPlace\NewTemuoneController::class)->standardPriceForSku($sku)
+                    )
+                    : NegativeSnroiPushGuard::shouldSkip($this->channel, $sku, $price)) {
                     $ok = true;
                     $negSnroi = true;
                     $logger->info('S PRC background push skipped — negative SNROI', [

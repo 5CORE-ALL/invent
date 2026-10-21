@@ -1280,6 +1280,51 @@
         return updates.length;
     }
     /**
+     * Save the painted S Promo Base Prc so the headless Auto push (10-minute job, page closed) sends the same price
+     * as the Push column. Only runs once the Std prc vs dil rules are loaded: before that the discount is 0 and the
+     * price would be too high.
+     */
+    let ntoPromoPersistBusy = false;
+    async function ntoPersistPromoBase() {
+        if (ntoPromoPersistBusy || !table) return 0;
+        if (typeof ntoLmpAlertRulesReady === 'function' && !ntoLmpAlertRulesReady()) return 0;
+        ntoPromoPersistBusy = true;
+        try {
+            const updates = [];
+            const rows = [];
+            chPromoEachTableRow(function(row, d) {
+                if (!chPromoIsChildRow(d)) return;
+                const sku = chPromoSku(d);
+                if (!sku) return;
+                const price = chPromoInv(d) > 0 ? ntoRowPushPrice(d) : 0;
+                const saved = parseFloat(d.nto_s_promo_base) || 0;
+                if (Math.abs(saved - price) < 0.005) return;
+                updates.push({ sku: sku, promo_base: price });
+                rows.push({ row: row, price: price });
+            });
+            if (!updates.length) return 0;
+            const size = 200;
+            for (let i = 0; i < updates.length; i += size) {
+                await $.ajax({
+                    url: '{{ route("newtemuone.save.promo-base") }}',
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': ntoCsrf(), 'Accept': 'application/json' },
+                    data: { updates: updates.slice(i, i + size), _token: ntoCsrf() }
+                });
+            }
+            rows.forEach(function(item) {
+                try {
+                    const d = item.row.getData();
+                    d.nto_s_promo_base = item.price > 0 ? item.price : null; // data only, no repaint
+                } catch (e) { /* ignore */ }
+            });
+            return updates.length;
+        } finally {
+            ntoPromoPersistBusy = false;
+        }
+    }
+    window.ntoPersistPromoBase = ntoPersistPromoBase;
+    /**
      * Dil Save writes the painted S PRC cell into NTO_SPRICE.
      * Push queues that same cell dollar (S Base of the cell), not a second solve.
      */
@@ -2503,6 +2548,11 @@
         // A manual action (e.g. Dil Save & push) always queues; otherwise the Auto push switch decides.
         if (!opts.manual && !ntoPageReloadPushAllowed()) return;
         if (window._ntoReloadPushQueued) return;
+        // The discount rules are not loaded yet: S Promo Base Prc would be too high. Wait for chStd:settled.
+        if (typeof ntoLmpAlertRulesReady === 'function' && !ntoLmpAlertRulesReady()) {
+            window._ntoPushAfterRules = true;
+            return;
+        }
         const retry = opts.retry || 0;
         if (typeof table === 'undefined' || !table || typeof table.getDataCount !== 'function' || table.getDataCount() === 0) {
             if (retry < 12) {
@@ -2800,6 +2850,13 @@
         ntoRefreshLmpAlertBadge(true);
         [300, 1200, 3000].forEach(function(ms) { setTimeout(function() { ntoRefreshLmpAlertBadge(true); }, ms); });
         if (typeof updateSummary === 'function') updateSummary();
+        setTimeout(function() {
+            ntoPersistPromoBase().catch(function() {});
+            if (window._ntoPushAfterRules) {
+                window._ntoPushAfterRules = false;
+                ntoTryQueuePushOnReload();
+            }
+        }, 1600);
     });
     // If the rules event never arrives, still show a count instead of staying on "…".
     setTimeout(function() { ntoLmpAlertReadyFallback = true; ntoRefreshLmpAlertBadge(true); }, 8000);
@@ -4056,6 +4113,7 @@
                 if (typeof ntoPersistDisplayedSprice === 'function') {
                     ntoPersistDisplayedSprice().catch(function() {});
                 }
+                ntoPersistPromoBase().catch(function() {});
                 ntoTryQueuePushOnReload();
             }, 800);
         });

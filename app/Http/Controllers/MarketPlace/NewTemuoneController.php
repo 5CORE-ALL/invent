@@ -467,6 +467,7 @@ class NewTemuoneController extends Controller
                     'sgroi_percent' => $sgroiPercent,
                     'nto_use_saved' => (bool) ($suggested['use_saved'] ?? false),
                     'nto_capped' => (bool) ($suggested['capped'] ?? false),
+                    'nto_s_promo_base' => $suggested['s_promo_base'] ?? null,
                     'nto_pushed_base' => $suggested['pushed_base'] ?? null,
                     'nto_pushed_at' => $suggested['pushed_at'] ?? null,
                     'nto_push_status' => $suggested['push_status'] ?? null,
@@ -594,6 +595,27 @@ class NewTemuoneController extends Controller
             'cleared' => $cleared,
             'saved' => $saved,
         ]);
+    }
+
+    /**
+     * The page paints S Promo Base Prc (Std − 12% − Disc − ship disc). Save it so the headless push can send it.
+     */
+    public function savePromoBase(Request $request)
+    {
+        $updates = $request->input('updates');
+        if (! is_array($updates)) {
+            return response()->json(['success' => false, 'message' => 'updates array required'], 422);
+        }
+        $items = [];
+        foreach ($updates as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $items[] = ['sku' => (string) ($row['sku'] ?? ''), 'promo_base' => (float) ($row['promo_base'] ?? 0)];
+        }
+        $saved = NewTemuoneSuggestedPriceStore::savePromoBases($items);
+
+        return response()->json(['success' => true, 'saved' => $saved]);
     }
 
     /**

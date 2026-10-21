@@ -92,6 +92,28 @@ class NegativeSnroiPushGuard
         return $snroi !== null && $snroi < 0;
     }
 
+    /**
+     * New Temu One pushes S Promo Base Prc, not the customer price, so the generic check on the pushed value is wrong.
+     * Same SNROI as the page: SNPFT = (S Promo Prc × 0.95) − Ship − LP − (Std Prc × Ads%), over LP.
+     * S Promo Prc = base + $2.99 when it is $30 or less (the S Ship Disc), otherwise the base itself.
+     */
+    public static function shouldSkipTemuPromoBase(string $channel, string $sku, float $basePrice, ?float $stdPrice): bool
+    {
+        if (! ($basePrice > 0) || ! self::enabled($channel)) {
+            return false;
+        }
+        $cost = self::costForSku($sku, false);
+        if ($cost === null) {
+            return false;
+        }
+        $channel = strtolower(trim($channel));
+        $promo = $basePrice <= 27.01 ? $basePrice + 2.99 : $basePrice;
+        $std = ($stdPrice !== null && $stdPrice > 0) ? $stdPrice : $promo;
+        $net = ($promo * 0.95) - $cost['ship'] - $cost['lp'] - ($std * (self::adsFor($channel) / 100));
+
+        return (($net / $cost['lp']) * 100) < 0;
+    }
+
     private static function excludeShip(string $channel): bool
     {
         return in_array($channel, [

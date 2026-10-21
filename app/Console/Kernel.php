@@ -1390,7 +1390,8 @@ class Kernel extends ConsoleKernel
         // Headless "Push on reload" for /new-temuone (same as amazon:push-blue-prices): re-prices every SKU, saves
         // NTO_SPRICE where it changed, pushes blue-triangle SKUs (INV > 0, S Base ≠ Temu base). Every 10 min, 24/7
         // on purpose (no $ist()), so a price change is pushed with the page closed.
-        $schedule->command('newtemuone:push-blue-prices')
+        // --respect-switch: the page Auto push switch decides; when it is OFF this job does nothing.
+        $schedule->command('newtemuone:push-blue-prices --respect-switch')
             ->everyTenMinutes()
             ->name('newtemuone-push-blue-prices')
             ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
