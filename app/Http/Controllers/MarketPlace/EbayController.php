@@ -3412,6 +3412,10 @@ class EbayController extends Controller
                     'lmp_missing_count' => array_key_exists('lmp_missing_count', $s)
                         ? floatval($s['lmp_missing_count'])
                         : null,
+                    // Without these two the Y Spend / Y Ads% badge dots never had a prior day and stayed grey.
+                    // Snapshots saved before they were stored have no key: null keeps the dot grey.
+                    'y_spend' => array_key_exists('y_spend', $s) ? floatval($s['y_spend']) : null,
+                    'y_ads_percent' => array_key_exists('y_ads_percent', $s) ? floatval($s['y_ads_percent']) : null,
                 ],
             ]);
         } catch (\Throwable $e) {

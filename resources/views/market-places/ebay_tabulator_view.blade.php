@@ -2011,9 +2011,13 @@
             document.getElementById('ebay1ChartMedian').textContent = ebay1FmtChartVal(median, ebay1ChartMetricKey);
             document.getElementById('ebay1ChartLowest').textContent = ebay1FmtChartVal(dataMin, ebay1ChartMetricKey);
 
+            // Same rule and colours as the badge dot (.summary-trend-dot): up green, down red, same grey.
+            // Lower-is-better metrics (Ads%, Y Ads%, LMP M.) are inverted, so a fall is green.
+            const dotInvert = !!ebay1BadgeInvertMetrics[ebay1ChartMetricKey];
             const dotColors = values.map(function(v, i) {
-                if (i === 0) return '#6c757d';
-                return v < values[i - 1] ? '#dc3545' : (v > values[i - 1] ? '#28a745' : '#6c757d');
+                if (i === 0) return '#9ca3af';
+                const cls = ebay1TrendClass(v, values[i - 1], dotInvert);
+                return cls === 'up' ? '#22c55e' : (cls === 'down' ? '#ef4444' : '#9ca3af');
             });
             const labelColors = values.map(function(v) {
                 return v === 0 ? '#198754' : v > 0 ? '#dc3545' : '#6c757d';
@@ -4756,15 +4760,16 @@
                             const prevWhen = prevDate && typeof ebay1ChartDateLabel === 'function'
                                 ? ebay1ChartDateLabel(prevDate)
                                 : 'the last recorded day';
-                            let dotColor = '#6c757d';
+                            // Same colours as the Y Spend badge dot: up green, down red, same grey.
+                            let dotColor = '#9ca3af';
                             let dotTip = hasPrev
                                 ? ('Same as ' + prevWhen + ' ($' + prev.toFixed(2) + ')')
                                 : 'No prior Y Spend yet';
                             if (hasPrev && amount > prev) {
-                                dotColor = '#28a745';
+                                dotColor = '#22c55e';
                                 dotTip = 'Up vs ' + prevWhen + ' ($' + prev.toFixed(2) + ')';
                             } else if (hasPrev && amount < prev) {
-                                dotColor = '#a00211';
+                                dotColor = '#ef4444';
                                 dotTip = 'Down vs ' + prevWhen + ' ($' + prev.toFixed(2) + ')';
                             }
                             const skuAttr = String(sku).replace(/"/g, '&quot;');
