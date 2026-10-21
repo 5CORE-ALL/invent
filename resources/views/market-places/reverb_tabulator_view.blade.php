@@ -1124,6 +1124,9 @@
     function reverbHasBlueTriangle(data) {
         if (isReverbParentRow(data)) return false;
         if (!(parseFloat(data && data.INV) > 0)) return false;
+        // Sold / ended / draft listings cannot be re-priced (the server push skips them too).
+        const listingState = String((data && data.listing_state) || '').trim().toLowerCase();
+        if (listingState !== '' && listingState !== 'live' && listingState !== 'active') return false;
         const sprice = reverbRowSpriceForAlert(data);
         const price = parseFloat(data && data['RV Price']) || 0;
         return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);

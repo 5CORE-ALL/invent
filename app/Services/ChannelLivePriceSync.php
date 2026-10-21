@@ -296,6 +296,10 @@ class ChannelLivePriceSync
      */
     public static function lookupMap(string $channel): array
     {
+        if (self::normalize($channel) === 'reverb') {
+            return self::reverbLookupMap();
+        }
+
         $viewClass = self::viewClass($channel);
         if ($viewClass === null || ! class_exists($viewClass)) {
             return [];
@@ -326,6 +330,71 @@ class ChannelLivePriceSync
                 'channel' => $channel,
                 'error' => $e->getMessage(),
             ]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Reverb keeps the last pushed S PRC in two places: `reverb_view_data.values`
+     * (page push and the server Sprc Dil push) and `reverb_data_view.value`
+     * (confirmAfterPush stamp). Using only the second one left an old pushed
+     * value that beat the live price on every `reverb:fetch`, so RV Price stayed
+     * stale and the blue badge never cleared. The newest push time wins.
+     *
+     * @return array<string, float> UPPER sku → pushed S PRC
+     */
+    public static function reverbLookupMap(): array
+    {
+        /** @var array<string, array{0: float, 1: int}> $best key → [price, pushed-at ts] */
+        $best = [];
+
+        $consume = static function (string $sku, mixed $raw) use (&$best): void {
+            $val = is_array($raw) ? $raw : (json_decode((string) ($raw ?? ''), true) ?: []);
+            if (! is_array($val)) {
+                return;
+            }
+            $pushed = PushedListingPrice::fromValue($val);
+            if ($pushed === null) {
+                return;
+            }
+            $ts = 0;
+            $at = $val['SPRICE_PUSHED_AT'] ?? null;
+            if (is_string($at) && $at !== '') {
+                $parsed = strtotime($at);
+                $ts = $parsed !== false ? (int) $parsed : 0;
+            }
+            foreach (self::skuLookupKeys($sku) as $key) {
+                if (! isset($best[$key]) || $ts >= $best[$key][1]) {
+                    $best[$key] = [$pushed, $ts];
+                }
+            }
+        };
+
+        try {
+            ReverbDataView::query()
+                ->where(function ($q) {
+                    $q->where('value', 'like', '%SPRICE_PUSHED_VALUE%')
+                        ->orWhere('value', 'like', '%CHANNEL_PUSHED_PRICE%');
+                })
+                ->get(['sku', 'value'])
+                ->each(fn ($row) => $consume((string) $row->sku, $row->value));
+        } catch (Throwable $e) {
+            Log::warning('ChannelLivePriceSync reverb lookup (data_view) failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            \App\Models\ReverbViewData::query()
+                ->where('values', 'like', '%SPRICE_PUSHED_VALUE%')
+                ->get(['sku', 'values'])
+                ->each(fn ($row) => $consume((string) $row->sku, $row->values));
+        } catch (Throwable $e) {
+            Log::warning('ChannelLivePriceSync reverb lookup (view_data) failed', ['error' => $e->getMessage()]);
+        }
+
+        $map = [];
+        foreach ($best as $key => [$price]) {
+            $map[$key] = $price;
         }
 
         return $map;

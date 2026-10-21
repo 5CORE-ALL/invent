@@ -1058,6 +1058,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Blue-triangle catch-up for /reverb-pricing (INV > 0, RV Price ≠ S PRC): every 30 min, 24/7, page not needed.
+        $schedule->command('reverb:push-blue-prices')
+            ->everyThirtyMinutes()
+            ->name('reverb-push-blue-prices')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // TopDawg Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, no ship, no LMP) → S PRC → TopDawg price API.
         // Same twice-daily idea as Amazon, offset 30 min. /topdawg-pricing does not need to be open.
         // Do NOT wrap 20:30 in $ist() — IST window ends at 20:00.
