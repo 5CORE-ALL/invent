@@ -2855,7 +2855,7 @@
             return 'advertisement';
         }
         if (
-            /^(_select|parent|\(child\) sku|links_column|inv|inventory|l30|temu_l30|views|dil%)$/i.test(f) ||
+            /^(_select|parent|\(child\) sku|links_column|inv|inventory|l30|temu_l30|moq|req_m|dil_moq|views|dil%)$/i.test(f) ||
             /\b(sku|links|inv|stock|ovl|dil|temu\s*l\d+|views|parent)\b/i.test(tl)
         ) {
             return 'basics';
@@ -3017,6 +3017,23 @@
         return s;
     }
 
+    function ntoRowMoq(d) {
+        const n = Number(d && d.moq);
+        return isFinite(n) ? n : null;
+    }
+    /** Req M = MOQ ÷ 4. */
+    function ntoRowReqM(d) {
+        const moq = ntoRowMoq(d);
+        if (moq == null) return null;
+        return +(moq / 4).toFixed(2);
+    }
+    /** Dil MOQ % = OV L30 ÷ Req M. */
+    function ntoRowDilMoq(d) {
+        const req = ntoRowReqM(d);
+        if (!(req > 0)) return null;
+        const ov = parseFloat(d && d.L30) || 0;
+        return Math.round((ov / req) * 100);
+    }
     function temuDownloadSheet(filename) {
         if (!table) return;
         const cols = table.getColumns().filter(function(col) {
@@ -3065,6 +3082,12 @@
                     const sprice = (typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : 0;
                     const sR = (typeof temuSRPriceFromSprice === 'function') ? temuSRPriceFromSprice(sprice) : 0;
                     v = sR > 0 ? sR : '';
+                } else if (field === 'req_m') {
+                    const n = ntoRowReqM(row);
+                    v = n == null ? '' : n;
+                } else if (field === 'dil_moq') {
+                    const n = ntoRowDilMoq(row);
+                    v = n == null ? '' : n;
                 } else if (field === 'Dil%') {
                     const inv = parseFloat(row.INV) || 0;
                     const ov = parseFloat(row.L30) || 0;
@@ -3256,6 +3279,64 @@
                     width: 50,
                     sorter: 'number',
                     headerTooltip: 'Temu L30 qty from temu2_orders — same sales table, Pacific L30 window, and SKU match (normalize + no-space) as /temu2-tabulator'
+                },
+                {
+                    title: 'MOQ',
+                    field: 'moq',
+                    hozAlign: 'center',
+                    width: 56,
+                    sorter: 'number',
+                    headerTooltip: 'MOQ from Forecast Analysis (/forecast.analysis). Approved qty when it is set, otherwise the product master MOQ.',
+                    formatter: function(cell) {
+                        const raw = cell.getValue();
+                        if (raw === null || raw === undefined || raw === '' || !isFinite(Number(raw))) {
+                            return '<span style="color: #6c757d;">—</span>';
+                        }
+                        const n = Number(raw);
+                        const shown = Math.abs(n - Math.round(n)) < 0.001 ? String(Math.round(n)) : n.toFixed(2);
+                        return '<span style="font-weight: 600;">' + shown + '</span>';
+                    }
+                },
+                {
+                    title: 'Req M',
+                    field: 'req_m',
+                    hozAlign: 'center',
+                    width: 56,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowReqM(aRow.getData() || {});
+                        const y = ntoRowReqM(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'Req M = MOQ ÷ 4.',
+                    formatter: function(cell) {
+                        const n = ntoRowReqM(cell.getRow().getData() || {});
+                        if (n == null) return '<span style="color: #6c757d;">—</span>';
+                        const shown = Math.abs(n - Math.round(n)) < 0.001 ? String(Math.round(n)) : String(n);
+                        const moq = ntoRowMoq(cell.getRow().getData() || {});
+                        const tip = 'MOQ ' + moq + ' ÷ 4 = ' + shown;
+                        return '<span style="font-weight: 600;" title="' + tip + '">' + shown + '</span>';
+                    }
+                },
+                {
+                    title: 'Dil MOQ',
+                    field: 'dil_moq',
+                    hozAlign: 'center',
+                    width: 62,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowDilMoq(aRow.getData() || {});
+                        const y = ntoRowDilMoq(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'Dil MOQ = OV L30 ÷ Req M, as a percent.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const pct = ntoRowDilMoq(row);
+                        if (pct == null) return '<span style="color: #6c757d;">—</span>';
+                        const ov = parseFloat(row.L30) || 0;
+                        const req = ntoRowReqM(row);
+                        const tip = 'OV L30 ' + ov + ' ÷ Req M ' + req + ' = ' + pct + '%';
+                        return '<span style="font-weight: 600;" title="' + tip + '">' + pct + '%</span>';
+                    }
                 },
                 {
                     title: 'Views',

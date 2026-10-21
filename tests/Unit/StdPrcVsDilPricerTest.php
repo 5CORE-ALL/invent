@@ -302,4 +302,23 @@ class StdPrcVsDilPricerTest extends TestCase
         $bestbuy = new StdPrcVsDilPricer($rules, 'bestbuy');
         $this->assertSame(100.0, $bestbuy->priceFromRow($row));
     }
+
+    public function test_lmp_disc_applies_only_when_the_sku_has_an_lmp(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 0, 'down_lt' => 7, 'down_disc' => 0,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'lmp' => [['min' => 0, 'max' => 10, 'disc' => 10]],
+        ]);
+        $row = ['inv' => 1, 'std_price' => 100, 'dil' => 5, 'cvr' => 8, 'cvr_60' => 8];
+
+        $this->assertSame(90.0, $pricer->priceFromRow($row + ['lmp' => 17.07]));
+        $this->assertSame(100.0, $pricer->priceFromRow($row));
+    }
 }

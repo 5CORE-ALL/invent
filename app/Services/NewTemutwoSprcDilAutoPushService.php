@@ -239,6 +239,8 @@ class NewTemutwoSprcDilAutoPushService
             'margin' => $margin,
             // The pricer reads Ads as a fraction (2.2% → 0.022).
             'ads' => $adsPct > 0 ? $adsPct / 100 : 0.0,
+            // LMP Disc applies only when this SKU has an LMP. Prefer the landed price the page shows.
+            'lmp' => (float) (($row['lmp_raw'] ?? 0) > 0 ? $row['lmp_raw'] : ($row['lmp'] ?? 0)),
         ];
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];

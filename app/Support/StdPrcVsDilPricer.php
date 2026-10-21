@@ -53,6 +53,7 @@ class StdPrcVsDilPricer
             'reviews' => self::ranges($saved['reviews'] ?? null, $defaults['reviews']),
             'review_max' => is_numeric($saved['review_max'] ?? null) ? max(1, (int) $saved['review_max']) : $defaults['review_max'],
             'buss' => self::ranges($saved['buss'] ?? null, $defaults['buss']),
+            'lmp' => self::ranges($saved['lmp'] ?? null, $defaults['lmp']),
             'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
         ];
 
@@ -91,7 +92,14 @@ class StdPrcVsDilPricer
         $zeroSoldDisc = $this->isZeroSold($row)
             ? self::scaleRuleDisc((float) ($this->rules['zero_sold_disc'] ?? 0), $std)
             : 0.0;
-        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc));
+        $lmp = (float) ($row['lmp_raw'] ?? 0);
+        if (! ($lmp > 0)) {
+            $lmp = (float) ($row['lmp'] ?? $row['lmp_price'] ?? 0);
+        }
+        $lmpDisc = $lmp > 0
+            ? self::scaleRuleDisc($this->rangeDisc($dil, $this->rules['lmp'] ?? []), $std)
+            : 0.0;
+        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $lmpDisc));
         $price = round($std * (1 - $sum / 100), 2);
         if (! ($price > 0)) {
             return null;
@@ -449,6 +457,14 @@ class StdPrcVsDilPricer
                 ['min' => 0, 'max' => 15, 'disc' => 0],
                 ['min' => 15, 'max' => 50, 'disc' => 0],
                 ['min' => 50, 'max' => 9999, 'disc' => 0],
+            ],
+            'lmp' => [
+                ['min' => 0, 'max' => 0, 'disc' => 0],
+                ['min' => 0.1, 'max' => 10, 'disc' => 0],
+                ['min' => 10, 'max' => 25, 'disc' => 0],
+                ['min' => 25, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 100, 'disc' => 0],
+                ['min' => 100, 'max' => 9999, 'disc' => 0],
             ],
             'zero_sold_disc' => 0,
         ];

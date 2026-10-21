@@ -99,7 +99,7 @@
 @endif
 
 @if($channelStdPrcPart === 'buttons' || $channelStdPrcPart === 'all')
-                    <button type="button" class="btn btn-sm" id="ch-std-prc-btn" title="Std Prc minus Age, Dil, B Disc, 0 Sold, CVR, and Review discounts. Same slabs as Amazon.">
+                    <button type="button" class="btn btn-sm" id="ch-std-prc-btn" title="Std Prc minus Age, Dil, B Disc, 0 Sold, CVR, Review, and LMP discounts. Same slabs as Amazon.">
                         <i class="fas fa-tags"></i> Std prc vs dil
                     </button>
 @endif
@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews − LMP.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, and LMP discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -247,6 +247,12 @@
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-age-tbody"></tbody></table></div>
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-age-add">Add range</button>
                         </div>
+                        <div class="ch-sp-col" data-ch-sp-panel="lmp">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Same Dil slabs. LMP is how many SKUs in that slab have an LMP. Disc % is added to Sum disc for those SKUs.">LMP</div><button type="button" class="ch-sp-min-btn" title="Minimize LMP" aria-label="Minimize LMP">−</button></div>
+                            <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-lmp"></canvas></div>
+                            <div class="ch-sp-pie-legend" id="ch-sp-leg-lmp"></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">LMP</th><th class="text-end">Disc %</th></tr></thead><tbody id="ch-sp-lmp-tbody"></tbody></table></div>
+                        </div>
                         <div class="ch-sp-col" data-ch-sp-panel="all">
                             <div class="ch-sp-col-head"><div class="ch-sp-pie-title">All discounts</div><button type="button" class="ch-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-all"></canvas></div>
@@ -289,6 +295,7 @@
         let chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdBuss = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        let chStdLmp = [];
         let chStdCvr = Object.assign({}, CH_STD_CVR_DEFAULT);
         let chStdReviewMax = 4;
         const chStdCharts = {};
@@ -575,8 +582,81 @@
                 || CHANNEL_PROMO_CHANNEL === 'depop'
                 || CHANNEL_PROMO_CHANNEL === 'mercari_woship';
         }
+        function chStdRowHasLmp(d) {
+            if (!d) return false;
+            const keys = ['lmp_raw', 'lmp_price', 'lmp', 'LMP', 'L1'];
+            for (let i = 0; i < keys.length; i++) {
+                const n = Number(d[keys[i]]);
+                if (isFinite(n) && n > 0) return true;
+            }
+            if (Array.isArray(d.lmp_entries)) {
+                for (let i = 0; i < d.lmp_entries.length; i++) {
+                    const e = d.lmp_entries[i] || {};
+                    if (e.ignored) continue;
+                    const price = Number(e.price != null ? e.price : (e.lmp != null ? e.lmp : e.Price));
+                    if (isFinite(price) && price > 0) return true;
+                }
+            }
+            return false;
+        }
+        /** LMP rows follow the Dil slabs. Disc stays on the same row when a Dil From/To is edited. */
+        function chStdAlignLmp(dilRules) {
+            const prev = [];
+            $('#ch-sp-lmp-tbody tr').each(function() {
+                prev.push($(this).find('.ch-sp-lmp-disc').val());
+            });
+            const next = (dilRules || []).map(function(r, i) {
+                let disc = prev[i];
+                if (disc == null || disc === '') {
+                    const saved = (chStdLmp || []).find(function(s) {
+                        return s && Number(s.min) === Number(r.min) && Number(s.max) === Number(r.max);
+                    });
+                    disc = saved ? saved.disc : 0;
+                }
+                const n = Number(disc);
+                return { min: r.min, max: r.max, disc: isFinite(n) ? Math.min(100, Math.max(0, n)) : 0 };
+            });
+            const $tb = $('#ch-sp-lmp-tbody');
+            let same = $tb.find('tr').length === next.length;
+            if (same) {
+                $tb.find('tr').each(function(i) {
+                    if (String($(this).attr('data-min')) !== String(next[i].min) || String($(this).attr('data-max')) !== String(next[i].max)) same = false;
+                });
+            }
+            if (!same) {
+                $tb.html(next.map(function(rule) {
+                    return '<tr data-min="' + chStdEsc(rule.min) + '" data-max="' + chStdEsc(rule.max) + '">'
+                        + '<td class="text-center">' + chStdEsc(rule.min) + '</td>'
+                        + '<td class="text-center">' + chStdEsc(rule.max) + '</td>'
+                        + '<td class="ch-sp-count ch-sp-lmp-count">0</td>'
+                        + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-lmp-disc" value="' + chStdEsc(rule.disc) + '"></td>'
+                        + '</tr>';
+                }).join(''));
+            }
+            return next;
+        }
+        function chStdLmpRulesLive() {
+            const modal = document.getElementById('chStdPrcModal');
+            if (modal && modal.classList.contains('show')) {
+                const dil = chStdReadRanges('#ch-sp-dil-tbody', '.ch-sp-dil-min', '.ch-sp-dil-max', '.ch-sp-dil-disc');
+                const rows = $('#ch-sp-lmp-tbody tr');
+                if (dil.length && rows.length === dil.length) {
+                    const rules = [];
+                    rows.each(function(i) {
+                        const n = Number($(this).find('.ch-sp-lmp-disc').val());
+                        rules.push({ min: dil[i].min, max: dil[i].max, disc: isFinite(n) ? Math.min(100, Math.max(0, n)) : 0 });
+                    });
+                    return rules;
+                }
+            }
+            return chStdLmp;
+        }
+        function chStdLmpDiscRaw(d, rules) {
+            if (!chStdRowHasLmp(d) || !(chStdStockForAge(d) > 0)) return 0;
+            return chStdRangeDisc(chStdDilPct(d), rules || chStdLmp);
+        }
         function chStdSumDisc(d, draft) {
-            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), zeroSoldDisc: chStdZeroSoldDisc };
+            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive() };
             // Amazon INV = 0 still allows the page 0 Sold discount (AB L30 = 0, page INV > 0).
             if (!(chStdStockForAge(d) > 0)) {
                 if (!chStdRowIsZeroSold(d)) return 0;
@@ -602,7 +682,8 @@
             const bussDisc = chStdRangeDisc(std, bussRules);
             const zsRaw = chStdRowIsZeroSold(d) ? (Number(draft.zeroSoldDisc != null ? draft.zeroSoldDisc : chStdZeroSoldDisc) || 0) : 0;
             const zsDisc = chStdScaleDisc(std, zsRaw);
-            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc));
+            const lmpDisc = chStdScaleDisc(std, chStdLmpDiscRaw(d, draft.lmp || chStdLmp));
+            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc));
         }
         function chStdFullDataset() {
             if (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length) return window.allTableData;
@@ -676,7 +757,7 @@
             return rules;
         }
         function chStdReadDraft() {
-            return {
+            const draft = {
                 dil: chStdReadRanges('#ch-sp-dil-tbody', '.ch-sp-dil-min', '.ch-sp-dil-max', '.ch-sp-dil-disc'),
                 age: chStdReadRanges('#ch-sp-age-tbody', '.ch-sp-age-min', '.ch-sp-age-max', '.ch-sp-age-disc'),
                 reviews: chStdReadRanges('#ch-sp-rev-tbody', '.ch-sp-rev-min', '.ch-sp-rev-max', '.ch-sp-rev-disc'),
@@ -691,6 +772,8 @@
                     flat_disc: $('#chStdPrcModal .ch-sp-cvr-flat-disc').val(),
                 }),
             };
+            draft.lmp = chStdAlignLmp(draft.dil);
+            return draft;
         }
         function chStdRangeRow(prefix, rule) {
             return '<tr><td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm ch-sp-input ' + prefix + '-min" value="' + rule.min + '"></td>'
@@ -762,14 +845,16 @@
         function chStdRefresh() {
             const draft = chStdReadDraft();
             const dilCounts = { outside: 0 }, ageCounts = { none: 0 }, revCounts = { none: 0 }, bussCounts = { outside: 0 };
+            const lmpCounts = { outside: 0 };
             const cvrCounts = { down2: 0, down: 0, flat: 0, up: 0, up2: 0 };
             draft.dil.forEach(function(r, i) { dilCounts['d' + i] = 0; });
             draft.age.forEach(function(r, i) { ageCounts['a' + i] = 0; });
             draft.reviews.forEach(function(r, i) { revCounts['r' + i] = 0; });
             draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
-            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
-            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
-            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, all: 0 };
+            (draft.lmp || []).forEach(function(r, i) { lmpCounts['m' + i] = 0; });
+            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0 };
+            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0 };
+            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, all: 0 };
             const zsCounts = { zero: 0, sold: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const pgB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
@@ -782,6 +867,9 @@
                 let dilIdx = -1;
                 for (let i = 0; i < draft.dil.length; i++) if (chStdInRange(dilVal, draft.dil[i], i === draft.dil.length - 1)) { dilIdx = i; break; }
                 if (dilIdx >= 0) dilCounts['d' + dilIdx] += 1; else dilCounts.outside += 1;
+                if (chStdRowHasLmp(d)) {
+                    if (dilIdx >= 0) lmpCounts['m' + dilIdx] += 1; else lmpCounts.outside += 1;
+                }
                 const ageVal = chStdAgeDays(d);
                 let ageIdx = -1;
                 if (ageVal != null) {
@@ -810,13 +898,16 @@
                 const zeroSold = invOk && chStdRowIsZeroSold(d);
                 if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
                 const zsDisc = zeroSold ? chStdScaleDisc(std, Number(draft.zeroSoldDisc) || 0) : 0;
+                const lmpRaw = (invOk && chStdRowHasLmp(d) && dilIdx >= 0) ? (Number(draft.lmp[dilIdx] && draft.lmp[dilIdx].disc) || 0) : 0;
+                const lmpDisc = chStdScaleDisc(std, lmpRaw);
                 if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
                 if (revDisc > 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
                 if (bussDisc > 0) { skuHits.buss++; dollars.buss += std * bussDisc / 100; pctTotals.buss += bussDisc; }
                 if (zsDisc > 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
-                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc);
+                if (lmpDisc > 0) { skuHits.lmp++; dollars.lmp += std * lmpDisc / 100; pctTotals.lmp += lmpDisc; }
+                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc);
                 if (sum > 0) skuHits.all++;
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
@@ -892,6 +983,7 @@
             $('#ch-sp-cvr-up-count').text(cvrCounts.up);
             $('#ch-sp-cvr-up2-count').text(cvrCounts.up2);
             $('#ch-sp-zs-count').text(zsCounts.zero);
+            $('#ch-sp-lmp-tbody tr').each(function(i) { $(this).find('.ch-sp-lmp-count').text(lmpCounts['m' + i] || 0); });
             const dilSlices = draft.dil.map(function(r, i) { return { key: 'd' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const ageSlices = draft.age.map(function(r, i) { return { key: 'a' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No age', color: '#cbd5e1' }]);
             const revSlices = draft.reviews.map(function(r, i) { return { key: 'r' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
@@ -908,9 +1000,11 @@
                 { key: 'cvr', label: 'CVR', color: '#20c997' }, { key: 'rev', label: 'Reviews', color: '#7c3aed' },
                 { key: 'buss', label: 'B Disc', color: '#0d6efd' },
                 { key: 'zs', label: '0 Sold', color: '#f59e0b' },
+                { key: 'lmp', label: 'LMP', color: '#e11d48' },
             ];
             // SKU count per discount type (bars + legend count). $ off is shown next to it, not a percentage.
-            const allCounts = { age: skuHits.age, dil: skuHits.dil, cvr: skuHits.cvr, rev: skuHits.rev, buss: skuHits.buss, zs: skuHits.zs };
+            const allCounts = { age: skuHits.age, dil: skuHits.dil, cvr: skuHits.cvr, rev: skuHits.rev, buss: skuHits.buss, zs: skuHits.zs, lmp: skuHits.lmp };
+            const lmpSlices = (draft.lmp || []).map(function(r, i) { return { key: 'm' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const zsSlices = [
                 { key: 'zero', label: '0 sold', color: '#f59e0b' },
                 { key: 'sold', label: 'Sold', color: '#94a3b8' },
@@ -922,6 +1016,7 @@
             chStdLegend('#ch-sp-leg-zs', zsSlices, zsCounts, 'zs');
             chStdLegend('#ch-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
             chStdLegend('#ch-sp-leg-age', ageSlices, ageCounts, 'age');
+            chStdLegend('#ch-sp-leg-lmp', lmpSlices, lmpCounts, 'lmp');
             chStdLegend('#ch-sp-leg-all', allSlices, allCounts, 'all', dollars);
             chStdDrawBars([
                 { id: 'ch-sp-pie-dil', slices: dilSlices, counts: dilCounts },
@@ -930,9 +1025,10 @@
                 { id: 'ch-sp-pie-zs', slices: zsSlices, counts: zsCounts },
                 { id: 'ch-sp-pie-cvr', slices: cvrSlices, counts: cvrCounts },
                 { id: 'ch-sp-pie-age', slices: ageSlices, counts: ageCounts },
+                { id: 'ch-sp-pie-lmp', slices: lmpSlices, counts: lmpCounts },
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
-            const body = [['Age', skuHits.age], ['Dil', skuHits.dil], ['B Disc', skuHits.buss], ['0 Sold', skuHits.zs], ['CVR', skuHits.cvr], ['Reviews', skuHits.rev]].map(function(row) {
+            const body = [['Age', skuHits.age], ['Dil', skuHits.dil], ['B Disc', skuHits.buss], ['0 Sold', skuHits.zs], ['CVR', skuHits.cvr], ['Reviews', skuHits.rev], ['LMP', skuHits.lmp]].map(function(row) {
                 return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td></tr>';
             });
             body.push('<tr class="fw-semibold"><td>All</td><td class="text-center">' + skuHits.all + '</td></tr>');
@@ -992,6 +1088,7 @@
                 chStdAge = (res.age || CH_STD_AGE_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdRev = (res.reviews || CH_STD_REV_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdBuss = (res.buss || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
+                chStdLmp = (res.lmp || []).map(chStdNormRange).filter(Boolean);
                 chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(0, Number(res.zero_sold_disc))) : 0;
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
@@ -1057,7 +1154,7 @@
                 .fail(function() { draw([]); });
         }
         function chStdDraftNow() {
-            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc };
+            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive() };
         }
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
@@ -1185,7 +1282,7 @@
         window.analyticsBussDiscountPct = chStdBussDiscPct;
         function chStdRepaintDiscColumns() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
-            ['age_discount', 'dil_discount', 'buss_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
+            ['age_discount', 'dil_discount', 'lmp_discount', 'buss_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
                 let col = null;
                 try { col = table.getColumn(field); } catch (e) { col = null; }
                 if (!col || typeof col.getCells !== 'function') return;
@@ -1272,6 +1369,7 @@
                         return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
                     },
                 }),
+                chStdDiscCol('LMP Disc', 'lmp_discount', 'LMP Disc from the LMP rule in Std prc vs dil. Same Dil slab. Only SKUs that have an LMP. Added into Sum disc. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdLmpDiscRaw(d, chStdLmpRulesLive())); }),
                 Object.assign(chStdDiscCol('B Disc', 'buss_discount', 'B Disc from Std Prc ranges in Std prc vs dil. Full Disc % at every Std Prc, including under $15.', function(d) { return chStdBussDiscPct(d) || 0; }), {
                     visible: true,
                     minWidth: 64,
@@ -1301,7 +1399,7 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];
         }
         function chStdAppendDiscColumns(cols) {
@@ -1728,12 +1826,13 @@
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, lmp: draft.lmp, zero_sold_disc: draft.zeroSoldDisc },
             }).done(function(res) {
                 if (res && res.dil) chStdDil = res.dil.map(chStdNormRange).filter(Boolean);
                 if (res && res.age) chStdAge = res.age.map(chStdNormRange).filter(Boolean);
                 if (res && res.reviews) chStdRev = res.reviews.map(chStdNormRange).filter(Boolean);
                 if (res && res.buss) chStdBuss = res.buss.map(chStdNormRange).filter(Boolean);
+                if (res && res.lmp) chStdLmp = res.lmp.map(chStdNormRange).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(0, Number(res.zero_sold_disc)));
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
