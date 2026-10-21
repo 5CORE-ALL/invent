@@ -1158,16 +1158,13 @@
         return (pad * temuRowMargin(row)) - ship - lp;
     }
 
-    /** SPFT$ = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as /temu2-decrease. */
-    function temuSpftDollars(row, spriceOverride) {
-        const sprice = spriceOverride != null
-            ? (parseFloat(spriceOverride) || 0)
-            : temuDisplayedSprice(row);
-        const sR = temuSRPriceFromSprice(sprice);
-        if (!(sR > 0)) return null;
+    /** SPFT$ = (S Price After Discount × 0.95) − Temu Ship − LP. Same 0.95 as /temu2-decrease. */
+    function temuSpftDollars(row) {
+        const pad = (typeof ntoRowSPriceAfterDisc === 'function') ? ntoRowSPriceAfterDisc(row) : null;
+        if (pad == null || !(pad > 0)) return null;
         const lp = parseFloat(row && row.lp) || 0;
         const ship = parseFloat(row && row.temu_ship) || 0;
-        return (sR * 0.95) - ship - lp;
+        return (pad * 0.95) - ship - lp;
     }
 
     function temuGpftPercent(row) {
@@ -2303,7 +2300,7 @@
         }
         return '<span style="color:#dc3545;font-weight:700;" title="'
             + esc('Not eligible — this goods is not on Temu\'s candidate list for ' + act + '. A promotion would be rejected.')
-            + '"><i class="fas fa-times-circle"></i> Not eligible</span>';
+            + '"><i class="fas fa-times-circle"></i> NE</span>';
     }
     function loadNtoPromoEligibility(refresh) {
         return $.ajax({
@@ -3747,29 +3744,6 @@
                     }
                 },
                 {
-                    title: 'S Base Prc',
-                    field: 's_base_price',
-                    hozAlign: 'center',
-                    width: 96,
-                    sorter: 'number',
-                    headerTooltip: 'S Base Prc = S R Prc. When S R Prc is under $30, S Base Prc = S R Prc − $2.99. This is the PROMO price sent to Temu (S PRC = Promo Price). The full price on Temu is the Std Price (Push column).',
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sprice = typeof temuDisplayedSprice === 'function'
-                            ? temuDisplayedSprice(rowData)
-                            : (parseFloat(rowData.sprice) || 0);
-                        const sBase = ntoRowPromoBase(rowData);
-                        if (!(sBase > 0)) {
-                            return '<span style="color: #6c757d;">—</span>';
-                        }
-                        const sRForTip = temuSRPriceFromSprice(sprice);
-                        const tip = sRForTip < 30
-                            ? ('S Base Prc = S R Prc − $2.99 (S R Prc < $30) → $' + sRForTip.toFixed(2) + ' − $2.99 = $' + sBase.toFixed(2))
-                            : ('S Base Prc = S R Prc (S R Prc ≥ $30) → $' + sBase.toFixed(2));
-                        return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + sBase.toFixed(2) + '</span>';
-                    }
-                },
-                {
                     title: 'Push',
                     field: '_push',
                     hozAlign: 'center',
@@ -3810,33 +3784,16 @@
                     }
                 },
                 {
-                    title: 'S R Prc',
-                    field: 's_r_price',
-                    hozAlign: 'center',
-                    width: 70,
-                    sorter: 'number',
-                    headerTooltip: 'S R Prc = S PRC × 0.88. When S PRC is showing the LMP, the same rule applies to the LMP.',
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sprice = typeof temuDisplayedSprice === 'function'
-                            ? temuDisplayedSprice(rowData)
-                            : (parseFloat(rowData.sprice) || 0);
-                        const sBase = ntoRowSBase(rowData);
-                        const sRPrice = temuSRPriceFromSprice(sprice);
-                        if (!(sRPrice > 0)) {
-                            return '<span style="color: #6c757d;">—</span>';
-                        }
-                        const tip = 'S R Prc = S PRC × 0.88 → $' + Number(sprice).toFixed(2) + ' × 0.88 = $' + sRPrice.toFixed(2);
-                        return '<span style="font-weight: 600;" title="' + tip + '">$' + sRPrice.toFixed(2) + '</span>';
-                    }
-                },
-                {
                     title: 'SGROI%',
                     field: 'sgroi_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
-                    headerTooltip: 'SGROI% = SPFT ÷ LP. Live ROI at S PRC: (S R Prc × 0.95 − Temu Ship − LP) / LP. Dil + CVR set SNROI, not this column.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = temuSgroiPercent(aRow.getData() || {});
+                        const y = temuSgroiPercent(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'SGROI% = SPFT ÷ LP. SPFT = (S Price After Discount × 0.95) − Temu Ship − LP.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgroiPercent(row);
@@ -3852,16 +3809,21 @@
                     field: 'sgpft_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
-                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S R Prc × 0.95) − Temu Ship − LP. Same 0.95 as /temu2-decrease.',
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = temuSgpftPercent(aRow.getData() || {});
+                        const y = temuSgpftPercent(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S Price After Discount × 0.95) − Temu Ship − LP.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgpftPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
                         const spft = temuSpftDollars(row);
+                        const pad = ntoRowSPriceAfterDisc(row);
                         const tip = 'SPFT $' + spft.toFixed(2)
-                            + ' ÷ S PRC $' + temuDisplayedSprice(row).toFixed(2)
-                            + ' (0.95 take-home)';
+                            + ' = S Price After Discount $' + (pad == null ? '—' : pad.toFixed(2)) + ' × 0.95 − Temu Ship − LP'
+                            + ' ÷ S PRC $' + temuDisplayedSprice(row).toFixed(2);
                         return temuPercentCell(value, 'pft', tip);
                     }
                 },
@@ -3870,7 +3832,11 @@
                     field: 'snroi_percent',
                     hozAlign: 'center',
                     width: 70,
-                    sorter: 'number',
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = temuSnroiPercent(aRow.getData() || {});
+                        const y = temuSnroiPercent(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
                     headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. SGROI is the gross ROI on that same price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
@@ -3887,7 +3853,11 @@
                     field: 'snpft_percent',
                     hozAlign: 'center',
                     width: 65,
-                    sorter: 'number',
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = temuSnpftPercent(aRow.getData() || {});
+                        const y = temuSnpftPercent(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
                     headerTooltip: 'SNPFT% = SNPFT ÷ S PRC. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
