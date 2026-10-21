@@ -115,9 +115,9 @@
             <div class="card-body py-2 d-flex flex-column">
                 <div class="d-flex align-items-center flex-wrap gap-2" id="pls-filter-bar">
                     <select id="inventory-filter" class="form-select form-select-sm" style="width: auto;">
-                        <option value="all" selected>INV</option>
+                        <option value="all">INV</option>
                         <option value="zero">0 INV</option>
-                        <option value="more">INV &gt; 0</option>
+                        <option value="more" selected>INV &gt; 0</option>
                     </select>
 
                     <select id="gpft-filter" class="form-select form-select-sm" style="width: auto;">
@@ -1327,6 +1327,11 @@
             if (window.ParentExpand && ParentExpand.isExpanded()) return;
             allTableData = Array.isArray(data) ? data : [];
             if (window.ParentExpand) ParentExpand.captureDataset(allTableData);
+            // Same default as /amazon-tabulator-view: INV > 0 only (0-INV / dead SKUs hidden until INV is set to All).
+            if (!window._plsDefaultFilterApplied && allTableData.length) {
+                window._plsDefaultFilterApplied = true;
+                setTimeout(applyFilters, 0);
+            }
             setTimeout(updateSummary, 100);
         });
         table.on('dataFiltered', function () { setTimeout(updateSummary, 100); });
