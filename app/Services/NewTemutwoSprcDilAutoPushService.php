@@ -243,15 +243,24 @@ class NewTemutwoSprcDilAutoPushService
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];
         }
-        // S PRC = Promo Price. The Std price is the full (regular) Temu price; S PRC is pushed as the Temu promotion.
-        // Rule: Price = (Std × 0.88) − (Std × Disc %); Base = Price − $2.99 under $30. The pricer gives
-        // Std × (1 − Disc %), and the page derives S R Prc = S PRC × 0.88, so S PRC = Std − (Std × Disc %) ÷ 0.88.
+        // S PRC = Promo Price, and it must equal the page's "Promo Base Prc" column
+        // (Price After Discount − Ship Disc), so the column and the push always agree.
+        //   12% $               = Temu Price × 12%, where Temu Price = full price from the live base
+        //   Disc $              = Std × Sum disc % (the pricer gives Std × (1 − Sum disc %))
+        //   Price After Discount = Std − 12% $ − Disc $
+        //   Ship Disc           = $2.99 when Price After Discount ≤ $30, else $0
+        //   Promo Base Prc      = Price After Discount − Ship Disc
         $discounted = $pricer->priceFromRow($pricerRow);
         if ($discounted === null || ! ($discounted > 0)) {
             return null;
         }
-        $discAmt = max(0.0, $std - $discounted);
-        $effective = round($std - ($discAmt / TemuShopifySalesService::S_RECOVERY_RATE), 2);
+        $liveBase = (float) ($row['live_base'] ?? 0);
+        $temuPrice = $liveBase > 0 ? TemuShopifySalesService::computeFullTemuPrice($liveBase) : 0.0;
+        $twelvePct = round($temuPrice * 0.12, 2);
+        $discAmt = max(0.0, round($std - $discounted, 2));
+        $priceAfterDisc = round($std - $twelvePct - $discAmt, 2);
+        $shipDisc = $priceAfterDisc <= 30 ? 2.99 : 0.0;
+        $effective = round($priceAfterDisc - $shipDisc, 2);
         if (! ($effective > 0)) {
             return null;
         }
@@ -272,11 +281,10 @@ class NewTemutwoSprcDilAutoPushService
             return null;
         }
         $sprice = round($capped, 2);
-        // Temu takes a Base price. Same rule as the page: S R = price × 0.88, minus $2.99 under $30.
-        // `base` is what gets pushed as the regular (full) price = Std. `promo_base` is S PRC as the promotion price.
-        $base = TemuShopifySalesService::newTemuoneSBasePrice($std);
-        $promoBase = TemuShopifySalesService::newTemuoneSBasePrice($sprice);
-        if (! ($base > 0) || ! ($promoBase > 0)) {
+        // S PRC is already the Temu base (Promo Base Prc), so it is pushed as-is — no further 0.88 / −$2.99 step.
+        $base = $sprice;
+        $promoBase = $sprice;
+        if (! ($base > 0)) {
             return null;
         }
 

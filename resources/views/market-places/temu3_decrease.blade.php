@@ -1140,19 +1140,63 @@
     function temuAdsPercentForNet() {
         return 0;
     }
+    /** Disc % = PRMT % (this page's Sum-disc equivalent — Dil → PRMT slab, or the saved override). */
+    function temu3PromoPct(d) {
+        d = d || {};
+        if (typeof chPromoIsAeStyleSpriceChannel === 'function' && chPromoIsAeStyleSpriceChannel()
+            && typeof chPromoHasSaleQty === 'function' && !chPromoHasSaleQty(d)
+            && !(typeof chPromoKeepZeroSoldPrcSprice === 'function' && chPromoKeepZeroSoldPrcSprice(d))) {
+            return 0;
+        }
+        if (typeof chPromoUsesLiveDilPrmtSlabs === 'function' && chPromoUsesLiveDilPrmtSlabs()) {
+            const slab = typeof chPromoEbaySlabPrmt === 'function' ? chPromoEbaySlabPrmt(d) : null;
+            if (slab != null) return Number(slab) || 0;
+        }
+        return Number(d.prmt_pct != null && d.prmt_pct !== '' ? d.prmt_pct : d._prmt_pct_applied) || 0;
+    }
+    /** 12% $ = Price (Temu Price) × 12%. */
+    function temu3TwelvePct(d) {
+        const price = temu2FullPriceFromRow(d);
+        return price > 0 ? +(price * 0.12).toFixed(2) : 0;
+    }
+    /** Disc $ = Std Prc × Disc % (Disc % = PRMT %). */
+    function temu3DiscAmt(d) {
+        const std = parseFloat(d && d.STANDARD_PRICE) || 0;
+        const pct = temu3PromoPct(d);
+        if (!(std > 0) || !(pct > 0)) return 0;
+        return +(std * pct / 100).toFixed(2);
+    }
+    /** Price After Discount = Std Prc − 12% $ − Disc $. */
+    function temu3PriceAfterDisc(d) {
+        const std = parseFloat(d && d.STANDARD_PRICE) || 0;
+        if (!(std > 0)) return null;
+        return +(std - temu3TwelvePct(d) - temu3DiscAmt(d)).toFixed(2);
+    }
+    /** Ship Disc = $2.99 when Price After Discount is $30 or less, otherwise 0. */
+    function temu3ShipDisc(d) {
+        const p = temu3PriceAfterDisc(d);
+        if (p == null) return null;
+        return p <= 30 ? 2.99 : 0;
+    }
+    /** Promo Base Prc = Price After Discount − Ship Disc. */
+    function temu3PromoBasePrc(d) {
+        const p = temu3PriceAfterDisc(d);
+        if (p == null) return null;
+        return +(p - (temu3ShipDisc(d) || 0)).toFixed(2);
+    }
     function temu2PftDollars(rowData) {
-        const rPrice = temu2RPriceFromRow(rowData);
-        if (!(rPrice > 0)) return null;
+        const pad = temu3PriceAfterDisc(rowData);
+        if (pad == null || !(pad > 0)) return null;
         const lp = parseFloat(rowData && rowData.lp) || 0;
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
-        return (rPrice * 0.95) - ship - lp;
+        return (pad * 0.95) - ship - lp;
     }
     function temu2GpftDollar(rowData) {
-        const rPrice = temu2RPriceFromRow(rowData);
-        if (!(rPrice > 0)) return null;
+        const pad = temu3PriceAfterDisc(rowData);
+        if (pad == null || !(pad > 0)) return null;
         const lp = parseFloat(rowData && rowData.lp) || 0;
         const ship = parseFloat(rowData && rowData.temu_ship) || 0;
-        return rPrice * temuSpriceMargin(rowData) - lp - ship;
+        return pad * temuSpriceMargin(rowData) - lp - ship;
     }
     function temu2NpftDollars(rowData) {
         const pft = temu2PftDollars(rowData);
@@ -3890,23 +3934,94 @@
                     }
                 },
                 {
-                    title: "R Price",
-                    field: "temu_price",
+                    title: "12% $",
+                    field: "temu_price_12",
                     hozAlign: "center",
-                    minWidth: 86,
-                    sorter: temuSortBy(function(d) {
-                        const base = parseFloat(d.base_price) || 0;
-                        if (!(base > 0)) return 0;
-                        return base <= 26.99 ? base + 2.99 : base;
-                    }),
-                    headerTooltip: "From uploaded Temu 3 price sheet only (not API). Normal Temu price (base + $2.99 when base ≤ $26.99)",
+                    minWidth: 70,
+                    sorter: temuSortBy(function(d) { return temu3TwelvePct(d); }),
+                    headerTooltip: "12% $ = Price (Temu Price) × 12%",
                     formatter: function(cell) {
-                        const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
-                        if (basePrice === 0) {
-                            return '$0.00';
-                        }
-                        const temuRPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
-                        return `$${temuRPrice.toFixed(2)}`;
+                        const amt = temu3TwelvePct(cell.getRow().getData());
+                        if (!(amt > 0)) return '<span style="color: #6c757d;">—</span>';
+                        return `<span style="font-weight: 600;">$${amt.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "Disc $",
+                    field: "disc_amt",
+                    hozAlign: "center",
+                    minWidth: 70,
+                    sorter: temuSortBy(function(d) { return temu3DiscAmt(d); }),
+                    headerTooltip: "Disc $ = Std Prc × Disc % (Disc % = PRMT %).",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const amt = temu3DiscAmt(row);
+                        if (!(amt > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const std = parseFloat(row.STANDARD_PRICE) || 0;
+                        const tip = 'Disc $ = Std Prc × Disc % → $' + std.toFixed(2) + ' × ' + temu3PromoPct(row) + '% = $' + amt.toFixed(2);
+                        return `<span style="font-weight: 600;" title="${tip.replace(/"/g, '&quot;')}">$${amt.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "Price After Discount",
+                    field: "price_after_disc",
+                    hozAlign: "center",
+                    minWidth: 80,
+                    sorter: temuSortBy(function(d) { const n = temu3PriceAfterDisc(d); return n == null ? -Infinity : n; }),
+                    headerTooltip: "Price After Discount = Std Prc − 12% $ − Disc $.",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const p = temu3PriceAfterDisc(row);
+                        if (p == null) return '<span style="color: #6c757d;">—</span>';
+                        const std = parseFloat(row.STANDARD_PRICE) || 0;
+                        const tip = 'Std $' + std.toFixed(2) + ' − 12% $' + temu3TwelvePct(row).toFixed(2)
+                            + ' − Disc $' + temu3DiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
+                        return `<span style="font-weight: 600;" title="${tip}">$${p.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "Ship Disc",
+                    field: "ship_disc",
+                    hozAlign: "center",
+                    minWidth: 70,
+                    sorter: temuSortBy(function(d) { const n = temu3ShipDisc(d); return n == null ? -1 : n; }),
+                    headerTooltip: "Ship Disc = $2.99 when Price After Discount is $30 or less. Otherwise blank.",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const v = temu3ShipDisc(row);
+                        if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
+                        const p = temu3PriceAfterDisc(row);
+                        const tip = 'Price After Discount $' + p.toFixed(2) + ' ≤ $30 → Ship Disc $' + v.toFixed(2);
+                        return `<span style="font-weight: 600;" title="${tip}">$${v.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "Promo Base Prc",
+                    field: "promo_base_prc",
+                    hozAlign: "center",
+                    minWidth: 80,
+                    sorter: temuSortBy(function(d) { const n = temu3PromoBasePrc(d); return n == null ? -Infinity : n; }),
+                    headerTooltip: "Promo Base Prc = Price After Discount − Ship Disc.",
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const v = temu3PromoBasePrc(row);
+                        if (v == null) return '<span style="color: #6c757d;">—</span>';
+                        const tip = 'Price After Discount $' + temu3PriceAfterDisc(row).toFixed(2)
+                            + ' − Ship Disc $' + (temu3ShipDisc(row) || 0).toFixed(2) + ' = $' + v.toFixed(2);
+                        return `<span style="font-weight: 600;" title="${tip}">$${v.toFixed(2)}</span>`;
+                    }
+                },
+                {
+                    title: "Temu Ship",
+                    field: "temu_ship",
+                    hozAlign: "center",
+                    minWidth: 70,
+                    sorter: "number",
+                    headerTooltip: "Temu Ship from Product Master.",
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
+                        return `<span style="font-weight: 600;">$${v.toFixed(2)}</span>`;
                     }
                 },
                 {
@@ -3918,32 +4033,12 @@
                         const n = typeof temu2GpftDollar === 'function' ? temu2GpftDollar(d) : null;
                         return n == null ? 0 : n;
                     }),
-                    headerTooltip: "GPFT$ = R Price × margin − LP − Temu Ship",
+                    headerTooltip: "GPFT$ = Price After Discount × margin − LP − Temu Ship",
                     formatter: function(cell) {
                         const n = typeof temu2GpftDollar === 'function' ? temu2GpftDollar(cell.getRow().getData()) : null;
                         if (n == null) return '';
                         const color = n < 0 ? '#dc3545' : (n > 0 ? '#28a745' : '#6c757d');
                         return `<span style="color: ${color}; font-weight: 600;">$${n.toFixed(2)}</span>`;
-                    }
-                },
-                {
-                    title: "B Pric",
-                    field: "base_price",
-                    hozAlign: "center",
-                    minWidth: 92,
-                    sorter: "number",
-                    headerTooltip: "Uploaded Temu 3 price sheet only (temu3_pricing). No API.",
-                    formatter: function(cell) {
-                        const row = cell.getRow().getData();
-                        const sku = row.sku || '';
-                        const value = parseFloat(cell.getValue());
-                        const str = (value === null || value === undefined || isNaN(value)) ? '' : '$' + Number(value).toFixed(2);
-                        const dotBtn = sku ? `<button type="button" class="btn btn-sm p-0 view-sku-chart align-middle" data-sku="${sku}" data-metric="price" title="View Price chart" style="border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1; vertical-align: middle;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #adb5bd;"></span></button>` : '';
-                        return `${str} ${dotBtn}`.trim();
-                    },
-                    editorParams: {
-                        min: 0,
-                        step: 0.01
                     }
                 },
                 {
@@ -3968,7 +4063,7 @@
                         const lp = parseFloat(d.lp) || 0;
                         return (pft != null && lp > 0) ? (pft / lp) * 100 : (parseFloat(d.roi_percent) || 0);
                     }),
-                    headerTooltip: "GROI% = Gpft / LP. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
+                    headerTooltip: "GROI% = Gpft / LP. Gpft = (Price After Discount × 0.95) − Temu Ship − LP",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku || '';
@@ -3985,7 +4080,7 @@
                     field: "profit_percent",
                     hozAlign: "center",
                     minWidth: 80,
-                    headerTooltip: "GPRFT% = Gpft / Temu Price. Gpft = (Temu R Price × 0.95) − Temu Ship − LP",
+                    headerTooltip: "GPRFT% = Gpft / Temu Price. Gpft = (Price After Discount × 0.95) − Temu Ship − LP",
                     sorter: function(a, b, aRow, bRow) {
                         const calc = (row) => {
                             const gpft = typeof temu2PftDollars === 'function' ? temu2PftDollars(row) : null;
@@ -4305,8 +4400,7 @@
                         thousand: ",",
                         symbol: "$",
                         precision: 2
-                    },
-                    visible: false
+                    }
                 },
             ]
         });
@@ -4767,7 +4861,8 @@
                 '<td class="align-middle text-center"><span class="lmp-row-diff text-muted">—</span></td>' +
                 '<td class="align-middle"><input type="text" class="form-control form-control-sm lmp-link d-inline-block me-1" style="max-width:200px" placeholder="https://..."> <a href="#" class="btn btn-sm btn-outline-primary lmp-open-link" target="_blank" rel="noopener" title="Open link"><i class="fas fa-external-link-alt"></i></a></td>' +
                 '<td class="align-middle text-center"><input type="checkbox" class="form-check-input lmp-ignore-cb lmp-ignore-row" title="Ignore for L1"></td>' +
-                '<td class="align-middle"><button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
+                '<td class="align-middle text-nowrap"><button type="button" class="btn btn-sm btn-outline-warning lmp-edit-row me-1" title="Edit Price / Delivery / Link"><i class="fas fa-pencil-alt"></i></button>' +
+                '<button type="button" class="btn btn-sm btn-outline-danger lmp-remove-row" title="Remove"><i class="fas fa-trash-alt"></i></button></td></tr>');
             tr.find('.lmp-price').val(price !== '' && price != null ? price : '');
             tr.find('.lmp-delivery').val(delivery !== '' && delivery != null ? delivery : '');
             tr.find('.lmp-link').val(link || '');
@@ -4930,6 +5025,10 @@
                 minTr.find('.lmp-lowest-badge').html(' <span class="badge bg-info">LOWEST</span>');
             }
         }
+        $(document).off('click.templmp', '#lmpEntriesContainer .lmp-edit-row').on('click.templmp', '#lmpEntriesContainer .lmp-edit-row', function() {
+            // Price/Delivery/Link are always-live inputs — Edit just focuses Price so typing starts right away.
+            $(this).closest('tr').find('.lmp-price').trigger('focus').select();
+        });
         $(document).off('click.templmp', '#lmpEntriesContainer .lmp-remove-row').on('click.templmp', '#lmpEntriesContainer .lmp-remove-row', function(e) {
             e.preventDefault();
             e.stopPropagation();
