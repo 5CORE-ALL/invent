@@ -362,6 +362,15 @@ class ChannelPushSpriceRunner
                 }
             }
 
+            if ($this->channel === 'alibaba' && $sku !== '') {
+                // The page shows this on the red X of Push Prc.
+                if ($ok) {
+                    \App\Support\AlibabaPushError::forget($sku);
+                } else {
+                    \App\Support\AlibabaPushError::remember($sku, (string) ($error ?: 'Push failed'));
+                }
+            }
+
             $store->update(function (array $state) use ($index, $sku, $ok, $error, $live, $alreadyLive, $negSnroi, $dupSkip) {
                 if (! isset($state['tasks'][$index]) || ! is_array($state['tasks'][$index])) {
                     return $state;

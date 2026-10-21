@@ -411,6 +411,7 @@
                         if (d.push_status !== 'pushed') patch.push_status = 'pushed';
                         if (d.PUSH_PRC_STATUS !== 'pushed') patch.PUSH_PRC_STATUS = 'pushed';
                         if (d.push_prc !== 'pushed') patch.push_prc = 'pushed';
+                        if (d.PUSH_PRC_ERROR) patch.PUSH_PRC_ERROR = '';
                         if (pushedMark > 0 && !chPushSpriceNearlyEqual(d.SPRICE_PUSHED_VALUE, pushedMark)) {
                             patch.SPRICE_PUSHED_VALUE = pushedMark;
                         }
@@ -448,6 +449,9 @@
                         if (d.PUSH_PRC_STATUS !== 'error') patch.PUSH_PRC_STATUS = 'error';
                         if (d.push_prc !== 'error') patch.push_prc = 'error';
                         if (d._price_pulling) patch._price_pulling = false;
+                        // Why it was not pushed: shown on the red X of Push Prc.
+                        const failMsg = String(t.error || t.message || 'Push failed');
+                        if (d.PUSH_PRC_ERROR !== failMsg) patch.PUSH_PRC_ERROR = failMsg;
                         const err = String(t.error || t.message || '').toLowerCase();
                         if (err.indexOf('291') !== -1 || err.indexOf('ended listing') !== -1) {
                             if (d.listing_status !== 'ENDED') patch.listing_status = 'ENDED';
@@ -1066,6 +1070,7 @@
                     patch.push_status = 'error';
                     patch.PUSH_PRC_STATUS = 'error';
                     patch.push_prc = 'error';
+                    patch.PUSH_PRC_ERROR = String(errMsg || 'Push failed');
                     const err = String(errMsg || '').toLowerCase();
                     if (err.indexOf('291') !== -1 || err.indexOf('ended listing') !== -1) {
                         patch.listing_status = 'ENDED';

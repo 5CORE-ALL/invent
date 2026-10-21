@@ -479,12 +479,14 @@ class AlibabaSprcDilAutoPushService
         if (! empty($result['success'])) {
             $stats['pushed']++;
             $this->savePushMeta($sku, 'pushed', $price);
+            \App\Support\AlibabaPushError::forget($sku);
 
             return;
         }
 
         $stats['push_failed']++;
         $err = (string) ($result['message'] ?? 'Alibaba price push failed');
+        \App\Support\AlibabaPushError::remember($sku, $err);
         $stats['errors'][] = $sku.': '.$err;
         $this->log($logger, 'Push failed '.$sku.': '.$err);
         Log::error('Alibaba Sprc Dil push failed', ['sku' => $sku, 'price' => $price, 'error' => $err]);

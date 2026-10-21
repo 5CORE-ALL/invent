@@ -10924,7 +10924,10 @@
                     } else if (status === 'error' && !(CHANNEL_PROMO_CHANNEL === 'alibaba' && alreadyLive)) {
                         icon = '<i class="fa-solid fa-xmark"></i>';
                         color = '#dc3545';
-                        tip = 'Last S PRC push failed — click to retry';
+                        const failWhy = String(d.PUSH_PRC_ERROR || '').trim();
+                        tip = failWhy
+                            ? ('Not pushed: ' + failWhy + (d.PUSH_PRC_ERROR_AT ? ' (' + d.PUSH_PRC_ERROR_AT + ')' : '') + ' — click to retry')
+                            : 'Last S PRC push failed (reason not recorded) — click to retry';
                     } else if (status === 'pushed' || (CHANNEL_PROMO_CHANNEL === 'alibaba' && alreadyLive)) {
                         icon = '<i class="fa-solid fa-check-double"></i>';
                         color = '#28a745';

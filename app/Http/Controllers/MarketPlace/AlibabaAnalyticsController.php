@@ -239,6 +239,25 @@ class AlibabaAnalyticsController extends Controller
             ];
         }
 
+        // Why the last push failed, for the red X on Push Prc.
+        $failedSkus = [];
+        foreach ($children as $child) {
+            if (strtolower((string) ($child['SPRICE_STATUS'] ?? '')) === 'error') {
+                $failedSkus[] = (string) $child['sku'];
+            }
+        }
+        if ($failedSkus !== []) {
+            $pushErrors = \App\Support\AlibabaPushError::many($failedSkus);
+            foreach ($children as &$child) {
+                $hit = $pushErrors[strtoupper(trim((string) $child['sku']))] ?? null;
+                if ($hit !== null) {
+                    $child['PUSH_PRC_ERROR'] = $hit['message'];
+                    $child['PUSH_PRC_ERROR_AT'] = $hit['at'];
+                }
+            }
+            unset($child);
+        }
+
         usort($children, function (array $a, array $b): int {
             $p = strcasecmp((string) $a['Parent'], (string) $b['Parent']);
             if ($p !== 0) {
