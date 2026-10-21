@@ -1156,7 +1156,7 @@
         return (pad * temuRowMargin(row)) - ship - lp;
     }
 
-    /** SPFT$ = (S Price After Discount × 0.95) − Temu Ship − LP. Same 0.95 as /temu2-decrease. */
+    /** SPFT$ = (S Promo Prc × 0.95) − Temu Ship − LP. S Promo Prc is the overwritten price when LMP Alert Prc is set. */
     function temuSpftDollars(row) {
         const pad = (typeof ntoRowSPriceAfterDisc === 'function') ? ntoRowSPriceAfterDisc(row) : null;
         if (pad == null || !(pad > 0)) return null;
@@ -2202,21 +2202,29 @@
         if (!(s > 0) || !(pm > 0)) return 0;
         return +(s * pm / 100).toFixed(2);
     }
-    /** S Promo Prc = Std Prc − S 12% $ − S Disc $. */
-    function ntoRowSPriceAfterDisc(d) {
+    /** S Promo Prc before the LMP alert overwrite: Std Prc − S 12% $ − S Disc $. */
+    function ntoRowSPromoPrcBase(d) {
         const s = ntoRowSpriceStart(d);
         if (s == null) return null;
         return +(s - ntoRowSTwelvePct(d) - ntoRowSDiscAmt(d)).toFixed(2);
     }
     /**
-     * LMP Alert Prc = LMP × 0.87 when the LMP column is lower than S Promo Prc.
+     * LMP Alert Prc = LMP × 0.87 when the LMP column is lower than the base S Promo Prc.
      * Otherwise blank.
      */
     function ntoRowLmpAlertPrc(d) {
-        const promo = ntoRowSPriceAfterDisc(d);
+        const promo = ntoRowSPromoPrcBase(d);
         const lmp = typeof temuLmpRefPrice === 'function' ? temuLmpRefPrice(d) : 0;
         if (promo == null || !(lmp > 0) || !(lmp < promo)) return null;
         return +(lmp * 0.87).toFixed(2);
+    }
+    /** Shown S Promo Prc. An LMP alert overwrites it with LMP Alert Prc × 0.98. */
+    function ntoRowSPriceAfterDisc(d) {
+        const base = ntoRowSPromoPrcBase(d);
+        if (base == null) return null;
+        const alert = ntoRowLmpAlertPrc(d);
+        if (alert == null) return base;
+        return +(alert * 0.98).toFixed(2);
     }
     /** S Ship Disc = $2.99 when S Price After Discount is $30 or less, otherwise 0. */
     function ntoRowSShipDisc(d) {
@@ -3756,14 +3764,20 @@
                         const y = ntoRowSPriceAfterDisc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'S Promo Prc = Std Prc − S 12% $ − S Disc $.',
+                    headerTooltip: 'S Promo Prc = Std Prc − S 12% $ − S Disc $. When LMP Alert Prc is showing, this cell is LMP Alert Prc × 0.98. SPFT, SGROI%, SGPFT%, SNROI%, and SNPFT% use this price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const p = ntoRowSPriceAfterDisc(row);
                         if (p == null) return '<span style="color: #6c757d;">—</span>';
-                        const s = ntoRowSpriceStart(row) || 0;
-                        const tip = 'Std Prc $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
-                            + ' − S Disc $' + ntoRowSDiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
+                        const alert = ntoRowLmpAlertPrc(row);
+                        let tip;
+                        if (alert != null) {
+                            tip = 'LMP Alert Prc $' + alert.toFixed(2) + ' × 0.98 = $' + p.toFixed(2);
+                        } else {
+                            const s = ntoRowSpriceStart(row) || 0;
+                            tip = 'Std Prc $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
+                                + ' − S Disc $' + ntoRowSDiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
+                        }
                         return '<span style="font-weight: 600;" title="' + tip + '">$' + p.toFixed(2) + '</span>';
                     }
                 },
@@ -3783,7 +3797,7 @@
                         const alert = ntoRowLmpAlertPrc(row);
                         if (alert == null) return '<span style="color: #6c757d;">—</span>';
                         const lmp = temuLmpRefPrice(row);
-                        const promo = ntoRowSPriceAfterDisc(row) || 0;
+                        const promo = ntoRowSPromoPrcBase(row) || 0;
                         const tip = 'LMP $' + lmp.toFixed(2) + ' is below S Promo Prc $' + promo.toFixed(2)
                             + ' → $' + lmp.toFixed(2) + ' × 0.87 = $' + alert.toFixed(2);
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;font-weight:600;" title="' + tip + '">$'
