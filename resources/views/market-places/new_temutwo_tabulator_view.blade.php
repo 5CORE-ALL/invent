@@ -3379,6 +3379,55 @@
                     }
                 },
                 {
+                    title: 'LP',
+                    field: 'lp',
+                    hozAlign: 'center',
+                    width: 60,
+                    sorter: 'number',
+                    headerTooltip: 'LP from Product Master.',
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
+                        return '<span style="font-weight: 600;">$' + v.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'Temu Ship',
+                    field: 'temu_ship',
+                    hozAlign: 'center',
+                    width: 70,
+                    sorter: 'number',
+                    headerTooltip: 'Temu Ship from Product Master.',
+                    formatter: function(cell) {
+                        const v = parseFloat(cell.getValue());
+                        if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
+                        return '<span style="font-weight: 600;">$' + v.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'Pft $',
+                    field: 'pft_dollars',
+                    hozAlign: 'center',
+                    width: 66,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = temuGpftDollars(aRow.getData() || {});
+                        const y = temuGpftDollars(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'Pft $ = Gpft $ = (Price After Discount × Temu margin) − Temu Ship − LP. Same Gpft the GROI% / GPFT% columns use.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const v = temuGpftDollars(row);
+                        if (v == null) return '<span style="color: #6c757d;">—</span>';
+                        const pad = ntoRowPriceAfterDisc(row);
+                        const tip = '($' + pad.toFixed(2) + ' × ' + Math.round(temuRowMargin(row) * 100) + '%) − Ship $'
+                            + (parseFloat(row.temu_ship) || 0).toFixed(2) + ' − LP $' + (parseFloat(row.lp) || 0).toFixed(2)
+                            + ' = $' + v.toFixed(2);
+                        const color = v < 0 ? '#dc3545' : '#198754';
+                        return '<span style="font-weight: 600; color: ' + color + ';" title="' + tip + '">$' + v.toFixed(2) + '</span>';
+                    }
+                },
+                {
                     title: 'PM',
                     field: 'pm_discount',
                     hozAlign: 'center',
