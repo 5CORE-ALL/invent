@@ -264,7 +264,7 @@
                             <div class="ch-sp-col-head"><div class="ch-sp-pie-title">All discounts</div><button type="button" class="ch-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-all"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-all"></div>
-                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Discount</th><th class="text-center">Count</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Disc %</th><th class="text-center">Count</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
                         </div>
                     </div>
                 </div>
@@ -901,6 +901,7 @@
             const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0 };
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0 };
             const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0, all: 0 };
+            const sumPctCounts = {};
             const zsCounts = { zero: 0, sold: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const pgB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
@@ -965,7 +966,11 @@
                 if (lmpDisc > 0) { skuHits.lmp++; dollars.lmp += std * lmpDisc / 100; pctTotals.lmp += lmpDisc; }
                 if (moqMDisc > 0) { skuHits.moqm++; dollars.moqm += std * moqMDisc / 100; pctTotals.moqm += moqMDisc; }
                 const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc + moqMDisc);
-                if (sum > 0) skuHits.all++;
+                if (sum > 0) {
+                    skuHits.all++;
+                    const sumKey = String(Math.round(sum * 10) / 10);
+                    sumPctCounts[sumKey] = (sumPctCounts[sumKey] || 0) + 1;
+                }
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
@@ -1094,9 +1099,11 @@
                 { id: 'ch-sp-pie-moqm', slices: moqMSlices, counts: moqMCounts },
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
-            const body = [['Age', skuHits.age], ['Dil', skuHits.dil], ['B Disc', skuHits.buss], ['0 Sold', skuHits.zs], ['CVR', skuHits.cvr], ['Reviews', skuHits.rev], ['LMP', skuHits.lmp], ['MOQ M', skuHits.moqm]].map(function(row) {
-                return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td></tr>';
+            // Disc % wise: total (Sum disc) % per SKU -> number of SKUs at that %.
+            const body = Object.keys(sumPctCounts).sort(function(a, b) { return Number(a) - Number(b); }).map(function(k) {
+                return '<tr><td>' + k + '%</td><td class="text-center">' + sumPctCounts[k] + '</td></tr>';
             });
+            if (!body.length) body.push('<tr><td colspan="2" class="text-center text-muted">No discounts</td></tr>');
             body.push('<tr class="fw-semibold"><td>All</td><td class="text-center">' + skuHits.all + '</td></tr>');
             $('#ch-sp-all-tbody').html(body.join(''));
             function marginBadge(label, value, cls) {
