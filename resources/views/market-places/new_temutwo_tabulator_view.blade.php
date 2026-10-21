@@ -1875,13 +1875,18 @@
         const sprice = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : 0;
         return typeof temuSBaseFromSprice === 'function' ? temuSBaseFromSprice(sprice) : 0;
     }
-    /** Full (regular) price base = Std Price as a Temu base. This is what the Push column pushes as the Temu base price. */
+    /** Full (regular) price base = Std Price as a Temu base. Used by the promotion check, not the Push column. */
     function ntoRowSBase(d) {
         if (!d || d.is_parent_summary) return 0;
         const sku = ntoRowSku(d);
         if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return 0;
         const std = temuParseMoney(d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price);
         return (std > 0 && typeof temuSBaseFromSprice === 'function') ? temuSBaseFromSprice(std) : 0;
+    }
+    /** Price the Push column sends: the S Promo Base Prc cell. */
+    function ntoRowPushPrice(d) {
+        const n = typeof ntoRowSPromoBasePrc === 'function' ? ntoRowSPromoBasePrc(d) : null;
+        return (n != null && n > 0) ? n : 0;
     }
     function ntoMoneyEq(a, b) {
         return Math.round((Number(a) || 0) * 100) === Math.round((Number(b) || 0) * 100);
@@ -1891,35 +1896,35 @@
         const queued = String(d.nto_push_status || '');
         if (queued === 'pushing') return 'pushing';
         if (queued === 'error') return 'error';
-        const sBase = ntoRowSBase(d);
+        const sBase = ntoRowPushPrice(d);
         const pushed = parseFloat(d.nto_pushed_base);
         if (sBase > 0 && pushed > 0 && ntoMoneyEq(sBase, pushed)) return 'pushed';
         return '';
     }
     function ntoPushCellHtml(d) {
-        const sBase = ntoRowSBase(d);
+        const sBase = ntoRowPushPrice(d);
         if (!(sBase > 0)) return '';
         const sku = ntoRowSku(d);
         const esc = String(sku).replace(/"/g, '&quot;');
         const state = ntoRowPushState(d);
         if (state === 'pushing') {
-            return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing full price (Std) base $'
+            return '<i class="fas fa-spinner fa-spin" style="color:#ffc107;" title="Pushing S Promo Base Prc $'
                 + sBase.toFixed(2) + '…"></i>';
         }
         if (state === 'pushed') {
             const when = d.nto_pushed_at ? String(d.nto_pushed_at) : '';
-            const tip = 'Pushed full price (Std) base $' + sBase.toFixed(2)
+            const tip = 'Pushed S Promo Base Prc $' + sBase.toFixed(2)
                 + (when ? ' at ' + when : '');
             return '<i class="fa-solid fa-check-double nto-push-ok" title="'
                 + tip.replace(/"/g, '&quot;') + '"></i>';
         }
         if (state === 'error') {
             return '<button type="button" class="nto-push-single-btn" data-sku="' + esc
-                + '" data-price="' + sBase + '" title="Push failed — click to retry">'
+                + '" data-price="' + sBase + '" title="Push failed — click to retry S Promo Base Prc $' + sBase.toFixed(2) + '">'
                 + '<i class="fas fa-times nto-push-fail"></i></button>';
         }
         return '<button type="button" class="nto-push-single-btn" data-sku="' + esc
-            + '" data-price="' + sBase + '" title="Push full price (Std) base $' + sBase.toFixed(2)
+            + '" data-price="' + sBase + '" title="Push S Promo Base Prc $' + sBase.toFixed(2)
             + ' — or all checked SKUs"><i class="fas fa-upload"></i></button>';
     }
     function ntoPatchPushRows(skus, patch) {
@@ -1970,7 +1975,7 @@
             const sku = ntoRowSku(d);
             const key = sku.toUpperCase();
             if (!sku || seen[key] || key.indexOf('PARENT') === 0) return;
-            const base = ntoRowSBase(d);
+            const base = ntoRowPushPrice(d);
             if (!(base > 0)) return;
             seen[key] = true;
             items.push({ sku: sku, price: base });
@@ -2076,7 +2081,7 @@
         opts = opts || {};
         if (!NTO_PUSH_SPRICE_LIVE) {
             if (!opts.silent) {
-                showToast('Live S Base Prc push is disabled on this environment', 'error');
+                showToast('Live S Promo Base Prc push is disabled on this environment', 'error');
             }
             return;
         }
@@ -2528,7 +2533,7 @@
             if (selected.length) {
                 ntoPatchPushRows(selected.map(function(i) { return i.sku; }), { nto_push_status: 'pushing' });
                 queueNtoPushSpriceItems(selected);
-                showToast('Queued S Base Prc for ' + selected.length + ' selected SKU(s)', 'success');
+                showToast('Queued S Promo Base Prc for ' + selected.length + ' selected SKU(s)', 'success');
                 return;
             }
             const sku = String($btn.attr('data-sku') || '').trim();
@@ -2544,9 +2549,9 @@
                     return false;
                 });
             }
-            const base = rowData ? ntoRowSBase(rowData) : (parseFloat($btn.attr('data-price')) || 0);
+            const base = rowData ? ntoRowPushPrice(rowData) : (parseFloat($btn.attr('data-price')) || 0);
             if (!(base > 0)) {
-                showToast('No S Base Prc to push for ' + sku, 'error');
+                showToast('No S Promo Base Prc to push for ' + sku, 'error');
                 return;
             }
             ntoPatchPushRows([sku], { nto_push_status: 'pushing' });
@@ -3858,11 +3863,11 @@
                             if (st === 'pushed') return 4;
                             if (st === 'pushing') return 3;
                             if (st === 'error') return 2;
-                            return ntoRowSBase(d) > 0 ? 1 : 0;
+                            return ntoRowPushPrice(d) > 0 ? 1 : 0;
                         };
                         return rank(aRow.getData()) - rank(bRow.getData());
                     },
-                    headerTooltip: 'Push the FULL price to Temu = Std Price as a base (Std × 0.88, − $2.99 under $30). The promo price (S PRC / S Base Prc) is sent by the Promotion push (PM column). Double tick = already pushed. Checked rows push together.',
+                    headerTooltip: 'Push S Promo Base Prc to Temu. Double tick = that price is already pushed. Checked rows push together.',
                     formatter: function(cell) {
                         return ntoPushCellHtml(cell.getRow().getData());
                     }
