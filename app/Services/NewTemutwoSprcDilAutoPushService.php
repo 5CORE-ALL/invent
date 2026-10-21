@@ -241,6 +241,9 @@ class NewTemutwoSprcDilAutoPushService
             'ads' => $adsPct > 0 ? $adsPct / 100 : 0.0,
             // LMP Disc applies only when this SKU has an LMP. Prefer the landed price the page shows.
             'lmp' => (float) (($row['lmp_raw'] ?? 0) > 0 ? $row['lmp_raw'] : ($row['lmp'] ?? 0)),
+            // MOQ M uses Dil MOQ % = OV L30 ÷ (MOQ ÷ 4), same as the page.
+            'moq' => $row['moq'] ?? null,
+            'ov_l30' => (float) ($row['L30'] ?? $row['ov_l30'] ?? 0),
         ];
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];

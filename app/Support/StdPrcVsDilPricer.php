@@ -54,6 +54,7 @@ class StdPrcVsDilPricer
             'review_max' => is_numeric($saved['review_max'] ?? null) ? max(1, (int) $saved['review_max']) : $defaults['review_max'],
             'buss' => self::ranges($saved['buss'] ?? null, $defaults['buss']),
             'lmp' => self::ranges($saved['lmp'] ?? null, $defaults['lmp']),
+            'moq_m' => self::ranges($saved['moq_m'] ?? null, $defaults['moq_m']),
             'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
         ];
 
@@ -99,7 +100,14 @@ class StdPrcVsDilPricer
         $lmpDisc = $lmp > 0
             ? self::scaleRuleDisc($this->rangeDisc($dil, $this->rules['lmp'] ?? []), $std)
             : 0.0;
-        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $lmpDisc));
+        $moq = is_numeric($row['moq'] ?? null) ? (float) $row['moq'] : 0.0;
+        $ovL30 = (float) ($row['ov_l30'] ?? $row['L30'] ?? 0);
+        $moqMDisc = 0.0;
+        if ($moq > 0) {
+            $dilMoq = (float) round(($ovL30 / ($moq / 4)) * 100);
+            $moqMDisc = self::scaleRuleDisc($this->rangeDisc($dilMoq, $this->rules['moq_m'] ?? []), $std);
+        }
+        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $lmpDisc + $moqMDisc));
         $price = round($std * (1 - $sum / 100), 2);
         if (! ($price > 0)) {
             return null;
@@ -465,6 +473,14 @@ class StdPrcVsDilPricer
                 ['min' => 25, 'max' => 50, 'disc' => 0],
                 ['min' => 50, 'max' => 100, 'disc' => 0],
                 ['min' => 100, 'max' => 9999, 'disc' => 0],
+            ],
+            'moq_m' => [
+                ['min' => 0, 'max' => 0, 'disc' => 0],
+                ['min' => 0.1, 'max' => 25, 'disc' => 0],
+                ['min' => 25, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 100, 'disc' => 0],
+                ['min' => 100, 'max' => 200, 'disc' => 0],
+                ['min' => 200, 'max' => 9999, 'disc' => 0],
             ],
             'zero_sold_disc' => 0,
         ];

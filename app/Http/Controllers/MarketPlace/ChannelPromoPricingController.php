@@ -1379,6 +1379,7 @@ class ChannelPromoPricingController extends Controller
                 'review_max' => $defaults['review_max'],
                 'buss' => $defaults['buss'],
                 'lmp' => $defaults['lmp'],
+                'moq_m' => $defaults['moq_m'],
                 'roi' => $defaults['roi'],
                 'zero_sold_disc' => $defaults['zero_sold_disc'],
             ]);
@@ -1394,6 +1395,7 @@ class ChannelPromoPricingController extends Controller
             'review_max' => $this->normalizeStdPrcReviewMax($saved['review_max'] ?? null),
             'buss' => $this->normalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
             'lmp' => $this->normalizeStdPrcRanges($saved['lmp'] ?? null, $defaults['lmp']),
+            'moq_m' => $this->normalizeStdPrcRanges($saved['moq_m'] ?? null, $defaults['moq_m']),
             'roi' => $this->normalizeStdPrcRanges($saved['roi'] ?? null, $defaults['roi']),
             'zero_sold_disc' => $this->normalizeZeroSoldDisc($saved['zero_sold_disc'] ?? null),
         ]);
@@ -1414,12 +1416,13 @@ class ChannelPromoPricingController extends Controller
             'review_max' => $this->normalizeStdPrcReviewMax($request->input('review_max')),
             'buss' => $this->normalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
             'lmp' => $this->normalizeStdPrcRanges($request->input('lmp'), $defaults['lmp']),
+            'moq_m' => $this->normalizeStdPrcRanges($request->input('moq_m'), $defaults['moq_m']),
             'roi' => $this->normalizeStdPrcRanges($request->input('roi'), $defaults['roi']),
             'zero_sold_disc' => $this->normalizeZeroSoldDisc($request->input('zero_sold_disc')),
         ];
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'lmp', 'roi', 'zero_sold']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'lmp', 'moq_m', 'roi', 'zero_sold']]
         );
 
         return response()->json(array_merge(['success' => true], $payload));
@@ -1545,6 +1548,14 @@ class ChannelPromoPricingController extends Controller
                 ['min' => 25, 'max' => 50, 'disc' => 0],
                 ['min' => 50, 'max' => 100, 'disc' => 0],
                 ['min' => 100, 'max' => 9999, 'disc' => 0],
+            ],
+            'moq_m' => [
+                ['min' => 0, 'max' => 0, 'disc' => 0],
+                ['min' => 0.1, 'max' => 25, 'disc' => 0],
+                ['min' => 25, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 100, 'disc' => 0],
+                ['min' => 100, 'max' => 200, 'disc' => 0],
+                ['min' => 200, 'max' => 9999, 'disc' => 0],
             ],
             'roi' => [
                 ['min' => -9999, 'max' => 0, 'disc' => 0],

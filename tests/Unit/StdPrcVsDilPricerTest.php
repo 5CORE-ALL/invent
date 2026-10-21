@@ -321,4 +321,24 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(90.0, $pricer->priceFromRow($row + ['lmp' => 17.07]));
         $this->assertSame(100.0, $pricer->priceFromRow($row));
     }
+
+    public function test_moq_m_disc_uses_dil_moq_percent(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 0, 'down_lt' => 7, 'down_disc' => 0,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'moq_m' => [['min' => 200, 'max' => 9999, 'disc' => 10]],
+        ]);
+        $row = ['inv' => 1, 'std_price' => 100, 'dil' => 0, 'cvr' => 8, 'cvr_60' => 8, 'sold' => 1];
+
+        // MOQ 12 → Req M 3. OV L30 7 → Dil MOQ 233%, inside 200–9999.
+        $this->assertSame(90.0, $pricer->priceFromRow($row + ['moq' => 12, 'ov_l30' => 7]));
+        $this->assertSame(100.0, $pricer->priceFromRow($row + ['ov_l30' => 7]));
+    }
 }

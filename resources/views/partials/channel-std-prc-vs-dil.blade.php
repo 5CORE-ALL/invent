@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews − LMP.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, and LMP discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -253,6 +253,13 @@
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-lmp"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">LMP</th><th class="text-end">Disc %</th></tr></thead><tbody id="ch-sp-lmp-tbody"></tbody></table></div>
                         </div>
+                        <div class="ch-sp-col" data-ch-sp-panel="moqm">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Dynamic slabs of Dil MOQ % (OV L30 ÷ Req M). Count is SKUs in that slab. Disc % is added to Sum disc.">MOQ M</div><button type="button" class="ch-sp-min-btn" title="Minimize MOQ M" aria-label="Minimize MOQ M">−</button></div>
+                            <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-moqm"></canvas></div>
+                            <div class="ch-sp-pie-legend" id="ch-sp-leg-moqm"></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">MOQ</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-moqm-tbody"></tbody></table></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-moqm-add">Add slab</button>
+                        </div>
                         <div class="ch-sp-col" data-ch-sp-panel="all">
                             <div class="ch-sp-col-head"><div class="ch-sp-pie-title">All discounts</div><button type="button" class="ch-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-all"></canvas></div>
@@ -286,6 +293,10 @@
         const CH_STD_CVR_DEFAULT = { down2_lt: 4, down2_disc: 0, down_lt: 7, down_disc: 0, up_gt: 10, up_disc: 0, up2_gt: 15, up2_disc: 0, flat_disc: 0 };
         const CH_STD_REV_DEFAULTS = [{ min: 1, max: 2, disc: 4 }, { min: 2, max: 3, disc: 4 }];
         const CH_STD_BUSS_DEFAULTS = [{ min: 0, max: 15, disc: 0 }, { min: 15, max: 50, disc: 0 }, { min: 50, max: 9999, disc: 0 }];
+        const CH_STD_MOQM_DEFAULTS = [
+            { min: 0, max: 0, disc: 0 }, { min: 0.1, max: 25, disc: 0 }, { min: 25, max: 50, disc: 0 },
+            { min: 50, max: 100, disc: 0 }, { min: 100, max: 200, disc: 0 }, { min: 200, max: 9999, disc: 0 },
+        ];
         let chStdZeroSoldDisc = 0;
         const CH_STD_CLEARANCE_URL = @json(route('inv.days.clearance.yes'));
         let chStdClearanceSet = null;
@@ -296,6 +307,7 @@
         let chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdBuss = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdLmp = [];
+        let chStdMoqM = CH_STD_MOQM_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdCvr = Object.assign({}, CH_STD_CVR_DEFAULT);
         let chStdReviewMax = 4;
         const chStdCharts = {};
@@ -655,8 +667,38 @@
             if (!chStdRowHasLmp(d) || !(chStdStockForAge(d) > 0)) return 0;
             return chStdRangeDisc(chStdDilPct(d), rules || chStdLmp);
         }
+        /** Dil MOQ % = OV L30 ÷ (MOQ ÷ 4). Same number as the Dil MOQ column. */
+        function chStdRowDilMoqPct(d) {
+            const moq = Number(d && d.moq);
+            if (!isFinite(moq) || !(moq > 0)) return null;
+            const ovRaw = d && d.L30 != null && d.L30 !== '' ? d.L30 : (typeof chStdOvL30 === 'function' ? chStdOvL30(d) : 0);
+            const ov = Number(ovRaw);
+            return Math.round(((isFinite(ov) ? ov : 0) / (moq / 4)) * 100);
+        }
+        function chStdMoqMRulesLive() {
+            const modal = document.getElementById('chStdPrcModal');
+            if (modal && modal.classList.contains('show')) {
+                const live = chStdReadRanges('#ch-sp-moqm-tbody', '.ch-sp-moqm-min', '.ch-sp-moqm-max', '.ch-sp-moqm-disc');
+                if (live.length) return live;
+            }
+            return chStdMoqM;
+        }
+        function chStdMoqMDiscRaw(d, rules) {
+            if (!(chStdStockForAge(d) > 0)) return 0;
+            const pct = chStdRowDilMoqPct(d);
+            if (pct == null) return 0;
+            return chStdRangeDisc(pct, rules || chStdMoqM);
+        }
+        function chStdMoqMRow(rule) {
+            return '<tr><td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-moqm-min" value="' + rule.min + '"></td>'
+                + '<td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-moqm-max" value="' + rule.max + '"></td>'
+                + '<td class="text-center ch-sp-moqm-band">' + chStdEsc(rule.min) + '–' + chStdEsc(rule.max) + '</td>'
+                + '<td class="ch-sp-count ch-sp-moqm-count">0</td>'
+                + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-moqm-disc" value="' + rule.disc + '"></td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ch-sp-moqm-del" title="Remove">&times;</button></td></tr>';
+        }
         function chStdSumDisc(d, draft) {
-            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive() };
+            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
             // Amazon INV = 0 still allows the page 0 Sold discount (AB L30 = 0, page INV > 0).
             if (!(chStdStockForAge(d) > 0)) {
                 if (!chStdRowIsZeroSold(d)) return 0;
@@ -683,7 +725,8 @@
             const zsRaw = chStdRowIsZeroSold(d) ? (Number(draft.zeroSoldDisc != null ? draft.zeroSoldDisc : chStdZeroSoldDisc) || 0) : 0;
             const zsDisc = chStdScaleDisc(std, zsRaw);
             const lmpDisc = chStdScaleDisc(std, chStdLmpDiscRaw(d, draft.lmp || chStdLmp));
-            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc));
+            const moqMDisc = chStdScaleDisc(std, chStdMoqMDiscRaw(d, draft.moqM || chStdMoqM));
+            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc + moqMDisc));
         }
         function chStdFullDataset() {
             if (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length) return window.allTableData;
@@ -762,6 +805,7 @@
                 age: chStdReadRanges('#ch-sp-age-tbody', '.ch-sp-age-min', '.ch-sp-age-max', '.ch-sp-age-disc'),
                 reviews: chStdReadRanges('#ch-sp-rev-tbody', '.ch-sp-rev-min', '.ch-sp-rev-max', '.ch-sp-rev-disc'),
                 buss: chStdReadRanges('#ch-sp-buss-tbody', '.ch-sp-buss-min', '.ch-sp-buss-max', '.ch-sp-buss-disc'),
+                moqM: chStdReadRanges('#ch-sp-moqm-tbody', '.ch-sp-moqm-min', '.ch-sp-moqm-max', '.ch-sp-moqm-disc'),
                 zeroSoldDisc: (function() { const n = Number($('#ch-sp-zs-disc').val()); return isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; })(),
                 reviewMax: (function() { const n = parseInt($('#ch-sp-review-max').val(), 10); return isFinite(n) && n > 0 ? n : 4; })(),
                 cvr: chStdNormCvr({
@@ -846,15 +890,17 @@
             const draft = chStdReadDraft();
             const dilCounts = { outside: 0 }, ageCounts = { none: 0 }, revCounts = { none: 0 }, bussCounts = { outside: 0 };
             const lmpCounts = { outside: 0 };
+            const moqMCounts = { outside: 0 };
             const cvrCounts = { down2: 0, down: 0, flat: 0, up: 0, up2: 0 };
             draft.dil.forEach(function(r, i) { dilCounts['d' + i] = 0; });
             draft.age.forEach(function(r, i) { ageCounts['a' + i] = 0; });
             draft.reviews.forEach(function(r, i) { revCounts['r' + i] = 0; });
             draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
             (draft.lmp || []).forEach(function(r, i) { lmpCounts['m' + i] = 0; });
-            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0 };
-            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0 };
-            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, all: 0 };
+            (draft.moqM || []).forEach(function(r, i) { moqMCounts['q' + i] = 0; });
+            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0 };
+            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0 };
+            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0, all: 0 };
             const zsCounts = { zero: 0, sold: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
             const pgB = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
@@ -870,6 +916,14 @@
                 if (chStdRowHasLmp(d)) {
                     if (dilIdx >= 0) lmpCounts['m' + dilIdx] += 1; else lmpCounts.outside += 1;
                 }
+                const dilMoqPct = chStdRowDilMoqPct(d);
+                let moqMIdx = -1;
+                if (dilMoqPct != null) {
+                    for (let i = 0; i < (draft.moqM || []).length; i++) if (chStdInRange(dilMoqPct, draft.moqM[i], i === draft.moqM.length - 1)) { moqMIdx = i; break; }
+                }
+                if (dilMoqPct == null) { /* no MOQ: not in a slab */ }
+                else if (moqMIdx >= 0) moqMCounts['q' + moqMIdx] += 1;
+                else moqMCounts.outside += 1;
                 const ageVal = chStdAgeDays(d);
                 let ageIdx = -1;
                 if (ageVal != null) {
@@ -900,6 +954,8 @@
                 const zsDisc = zeroSold ? chStdScaleDisc(std, Number(draft.zeroSoldDisc) || 0) : 0;
                 const lmpRaw = (invOk && chStdRowHasLmp(d) && dilIdx >= 0) ? (Number(draft.lmp[dilIdx] && draft.lmp[dilIdx].disc) || 0) : 0;
                 const lmpDisc = chStdScaleDisc(std, lmpRaw);
+                const moqMRaw = (invOk && moqMIdx >= 0) ? (Number(draft.moqM[moqMIdx] && draft.moqM[moqMIdx].disc) || 0) : 0;
+                const moqMDisc = chStdScaleDisc(std, moqMRaw);
                 if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
                 if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
                 if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
@@ -907,7 +963,8 @@
                 if (bussDisc > 0) { skuHits.buss++; dollars.buss += std * bussDisc / 100; pctTotals.buss += bussDisc; }
                 if (zsDisc > 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
                 if (lmpDisc > 0) { skuHits.lmp++; dollars.lmp += std * lmpDisc / 100; pctTotals.lmp += lmpDisc; }
-                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc);
+                if (moqMDisc > 0) { skuHits.moqm++; dollars.moqm += std * moqMDisc / 100; pctTotals.moqm += moqMDisc; }
+                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc + moqMDisc);
                 if (sum > 0) skuHits.all++;
                 if (std > 0) {
                     const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
@@ -984,6 +1041,11 @@
             $('#ch-sp-cvr-up2-count').text(cvrCounts.up2);
             $('#ch-sp-zs-count').text(zsCounts.zero);
             $('#ch-sp-lmp-tbody tr').each(function(i) { $(this).find('.ch-sp-lmp-count').text(lmpCounts['m' + i] || 0); });
+            $('#ch-sp-moqm-tbody tr').each(function(i) {
+                const rule = (draft.moqM || [])[i];
+                $(this).find('.ch-sp-moqm-count').text(moqMCounts['q' + i] || 0);
+                if (rule) $(this).find('.ch-sp-moqm-band').text(rule.min + '–' + rule.max);
+            });
             const dilSlices = draft.dil.map(function(r, i) { return { key: 'd' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const ageSlices = draft.age.map(function(r, i) { return { key: 'a' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No age', color: '#cbd5e1' }]);
             const revSlices = draft.reviews.map(function(r, i) { return { key: 'r' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
@@ -1001,10 +1063,12 @@
                 { key: 'buss', label: 'B Disc', color: '#0d6efd' },
                 { key: 'zs', label: '0 Sold', color: '#f59e0b' },
                 { key: 'lmp', label: 'LMP', color: '#e11d48' },
+                { key: 'moqm', label: 'MOQ M', color: '#7c3aed' },
             ];
             // SKU count per discount type (bars + legend count). $ off is shown next to it, not a percentage.
-            const allCounts = { age: skuHits.age, dil: skuHits.dil, cvr: skuHits.cvr, rev: skuHits.rev, buss: skuHits.buss, zs: skuHits.zs, lmp: skuHits.lmp };
+            const allCounts = { age: skuHits.age, dil: skuHits.dil, cvr: skuHits.cvr, rev: skuHits.rev, buss: skuHits.buss, zs: skuHits.zs, lmp: skuHits.lmp, moqm: skuHits.moqm };
             const lmpSlices = (draft.lmp || []).map(function(r, i) { return { key: 'm' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
+            const moqMSlices = (draft.moqM || []).map(function(r, i) { return { key: 'q' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const zsSlices = [
                 { key: 'zero', label: '0 sold', color: '#f59e0b' },
                 { key: 'sold', label: 'Sold', color: '#94a3b8' },
@@ -1017,6 +1081,7 @@
             chStdLegend('#ch-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
             chStdLegend('#ch-sp-leg-age', ageSlices, ageCounts, 'age');
             chStdLegend('#ch-sp-leg-lmp', lmpSlices, lmpCounts, 'lmp');
+            chStdLegend('#ch-sp-leg-moqm', moqMSlices, moqMCounts, 'moqm');
             chStdLegend('#ch-sp-leg-all', allSlices, allCounts, 'all', dollars);
             chStdDrawBars([
                 { id: 'ch-sp-pie-dil', slices: dilSlices, counts: dilCounts },
@@ -1026,9 +1091,10 @@
                 { id: 'ch-sp-pie-cvr', slices: cvrSlices, counts: cvrCounts },
                 { id: 'ch-sp-pie-age', slices: ageSlices, counts: ageCounts },
                 { id: 'ch-sp-pie-lmp', slices: lmpSlices, counts: lmpCounts },
+                { id: 'ch-sp-pie-moqm', slices: moqMSlices, counts: moqMCounts },
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
             ]);
-            const body = [['Age', skuHits.age], ['Dil', skuHits.dil], ['B Disc', skuHits.buss], ['0 Sold', skuHits.zs], ['CVR', skuHits.cvr], ['Reviews', skuHits.rev], ['LMP', skuHits.lmp]].map(function(row) {
+            const body = [['Age', skuHits.age], ['Dil', skuHits.dil], ['B Disc', skuHits.buss], ['0 Sold', skuHits.zs], ['CVR', skuHits.cvr], ['Reviews', skuHits.rev], ['LMP', skuHits.lmp], ['MOQ M', skuHits.moqm]].map(function(row) {
                 return '<tr><td>' + row[0] + '</td><td class="text-center">' + row[1] + '</td></tr>';
             });
             body.push('<tr class="fw-semibold"><td>All</td><td class="text-center">' + skuHits.all + '</td></tr>');
@@ -1067,6 +1133,7 @@
             $('#ch-sp-age-tbody').html(chStdAge.map(function(r) { return chStdRangeRow('ch-sp-age', r); }).join(''));
             $('#ch-sp-rev-tbody').html(chStdRev.map(function(r) { return chStdRangeRow('ch-sp-rev', r); }).join(''));
             $('#ch-sp-buss-tbody').html(chStdBuss.map(function(r) { return chStdRangeRow('ch-sp-buss', r); }).join(''));
+            $('#ch-sp-moqm-tbody').html((chStdMoqM.length ? chStdMoqM : CH_STD_MOQM_DEFAULTS).map(function(r) { return chStdMoqMRow(r); }).join(''));
             $('#ch-sp-zs-disc').val(chStdZeroSoldDisc);
             $('#ch-sp-review-max').val(chStdReviewMax);
             const cfg = chStdNormCvr(chStdCvr);
@@ -1089,6 +1156,7 @@
                 chStdRev = (res.reviews || CH_STD_REV_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdBuss = (res.buss || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdLmp = (res.lmp || []).map(chStdNormRange).filter(Boolean);
+                chStdMoqM = (res.moq_m || CH_STD_MOQM_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(0, Number(res.zero_sold_disc))) : 0;
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
@@ -1096,6 +1164,7 @@
                 if (!chStdAge.length) chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdRev.length) chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdBuss.length) chStdBuss = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+                if (!chStdMoqM.length) chStdMoqM = CH_STD_MOQM_DEFAULTS.map(function(r) { return Object.assign({}, r); });
             });
         }
         function chStdTodayKey() {
@@ -1154,7 +1223,7 @@
                 .fail(function() { draw([]); });
         }
         function chStdDraftNow() {
-            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive() };
+            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
         }
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
@@ -1282,7 +1351,7 @@
         window.analyticsBussDiscountPct = chStdBussDiscPct;
         function chStdRepaintDiscColumns() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
-            ['age_discount', 'dil_discount', 'lmp_discount', 'buss_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
+            ['age_discount', 'dil_discount', 'lmp_discount', 'moq_m_discount', 'buss_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
                 let col = null;
                 try { col = table.getColumn(field); } catch (e) { col = null; }
                 if (!col || typeof col.getCells !== 'function') return;
@@ -1370,6 +1439,7 @@
                     },
                 }),
                 chStdDiscCol('LMP Disc', 'lmp_discount', 'LMP Disc from the LMP rule in Std prc vs dil. Same Dil slab. Only SKUs that have an LMP. Added into Sum disc. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdLmpDiscRaw(d, chStdLmpRulesLive())); }),
+                chStdDiscCol('MOQ M', 'moq_m_discount', 'MOQ M discount from the Dil MOQ % slab (OV L30 ÷ Req M) in Std prc vs dil. Added into Sum disc. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdMoqMDiscRaw(d, chStdMoqMRulesLive())); }),
                 Object.assign(chStdDiscCol('B Disc', 'buss_discount', 'B Disc from Std Prc ranges in Std prc vs dil. Full Disc % at every Std Prc, including under $15.', function(d) { return chStdBussDiscPct(d) || 0; }), {
                     visible: true,
                     minWidth: 64,
@@ -1399,7 +1469,7 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + MOQ M + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];
         }
         function chStdAppendDiscColumns(cols) {
@@ -1826,13 +1896,14 @@
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, lmp: draft.lmp, zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, lmp: draft.lmp, moq_m: draft.moqM, zero_sold_disc: draft.zeroSoldDisc },
             }).done(function(res) {
                 if (res && res.dil) chStdDil = res.dil.map(chStdNormRange).filter(Boolean);
                 if (res && res.age) chStdAge = res.age.map(chStdNormRange).filter(Boolean);
                 if (res && res.reviews) chStdRev = res.reviews.map(chStdNormRange).filter(Boolean);
                 if (res && res.buss) chStdBuss = res.buss.map(chStdNormRange).filter(Boolean);
                 if (res && res.lmp) chStdLmp = res.lmp.map(chStdNormRange).filter(Boolean);
+                if (res && res.moq_m) chStdMoqM = res.moq_m.map(chStdNormRange).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(0, Number(res.zero_sold_disc)));
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
@@ -1923,7 +1994,14 @@
                 $('#ch-sp-buss-tbody').html(rules.map(function(r) { return chStdRangeRow('ch-sp-buss', r); }).join(''));
                 chStdRefresh();
             });
-            $(document).off('click.chstddel').on('click.chstddel', '#chStdPrcModal .ch-sp-dil-del, #chStdPrcModal .ch-sp-age-del, #chStdPrcModal .ch-sp-rev-del, #chStdPrcModal .ch-sp-buss-del', function() {
+            $('#ch-sp-moqm-add').off('click.chstd').on('click.chstd', function() {
+                const rules = chStdReadRanges('#ch-sp-moqm-tbody', '.ch-sp-moqm-min', '.ch-sp-moqm-max', '.ch-sp-moqm-disc');
+                const last = rules.length ? rules[rules.length - 1].max : 0;
+                rules.push({ min: last, max: last + 50, disc: 0 });
+                $('#ch-sp-moqm-tbody').html(rules.map(function(r) { return chStdMoqMRow(r); }).join(''));
+                chStdRefresh();
+            });
+            $(document).off('click.chstddel').on('click.chstddel', '#chStdPrcModal .ch-sp-dil-del, #chStdPrcModal .ch-sp-age-del, #chStdPrcModal .ch-sp-rev-del, #chStdPrcModal .ch-sp-buss-del, #chStdPrcModal .ch-sp-moqm-del', function() {
                 $(this).closest('tr').remove();
                 chStdRefresh();
             });
