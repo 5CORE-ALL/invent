@@ -1923,9 +1923,16 @@
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdOwnsSprice()) {
+                    const serverRefreshed = !!(res && res.sprice_refreshed);
                     $('#ch-sp-status').text(window.CH_STD_SERVER_OWNED === true
-                        ? 'Saved. The server job applies S PRC from these rules at its next scheduled run (twice daily, IST).'
+                        ? (serverRefreshed
+                            ? 'Saved. S PRC was recalculated from these rules.'
+                            : 'Saved. The server job applies S PRC from these rules at its next scheduled run (twice daily, IST).')
                         : 'Saved. S PRC follows the ON rule.');
+                    // The server re-saved S PRC: reload the rows so the S PRC column shows the new values.
+                    if (serverRefreshed && typeof table !== 'undefined' && table && typeof table.setData === 'function') {
+                        try { table.setData(); } catch (eReload) { /* ignore */ }
+                    }
                     chStdRefresh();
                     chStdSaveHistory();
                     return;

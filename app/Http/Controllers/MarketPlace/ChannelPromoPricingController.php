@@ -1416,7 +1416,20 @@ class ChannelPromoPricingController extends Controller
             ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'lmp', 'moq_m', 'roi', 'zero_sold']]
         );
 
-        return response()->json(array_merge(['success' => true], $payload));
+        // Best Buy S PRC is saved by the server job, not by the page. Re-save it now (no push) so the page
+        // shows the new rules at once instead of the old S PRC until the next scheduled run.
+        $spriceRefreshed = false;
+        if ($channel === 'bestbuy') {
+            try {
+                @set_time_limit(0);
+                $summary = app(\App\Services\BestBuySprcDilAutoPushService::class)->run(skipPush: true, sleepMs: 0);
+                $spriceRefreshed = empty($summary['stats']['errors']);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('[BestBuy] S PRC refresh after rules save failed: '.$e->getMessage());
+            }
+        }
+
+        return response()->json(array_merge(['success' => true, 'sprice_refreshed' => $spriceRefreshed], $payload));
     }
 
     public function stdPrcVsDilHistory(Request $request, string $channel): JsonResponse

@@ -245,44 +245,6 @@
                         title="Click to cycle: Prc Mode → Decrease → Increase">
                         Prc Mode
                     </button>
-
-                    {{-- Target ROI% bulk control — back-solves S PRC for selected rows so SROI = Target ROI%.
-                         Formula: sprice = (LP × (1 + ROI%/100) + Ship) / margin   (margin = per-row `percentage`, default 0.80) --}}
-                    <div class="d-inline-flex align-items-center gap-1 px-1 border rounded bg-light"
-                        id="target-roi-controls"
-                        title="Target ROI% — sets S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin on every selected row (back-solves so SROI column equals the target)">
-                        <label for="target-roi-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <i class="fas fa-bullseye text-danger"></i> ROI%:
-                        </label>
-                        <input type="number" id="target-roi-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target ROI% applied to all selected rows when you click 'Apply S PRC'">
-                        <button id="apply-target-roi-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP × (1 + Target ROI%/100) + Ship) / margin for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    {{-- Target GPFT% bulk control — back-solves S PRC for selected rows so SGPFT = Target GPFT%.
-                         Formula: sprice = (LP + Ship) / (margin − GPFT%/100). Target GPFT% must be < margin*100. --}}
-                    <div class="d-inline-flex align-items-center gap-1 px-1 border rounded bg-light"
-                        id="target-gpft-controls"
-                        title="Target GPFT% — sets S PRC = (LP + Ship) / (margin − Target GPFT%/100) on every selected row">
-                        <label for="target-gpft-input" class="form-label mb-0 small fw-bold text-nowrap">
-                            <i class="fas fa-bullseye text-danger"></i> GPFT%:
-                        </label>
-                        <input type="number" id="target-gpft-input" class="form-control form-control-sm text-end"
-                            placeholder="30" step="0.1" style="width: 56px;"
-                            title="Target GPFT% applied to all selected rows when you click 'Apply S PRC'. Must be less than the BestBuy take-home margin (typically < 80%).">
-                        <button id="apply-target-gpft-btn" class="btn btn-sm btn-success" type="button"
-                            title="Compute & save S PRC = (LP + Ship) / (margin − Target GPFT%/100) for every selected row">
-                            <i class="fas fa-calculator"></i>
-                        </button>
-                    </div>
-
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadPriceModal" title="Upload Price">
-                        <i class="fa fa-upload"></i> Prc
-                    </button>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -313,34 +275,6 @@
                     </div>
                     <!-- Table body -->
                     <div id="bestbuy-table" style="flex: 1;"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Upload Price Modal -->
-    <div class="modal fade" id="uploadPriceModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title"><i class="fa fa-dollar-sign me-2"></i>Upload Price Data</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="uploadPriceForm" action="{{ route('bestbuy-upload-price') }}" method="POST" enctype="multipart/form-data">
-                        @csrf
-                        <div class="mb-3">
-                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
-                            <input type="file" class="form-control" name="excel_file" accept=".xlsx,.xls,.csv,.txt" required>
-                        </div>
-                        <div class="alert alert-warning">
-                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="submit" form="uploadPriceForm" class="btn btn-primary"><i class="fa fa-upload me-1"></i>Upload</button>
                 </div>
             </div>
         </div>
@@ -813,116 +747,6 @@
             if (e.which === 13) {
                 applyDiscount();
             }
-        });
-
-        /*
-         * Target ROI% / Target GPFT% bulk apply (BestBuy, margin = row.percentage or 0.80)
-         * --------------------------------------------------------------------------------
-         * Back-solves SPRICE so the resulting SROI / SGPFT column matches the entered target.
-         * BestBuy's SGPFT / SROI formula (used in the cellEdited handler at lines 1311-1313)
-         * includes shipping:
-         *     SGPFT% = ((sprice * margin − ship − lp) / sprice) * 100
-         *     SROI%  = ((sprice * margin − ship − lp) / lp)     * 100
-         *   → sprice = (lp * (1 + ROI%/100) + ship) / margin
-         *   → sprice = (lp + ship) / (margin − GPFT%/100)
-         * Optimistic SGPFT / SPFT / SROI written client-side, then the existing
-         * /bestbuy-save-sprice endpoint reconciles them server-side via saveSpriceUpdates().
-         * Plain 2-decimal rounding — no .99 / .49 retail snapping — because snapping would
-         * shift the achieved SROI / SGPFT off the user-typed target.
-         */
-        function bestbuyApplyTargetBackSolve(computeFn, labelPrefix) {
-            if (selectedSkus.size === 0) {
-                showToast('Please select at least one SKU first (turn on Decrease / Increase to reveal checkboxes)', 'error');
-                return;
-            }
-
-            const updates     = [];
-            let updatedCount  = 0;
-            let skippedNoLp   = 0;
-            const skippedHigh = [];
-
-            selectedSkus.forEach(sku => {
-                const rows = table.searchRows('(Child) sku', '=', sku);
-                if (!rows.length) return;
-                const row     = rows[0];
-                const rowData = row.getData();
-                if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return;
-
-                const lp = parseFloat(rowData['LP_productmaster']) || 0;
-                if (lp <= 0) { skippedNoLp++; return; }
-                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
-                const marginRaw = parseFloat(rowData['percentage']);
-                const margin = (isFinite(marginRaw) && marginRaw > 0) ? marginRaw : 0.80;
-
-                const computed = computeFn(lp, ship, margin);
-                if (computed == null) { skippedHigh.push(sku); return; }
-                const newSprice = +computed.toFixed(2);
-                if (!isFinite(newSprice) || newSprice <= 0) return;
-
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * margin - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft  = sgpft;
-                const sroi  = lp > 0       ? Math.round(((newSprice * margin - lp - ship) / lp)     * 100 * 100) / 100 : 0;
-
-                row.update({
-                    SPRICE: newSprice,
-                    SGPFT: sgpft,
-                    SPFT: spft,
-                    SROI: sroi,
-                    has_custom_sprice: true
-                });
-                updates.push({ sku: sku, sprice: newSprice });
-                updatedCount++;
-            });
-
-            if (updates.length === 0) {
-                if (skippedHigh.length > 0) {
-                    showToast(`${labelPrefix} too high — must be less than each row's take-home margin (typically < 80%).`, 'error');
-                } else {
-                    showToast('No selected rows have a usable LP > 0', 'warning');
-                }
-                return;
-            }
-
-            saveSpriceUpdates(updates);
-            let note = '';
-            if (skippedNoLp > 0)    note += ` (${skippedNoLp} skipped — no LP)`;
-            if (skippedHigh.length) note += ` (${skippedHigh.length} skipped — target ≥ margin)`;
-            showToast(`${labelPrefix} applied to ${updatedCount} SKU(s)${note}`, 'success');
-        }
-
-        $('#apply-target-roi-btn').on('click', function () {
-            const rawInput = $('#target-roi-input').val();
-            const targetRoiPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) { showToast('Please enter a Target ROI%', 'error'); return; }
-            if (!isFinite(targetRoiPct))             { showToast('Target ROI% must be a number', 'error'); return; }
-
-            const roiMultiplier = 1 + (targetRoiPct / 100);
-            bestbuyApplyTargetBackSolve(function (lp, ship, margin) {
-                return (lp * roiMultiplier + ship) / margin;
-            }, `Target ROI ${targetRoiPct}%`);
-        });
-
-        $('#apply-target-gpft-btn').on('click', function () {
-            const rawInput = $('#target-gpft-input').val();
-            const targetGpftPct = parseFloat(String(rawInput).replace(',', '.'));
-
-            if (rawInput === '' || rawInput == null) { showToast('Please enter a Target GPFT%', 'error'); return; }
-            if (!isFinite(targetGpftPct))            { showToast('Target GPFT% must be a number', 'error'); return; }
-
-            const targetFraction = targetGpftPct / 100;
-            bestbuyApplyTargetBackSolve(function (lp, ship, margin) {
-                const denom = margin - targetFraction;
-                if (denom <= 0) return null; // signals "target ≥ margin" skip
-                return (lp + ship) / denom;
-            }, `Target GPFT ${targetGpftPct}%`);
-        });
-
-        $('#target-roi-input').on('keypress', function (e) {
-            if (e.which === 13) $('#apply-target-roi-btn').click();
-        });
-        $('#target-gpft-input').on('keypress', function (e) {
-            if (e.which === 13) $('#apply-target-gpft-btn').click();
         });
 
         // Sugg Amz Prc button
@@ -3087,40 +2911,6 @@
             });
             buildColumnDropdown();
             saveColumnVisibilityToServer();
-        });
-
-        // Upload Price Form Handler
-        $('#uploadPriceForm').on('submit', function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            const submitBtn = $(this).find('button[type="submit"]');
-            const originalText = submitBtn.html();
-            
-            submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Uploading...');
-            
-            $.ajax({
-                url: $(this).attr('action'),
-                method: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(response) {
-                    showToast(response.success || 'Price data uploaded successfully!', 'success');
-                    $('#uploadPriceModal').modal('hide');
-                    $('#uploadPriceForm')[0].reset();
-                    
-                    // Reload table data
-                    table.setData();
-                },
-                error: function(xhr) {
-                    const errorMsg = xhr.responseJSON?.error || 'Error uploading price data';
-                    showToast(errorMsg, 'error');
-                },
-                complete: function() {
-                    submitBtn.prop('disabled', false).html(originalText);
-                }
-            });
         });
 
         // Export CSV button

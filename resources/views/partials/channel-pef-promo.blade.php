@@ -623,15 +623,6 @@
                     <input type="checkbox" role="switch" id="ch-promo-reload-push-switch"
                         {{ $channelPromoPageReloadPushEnabled ? 'checked' : '' }}>
                 </label>
-                <label class="ch-promo-reload-push-switch{{ $channelPromoIgnoreNegSnroi ? '' : ' is-off' }}"
-                    id="ch-promo-neg-snroi-wrap"
-                    title="Push Prc and cron skip a SKU whose SNROI at the push price is below 0. The price still saves.">
-                    <span class="ch-promo-reload-push-text">
-                        Ignore neg SNROI
-                        <span class="ch-promo-reload-push-state" id="ch-promo-neg-snroi-label">{{ $channelPromoIgnoreNegSnroi ? 'On' : 'Off' }}</span>
-                    </span>
-                    <input type="checkbox" role="switch" id="ch-promo-neg-snroi-switch" {{ $channelPromoIgnoreNegSnroi ? 'checked' : '' }}>
-                </label>
                 <div id="ch-promo-reload-push-progress" class="ch-promo-reload-push-progress"
                     aria-live="polite" title="S PRC push progress">
                     <div class="ch-promo-reload-push-progress-track">
@@ -11383,41 +11374,8 @@
             return cols;
         }
 
-        function syncChPromoNegSnroiSwitchUi() {
-            const on = !!chPromoIgnoreNegSnroi;
-            $('#ch-promo-neg-snroi-wrap').toggleClass('is-off', !on);
-            $('#ch-promo-neg-snroi-label').text(on ? 'On' : 'Off');
-            const $sw = $('#ch-promo-neg-snroi-switch');
-            if ($sw.length && $sw.prop('checked') !== on) $sw.prop('checked', on);
-        }
-        function saveChPromoIgnoreNegSnroi(enabled) {
-            chPromoIgnoreNegSnroi = !!enabled;
-            syncChPromoNegSnroiSwitchUi();
-            return $.ajax({
-                url: CH_PROMO_RULES_BASE + '/ignore-neg-snroi',
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': chPromoCsrf(), 'Accept': 'application/json' },
-                data: { _token: chPromoCsrf(), enabled: enabled ? 1 : 0 },
-            });
-        }
         function initChannelPromoPricingUi() {
             syncChPromoReloadPushSwitchUi();
-            syncChPromoNegSnroiSwitchUi();
-            $('#ch-promo-neg-snroi-switch').off('change.chpromoNeg').on('change.chpromoNeg', function() {
-                const on = !!this.checked;
-                const prev = chPromoIgnoreNegSnroi;
-                saveChPromoIgnoreNegSnroi(on)
-                    .done(function() {
-                        chPromoToast('success', on
-                            ? 'Ignore neg SNROI on — SKUs with SNROI below 0 are skipped on push.'
-                            : 'Ignore neg SNROI off — negative-SNROI SKUs will be pushed too.');
-                    })
-                    .fail(function(xhr) {
-                        chPromoIgnoreNegSnroi = prev;
-                        syncChPromoNegSnroiSwitchUi();
-                        chPromoToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not save Ignore neg SNROI switch');
-                    });
-            });
             $('#ch-promo-reload-push-switch').off('change.chpromoReload').on('change.chpromoReload', function() {
                 const on = !!this.checked;
                 const prev = chPromoPageReloadPushAllowed();
