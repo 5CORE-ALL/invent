@@ -97,8 +97,111 @@ class VintedAnalyticsController extends DepopStyleAnalyticsController
         }
 
         $payload['data'] = $this->attachStoredOpSprice($payload['data']);
+        $payload['data'] = $this->attachStandardPrice($payload['data']);
 
         return response()->json($payload);
+    }
+
+    /**
+     * Std Prc column: Amazon STANDARD_PRICE (amazon_data_view) of the exact SKU, same as /alibaba-analytics and
+     * /doba-tabulator. A SKU with none inherits the Std Prc of its Sku Link LMP group.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function attachStandardPrice(array $rows): array
+    {
+        $skus = [];
+        foreach ($rows as $row) {
+            $sku = trim((string) ($row['sku'] ?? ''));
+            if ($sku !== '') {
+                $skus[] = $sku;
+            }
+        }
+        if ($skus === []) {
+            return $rows;
+        }
+
+        try {
+            $std = $this->amazonStdBySku($skus);
+        } catch (\Throwable $e) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $value = $std[$this->stdKey((string) ($row['sku'] ?? ''))] ?? null;
+            $row['STANDARD_PRICE'] = $value;
+            $row['standard_price'] = $value;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    private function stdKey(string $sku): string
+    {
+        return \App\Models\ShopifySku::normalizeSkuForShopifyLookup($sku);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array<string, float> keyed by stdKey()
+     */
+    private function amazonStdBySku(array $skus): array
+    {
+        $wanted = [];
+        foreach ($skus as $s) {
+            $k = $this->stdKey($s);
+            if ($k !== '') {
+                $wanted[$k] = $s;
+            }
+        }
+        if ($wanted === [] || ! Schema::hasTable('amazon_data_view')) {
+            return [];
+        }
+
+        $all = [];
+        $rows = \Illuminate\Support\Facades\DB::table('amazon_data_view')
+            ->select('sku')
+            ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(value, '$.STANDARD_PRICE')) as std_price")
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->get();
+        foreach ($rows as $row) {
+            if (is_numeric($row->std_price ?? null) && (float) $row->std_price > 0) {
+                $all[$this->stdKey((string) $row->sku)] = round((float) $row->std_price, 2);
+            }
+        }
+
+        $out = [];
+        $missing = [];
+        foreach ($wanted as $k => $raw) {
+            if (isset($all[$k])) {
+                $out[$k] = $all[$k];
+            } else {
+                $missing[$k] = $raw;
+            }
+        }
+
+        if ($missing !== []) {
+            try {
+                $groups = app(\App\Services\LmpSkuGroupService::class);
+                $groups->prepareForSkus(array_values($wanted));
+                foreach ($missing as $k => $raw) {
+                    foreach ($groups->groupContaining($raw) as $member) {
+                        $mk = $this->stdKey((string) $member);
+                        if (isset($all[$mk])) {
+                            $out[$k] = $all[$mk];
+                            break;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                // keep exact matches only
+            }
+        }
+
+        return $out;
     }
 
     public function saveOpSprice(Request $request)

@@ -892,6 +892,20 @@
                     }
                 },
                 {
+                    title: "Std Prc",
+                    field: "STANDARD_PRICE",
+                    sorter: "number",
+                    hozAlign: "center",
+                    width: 75,
+                    headerTooltip: "Amazon STANDARD_PRICE for this SKU (same as /alibaba-analytics STD Price). A SKU with none uses its Sku Link group's Std Prc.",
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData();
+                        if (dpIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                        const v = parseFloat(cell.getValue()) || 0;
+                        return v > 0 ? money(v) : '<span style="color:#6c757d;">–</span>';
+                    }
+                },
+                {
                     title: "Price",
                     field: "price",
                     sorter: "number",
