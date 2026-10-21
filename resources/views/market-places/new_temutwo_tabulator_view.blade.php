@@ -1180,8 +1180,8 @@
     }
 
     function temuSgpftPercent(row) {
-        const sprice = temuDisplayedSprice(row);
-        const spft = temuSpftDollars(row, sprice);
+        const sprice = ntoRowSpriceStart(row);
+        const spft = temuSpftDollars(row);
         if (spft == null || !(sprice > 0)) return null;
         return (spft / sprice) * 100;
     }
@@ -1216,13 +1216,13 @@
         return gpft - (tPrice * (temuAdsPercentForNet() / 100));
     }
 
-    /** SNPFT$ = SPFT$ − (S PRC × Ads%). */
+    /** SNPFT$ = SPFT$ − (Std Prc × Ads%). */
     function temuSnpftDollars(row, spriceOverride) {
         const spft = temuSpftDollars(row, spriceOverride);
         if (spft == null) return null;
         const sprice = spriceOverride != null
             ? (parseFloat(spriceOverride) || 0)
-            : temuDisplayedSprice(row);
+            : (ntoRowSpriceStart(row) || 0);
         return spft - ((sprice > 0 ? sprice : 0) * (temuAdsPercentForNet() / 100));
     }
 
@@ -1241,7 +1241,7 @@
     }
 
     function temuSnpftPercent(row) {
-        const sprice = temuDisplayedSprice(row);
+        const sprice = ntoRowSpriceStart(row);
         const snpft = temuSnpftDollars(row, sprice);
         if (snpft == null || !(sprice > 0)) return null;
         return (snpft / sprice) * 100;
@@ -2182,31 +2182,41 @@
         if (p == null) return null;
         return +(p - (ntoRowShipDisc(d) || 0)).toFixed(2);
     }
-    /** S PRC is the Std Price for the Sprice breakup. Child SKUs with a saved S PRC only. */
+    /** Std Prc for the S breakup. Same STANDARD_PRICE as the Std Price column. */
     function ntoRowSpriceStart(d) {
         if (!d || d.is_parent_summary) return null;
         const sku = ntoRowSku(d);
         if (!sku || sku.toUpperCase().indexOf('PARENT') === 0) return null;
-        const s = typeof temuDisplayedSprice === 'function' ? temuDisplayedSprice(d) : (parseFloat(d && d.sprice) || 0);
-        return s > 0 ? +Number(s).toFixed(2) : null;
+        const std = temuParseMoney(d.STANDARD_PRICE != null ? d.STANDARD_PRICE : d.standard_price);
+        return std > 0 ? +Number(std).toFixed(2) : null;
     }
-    /** S 12% $ = S PRC × 12%. */
+    /** S 12% $ = Std Prc × 12%. */
     function ntoRowSTwelvePct(d) {
         const s = ntoRowSpriceStart(d);
         return s > 0 ? +(s * 0.12).toFixed(2) : 0;
     }
-    /** S Disc $ = S PRC × Disc % (Disc % = Sum disc = PM). */
+    /** S Disc $ = Std Prc × Disc % (Disc % = Sum disc = PM). */
     function ntoRowSDiscAmt(d) {
         const s = ntoRowSpriceStart(d);
         const pm = ntoRowPm(d);
         if (!(s > 0) || !(pm > 0)) return 0;
         return +(s * pm / 100).toFixed(2);
     }
-    /** S Price After Discount = S PRC − S 12% $ − S Disc $. */
+    /** S Promo Prc = Std Prc − S 12% $ − S Disc $. */
     function ntoRowSPriceAfterDisc(d) {
         const s = ntoRowSpriceStart(d);
         if (s == null) return null;
         return +(s - ntoRowSTwelvePct(d) - ntoRowSDiscAmt(d)).toFixed(2);
+    }
+    /**
+     * LMP Alert Prc = LMP × 0.87 when the LMP column is lower than S Promo Prc.
+     * Otherwise blank.
+     */
+    function ntoRowLmpAlertPrc(d) {
+        const promo = ntoRowSPriceAfterDisc(d);
+        const lmp = typeof temuLmpRefPrice === 'function' ? temuLmpRefPrice(d) : 0;
+        if (promo == null || !(lmp > 0) || !(lmp < promo)) return null;
+        return +(lmp * 0.87).toFixed(2);
     }
     /** S Ship Disc = $2.99 when S Price After Discount is $30 or less, otherwise 0. */
     function ntoRowSShipDisc(d) {
@@ -2850,7 +2860,7 @@
             return 'basics';
         }
         if (
-            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|sprice|s_twelve|s_disc_amt|s_price_after_disc|s_ship_disc|s_promo_base_prc|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
+            /^(_push|cvr_percent|cvr_30|cvr_pct|cpn_pct|base_price|r_price|t_price|temu_price|standard_price|lmp_raw|lmp|lmp_alert_prc|sprice|s_twelve|s_disc_amt|s_price_after_disc|s_ship_disc|s_promo_base_prc|s_base_price|s_r_price|profit_percent|roi_percent|sgpft_percent|sroi_percent|sgroi_percent|npft_percent|nroi_percent|snpft_percent|snroi_percent)$/i.test(f) ||
             /\b(cvr|cpn|price|prc|gpft|npft|groi|nroi|lmp|sprc\s*dil|s\s*prc|sgpft|sgroi|snpft|snroi)\b/i.test(tl)
         ) {
             return 'pricing';
@@ -3044,11 +3054,8 @@
                 } else if (field === 'cpn_pct') {
                     v = temuCpnForRow(row);
                 } else if (field === 'sprice') {
-                    const model = (typeof temuSpriceCellModel === 'function') ? temuSpriceCellModel(row) : null;
-                    const shown = (model && model.value > 0)
-                        ? model.value
-                        : ((typeof temuDisplayedSprice === 'function') ? temuDisplayedSprice(row) : v);
-                    v = shown > 0 ? +Number(shown).toFixed(2) : '';
+                    const std = (typeof ntoRowSpriceStart === 'function') ? ntoRowSpriceStart(row) : 0;
+                    v = std > 0 ? std : '';
                 } else if (field === 's_twelve') {
                     const amt = ntoRowSTwelvePct(row);
                     v = amt > 0 ? amt : '';
@@ -3057,6 +3064,9 @@
                     v = amt > 0 ? amt : '';
                 } else if (field === 's_price_after_disc') {
                     const amt = ntoRowSPriceAfterDisc(row);
+                    v = amt == null ? '' : amt;
+                } else if (field === 'lmp_alert_prc') {
+                    const amt = ntoRowLmpAlertPrc(row);
                     v = amt == null ? '' : amt;
                 } else if (field === 's_ship_disc') {
                     const amt = ntoRowSShipDisc(row);
@@ -3683,27 +3693,20 @@
                     }
                 },
                 {
-                    title: 'S PRC',
+                    title: 'Std Prc',
                     field: 'sprice',
                     hozAlign: 'center',
-                    width: 88,
-                    sorter: 'number',
-                    headerTooltip: 'S PRC is Promo Base Prc from Std prc vs dil (Age, Dil, LMP, MOQ M, B, 0 Sold, CVR, Reviews). LMP Disc is already in that price, so it is not capped to LMP again. With no LMP Disc, S PRC is capped at the LMP column when SGROI at that LMP is 20%+. Saved and pushed by the server at 04:20 / 20:20 IST.',
+                    width: 78,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowSpriceStart(aRow.getData() || {}) || 0;
+                        const y = ntoRowSpriceStart(bRow.getData() || {}) || 0;
+                        return x - y;
+                    },
+                    headerTooltip: 'Std Prc — same Standard Price as the Std Price column (amazon_data_view.STANDARD_PRICE).',
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const model = typeof temuSpriceCellModel === 'function'
-                            ? temuSpriceCellModel(rowData)
-                            : { value: parseFloat(cell.getValue()) || 0, lmpAlert: false, lmp: 0 };
-                        const value = model.value;
-                        const live = parseFloat(rowData.temu_price || rowData.t_price) || 0;
+                        const value = ntoRowSpriceStart(cell.getRow().getData() || {});
                         if (!(value > 0)) return '<span style="color: #6c757d;">—</span>';
-                        const formatted = '$' + value.toFixed(2);
-                        const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
-                                + value.toFixed(2) + ' ≠ T Price $' + live.toFixed(2) + '"></i>'
-                            : '';
-                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + formatted + blueTri + '</span>';
+                        return '<span style="font-weight: 600;">$' + value.toFixed(2) + '</span>';
                     }
                 },
                 {
@@ -3714,13 +3717,13 @@
                     sorter: function(a, b, aRow, bRow) {
                         return ntoRowSTwelvePct(aRow.getData() || {}) - ntoRowSTwelvePct(bRow.getData() || {});
                     },
-                    headerTooltip: 'S 12% $ = S PRC × 12%. S PRC is the Std Price for this breakup.',
+                    headerTooltip: 'S 12% $ = Std Prc × 12%. Std Prc is the same Standard Price as the Std Price column.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const s = ntoRowSpriceStart(row);
                         if (!(s > 0)) return '<span style="color: #6c757d;">—</span>';
                         const amt = ntoRowSTwelvePct(row);
-                        const tip = '12% of S PRC → $' + s.toFixed(2) + ' × 12% = $' + amt.toFixed(2);
+                        const tip = '12% of Std Prc → $' + s.toFixed(2) + ' × 12% = $' + amt.toFixed(2);
                         return '<span style="font-weight: 600;" title="' + tip + '">$' + amt.toFixed(2) + '</span>';
                     }
                 },
@@ -3732,36 +3735,61 @@
                     sorter: function(a, b, aRow, bRow) {
                         return ntoRowSDiscAmt(aRow.getData() || {}) - ntoRowSDiscAmt(bRow.getData() || {});
                     },
-                    headerTooltip: 'S Disc $ = S PRC × Disc % (Disc % = Sum disc).',
+                    headerTooltip: 'S Disc $ = Std Prc × Disc % (Disc % = Sum disc).',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const amt = ntoRowSDiscAmt(row);
                         if (!(amt > 0)) return '<span style="color: #6c757d;">—</span>';
                         const s = ntoRowSpriceStart(row) || 0;
                         const pm = ntoRowPm(row);
-                        const tip = 'S Disc $ = S PRC × Disc % → $' + s.toFixed(2) + ' × ' + pm + '% = $' + amt.toFixed(2);
+                        const tip = 'S Disc $ = Std Prc × Disc % → $' + s.toFixed(2) + ' × ' + pm + '% = $' + amt.toFixed(2);
                         return '<span style="font-weight: 600;" title="' + tip.replace(/"/g, '&quot;') + '">$' + amt.toFixed(2) + '</span>';
                     }
                 },
                 {
-                    title: 'S Price After Discount',
+                    title: 'S Promo Prc',
                     field: 's_price_after_disc',
                     hozAlign: 'center',
-                    width: 80,
+                    width: 100,
                     sorter: function(a, b, aRow, bRow) {
                         const x = ntoRowSPriceAfterDisc(aRow.getData() || {});
                         const y = ntoRowSPriceAfterDisc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'S Price After Discount = S PRC − S 12% $ − S Disc $.',
+                    headerTooltip: 'S Promo Prc = Std Prc − S 12% $ − S Disc $.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const p = ntoRowSPriceAfterDisc(row);
                         if (p == null) return '<span style="color: #6c757d;">—</span>';
                         const s = ntoRowSpriceStart(row) || 0;
-                        const tip = 'S PRC $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
+                        const tip = 'Std Prc $' + s.toFixed(2) + ' − S 12% $' + ntoRowSTwelvePct(row).toFixed(2)
                             + ' − S Disc $' + ntoRowSDiscAmt(row).toFixed(2) + ' = $' + p.toFixed(2);
                         return '<span style="font-weight: 600;" title="' + tip + '">$' + p.toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: 'LMP Alert Prc',
+                    field: 'lmp_alert_prc',
+                    hozAlign: 'center',
+                    width: 110,
+                    sorter: function(a, b, aRow, bRow) {
+                        const x = ntoRowLmpAlertPrc(aRow.getData() || {});
+                        const y = ntoRowLmpAlertPrc(bRow.getData() || {});
+                        return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
+                    },
+                    headerTooltip: 'LMP Alert Prc = LMP × 0.87 when LMP is lower than S Promo Prc. A red triangle marks that alert.',
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData() || {};
+                        const alert = ntoRowLmpAlertPrc(row);
+                        if (alert == null) return '<span style="color: #6c757d;">—</span>';
+                        const lmp = temuLmpRefPrice(row);
+                        const promo = ntoRowSPriceAfterDisc(row) || 0;
+                        const tip = 'LMP $' + lmp.toFixed(2) + ' is below S Promo Prc $' + promo.toFixed(2)
+                            + ' → $' + lmp.toFixed(2) + ' × 0.87 = $' + alert.toFixed(2);
+                        return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;font-weight:600;" title="' + tip + '">$'
+                            + alert.toFixed(2)
+                            + '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="'
+                            + tip.replace(/"/g, '&quot;') + '"></i></span>';
                     }
                 },
                 {
@@ -3774,13 +3802,13 @@
                         const y = ntoRowSShipDisc(bRow.getData() || {});
                         return (x == null ? -1 : x) - (y == null ? -1 : y);
                     },
-                    headerTooltip: 'S Ship Disc = $2.99 when S Price After Discount is $30 or less. Otherwise blank.',
+                    headerTooltip: 'S Ship Disc = $2.99 when S Promo Prc is $30 or less. Otherwise blank.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const v = ntoRowSShipDisc(row);
                         if (!(v > 0)) return '<span style="color: #6c757d;">—</span>';
                         const p = ntoRowSPriceAfterDisc(row);
-                        const tip = 'S Price After Discount $' + p.toFixed(2) + ' ≤ $30 → S Ship Disc $' + v.toFixed(2);
+                        const tip = 'S Promo Prc $' + p.toFixed(2) + ' ≤ $30 → S Ship Disc $' + v.toFixed(2);
                         return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
                     }
                 },
@@ -3794,12 +3822,12 @@
                         const y = ntoRowSPromoBasePrc(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'S Promo Base Prc = S Price After Discount − S Ship Disc.',
+                    headerTooltip: 'S Promo Base Prc = S Promo Prc − S Ship Disc.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData() || {};
                         const v = ntoRowSPromoBasePrc(row);
                         if (v == null) return '<span style="color: #6c757d;">—</span>';
-                        const tip = 'S Price After Discount $' + ntoRowSPriceAfterDisc(row).toFixed(2)
+                        const tip = 'S Promo Prc $' + ntoRowSPriceAfterDisc(row).toFixed(2)
                             + ' − S Ship Disc $' + (ntoRowSShipDisc(row) || 0).toFixed(2) + ' = $' + v.toFixed(2);
                         return '<span style="font-weight: 600;" title="' + tip + '">$' + v.toFixed(2) + '</span>';
                     }
@@ -3854,7 +3882,7 @@
                         const y = temuSgroiPercent(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'SGROI% = SPFT ÷ LP. SPFT = (S Price After Discount × 0.95) − Temu Ship − LP.',
+                    headerTooltip: 'SGROI% = SPFT ÷ LP. SPFT = (S Promo Prc × 0.95) − Temu Ship − LP.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgroiPercent(row);
@@ -3875,7 +3903,7 @@
                         const y = temuSgpftPercent(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'SGPFT% = SPFT ÷ S PRC. SPFT = (S Price After Discount × 0.95) − Temu Ship − LP.',
+                    headerTooltip: 'SGPFT% = SPFT ÷ Std Prc. SPFT = (S Promo Prc × 0.95) − Temu Ship − LP.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSgpftPercent(row);
@@ -3883,8 +3911,8 @@
                         const spft = temuSpftDollars(row);
                         const pad = ntoRowSPriceAfterDisc(row);
                         const tip = 'SPFT $' + spft.toFixed(2)
-                            + ' = S Price After Discount $' + (pad == null ? '—' : pad.toFixed(2)) + ' × 0.95 − Temu Ship − LP'
-                            + ' ÷ S PRC $' + temuDisplayedSprice(row).toFixed(2);
+                            + ' = S Promo Prc $' + (pad == null ? '—' : pad.toFixed(2)) + ' × 0.95 − Temu Ship − LP'
+                            + ' ÷ Std Prc $' + (ntoRowSpriceStart(row) || 0).toFixed(2);
                         return temuPercentCell(value, 'pft', tip);
                     }
                 },
@@ -3898,7 +3926,7 @@
                         const y = temuSnroiPercent(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'SNROI% = live SNPFT ÷ LP at S PRC. SGROI is the gross ROI on that same price.',
+                    headerTooltip: 'SNROI% = live SNPFT ÷ LP. SNPFT uses Std Prc. SGROI is the gross ROI on that same price.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnroiPercent(row);
@@ -3919,15 +3947,15 @@
                         const y = temuSnpftPercent(bRow.getData() || {});
                         return (x == null ? -Infinity : x) - (y == null ? -Infinity : y);
                     },
-                    headerTooltip: 'SNPFT% = SNPFT ÷ S PRC. SNPFT = SPFT − (S PRC × Ads%). Same formula as /temu2-decrease.',
+                    headerTooltip: 'SNPFT% = SNPFT ÷ Std Prc. SNPFT = SPFT − (Std Prc × Ads%). Same formula as /temu2-decrease.',
                     formatter: function(cell) {
                         const row = cell.getRow().getData();
                         const value = temuSnpftPercent(row);
                         if (value == null) return '<span style="color: #6c757d;">—</span>';
-                        const sprice = temuDisplayedSprice(row);
+                        const sprice = ntoRowSpriceStart(row) || 0;
                         const snpft = temuSnpftDollars(row, sprice);
                         const tip = 'SNPFT $' + snpft.toFixed(2)
-                            + ' ÷ S PRC $' + sprice.toFixed(2)
+                            + ' ÷ Std Prc $' + sprice.toFixed(2)
                             + ' (Ads ' + temuAdsPercentForNet().toFixed(2) + '%)';
                         return temuPercentCell(value, 'pft', tip);
                     }
