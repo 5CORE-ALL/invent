@@ -1991,6 +1991,33 @@
             clearInterval(ntoPushSpricePollTimer);
             ntoPushSpricePollTimer = null;
         }
+        ntoPushStartedAt = 0;
+    }
+    let ntoPushPollFails = 0;
+    let ntoPushStartedAt = 0;
+    const NTO_PUSH_SPINNER_MAX_MS = 3 * 60 * 1000;
+    /**
+     * A row can only keep the spinner while a push job is really running. Anything still "pushing" after the job
+     * finished (or the status call keeps failing) is settled here so it never spins forever.
+     * outcome: 'ok' = job finished with no failures, 'error' = failed or unknown.
+     */
+    function ntoSettleStuckPushing(outcome) {
+        if (!table || typeof table.getRows !== 'function') return;
+        table.getRows().forEach(function(row) {
+            const d = row.getData() || {};
+            if (String(d.nto_push_status || '') !== 'pushing') return;
+            const next = {};
+            if (outcome === 'ok') {
+                const price = ntoRowPushPrice(d);
+                next.nto_push_status = 'pushed';
+                if (price > 0) next.nto_pushed_base = +price.toFixed(2);
+                next.nto_pushed_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            } else {
+                next.nto_push_status = 'error';
+            }
+            row.update(next);
+            try { row.reformat(); } catch (e) { /* ignore */ }
+        });
     }
     function pollNtoPushSpriceStatus() {
         $.ajax({
@@ -1998,8 +2025,26 @@
             method: 'GET',
             headers: { 'Accept': 'application/json' },
             timeout: 20000,
+        }).fail(function() {
+            ntoPushPollFails++;
+            const tooLong = ntoPushStartedAt > 0 && (Date.now() - ntoPushStartedAt) > NTO_PUSH_SPINNER_MAX_MS;
+            if (ntoPushPollFails >= 3 || tooLong) {
+                stopNtoPushSpricePoll();
+                ntoSettleStuckPushing('error');
+                setNtoPushSpriceProgress({ active: false, done: 0, total: 0, pct: 0, msg: 'Push status unavailable' });
+                showToast('Push status could not be read (server error). Reload the page to check what was pushed.', 'error');
+            }
         }).done(function(resp) {
+            ntoPushPollFails = 0;
             if (!resp) return;
+            const elapsed = ntoPushStartedAt > 0 ? (Date.now() - ntoPushStartedAt) : 0;
+            if ((resp.active && elapsed > NTO_PUSH_SPINNER_MAX_MS * 3)
+                || (!resp.active && elapsed > NTO_PUSH_SPINNER_MAX_MS)) {
+                stopNtoPushSpricePoll();
+                ntoSettleStuckPushing('error');
+                setNtoPushSpriceProgress({ active: false, done: 0, total: 0, pct: 0, msg: 'Ready' });
+                return;
+            }
             if (ntoPushSpriceExpecting && !resp.active && !(Number(resp.total) > 0)) {
                 return;
             }
@@ -2018,6 +2063,11 @@
             }
             if (!active) {
                 stopNtoPushSpricePoll();
+                // Rows the task list did not settle (no task for them, or an old job) must not keep spinning.
+                ntoSettleStuckPushing(
+                    (Number(resp.total) || 0) > 0 && !(Number(resp.fail_count) || 0) && (Number(resp.ok_count) || 0) > 0
+                        ? 'ok' : 'error'
+                );
                 const jobStatus = resp.job && resp.job.status ? String(resp.job.status) : '';
                 const toastKey = jobStatus + '|' + resp.ok_count + '|' + resp.fail_count + '|' + resp.total;
                 if (toastKey !== ntoPushSpriceLastToastKey && (Number(resp.total) || 0) > 0) {
@@ -2033,6 +2083,8 @@
     }
     function startNtoPushSpricePoll() {
         stopNtoPushSpricePoll();
+        ntoPushPollFails = 0;
+        if (!ntoPushStartedAt) ntoPushStartedAt = Date.now();
         ntoPushSpricePollTimer = setInterval(pollNtoPushSpriceStatus, 1500);
         pollNtoPushSpriceStatus();
     }
