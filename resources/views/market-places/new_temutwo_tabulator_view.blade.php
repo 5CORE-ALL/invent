@@ -568,9 +568,6 @@
                     <span class="badge fs-6 p-2" id="newtemutwo-blue-triangle-badge"
                         style="background-color:#0d6efd;color:#fff;font-weight:700;cursor:pointer;"
                         title="Blue triangle: S PRC ≠ T Price. Click to filter."><i class="fas fa-exclamation-triangle"></i> 0</span>
-                    <span class="badge fs-6 p-2" id="newtemutwo-lmp-cap-badge"
-                        style="background-color:#dc3545;color:#fff;font-weight:700;cursor:pointer;"
-                        title="S PRC capped at LMP. Click to filter.">LMP cap 0</span>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -1096,7 +1093,8 @@
         const saved = (extra.use_passed_as_discounted && passed > 0) ? +passed.toFixed(2) : ntoSavedSprice(row);
         const lmp = extra.skip_lmp_cap ? 0 : +temuLmpRefPrice(row).toFixed(2);
         if (!(saved > 0)) return { sprice: 0, labels: [], lmpAlert: false, lmp: lmp };
-        const lmpAlert = (row && row.sprice_lmp_alert === true) || (lmp > 0 && +saved.toFixed(2) === lmp);
+        // Capped only when S PRC is the LMP. A higher price is not a cap.
+        const lmpAlert = lmp > 0 && Math.abs(+saved.toFixed(2) - lmp) < 0.02;
         return { sprice: saved, labels: [], lmpAlert: lmpAlert, lmp: lmp };
     }
 
@@ -1806,7 +1804,7 @@
     function temuHasLmpCap(row) {
         const cap = temuSpriceCapResult(row);
         if (!cap || !(cap.sprice > 0)) return false;
-        return !!cap.lmpAlert || (cap.lmp > 0 && cap.sprice >= cap.lmp);
+        return !!cap.lmpAlert;
     }
 
     /** Blue triangle: INV > 0 and S PRC differs from the live T Price (same as Amazon). */
@@ -2564,7 +2562,6 @@
             ['#zero-sold-count-badge', zeroSoldFilterActive],
             ['#more-sold-count-badge', moreSoldFilterActive],
             ['#newtemutwo-blue-triangle-badge', blueTriangleFilterActive],
-            ['#newtemutwo-lmp-cap-badge', lmpCapFilterActive],
             ['#newtemutwo-missing-lmp-badge', missingLmpFilterActive]
         ];
         pairs.forEach(function(p) {
@@ -2635,7 +2632,6 @@
         let gpftBase = 0;
         let gpftLp = 0;
         let blueTriangle = 0;
-        let lmpCapped = 0;
         rows.forEach(function(row) {
             rowsCount++;
             const inv = parseFloat(row.INV) || 0;
@@ -2654,13 +2650,7 @@
                 gpftLp += lp;
             }
 
-            // One cap lookup feeds all four flags — the helpers would each redo it.
-            const cap = temuSpriceCapResult(row);
-            const sprice = (cap && cap.sprice > 0) ? cap.sprice : 0;
-            if (sprice > 0) {
-                if (temuHasBlueTriangle(row)) blueTriangle++;
-                if (cap.lmpAlert || (cap.lmp > 0 && sprice >= cap.lmp)) lmpCapped++;
-            }
+            if (temuHasBlueTriangle(row)) blueTriangle++;
         });
 
         totalViews = ntoViewsForBadge(rows);
@@ -2678,7 +2668,6 @@
         $('#newtemutwo-blue-triangle-badge').html(
             '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangle.toLocaleString()
         );
-        $('#newtemutwo-lmp-cap-badge').text('LMP cap ' + lmpCapped.toLocaleString());
         // Counted over the whole dataset, not the filtered view — same as /temu2-decrease.
         const allRows = table.getData();
         if (window.PriceGtLmpBadge) {
@@ -3699,7 +3688,7 @@
                     hozAlign: 'center',
                     width: 88,
                     sorter: 'number',
-                    headerTooltip: 'S PRC from Std prc vs dil (Std minus Age, Dil, B, 0 Sold, CVR, and Review discounts), then capped at LMP when SGROI at LMP is 20%+. Saved and pushed by the server at 04:20 / 20:20 IST.',
+                    headerTooltip: 'S PRC is Promo Base Prc from Std prc vs dil (Age, Dil, LMP, MOQ M, B, 0 Sold, CVR, Reviews). LMP Disc is already in that price, so it is not capped to LMP again. With no LMP Disc, S PRC is capped at the LMP column when SGROI at that LMP is 20%+. Saved and pushed by the server at 04:20 / 20:20 IST.',
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const model = typeof temuSpriceCellModel === 'function'
@@ -3707,23 +3696,14 @@
                             : { value: parseFloat(cell.getValue()) || 0, lmpAlert: false, lmp: 0 };
                         const value = model.value;
                         const live = parseFloat(rowData.temu_price || rowData.t_price) || 0;
-                        const lmp = model.lmp || temuParseMoney(rowData.lmp_raw);
                         if (!(value > 0)) return '<span style="color: #6c757d;">—</span>';
                         const formatted = '$' + value.toFixed(2);
-                        const overLmp = model.lmpAlert || (lmp > 0 && value >= lmp);
-                        const priceHtml = overLmp
-                            ? '<span style="color:#dc3545;font-weight:600;">' + formatted + '</span>'
-                            : formatted;
-                        const redTri = overLmp
-                            ? '<i class="fas fa-exclamation-triangle" style="color:#dc3545;font-size:10px;margin-left:3px;" title="S PRC capped at LMP $'
-                                + Number(lmp || 0).toFixed(2) + '"></i>'
-                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ T Price $' + live.toFixed(2) + '"></i>'
                             : '';
                         return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                            + priceHtml + redTri + blueTri + '</span>';
+                            + formatted + blueTri + '</span>';
                     }
                 },
                 {
@@ -4151,7 +4131,6 @@
             ['#zero-sold-count-badge', 'zeroSold'],
             ['#more-sold-count-badge', 'moreSold'],
             ['#newtemutwo-blue-triangle-badge', 'blueTriangle'],
-            ['#newtemutwo-lmp-cap-badge', 'lmpCap'],
             ['#newtemutwo-price-gt-lmp-badge', 'priceGtLmp'],
             ['#newtemutwo-price-lt80-lmp-badge', 'priceLt80Lmp'],
             ['#newtemutwo-missing-lmp-badge', 'missingLmp']

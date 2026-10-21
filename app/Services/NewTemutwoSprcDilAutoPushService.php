@@ -259,6 +259,13 @@ class NewTemutwoSprcDilAutoPushService
         if ($discounted === null || ! ($discounted > 0)) {
             return null;
         }
+        // LMP Disc is already inside Sum disc. Do not cap that price down to LMP afterwards.
+        $beforeLmpRow = $pricerRow;
+        $beforeLmpRow['lmp'] = 0;
+        $beforeLmpRow['lmp_raw'] = 0;
+        $discountedBeforeLmp = $pricer->priceFromRow($beforeLmpRow);
+        $lmpDiscApplied = $discountedBeforeLmp !== null
+            && ($discountedBeforeLmp - $discounted) > 0.009;
         $liveBase = (float) ($row['live_base'] ?? 0);
         $temuPrice = $liveBase > 0 ? TemuShopifySalesService::computeFullTemuPrice($liveBase) : 0.0;
         $twelvePct = round($temuPrice * 0.12, 2);
@@ -270,12 +277,17 @@ class NewTemutwoSprcDilAutoPushService
             return null;
         }
 
-        // No Amazon / eBay cap (same as New Temu One). Only the LMP cap below applies.
+        // No Amazon / eBay cap (same as New Temu One).
+        // LMP cap only when this SKU did not already take an LMP discount.
         $labels = [];
         $afterRefs = round($effective, 2);
+        $sumDiscPct = $std > 0 ? max(0.0, ($std - $discounted) / $std * 100) : 0.0;
 
-        $capped = $this->capToLmp($afterRefs, $lmp, $lp, $ship, $std);
-        $lmpCapped = $lmp > 0
+        $capped = $lmpDiscApplied
+            ? $afterRefs
+            : $this->capToLmp($afterRefs, $lmp, $lp, $ship, $std, $sumDiscPct);
+        $lmpCapped = ! $lmpDiscApplied
+            && $lmp > 0
             && ($afterRefs - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
         if ($lmpCapped) {
@@ -305,24 +317,47 @@ class NewTemutwoSprcDilAutoPushService
     }
 
     /**
-     * Amazon LMP cap with the Temu SGROI (S R Price × 0.95, same as the page):
-     *  S PRC at/above LMP and SGROI at LMP ≥ 20% → S PRC = LMP. Otherwise keep S PRC.
+     * LMP cap using the page SGROI (S Price After Discount × 0.95):
+     *  S PRC at/above the LMP column and SGROI at that LMP ≥ 20% → S PRC = LMP.
+     *  Not used once LMP Disc is already in Sum disc.
      *  Std Prc is always the maximum. Never raises S PRC.
      */
-    public function capToLmp(float $sprice, float $lmp, float $lp, float $ship, float $std): float
+    public function capToLmp(float $sprice, float $lmp, float $lp, float $ship, float $std, float $sumDiscPct = 0.0): float
     {
         $s = round($sprice, 2);
         if (! ($s > 0)) {
             return $s;
         }
         if ($lmp > 0 && ($s + 0.0001) >= $lmp) {
-            $sgroiAtLmp = TemuShopifySalesService::newTemuoneSgroiAtSprice($lmp, $lp, $ship);
+            $sgroiAtLmp = $this->sgroiAtLmp($lmp, $lp, $ship, $sumDiscPct);
             if ($sgroiAtLmp === null || $sgroiAtLmp >= AmazonDilGroiRule::LMP_SGROI_MIN) {
                 $s = round($lmp, 2);
             }
         }
 
         return AmazonDilGroiRule::capToStdWhenNoLmp($s, $lmp, $std);
+    }
+
+    /**
+     * SGROI if S PRC were the LMP. S Price After Discount = LMP − 12% of LMP − (LMP × Sum disc %).
+     */
+    public function sgroiAtLmp(float $lmp, float $lp, float $ship, float $sumDiscPct = 0.0): ?float
+    {
+        if (! ($lp > 0) || ! is_finite($lp) || ! ($lmp > 0)) {
+            return null;
+        }
+        if (! is_finite($ship)) {
+            $ship = 0.0;
+        }
+        $sumDiscPct = max(0.0, min(99.99, $sumDiscPct));
+        $twelve = round($lmp * 0.12, 2);
+        $discAmt = round($lmp * $sumDiscPct / 100, 2);
+        $pad = round($lmp - $twelve - $discAmt, 2);
+        if (! ($pad > 0)) {
+            return 0.0;
+        }
+
+        return (($pad * TemuShopifySalesService::DECREASE_TAKEHOME) - $ship - $lp) / $lp * 100;
     }
 
     /**

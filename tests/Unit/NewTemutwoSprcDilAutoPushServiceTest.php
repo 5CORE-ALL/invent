@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Services\NewTemutwoSprcDilAutoPushService;
-use App\Services\TemuShopifySalesService;
 use App\Support\StdPrcVsDilPricer;
 use PHPUnit\Framework\TestCase;
 
@@ -52,12 +51,10 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $out = $svc->computeTarget($this->row(), $this->pricer());
 
         $this->assertNotNull($out);
-        // 100 × (1 − (3 age + 5 dil + 0 cvr + 2 buss) / 100)
+        // No live base, so 12% is $0. Disc $ = 10. Price After Discount = 90. No ship disc.
         $this->assertSame(90.0, $out['sprice']);
         $this->assertFalse($out['lmp_capped']);
-        $base = TemuShopifySalesService::computePushBaseFromSprice(90.0);
-        $this->assertSame(round($base, 2), $out['base']);
-        $this->assertEqualsWithDelta(90.0, $out['full'], 0.02);
+        $this->assertSame(90.0, $out['base']);
     }
 
     public function test_lmp_cap_applies_when_sgroi_at_lmp_is_at_least_20(): void
@@ -68,6 +65,20 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertSame(80.0, $out['sprice']);
         $this->assertTrue($out['lmp_capped']);
+    }
+
+    public function test_lmp_disc_is_not_capped_down_to_lmp_afterwards(): void
+    {
+        $svc = new NewTemutwoSprcDilAutoPushService();
+        $pricer = $this->pricer([
+            'lmp' => [['min' => 0, 'max' => 100, 'disc' => 10]],
+        ]);
+        $out = $svc->computeTarget($this->row(['lmp' => 70, 'lp' => 20]), $pricer);
+
+        $this->assertNotNull($out);
+        // Sum disc 20% (3+5+2+10). Promo price stays 80. It is not pulled to LMP 70.
+        $this->assertSame(80.0, $out['sprice']);
+        $this->assertFalse($out['lmp_capped']);
     }
 
     public function test_lmp_cap_skipped_when_sgroi_at_lmp_is_below_20(): void
