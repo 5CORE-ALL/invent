@@ -554,7 +554,15 @@
         const shown = bestbuyDisplayedSprice(data);
         if (!(amz > 0) || !(shown > 0) || Math.abs(shown - amz) > 0.015) return false;
         const flag = data && (data.AMZ_CAPPED === true || data.AMZ_CAPPED === 1 || data.AMZ_CAPPED === '1');
-        return flag || bestbuyRawSavedSprice(data) + 0.0001 < amz;
+        if (bestbuyRawSavedSprice(data) + 0.0001 < amz) return true;
+        if (!flag) return false;
+        // Stale flag guard: the rule price (before the Amz floor) is already at or above A Price and no LMP is
+        // pulling it under A Price, so S PRC only equals A Price. Equal is not "raised", so no Amz label.
+        const uncapped = parseFloat(data && data.SPRICE_UNCAPPED);
+        const lmp = bestbuyRowLmp(data);
+        const lmpBelowAmz = lmp > 0 && lmp + 0.0001 < amz;
+        if (isFinite(uncapped) && uncapped > 0 && uncapped + 0.0001 >= amz && !lmpBelowAmz) return false;
+        return true;
     }
     function bestbuyHasBlueTriangle(data) {
         if (isBestbuyParentRow(data) || !isBbListed(data)) return false;
