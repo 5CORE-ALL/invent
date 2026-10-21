@@ -1267,6 +1267,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Push and pull together (same as amazon:pull-pushed-prices): every pushed SKU is read back right after the
+        // push; Alibaba reviews price changes, so this re-reads the pushed SKUs until the Price column matches.
+        $schedule->command('alibaba:pull-pushed-prices')
+            ->everyFiveMinutes()
+            ->name('alibaba-pull-pushed-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Shein Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap, Std max)
         // → S PRC → Shein product/price/save. Same twice-daily idea as Amazon. /shein-pricing does not need to be open.
         // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.

@@ -51,9 +51,10 @@ class AlibabaPushBluePricesCommand extends Command
 
         $s = $summary['stats'] ?? [];
         $this->info(sprintf(
-            'Alibaba blue catch-up: candidates=%d pushed=%d failed=%d unchanged=%d repaired=%d skipped=%d',
+            'Alibaba blue catch-up: candidates=%d pushed=%d pulled=%d failed=%d unchanged=%d repaired=%d skipped=%d',
             (int) ($s['candidates'] ?? 0),
             (int) ($s['pushed'] ?? 0),
+            (int) ($s['pulled'] ?? 0),
             (int) ($s['push_failed'] ?? 0),
             (int) ($s['skipped_unchanged'] ?? 0),
             (int) ($s['price_repaired'] ?? 0),

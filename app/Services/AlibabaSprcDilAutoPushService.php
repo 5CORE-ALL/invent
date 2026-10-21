@@ -462,8 +462,8 @@ class AlibabaSprcDilAutoPushService
     /**
      * Push one SKU through AlibabaController::pushPricingPrice (Alibaba product/price/save). That is the same call the
      * old page push and the old runner used: it also writes the sale price to alibaba_pricing_prices / alibaba_metrics.
-     * Alibaba accepting the save is the confirmation, so there is no extra pull right after the push. The blue
-     * catch-up pulls the live price before it pushes again.
+     * Push and pull together: after Alibaba accepts the save the live price is read straight away
+     * (AlibabaPushedPricePullService::afterPush) and re-read by alibaba:pull-pushed-prices until it matches.
      *
      * @param  array<string, mixed>  $row
      * @param  array{sprice:float}  $computed
@@ -480,6 +480,16 @@ class AlibabaSprcDilAutoPushService
             $stats['pushed']++;
             $this->savePushMeta($sku, 'pushed', $price);
             \App\Support\AlibabaPushError::forget($sku);
+            // Push and pull together, same as Amazon: read the live price now. Alibaba usually still shows the old
+            // price while it reviews the change, so alibaba:pull-pushed-prices keeps re-reading it.
+            try {
+                $pull = app(AlibabaPushedPricePullService::class)->afterPush($sku, $price);
+                if (! empty($pull['success'])) {
+                    $stats['pulled'] = ($stats['pulled'] ?? 0) + 1;
+                }
+            } catch (Throwable $e) {
+                Log::warning('[AlibabaSprcDilAutoPush] immediate Price pull after push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+            }
 
             return;
         }

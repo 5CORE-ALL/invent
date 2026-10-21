@@ -321,6 +321,10 @@ class ChannelPushSpriceRunner
                         ? ($payload['ebay_price'] ?? $payload['price'] ?? $price)
                         : $price;
                     $ok = true;
+                    if ($this->channel === 'alibaba') {
+                        // Push and pull together, same as Amazon: record the push and read the live price now.
+                        $this->alibabaPullAfterPush($sku, (float) $price);
+                    }
                     if (in_array($this->channel, ['tiktok', 'tiktok2', 'doba', 'doba_withoutship'], true)
                         && (! is_numeric($live) || abs((float) $live - (float) $price) >= 0.05)) {
                         $pulled = $this->pullLivePriceAfterPush($sku, (float) $price);
@@ -467,6 +471,37 @@ class ChannelPushSpriceRunner
         }
 
         return round($pulled, 2);
+    }
+
+    /**
+     * Alibaba accepted the price. Save the push (so the catch-up holds it while Alibaba reviews it and the page
+     * keeps the green mark after a reload), then pull the live price. alibaba:pull-pushed-prices re-reads it later.
+     */
+    private function alibabaPullAfterPush(string $sku, float $pushed): void
+    {
+        if ($sku === '' || ! ($pushed > 0)) {
+            return;
+        }
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('alibaba_pricing_prices')
+                && \Illuminate\Support\Facades\Schema::hasColumn('alibaba_pricing_prices', 'sprice_pushed_at')) {
+                $now = now()->toDateTimeString();
+                $row = \App\Models\AlibabaPricingPrice::query()
+                    ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($sku))])
+                    ->first() ?? new \App\Models\AlibabaPricingPrice(['sku' => trim($sku)]);
+                $row->fill([
+                    'sprice' => round($pushed, 2),
+                    'sprice_status' => 'pushed',
+                    'sprice_status_at' => $now,
+                    'sprice_pushed_value' => round($pushed, 2),
+                    'sprice_pushed_at' => $now,
+                ]);
+                $row->save();
+            }
+            app(\App\Services\AlibabaPushedPricePullService::class)->afterPush($sku, $pushed);
+        } catch (\Throwable $e) {
+            Log::warning('Alibaba pull after S PRC push failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+        }
     }
 
     private function pullLivePriceAfterPush(string $sku, float $expected): float
