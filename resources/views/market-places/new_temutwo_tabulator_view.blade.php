@@ -559,6 +559,7 @@
                         'pglBadgeId' => 'newtemutwo-price-gt-lmp-badge',
                         'pglChannelKey' => '',
                         'pglPriceField' => 'temu_price',
+                        'pglTitle' => 'LMP Alert Prc: SKUs where LMP is lower than S Promo Prc. Click to filter.',
                     ])
                     @include('partials.price-lt80-lmp-badge', [
                         'pltBadgeId' => 'newtemutwo-price-lt80-lmp-badge',
@@ -1792,8 +1793,7 @@
     }
 
     function temuHasPriceGtLmp(row) {
-        return !!(window.PriceGtLmpBadge
-            && PriceGtLmpBadge.hasRedTriangle(row, 'temu_price', temuBadgeLmpValue));
+        return ntoRowLmpAlertPrc(row) != null;
     }
 
     function temuHasPriceLt80Lmp(row) {
@@ -2693,10 +2693,16 @@
         );
         // Counted over the whole dataset, not the filtered view — same as /temu2-decrease.
         const allRows = table.getData();
-        if (window.PriceGtLmpBadge) {
-            PriceGtLmpBadge.update(
-                '#newtemutwo-price-gt-lmp-badge', allRows, '', 'temu_price', temuBadgeLmpValue
-            );
+        let lmpAlertCount = 0;
+        (allRows || []).forEach(function(row) {
+            if (ntoRowLmpAlertPrc(row) != null) lmpAlertCount++;
+        });
+        const alertBadge = document.getElementById('newtemutwo-price-gt-lmp-badge');
+        if (alertBadge) {
+            const dot = alertBadge.querySelector('.summary-trend-dot, .kpi-status-dot');
+            alertBadge.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + lmpAlertCount.toLocaleString();
+            if (dot) alertBadge.insertBefore(dot, alertBadge.firstChild);
+            alertBadge.setAttribute('data-live-value', String(lmpAlertCount));
         }
         if (window.PriceLt80LmpBadge) {
             PriceLt80LmpBadge.update('#newtemutwo-price-lt80-lmp-badge', allRows, '', 'temu_price');
