@@ -1351,13 +1351,21 @@
         window.analyticsBussDiscountPct = chStdBussDiscPct;
         function chStdRepaintDiscColumns() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
+            // Tabulator 6 cells have no reformat(): it logs an error per cell. Reformat each row once instead.
+            const rows = new Set();
             ['age_discount', 'dil_discount', 'lmp_discount', 'moq_m_discount', 'buss_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
                 let col = null;
                 try { col = table.getColumn(field); } catch (e) { col = null; }
                 if (!col || typeof col.getCells !== 'function') return;
                 col.getCells().forEach(function(cell) {
-                    try { if (cell && typeof cell.reformat === 'function') cell.reformat(); } catch (err) { /* ignore */ }
+                    try {
+                        const row = cell && typeof cell.getRow === 'function' ? cell.getRow() : null;
+                        if (row) rows.add(row);
+                    } catch (err) { /* ignore */ }
                 });
+            });
+            rows.forEach(function(row) {
+                try { if (typeof row.reformat === 'function') row.reformat(); } catch (err) { /* ignore */ }
             });
         }
         function chStdAlibabaSoldQty(d) {
