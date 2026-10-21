@@ -19,6 +19,11 @@
         'max-width:min(680px,88vw)!important;max-height:min(680px,82vh)!important;' +
         'border-radius:16px;padding:8px;' +
         '}' +
+        '#global-img-hover-preview.is-circle{' +
+        'width:min(280px,70vw);height:min(280px,70vw);' +
+        'max-width:min(280px,70vw)!important;max-height:min(280px,70vw)!important;' +
+        'border-radius:50%;object-fit:cover;padding:0;border:3px solid #fff;' +
+        '}' +
         'img.global-img-hover-active{cursor:zoom-in;}';
 
     var styleEl = document.createElement('style');
@@ -116,7 +121,9 @@
         }
         activeImg = img;
         img.classList.add('global-img-hover-active');
-        popup.classList.toggle('is-large', !!(img.closest && img.closest('[data-hover-zoom]')));
+        var circle = !!(img.classList && (img.classList.contains('rounded-circle') || img.classList.contains('task-avatar-hover')));
+        popup.classList.toggle('is-circle', circle);
+        popup.classList.toggle('is-large', !circle && !!(img.closest && img.closest('[data-hover-zoom]')));
         popup.src = img.currentSrc || img.src;
         popup.style.display = 'block';
         cx = e.clientX;
