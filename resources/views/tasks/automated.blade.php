@@ -608,10 +608,7 @@
     }
     
     .task-avatar-hover:hover {
-        transform: scale(2.3);
-        z-index: 9999;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
-        border: 2px solid white;
+        z-index: 2;
     }
     
     .stat-card.automated-stat-trigger::after {
@@ -782,6 +779,49 @@
     }
     
     </style>
+    <script>
+        (function () {
+            if (window.__taskAvatarFlyoutInit) return;
+            window.__taskAvatarFlyoutInit = true;
+            var fly = document.createElement('img');
+            fly.id = 'task-avatar-flyout';
+            fly.alt = '';
+            fly.className = 'no-img-hover';
+            fly.setAttribute('data-no-img-hover', '');
+            fly.style.cssText = 'position:fixed;display:none;z-index:200080;pointer-events:none;width:240px;height:240px;max-width:240px;max-height:240px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 8px 28px rgba(0,0,0,.35);background:#fff;';
+            (document.body || document.documentElement).appendChild(fly);
+            var size = 240;
+            function place(e) {
+                var pad = 18;
+                var x = e.clientX + pad;
+                var y = e.clientY + pad;
+                if (x + size > window.innerWidth - 8) x = e.clientX - size - pad;
+                if (y + size > window.innerHeight - 8) y = e.clientY - size - pad;
+                if (x < 8) x = 8;
+                if (y < 8) y = 8;
+                fly.style.left = x + 'px';
+                fly.style.top = y + 'px';
+            }
+            document.addEventListener('mouseover', function (e) {
+                var img = e.target && e.target.closest ? e.target.closest('img.task-avatar-hover') : null;
+                if (!img) return;
+                fly.src = img.currentSrc || img.src;
+                fly.style.display = 'block';
+                place(e);
+            }, true);
+            document.addEventListener('mouseout', function (e) {
+                var img = e.target && e.target.closest ? e.target.closest('img.task-avatar-hover') : null;
+                if (!img) return;
+                var to = e.relatedTarget;
+                if (to && img.contains && img.contains(to)) return;
+                fly.style.display = 'none';
+            }, true);
+            document.addEventListener('mousemove', function (e) {
+                if (fly.style.display !== 'block') return;
+                place(e);
+            }, true);
+        })();
+    </script>
 @endsection
 
 @section('content')
@@ -2104,7 +2144,7 @@
                                 var designation = row.assignor_designation || '';
                                 var designationHtml = designation ? '<div style="font-size: 9px; color: #6c757d; margin-top: 2px;">' + String(designation).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' : '';
                                 return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
-                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:24px;height:24px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;" class="task-avatar-hover">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover no-img-hover" data-no-img-hover style="width:24px;height:24px;object-fit:cover;border-radius:50%;flex-shrink:0;cursor:pointer;">' +
                                     '<div style="text-align: left;"><strong style="font-size: 11px;">' + nameEsc + '</strong>' + designationHtml + '</div>' +
                                     '</div>';
                             }
@@ -2128,7 +2168,7 @@
                                 var designation = row.assignee_designation || '';
                                 var designationHtml = designation ? '<div style="font-size: 9px; color: #6c757d; margin-top: 2px;">' + String(designation).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>' : '';
                                 return '<div class="d-flex align-items-center justify-content-center gap-2 flex-nowrap">' +
-                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle" style="width:24px;height:24px;object-fit:cover;flex-shrink:0;transition:all 0.2s ease;cursor:pointer;" class="task-avatar-hover">' +
+                                    '<img src="' + imgSrc + '" alt="" class="rounded-circle task-avatar-hover no-img-hover" data-no-img-hover style="width:24px;height:24px;object-fit:cover;border-radius:50%;flex-shrink:0;cursor:pointer;">' +
                                     '<div style="text-align: left;"><strong style="font-size: 11px;">' + nameEsc + '</strong>' + designationHtml + '</div>' +
                                     '</div>';
                             }

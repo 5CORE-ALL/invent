@@ -124,6 +124,23 @@
         var circle = !!(img.classList && (img.classList.contains('rounded-circle') || img.classList.contains('task-avatar-hover')));
         popup.classList.toggle('is-circle', circle);
         popup.classList.toggle('is-large', !circle && !!(img.closest && img.closest('[data-hover-zoom]')));
+        if (circle) {
+            popup.style.width = '240px';
+            popup.style.height = '240px';
+            popup.style.maxWidth = '240px';
+            popup.style.maxHeight = '240px';
+            popup.style.borderRadius = '50%';
+            popup.style.objectFit = 'cover';
+            popup.style.padding = '0';
+        } else {
+            popup.style.width = '';
+            popup.style.height = '';
+            popup.style.maxWidth = '';
+            popup.style.maxHeight = '';
+            popup.style.borderRadius = '';
+            popup.style.objectFit = '';
+            popup.style.padding = '';
+        }
         popup.src = img.currentSrc || img.src;
         popup.style.display = 'block';
         cx = e.clientX;
