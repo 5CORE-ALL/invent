@@ -571,6 +571,29 @@
         }
         window.frDisplayedSprice = frDisplayedSprice;
         window.frPushSprice = frPushSprice;
+        /** Ship from Shipping Master (product_master Values.ship — the "Ship" column there). */
+        function frShipAmount(data) {
+            data = frRowData(data);
+            if (!data || frIsParentRow(data)) return 0;
+            const n = parseFloat(data.ship);
+            return (isFinite(n) && n > 0) ? n : 0;
+        }
+        /** Sprice − Ship. 0 when there is no Sprice or when Ship would eat the whole Sprice. */
+        function frSpriceMinusShip(data) {
+            data = frRowData(data);
+            if (!data || frIsParentRow(data)) return 0;
+            const sprice = frDisplayedSprice(data);
+            if (!(sprice > 0)) return 0;
+            const v = sprice - frShipAmount(data);
+            return v > 0 ? +v.toFixed(2) : 0;
+        }
+        /** Price this page pushes to Faire: Sprice − Ship (this page only). */
+        function frPushPrice(data) {
+            return frSpriceMinusShip(data);
+        }
+        window.frShipAmount = frShipAmount;
+        window.frSpriceMinusShip = frSpriceMinusShip;
+        window.frPushPrice = frPushPrice;
         function frRefreshSpriceCells() {
             if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
             try {
@@ -588,7 +611,8 @@
         }
         function frSpriceDiffersFromPrice(data, spriceOverride) {
             data = frRowData(data);
-            const sprice = spriceOverride != null ? Number(spriceOverride) : frDisplayedSprice(data);
+            // Compared against the price this page pushes (Sprice − Ship).
+            const sprice = spriceOverride != null ? Number(spriceOverride) : frPushPrice(data);
             const price = frListingPrice(data);
             return sprice > 0 && price > 0 && sprice.toFixed(2) !== price.toFixed(2);
         }
@@ -1058,7 +1082,7 @@
             } catch (e) { /* ignore */ }
             try {
                 const d = row.getData();
-                const sprice = frPushSprice(d);
+                const sprice = frPushPrice(d);
                 const status = d.push_status || null;
                 const el = pushCell.getElement();
                 if (!el) return;
@@ -1069,7 +1093,7 @@
                 } else if (status === 'error') {
                     el.innerHTML = '<button type="button" class="fr-push-single-btn" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" data-price="' + sprice + '" style="border:none;background:none;color:#dc3545;cursor:pointer;padding:4px 6px;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>';
                 } else if (sprice > 0) {
-                    el.innerHTML = '<button type="button" class="fr-push-single-btn" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" data-price="' + sprice + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push SPRICE to Faire"><i class="fas fa-upload"></i></button>';
+                    el.innerHTML = '<button type="button" class="fr-push-single-btn" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" data-price="' + sprice + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push Sprice − Ship to Faire"><i class="fas fa-upload"></i></button>';
                 } else {
                     el.innerHTML = '';
                 }
@@ -1081,11 +1105,12 @@
             const d = row.getData();
             if (d.is_parent) return;
             const sku = d.sku;
-            const price = frPushSprice(d);
+            const price = frPushPrice(d);          // Sprice − Ship (pushed to Faire)
+            const spriceSaved = frDisplayedSprice(d); // SPRICE itself stays unchanged in the DB
             const productId = d.product_id || '';
             if (!sku || price <= 0) {
-                if (window.toastr) toastr.warning('SPRICE must be > 0 to push');
-                else alert('SPRICE must be > 0 to push');
+                if (window.toastr) toastr.warning('Sprice − Ship must be > 0 to push');
+                else alert('Sprice − Ship must be > 0 to push');
                 return;
             }
 
@@ -1098,7 +1123,7 @@
                 .then(function() {
                     row.update({ push_status: 'pushed', price: price }, true);
                     frRefreshPushCell(row);
-                    frSavePushStatus(sku, 'pushed', price);
+                    frSavePushStatus(sku, 'pushed', spriceSaved);
                     if (typeof updateSummary === 'function') {
                         try { updateSummary(); } catch (e) { /* ignore */ }
                     }
@@ -1108,7 +1133,7 @@
                 .catch(function(err) {
                     row.update({ push_status: 'error' }, true);
                     frRefreshPushCell(row);
-                    frSavePushStatus(sku, 'error', price);
+                    frSavePushStatus(sku, 'error', spriceSaved);
                     const msg = (err && err.message) ? err.message : 'Push failed';
                     if (window.toastr) toastr.error(msg);
                     else alert(msg);
@@ -1122,12 +1147,13 @@
                 const d = row.getData();
                 if (d.is_parent) return;
                 const sku = d.sku;
-                const price = frPushSprice(d);
+                const price = frPushPrice(d);
                 if (!sku || price <= 0) return;
                 if (selectedOnly && !frSelectedSkus.has(sku)) return;
                 list.push({
                     sku: sku,
                     price: price,
+                    sprice: frDisplayedSprice(d),
                     productId: d.product_id || '',
                     row: row
                 });
@@ -1146,7 +1172,7 @@
             if (count > 0) {
                 const label = selectedPushable.length > 0
                     ? ('Push to Faire (' + count + ')')
-                    : ('Push all SPRICE (' + count + ')');
+                    : ('Push all Sprice-Ship (' + count + ')');
                 $btn.show().prop('disabled', false).html('<i class="fas fa-upload"></i> ' + label);
             } else {
                 $btn.hide();
@@ -1192,7 +1218,7 @@
                         successCount++;
                         item.row.update({ push_status: 'pushed', price: item.price }, true);
                         frRefreshPushCell(item.row);
-                        frSavePushStatus(item.sku, 'pushed', item.price);
+                        frSavePushStatus(item.sku, 'pushed', item.sprice);
                         currentIndex++;
                         setTimeout(processNext, 1500);
                     })
@@ -1200,7 +1226,7 @@
                         errorCount++;
                         item.row.update({ push_status: 'error' }, true);
                         frRefreshPushCell(item.row);
-                        frSavePushStatus(item.sku, 'error', item.price);
+                        frSavePushStatus(item.sku, 'error', item.sprice);
                         frSelectedSkus.delete(item.sku);
                         currentIndex++;
                         setTimeout(processNext, 1500);
@@ -2260,14 +2286,39 @@
                             if (!(value > 0)) value = parseFloat(cell.getValue() || 0) || 0;
                             const clearanceMark = frClearanceMarkHtml(d);
                             if (!(value > 0)) return clearanceMark || '<span style="color:#6c757d;">–</span>';
-                            const live = frListingPrice(d);
                             const formatted = money(value);
-                            // Same as Amazon S PRC cell: blue triangle when painted S PRC ≠ Price.
-                            const blueTri = (value > 0 && live > 0 && value.toFixed(2) !== live.toFixed(2))
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
+                            // Blue triangle now lives on the Sprice - Ship column (that is the price pushed).
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + clearanceMark + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Ship', field: 'ship', sorter: 'number', headerSort: true, hozAlign: 'right', width: 62,
+                        headerTooltip: 'Ship from Shipping Master (the "Ship" column there = Ship + Handling + O-Size + PR charge).',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                            const v = frShipAmount(d);
+                            if (!(v > 0)) return '<span style="color:#6c757d;">–</span>';
+                            return '<span style="font-weight:600;">' + money(v) + '</span>';
+                        }
+                    },
+                    {
+                        title: 'Sprice - Ship', field: '_sprice_ship', headerSort: true, hozAlign: 'right', width: 92,
+                        headerTooltip: 'Sprice − Ship. This is the price pushed to Faire from this page (not Sprice). Blue triangle = pushed price ≠ Price.',
+                        sorter: function(a, b, aRow, bRow) {
+                            return frSpriceMinusShip(aRow.getData()) - frSpriceMinusShip(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                            const value = frSpriceMinusShip(d);
+                            if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
+                            const live = frListingPrice(d);
+                            const blueTri = (live > 0 && value.toFixed(2) !== live.toFixed(2))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="Sprice − Ship $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + clearanceMark + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:700;">' + money(value) + '</span>' + blueTri + '</span>';
                         }
                     },
                     {
@@ -2336,15 +2387,15 @@
                                 if (status === 'pushed') return 4;
                                 if (status === 'pushing') return 3;
                                 if (status === 'error') return 2;
-                                return frPushSprice(d) > 0 ? 1 : 0;
+                                return frPushPrice(d) > 0 ? 1 : 0;
                             };
                             return rank(aRow.getData()) - rank(bRow.getData());
                         },
-                        headerTooltip: 'Push SPRICE to Faire wholesale price API (same status UX as /doba-tabulator)',
+                        headerTooltip: 'Push Sprice − Ship to Faire wholesale price API (same status UX as /doba-tabulator)',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
-                            const sprice = frPushSprice(d);
+                            const sprice = frPushPrice(d);
                             if (sprice <= 0) return '';
                             const pushStatus = d.push_status || null;
                             const sku = String(d.sku || '');
@@ -2361,7 +2412,7 @@
                             if (pushStatus === 'error') {
                                 return '<button type="button" class="fr-push-single-btn" data-sku="' + esc(sku) + '" data-price="' + sprice + '" data-product-id="' + esc(productId) + '" style="border:none;background:none;color:#dc3545;cursor:pointer;padding:4px 6px;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>';
                             }
-                            return '<button type="button" class="fr-push-single-btn" data-sku="' + esc(sku) + '" data-price="' + sprice + '" data-product-id="' + esc(productId) + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push SPRICE to Faire"><i class="fas fa-upload"></i></button>';
+                            return '<button type="button" class="fr-push-single-btn" data-sku="' + esc(sku) + '" data-price="' + sprice + '" data-product-id="' + esc(productId) + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push Sprice − Ship to Faire"><i class="fas fa-upload"></i></button>';
                         },
                         // Tabulator can swallow nested button clicks — handle via cellClick too
                         cellClick: function(e, cell) {
