@@ -2042,132 +2042,222 @@ class Temu2ListingPublishService
      */
     private function uploadImageToTemu2(string $imageUrl): array
     {
-        $stripped = preg_replace('/\?.*$/', '', $imageUrl) ?: $imageUrl;
-        $jpegUrl = $this->jpegUrlForTemu($imageUrl);
-        $candidates = array_values(array_unique(array_filter([$jpegUrl, $imageUrl, $stripped])));
-
-        $attempts = [];
-        foreach ($candidates as $url) {
-            $attempts[] = ['bg.local.goods.image.upload', ['fileUrl' => $url]];
-            $attempts[] = ['bg.local.goods.image.upload', [
-                'fileUrl' => $url,
-                'scalingType' => 1,
-                'compressionType' => 0,
-                'formatConversionType' => 0,
-            ]];
-            $attempts[] = ['temu.local.goods.image.v2.upload', ['fileUrl' => $url, 'usage' => 1]];
+        $prepared = $this->prepareTemuImage($imageUrl);
+        if ($prepared['bytes'] === null) {
+            return [
+                'success' => false,
+                'message' => 'Could not read the listing photo as a JPEG or PNG. Temu rejects WebP links.',
+            ];
         }
 
+        $encoded = base64_encode($prepared['bytes']);
         $lastMsg = '';
-        foreach ($attempts as [$type, $params]) {
-            $data = $this->api->callOpenApi($type, $params, 60);
-            $hosted = $this->extractUploadedImageUrl($data);
-            if ($hosted !== null) {
-                return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
-            }
-            $lastMsg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
-            if ($this->isIpWhitelistMessage($lastMsg)) {
-                return ['success' => false, 'message' => $lastMsg];
-            }
-        }
-
-        $jpegBytes = $this->jpegBytesForTemu($jpegUrl !== '' ? $jpegUrl : $imageUrl);
-        if ($jpegBytes !== null) {
-            $encoded = base64_encode($jpegBytes);
-            foreach (['image', 'imageBase64', 'fileBase64'] as $field) {
-                $data = $this->api->callOpenApi('bg.local.goods.image.upload', [$field => $encoded], 90);
+        foreach (['bg.local.goods.image.upload', 'temu.local.image.upload', 'files/upload_image'] as $type) {
+            foreach (['image', 'imageBase64', 'fileBase64', 'base64'] as $field) {
+                $data = $this->api->callOpenApi($type, [$field => $encoded], 90);
                 $hosted = $this->extractUploadedImageUrl($data);
                 if ($hosted !== null) {
                     return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
                 }
-                $byteMsg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
-                if ($byteMsg !== '' && ! $this->isApiAccessDenied($data)) {
-                    $lastMsg = $byteMsg;
+                if ($this->isIpWhitelistMessage((string) ($data['errorMsg'] ?? $data['message'] ?? ''))) {
+                    return ['success' => false, 'message' => (string) ($data['errorMsg'] ?? $data['message'] ?? '')];
+                }
+                if (! $this->isApiAccessDenied($data)) {
+                    $byteMsg = trim((string) ($data['errorMsg'] ?? ''));
+                    if ($byteMsg !== '' && ! str_contains(strtolower($byteMsg), '.webp')) {
+                        $lastMsg = $byteMsg;
+                    }
                 }
             }
         }
 
-        $fallback = $this->api->uploadTemuImageFromUrl($imageUrl);
-        if (! empty($fallback['success']) && ! empty($fallback['url'])) {
-            return $fallback;
+        foreach ($prepared['file_urls'] as $url) {
+            foreach ([
+                ['bg.local.goods.image.upload', ['fileUrl' => $url, 'scalingType' => 1, 'compressionType' => 0, 'formatConversionType' => 1]],
+                ['bg.local.goods.image.upload', ['fileUrl' => $url]],
+                ['temu.local.goods.image.v2.upload', ['fileUrl' => $url, 'usage' => 1]],
+            ] as [$type, $params]) {
+                $data = $this->api->callOpenApi($type, $params, 60);
+                $hosted = $this->extractUploadedImageUrl($data);
+                if ($hosted !== null) {
+                    return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+                }
+                $msg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
+                if ($this->isIpWhitelistMessage($msg)) {
+                    return ['success' => false, 'message' => $msg];
+                }
+                if ($msg !== '' && ! str_contains(strtolower($msg), '.webp')) {
+                    $lastMsg = $msg;
+                }
+            }
         }
 
         return [
             'success' => false,
-            'message' => $lastMsg !== '' ? $lastMsg : (string) ($fallback['message'] ?? 'Image upload failed.'),
+            'message' => $lastMsg !== '' ? $lastMsg : 'Temu image upload failed.',
         ];
     }
 
     /**
-     * Temu 1 rejects WebP fileUrl values. Serve a JPEG copy of a stored listing image.
+     * Temu local image upload accepts JPEG and PNG only. WebP file links are rejected.
+     *
+     * @return array{bytes: ?string, file_urls: list<string>}
      */
-    private function jpegUrlForTemu(string $imageUrl): string
+    private function prepareTemuImage(string $imageUrl): array
     {
-        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
-        if (! preg_match('#/listing-manager/media/([A-Za-z0-9._-]+)$#', $path, $match)) {
-            return '';
+        $raw = $this->readImageBytes($imageUrl);
+        if ($raw === null) {
+            return ['bytes' => null, 'file_urls' => []];
         }
-        $file = basename($match[1]);
-        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-        if (in_array($ext, ['jpg', 'jpeg', 'png'], true)) {
-            return '';
+        $jpeg = $this->binaryToJpeg($raw);
+        if ($jpeg === null) {
+            return ['bytes' => null, 'file_urls' => []];
         }
 
-        $disk = Storage::disk('public');
-        $source = 'listing-manager/images/'.$file;
-        if (! $disk->exists($source)) {
+        $fileUrls = [];
+        if ($this->isTemuFetchableImageUrl($imageUrl) && $this->bytesAreJpegOrPng($raw)) {
+            $fileUrls[] = $imageUrl;
+        }
+        $saved = $this->storeJpegForTemu($imageUrl, $jpeg);
+        if ($saved !== '') {
+            $fileUrls[] = $saved;
+        }
+
+        return ['bytes' => $jpeg, 'file_urls' => array_values(array_unique($fileUrls))];
+    }
+
+    private function isTemuFetchableImageUrl(string $url): bool
+    {
+        $path = strtolower((string) (parse_url($url, PHP_URL_PATH) ?? ''));
+
+        return (bool) preg_match('/\.(jpe?g|png)$/', $path);
+    }
+
+    private function bytesAreJpegOrPng(string $raw): bool
+    {
+        return str_starts_with($raw, "\xFF\xD8\xFF") || str_starts_with($raw, "\x89PNG\r\n\x1a\n");
+    }
+
+    private function readImageBytes(string $imageUrl): ?string
+    {
+        $file = $this->localImageFile($imageUrl);
+        if ($file !== null) {
+            $raw = @file_get_contents($file);
+            if (is_string($raw) && strlen($raw) > 32) {
+                return $raw;
+            }
+        }
+
+        try {
+            $response = Http::timeout(60)->withoutVerifying()->withHeaders([
+                'User-Agent' => 'Mozilla/5.0 (compatible; 5CoreListingManager/1.0)',
+                'Accept' => 'image/jpeg,image/png,image/webp,image/*',
+            ])->get($imageUrl);
+            if ($response->successful()) {
+                $raw = $response->body();
+                if (strlen($raw) > 32) {
+                    return $raw;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return null;
+    }
+
+    private function localImageFile(string $imageUrl): ?string
+    {
+        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
+        $name = '';
+        if (preg_match('#/listing-manager/media/([^/?#]+)$#', $path, $match)) {
+            $name = basename(rawurldecode($match[1]));
+            $relative = 'listing-manager/images/'.$name;
+        } elseif (preg_match('#/storage/(.+)$#', $path, $match)) {
+            $relative = ltrim(rawurldecode($match[1]), '/');
+        } else {
+            return null;
+        }
+
+        $candidates = [
+            Storage::disk('public')->path($relative),
+            storage_path('app/public/'.$relative),
+            public_path('storage/'.$relative),
+        ];
+        foreach ($candidates as $full) {
+            if (is_file($full) && is_readable($full)) {
+                return $full;
+            }
+        }
+
+        return null;
+    }
+
+    private function storeJpegForTemu(string $imageUrl, string $jpeg): string
+    {
+        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
+        if (! preg_match('#/listing-manager/media/([^/?#]+)$#', $path, $match)) {
             return '';
         }
-        $jpgName = pathinfo($file, PATHINFO_FILENAME).'.jpg';
-        $target = 'listing-manager/images/'.$jpgName;
-        if (! $disk->exists($target)) {
-            $bytes = $this->fileToJpeg($disk->path($source));
-            if ($bytes === null) {
-                return '';
-            }
-            $disk->put($target, $bytes);
+        $jpgName = pathinfo(basename(rawurldecode($match[1])), PATHINFO_FILENAME).'.jpg';
+        if (! preg_match('/^[a-f0-9]{40}\.jpg$/', $jpgName)) {
+            return '';
         }
+        Storage::disk('public')->put('listing-manager/images/'.$jpgName, $jpeg);
 
         return (string) preg_replace('#/listing-manager/media/[^/?#]+#', '/listing-manager/media/'.$jpgName, $imageUrl);
     }
 
-    private function jpegBytesForTemu(string $imageUrl): ?string
+    private function binaryToJpeg(string $raw): ?string
     {
-        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
-        if (! preg_match('#/listing-manager/media/([A-Za-z0-9._-]+)$#', $path, $match)) {
-            return null;
+        if (str_starts_with($raw, "\xFF\xD8\xFF")) {
+            return $raw;
         }
-        $file = basename($match[1]);
-        $relative = 'listing-manager/images/'.$file;
-        $disk = Storage::disk('public');
-        if (! $disk->exists($relative)) {
-            return null;
+        if (function_exists('imagecreatefromstring') && function_exists('imagejpeg')) {
+            $image = @imagecreatefromstring($raw);
+            if ($image !== false) {
+                return $this->gdToJpeg($image);
+            }
         }
-        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-        if (in_array($ext, ['jpg', 'jpeg'], true)) {
-            $bytes = $disk->get($relative);
+        if (function_exists('imagecreatefromwebp') && function_exists('imagejpeg') && str_starts_with($raw, 'RIFF')) {
+            $tmp = tempnam(sys_get_temp_dir(), 'temuimg');
+            if (is_string($tmp)) {
+                file_put_contents($tmp, $raw);
+                $image = @imagecreatefromwebp($tmp);
+                @unlink($tmp);
+                if ($image !== false) {
+                    return $this->gdToJpeg($image);
+                }
+            }
+        }
+        if (class_exists(\Imagick::class)) {
+            try {
+                $im = new \Imagick();
+                $im->readImageBlob($raw);
+                $im->setImageFormat('jpeg');
+                $im->setImageCompressionQuality(90);
+                $blob = $im->getImageBlob();
+                $im->clear();
 
-            return is_string($bytes) && $bytes !== '' ? $bytes : null;
+                return is_string($blob) && $blob !== '' ? $blob : null;
+            } catch (\Throwable) {
+            }
         }
 
-        return $this->fileToJpeg($disk->path($relative));
+        return null;
     }
 
-    private function fileToJpeg(string $absolutePath): ?string
+    /**
+     * @param  \GdImage|resource  $image
+     */
+    private function gdToJpeg($image): ?string
     {
-        if (! is_file($absolutePath) || ! function_exists('imagecreatefromstring') || ! function_exists('imagejpeg')) {
-            return null;
-        }
-        $raw = @file_get_contents($absolutePath);
-        if (! is_string($raw) || $raw === '') {
-            return null;
-        }
-        $image = @imagecreatefromstring($raw);
-        if ($image === false) {
-            return null;
-        }
         $width = imagesx($image);
         $height = imagesy($image);
+        if ($width < 1 || $height < 1) {
+            imagedestroy($image);
+
+            return null;
+        }
         $canvas = imagecreatetruecolor($width, $height);
         if ($canvas === false) {
             imagedestroy($image);
@@ -2183,7 +2273,7 @@ class Temu2ListingPublishService
         imagedestroy($image);
         imagedestroy($canvas);
 
-        return is_string($jpeg) && $jpeg !== '' ? $jpeg : null;
+        return is_string($jpeg) && str_starts_with($jpeg, "\xFF\xD8") ? $jpeg : null;
     }
 
     /**
