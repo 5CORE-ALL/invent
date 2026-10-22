@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -652,6 +652,15 @@
             const n = Number(chPromoAdsFrac());
             return isFinite(n) && n > 0 ? n : 0;
         }
+        // Shopify B2B and Wayfair: S PRC = Std Prc after the discount, then minus the Ship column.
+        function chStdSubtractsShip() {
+            return typeof CHANNEL_PROMO_CHANNEL !== 'undefined'
+                && (CHANNEL_PROMO_CHANNEL === 'shopify_b2b' || CHANNEL_PROMO_CHANNEL === 'wayfair');
+        }
+        function chStdShipOff(d) {
+            if (!chStdSubtractsShip()) return 0;
+            return (typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0;
+        }
         function chStdExcludesShip() {
             if (typeof CHANNEL_PROMO_CHANNEL === 'undefined') return false;
             return CHANNEL_PROMO_CHANNEL === 'shopify_b2b'
@@ -1097,7 +1106,7 @@
                     sumPctCounts[sumKey] = (sumPctCounts[sumKey] || 0) + 1;
                 }
                 if (std > 0) {
-                    const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
+                    const sprice = Math.round((std * (1 - sum / 100) - chStdShipOff(d)) * 100) / 100;
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
                     const gross = (sprice * chStdMargin(d)) - ship - lp;
@@ -1152,7 +1161,7 @@
                         if (chStdInRange(std, draft.pricing[i], i === draft.pricing.length - 1)) { pricingDisc = Number(draft.pricing[i].disc) || 0; break; }
                     }
                     const sum = hasStd ? Math.min(99.99, Math.max(-100, revDisc + bussDisc + pricingDisc)) : 0;
-                    const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
+                    const sprice = Math.round((std * (1 - sum / 100) - chStdShipOff(d)) * 100) / 100;
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
                     const gross = (sprice * chStdMargin(d)) - ship - lp;
@@ -1704,10 +1713,7 @@
             if (!(std > 0)) return 0;
             const sum = chStdSumDisc(d, draft || chStdDraftNow());
             let raw = std * (1 - Math.min(99.99, sum) / 100);
-            if (typeof CHANNEL_PROMO_CHANNEL !== 'undefined' && CHANNEL_PROMO_CHANNEL === 'shopify_b2b') {
-                const ship = (typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0;
-                raw -= ship;
-            }
+            raw -= chStdShipOff(d);
             if (!(raw > 0)) return 0;
             if (chStdIsEbay()) raw = chStdEbayCap(d, raw);
             if (!(raw > 0)) return 0;
