@@ -123,6 +123,115 @@ class GoogleShoppingLiveBidBgtService
         return $stats;
     }
 
+    /**
+     * Live CPC = today's average CPC (spend ÷ clicks so far today, Google Ads account day) read through the API.
+     * No clicks yet today stores an empty CPC with 0 clicks. A failed pull only records the error and keeps the last value.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array{ok: bool, error: ?string, with_clicks: int}
+     */
+    public function pullAndStoreLiveCpc(string $customerId, array $campaignIds, string $channel = 'shopping'): array
+    {
+        $ids = self::normalizeIds($campaignIds);
+        if ($ids === []) {
+            return ['ok' => true, 'error' => null, 'with_clicks' => 0];
+        }
+        if (! Schema::hasTable(self::TABLE) || ! Schema::hasColumn(self::TABLE, 'live_cpc')) {
+            return ['ok' => false, 'error' => 'Live CPC storage is not ready — run the migrations.', 'with_clicks' => 0];
+        }
+        if ($customerId === '') {
+            $this->persistCpcFailure($channel, $ids, 'Google Ads customer ID is not configured.');
+
+            return ['ok' => false, 'error' => 'Google Ads customer ID is not configured.', 'with_clicks' => 0];
+        }
+
+        $totals = [];
+        try {
+            foreach (array_chunk($ids, 50) as $chunk) {
+                $inList = implode(', ', $chunk);
+                $query = "
+                    SELECT campaign.id, metrics.clicks, metrics.cost_micros
+                    FROM campaign
+                    WHERE campaign.id IN ({$inList})
+                      AND segments.date DURING TODAY
+                ";
+                foreach ($this->ads()->runQuery($customerId, $query) as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $cid = preg_replace('/\D+/', '', (string) ($row['campaign']['id'] ?? '')) ?? '';
+                    if ($cid === '') {
+                        continue;
+                    }
+                    $metrics = is_array($row['metrics'] ?? null) ? $row['metrics'] : [];
+                    $totals[$cid]['clicks'] = ($totals[$cid]['clicks'] ?? 0) + (int) ($metrics['clicks'] ?? 0);
+                    $totals[$cid]['micros'] = ($totals[$cid]['micros'] ?? 0) + (float) ($metrics['costMicros'] ?? $metrics['cost_micros'] ?? 0);
+                }
+            }
+        } catch (Throwable $e) {
+            Log::error('Google Shopping live CPC pull failed', ['customer_id' => $customerId, 'error' => $e->getMessage()]);
+            $this->persistCpcFailure($channel, $ids, self::shortError($e));
+
+            return ['ok' => false, 'error' => $e->getMessage(), 'with_clicks' => 0];
+        }
+
+        $now = now();
+        $rows = [];
+        $withClicks = 0;
+        foreach ($ids as $id) {
+            $clicks = (int) ($totals[$id]['clicks'] ?? 0);
+            $cost = round(((float) ($totals[$id]['micros'] ?? 0)) / 1000000, 2);
+            if ($clicks > 0) {
+                $withClicks++;
+            }
+            $rows[] = [
+                'channel' => $channel,
+                'campaign_id' => $id,
+                'live_cpc' => $clicks > 0 ? round(((float) ($totals[$id]['micros'] ?? 0)) / 1000000 / $clicks, 4) : null,
+                'live_cpc_clicks' => $clicks,
+                'live_cpc_cost' => $cost,
+                'cpc_fetch_ok' => true,
+                'cpc_fetch_error' => null,
+                'cpc_fetched_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        foreach (array_chunk($rows, 100) as $chunk) {
+            DB::table(self::TABLE)->upsert(
+                $chunk,
+                ['channel', 'campaign_id'],
+                ['live_cpc', 'live_cpc_clicks', 'live_cpc_cost', 'cpc_fetch_ok', 'cpc_fetch_error', 'cpc_fetched_at', 'updated_at']
+            );
+        }
+
+        return ['ok' => true, 'error' => null, 'with_clicks' => $withClicks];
+    }
+
+    /**
+     * @param  list<string>  $ids
+     */
+    private function persistCpcFailure(string $channel, array $ids, string $error): void
+    {
+        $now = now();
+        $short = self::shortErrorMessage($error);
+        $rows = [];
+        foreach ($ids as $id) {
+            $rows[] = [
+                'channel' => $channel,
+                'campaign_id' => $id,
+                'cpc_fetch_ok' => false,
+                'cpc_fetch_error' => $short,
+                'cpc_fetched_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        foreach (array_chunk($rows, 100) as $chunk) {
+            DB::table(self::TABLE)->upsert($chunk, ['channel', 'campaign_id'], ['cpc_fetch_ok', 'cpc_fetch_error', 'cpc_fetched_at', 'updated_at']);
+        }
+    }
+
     public function recordPush(string $channel, string $campaignId, string $field, bool $ok, ?float $value): void
     {
         if (! Schema::hasTable(self::TABLE)) {

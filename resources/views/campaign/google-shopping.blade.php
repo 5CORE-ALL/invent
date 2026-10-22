@@ -30,6 +30,79 @@
         @media (max-width: 768px) {
             .column-dropdown-multicol { min-width: 320px; column-count: 2; }
         }
+        /* SBID Rules — editable, live-previewed */
+        #gacRawSbidRulesModal .modal-content { border: 0; border-radius: 14px; overflow: hidden; }
+        #gacRawSbidRulesModal .modal-header {
+            background: linear-gradient(120deg, #7c3aed 0%, #db2777 55%, #f97316 100%); color: #fff; border: 0; align-items: flex-start; padding: 14px 18px;
+        }
+        #gacRawSbidRulesModal .modal-title { font-weight: 800; color: #fff; letter-spacing: -0.01em; }
+        #gacRawSbidRulesModal .btn-close { filter: invert(1) grayscale(1) brightness(2); opacity: 0.9; }
+        #gacRawSbidRulesModal .gac-sbid-sub { color: rgba(255, 255, 255, 0.88); font-size: 12px; margin-top: 3px; line-height: 1.4; max-width: 640px; }
+        #gacRawSbidRulesModal .modal-body { background: #f8fafc; padding: 14px 18px; }
+        #gacRawSbidRulesModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; padding: 10px 18px; justify-content: space-between; }
+        #gacRawSbidRulesModal .gac-sbid-dirty { font-size: 12px; font-weight: 700; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 3px 10px; }
+        #gacRawSbidRulesModal .gac-sbid-save { background: linear-gradient(120deg, #7c3aed, #db2777); border: 0; color: #fff; font-weight: 700; }
+        #gacRawSbidRulesModal .gac-sbid-save:hover { filter: brightness(1.08); color: #fff; }
+        #gacRawSbidRulesModal .gac-sbid-err { font-size: 12px; font-weight: 600; margin: 0 0 10px; }
+
+        /* utilisation scale: shows where the two thresholds cut 0 → 100%+ */
+        #gacRawSbidRulesModal .gac-sbid-scale { margin-bottom: 14px; }
+        #gacRawSbidRulesModal .gac-sbid-scale-bar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08); }
+        #gacRawSbidRulesModal .gac-sbid-seg { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; transition: flex-basis .25s ease; }
+        #gacRawSbidRulesModal .gac-sbid-seg--under { background: linear-gradient(90deg, #ff2727, #fb7185); }
+        #gacRawSbidRulesModal .gac-sbid-seg--none { background: linear-gradient(90deg, #64748b, #94a3b8); }
+        #gacRawSbidRulesModal .gac-sbid-seg--over { background: linear-gradient(90deg, #ff01d0, #c026d3); }
+        #gacRawSbidRulesModal .gac-sbid-scale-labels { display: flex; font-size: 11px; font-weight: 700; color: #64748b; margin-top: 3px; }
+
+        #gacRawSbidRulesModal .gac-sbid-rule { border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; border: 1px solid transparent; border-left-width: 6px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.07); }
+        #gacRawSbidRulesModal .gac-sbid-rule--over { background: linear-gradient(135deg, #fdf4ff, #fce7f3); border-color: #f5d0fe; border-left-color: #ff01d0; }
+        #gacRawSbidRulesModal .gac-sbid-rule--under { background: linear-gradient(135deg, #fff7ed, #ffe4e6); border-color: #fecdd3; border-left-color: #ff2727; }
+        #gacRawSbidRulesModal .gac-sbid-rule--none { background: linear-gradient(135deg, #f1f5f9, #e0f2fe); border-color: #cbd5e1; border-left-color: #64748b; }
+        #gacRawSbidRulesModal .gac-sbid-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+        #gacRawSbidRulesModal .gac-sbid-title { font-weight: 800; font-size: 14px; color: #0f172a; }
+        #gacRawSbidRulesModal .gac-sbid-count { min-width: 150px; text-align: right; font-size: 11px; font-weight: 800; color: #334155; }
+        #gacRawSbidRulesModal .gac-sbid-track { height: 6px; border-radius: 999px; background: rgba(15, 23, 42, 0.1); margin-top: 3px; overflow: hidden; }
+        #gacRawSbidRulesModal .gac-sbid-fill { height: 100%; border-radius: 999px; transition: width .3s ease; }
+        #gacRawSbidRulesModal .gac-sbid-rule--over .gac-sbid-fill { background: linear-gradient(90deg, #ff01d0, #c026d3); }
+        #gacRawSbidRulesModal .gac-sbid-rule--under .gac-sbid-fill { background: linear-gradient(90deg, #ff2727, #fb7185); }
+        #gacRawSbidRulesModal .gac-sbid-rule--none .gac-sbid-fill { background: linear-gradient(90deg, #64748b, #94a3b8); }
+        #gacRawSbidRulesModal .gac-sbid-when { font-size: 12.5px; color: #475569; margin-bottom: 8px; }
+        #gacRawSbidRulesModal .gac-sbid-lines { display: grid; gap: 5px; }
+        #gacRawSbidRulesModal .gac-sbid-line {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(255, 255, 255, 0.72);
+            border: 1px solid rgba(15, 23, 42, 0.07); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; color: #334155; transition: all .15s ease;
+        }
+        #gacRawSbidRulesModal .gac-sbid-line.is-hit { background: #fff; border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.25); }
+        #gacRawSbidRulesModal .gac-sbid-res { font-weight: 800; color: #0f172a; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+        #gacRawSbidRulesModal .gac-sbid-chg { font-size: 11px; font-weight: 800; border-radius: 999px; padding: 1px 7px; }
+        #gacRawSbidRulesModal .gac-sbid-chg.is-up { background: #dcfce7; color: #166534; }
+        #gacRawSbidRulesModal .gac-sbid-chg.is-down { background: #fee2e2; color: #991b1b; }
+        #gacRawSbidRulesModal .gac-sbid-in {
+            width: 64px; border: 1.5px solid #c4b5fd; border-radius: 6px; background: #fff; color: #5b21b6; font-weight: 800;
+            font-size: 12.5px; padding: 1px 4px; text-align: center; font-variant-numeric: tabular-nums;
+        }
+        #gacRawSbidRulesModal .gac-sbid-in:focus { outline: 0; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2); }
+        #gacRawSbidRulesModal .gac-sbid-bind { font-weight: 800; color: #5b21b6; }
+
+        #gacRawSbidRulesModal .gac-sbid-try { border-radius: 12px; padding: 12px 14px; background: linear-gradient(135deg, #ede9fe, #fae8ff); border: 1px solid #ddd6fe; border-left: 6px solid #7c3aed; }
+        #gacRawSbidRulesModal .gac-sbid-try-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+        #gacRawSbidRulesModal .gac-sbid-try-grid label { font-size: 11px; font-weight: 700; color: #6d28d9; display: block; margin-bottom: 2px; }
+        #gacRawSbidRulesModal .gac-sbid-try-grid input { width: 100%; }
+        #gacRawSbidRulesModal .gac-sbid-try-out { font-size: 13px; font-weight: 700; color: #0f172a; }
+        #gacRawSbidRulesModal .gac-sbid-try-out .gac-sbid-big { font-size: 18px; font-weight: 800; color: #7c3aed; }
+        /* Column picker grouped into 5 columns (Basic / Bids / Utilization / BGT / Other); the header checkbox toggles the whole group. */
+        .gac-col-menu { min-width: 0; padding: 6px 6px; }
+        .gac-col-menu.show { display: grid; grid-template-columns: repeat(5, max-content); gap: 0 10px; }
+        .gac-col-menu .gac-col-group { list-style: none; min-width: 0; }
+        .gac-col-menu .gac-col-group-head {
+            display: flex; align-items: center; gap: 6px; padding: 4px 10px; margin-bottom: 2px;
+            font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+            color: #854d0e; background: #fef9c3; border: 1px solid #facc15; border-radius: 6px; cursor: pointer;
+        }
+        .gac-col-menu .dropdown-item { padding: 3px 10px; white-space: nowrap; }
+        @media (max-width: 991.98px) {
+            .gac-col-menu.show { grid-template-columns: repeat(2, max-content); gap: 6px 10px; }
+        }
 
         /* Badge chart modal — same full-width Rolling L30 UI as all-marketplace-master */
         #gacRawBadgeChartModal.modal {
@@ -653,19 +726,19 @@
                             <div class="gac-card-badges">
                                 <span id="faasGreenUtilYBadge" data-metric="util_y_green" data-label="Green Util (Y)"
                                     class="faas-stat-badge faas-stat-badge--util-green badge-chart-link"
-                                    title="Campaigns whose yesterday utilisation (1 UB%) is 66–99% — the green cells in the grid. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_y_green" title="Click for history"></i>UTIL (Y):<span id="faasGreenUtilYValue">0</span><span class="gac-util-pct" id="faasGreenUtilYPct" title="Share of all campaigns">0%</span></span>
+                                    title="Campaigns whose yesterday utilisation (1 UB%) is 66–99% — the green cells in the grid. Active campaigns only."><i class="summary-trend-dot none" data-util-dot="util_y_green" title="Click for history"></i>UTIL (Y):<span id="faasGreenUtilYValue">0</span><span class="gac-util-pct" id="faasGreenUtilYPct" title="Share of all campaigns">0%</span></span>
                                 <span id="faasYellowUtilYBadge" data-metric="util_y_yellow" data-label="Yellow Util (Y)"
                                     class="faas-stat-badge faas-stat-badge--util-yellow badge-chart-link"
-                                    title="Campaigns whose yesterday utilisation (1 UB%) is 0.1% up to under 66%. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_y_yellow" title="Click for history"></i>UTIL (Y):<span id="faasYellowUtilYValue">0</span><span class="gac-util-pct" id="faasYellowUtilYPct" title="Share of all campaigns">0%</span></span>
+                                    title="Campaigns whose yesterday utilisation (1 UB%) is 0.1% up to under 66%. Active campaigns only."><i class="summary-trend-dot none" data-util-dot="util_y_yellow" title="Click for history"></i>UTIL (Y):<span id="faasYellowUtilYValue">0</span><span class="gac-util-pct" id="faasYellowUtilYPct" title="Share of all campaigns">0%</span></span>
                                 <span id="faasRedUtilYBadge" data-metric="util_y_red" data-label="Red Util (Y)"
                                     class="faas-stat-badge faas-stat-badge--util-red badge-chart-link"
-                                    title="Campaigns with 0% yesterday utilisation (1 UB%) — nothing spent, or no budget. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_y_red" title="Click for history"></i>UTIL (Y):<span id="faasRedUtilYValue">0</span><span class="gac-util-pct" id="faasRedUtilYPct" title="Share of all campaigns">0%</span></span>
+                                    title="Campaigns with 0% yesterday utilisation (1 UB%) — nothing spent, or no budget. Active campaigns only."><i class="summary-trend-dot none" data-util-dot="util_y_red" title="Click for history"></i>UTIL (Y):<span id="faasRedUtilYValue">0</span><span class="gac-util-pct" id="faasRedUtilYPct" title="Share of all campaigns">0%</span></span>
                                 <span id="faasPinkUtilYBadge" data-metric="util_y_pink" data-label="Pink Util (Y)"
                                     class="faas-stat-badge faas-stat-badge--util-pink badge-chart-link"
-                                    title="Campaigns whose yesterday utilisation (1 UB%) is over 99% — the pink cells in the grid. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_y_pink" title="Click for history"></i>UTIL (Y):<span id="faasPinkUtilYValue">0</span><span class="gac-util-pct" id="faasPinkUtilYPct" title="Share of all campaigns">0%</span></span>
+                                    title="Campaigns whose yesterday utilisation (1 UB%) is over 99% — the pink cells in the grid. Active campaigns only."><i class="summary-trend-dot none" data-util-dot="util_y_pink" title="Click for history"></i>UTIL (Y):<span id="faasPinkUtilYValue">0</span><span class="gac-util-pct" id="faasPinkUtilYPct" title="Share of all campaigns">0%</span></span>
                                 <span id="faasTotalUtilYBadge" data-metric="util_y_avg" data-label="Avg Util (Y)"
                                     class="faas-stat-badge faas-stat-badge--util-total badge-chart-link"
-                                    title="Total campaigns (all statuses), and their average yesterday utilisation (1 UB%) = total spend ÷ total budget (campaigns with a budget)."><i class="summary-trend-dot none" data-util-dot="util_y_avg" title="Click for history"></i>TOTAL (Y):<span id="faasTotalUtilYValue">0</span><span class="gac-util-pct" id="faasAvgUtilYPct">avg 0%</span></span>
+                                    title="Total active campaigns, and their average yesterday utilisation (1 UB%) = total spend ÷ total budget (campaigns with a budget)."><i class="summary-trend-dot none" data-util-dot="util_y_avg" title="Click for history"></i>TOTAL (Y):<span id="faasTotalUtilYValue">0</span><span class="gac-util-pct" id="faasAvgUtilYPct">avg 0%</span></span>
 
                             </div>
                         </div>
@@ -677,16 +750,16 @@
                                     title="Campaigns with Green utilisation (L7) — U7% 66–99%. Click for history."><i class="summary-trend-dot none" data-util-dot="util_l7_green" title="Click for history"></i>UTIL (L7):<span id="faasGreenUtilL7Value">0</span><span class="gac-util-pct" id="faasGreenUtilL7Pct" title="Share of all campaigns">0%</span></span>
                                 <span id="faasYellowUtilL7Badge" data-metric="util_l7_yellow" data-label="Yellow Util (L7)"
                                     class="faas-stat-badge faas-stat-badge--util-yellow badge-chart-link"
-                                    title="Campaigns whose L7 utilisation (U7%) is 0.1% up to under 66%. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_l7_yellow" title="Click for history"></i>UTIL (L7):<span id="faasYellowUtilL7Value">0</span><span class="gac-util-pct" id="faasYellowUtilL7Pct" title="Share of all campaigns">0%</span></span>
+                                    title="Campaigns whose L7 utilisation (U7%) is 0.1% up to under 66%. Active campaigns only."><i class="summary-trend-dot none" data-util-dot="util_l7_yellow" title="Click for history"></i>UTIL (L7):<span id="faasYellowUtilL7Value">0</span><span class="gac-util-pct" id="faasYellowUtilL7Pct" title="Share of all campaigns">0%</span></span>
                                 <span id="faasRedUtilL7Badge" data-metric="util_l7_red" data-label="Red Util (L7)"
                                     class="faas-stat-badge faas-stat-badge--util-red badge-chart-link"
-                                    title="Campaigns with 0% L7 utilisation (U7%) — nothing spent in 7 days, or no budget. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_l7_red" title="Click for history"></i>UTIL (L7):<span id="faasRedUtilL7Value">0</span><span class="gac-util-pct" id="faasRedUtilL7Pct" title="Share of all campaigns">0%</span></span>
+                                    title="Campaigns with 0% L7 utilisation (U7%) — nothing spent in 7 days, or no budget. Active campaigns only."><i class="summary-trend-dot none" data-util-dot="util_l7_red" title="Click for history"></i>UTIL (L7):<span id="faasRedUtilL7Value">0</span><span class="gac-util-pct" id="faasRedUtilL7Pct" title="Share of all campaigns">0%</span></span>
                                 <span id="faasPinkUtilL7Badge" data-metric="util_l7_pink" data-label="Pink Util (L7)"
                                     class="faas-stat-badge faas-stat-badge--util-pink badge-chart-link"
-                                    title="Campaigns whose L7 utilisation (U7%) is over 99% — the pink cells in the grid. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_l7_pink" title="Click for history"></i>UTIL (L7):<span id="faasPinkUtilL7Value">0</span><span class="gac-util-pct" id="faasPinkUtilL7Pct" title="Share of all campaigns">0%</span></span>
+                                    title="Campaigns whose L7 utilisation (U7%) is over 99% — the pink cells in the grid. Active campaigns only."><i class="summary-trend-dot none" data-util-dot="util_l7_pink" title="Click for history"></i>UTIL (L7):<span id="faasPinkUtilL7Value">0</span><span class="gac-util-pct" id="faasPinkUtilL7Pct" title="Share of all campaigns">0%</span></span>
                                 <span id="faasTotalUtilL7Badge" data-metric="util_l7_avg" data-label="Avg Util (L7)"
                                     class="faas-stat-badge faas-stat-badge--util-total badge-chart-link"
-                                    title="Total campaigns (all statuses), and their average L7 utilisation (U7%) = total spend ÷ total budget (campaigns with a budget)."><i class="summary-trend-dot none" data-util-dot="util_l7_avg" title="Click for history"></i>TOTAL (L7):<span id="faasTotalUtilL7Value">0</span><span class="gac-util-pct" id="faasAvgUtilL7Pct">avg 0%</span></span>
+                                    title="Total active campaigns, and their average L7 utilisation (U7%) = total spend ÷ total budget (campaigns with a budget)."><i class="summary-trend-dot none" data-util-dot="util_l7_avg" title="Click for history"></i>TOTAL (L7):<span id="faasTotalUtilL7Value">0</span><span class="gac-util-pct" id="faasAvgUtilL7Pct">avg 0%</span></span>
 
                             </div>
                         </div>
@@ -712,12 +785,13 @@
                                 aria-expanded="false" title="Show / hide columns (saved per user)">
                                 <i class="fas fa-columns"></i>
                             </button>
-                            <ul class="dropdown-menu column-dropdown-multicol dropdown-menu-end"
+                            <ul class="dropdown-menu gac-col-menu dropdown-menu-end"
                                 id="column-dropdown-menu" aria-labelledby="columnVisibilityDropdown">
                                 {{-- Populated dynamically after the grid builds --}}
                             </ul>
                         </div>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-rules-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtRulesModal" title="Edit BGT Vs ACOS, BGT Vs VIEWS, BGT Vs CVR and BGT PRC rules in one place">BGT</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-sbid-rules-btn" data-bs-toggle="modal" data-bs-target="#gacRawSbidRulesModal" title="Show the SBID rules currently in use (live from the saved rule)"><i class="fas fa-list-check"></i> SBID Rules</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Pushes each row’s SBGT as daily budget (chunks of 10). SBGT 0 / INV ≤ 0 pauses the campaign — $0 cannot be pushed.">
                             <i class="fa fa-cloud-upload-alt"></i> SBGT
@@ -739,6 +813,7 @@
                                     <option value="green">66% – 99%</option>
                                     <option value="pink">&gt; 99%</option>
                                     <option value="red">&lt; 66%</option>
+                                    <option value="zero">0%</option>
                                 </select>
                             </div>
                             <div class="gac-raw-filter-field">
@@ -748,6 +823,7 @@
                                     <option value="green">66% – 99%</option>
                                     <option value="pink">&gt; 99%</option>
                                     <option value="red">&lt; 66%</option>
+                                    <option value="zero">0%</option>
                                 </select>
                             </div>
                             <div class="gac-raw-filter-field">
@@ -776,6 +852,14 @@
                                     <input type="number" id="gac-filter-cvr-min" class="gac-raw-range-input" placeholder="Min" min="0" step="0.01" inputmode="decimal" aria-label="Minimum CVR percent">
                                     <span class="gac-raw-range-sep">–</span>
                                     <input type="number" id="gac-filter-cvr-max" class="gac-raw-range-input" placeholder="Max" min="0" step="0.01" inputmode="decimal" aria-label="Maximum CVR percent">
+                                </div>
+                            </div>
+                            <div class="gac-raw-filter-field">
+                                <label class="gac-raw-filter-label mb-0">Price $</label>
+                                <div class="d-flex align-items-center gap-1">
+                                    <input type="number" id="gac-filter-price-min" class="gac-raw-range-input" placeholder="Min" min="0" step="0.01" inputmode="decimal" aria-label="Minimum price">
+                                    <span class="gac-raw-range-sep">–</span>
+                                    <input type="number" id="gac-filter-price-max" class="gac-raw-range-input" placeholder="Max" min="0" step="0.01" inputmode="decimal" aria-label="Maximum price">
                                 </div>
                             </div>
                             <div class="gac-raw-filter-field">
@@ -963,6 +1047,34 @@
         </div>
     </div>
 
+    {{-- SBID Rules — editable. Rendered by gacSbidRulesRender() from the saved rule each time it opens; numbers can be edited
+         inline with live previews (threshold scale, rows per rule, a try-it calculator). Save and Apply stores the rule
+         through the same endpoint as the BGT rules (the SBGT bands are re-sent unchanged) and reloads the grid. --}}
+    <div class="modal fade" id="gacRawSbidRulesModal" tabindex="-1" aria-labelledby="gacRawSbidRulesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title fs-6 mb-0" id="gacRawSbidRulesModalLabel"><i class="fas fa-list-check me-1"></i> SBID Rules</h5>
+                        <div class="gac-sbid-sub">How the grid's SBID is worked out. Edit any purple number and everything below updates live; SBID is rounded down to the cent. Nothing changes until you Save and Apply.</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-danger gac-sbid-err d-none" id="gacRawSbidRulesErr" role="alert"></p>
+                    <div id="gacRawSbidRulesBody"><p class="text-muted small mb-0">Loading…</p></div>
+                </div>
+                <div class="modal-footer">
+                    <span><span class="gac-sbid-dirty d-none" id="gacRawSbidRulesDirty">Unsaved changes</span></span>
+                    <span class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="gacRawSbidRulesResetBtn"><i class="fas fa-rotate-left me-1"></i> Reset</button>
+                        <button type="button" class="btn btn-sm gac-sbid-save" id="gacRawSbidRulesSaveBtn"><i class="fas fa-save me-1"></i> Save and Apply</button>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Badge metric trend — same full-width Rolling L30 UI as all-marketplace-master --}}
     <div class="modal fade p-0" id="gacRawBadgeChartModal" tabindex="-1" aria-labelledby="gacRawBadgeChartModalLabel" aria-hidden="true">
         <div class="modal-dialog shadow-none m-0 mx-0">
@@ -1105,6 +1217,7 @@
                 lbgt_green: true,
                 lbid_tip: true,
                 lbgt_tip: true,
+                live_cpc_tip: true,
             };
             /** Toggle: L30 spend = 0 + INV &gt; 0 + Merchant Item ID check. */
             let gacRawVerifyIdActive = false;
@@ -1596,8 +1709,9 @@
                     var g = Number(s.green_util_l7_count);
                     greenUtilEl.textContent = Number.isFinite(g) ? Math.round(g).toLocaleString() : '0';
                 }
-                // Utilized blocks cover ALL campaigns (every status), so their total / % use util_total_count.
-                var gacTotalRows = Number(s.util_total_count !== undefined ? s.util_total_count : s.filtered_row_count);
+                // Utilized blocks cover ACTIVE (enabled) campaigns only, so their total / % use util_enabled_count.
+                // (the ACTIVE badge above keeps util_total_count = every status; these blocks show active campaigns only)
+                var gacTotalRows = Number(s.util_enabled_count !== undefined ? s.util_enabled_count : s.filtered_row_count);
                 var gacSetUtil = function(valEl, pctId, v) {
                     var n = Number(v);
                     if (valEl) valEl.textContent = Number.isFinite(n) ? Math.round(n).toLocaleString() : '0';
@@ -1648,6 +1762,8 @@
                     filter_ctr_max: gacRawRangeInputVal('gac-filter-ctr-max'),
                     filter_cvr_min: gacRawRangeInputVal('gac-filter-cvr-min'),
                     filter_cvr_max: gacRawRangeInputVal('gac-filter-cvr-max'),
+                    filter_price_min: gacRawRangeInputVal('gac-filter-price-min'),
+                    filter_price_max: gacRawRangeInputVal('gac-filter-price-max'),
                     filter_verify_id: gacRawVerifyIdActive ? 1 : 0,
                     q: gacRawSearchQueryVal(),
                 };
@@ -2525,7 +2641,7 @@
                         }
                         if (col.field === 'lbid' || col.field === 'lbgt') {
                             var isLiveBid = col.field === 'lbid';
-                            col.title = isLiveBid ? 'LBid' : 'LBgt';
+                            col.title = isLiveBid ? 'C Bid' : 'LBgt';
                             col.headerTooltip = isLiveBid
                                 ? 'Stored Live Bid. Green only after the background sync verifies it matches SBID. Reloading this page does not call Google Ads.'
                                 : 'Stored Live Budget. Green only after the background sync verifies it matches SBGT. Reloading this page does not call Google Ads.';
@@ -2533,6 +2649,21 @@
                             col.headerSort = false;
                             col.minWidth = 78;
                             col.width = 84;
+                        }
+                        if (col.field === 'live_cpc') {
+                            // LT CPC: today's average CPC (spend ÷ clicks so far) read from Google Ads by google-shopping:sync-live-cpc.
+                            col.title = 'LT CPC';
+                            col.headerTooltip = 'Live CPC — today\'s average CPC so far (spend ÷ clicks), pulled from the Google Ads API every 15 minutes. — means no clicks yet today or not pulled yet.';
+                            col.hozAlign = 'center';
+                            col.headerHozAlign = 'center';
+                            col.headerSort = false;
+                            col.minWidth = 64;
+                            col.formatter = function(c) {
+                                var v = parseFloat(c.getValue());
+                                var row = c.getRow() ? c.getRow().getData() : {};
+                                var text = isFinite(v) && v > 0 ? v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+                                return '<span title="' + gacRawEscAttr(row.live_cpc_tip || 'Live CPC') + '">' + text + '</span>';
+                            };
                         }
                         if (col.field === 'n_targets') {
                             col.title = 'N Target';
@@ -2636,7 +2767,9 @@
                         gacRawRangeInputVal('gac-filter-ctr-min'),
                         gacRawRangeInputVal('gac-filter-ctr-max'),
                         gacRawRangeInputVal('gac-filter-cvr-min'),
-                        gacRawRangeInputVal('gac-filter-cvr-max')
+                        gacRawRangeInputVal('gac-filter-cvr-max'),
+                        gacRawRangeInputVal('gac-filter-price-min'),
+                        gacRawRangeInputVal('gac-filter-price-max')
                     ].join('|');
                 }
                 lastRangeKey = currentRangeKey();
@@ -2650,7 +2783,7 @@
                     };
                     if (immediate) { run(); } else { rangeTimer = setTimeout(run, 400); }
                 }
-                ['gac-filter-ctr-min', 'gac-filter-ctr-max', 'gac-filter-cvr-min', 'gac-filter-cvr-max'].forEach(function(fid) {
+                ['gac-filter-ctr-min', 'gac-filter-ctr-max', 'gac-filter-cvr-min', 'gac-filter-cvr-max', 'gac-filter-price-min', 'gac-filter-price-max'].forEach(function(fid) {
                     var fel = document.getElementById(fid);
                     if (!fel) return;
                     fel.addEventListener('input', function() { scheduleRangeReload(false); });
@@ -2692,27 +2825,67 @@
              * (channel_tabulator_column_settings). Prefs are per-user and applied both in
              * autoColumnsDefinitions (so rebuilds keep them) and after each dataLoaded.
              */
+            // Column picker groups. Any column not listed lands in "Other".
+            var GAC_COL_GROUPS = [
+                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'campaign_name', 'inventory', 'dil', 'price', 'id_check'] },
+                { key: 'bids', title: 'Bids', fields: ['cpc_L30', 'live_cpc', 'cpc_L7', 'cpc_L2', 'cpc_L1', 'lbid', 'sbid'] },
+                { key: 'util', title: 'Utilization', fields: ['spend', 'l7_spend', 'l2_spend', 'l1_spend', 'ub7', 'ub2', 'ub1'] },
+                { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'sbgt', 'lbgt'] },
+                { key: 'other', title: 'Other', fields: [] }
+            ];
+
+            function gacColGroupKey(field) {
+                for (var i = 0; i < GAC_COL_GROUPS.length - 1; i++) {
+                    if (GAC_COL_GROUPS[i].fields.indexOf(field) !== -1) return GAC_COL_GROUPS[i].key;
+                }
+                return 'other';
+            }
+
+            /** Header checkbox state for a group: checked = all shown, indeterminate = some shown. */
+            function gacSyncColGroupCheckboxes() {
+                var menu = document.getElementById('column-dropdown-menu');
+                if (!menu) return;
+                menu.querySelectorAll('input[data-group]').forEach(function(head) {
+                    var boxes = menu.querySelectorAll('input[data-field][data-in-group="' + head.getAttribute('data-group') + '"]');
+                    var on = 0;
+                    boxes.forEach(function(b) { if (b.checked) on++; });
+                    head.checked = boxes.length > 0 && on === boxes.length;
+                    head.indeterminate = on > 0 && on < boxes.length;
+                });
+            }
+
             function buildColumnDropdown() {
                 var menu = document.getElementById('column-dropdown-menu');
                 if (!menu || !table) return;
                 menu.innerHTML = '';
+
+                var buckets = {};
+                GAC_COL_GROUPS.forEach(function(g) { buckets[g.key] = []; });
 
                 table.getColumns().forEach(function(col) {
                     var def = col.getDefinition();
                     var field = def.field;
                     if (!field || field === '__gac_select') return;
                     if (Object.prototype.hasOwnProperty.call(GAC_PERMANENTLY_HIDDEN_FIELDS, field)) return;
+                    buckets[gacColGroupKey(field)].push({ field: field, title: def.title || field, visible: col.isVisible() });
+                });
 
-                    var isVisible = col.isVisible();
-                    var title = def.title || field;
+                var esc = function(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
+                GAC_COL_GROUPS.forEach(function(g) {
+                    var items = buckets[g.key];
+                    if (!items.length) return;
                     var li = document.createElement('li');
-                    li.innerHTML =
-                        '<label class="dropdown-item"><input type="checkbox" ' +
-                        (isVisible ? 'checked' : '') +
-                        ' data-field="' + String(field).replace(/"/g, '&quot;') + '"> ' +
-                        String(title).replace(/</g, '&lt;') + '</label>';
+                    li.className = 'gac-col-group';
+                    var html = '<label class="gac-col-group-head" title="Show / hide every ' + esc(g.title) + ' column">' +
+                        '<input type="checkbox" data-group="' + g.key + '"> ' + esc(g.title) + '</label>';
+                    items.forEach(function(it) {
+                        html += '<label class="dropdown-item"><input type="checkbox" ' + (it.visible ? 'checked' : '') +
+                            ' data-in-group="' + g.key + '" data-field="' + esc(it.field) + '"> ' + esc(it.title) + '</label>';
+                    });
+                    li.innerHTML = html;
                     menu.appendChild(li);
                 });
+                gacSyncColGroupCheckboxes();
                 gacColDropdownBuilt = true;
             }
 
@@ -2793,6 +2966,19 @@
                 });
                 gacColMenu.addEventListener('change', function(e) {
                     if (!table || e.target.type !== 'checkbox') return;
+                    // Group header checkbox: show / hide the whole group at once.
+                    var groupKey = e.target.getAttribute('data-group');
+                    if (groupKey) {
+                        e.target.indeterminate = false;
+                        gacColMenu.querySelectorAll('input[data-field][data-in-group="' + groupKey + '"]').forEach(function(box) {
+                            box.checked = e.target.checked;
+                            var gcol = table.getColumn(box.getAttribute('data-field'));
+                            if (!gcol) return;
+                            if (e.target.checked) { gcol.show(); } else { gcol.hide(); }
+                        });
+                        saveColumnVisibilityToServer();
+                        return;
+                    }
                     var field = e.target.getAttribute('data-field');
                     if (!field) return;
                     var col = table.getColumn(field);
@@ -2802,6 +2988,7 @@
                     } else {
                         col.hide();
                     }
+                    gacSyncColGroupCheckboxes();
                     saveColumnVisibilityToServer();
                 });
             }
@@ -3826,6 +4013,230 @@
                     })
                     .catch(function() { if (typeof cb === 'function') cb(); });
             }
+
+            // ---- SBID Rules: editable with live previews ----
+            var GAC_SBID_KEYS = ['util_low', 'util_high', 'over_mult_l1', 'under_mult_l1', 'under_mult_l7', 'under_fallback', 'under_flat_max', 'under_flat_incr'];
+            var GAC_SBID_DEFAULTS = { util_low: 66, util_high: 99, over_mult_l1: 0.9, under_mult_l1: 1.1, under_mult_l7: 1.1, under_fallback: 0.75, under_flat_max: 0.25, under_flat_incr: 0.05 };
+            var gacSbidDraft = {};
+            var gacSbidDirty = false;
+
+            function gacSbidSaved() {
+                var r = (window.gacRawRule && window.gacRawRule.sbid) || {};
+                var out = {};
+                GAC_SBID_KEYS.forEach(function(k) {
+                    var v = parseFloat(r[k]);
+                    out[k] = Number.isFinite(v) ? v : GAC_SBID_DEFAULTS[k];
+                });
+                return out;
+            }
+            function gacSbidDraftNum(k) {
+                var v = parseFloat(gacSbidDraft[k]);
+                return Number.isFinite(v) ? v : GAC_SBID_DEFAULTS[k];
+            }
+            function gacSbidMoney(v) { return '$' + v.toFixed(2); }
+            function gacSbidPct(v) { return String(+v.toFixed(2)) + '%'; }
+            function gacSbidFloor(v) { return Math.floor(v * 100) / 100; }
+
+            /** Same maths as GoogleShoppingCampaignsRawRule::sbidFromUb7Ub1Cpc(), on the draft values. Returns { bid, line } (bid null = no SBID). */
+            function gacSbidCompute(u7, u1, l1, l7) {
+                var low = gacSbidDraftNum('util_low'), high = gacSbidDraftNum('util_high');
+                if (u7 > high && u1 > high) {
+                    return { bid: gacSbidFloor(l1 * gacSbidDraftNum('over_mult_l1')), line: 'over' };
+                }
+                if (u7 < low && u1 < low) {
+                    var fb = gacSbidDraftNum('under_fallback'), m1 = gacSbidDraftNum('under_mult_l1'), m7 = gacSbidDraftNum('under_mult_l7');
+                    var fMax = gacSbidDraftNum('under_flat_max'), fInc = gacSbidDraftNum('under_flat_incr');
+                    if (l1 <= 0 && l7 <= 0) return { bid: fb, line: 'u1' };
+                    if (l1 > 0) {
+                        return l1 < fMax ? { bid: gacSbidFloor(l1 + fInc), line: 'u2' } : { bid: gacSbidFloor(l1 * m1), line: 'u3' };
+                    }
+                    return l7 < fMax ? { bid: gacSbidFloor(l7 + fInc), line: 'u4' } : { bid: gacSbidFloor(l7 * m7), line: 'u5' };
+                }
+                return { bid: null, line: 'none' };
+            }
+
+            function gacSbidChg(m) {
+                var d = (m - 1) * 100;
+                return '<span class="gac-sbid-chg ' + (d >= 0 ? 'is-up' : 'is-down') + '" data-chg="' + '">' + (d >= 0 ? '+' : '−') + gacSbidPct(Math.abs(d)) + '</span>';
+            }
+            function gacSbidIn(k, step, min, max) {
+                return '<input type="number" class="gac-sbid-in" data-sbid="' + k + '" step="' + step + '" min="' + min + '" max="' + max + '" value="' + gacSbidDraftNum(k) + '">';
+            }
+            function gacSbidBind(k, kind) { return '<span class="gac-sbid-bind" data-bind="' + k + '" data-kind="' + kind + '"></span>'; }
+
+            function gacSbidRulesRender() {
+                var body = document.getElementById('gacRawSbidRulesBody');
+                if (!body) return;
+                var chgSlot = function(k) { return '<span data-chg-for="' + k + '"></span>'; };
+                var line = function(id, cond, res) {
+                    return '<div class="gac-sbid-line" data-line="' + id + '"><span>' + cond + '</span><span class="gac-sbid-res">' + res + '</span></div>';
+                };
+                var card = function(cls, key, title, when, lines) {
+                    return '<div class="gac-sbid-rule gac-sbid-rule--' + cls + '">' +
+                        '<div class="gac-sbid-head"><span class="gac-sbid-title">' + title + '</span>' +
+                        '<span class="gac-sbid-count"><span data-count="' + key + '"></span><span class="gac-sbid-track"><span class="gac-sbid-fill d-block" data-fill="' + key + '" style="width:0"></span></span></span></div>' +
+                        '<div class="gac-sbid-when">' + when + '</div>' + (lines ? '<div class="gac-sbid-lines">' + lines + '</div>' : '') + '</div>';
+                };
+
+                body.innerHTML =
+                    '<div class="gac-sbid-scale"><div class="gac-sbid-scale-bar">' +
+                        '<div class="gac-sbid-seg gac-sbid-seg--under" data-seg="under"></div>' +
+                        '<div class="gac-sbid-seg gac-sbid-seg--none" data-seg="none"></div>' +
+                        '<div class="gac-sbid-seg gac-sbid-seg--over" data-seg="over"></div>' +
+                    '</div><div class="gac-sbid-scale-labels" data-scale-labels></div></div>' +
+
+                    card('over', 'over', '<i class="fas fa-arrow-trend-down me-1" style="color:#c026d3"></i>Over-utilised — lower the bid',
+                        'When <b>U7%</b> and <b>U1%</b> are both above ' + gacSbidIn('util_high', 1, 1, 500) + '%',
+                        line('over', 'L1 CPC', 'SBID = L1 CPC × ' + gacSbidIn('over_mult_l1', 0.01, 0.01, 5) + ' ' + chgSlot('over_mult_l1'))) +
+
+                    card('under', 'under', '<i class="fas fa-arrow-trend-up me-1" style="color:#e11d48"></i>Under-utilised — raise the bid',
+                        'When <b>U7%</b> and <b>U1%</b> are both below ' + gacSbidIn('util_low', 1, 1, 200) + '%. First matching line wins:',
+                        line('u1', 'L1 CPC and L7 CPC are both 0', 'SBID = $' + gacSbidIn('under_fallback', 0.01, 0.01, 25)) +
+                        line('u2', 'L1 CPC &gt; 0 and under $' + gacSbidIn('under_flat_max', 0.01, 0.01, 25), 'SBID = L1 CPC + $' + gacSbidIn('under_flat_incr', 0.01, 0.01, 5)) +
+                        line('u3', 'L1 CPC ≥ ' + gacSbidBind('under_flat_max', 'money'), 'SBID = L1 CPC × ' + gacSbidIn('under_mult_l1', 0.01, 0.01, 5) + ' ' + chgSlot('under_mult_l1')) +
+                        line('u4', 'L1 CPC = 0, L7 CPC &gt; 0 and under ' + gacSbidBind('under_flat_max', 'money'), 'SBID = L7 CPC + ' + gacSbidBind('under_flat_incr', 'money')) +
+                        line('u5', 'L1 CPC = 0, L7 CPC ≥ ' + gacSbidBind('under_flat_max', 'money'), 'SBID = L7 CPC × ' + gacSbidIn('under_mult_l7', 0.01, 0.01, 5) + ' ' + chgSlot('under_mult_l7'))) +
+
+                    card('none', 'none', '<i class="fas fa-equals me-1" style="color:#475569"></i>In between — no change',
+                        'Anything else (U7% and U1% not both below ' + gacSbidBind('util_low', 'pct') + ' or both above ' + gacSbidBind('util_high', 'pct') + ') gets <b>no SBID</b> — shown as — and skipped by Push SBID.',
+                        '') +
+
+                    '<div class="gac-sbid-try"><div class="gac-sbid-title"><i class="fas fa-flask me-1" style="color:#7c3aed"></i>Try it — what SBID would these numbers get?</div>' +
+                        '<div class="gac-sbid-try-grid">' +
+                            '<div><label>U7 %</label><input type="number" class="gac-sbid-in" data-try="u7" value="40" step="1" min="0"></div>' +
+                            '<div><label>U1 %</label><input type="number" class="gac-sbid-in" data-try="u1" value="40" step="1" min="0"></div>' +
+                            '<div><label>L1 CPC $</label><input type="number" class="gac-sbid-in" data-try="l1" value="0.30" step="0.01" min="0"></div>' +
+                            '<div><label>L7 CPC $</label><input type="number" class="gac-sbid-in" data-try="l7" value="0.30" step="0.01" min="0"></div>' +
+                        '</div><div class="gac-sbid-try-out" data-try-out></div></div>';
+                gacSbidRefresh();
+            }
+
+            /** Re-paint everything that depends on the draft values (no re-render, so inputs keep focus). */
+            function gacSbidRefresh() {
+                var body = document.getElementById('gacRawSbidRulesBody');
+                if (!body) return;
+                var low = gacSbidDraftNum('util_low'), high = gacSbidDraftNum('util_high');
+
+                // scale
+                var max = Math.max(120, Math.ceil((high + 20) / 10) * 10);
+                var pLow = Math.min(100, Math.max(0, low / max * 100)), pHigh = Math.min(100, Math.max(pLow, high / max * 100));
+                var seg = function(n) { return body.querySelector('[data-seg="' + n + '"]'); };
+                if (seg('under')) { seg('under').style.flexBasis = pLow + '%'; seg('under').textContent = pLow > 12 ? 'raise bid' : ''; }
+                if (seg('none')) { seg('none').style.flexBasis = (pHigh - pLow) + '%'; seg('none').textContent = (pHigh - pLow) > 14 ? 'no change' : ''; }
+                if (seg('over')) { seg('over').style.flexBasis = (100 - pHigh) + '%'; seg('over').textContent = (100 - pHigh) > 12 ? 'lower bid' : ''; }
+                var lab = body.querySelector('[data-scale-labels]');
+                if (lab) {
+                    lab.innerHTML = '<span style="flex-basis:' + pLow + '%">0%</span><span style="flex-basis:' + (pHigh - pLow) + '%">' + gacSbidPct(low) + '</span>' +
+                        '<span style="flex-basis:' + (100 - pHigh) + '%">' + gacSbidPct(high) + '</span>';
+                }
+
+                // bound values / % change chips
+                body.querySelectorAll('[data-bind]').forEach(function(el) {
+                    var v = gacSbidDraftNum(el.getAttribute('data-bind'));
+                    el.textContent = el.getAttribute('data-kind') === 'money' ? gacSbidMoney(v) : gacSbidPct(v);
+                });
+                body.querySelectorAll('[data-chg-for]').forEach(function(el) {
+                    el.innerHTML = gacSbidChg(gacSbidDraftNum(el.getAttribute('data-chg-for')));
+                });
+
+                // rows per rule on the current grid page
+                var cnt = { over: 0, under: 0, none: 0 }, total = 0;
+                try {
+                    (table ? table.getData('active') : []).forEach(function(r) {
+                        if (!r || r.campaign_name === undefined) return;
+                        total++;
+                        var res = gacSbidCompute(gacRawNumber(r.ub7), gacRawNumber(r.ub1), 0, 0);
+                        cnt[res.line === 'over' ? 'over' : (res.line === 'none' ? 'none' : 'under')]++;
+                    });
+                } catch (e) { total = 0; }
+                ['over', 'under', 'none'].forEach(function(k) {
+                    var c = body.querySelector('[data-count="' + k + '"]');
+                    var f = body.querySelector('[data-fill="' + k + '"]');
+                    if (c) c.textContent = total ? cnt[k] + ' of ' + total + ' rows on this page' : '';
+                    if (f) f.style.width = total ? (cnt[k] / total * 100) + '%' : '0';
+                });
+
+                // try-it calculator + highlight the matching line
+                var tv = function(n) { var el = body.querySelector('[data-try="' + n + '"]'); var v = el ? parseFloat(el.value) : NaN; return Number.isFinite(v) ? v : 0; };
+                var out = gacSbidCompute(tv('u7'), tv('u1'), tv('l1'), tv('l7'));
+                body.querySelectorAll('.gac-sbid-line').forEach(function(el) { el.classList.toggle('is-hit', el.getAttribute('data-line') === out.line); });
+                var tryOut = body.querySelector('[data-try-out]');
+                if (tryOut) {
+                    tryOut.innerHTML = out.bid === null
+                        ? '<span class="gac-sbid-big">No SBID</span> — in between, so the row is skipped.'
+                        : '<span class="gac-sbid-big">' + gacSbidMoney(out.bid) + '</span> — ' + (out.line === 'over' ? 'over-utilised rule' : 'under-utilised rule') + ' (highlighted above).';
+                }
+
+                var dirtyEl = document.getElementById('gacRawSbidRulesDirty');
+                if (dirtyEl) dirtyEl.classList.toggle('d-none', !gacSbidDirty);
+            }
+
+            function gacSbidShowErr(msg) {
+                var el = document.getElementById('gacRawSbidRulesErr');
+                if (!el) return;
+                el.textContent = msg || '';
+                el.classList.toggle('d-none', !msg);
+            }
+            function gacSbidLoadSaved() {
+                gacSbidDraft = gacSbidSaved();
+                gacSbidDirty = false;
+                gacSbidShowErr('');
+                gacSbidRulesRender();
+            }
+
+            (function() {
+                var modalEl = document.getElementById('gacRawSbidRulesModal');
+                if (!modalEl) return;
+                modalEl.addEventListener('show.bs.modal', function() {
+                    gacSbidLoadSaved(); // instant, from the rule already on the page
+                    gacRefreshRuleFromServer(function() { if (!gacSbidDirty) gacSbidLoadSaved(); }); // then the latest saved rule
+                });
+                modalEl.addEventListener('input', function(e) {
+                    var t = e.target;
+                    if (t && t.hasAttribute && t.hasAttribute('data-sbid')) {
+                        gacSbidDraft[t.getAttribute('data-sbid')] = t.value;
+                        gacSbidDirty = true;
+                        gacSbidShowErr('');
+                        // keep the other copies of the same input in sync
+                        modalEl.querySelectorAll('[data-sbid="' + t.getAttribute('data-sbid') + '"]').forEach(function(o) { if (o !== t) o.value = t.value; });
+                    }
+                    gacSbidRefresh();
+                });
+                document.getElementById('gacRawSbidRulesResetBtn').addEventListener('click', gacSbidLoadSaved);
+                var saveBtn = document.getElementById('gacRawSbidRulesSaveBtn');
+                saveBtn.addEventListener('click', function() {
+                    var sbid = {};
+                    var bad = '';
+                    GAC_SBID_KEYS.forEach(function(k) {
+                        var v = parseFloat(gacSbidDraft[k]);
+                        if (!Number.isFinite(v)) bad = 'Every SBID value needs a number.';
+                        sbid[k] = v;
+                    });
+                    if (bad) { gacSbidShowErr(bad); return; }
+                    saveBtn.disabled = true;
+                    fetch(gacRawRuleSaveUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': gacCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        // the SBGT bands are re-sent unchanged so saving SBID never touches them
+                        body: JSON.stringify({ sbgt: { bands: ((window.gacRawRule && window.gacRawRule.sbgt && window.gacRawRule.sbgt.bands) || []) }, sbid: sbid }),
+                    })
+                        .then(function(res) { return res.json().then(function(b) { return { ok: res.ok, body: b }; }); })
+                        .then(function(out) {
+                            if (!out.ok) throw new Error((out.body && (out.body.message || out.body.error)) || 'Save failed.');
+                            window.gacRawRule = out.body.rule || window.gacRawRule;
+                            gacSbidDirty = false;
+                            if (typeof bootstrap !== 'undefined') {
+                                var inst = bootstrap.Modal.getInstance(modalEl);
+                                if (inst) inst.hide();
+                            }
+                            return Promise.resolve(table.setData(dataUrl));
+                        })
+                        .then(function() { gacRawRefreshTableUiSoon(); })
+                        .catch(function(err) { gacSbidShowErr((err && err.message) || 'Network or server error.'); })
+                        .finally(function() { saveBtn.disabled = false; });
+                });
+            })();
 
             // ======================================================================
             // BGT Rules — single modal (BGT Vs ACOS, VIEWS, CVR, PRC, SBID).

@@ -99,6 +99,7 @@ class Kernel extends ConsoleKernel
         FetchGoogleAdsCampaigns::class,
         \App\Console\Commands\FetchGoogleAdsNegativeKeywords::class,
         \App\Console\Commands\SaveGoogleAdsBadgeL30Snapshots::class,
+        \App\Console\Commands\SyncGoogleShoppingLiveCpcCommand::class,
         \App\Console\Commands\SyncMetaAllAds::class,
         \App\Console\Commands\MetaAdsSyncCommand::class,
         \App\Console\Commands\MetaAdsImportRawCommand::class,
@@ -2287,6 +2288,15 @@ class Kernel extends ConsoleKernel
             ->timezone('Asia/Kolkata')
             ->name('google-shopping-live-bid-bgt')
             ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // LT CPC column: today's average CPC straight from the Google Ads API, every 15 minutes (read-only).
+        $schedule->command('google-shopping:sync-live-cpc')
+            ->cron('*/15 * * * *')
+            ->timezone('Asia/Kolkata')
+            ->name('google-shopping-live-cpc')
+            ->withoutOverlapping(10)
             ->runInBackground()
             ->appendOutputTo($log);
 

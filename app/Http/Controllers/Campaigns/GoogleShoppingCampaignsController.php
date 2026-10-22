@@ -840,8 +840,60 @@ class GoogleShoppingCampaignsController extends Controller
         foreach ($presented as $key => $value) {
             $arr[$key] = $value;
         }
+        [$arr['live_cpc'], $arr['live_cpc_tip']] = $this->liveCpcCell($states[$cid] ?? null);
 
         return $arr;
+    }
+
+    /**
+     * LT CPC cell: today's average CPC read from Google Ads by `google-shopping:sync-live-cpc` (the page never calls Google).
+     *
+     * @param  array<string, mixed>|null  $state
+     * @return array{0: float|null, 1: string}
+     */
+    private function liveCpcCell(?array $state): array
+    {
+        $at = $state['cpc_fetched_at'] ?? null;
+        if ($at === null || $at === '') {
+            return [null, 'Live CPC has not been pulled from Google Ads yet'];
+        }
+        $when = Carbon::parse((string) $at)->timezone('Asia/Kolkata')->format('M j, g:i A').' IST';
+        $failed = ! in_array($state['cpc_fetch_ok'] ?? false, [true, 1, '1'], true);
+        $suffix = $failed ? ' — the last pull failed, showing the previous value' : '';
+        $cpc = isset($state['live_cpc']) && is_numeric($state['live_cpc']) && (float) $state['live_cpc'] > 0
+            ? round((float) $state['live_cpc'], 2) : null;
+        $clicks = (int) ($state['live_cpc_clicks'] ?? 0);
+        if ($cpc === null) {
+            return [null, 'No clicks today yet (Google Ads, as of '.$when.')'.$suffix];
+        }
+        $cost = number_format((float) ($state['live_cpc_cost'] ?? 0), 2);
+
+        return [$cpc, 'Today so far: $'.$cost.' ÷ '.number_format($clicks).' clicks = $'.number_format($cpc, 2).' (Google Ads, as of '.$when.')'.$suffix];
+    }
+
+    /**
+     * Enabled Shopping campaign ids (database only) for the live CPC pull.
+     *
+     * @return list<string>
+     */
+    public function shoppingEnabledCampaignIds(): array
+    {
+        if ($this->channelKey() !== 'shopping') {
+            return [];
+        }
+        $ids = [];
+        foreach ($this->buildRawGridBaseQuery()->get() as $row) {
+            $arr = self::rawGridRowToArray($row);
+            if (strtoupper(trim((string) ($arr['campaign_status'] ?? ''))) !== 'ENABLED') {
+                continue;
+            }
+            $cid = preg_replace('/\D+/', '', (string) ($arr['campaign_id'] ?? '')) ?? '';
+            if ($cid !== '') {
+                $ids[$cid] = true;
+            }
+        }
+
+        return array_map('strval', array_keys($ids));
     }
 
     private function rememberShoppingPush(string $field, string $campaignId, float $value): void
@@ -981,6 +1033,7 @@ class GoogleShoppingCampaignsController extends Controller
         $bgtResolver = $this->shoppingBgtMetricsResolver();
         $invFilter = $this->normalizeInvFilter($request->input('filter_inv'));
         $collection = $this->filterRawGridRowsByInventory($collection, $invFilter, $invResolver);
+        $collection = $this->filterRawGridRowsByPrice($collection, $request, $bgtResolver);
         $summary = $this->summarizeRawGridRows($collection);
         $summary = array_merge($summary, $this->rawGridL30TotalsAllStatuses($request, $collection, $invFilter, $invResolver));
         $summary = array_merge($summary, $this->rawGridUtilizationAllCampaigns($request, $collection, $invFilter, $invResolver));
@@ -1800,7 +1853,7 @@ class GoogleShoppingCampaignsController extends Controller
     ];
 
     /**
-     * Per-day Utilized badge values for every day in [$start, $end] (all campaigns, every status — same scope
+     * Per-day Utilized badge values for every day in [$start, $end] (active (ENABLED) campaigns — same scope
      * as the badges). Same campaign set as the grid: a campaign counts on a day when it has a row in the 30 days
      * up to it, and PARENT campaigns count from their first row on. Its budget is its latest row's budget.
      *
@@ -1820,7 +1873,7 @@ class GoogleShoppingCampaignsController extends Controller
         $this->applyCampaignNameScope($query);
         $rows = $query
             ->groupBy('campaign_id', 'date')
-            ->selectRaw('campaign_id, `date` AS d, MAX(campaign_name) AS n, COALESCE(SUM(metrics_cost_micros), 0) / 1000000.0 AS spend, COALESCE(MAX(budget_amount_micros), 0) / 1000000.0 AS budget')
+            ->selectRaw('campaign_id, `date` AS d, MAX(campaign_name) AS n, MAX(campaign_status) AS st, COALESCE(SUM(metrics_cost_micros), 0) / 1000000.0 AS spend, COALESCE(MAX(budget_amount_micros), 0) / 1000000.0 AS budget')
             ->get();
 
         $dayNo = static fn (string $ymd): int => intdiv((int) strtotime($ymd.' 00:00:00 UTC'), 86400);
@@ -1828,7 +1881,7 @@ class GoogleShoppingCampaignsController extends Controller
         $isParent = [];
         foreach ($rows as $r) {
             $cid = (string) $r->campaign_id;
-            $byCampaign[$cid][$dayNo(Carbon::parse((string) $r->d)->format('Y-m-d'))] = [(float) $r->spend, (float) $r->budget];
+            $byCampaign[$cid][$dayNo(Carbon::parse((string) $r->d)->format('Y-m-d'))] = [(float) $r->spend, (float) $r->budget, strtoupper(trim((string) $r->st))];
             $isParent[$cid] = str_starts_with(strtoupper((string) $r->n), 'PARENT ');
         }
         $sortedDays = [];
@@ -1875,6 +1928,9 @@ class GoogleShoppingCampaignsController extends Controller
                 if ($latest === null || ($dn - $latest >= 30 && ! $isParent[$cid])) {
                     continue; // not in the grid that day
                 }
+                if ($days[$latest][2] !== 'ENABLED') {
+                    continue; // Utilized badges cover active campaigns only
+                }
                 $budget = $days[$latest][1];
                 $sy = $days[$dn][0] ?? 0.0;
                 $s7 = 0.0;
@@ -1911,7 +1967,7 @@ class GoogleShoppingCampaignsController extends Controller
         $end = $this->badgeChartCompletedEndDate();
         $start = $end->copy()->subDays($days - 1);
         $series = Cache::remember(
-            'gads_util_series_v1:'.$this->channelKey().':'.$end->toDateString().':'.$days,
+            'gads_util_series_v2:'.$this->channelKey().':'.$end->toDateString().':'.$days,
             now()->addMinutes(10),
             fn () => $this->utilizationDailySeries($start, $end)
         );
@@ -1943,7 +1999,7 @@ class GoogleShoppingCampaignsController extends Controller
         $end = $this->badgeChartCompletedEndDate();
         $prevEnd = $end->copy()->subDay();
         $series = Cache::remember(
-            'gads_util_dots_v1:'.$this->channelKey().':'.$end->toDateString(),
+            'gads_util_dots_v2:'.$this->channelKey().':'.$end->toDateString(),
             now()->addMinutes(10),
             fn () => $this->utilizationDailySeries($prevEnd, $end)
         );
@@ -2506,7 +2562,7 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * UB% color bands match the raw grid formatters: green 66–99%, pink &gt;99%, red &lt;66%.
+     * UB% color bands match the raw grid formatters: green 66–99%, pink &gt;99%, red &lt;66%; zero = 0% (under 0.1%).
      *
      * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
      */
@@ -2566,7 +2622,7 @@ class GoogleShoppingCampaignsController extends Controller
     {
         $v = is_string($value) ? strtolower(trim($value)) : 'all';
 
-        return in_array($v, ['green', 'pink', 'red'], true) ? $v : 'all';
+        return in_array($v, ['green', 'pink', 'red', 'zero'], true) ? $v : 'all';
     }
 
     /**
@@ -2921,6 +2977,36 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Price (Shopify, same value as the Price column) min / max filter. Price is not in google_ads_campaigns,
+     * so like INV it runs in PHP. With a bound set, campaigns without a price are left out.
+     *
+     * @param  \Illuminate\Support\Collection<int, mixed>  $collection
+     * @param  \Closure|null  $bgtResolver  {@see shoppingBgtMetricsResolver()}
+     * @return \Illuminate\Support\Collection<int, mixed>
+     */
+    private function filterRawGridRowsByPrice($collection, Request $request, ?\Closure $bgtResolver)
+    {
+        $min = $this->normalizeRangeFilterValue($request->input('filter_price_min'));
+        $max = $this->normalizeRangeFilterValue($request->input('filter_price_max'));
+        if (($min === null && $max === null) || $bgtResolver === null) {
+            return $collection;
+        }
+
+        return $collection->filter(static function ($row) use ($bgtResolver, $min, $max) {
+            $name = is_object($row)
+                ? (string) ($row->campaign_name ?? '')
+                : (string) ($row['campaign_name'] ?? '');
+            $price = ($bgtResolver($name))['price'] ?? null;
+            if ($price === null) {
+                return false;
+            }
+            $price = (float) $price;
+
+            return ($min === null || $price >= $min) && ($max === null || $price <= $max);
+        })->values();
+    }
+
+    /**
      * @return array{0: string|null, 1: string}
      */
     private function rawGridSortFromRequest(Request $request): array
@@ -3054,6 +3140,12 @@ class GoogleShoppingCampaignsController extends Controller
         }
         if ($band === 'red') {
             $query->whereRaw("({$ubSqlExpr}) < 66");
+
+            return;
+        }
+        if ($band === 'zero') {
+            // 0 utilisation: nothing spent / no budget — anything under 0.1% shows as 0% in the grid.
+            $query->whereRaw("({$ubSqlExpr}) < 0.1");
         }
     }
 
@@ -3239,6 +3331,7 @@ class GoogleShoppingCampaignsController extends Controller
             $this->applyRawGridSort($query, $allStatus);
             $rows = $this->rememberRawGridRows($allStatus, $query);
             $rows = $this->filterRawGridRowsByInventory($rows, $invFilter, $invResolver);
+            $rows = $this->filterRawGridRowsByPrice($rows, $request, $this->shoppingBgtMetricsResolver());
         }
 
         $spend = 0.0;
@@ -3259,9 +3352,9 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * Utilized Y / Utilized L7 badges: counts over ALL campaigns — every status (Enabled, Paused, Removed)
-     * and ignoring the UB% filters (those would empty the other bands). Search, ACOS, CTR/CVR and INV
-     * filters still apply.
+     * Utilized Y / Utilized L7 badges: bands and averages over the ENABLED (active) campaigns only. The set is
+     * built from every status (so the ACTIVE badge can show active / total) and ignores the Sts and UB%
+     * filters (those would empty the other bands). Search, ACOS, CTR/CVR and INV filters still apply.
      *
      * @param  \Illuminate\Support\Collection<int, mixed>  $collection  rows for the current filters
      * @param  \Closure(string): ?int  $invResolver
@@ -3282,6 +3375,7 @@ class GoogleShoppingCampaignsController extends Controller
             $this->applyRawGridSort($query, $allCampaigns);
             $rows = $this->rememberRawGridRows($allCampaigns, $query);
             $rows = $this->filterRawGridRowsByInventory($rows, $invFilter, $invResolver);
+            $rows = $this->filterRawGridRowsByPrice($rows, $request, $this->shoppingBgtMetricsResolver());
         }
 
         return $this->summarizeRawGridUtilization($rows);
@@ -3291,6 +3385,8 @@ class GoogleShoppingCampaignsController extends Controller
      * Utilisation bands (same for Y = the grid's "1 UB%" and L7 = "U7%"): red = 0% (nothing spent / no budget),
      * yellow = 0.1–66%, green = 66–99%, pink = over 99%. Under 0.1% shows as 0%, so it counts as red.
      * Average = Σ spend ÷ Σ budget over the campaigns that have a budget.
+     * Bands / average / util_enabled_count cover ENABLED campaigns only; util_total_count / util_active_count
+     * still cover every status (they feed the ACTIVE badge).
      *
      * @param  \Illuminate\Support\Collection<int, mixed>  $rows
      * @return array<string, int|float>
@@ -3318,9 +3414,10 @@ class GoogleShoppingCampaignsController extends Controller
         foreach ($rows as $row) {
             $arr = self::rawGridRowToArray($row);
             $total++;
-            if (strtoupper(trim((string) ($arr['campaign_status'] ?? ''))) === 'ENABLED') {
-                $active++;
+            if (strtoupper(trim((string) ($arr['campaign_status'] ?? ''))) !== 'ENABLED') {
+                continue; // Utilized blocks show active campaigns only
             }
+            $active++;
             $bgtMicros = (float) ($arr['budget_amount_micros'] ?? 0);
             $spend1 = (float) ($arr['l1_spend'] ?? 0);
             $spend7 = (float) ($arr['l7_spend'] ?? 0);
@@ -3337,6 +3434,7 @@ class GoogleShoppingCampaignsController extends Controller
         return [
             'util_total_count' => $total,
             'util_active_count' => $active,
+            'util_enabled_count' => $active,
             'avg_util_y_pct' => $budgetDaily > 0 ? round($spendL1 / $budgetDaily * 100.0, 1) : 0.0,
             'avg_util_l7_pct' => $budgetDaily > 0 ? round($spendL7 / ($budgetDaily * 7.0) * 100.0, 1) : 0.0,
             'green_util_y_count' => $y['green'],
@@ -3696,6 +3794,8 @@ class GoogleShoppingCampaignsController extends Controller
             'ctr_lt',
             'cpc_L30',
             'cpc_lt',
+            'live_cpc',
+            'live_cpc_tip',
             'cps_L30',
             'cps_lt',
             'cpv_L30',
