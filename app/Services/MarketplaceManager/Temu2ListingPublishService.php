@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Publish Missing L SKUs to Temu 2 via Open API as parent variation listings.
@@ -2042,7 +2043,8 @@ class Temu2ListingPublishService
     private function uploadImageToTemu2(string $imageUrl): array
     {
         $stripped = preg_replace('/\?.*$/', '', $imageUrl) ?: $imageUrl;
-        $candidates = array_values(array_unique(array_filter([$imageUrl, $stripped])));
+        $jpegUrl = $this->jpegUrlForTemu($imageUrl);
+        $candidates = array_values(array_unique(array_filter([$jpegUrl, $imageUrl, $stripped])));
 
         $attempts = [];
         foreach ($candidates as $url) {
@@ -2069,6 +2071,22 @@ class Temu2ListingPublishService
             }
         }
 
+        $jpegBytes = $this->jpegBytesForTemu($jpegUrl !== '' ? $jpegUrl : $imageUrl);
+        if ($jpegBytes !== null) {
+            $encoded = base64_encode($jpegBytes);
+            foreach (['image', 'imageBase64', 'fileBase64'] as $field) {
+                $data = $this->api->callOpenApi('bg.local.goods.image.upload', [$field => $encoded], 90);
+                $hosted = $this->extractUploadedImageUrl($data);
+                if ($hosted !== null) {
+                    return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+                }
+                $byteMsg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
+                if ($byteMsg !== '' && ! $this->isApiAccessDenied($data)) {
+                    $lastMsg = $byteMsg;
+                }
+            }
+        }
+
         $fallback = $this->api->uploadTemuImageFromUrl($imageUrl);
         if (! empty($fallback['success']) && ! empty($fallback['url'])) {
             return $fallback;
@@ -2078,6 +2096,94 @@ class Temu2ListingPublishService
             'success' => false,
             'message' => $lastMsg !== '' ? $lastMsg : (string) ($fallback['message'] ?? 'Image upload failed.'),
         ];
+    }
+
+    /**
+     * Temu 1 rejects WebP fileUrl values. Serve a JPEG copy of a stored listing image.
+     */
+    private function jpegUrlForTemu(string $imageUrl): string
+    {
+        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
+        if (! preg_match('#/listing-manager/media/([A-Za-z0-9._-]+)$#', $path, $match)) {
+            return '';
+        }
+        $file = basename($match[1]);
+        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        if (in_array($ext, ['jpg', 'jpeg', 'png'], true)) {
+            return '';
+        }
+
+        $disk = Storage::disk('public');
+        $source = 'listing-manager/images/'.$file;
+        if (! $disk->exists($source)) {
+            return '';
+        }
+        $jpgName = pathinfo($file, PATHINFO_FILENAME).'.jpg';
+        $target = 'listing-manager/images/'.$jpgName;
+        if (! $disk->exists($target)) {
+            $bytes = $this->fileToJpeg($disk->path($source));
+            if ($bytes === null) {
+                return '';
+            }
+            $disk->put($target, $bytes);
+        }
+
+        return (string) preg_replace('#/listing-manager/media/[^/?#]+#', '/listing-manager/media/'.$jpgName, $imageUrl);
+    }
+
+    private function jpegBytesForTemu(string $imageUrl): ?string
+    {
+        $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
+        if (! preg_match('#/listing-manager/media/([A-Za-z0-9._-]+)$#', $path, $match)) {
+            return null;
+        }
+        $file = basename($match[1]);
+        $relative = 'listing-manager/images/'.$file;
+        $disk = Storage::disk('public');
+        if (! $disk->exists($relative)) {
+            return null;
+        }
+        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        if (in_array($ext, ['jpg', 'jpeg'], true)) {
+            $bytes = $disk->get($relative);
+
+            return is_string($bytes) && $bytes !== '' ? $bytes : null;
+        }
+
+        return $this->fileToJpeg($disk->path($relative));
+    }
+
+    private function fileToJpeg(string $absolutePath): ?string
+    {
+        if (! is_file($absolutePath) || ! function_exists('imagecreatefromstring') || ! function_exists('imagejpeg')) {
+            return null;
+        }
+        $raw = @file_get_contents($absolutePath);
+        if (! is_string($raw) || $raw === '') {
+            return null;
+        }
+        $image = @imagecreatefromstring($raw);
+        if ($image === false) {
+            return null;
+        }
+        $width = imagesx($image);
+        $height = imagesy($image);
+        $canvas = imagecreatetruecolor($width, $height);
+        if ($canvas === false) {
+            imagedestroy($image);
+
+            return null;
+        }
+        $white = imagecolorallocate($canvas, 255, 255, 255);
+        imagefilledrectangle($canvas, 0, 0, $width, $height, $white);
+        imagecopy($canvas, $image, 0, 0, 0, 0, $width, $height);
+        ob_start();
+        imagejpeg($canvas, null, 90);
+        $jpeg = ob_get_clean();
+        imagedestroy($image);
+        imagedestroy($canvas);
+
+        return is_string($jpeg) && $jpeg !== '' ? $jpeg : null;
     }
 
     /**
