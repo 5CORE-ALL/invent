@@ -43,6 +43,11 @@ class FetchGoogleAdsCampaigns extends Command
     {
         try {
             $days = (int) $this->option('days');
+
+            // Self-healing: if earlier daily runs failed (API change, outage, missed cron), the
+            // table has a gap. Widen the window so the gap since the last synced day is
+            // back-filled automatically (capped at 30 days to keep API usage sane).
+            $days = $this->widenDaysToCoverGap($days);
             
             // Get customer ID from config
             $customerId = config('services.google_ads.login_customer_id');
@@ -251,6 +256,41 @@ class FetchGoogleAdsCampaigns extends Command
                 'trace' => $e->getTraceAsString()
             ]);
             return 1;
+        }
+    }
+
+    /**
+     * Return a day count that reaches back to the last day that was actually synced from
+     * Google Ads. GA4-only rows (no campaign_status) are ignored so they can't hide a gap.
+     */
+    private function widenDaysToCoverGap(int $days): int
+    {
+        $days = max(1, $days);
+
+        try {
+            $lastSynced = DB::table('google_ads_campaigns')
+                ->whereNotNull('campaign_status')
+                ->whereNotNull('date')
+                ->max('date');
+
+            if (empty($lastSynced)) {
+                return $days;
+            }
+
+            // Re-fetch the last synced day too (it may have been a partial day).
+            $gap = (int) abs(Carbon::parse($lastSynced)->startOfDay()->diffInDays(Carbon::today()));
+            $needed = min(30, max($days, $gap));
+
+            if ($needed > $days) {
+                $this->warn("Gap detected: last synced day is {$lastSynced}. Widening fetch from {$days} to {$needed} day(s).");
+                Log::warning("Google Ads fetch: gap since {$lastSynced}, widening window from {$days} to {$needed} day(s)");
+            }
+
+            return $needed;
+        } catch (\Throwable $e) {
+            Log::warning('Google Ads fetch: gap detection failed - ' . $e->getMessage());
+
+            return $days;
         }
     }
 
