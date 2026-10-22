@@ -2082,9 +2082,40 @@
             const st = ntoRowPushState(row);
             if (st === 'pushed' || st === 'pushing') return false;
         }
+        // Nothing the push can do for these two, so they must not sit in the badge / queue forever
+        // (the server job skips them on every run, and a page reload used to bring them all back):
+        //  - the price the push sends is already Temu's live base price;
+        //  - the push is blocked by the negative-SNROI guard.
+        if (typeof ntoRowPushPrice === 'function') {
+            const pushPrc = ntoRowPushPrice(row);
+            if (pushPrc > 0) {
+                const liveBase = parseFloat(row && row.base_price) || 0;
+                if (liveBase > 0 && Math.round(pushPrc * 100) === Math.round(liveBase * 100)) return false;
+                if (ntoRowNegSnroiBlocked(row, pushPrc)) return false;
+            }
+        }
         return true;
     }
     window.temuHasBlueTriangle = temuHasBlueTriangle;
+
+    const NTO_IGNORE_NEG_SNROI = @json((bool) \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::ignoreNegativeSnroiPush('newtemuone'));
+    /**
+     * Same test as NegativeSnroiPushGuard::shouldSkipTemuPromoBase(): S Promo Prc = base (+ $2.99 when base ≤ $27.01),
+     * SNPFT = S Promo Prc × 0.95 − Ship − LP − Std Prc × Ads%. Negative SNROI is never pushed.
+     */
+    function ntoRowNegSnroiBlocked(row, basePrc) {
+        if (!NTO_IGNORE_NEG_SNROI) return false;
+        const base = parseFloat(basePrc) || 0;
+        const lp = parseFloat(row && row.lp) || 0;
+        if (!(base > 0) || !(lp > 0)) return false;
+        const ship = parseFloat(row && row.temu_ship) || 0;
+        const promo = base <= 27.01 ? base + 2.99 : base;
+        const stdRaw = typeof ntoRowSpriceStart === 'function' ? ntoRowSpriceStart(row) : null;
+        const std = stdRaw > 0 ? stdRaw : promo;
+        const ads = (typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0) / 100;
+        return (((promo * 0.95) - ship - lp - (std * ads)) / lp) * 100 < 0;
+    }
+    window.ntoRowNegSnroiBlocked = ntoRowNegSnroiBlocked;
 
     const NTO_PUSH_SPRICE_URL = '/channel-push-sprice/newtemuone';
     const NTO_PUSH_SPRICE_LIVE = @json(!empty($newtemuonePushSpriceLive));
