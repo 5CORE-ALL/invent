@@ -1369,6 +1369,7 @@ class ChannelPromoPricingController extends Controller
                 'reviews' => $defaults['reviews'],
                 'review_max' => $defaults['review_max'],
                 'buss' => $defaults['buss'],
+                'pricing' => $defaults['pricing'],
                 'lmp' => $defaults['lmp'],
                 'moq_m' => $defaults['moq_m'],
                 'roi' => $defaults['roi'],
@@ -1385,9 +1386,10 @@ class ChannelPromoPricingController extends Controller
             'reviews' => $this->normalizeStdPrcRanges($saved['reviews'] ?? null, $defaults['reviews']),
             'review_max' => $this->normalizeStdPrcReviewMax($saved['review_max'] ?? null),
             'buss' => $this->normalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
+            'pricing' => $this->normalizeStdPrcRanges($saved['pricing'] ?? null, $defaults['pricing']),
             'lmp' => $this->normalizeStdPrcRanges($saved['lmp'] ?? null, $defaults['lmp']),
             'moq_m' => $this->normalizeStdPrcRanges($saved['moq_m'] ?? null, $defaults['moq_m']),
-            'roi' => $this->normalizeStdPrcRanges($saved['roi'] ?? null, $defaults['roi']),
+            'roi' => $this->normalizeStdPrcRoiRules($saved['roi'] ?? null, $defaults['roi']),
             'zero_sold_disc' => $this->normalizeZeroSoldDisc($saved['zero_sold_disc'] ?? null),
         ]);
     }
@@ -1406,14 +1408,15 @@ class ChannelPromoPricingController extends Controller
             'reviews' => $this->normalizeStdPrcRanges($request->input('reviews'), $defaults['reviews']),
             'review_max' => $this->normalizeStdPrcReviewMax($request->input('review_max')),
             'buss' => $this->normalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
+            'pricing' => $this->normalizeStdPrcRanges($request->input('pricing'), $defaults['pricing']),
             'lmp' => $this->normalizeStdPrcRanges($request->input('lmp'), $defaults['lmp']),
             'moq_m' => $this->normalizeStdPrcRanges($request->input('moq_m'), $defaults['moq_m']),
-            'roi' => $this->normalizeStdPrcRanges($request->input('roi'), $defaults['roi']),
+            'roi' => $this->normalizeStdPrcRoiRules($request->input('roi'), $defaults['roi']),
             'zero_sold_disc' => $this->normalizeZeroSoldDisc($request->input('zero_sold_disc')),
         ];
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'lmp', 'moq_m', 'roi', 'zero_sold']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'pricing', 'lmp', 'moq_m', 'roi', 'zero_sold']]
         );
 
         // Best Buy S PRC is saved by the server job, not by the page. Re-save it now (no push) so the page
@@ -1545,6 +1548,11 @@ class ChannelPromoPricingController extends Controller
                 ['min' => 15, 'max' => 50, 'disc' => 0],
                 ['min' => 50, 'max' => 9999, 'disc' => 0],
             ],
+            'pricing' => [
+                ['min' => 0, 'max' => 15, 'disc' => 0],
+                ['min' => 15, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 9999, 'disc' => 0],
+            ],
             'lmp' => [
                 ['min' => 0, 'max' => 0, 'disc' => 0],
                 ['min' => 0.1, 'max' => 10, 'disc' => 0],
@@ -1562,11 +1570,11 @@ class ChannelPromoPricingController extends Controller
                 ['min' => 200, 'max' => 9999, 'disc' => 0],
             ],
             'roi' => [
-                ['min' => -9999, 'max' => 0, 'disc' => 0],
-                ['min' => 0, 'max' => 50, 'disc' => 0],
-                ['min' => 50, 'max' => 75, 'disc' => 0],
-                ['min' => 75, 'max' => 125, 'disc' => 0],
-                ['min' => 125, 'max' => 9999, 'disc' => 0],
+                ['min' => -9999, 'max' => 0, 'dil_min' => 0, 'dil_max' => 9999, 'disc' => 0],
+                ['min' => 0, 'max' => 50, 'dil_min' => 0, 'dil_max' => 9999, 'disc' => 0],
+                ['min' => 50, 'max' => 75, 'dil_min' => 0, 'dil_max' => 9999, 'disc' => 0],
+                ['min' => 75, 'max' => 125, 'dil_min' => 0, 'dil_max' => 9999, 'disc' => 0],
+                ['min' => 125, 'max' => 9999, 'dil_min' => 0, 'dil_max' => 9999, 'disc' => 0],
             ],
             'zero_sold_disc' => 0,
         ];
@@ -1579,6 +1587,46 @@ class ChannelPromoPricingController extends Controller
         }
 
         return round(min(100, max(0, (float) $incoming)), 2);
+    }
+
+    /**
+     * ROI slabs: GROI% From / To, plus the Dil% From / To the slab applies to (default: any Dil).
+     *
+     * @param  mixed  $incoming
+     * @param  list<array<string,float>>  $fallback
+     * @return list<array{min:float,max:float,dil_min:float,dil_max:float,disc:float}>
+     */
+    private function normalizeStdPrcRoiRules($incoming, array $fallback): array
+    {
+        if (! is_array($incoming)) {
+            return $fallback;
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = (float) $item['min'];
+            $max = (float) $item['max'];
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $dilMin = is_numeric($item['dil_min'] ?? null) ? (float) $item['dil_min'] : 0.0;
+            $dilMax = is_numeric($item['dil_max'] ?? null) ? (float) $item['dil_max'] : 9999.0;
+            if ($dilMax < $dilMin) {
+                [$dilMin, $dilMax] = [$dilMax, $dilMin];
+            }
+            $disc = is_numeric($item['disc'] ?? null) ? (float) $item['disc'] : 0;
+            $rules[] = [
+                'min' => round($min, 2),
+                'max' => round($max, 2),
+                'dil_min' => round($dilMin, 2),
+                'dil_max' => round($dilMax, 2),
+                'disc' => round(min(100, max(0, $disc)), 2),
+            ];
+        }
+
+        return $rules !== [] ? $rules : $fallback;
     }
 
     /**

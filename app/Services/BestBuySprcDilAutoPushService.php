@@ -315,6 +315,8 @@ class BestBuySprcDilAutoPushService
             'reviews' => 0.0,
             // 0 Sold = BB L30 (MCM orders), same as the page.
             'bb_l30' => (float) ($row['bb_l30'] ?? 0),
+            // Live BB Price: ROI Disc is judged on GROI% at the current listing price (same as the page's GROI% column).
+            'price' => (float) ($row['price'] ?? 0),
             'lp' => $lp,
             'ship' => $ship,
             'margin' => $margin,

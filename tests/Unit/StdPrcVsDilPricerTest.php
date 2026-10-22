@@ -111,6 +111,55 @@ class StdPrcVsDilPricerTest extends TestCase
         ]));
     }
 
+    public function test_pricing_discount_is_added_to_the_sum_by_std_price_range(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'buss' => [
+                ['min' => 0, 'max' => 50, 'disc' => 4],
+            ],
+            'pricing' => [
+                ['min' => 0, 'max' => 15, 'disc' => 6],
+                ['min' => 15, 'max' => 50, 'disc' => 2],
+            ],
+        ]);
+
+        // $20: B Disc 4% + Pricing 2% = 6%. $20 × 0.94 = $18.80.
+        $this->assertSame(18.8, $pricer->priceFromRow(['inv' => 1, 'std' => 20]));
+        // $10: B Disc 4% + Pricing 6% (full, not halved under $15) = 10%. $10 × 0.90 = $9.00.
+        $this->assertSame(9.0, $pricer->priceFromRow(['inv' => 1, 'std' => 10]));
+    }
+
+    public function test_roi_discount_needs_both_the_groi_slab_and_the_dil_slab(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'roi' => [
+                ['min' => 50, 'max' => 75, 'dil_min' => 10, 'dil_max' => 25, 'disc' => 5],
+                ['min' => 75, 'max' => 125, 'dil_min' => 0, 'dil_max' => 9999, 'disc' => 4],
+            ],
+        ]);
+        // GROI% = (20 × 0.8 − 0 − 10) ÷ 10 = 60%.
+        $row = ['inv' => 1, 'std' => 20, 'price' => 20, 'lp' => 10, 'margin' => 0.8, 'ship' => 0];
+
+        // Dil 15 is inside 10–25 → 5%. $20 × 0.95 = $19.00.
+        $this->assertSame(19.0, $pricer->priceFromRow($row + ['dil' => 15]));
+        // Dil 5 is outside the slab's Dil range → no ROI disc.
+        $this->assertSame(20.0, $pricer->priceFromRow($row + ['dil' => 5]));
+        // No listing price → no GROI% → no ROI disc.
+        $this->assertSame(20.0, $pricer->priceFromRow(['inv' => 1, 'std' => 20, 'dil' => 15]));
+        // $12 Std is under $15: ROI disc is halved. GROI% = (12 × 0.8 − 5) ÷ 5 = 92% → 4% → 2%. $12 × 0.98 = $11.76.
+        $this->assertSame(11.76, $pricer->priceFromRow(['inv' => 1, 'std' => 12, 'price' => 12, 'lp' => 5, 'margin' => 0.8, 'dil' => 0]));
+    }
+
     public function test_zero_sold_discount_applies_only_when_sold_qty_is_zero(): void
     {
         $pricer = new StdPrcVsDilPricer([

@@ -53,6 +53,8 @@ class StdPrcVsDilPricer
             'reviews' => self::ranges($saved['reviews'] ?? null, $defaults['reviews']),
             'review_max' => is_numeric($saved['review_max'] ?? null) ? max(1, (int) $saved['review_max']) : $defaults['review_max'],
             'buss' => self::ranges($saved['buss'] ?? null, $defaults['buss']),
+            'pricing' => self::ranges($saved['pricing'] ?? null, $defaults['pricing']),
+            'roi' => self::roiRules($saved['roi'] ?? null),
             'lmp' => self::ranges($saved['lmp'] ?? null, $defaults['lmp']),
             'moq_m' => self::ranges($saved['moq_m'] ?? null, $defaults['moq_m']),
             'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
@@ -90,6 +92,13 @@ class StdPrcVsDilPricer
             : self::scaleRuleDisc($this->cvrDisc($cvr, $cvr60, $trend), $std);
         $reviewDisc = self::scaleRuleDisc($this->reviewDisc($reviews), $std);
         $bussDisc = $this->rangeDisc($std, $this->rules['buss'] ?? []);
+        // Pricing Disc: Std Price slabs, full Disc % (never halved under $15), added to the sum.
+        $pricingDisc = $this->rangeDisc($std, $this->rules['pricing'] ?? []);
+        // ROI Disc: GROI% slab that also matches this SKU's Dil slab. Only rows that carry the listing price get one.
+        $roi = $this->roiPct($row);
+        $roiDisc = $roi === null
+            ? 0.0
+            : self::scaleRuleDisc($this->roiRuleDisc($roi, $dil), $std);
         $zeroSoldDisc = $this->isZeroSold($row)
             ? self::scaleRuleDisc((float) ($this->rules['zero_sold_disc'] ?? 0), $std)
             : 0.0;
@@ -107,7 +116,7 @@ class StdPrcVsDilPricer
             $dilMoq = (float) round(($ovL30 / ($moq / 4)) * 100);
             $moqMDisc = self::scaleRuleDisc($this->rangeDisc($dilMoq, $this->rules['moq_m'] ?? []), $std);
         }
-        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $zeroSoldDisc + $lmpDisc + $moqMDisc));
+        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $pricingDisc + $roiDisc + $zeroSoldDisc + $lmpDisc + $moqMDisc));
         $price = round($std * (1 - $sum / 100), 2);
         if (! ($price > 0)) {
             return null;
@@ -466,6 +475,11 @@ class StdPrcVsDilPricer
                 ['min' => 15, 'max' => 50, 'disc' => 0],
                 ['min' => 50, 'max' => 9999, 'disc' => 0],
             ],
+            'pricing' => [
+                ['min' => 0, 'max' => 15, 'disc' => 0],
+                ['min' => 15, 'max' => 50, 'disc' => 0],
+                ['min' => 50, 'max' => 9999, 'disc' => 0],
+            ],
             'lmp' => [
                 ['min' => 0, 'max' => 0, 'disc' => 0],
                 ['min' => 0.1, 'max' => 10, 'disc' => 0],
@@ -484,6 +498,94 @@ class StdPrcVsDilPricer
             ],
             'zero_sold_disc' => 0,
         ];
+    }
+
+    /**
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,dil_min:float,dil_max:float,disc:float}>
+     */
+    private static function roiRules($incoming): array
+    {
+        if (! is_array($incoming)) {
+            return [];
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = (float) $item['min'];
+            $max = (float) $item['max'];
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $dilMin = is_numeric($item['dil_min'] ?? null) ? (float) $item['dil_min'] : 0.0;
+            $dilMax = is_numeric($item['dil_max'] ?? null) ? (float) $item['dil_max'] : 9999.0;
+            if ($dilMax < $dilMin) {
+                [$dilMin, $dilMax] = [$dilMax, $dilMin];
+            }
+            $rules[] = [
+                'min' => $min,
+                'max' => $max,
+                'dil_min' => $dilMin,
+                'dil_max' => $dilMax,
+                'disc' => self::discPercent($item['disc'] ?? null),
+            ];
+        }
+
+        return $rules;
+    }
+
+    /** Slab hit: [min, max), a point slab (min = max) is exact, and a 9999 upper bound includes the value. */
+    private static function inSlab(float $value, float $min, float $max): bool
+    {
+        if (abs($max - $min) < 0.00001) {
+            return abs($value - $min) < 0.00001;
+        }
+
+        return $value >= $min && ($value < $max || ($max >= 9999 && $value <= $max));
+    }
+
+    /** First ROI slab whose GROI% range and Dil range both match. */
+    private function roiRuleDisc(float $roi, float $dil): float
+    {
+        foreach ($this->rules['roi'] ?? [] as $rule) {
+            if (self::inSlab($roi, (float) $rule['min'], (float) $rule['max'])
+                && self::inSlab($dil, (float) $rule['dil_min'], (float) $rule['dil_max'])) {
+                return max(0.0, (float) $rule['disc']);
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * GROI% at the current listing price: (price × margin − ship − lp) ÷ lp. Null when the row has no price or LP.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function roiPct(array $row): ?float
+    {
+        foreach (['roi', 'groi', 'GROI%'] as $key) {
+            if (isset($row[$key]) && is_numeric($row[$key])) {
+                return (float) $row[$key];
+            }
+        }
+        $price = (float) ($row['live'] ?? $row['price'] ?? $row['Price'] ?? 0);
+        $lp = (float) ($row['lp'] ?? $row['LP'] ?? $row['LP_productmaster'] ?? 0);
+        if (! ($price > 0) || ! ($lp > 0)) {
+            return null;
+        }
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.80;
+        }
+        $ship = (float) ($row['ship'] ?? 0);
+
+        return (($price * $margin - $ship - $lp) / $lp) * 100;
     }
 
     private static function discPercent(mixed $value): float

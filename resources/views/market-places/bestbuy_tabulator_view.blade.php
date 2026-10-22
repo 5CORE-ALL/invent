@@ -2174,7 +2174,7 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz) Clearance SKUs keep the discount price. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
+                    headerTooltip: "Not editable. S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz) Clearance SKUs keep the discount price. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {

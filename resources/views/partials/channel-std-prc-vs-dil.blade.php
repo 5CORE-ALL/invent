@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(($channelPromoChannel ?? '') === 'shopify_b2b') Shopify B2B then subtracts the Ship column.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -215,6 +215,20 @@
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-buss"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-buss-tbody"></tbody></table></div>
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-buss-add">Add range</button>
+                        </div>
+                        <div class="ch-sp-col" data-ch-sp-panel="pricing">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Std Prc ranges. Disc % is added to Sum disc. Full Disc % at every Std Prc.">Pricing</div><button type="button" class="ch-sp-min-btn" title="Minimize Pricing" aria-label="Minimize Pricing">−</button></div>
+                            <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-pricing"></canvas></div>
+                            <div class="ch-sp-pie-legend" id="ch-sp-leg-pricing"></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr></thead><tbody id="ch-sp-pricing-tbody"></tbody></table></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-pricing-add">Add range</button>
+                        </div>
+                        <div class="ch-sp-col" data-ch-sp-panel="roi">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="GROI% slabs, each limited to a Dil % range. The first slab that matches both the GROI% and the Dil % gives the Disc %, which is added to Sum disc. Std Prc under $15 uses half.">ROI Disc</div><button type="button" class="ch-sp-min-btn" title="Minimize ROI Disc" aria-label="Minimize ROI Disc">−</button></div>
+                            <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-roi"></canvas></div>
+                            <div class="ch-sp-pie-legend" id="ch-sp-leg-roi"></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center" colspan="2">GROI%</th><th class="text-center" colspan="2">Dil%</th><th class="text-center">Count</th><th class="text-end">Disc %</th><th></th></tr><tr><th class="text-center">From</th><th class="text-center">To</th><th class="text-center">From</th><th class="text-center">To</th><th></th><th></th><th></th></tr></thead><tbody id="ch-sp-roi-tbody"></tbody></table></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-roi-add">Add slab</button>
                         </div>
                         <div class="ch-sp-col" data-ch-sp-panel="zs">
                             <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Disc % when this page's sold qty is 0. Sold &gt; 0 stays 0%.">0 Sold</div><button type="button" class="ch-sp-min-btn" title="Minimize 0 Sold" aria-label="Minimize 0 Sold">−</button></div>
@@ -306,6 +320,13 @@
         let chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdBuss = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        let chStdPricing = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+        const CH_STD_ROI_DEFAULTS = [
+            { min: -9999, max: 0, dil_min: 0, dil_max: 9999, disc: 0 }, { min: 0, max: 50, dil_min: 0, dil_max: 9999, disc: 0 },
+            { min: 50, max: 75, dil_min: 0, dil_max: 9999, disc: 0 }, { min: 75, max: 125, dil_min: 0, dil_max: 9999, disc: 0 },
+            { min: 125, max: 9999, dil_min: 0, dil_max: 9999, disc: 0 },
+        ];
+        let chStdRoi = CH_STD_ROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdLmp = [];
         let chStdMoqM = CH_STD_MOQM_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdCvr = Object.assign({}, CH_STD_CVR_DEFAULT);
@@ -328,6 +349,48 @@
             if (!isFinite(disc) || disc < 0) disc = 0;
             if (disc > 100) disc = 100;
             return { min: min, max: max, disc: disc };
+        }
+        // ROI Disc (Best Buy only): GROI% slabs limited to a Dil % range.
+        function chStdUsesRoi() {
+            return typeof CHANNEL_PROMO_CHANNEL === 'string' && CHANNEL_PROMO_CHANNEL === 'bestbuy';
+        }
+        if (!chStdUsesRoi()) {
+            $('[data-ch-sp-panel="roi"]').hide();
+        }
+        function chStdNormRoi(r) {
+            const base = chStdNormRange(r);
+            if (!base) return null;
+            let dmin = Number(r && r.dil_min), dmax = Number(r && r.dil_max);
+            if (!isFinite(dmin)) dmin = 0;
+            if (!isFinite(dmax)) dmax = 9999;
+            if (dmax < dmin) { const t = dmin; dmin = dmax; dmax = t; }
+            base.dil_min = dmin;
+            base.dil_max = dmax;
+            return base;
+        }
+        // [min, max): a point slab (min = max) is exact and a 9999 upper bound includes the value. Same as the PHP pricer.
+        function chStdInSlab(value, min, max) {
+            const n = Number(value);
+            if (!isFinite(n)) return false;
+            if (Math.abs(max - min) < 0.00001) return Math.abs(n - min) < 0.00001;
+            return n >= min && (n < max || (max >= 9999 && n <= max));
+        }
+        function chStdRoiIndex(roiVal, dilVal, rules) {
+            for (let i = 0; i < (rules || []).length; i++) {
+                const r = rules[i];
+                if (chStdInSlab(roiVal, Number(r.min), Number(r.max)) && chStdInSlab(dilVal, Number(r.dil_min), Number(r.dil_max))) return i;
+            }
+            return -1;
+        }
+        function chStdRoiPct(d) {
+            const n = Number(d && d['ROI%']);
+            if (d && d['ROI%'] != null && d['ROI%'] !== '' && isFinite(n)) return n;
+            const price = (typeof chPromoPrice === 'function') ? (Number(chPromoPrice(d)) || 0) : 0;
+            const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
+            if (!(price > 0) || !(lp > 0)) return null;
+            const margin = chStdMargin(d);
+            const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
+            return (((price * margin) - ship - lp) / lp) * 100;
         }
         function chStdNormCvr(raw) {
             const out = Object.assign({}, CH_STD_CVR_DEFAULT);
@@ -698,7 +761,7 @@
                 + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ch-sp-moqm-del" title="Remove">&times;</button></td></tr>';
         }
         function chStdSumDisc(d, draft) {
-            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
+            draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), pricing: chStdPricingRulesLive(), roi: chStdRoiRulesLive(), zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
             // Amazon INV = 0 still allows the page 0 Sold discount (AB L30 = 0, page INV > 0).
             if (!(chStdStockForAge(d) > 0)) {
                 if (!chStdRowIsZeroSold(d)) return 0;
@@ -722,11 +785,19 @@
             const cvrDisc = chStdScaleDisc(std, chStdCvrDiscPct(d, draft));
             const bussRules = draft.buss || chStdBuss;
             const bussDisc = chStdRangeDisc(std, bussRules);
+            const pricingDisc = chStdRangeDisc(std, draft.pricing || chStdPricing);
+            let roiDisc = 0;
+            if (chStdUsesRoi()) {
+                const roiVal = chStdRoiPct(d);
+                const roiRules = draft.roi || chStdRoi;
+                const roiIdx = roiVal == null ? -1 : chStdRoiIndex(roiVal, dil, roiRules);
+                roiDisc = chStdScaleDisc(std, roiIdx >= 0 ? (Number(roiRules[roiIdx].disc) || 0) : 0);
+            }
             const zsRaw = chStdRowIsZeroSold(d) ? (Number(draft.zeroSoldDisc != null ? draft.zeroSoldDisc : chStdZeroSoldDisc) || 0) : 0;
             const zsDisc = chStdScaleDisc(std, zsRaw);
             const lmpDisc = chStdScaleDisc(std, chStdLmpDiscRaw(d, draft.lmp || chStdLmp));
             const moqMDisc = chStdScaleDisc(std, chStdMoqMDiscRaw(d, draft.moqM || chStdMoqM));
-            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc + moqMDisc));
+            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc));
         }
         function chStdFullDataset() {
             if (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length) return window.allTableData;
@@ -805,6 +876,8 @@
                 age: chStdReadRanges('#ch-sp-age-tbody', '.ch-sp-age-min', '.ch-sp-age-max', '.ch-sp-age-disc'),
                 reviews: chStdReadRanges('#ch-sp-rev-tbody', '.ch-sp-rev-min', '.ch-sp-rev-max', '.ch-sp-rev-disc'),
                 buss: chStdReadRanges('#ch-sp-buss-tbody', '.ch-sp-buss-min', '.ch-sp-buss-max', '.ch-sp-buss-disc'),
+                pricing: chStdReadRanges('#ch-sp-pricing-tbody', '.ch-sp-pricing-min', '.ch-sp-pricing-max', '.ch-sp-pricing-disc'),
+                roi: chStdReadRoi(),
                 moqM: chStdReadRanges('#ch-sp-moqm-tbody', '.ch-sp-moqm-min', '.ch-sp-moqm-max', '.ch-sp-moqm-disc'),
                 zeroSoldDisc: (function() { const n = Number($('#ch-sp-zs-disc').val()); return isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; })(),
                 reviewMax: (function() { const n = parseInt($('#ch-sp-review-max').val(), 10); return isFinite(n) && n > 0 ? n : 4; })(),
@@ -818,6 +891,36 @@
             };
             draft.lmp = chStdAlignLmp(draft.dil);
             return draft;
+        }
+        function chStdRoiRow(rule) {
+            const inp = function(cls, val, min) { return '<input type="number" ' + (min != null ? 'min="' + min + '" ' : '') + 'step="0.1" class="form-control form-control-sm ch-sp-input ' + cls + '" value="' + val + '">'; };
+            return '<tr><td class="text-center">' + inp('ch-sp-roi-min', rule.min) + '</td>'
+                + '<td class="text-center">' + inp('ch-sp-roi-max', rule.max) + '</td>'
+                + '<td class="text-center">' + inp('ch-sp-roi-dmin', rule.dil_min) + '</td>'
+                + '<td class="text-center">' + inp('ch-sp-roi-dmax', rule.dil_max) + '</td>'
+                + '<td class="ch-sp-count ch-sp-roi-count">0</td>'
+                + '<td class="text-end">' + inp('ch-sp-roi-disc', rule.disc, 0) + '</td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ch-sp-roi-del" title="Remove">&times;</button></td></tr>';
+        }
+        function chStdReadRoi() {
+            const rules = [];
+            $('#ch-sp-roi-tbody tr').each(function() {
+                const rule = chStdNormRoi({
+                    min: $(this).find('.ch-sp-roi-min').val(), max: $(this).find('.ch-sp-roi-max').val(),
+                    dil_min: $(this).find('.ch-sp-roi-dmin').val(), dil_max: $(this).find('.ch-sp-roi-dmax').val(),
+                    disc: $(this).find('.ch-sp-roi-disc').val(),
+                });
+                if (rule) rules.push(rule);
+            });
+            return rules;
+        }
+        function chStdRoiRulesLive() {
+            const modal = document.getElementById('chStdPrcModal');
+            if (modal && modal.classList.contains('show')) {
+                const live = chStdReadRoi();
+                if (live.length) return live;
+            }
+            return chStdRoi;
         }
         function chStdRangeRow(prefix, rule) {
             return '<tr><td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm ch-sp-input ' + prefix + '-min" value="' + rule.min + '"></td>'
@@ -888,7 +991,7 @@
         }
         function chStdRefresh() {
             const draft = chStdReadDraft();
-            const dilCounts = { outside: 0 }, ageCounts = { none: 0 }, revCounts = { none: 0 }, bussCounts = { outside: 0 };
+            const dilCounts = { outside: 0 }, ageCounts = { none: 0 }, revCounts = { none: 0 }, bussCounts = { outside: 0 }, pricingCounts = { outside: 0 }, roiCounts = { outside: 0 };
             const lmpCounts = { outside: 0 };
             const moqMCounts = { outside: 0 };
             const cvrCounts = { down2: 0, down: 0, flat: 0, up: 0, up2: 0 };
@@ -896,11 +999,13 @@
             draft.age.forEach(function(r, i) { ageCounts['a' + i] = 0; });
             draft.reviews.forEach(function(r, i) { revCounts['r' + i] = 0; });
             draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
+            (draft.pricing || []).forEach(function(r, i) { pricingCounts['p' + i] = 0; });
+            (draft.roi || []).forEach(function(r, i) { roiCounts['o' + i] = 0; });
             (draft.lmp || []).forEach(function(r, i) { lmpCounts['m' + i] = 0; });
             (draft.moqM || []).forEach(function(r, i) { moqMCounts['q' + i] = 0; });
-            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0 };
-            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0 };
-            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, lmp: 0, moqm: 0, all: 0 };
+            const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, pricing: 0, roi: 0, zs: 0, lmp: 0, moqm: 0 };
+            const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, pricing: 0, roi: 0, zs: 0, lmp: 0, moqm: 0 };
+            const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, pricing: 0, roi: 0, zs: 0, lmp: 0, moqm: 0, all: 0 };
             const sumPctCounts = {};
             const zsCounts = { zero: 0, sold: 0 };
             const l30 = { gross: 0, net: 0, sales: 0, cogs: 0, units: 0 };
@@ -943,12 +1048,23 @@
                 let bussIdx = -1;
                 for (let i = 0; i < draft.buss.length; i++) if (chStdInRange(stdHit, draft.buss[i], i === draft.buss.length - 1)) { bussIdx = i; break; }
                 if (bussIdx >= 0) bussCounts['u' + bussIdx] += 1; else bussCounts.outside += 1;
+                let pricingIdx = -1;
+                for (let i = 0; i < (draft.pricing || []).length; i++) if (chStdInRange(stdHit, draft.pricing[i], i === draft.pricing.length - 1)) { pricingIdx = i; break; }
+                if (pricingIdx >= 0) pricingCounts['p' + pricingIdx] += 1; else pricingCounts.outside += 1;
+                let roiIdx = -1;
+                if (chStdUsesRoi()) {
+                    const roiVal = chStdRoiPct(d);
+                    roiIdx = roiVal == null ? -1 : chStdRoiIndex(roiVal, dilVal, draft.roi);
+                    if (roiIdx >= 0) roiCounts['o' + roiIdx] += 1; else roiCounts.outside += 1;
+                }
                 const hit = chStdCvrMatch(d, draft.cvr);
                 cvrCounts[hit ? hit.key : 'flat'] += 1;
                 const ageDisc = invOk ? chStdScaleDisc(std, ageIdx >= 0 ? (Number(draft.age[ageIdx].disc) || 0) : 0) : 0;
                 const dilDisc = invOk ? chStdScaleDisc(std, dilIdx >= 0 ? (Number(draft.dil[dilIdx].disc) || 0) : 0) : 0;
                 const revDisc = chStdScaleDisc(std, revIdx >= 0 ? (Number(draft.reviews[revIdx].disc) || 0) : 0);
                 const bussDisc = bussIdx >= 0 ? (Number(draft.buss[bussIdx].disc) || 0) : 0;
+                const pricingDisc = pricingIdx >= 0 ? (Number(draft.pricing[pricingIdx].disc) || 0) : 0;
+                const roiDisc = invOk ? chStdScaleDisc(std, roiIdx >= 0 ? (Number(draft.roi[roiIdx].disc) || 0) : 0) : 0;
                 const cvrDisc = invOk ? chStdScaleDisc(std, Math.max(0, hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0))) : 0;
                 const zeroSold = invOk && chStdRowIsZeroSold(d);
                 if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
@@ -962,10 +1078,12 @@
                 if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
                 if (revDisc > 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
                 if (bussDisc > 0) { skuHits.buss++; dollars.buss += std * bussDisc / 100; pctTotals.buss += bussDisc; }
+                if (roiDisc > 0) { skuHits.roi++; dollars.roi += std * roiDisc / 100; pctTotals.roi += roiDisc; }
+                if (pricingDisc > 0) { skuHits.pricing++; dollars.pricing += std * pricingDisc / 100; pctTotals.pricing += pricingDisc; }
                 if (zsDisc > 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
                 if (lmpDisc > 0) { skuHits.lmp++; dollars.lmp += std * lmpDisc / 100; pctTotals.lmp += lmpDisc; }
                 if (moqMDisc > 0) { skuHits.moqm++; dollars.moqm += std * moqMDisc / 100; pctTotals.moqm += moqMDisc; }
-                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc + lmpDisc + moqMDisc);
+                const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc);
                 if (sum > 0) {
                     skuHits.all++;
                     const sumKey = String(Math.round(sum * 10) / 10);
@@ -1022,7 +1140,11 @@
                     for (let i = 0; i < draft.buss.length; i++) {
                         if (chStdInRange(std, draft.buss[i], i === draft.buss.length - 1)) { bussDisc = Number(draft.buss[i].disc) || 0; break; }
                     }
-                    const sum = hasStd ? Math.min(99.99, revDisc + bussDisc) : 0;
+                    let pricingDisc = 0;
+                    for (let i = 0; i < (draft.pricing || []).length; i++) {
+                        if (chStdInRange(std, draft.pricing[i], i === draft.pricing.length - 1)) { pricingDisc = Number(draft.pricing[i].disc) || 0; break; }
+                    }
+                    const sum = hasStd ? Math.min(99.99, revDisc + bussDisc + pricingDisc) : 0;
                     const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
@@ -1034,9 +1156,9 @@
                 if (full) full.forEach(addSoldOut);
                 else if (typeof chPromoEachTableRow === 'function') chPromoEachTableRow(function(row, d) { addSoldOut(d); });
             })();
-            const countKey = { dil: 'd', age: 'a', rev: 'r', buss: 'u' };
-            const countMap = { dil: dilCounts, age: ageCounts, rev: revCounts, buss: bussCounts };
-            ['dil', 'age', 'rev', 'buss'].forEach(function(prefix) {
+            const countKey = { dil: 'd', age: 'a', rev: 'r', buss: 'u', pricing: 'p' };
+            const countMap = { dil: dilCounts, age: ageCounts, rev: revCounts, buss: bussCounts, pricing: pricingCounts };
+            ['dil', 'age', 'rev', 'buss', 'pricing'].forEach(function(prefix) {
                 $('#ch-sp-' + prefix + '-tbody tr').each(function(i) { $(this).find('.ch-sp-' + prefix + '-count').text(countMap[prefix][countKey[prefix] + i] || 0); });
             });
             $('#ch-sp-cvr-down2-count').text(cvrCounts.down2);
@@ -1045,6 +1167,7 @@
             $('#ch-sp-cvr-up-count').text(cvrCounts.up);
             $('#ch-sp-cvr-up2-count').text(cvrCounts.up2);
             $('#ch-sp-zs-count').text(zsCounts.zero);
+            $('#ch-sp-roi-tbody tr').each(function(i) { $(this).find('.ch-sp-roi-count').text(roiCounts['o' + i] || 0); });
             $('#ch-sp-lmp-tbody tr').each(function(i) { $(this).find('.ch-sp-lmp-count').text(lmpCounts['m' + i] || 0); });
             $('#ch-sp-moqm-tbody tr').each(function(i) {
                 const rule = (draft.moqM || [])[i];
@@ -1054,6 +1177,8 @@
             const dilSlices = draft.dil.map(function(r, i) { return { key: 'd' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const ageSlices = draft.age.map(function(r, i) { return { key: 'a' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No age', color: '#cbd5e1' }]);
             const revSlices = draft.reviews.map(function(r, i) { return { key: 'r' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'none', label: 'No disc', color: '#cbd5e1' }]);
+            const roiSlices = (draft.roi || []).map(function(r, i) { return { key: 'o' + i, label: r.min + '–' + r.max + ' · Dil ' + r.dil_min + '–' + r.dil_max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
+            const pricingSlices = (draft.pricing || []).map(function(r, i) { return { key: 'p' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const bussSlices = draft.buss.map(function(r, i) { return { key: 'u' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const cvrSlices = [
                 { key: 'down2', label: 'Down < ' + draft.cvr.down2_lt + '%', color: '#9f1239' },
@@ -1066,12 +1191,14 @@
                 { key: 'age', label: 'Age', color: '#d97706' }, { key: 'dil', label: 'Dil', color: '#6f42c1' },
                 { key: 'cvr', label: 'CVR', color: '#20c997' }, { key: 'rev', label: 'Reviews', color: '#7c3aed' },
                 { key: 'buss', label: 'B Disc', color: '#0d6efd' },
+                { key: 'pricing', label: 'Pricing', color: '#0891b2' },
+                { key: 'roi', label: 'ROI', color: '#db2777' },
                 { key: 'zs', label: '0 Sold', color: '#f59e0b' },
                 { key: 'lmp', label: 'LMP', color: '#e11d48' },
                 { key: 'moqm', label: 'MOQ M', color: '#7c3aed' },
             ];
             // SKU count per discount type (bars + legend count). $ off is shown next to it, not a percentage.
-            const allCounts = { age: skuHits.age, dil: skuHits.dil, cvr: skuHits.cvr, rev: skuHits.rev, buss: skuHits.buss, zs: skuHits.zs, lmp: skuHits.lmp, moqm: skuHits.moqm };
+            const allCounts = { age: skuHits.age, dil: skuHits.dil, cvr: skuHits.cvr, rev: skuHits.rev, buss: skuHits.buss, pricing: skuHits.pricing, roi: skuHits.roi, zs: skuHits.zs, lmp: skuHits.lmp, moqm: skuHits.moqm };
             const lmpSlices = (draft.lmp || []).map(function(r, i) { return { key: 'm' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const moqMSlices = (draft.moqM || []).map(function(r, i) { return { key: 'q' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const zsSlices = [
@@ -1082,6 +1209,8 @@
             chStdLegend('#ch-sp-leg-dil', dilSlices, dilCounts, 'dil');
             chStdLegend('#ch-sp-leg-rev', revSlices, revCounts, 'rev');
             chStdLegend('#ch-sp-leg-buss', bussSlices, bussCounts, 'buss');
+            chStdLegend('#ch-sp-leg-pricing', pricingSlices, pricingCounts, 'pricing');
+            chStdLegend('#ch-sp-leg-roi', roiSlices, roiCounts, 'roi');
             chStdLegend('#ch-sp-leg-zs', zsSlices, zsCounts, 'zs');
             chStdLegend('#ch-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
             chStdLegend('#ch-sp-leg-age', ageSlices, ageCounts, 'age');
@@ -1092,6 +1221,8 @@
                 { id: 'ch-sp-pie-dil', slices: dilSlices, counts: dilCounts },
                 { id: 'ch-sp-pie-rev', slices: revSlices, counts: revCounts },
                 { id: 'ch-sp-pie-buss', slices: bussSlices, counts: bussCounts },
+                { id: 'ch-sp-pie-pricing', slices: pricingSlices, counts: pricingCounts },
+                { id: 'ch-sp-pie-roi', slices: roiSlices, counts: roiCounts },
                 { id: 'ch-sp-pie-zs', slices: zsSlices, counts: zsCounts },
                 { id: 'ch-sp-pie-cvr', slices: cvrSlices, counts: cvrCounts },
                 { id: 'ch-sp-pie-age', slices: ageSlices, counts: ageCounts },
@@ -1140,6 +1271,8 @@
             $('#ch-sp-age-tbody').html(chStdAge.map(function(r) { return chStdRangeRow('ch-sp-age', r); }).join(''));
             $('#ch-sp-rev-tbody').html(chStdRev.map(function(r) { return chStdRangeRow('ch-sp-rev', r); }).join(''));
             $('#ch-sp-buss-tbody').html(chStdBuss.map(function(r) { return chStdRangeRow('ch-sp-buss', r); }).join(''));
+            $('#ch-sp-pricing-tbody').html(chStdPricing.map(function(r) { return chStdRangeRow('ch-sp-pricing', r); }).join(''));
+            $('#ch-sp-roi-tbody').html(chStdRoi.map(function(r) { return chStdRoiRow(r); }).join(''));
             $('#ch-sp-moqm-tbody').html((chStdMoqM.length ? chStdMoqM : CH_STD_MOQM_DEFAULTS).map(function(r) { return chStdMoqMRow(r); }).join(''));
             $('#ch-sp-zs-disc').val(chStdZeroSoldDisc);
             $('#ch-sp-review-max').val(chStdReviewMax);
@@ -1162,6 +1295,8 @@
                 chStdAge = (res.age || CH_STD_AGE_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdRev = (res.reviews || CH_STD_REV_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdBuss = (res.buss || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
+                chStdPricing = (res.pricing || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
+                chStdRoi = (res.roi || CH_STD_ROI_DEFAULTS).map(chStdNormRoi).filter(Boolean);
                 chStdLmp = (res.lmp || []).map(chStdNormRange).filter(Boolean);
                 chStdMoqM = (res.moq_m || CH_STD_MOQM_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(0, Number(res.zero_sold_disc))) : 0;
@@ -1171,6 +1306,8 @@
                 if (!chStdAge.length) chStdAge = CH_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdRev.length) chStdRev = CH_STD_REV_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdBuss.length) chStdBuss = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+                if (!chStdPricing.length) chStdPricing = CH_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
+                if (!chStdRoi.length) chStdRoi = CH_STD_ROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!chStdMoqM.length) chStdMoqM = CH_STD_MOQM_DEFAULTS.map(function(r) { return Object.assign({}, r); });
             });
         }
@@ -1230,7 +1367,7 @@
                 .fail(function() { draw([]); });
         }
         function chStdDraftNow() {
-            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
+            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, pricing: chStdPricing, roi: chStdRoi, zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
         }
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
@@ -1354,13 +1491,37 @@
             if (!(chStdStockForAge(d) > 0)) return 0;
             return chStdRangeDisc(chStdRowStd(d), chStdBussRulesLive());
         }
+        function chStdPricingRulesLive() {
+            const modal = document.getElementById('chStdPrcModal');
+            if (modal && modal.classList.contains('show')) {
+                const live = chStdReadRanges('#ch-sp-pricing-tbody', '.ch-sp-pricing-min', '.ch-sp-pricing-max', '.ch-sp-pricing-disc');
+                if (live.length) return live;
+            }
+            return chStdPricing;
+        }
+        function chStdPricingDiscPct(d) {
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return null;
+            if (!(chStdStockForAge(d) > 0)) return 0;
+            return chStdRangeDisc(chStdRowStd(d), chStdPricingRulesLive());
+        }
+        window.chStdPricingDiscPct = chStdPricingDiscPct;
+        function chStdRoiDiscPct(d) {
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return null;
+            if (!chStdUsesRoi() || !(chStdStockForAge(d) > 0)) return 0;
+            const roiVal = chStdRoiPct(d);
+            if (roiVal == null) return 0;
+            const rules = chStdRoiRulesLive();
+            const idx = chStdRoiIndex(roiVal, chStdDilPct(d), rules);
+            return idx >= 0 ? chStdScaleDisc(chStdRowStd(d), Number(rules[idx].disc) || 0) : 0;
+        }
+        window.chStdRoiDiscPct = chStdRoiDiscPct;
         window.chStdBussDiscPct = chStdBussDiscPct;
         window.analyticsBussDiscountPct = chStdBussDiscPct;
         function chStdRepaintDiscColumns() {
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
             // Tabulator 6 cells have no reformat(): it logs an error per cell. Reformat each row once instead.
             const rows = new Set();
-            ['age_discount', 'dil_discount', 'lmp_discount', 'moq_m_discount', 'buss_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
+            ['age_discount', 'dil_discount', 'lmp_discount', 'moq_m_discount', 'buss_discount', 'pricing_discount', 'roi_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
                 let col = null;
                 try { col = table.getColumn(field); } catch (e) { col = null; }
                 if (!col || typeof col.getCells !== 'function') return;
@@ -1467,6 +1628,31 @@
                         return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
                     },
                 }),
+                Object.assign(chStdDiscCol('Pricing', 'pricing_discount', 'Pricing Disc from the Pricing Std Prc ranges in Std prc vs dil. Full Disc % at every Std Prc, including under $15. Added into Sum disc.', function(d) { return chStdPricingDiscPct(d) || 0; }), {
+                    visible: true,
+                    minWidth: 64,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (chStdIsParentRow(d)) return chStdParentDiscHtml(d, function(row) { return chStdPricingDiscPct(row) || 0; });
+                        const pct = chStdPricingDiscPct(d) || 0;
+                        const std = chStdRowStd(d);
+                        const tip = (std > 0 ? ('Std Prc $' + std.toFixed(2) + ' → ') : '') + 'Pricing ' + pct + '%';
+                        return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
+                    },
+                }),
+                Object.assign(chStdDiscCol('ROI Disc', 'roi_discount', 'ROI Disc from the GROI% slab that also matches this SKU\'s Dil % range in Std prc vs dil. Added into Sum disc. Std Prc under $15 is 0.5×.', function(d) { return chStdRoiDiscPct(d) || 0; }), {
+                    visible: chStdUsesRoi(),
+                    minWidth: 64,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (chStdIsParentRow(d)) return chStdParentDiscHtml(d, function(row) { return chStdRoiDiscPct(row) || 0; });
+                        const pct = chStdRoiDiscPct(d) || 0;
+                        const roi = chStdRoiPct(d);
+                        const dil = chStdDilPct(d);
+                        const tip = 'GROI ' + (roi != null && isFinite(roi) ? roi.toFixed(0) : '—') + '%, Dil ' + (isFinite(dil) ? dil.toFixed(1) : '0') + '% → discount ' + pct + '%';
+                        return '<span title="' + chStdEsc(tip) + '">' + chStdDiscBadge(pct) + '</span>';
+                    },
+                }),
                 Object.assign(chStdDiscCol('0 Sold', 'zero_sold_discount', '0 Sold discount from Std prc vs dil. Applies only when this page sold qty is 0. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdZeroSoldDiscPct(d) || 0; }), { visible: true, minWidth: 64 }),
                 Object.assign(chStdDiscCol('CVR Disc.', 'cvr_discount', chStdSkipsCvr() ? 'Best Buy has no session CVR. CVR Disc is off (Amazon A L30 / Sess30 is not used).' : 'CVR Disc — same as Amazon: A L30 ÷ Sess30, CVR 0 is Down. INV = 0 → 0%. Std Prc under $15 is 0.5×.', function(d) { return chStdScaleDisc(chStdRowStd(d), chStdCvrDiscPct(d)); }), {
                     visible: !chStdSkipsCvr(),
@@ -1484,14 +1670,17 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + MOQ M + B Disc + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + MOQ M + B Disc + Pricing + ROI + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
             ];
+        }
+        function chStdAppendDiscColumnsFilter(c) {
+            return c && (c.field !== 'roi_discount' || chStdUsesRoi());
         }
         function chStdAppendDiscColumns(cols) {
             const out = Array.isArray(cols) ? cols.slice() : [];
             const have = {};
             out.forEach(function(c) { if (c && c.field) have[c.field] = 1; });
-            chStdDiscColumns().forEach(function(c) {
+            chStdDiscColumns().filter(chStdAppendDiscColumnsFilter).forEach(function(c) {
                 if (!have[c.field]) out.push(c);
             });
             return out;
@@ -1574,12 +1763,70 @@
             }, 1600);
         }
         window.chStdPlaceBussColumn = chStdPlaceBussColumn;
+        let chStdPricingPlaced = false;
+        function chStdPlacePricingColumn() {
+            if (chStdPricingPlaced) return;
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
+            let anchor = null;
+            try { anchor = table.getColumn('buss_discount') || table.getColumn('dil_discount'); } catch (e) { anchor = null; }
+            if (!anchor) return;
+            const afterField = anchor.getField ? anchor.getField() : 'buss_discount';
+            let pc = null;
+            try { pc = table.getColumn('pricing_discount'); } catch (e) { pc = null; }
+            if (!pc) {
+                const spec = chStdDiscColumns().filter(function(c) { return c && c.field === 'pricing_discount'; })[0];
+                if (!spec) return;
+                try { table.addColumn(spec, false, afterField); } catch (err) { return; }
+            } else if (typeof table.moveColumn === 'function') {
+                try { table.moveColumn('pricing_discount', afterField, true); } catch (err) { /* already in place */ }
+            }
+            try {
+                const col = table.getColumn('pricing_discount');
+                if (col && typeof col.show === 'function' && !chStdPanelMinSet().has('pricing')) col.show();
+            } catch (err) { /* ignore */ }
+            chStdPricingPlaced = true;
+            setTimeout(function() {
+                try {
+                    const col = table.getColumn('pricing_discount');
+                    if (col && typeof col.show === 'function' && !chStdPanelMinSet().has('pricing')) col.show();
+                } catch (err) { /* ignore */ }
+            }, 1600);
+        }
+        let chStdRoiPlaced = false;
+        function chStdPlaceRoiColumn() {
+            if (chStdRoiPlaced || !chStdUsesRoi()) return;
+            if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
+            let anchor = null;
+            try { anchor = table.getColumn('pricing_discount') || table.getColumn('buss_discount') || table.getColumn('dil_discount'); } catch (e) { anchor = null; }
+            if (!anchor) return;
+            const afterField = anchor.getField ? anchor.getField() : 'pricing_discount';
+            let rc = null;
+            try { rc = table.getColumn('roi_discount'); } catch (e) { rc = null; }
+            if (!rc) {
+                const spec = chStdDiscColumns().filter(function(c) { return c && c.field === 'roi_discount'; })[0];
+                if (!spec) return;
+                try { table.addColumn(spec, false, afterField); } catch (err) { return; }
+            } else if (typeof table.moveColumn === 'function') {
+                try { table.moveColumn('roi_discount', afterField, true); } catch (err) { /* already in place */ }
+            }
+            try {
+                const col = table.getColumn('roi_discount');
+                if (col && typeof col.show === 'function' && !chStdPanelMinSet().has('roi')) col.show();
+            } catch (err) { /* ignore */ }
+            chStdRoiPlaced = true;
+            setTimeout(function() {
+                try {
+                    const col = table.getColumn('roi_discount');
+                    if (col && typeof col.show === 'function' && !chStdPanelMinSet().has('roi')) col.show();
+                } catch (err) { /* ignore */ }
+            }, 1600);
+        }
         let chStdZeroSoldPlaced = false;
         function chStdPlaceZeroSoldColumn() {
             if (chStdZeroSoldPlaced) return;
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function' || typeof table.addColumn !== 'function') return;
             let anchor = null;
-            try { anchor = table.getColumn('buss_discount') || table.getColumn('dil_discount'); } catch (e) { anchor = null; }
+            try { anchor = table.getColumn('roi_discount') || table.getColumn('pricing_discount') || table.getColumn('buss_discount') || table.getColumn('dil_discount'); } catch (e) { anchor = null; }
             if (!anchor) return;
             const afterField = anchor.getField ? anchor.getField() : 'buss_discount';
             let zs = null;
@@ -1607,6 +1854,8 @@
             { key: 'dil', field: 'dil_discount' },
             { key: 'rev', field: 'review_discount' },
             { key: 'buss', field: 'buss_discount' },
+            { key: 'pricing', field: 'pricing_discount' },
+            { key: 'roi', field: 'roi_discount' },
             { key: 'zs', field: 'zero_sold_discount' },
             { key: 'cvr', field: 'cvr_discount' },
             { key: 'age', field: 'age_discount' },
@@ -1706,7 +1955,7 @@
             if (!exists) {
                 let anchor = null;
                 try { anchor = table.getColumn('SPRICE') || table.getColumn('sprice'); } catch (e) { anchor = null; }
-                chStdDiscColumns().forEach(function(col) {
+                chStdDiscColumns().filter(chStdAppendDiscColumnsFilter).forEach(function(col) {
                     try {
                         if (anchor) table.addColumn(col, true, anchor);
                         else table.addColumn(col);
@@ -1714,12 +1963,15 @@
                 });
             }
             chStdPlaceBussColumn();
+            chStdPlacePricingColumn();
+            chStdPlaceRoiColumn();
             chStdPlaceZeroSoldColumn();
             chStdDropRoiColumn();
             chStdPaintPanels();
             chStdApplyPanelColumns();
         }
         function chStdDropRoiColumn() {
+            if (chStdUsesRoi()) return;
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
             let roi = null;
             try { roi = table.getColumn('roi_discount'); } catch (e) { roi = null; }
@@ -1911,12 +2163,14 @@
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, lmp: draft.lmp, moq_m: draft.moqM, zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, pricing: draft.pricing, roi: draft.roi, lmp: draft.lmp, moq_m: draft.moqM, zero_sold_disc: draft.zeroSoldDisc },
             }).done(function(res) {
                 if (res && res.dil) chStdDil = res.dil.map(chStdNormRange).filter(Boolean);
                 if (res && res.age) chStdAge = res.age.map(chStdNormRange).filter(Boolean);
                 if (res && res.reviews) chStdRev = res.reviews.map(chStdNormRange).filter(Boolean);
                 if (res && res.buss) chStdBuss = res.buss.map(chStdNormRange).filter(Boolean);
+                if (res && res.pricing) chStdPricing = res.pricing.map(chStdNormRange).filter(Boolean);
+                if (res && res.roi) chStdRoi = res.roi.map(chStdNormRoi).filter(Boolean);
                 if (res && res.lmp) chStdLmp = res.lmp.map(chStdNormRange).filter(Boolean);
                 if (res && res.moq_m) chStdMoqM = res.moq_m.map(chStdNormRange).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(0, Number(res.zero_sold_disc)));
@@ -2016,6 +2270,20 @@
                 $('#ch-sp-buss-tbody').html(rules.map(function(r) { return chStdRangeRow('ch-sp-buss', r); }).join(''));
                 chStdRefresh();
             });
+            $('#ch-sp-pricing-add').off('click.chstd').on('click.chstd', function() {
+                const rules = chStdReadRanges('#ch-sp-pricing-tbody', '.ch-sp-pricing-min', '.ch-sp-pricing-max', '.ch-sp-pricing-disc');
+                const last = rules.length ? rules[rules.length - 1].max : 0;
+                rules.push({ min: last, max: last + 10, disc: 0 });
+                $('#ch-sp-pricing-tbody').html(rules.map(function(r) { return chStdRangeRow('ch-sp-pricing', r); }).join(''));
+                chStdRefresh();
+            });
+            $('#ch-sp-roi-add').off('click.chstd').on('click.chstd', function() {
+                const rules = chStdReadRoi();
+                const last = rules.length ? rules[rules.length - 1].max : 0;
+                rules.push({ min: last, max: last + 25, dil_min: 0, dil_max: 9999, disc: 0 });
+                $('#ch-sp-roi-tbody').html(rules.map(function(r) { return chStdRoiRow(r); }).join(''));
+                chStdRefresh();
+            });
             $('#ch-sp-moqm-add').off('click.chstd').on('click.chstd', function() {
                 const rules = chStdReadRanges('#ch-sp-moqm-tbody', '.ch-sp-moqm-min', '.ch-sp-moqm-max', '.ch-sp-moqm-disc');
                 const last = rules.length ? rules[rules.length - 1].max : 0;
@@ -2023,7 +2291,7 @@
                 $('#ch-sp-moqm-tbody').html(rules.map(function(r) { return chStdMoqMRow(r); }).join(''));
                 chStdRefresh();
             });
-            $(document).off('click.chstddel').on('click.chstddel', '#chStdPrcModal .ch-sp-dil-del, #chStdPrcModal .ch-sp-age-del, #chStdPrcModal .ch-sp-rev-del, #chStdPrcModal .ch-sp-buss-del, #chStdPrcModal .ch-sp-moqm-del', function() {
+            $(document).off('click.chstddel').on('click.chstddel', '#chStdPrcModal .ch-sp-dil-del, #chStdPrcModal .ch-sp-age-del, #chStdPrcModal .ch-sp-rev-del, #chStdPrcModal .ch-sp-buss-del, #chStdPrcModal .ch-sp-pricing-del, #chStdPrcModal .ch-sp-roi-del, #chStdPrcModal .ch-sp-moqm-del', function() {
                 $(this).closest('tr').remove();
                 chStdRefresh();
             });
