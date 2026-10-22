@@ -159,7 +159,7 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(19.4, $pricer->priceFromRow(['inv' => 1, 'std' => 20, 'price' => 10, 'lp' => 20]));
     }
 
-    public function test_negative_net_discount_is_no_discount_and_price_stays_at_std(): void
+    public function test_negative_net_discount_raises_the_price_above_std(): void
     {
         $pricer = new StdPrcVsDilPricer([
             'dil' => [],
@@ -172,8 +172,8 @@ class StdPrcVsDilPricerTest extends TestCase
             ],
         ]);
 
-        // Net −8%: Sum is floored at 0, so no discount: S PRC = Std Prc.
-        $this->assertSame(20.0, $pricer->priceFromRow(['inv' => 1, 'std' => 20]));
+        // Net −8%: Std Prc is not a cap. $20 × 1.08 = $21.60.
+        $this->assertSame(21.6, $pricer->priceFromRow(['inv' => 1, 'std' => 20]));
     }
 
     public function test_roi_discount_needs_both_the_groi_slab_and_the_dil_slab(): void

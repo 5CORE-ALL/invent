@@ -764,9 +764,10 @@
                 + '<td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-moqm-disc" value="' + rule.disc + '"></td>'
                 + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ch-sp-moqm-del" title="Remove">&times;</button></td></tr>';
         }
-        // raw = true: the Sum column shows the real total, negative included. S PRC always uses the floored sum (min 0 = no discount).
+        // Sum disc can be negative. S PRC = Std Prc × (1 − Sum / 100) has no Std Prc cap.
         function chStdSumDisc(d, draft, raw) {
-            const lo = raw ? -100 : 0;
+            // Std Prc is not a cap: a negative total raises S PRC above Std Prc.
+            const lo = -100;
             draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), pricing: chStdPricingRulesLive(), roi: chStdRoiRulesLive(), zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
             // Amazon INV = 0 still allows the page 0 Sold discount (AB L30 = 0, page INV > 0).
             if (!(chStdStockForAge(d) > 0)) {
@@ -1089,8 +1090,8 @@
                 if (zsDisc !== 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
                 if (lmpDisc !== 0) { skuHits.lmp++; dollars.lmp += std * lmpDisc / 100; pctTotals.lmp += lmpDisc; }
                 if (moqMDisc !== 0) { skuHits.moqm++; dollars.moqm += std * moqMDisc / 100; pctTotals.moqm += moqMDisc; }
-                const sum = Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc));
-                if (sum > 0) {
+                const sum = Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc));
+                if (sum !== 0) {
                     skuHits.all++;
                     const sumKey = String(Math.round(sum * 10) / 10);
                     sumPctCounts[sumKey] = (sumPctCounts[sumKey] || 0) + 1;
@@ -1150,7 +1151,7 @@
                     for (let i = 0; i < (draft.pricing || []).length; i++) {
                         if (chStdInRange(std, draft.pricing[i], i === draft.pricing.length - 1)) { pricingDisc = Number(draft.pricing[i].disc) || 0; break; }
                     }
-                    const sum = hasStd ? Math.min(99.99, Math.max(0, revDisc + bussDisc + pricingDisc)) : 0;
+                    const sum = hasStd ? Math.min(99.99, Math.max(-100, revDisc + bussDisc + pricingDisc)) : 0;
                     const sprice = Math.round(std * (1 - sum / 100) * 100) / 100;
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
@@ -1678,7 +1679,7 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + MOQ M + B Disc + Pricing + ROI + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100). A negative total is shown in red, and S PRC then stays at Std Prc (no discount).', function(d) { return chStdSumDisc(d, undefined, true); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + MOQ M + B Disc + Pricing + ROI + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100). A negative total is shown in red and raises S PRC above Std Prc (Std Prc is not a cap).', function(d) { return chStdSumDisc(d, undefined, true); }),
             ];
         }
         function chStdAppendDiscColumnsFilter(c) {

@@ -280,7 +280,7 @@ class TopDawgSprcDilAutoPushService
         }
 
         // No LMP cap and no Amazon floor. Std Prc is the maximum.
-        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
+        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, max($std, $effective));
 
         if (! is_finite($uncapped) || $uncapped < 0.01) {
             return null;

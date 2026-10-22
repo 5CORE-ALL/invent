@@ -135,7 +135,7 @@ class EbayRuleSprice
         $afterLmp = AmazonDilGroiRule::capSpriceToLmp(
             $rulePrice, $lmp, (float) ($input['lp'] ?? 0), (float) ($input['ship'] ?? 0), $margin, 0.0
         );
-        $final = AmazonDilGroiRule::capToStdWhenNoLmp($afterLmp, $lmp, $std);
+        $final = AmazonDilGroiRule::capToStdWhenNoLmp($afterLmp, $lmp, max($std, $rulePrice));
 
         return [
             'sprice' => round($final, 2),

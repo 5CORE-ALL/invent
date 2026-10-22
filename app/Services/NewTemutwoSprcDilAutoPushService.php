@@ -285,7 +285,7 @@ class NewTemutwoSprcDilAutoPushService
 
         $capped = $lmpDiscApplied
             ? $afterRefs
-            : $this->capToLmp($afterRefs, $lmp, $lp, $ship, $std, $sumDiscPct);
+            : $this->capToLmp($afterRefs, $lmp, $lp, $ship, max($std, $afterRefs), $sumDiscPct);
         $lmpCapped = ! $lmpDiscApplied
             && $lmp > 0
             && ($afterRefs - $capped) > 0.009

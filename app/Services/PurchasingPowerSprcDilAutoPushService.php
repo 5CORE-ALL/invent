@@ -324,7 +324,7 @@ class PurchasingPowerSprcDilAutoPushService
         }
 
         // Std Prc is the maximum.
-        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
+        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, max($std, $effective));
 
         // Amz rule: S PRC is never below the Amazon price (A Price).
         $amz = round((float) ($row['amz'] ?? 0), 2);
