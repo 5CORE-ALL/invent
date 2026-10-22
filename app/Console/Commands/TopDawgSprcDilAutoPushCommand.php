@@ -21,6 +21,7 @@ class TopDawgSprcDilAutoPushCommand extends Command
         {--dry-run : Compute only. Do NOT save SPRICE and do NOT push to TopDawg}
         {--skip-push : Save SPRICE, but skip the TopDawg push}
         {--push-all : Push every eligible SKU (ignore the last-pushed match and cooldown)}
+        {--sku=* : Only these SKU(s) (repeat the option or use a comma list), e.g. --sku="DS CH ORG SDL HD"}
         {--limit= : Max SKUs (for testing)}
         {--sleep-ms=300 : Delay between TopDawg price API calls (ms)}';
 
@@ -47,6 +48,16 @@ class TopDawgSprcDilAutoPushCommand extends Command
         $limitOpt = $this->option('limit');
         $limit = ($limitOpt !== null && $limitOpt !== '') ? max(1, (int) $limitOpt) : null;
         $sleepMs = max(0, (int) $this->option('sleep-ms'));
+        $onlySkus = [];
+        foreach ((array) $this->option('sku') as $opt) {
+            foreach (explode(',', (string) $opt) as $s) {
+                $s = strtoupper(trim($s));
+                if ($s !== '') {
+                    $onlySkus[] = $s;
+                }
+            }
+        }
+        $onlySkus = $onlySkus === [] ? null : $onlySkus;
 
         $this->info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->info('TopDawg Sprc Dil Auto Push'.($dryRun ? ' [DRY RUN]' : ''));
@@ -60,7 +71,7 @@ class TopDawgSprcDilAutoPushCommand extends Command
             skipPush: $skipPush,
             limit: $limit,
             sleepMs: $sleepMs,
-            onlySkus: null,
+            onlySkus: $onlySkus,
             logger: fn (string $msg) => $this->line($msg),
             pushAll: $pushAll
         );

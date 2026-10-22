@@ -114,10 +114,24 @@ class TopDawgSprcDilAutoPushService
                     $row['ads_pct'] = $adsPct;
                     $computed = $this->computeTarget($row, $pricer);
                     if ($computed === null) {
+                        if ($onlySkus !== null) {
+                            $this->log($logger, $row['sku'].': no target (INV, Std Prc, or calc − Ship is not above $0) — S PRC left as is');
+                        }
                         $stats['skipped']++;
                         continue;
                     }
                     $sprice = (float) $computed['sprice'];
+                    if ($onlySkus !== null) {
+                        $this->log($logger, sprintf(
+                            '%s: Std $%.2f, Price $%.2f, Ship $%.2f, saved S PRC $%.2f → new S PRC (calc − Ship) $%.2f',
+                            $row['sku'],
+                            (float) ($row['standard_price'] ?? 0),
+                            (float) ($row['price'] ?? 0),
+                            (float) ($row['ship'] ?? 0),
+                            (float) ($row['sprice'] ?? 0),
+                            $sprice
+                        ));
+                    }
 
                     if (PushedListingPrice::same($row['price'] ?? 0, $sprice)) {
                         // Live TD Price already equals the target. Keep the saved S PRC in step, no push.
@@ -138,13 +152,24 @@ class TopDawgSprcDilAutoPushService
                             break;
                         }
                         if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $errorCooldownMinutes)) {
-                            // TopDawg rejected the last push — retry after the cooldown, not every run.
+                            // TopDawg rejected the last push — retry the push after the cooldown, not every run.
+                            // The S PRC is still kept in step with the rules.
+                            if (! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
+                                $this->saveSprice((string) $row['sku'], $computed, 'applied');
+                                $stats['applied']++;
+                            }
                             $stats['skipped']++;
                             continue;
                         }
                         if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
                             // A push is still in TopDawg review (1–24h). Re-submitting, even at a changed price,
-                            // can restart that review. A changed target is picked up by the twice-daily run.
+                            // can restart that review, so NO push here. The S PRC itself is still kept in step with
+                            // the rules (Std, discounts, SNROI cap, − Ship) on every run, so the page never shows
+                            // an old S PRC while a push is in review. The new price is pushed after the review window.
+                            if (! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
+                                $this->saveSprice((string) $row['sku'], $computed, 'applied');
+                                $stats['applied']++;
+                            }
                             $stats['skipped_unchanged']++;
                             continue;
                         }
@@ -434,6 +459,16 @@ class TopDawgSprcDilAutoPushService
 
         $sprice = round((float) $computed['sprice'], 2);
         $now = now()->toDateTimeString();
+
+        // Keep the last push time, so saving a new S PRC while a push is still in TopDawg review does not
+        // start a second push early.
+        if (empty($existing['SPRICE_PUSHED_AT'])
+            && strtolower((string) ($existing['PUSH_STATUS'] ?? $existing['SPRICE_STATUS'] ?? '')) === 'pushed') {
+            $at = $existing['PUSH_STATUS_UPDATED_AT'] ?? $existing['SPRICE_STATUS_UPDATED_AT'] ?? null;
+            if ($at) {
+                $existing['SPRICE_PUSHED_AT'] = $at;
+            }
+        }
 
         $existing['sprice'] = $sprice;
         $existing['SPRICE'] = $sprice;
