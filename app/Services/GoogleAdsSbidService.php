@@ -1243,6 +1243,7 @@ class GoogleAdsSbidService
                 WHERE campaign.id IN ({$inList})
                   AND ad_group_criterion.listing_group.type = 'UNIT'
                   AND ad_group_criterion.negative = FALSE
+                  AND ad_group_criterion.status != 'REMOVED'
                   AND ad_group_criterion.listing_group.case_value.product_item_id.value IS NOT NULL
             ";
 
@@ -1295,4 +1296,241 @@ class GoogleAdsSbidService
         return trim((string) ($productItem['value'] ?? ''));
     }
 
+
+    /**
+     * Align a Shopping campaign's listing-group Item IDs with the expected Merchant Center IDs:
+     * add the missing ones and remove the ones that do not belong. Only the simple tree this app
+     * builds is touched (root SUBDIVISION + one UNIT per Item ID + "everything else"); any other
+     * structure is reported as unsupported and left unchanged.
+     *
+     * @param  list<string>  $expectedIds
+     * @return array{status: string, add: list<string>, remove: list<string>, applied: bool, message: string}
+     *         status: ok | nothing | unsupported | error
+     */
+    public function syncShoppingItemIds(string $customerId, string $campaignId, array $expectedIds, bool $dryRun = true): array
+    {
+        $customerId = str_replace('-', '', trim($customerId));
+        $campaignId = preg_replace('/\D+/', '', $campaignId) ?: '';
+        $expected = array_values(array_unique(array_filter(array_map(static fn ($v) => trim((string) $v), $expectedIds), static fn ($v) => $v !== '')));
+        sort($expected);
+
+        $result = static fn (string $status, string $message, array $add = [], array $remove = [], bool $applied = false) => [
+            'status' => $status, 'add' => $add, 'remove' => $remove, 'applied' => $applied, 'message' => $message,
+        ];
+
+        if ($customerId === '' || $campaignId === '') {
+            return $result('error', 'customer_id and campaign_id are required.');
+        }
+        if ($expected === []) {
+            return $result('unsupported', 'No Merchant Center Item IDs found for this campaign\'s SKUs — nothing safe to apply.');
+        }
+
+        $query = "
+            SELECT
+                ad_group.id,
+                ad_group.resource_name,
+                ad_group.cpc_bid_micros,
+                ad_group_criterion.resource_name,
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.status,
+                ad_group_criterion.negative,
+                ad_group_criterion.cpc_bid_micros,
+                ad_group_criterion.listing_group.type,
+                ad_group_criterion.listing_group.parent_ad_group_criterion,
+                ad_group_criterion.listing_group.case_value.product_item_id.value
+            FROM ad_group_criterion
+            WHERE campaign.id = {$campaignId}
+              AND ad_group_criterion.type = 'LISTING_GROUP'
+              AND ad_group_criterion.status != 'REMOVED'
+        ";
+
+        try {
+            $rows = $this->runQuery($customerId, $query);
+        } catch (\Throwable $e) {
+            return $result('error', self::briefGoogleError($e));
+        }
+
+        // Ad group(s) of this campaign (needed even when there is no listing group yet).
+        $adGroups = [];
+        $nodes = [];
+        foreach ($rows as $row) {
+            $ag = $row['adGroup'] ?? [];
+            $crit = $row['adGroupCriterion'] ?? [];
+            $lg = $crit['listingGroup'] ?? [];
+            $agResource = (string) ($ag['resourceName'] ?? '');
+            $adGroups[$agResource] = [
+                'id' => (string) ($ag['id'] ?? ''),
+                'cpc' => (int) ($ag['cpcBidMicros'] ?? 0),
+            ];
+            $nodes[] = [
+                'ad_group' => $agResource,
+                'resource' => (string) ($crit['resourceName'] ?? ''),
+                'type' => (string) ($lg['type'] ?? ''),
+                'parent' => (string) ($lg['parentAdGroupCriterion'] ?? ''),
+                'negative' => (bool) ($crit['negative'] ?? false),
+                'item' => trim((string) ($lg['caseValue']['productItemId']['value'] ?? '')),
+                'has_item_dim' => isset($lg['caseValue']['productItemId']),
+                'cpc' => (int) ($crit['cpcBidMicros'] ?? 0),
+            ];
+        }
+
+        if (count($adGroups) > 1) {
+            return $result('unsupported', 'Campaign has several ad groups with listing groups — fix manually in Google Ads.');
+        }
+
+        if ($nodes === []) {
+            // No listing groups at all: look up the ad group so the full tree can be created.
+            try {
+                $agRows = $this->runQuery($customerId, "SELECT ad_group.id, ad_group.resource_name, ad_group.cpc_bid_micros FROM ad_group WHERE campaign.id = {$campaignId} AND ad_group.status != 'REMOVED'");
+            } catch (\Throwable $e) {
+                return $result('error', self::briefGoogleError($e));
+            }
+            if (count($agRows) !== 1) {
+                return $result('unsupported', count($agRows) === 0 ? 'Campaign has no ad group.' : 'Campaign has several ad groups — fix manually in Google Ads.');
+            }
+            $ag = $agRows[0]['adGroup'] ?? [];
+            $agResource = (string) ($ag['resourceName'] ?? '');
+            $agId = (int) ($ag['id'] ?? 0);
+            $bid = (int) ($ag['cpcBidMicros'] ?? 0) ?: 500000;
+            if ($dryRun) {
+                return $result('ok', 'No listing groups exist — a full tree will be created.', $expected, [], false);
+            }
+            try {
+                $this->createFlatListingTree($customerId, $agResource, $agId, $expected, $bid);
+            } catch (\Throwable $e) {
+                return $result('error', self::briefGoogleError($e), $expected);
+            }
+
+            return $result('ok', 'Created listing groups for '.count($expected).' Item ID(s).', $expected, [], true);
+        }
+
+        $agResource = (string) array_key_first($adGroups);
+        $agInfo = $adGroups[$agResource];
+
+        $roots = array_values(array_filter($nodes, static fn ($n) => $n['parent'] === ''));
+        if (count($roots) !== 1 || $roots[0]['type'] !== 'SUBDIVISION') {
+            return $result('unsupported', 'Campaign targets "All products" or a custom tree — fix manually in Google Ads.');
+        }
+        $rootResource = $roots[0]['resource'];
+
+        $live = [];
+        $siblingBid = 0;
+        $hasOthers = false;
+        foreach ($nodes as $n) {
+            if ($n['parent'] === '') {
+                continue;
+            }
+            if ($n['parent'] !== $rootResource || $n['type'] !== 'UNIT') {
+                return $result('unsupported', 'Listing group tree has custom subdivisions — fix manually in Google Ads.');
+            }
+            if ($n['item'] === '') {
+                $hasOthers = true;
+
+                continue;
+            }
+            if (! $n['negative']) {
+                $live[$n['item']][] = $n['resource'];
+                $siblingBid = $siblingBid ?: $n['cpc'];
+            }
+        }
+        if (! $hasOthers) {
+            return $result('unsupported', 'Listing group tree has no "everything else" node — fix manually in Google Ads.');
+        }
+
+        $liveIds = array_keys($live);
+        sort($liveIds);
+        $add = array_values(array_diff($expected, $liveIds));
+        $remove = array_values(array_diff($liveIds, $expected));
+        sort($add);
+        sort($remove);
+
+        if ($add === [] && $remove === []) {
+            return $result('nothing', 'Item IDs already match Merchant Center — nothing to fix.');
+        }
+        if ($dryRun) {
+            return $result('ok', 'Ready to apply.', $add, $remove, false);
+        }
+
+        $bid = $siblingBid ?: ($agInfo['cpc'] ?: 500000);
+        $ops = [];
+        foreach ($add as $itemId) {
+            $ops[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
+                'ad_group' => $agResource,
+                'status' => AdGroupCriterionStatus::ENABLED,
+                'listing_group' => new ListingGroupInfo([
+                    'type' => ListingGroupType::UNIT,
+                    'parent_ad_group_criterion' => $rootResource,
+                    'case_value' => new ListingDimensionInfo([
+                        'product_item_id' => new ProductItemIdInfo(['value' => $itemId]),
+                    ]),
+                ]),
+                'cpc_bid_micros' => $bid,
+            ]));
+        }
+        foreach ($remove as $itemId) {
+            foreach ($live[$itemId] as $resource) {
+                $ops[] = (new AdGroupCriterionOperation())->setRemove($resource);
+            }
+        }
+
+        try {
+            $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
+                new MutateAdGroupCriteriaRequest([
+                    'customer_id' => $customerId,
+                    'operations' => $ops,
+                ])
+            );
+        } catch (\Throwable $e) {
+            Log::error('Failed to sync Shopping Item IDs', [
+                'campaign_id' => $campaignId, 'add' => $add, 'remove' => $remove, 'error' => $e->getMessage(),
+            ]);
+
+            return $result('error', self::briefGoogleError($e), $add, $remove);
+        }
+
+        Log::info('Synced Shopping Item IDs', ['campaign_id' => $campaignId, 'add' => $add, 'remove' => $remove]);
+
+        return $result('ok', 'Added '.count($add).', removed '.count($remove).' Item ID(s) in Google Ads.', $add, $remove, true);
+    }
+
+    /**
+     * @param  list<string>  $itemIds
+     */
+    private function createFlatListingTree(string $customerId, string $adGroupResourceName, int $adGroupId, array $itemIds, int $bidMicros): void
+    {
+        $rootResourceName = ResourceNames::forAdGroupCriterion($customerId, $adGroupId, -1);
+        $ops = [];
+        $ops[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
+            'resource_name' => $rootResourceName,
+            'status' => AdGroupCriterionStatus::ENABLED,
+            'listing_group' => new ListingGroupInfo(['type' => ListingGroupType::SUBDIVISION]),
+        ]));
+        foreach ($itemIds as $itemId) {
+            $ops[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
+                'ad_group' => $adGroupResourceName,
+                'status' => AdGroupCriterionStatus::ENABLED,
+                'listing_group' => new ListingGroupInfo([
+                    'type' => ListingGroupType::UNIT,
+                    'parent_ad_group_criterion' => $rootResourceName,
+                    'case_value' => new ListingDimensionInfo([
+                        'product_item_id' => new ProductItemIdInfo(['value' => $itemId]),
+                    ]),
+                ]),
+                'cpc_bid_micros' => $bidMicros,
+            ]));
+        }
+        $ops[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
+            'ad_group' => $adGroupResourceName,
+            'status' => AdGroupCriterionStatus::ENABLED,
+            'negative' => true,
+            'listing_group' => new ListingGroupInfo([
+                'type' => ListingGroupType::UNIT,
+                'parent_ad_group_criterion' => $rootResourceName,
+                'case_value' => new ListingDimensionInfo(['product_item_id' => new ProductItemIdInfo()]),
+            ]),
+        ]));
+        $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
+            new MutateAdGroupCriteriaRequest(['customer_id' => $customerId, 'operations' => $ops])
+        );
+    }
 }

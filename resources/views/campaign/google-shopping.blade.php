@@ -92,7 +92,8 @@
         #gacRawSbidRulesModal .gac-sbid-try-out .gac-sbid-big { font-size: 18px; font-weight: 800; color: #7c3aed; }
         /* Column picker grouped into 5 columns (Basic / Bids / Utilization / BGT / Other); the header checkbox toggles the whole group. */
         .gac-col-menu { min-width: 0; padding: 6px 6px; }
-        .gac-col-menu.show { display: grid; grid-template-columns: repeat(5, max-content); gap: 0 10px; }
+        /* !important + id selector: the theme's `.dropdown-menu.show { display:block }` was winning and stacking the groups vertically. */
+        #column-dropdown-menu.gac-col-menu.show { display: grid !important; grid-template-columns: repeat(5, max-content); align-items: start; gap: 0 10px; max-height: none; overflow: visible; }
         .gac-col-menu .gac-col-group { list-style: none; min-width: 0; }
         .gac-col-menu .gac-col-group-head {
             display: flex; align-items: center; gap: 6px; padding: 4px 10px; margin-bottom: 2px;
@@ -101,7 +102,7 @@
         }
         .gac-col-menu .dropdown-item { padding: 3px 10px; white-space: nowrap; }
         @media (max-width: 991.98px) {
-            .gac-col-menu.show { grid-template-columns: repeat(2, max-content); gap: 6px 10px; }
+            #column-dropdown-menu.gac-col-menu.show { grid-template-columns: repeat(2, max-content); gap: 6px 10px; }
         }
 
         /* Badge chart modal — same full-width Rolling L30 UI as all-marketplace-master */
@@ -342,6 +343,8 @@
             color: #94a3b8;
             font-weight: 600;
         }
+        .gac-fix-btn { padding: 1px 8px; font-size: 11px; font-weight: 700; color: #fff; background: #f97316; border: 1px solid #ea580c; border-radius: 6px; line-height: 1.5; }
+        .gac-fix-btn:hover { background: #ea580c; color: #fff; }
         .gac-status-switch { margin: 0; padding: 0; min-height: 0; display: flex; justify-content: center; align-items: center; }
         .gac-status-switch .form-check-input { margin: 0; float: none; cursor: pointer; width: 2.1em; height: 1.1em; }
         .gac-status-switch .form-check-input:checked { background-color: #16a34a; border-color: #16a34a; }
@@ -1202,6 +1205,7 @@
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawToggleStatusUrl = @json(route('google.shopping.campaigns.toggle.status'));
+            const gacRawFixItemIdsUrl = @json(route('google.shopping.campaigns.fix.item.ids'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
             const gacRawBadgeKpisUrl = @json(route('google.shopping.campaigns.badge.kpis'));
@@ -1460,6 +1464,124 @@
                         + (failCount ? ', ' + failCount + ' failed' : '');
                     gacShowPushResult(title, lines.join('\n'), failCount ? 'error' : 'success');
                     if (okCount && typeof gacRawRefreshTableUiSoon === 'function') gacRawRefreshTableUiSoon();
+                });
+            }
+
+            // Fix button: shown on rows whose Ads Item IDs differ from Merchant Center / the parent's SKUs.
+            var gacRawFixBusy = false;
+            function gacRawFixFormatter(cell) {
+                var row = cell.getRow().getData() || {};
+                var ids = String(row.id_status || '');
+                var needs = String(row.ver_status || '') === 'mismatch' || ids === 'mismatch' || ids === 'missing';
+                if (!needs || ids === 'error') return '';
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-sm gac-fix-btn';
+                btn.innerHTML = '<i class="fas fa-wrench"></i> Fix';
+                btn.title = 'Add missing SKUs / remove wrong SKUs on this campaign in Google Ads (you will see the plan first)';
+                btn.addEventListener('click', function(ev) {
+                    ev.stopPropagation();
+                    gacRawFixItemIds(cell.getRow());
+                });
+                return btn;
+            }
+
+            function gacRawFixPost(ids, dryRun) {
+                return fetch(gacRawFixItemIdsUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ campaign_ids: ids, dry_run: dryRun ? 1 : 0 }),
+                }).then(function(res) {
+                    return res.json().catch(function() { return {}; }).then(function(b) {
+                        if (!b || !Array.isArray(b.results)) {
+                            return ids.map(function(cid) {
+                                return { campaign_id: cid, name: '', status: 'error', add: [], remove: [], applied: false, message: (b && b.message) || ('HTTP ' + res.status) };
+                            });
+                        }
+                        return b.results;
+                    });
+                }).catch(function(err) {
+                    return ids.map(function(cid) {
+                        return { campaign_id: cid, name: '', status: 'error', add: [], remove: [], applied: false, message: String(err && err.message ? err.message : err) };
+                    });
+                });
+            }
+
+            function gacRawFixRunChunks(ids, size, dryRun) {
+                var out = [];
+                var chunks = [];
+                for (var i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+                var step = function(idx) {
+                    if (idx >= chunks.length) return Promise.resolve(out);
+                    return gacRawFixPost(chunks[idx], dryRun).then(function(rs) {
+                        out = out.concat(rs);
+                        return step(idx + 1);
+                    });
+                };
+                return step(0);
+            }
+
+            function gacRawFixLine(r) {
+                var label = (r.name ? r.name + ' ' : '') + '(' + r.campaign_id + ')';
+                var tag = r.status === 'ok' ? (r.applied ? '[FIXED]' : '[PLAN]') : (r.status === 'nothing' ? '[OK]' : (r.status === 'unsupported' ? '[SKIP]' : '[ERROR]'));
+                var t = tag + ' ' + label + ': ' + (r.message || '');
+                if (r.add && r.add.length) t += '\n      + add: ' + r.add.join(', ');
+                if (r.remove && r.remove.length) t += '\n      - remove: ' + r.remove.join(', ');
+                return t;
+            }
+
+            function gacRawFixItemIds(clickedRow) {
+                if (gacRawFixBusy) return;
+                var selected = table && table.getSelectedRows ? table.getSelectedRows() : [];
+                var isBulk = selected.length > 1 && selected.indexOf(clickedRow) !== -1;
+                var rows = isBulk ? selected : [clickedRow];
+                var seen = {};
+                var ids = [];
+                rows.forEach(function(r) {
+                    var d = r.getData() || {};
+                    var cid = String(d.campaign_id || '').replace(/\D/g, '');
+                    var needs = String(d.ver_status || '') === 'mismatch' || d.id_status === 'mismatch' || d.id_status === 'missing';
+                    if (cid && needs && !seen[cid]) { seen[cid] = true; ids.push(cid); }
+                });
+                if (!ids.length) {
+                    window.alert('No checked row has a verification issue to fix. Run the ID / Verification check first.');
+                    return;
+                }
+                gacRawFixBusy = true;
+                gacShowPushLoading('Checking ' + ids.length + ' campaign(s) against Merchant Center…', 'Reading listing groups from Google Ads — nothing is changed yet.');
+                gacRawFixRunChunks(ids, 5, true).then(function(plans) {
+                    var actionable = plans.filter(function(p) { return p.status === 'ok' && ((p.add && p.add.length) || (p.remove && p.remove.length)); });
+                    var planText = plans.map(gacRawFixLine).join('\n');
+                    if (!actionable.length) {
+                        gacRawFixBusy = false;
+                        gacShowPushResult('Nothing to change in Google Ads', planText, plans.some(function(p) { return p.status === 'error'; }) ? 'error' : 'success');
+                        return null;
+                    }
+                    var nAdd = 0, nRem = 0;
+                    actionable.forEach(function(p) { nAdd += p.add.length; nRem += p.remove.length; });
+                    gacShowPushResult('Fix plan — ' + actionable.length + ' campaign(s): +' + nAdd + ' / −' + nRem + ' Item ID(s)', planText, 'success');
+                    var preview = actionable.slice(0, 8).map(gacRawFixLine).join('\n');
+                    if (!window.confirm('Apply this in Google Ads now?\n\n' + actionable.length + ' campaign(s): add ' + nAdd + ', remove ' + nRem + ' Item ID(s).\n\n' + preview + (actionable.length > 8 ? '\n…' : ''))) {
+                        gacRawFixBusy = false;
+                        return null;
+                    }
+                    gacShowPushLoading('Fixing ' + actionable.length + ' campaign(s) in Google Ads…', 'Keep this tab open until finished.');
+                    return gacRawFixRunChunks(actionable.map(function(p) { return String(p.campaign_id); }), 3, false).then(function(results) {
+                        gacRawFixBusy = false;
+                        var fixed = results.filter(function(r) { return r.applied; }).length;
+                        var bad = results.filter(function(r) { return r.status === 'error' || r.status === 'unsupported'; }).length;
+                        gacShowPushResult('Fix in Google Ads — ' + fixed + ' fixed' + (bad ? ', ' + bad + ' failed/skipped' : ''), results.map(gacRawFixLine).join('\n'), bad ? 'error' : 'success');
+                        if (fixed && typeof gacRawReloadGridForFilters === 'function') gacRawReloadGridForFilters();
+                    });
+                }).catch(function(err) {
+                    gacRawFixBusy = false;
+                    gacShowPushResult('Fix failed', String(err && err.message ? err.message : err), 'error');
                 });
             }
 
@@ -2731,7 +2853,10 @@
                             col.formatter = function(c) {
                                 var v = parseFloat(c.getValue());
                                 if (!isFinite(v) || v <= 0) return '—';
-                                return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                // Whole dollars; anything under $20 is shown in red.
+                                var rounded = Math.round(v);
+                                var txt = '$' + rounded.toLocaleString('en-US');
+                                return rounded < 20 ? '<span style="color:#dc2626;font-weight:700;" title="Price under $20">' + txt + '</span>' : txt;
                             };
                         }
                         if (Object.prototype.hasOwnProperty.call(moneySpendTitles, col.field)) {
@@ -2906,6 +3031,19 @@
                             formatter: gacRawVerificationFormatter,
                         });
                     }
+                    // Fix column (right after Verification): button that adds the missing Item IDs and removes the wrong ones in Google Ads.
+                    if (!defs.some(function(d) { return d.field === 'ver_fix'; })) {
+                        defs.push({
+                            title: 'Fix',
+                            field: 'ver_fix',
+                            headerSort: false,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            width: 64,
+                            minWidth: 56,
+                            formatter: gacRawFixFormatter,
+                        });
+                    }
                     // Column order: BGT ACOS sits immediately before Bgt Views.
                     var acosIdx = defs.findIndex(function(d) { return d.field === 'bgt_acos'; });
                     if (acosIdx !== -1) {
@@ -3039,7 +3177,7 @@
              */
             // Column picker groups. Any column not listed lands in "Other".
             var GAC_COL_GROUPS = [
-                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification'] },
+                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification', 'ver_fix'] },
                 { key: 'bids', title: 'Bids', fields: ['cpc_L30', 'live_cpc', 'cpc_L7', 'cpc_L2', 'cpc_L1', 'lbid', 'sbid'] },
                 { key: 'util', title: 'Utilization', fields: ['spend', 'l7_spend', 'l2_spend', 'l1_spend', 'ub7', 'ub2', 'ub1'] },
                 { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'sbgt', 'lbgt'] },

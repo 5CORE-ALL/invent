@@ -510,6 +510,80 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Fix Item ID verification issues: add the Merchant Center Item IDs missing from the campaign's
+     * Google Ads listing groups and remove the ones that do not belong to the SKU(s) of the campaign.
+     *
+     * Request: `campaign_ids[]`, `dry_run` (1 = only return the plan, nothing is changed).
+     */
+    public function fixItemIds(Request $request): JsonResponse
+    {
+        $ids = $this->validatedPushCampaignIds($request);
+        if ($ids === []) {
+            return response()->json(['ok' => false, 'message' => 'No campaign_ids to fix.'], 422);
+        }
+        if (count($ids) > 10) {
+            return response()->json(['ok' => false, 'message' => 'Too many campaigns in one request (max 10). Send in chunks.'], 422);
+        }
+        $customerId = config('services.google_ads.login_customer_id');
+        if (! $customerId) {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.'], 500);
+        }
+        $dryRun = $request->boolean('dry_run');
+
+        @ini_set('max_execution_time', '120');
+        set_time_limit(120);
+
+        $latestQuery = DB::table('google_ads_campaigns')->whereIn('campaign_id', $ids);
+        $this->applyCampaignNameScope($latestQuery);
+        $names = [];
+        foreach ($latestQuery->orderByDesc('date')->get(['campaign_id', 'campaign_name']) as $r) {
+            $names[(string) $r->campaign_id] ??= (string) $r->campaign_name;
+        }
+
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $results = [];
+        $applied = 0;
+
+        foreach ($ids as $cid) {
+            $cid = (string) $cid;
+            if (! isset($names[$cid])) {
+                $results[] = ['campaign_id' => $cid, 'name' => '', 'status' => 'error', 'add' => [], 'remove' => [], 'applied' => false, 'message' => 'Campaign not found in this grid.'];
+
+                continue;
+            }
+            $skus = $this->childSkusForCampaignName($names[$cid]);
+            $expectedBySku = $this->resolveMerchantCenterItemIds($skus);
+            $expected = array_values(array_unique(array_filter(array_map(
+                static fn ($sku) => $expectedBySku[$sku] ?? '',
+                $skus
+            ))));
+
+            $res = $sbidService->syncShoppingItemIds((string) $customerId, $cid, $expected, $dryRun);
+            $missingSkus = count($skus) - count($expected);
+            if ($missingSkus > 0 && $res['status'] !== 'error') {
+                $res['message'] .= " ({$missingSkus} SKU(s) have no Merchant Center ID in the catalog and cannot be added.)";
+            }
+            if ($res['applied']) {
+                $applied++;
+            }
+            $results[] = ['campaign_id' => $cid, 'name' => $names[$cid]] + $res;
+        }
+
+        if ($applied > 0) {
+            // Live Ads Item IDs are cached for the ID / Verification check — invalidate them.
+            Cache::forever('gads_shopping_item_ids_gen', ((int) Cache::get('gads_shopping_item_ids_gen', 0)) + 1);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'dry_run' => $dryRun,
+            'applied' => $applied,
+            'results' => $results,
+        ]);
+    }
+
+    /**
      * Manually trigger `app:fetch-google-ads-campaigns` so missing rows can be back-filled
      * without waiting for the daily 09:00 IST cron. Runs synchronously — the request blocks
      * until the fetch completes or fails so the UI can show real success/failure.
@@ -4231,7 +4305,7 @@ class GoogleShoppingCampaignsController extends Controller
                 sort($campaignIds);
                 // Live Ads Item IDs barely change within minutes — cache so re-filtering doesn't re-hit Google Ads.
                 $liveByCampaign = Cache::remember(
-                    'gads_shopping_live_item_ids_v1:'.sha1($customerId.'|'.implode(',', $campaignIds)),
+                    'gads_shopping_live_item_ids_v1:'.((int) Cache::get('gads_shopping_item_ids_gen', 0)).':'.sha1($customerId.'|'.implode(',', $campaignIds)),
                     300,
                     static fn () => $sbidService->fetchShoppingProductItemIdsByCampaignIds($customerId, $campaignIds)
                 );
