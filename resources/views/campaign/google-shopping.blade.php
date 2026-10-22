@@ -880,6 +880,15 @@
                                     <option value="eq0">INV=0</option>
                                 </select>
                             </div>
+                            <div class="gac-raw-filter-field">
+                                <label class="gac-raw-filter-label mb-0" for="gac-filter-idst">ID</label>
+                                <select id="gac-filter-idst" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by Item ID check against Merchant Center" title="Checks every campaign's Google Ads Item ID against Merchant Center. Matched = green, No ID found = yellow, Mismatch = red (ID column).">
+                                    <option value="all" selected>All</option>
+                                    <option value="matched">✔ Matched</option>
+                                    <option value="missing">⚠ No ID</option>
+                                    <option value="mismatch">✖ Mismatch</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     </div>
@@ -1203,6 +1212,7 @@
                 sbgt_trend: true,
                 is_parent: true,
                 id_mismatch: true,
+                id_status: true,
                 id_alert_title: true,
                 bgt_views_color: true,
                 bgt_views_label: true,
@@ -1296,15 +1306,22 @@
                 return '';
             }
 
-            // ID column: red triangle when Google Ads listing-group Item ID ≠ live Merchant Center ID.
+            // ID column (filled by the ID button or the ID filter): green check = Ads Item ID matches Merchant Center,
+            // yellow triangle = no ID found, red triangle = ID does not match.
             function gacRawIdCheckFormatter(cell) {
                 var row = cell.getRow().getData() || {};
-                var mismatch = row.id_mismatch === true || row.id_mismatch === 1 || row.id_mismatch === '1';
-                if (!mismatch) return '';
-                var tip = String(row.id_alert_title || 'Item ID does not match Merchant Center');
+                var status = String(row.id_status || '');
+                if (status === '' && (row.id_mismatch === true || row.id_mismatch === 1 || row.id_mismatch === '1')) status = 'mismatch';
+                if (status === '') return '';
+                var tip = String(row.id_alert_title || '');
                 tip = tip.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                return '<i class="fas fa-exclamation-triangle" title="' + tip + '"'
-                     + ' style="color:#dc2626;font-size:15px;"></i>';
+                if (status === 'matched') {
+                    return '<i class="fas fa-check-circle" title="' + (tip || 'Item ID matches Merchant Center') + '" style="color:#16a34a;font-size:16px;"></i>';
+                }
+                if (status === 'missing') {
+                    return '<i class="fas fa-exclamation-triangle" title="' + (tip || 'No Item ID found') + '" style="color:#eab308;font-size:15px;"></i>';
+                }
+                return '<i class="fas fa-exclamation-triangle" title="' + (tip || 'Item ID does not match Merchant Center') + '" style="color:#dc2626;font-size:15px;"></i>';
             }
 
             // Re-run the Action column formatter after the average ACOS changes
@@ -1758,6 +1775,7 @@
                     filter_acos: gacRawFilterParamVal('gac-filter-acos'),
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
                     filter_inv: gacRawFilterParamVal('gac-filter-inv'),
+                    filter_id_status: gacRawFilterParamVal('gac-filter-idst'),
                     filter_ctr_min: gacRawRangeInputVal('gac-filter-ctr-min'),
                     filter_ctr_max: gacRawRangeInputVal('gac-filter-ctr-max'),
                     filter_cvr_min: gacRawRangeInputVal('gac-filter-cvr-min'),
@@ -2750,7 +2768,7 @@
                 },
             });
 
-            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat', 'gac-filter-inv'].forEach(function(fid) {
+            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat', 'gac-filter-inv', 'gac-filter-idst'].forEach(function(fid) {
                 var fel = document.getElementById(fid);
                 if (fel) {
                     fel.addEventListener('change', gacRawReloadGridForFilters);

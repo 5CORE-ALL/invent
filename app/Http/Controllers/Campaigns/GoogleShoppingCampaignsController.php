@@ -1017,6 +1017,8 @@ class GoogleShoppingCampaignsController extends Controller
         $perPage = max(10, min(1000, $perPage));
         $page = max(1, (int) $request->input('page', 1));
         $verifyId = $request->boolean('filter_verify_id');
+        // ID filter (Matched / No ID / Mismatch): checks every filtered campaign against Merchant Center, so it needs the PHP path.
+        $idStatus = $this->normalizeIdStatusFilter($request->input('filter_id_status'));
 
         $query = $this->buildRawGridBaseQuery();
         $this->applyRawGridDataFilters($query, $request);
@@ -1043,8 +1045,8 @@ class GoogleShoppingCampaignsController extends Controller
 
         // Verify ID or PHP-only sort fields (INV / Dil / Views / Price / Bgt Views / BGT PRC / SBGT)
         // need hydrated rows before paginate.
-        if ($verifyId || $needsPhpSort) {
-            if ($verifyId) {
+        if ($verifyId || $needsPhpSort || $idStatus !== 'all') {
+            if ($verifyId || $idStatus !== 'all') {
                 @ini_set('max_execution_time', '120');
                 set_time_limit(120);
             }
@@ -1054,6 +1056,14 @@ class GoogleShoppingCampaignsController extends Controller
             if ($verifyId) {
                 $enriched = $enriched->filter(static function (array $arr) {
                     return (int) ($arr['inventory'] ?? 0) > 0;
+                })->values();
+                $summary['filtered_row_count'] = $enriched->count();
+            }
+            if ($idStatus !== 'all') {
+                $this->attachMerchantIdVerification($enriched);
+                $enriched = $enriched->filter(static function (array $arr) use ($idStatus) {
+                    return ($arr['id_status'] ?? '') === $idStatus
+                        || ($idStatus === 'mismatch' && ($arr['id_status'] ?? '') === 'error');
                 })->values();
                 $summary['filtered_row_count'] = $enriched->count();
             }
@@ -1080,13 +1090,14 @@ class GoogleShoppingCampaignsController extends Controller
                 $this->attachSbgtTrend($arr, $prevSbgtMap);
                 $this->attachNegativeTargetCount($arr, $negCounts);
                 $arr = $this->mergeLiveBidBgtColumns($arr, $liveStates);
-                if (! $verifyId) {
+                if (! $verifyId && $idStatus === 'all') {
                     $arr['id_mismatch'] = false;
+                    $arr['id_status'] = '';
                     $arr['id_alert_title'] = '';
                 }
                 $pageRows[$i] = $arr;
             }
-            if ($verifyId) {
+            if ($verifyId && $idStatus === 'all') {
                 $this->attachMerchantIdVerification($pageRows);
             }
 
@@ -1123,6 +1134,7 @@ class GoogleShoppingCampaignsController extends Controller
             $this->attachNegativeTargetCount($arr, $negCounts);
             $arr = $this->mergeLiveBidBgtColumns($arr, $liveStates);
             $arr['id_mismatch'] = false;
+            $arr['id_status'] = '';
             $arr['id_alert_title'] = '';
 
             return self::prepareRawRowForTabulator($arr);
@@ -2939,6 +2951,14 @@ class GoogleShoppingCampaignsController extends Controller
         return 'all';
     }
 
+    /** ID check filter: matched = green, missing = no ID found (yellow), mismatch = wrong ID (red). */
+    private function normalizeIdStatusFilter(mixed $value): string
+    {
+        $v = is_string($value) ? strtolower(trim($value)) : 'all';
+
+        return in_array($v, ['matched', 'missing', 'mismatch'], true) ? $v : 'all';
+    }
+
     private function normalizeInvFilter(mixed $value): string
     {
         $v = is_string($value) ? strtolower(trim($value)) : 'all';
@@ -3847,6 +3867,7 @@ class GoogleShoppingCampaignsController extends Controller
             'video_audit_ai_filled',
             'video_audit_pct',
             'id_mismatch',
+            'id_status',
             'id_alert_title',
         ];
     }
@@ -4082,7 +4103,13 @@ class GoogleShoppingCampaignsController extends Controller
             try {
                 /** @var GoogleAdsSbidService $sbidService */
                 $sbidService = app(GoogleAdsSbidService::class);
-                $liveByCampaign = $sbidService->fetchShoppingProductItemIdsByCampaignIds($customerId, $campaignIds);
+                sort($campaignIds);
+                // Live Ads Item IDs barely change within minutes — cache so re-filtering doesn't re-hit Google Ads.
+                $liveByCampaign = Cache::remember(
+                    'gads_shopping_live_item_ids_v1:'.sha1($customerId.'|'.implode(',', $campaignIds)),
+                    300,
+                    static fn () => $sbidService->fetchShoppingProductItemIdsByCampaignIds($customerId, $campaignIds)
+                );
             } catch (\Throwable $e) {
                 report($e);
                 $apiError = $e->getMessage();
@@ -4119,20 +4146,21 @@ class GoogleShoppingCampaignsController extends Controller
             $live = $liveByCampaign[$cid] ?? [];
             sort($live);
 
-            $mismatch = false;
-            $tip = '';
+            // status: matched (green) · missing = no ID found (yellow) · mismatch / error (red)
+            $status = 'matched';
+            $tip = 'Item ID matches Merchant Center ('.implode(', ', array_slice($expected, 0, 5)).(count($expected) > 5 ? ', …' : '').')';
 
             if ($apiError !== null) {
-                $mismatch = true;
+                $status = 'error';
                 $tip = 'Could not fetch live Ads Item IDs: '.$apiError;
             } elseif ($expected === []) {
-                $mismatch = true;
+                $status = 'missing';
                 $tip = 'No Merchant Center Item ID found in catalog for this campaign SKU(s).';
             } elseif ($live === []) {
-                $mismatch = true;
+                $status = 'missing';
                 $tip = 'No product Item ID on Google Ads listing groups. Expected: '.implode(', ', $expected);
             } elseif ($expected !== $live) {
-                $mismatch = true;
+                $status = 'mismatch';
                 $missing = array_values(array_diff($expected, $live));
                 $extra = array_values(array_diff($live, $expected));
                 $parts = [];
@@ -4147,7 +4175,8 @@ class GoogleShoppingCampaignsController extends Controller
                     : 'Item ID mismatch vs Merchant Center.';
             }
 
-            $arr['id_mismatch'] = $mismatch;
+            $arr['id_status'] = $status;
+            $arr['id_mismatch'] = in_array($status, ['mismatch', 'error'], true);
             $arr['id_alert_title'] = $tip;
             $rows[$i] = $arr;
         }
