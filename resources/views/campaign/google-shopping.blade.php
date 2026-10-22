@@ -360,13 +360,13 @@
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
 
-        /* ── BGT Rules — single modal (same layout as /amazon-ads/all) ── */
+        /* ── BGT Rules — single modal (layout matches the "Std prc vs dil" modal: one row of rule cards) ── */
         #gacRawBgtRulesModal .modal-dialog {
-            width: calc(100vw - 0.75rem);
-            max-width: calc(100vw - 0.75rem);
-            height: calc(100vh - 0.75rem);
-            max-height: calc(100vh - 0.75rem);
-            margin: 0.375rem auto;
+            width: calc(100vw - 1.25rem);
+            max-width: calc(100vw - 1.25rem);
+            height: calc(100vh - 1.25rem);
+            max-height: calc(100vh - 1.25rem);
+            margin: 0.625rem auto;
         }
         #gacRawBgtRulesModal .modal-content {
             height: 100%;
@@ -374,102 +374,111 @@
             display: flex;
             flex-direction: column;
             border: 0;
-            border-radius: 12px;
+            border-radius: 16px;
             overflow: hidden;
             box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
         }
-        #gacRawBgtRulesModal .modal-header { background: #fff; border-bottom: 1px solid #e8eef5; padding: 8px 12px; flex: 0 0 auto; }
+        #gacRawBgtRulesModal .modal-header { background: #fff; border-bottom: 1px solid #e8eef5; padding: 14px 18px; flex: 0 0 auto; align-items: flex-start; }
         #gacRawBgtRulesModal .modal-title { font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
-        #gacRawBgtRulesModal .gac-bgt-sub {
-            color: #64748b; font-size: 11px; font-weight: 500; margin-top: 1px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100vw - 5rem);
-        }
+        #gacRawBgtRulesModal .gac-bgt-sub { color: #64748b; font-size: 12px; font-weight: 500; margin-top: 2px; line-height: 1.4; }
         #gacRawBgtRulesModal .modal-body {
-            background: #f4f7fb; overflow-x: hidden; overflow-y: auto; padding: 8px;
+            background: #f4f7fb; overflow-x: hidden; overflow-y: auto; padding: 14px 16px 16px;
             flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
         }
-        #gacRawBgtRulesModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; padding: 6px 12px; flex: 0 0 auto; }
-        #gacRawBgtRulesModal #gacRawBgtRulesSaveBtn { font-weight: 700; border-radius: 8px; padding: 6px 16px; }
-        #gacRawBgtRulesModal .gac-bgt-global-err { margin: 0 0 6px; }
+        #gacRawBgtRulesModal .modal-footer { background: #fff; border-top: 1px solid #e8eef5; padding: 10px 18px; flex: 0 0 auto; justify-content: flex-end; }
+        #gacRawBgtRulesModal #gacRawBgtRulesSaveBtn {
+            font-weight: 700; border-radius: 8px; padding: 7px 16px;
+            background: #2bb3a6; border-color: #2bb3a6; color: #fff;
+        }
+        #gacRawBgtRulesModal #gacRawBgtRulesSaveBtn:hover,
+        #gacRawBgtRulesModal #gacRawBgtRulesSaveBtn:focus,
+        #gacRawBgtRulesModal #gacRawBgtRulesSaveBtn:active { background: #239b8f; border-color: #239b8f; color: #fff; }
+        #gacRawBgtRulesModal .gac-bgt-global-err { margin: 0 0 8px; }
 
+        /* All rule cards sit side by side in one row (scrolls sideways on narrow screens). */
         #gacRawBgtRulesModal .gac-bgt-cols {
-            display: flex; flex-wrap: wrap; align-items: stretch; align-content: flex-start;
-            gap: 8px; width: 100%; min-width: 0; flex: 0 0 auto;
+            display: flex; flex-wrap: nowrap; align-items: stretch; align-content: flex-start;
+            gap: 12px; width: 100%; min-width: 0; flex: 1 1 auto; min-height: 0; overflow-x: auto; padding-bottom: 4px;
         }
         #gacRawBgtRulesModal .gac-bgt-col {
-            flex: 1 1 calc((100% - 24px) / 4);
-            max-width: calc((100% - 24px) / 4);
-            min-width: 0; min-height: 0;
+            flex: 1 1 0;
+            min-width: 230px; min-height: 0;
             display: flex; flex-direction: column;
-            border: 1px solid #e6edf5; border-radius: 10px; padding: 8px; background: #fff;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); overflow: auto;
+            border: 1px solid #e6edf5; border-radius: 14px; padding: 12px; background: #fff;
+            overflow-x: hidden; overflow-y: auto;
         }
-        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--wide { flex: 1 1 calc((100% - 24px) / 2); max-width: calc((100% - 8px) / 2); }
-        #gacRawBgtRulesModal .gac-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 4px; }
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--wide { flex: 1.35 1 0; min-width: 300px; }
+        #gacRawBgtRulesModal .gac-bgt-col-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
         #gacRawBgtRulesModal .gac-bgt-title {
-            font-weight: 700; font-size: 12px; color: #0f172a; letter-spacing: -0.01em;
+            font-weight: 700; font-size: 13px; color: #0f172a;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         #gacRawBgtRulesModal .gac-bgt-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
         #gacRawBgtRulesModal .gac-bgt-min-btn,
         #gacRawBgtRulesModal .gac-bgt-exp-btn {
-            border: 0; background: #f1f5f9; color: #334155; width: 22px; height: 22px; border-radius: 6px;
-            padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; font-size: 13px;
+            border: 0; background: #f1f5f9; color: #334155; width: 24px; height: 24px; border-radius: 6px;
+            padding: 0; line-height: 1; font-weight: 700; flex-shrink: 0; font-size: 14px;
         }
         #gacRawBgtRulesModal .gac-bgt-min-btn:hover,
         #gacRawBgtRulesModal .gac-bgt-exp-btn:hover { background: #e2e8f0; }
         #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-exp-btn { display: none; }
         #gacRawBgtRulesModal .gac-bgt-cols.is-expanded .gac-bgt-col:not(.is-max) { display: none; }
         #gacRawBgtRulesModal .gac-bgt-col.is-max { flex: 1 1 100%; min-width: 0; max-width: none; }
-        #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas { height: 220px; flex: 0 0 220px; }
-        #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas canvas { height: 220px !important; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas { height: 240px; flex: 0 0 240px; }
+        #gacRawBgtRulesModal .gac-bgt-col.is-max .gac-bgt-chart-canvas canvas { height: 240px !important; }
         #gacRawBgtRulesModal .gac-bgt-col.is-min { flex: 0 0 40px; width: 40px; max-width: 40px; min-width: 40px; padding: 10px 4px; cursor: pointer; }
         #gacRawBgtRulesModal .gac-bgt-col.is-min > :not(.gac-bgt-col-head) { display: none !important; }
         #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-col-head { flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; gap: 10px; }
         #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
 
-        #gacRawBgtRulesModal .gac-bgt-chart { display: flex; flex-direction: column; margin-bottom: 4px; flex: 0 0 auto; }
-        #gacRawBgtRulesModal .gac-bgt-chart-canvas { position: relative; width: 100%; height: 64px; flex: 0 0 64px; }
-        #gacRawBgtRulesModal .gac-bgt-chart-canvas canvas { display: block; width: 100% !important; height: 64px !important; }
-        #gacRawBgtRulesModal .gac-bgt-legend { width: 100%; font-size: 10px; margin-top: 2px; color: #334155; line-height: 1.2; }
+        #gacRawBgtRulesModal .gac-bgt-chart { display: flex; flex-direction: column; margin-bottom: 8px; flex: 0 0 auto; }
+        #gacRawBgtRulesModal .gac-bgt-chart-canvas { position: relative; width: 100%; height: 150px; flex: 0 0 150px; }
+        #gacRawBgtRulesModal .gac-bgt-chart-canvas canvas { display: block; width: 100% !important; height: 150px !important; }
+        #gacRawBgtRulesModal .gac-bgt-legend { width: 100%; font-size: 12px; margin: 8px 0 0; color: #334155; line-height: 1.3; }
         #gacRawBgtRulesModal .gac-bgt-leg-row {
-            display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto 8px; gap: 4px; align-items: center; padding: 0;
+            display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 2px 0;
         }
         #gacRawBgtRulesModal .gac-bgt-leg-row strong { font-variant-numeric: tabular-nums; }
-        #gacRawBgtRulesModal .gac-bgt-leg-total { font-weight: 700; border-top: 1px solid #e2e8f0; margin-top: 2px; padding-top: 2px; }
+        #gacRawBgtRulesModal .gac-bgt-leg-total { font-weight: 700; border-top: 1px solid #e2e8f0; margin-top: 3px; padding-top: 4px; }
         #gacRawBgtRulesModal .gac-bgt-leg-pct { color: #94a3b8; font-variant-numeric: tabular-nums; min-width: 2.2rem; text-align: right; }
         #gacRawBgtRulesModal .gac-bgt-swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
-        #gacRawBgtRulesModal .gac-bgt-col .table { font-size: 11px; margin-bottom: 0; border-color: #e8eef5; }
+        #gacRawBgtRulesModal .gac-bgt-col .table { font-size: 12px; margin-bottom: 0; border-color: transparent; --bs-table-bg: transparent; }
         #gacRawBgtRulesModal .gac-bgt-col .table thead th {
-            background: #f8fafc; color: #64748b; font-size: 9px; font-weight: 700; letter-spacing: 0.03em;
-            text-transform: uppercase; border-color: #e8eef5; white-space: nowrap;
+            background: #eaf1fb; color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+            text-transform: uppercase; border: 0; white-space: nowrap; text-align: center; padding: 6px 6px;
         }
         #gacRawBgtRulesModal .gac-bgt-col .table th,
-        #gacRawBgtRulesModal .gac-bgt-col .table td { padding: 1px 3px; border-color: #eef2f7; vertical-align: middle; }
+        #gacRawBgtRulesModal .gac-bgt-col .table td { padding: 5px 6px; border-width: 0; vertical-align: middle; text-align: center; }
         #gacRawBgtRulesModal .gac-bgt-col .table:not(.gac-bgt-sum-table) th:first-child,
         #gacRawBgtRulesModal .gac-bgt-col .table:not(.gac-bgt-sum-table) td:first-child { display: none; }
+        /* Boxed number inputs, same as the Std prc vs dil modal. */
         #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm {
-            padding: 0 2px; font-size: 11px; min-width: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+            width: 100%; min-width: 52px; max-width: 72px; height: 30px; margin: 0 auto; padding: 0 4px;
+            font-size: 13px; font-weight: 600; line-height: 24px; text-align: center; color: #0f172a;
+            background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; box-shadow: none;
+            -moz-appearance: textfield; appearance: textfield;
         }
-        #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm:focus { border: 0; background: transparent; box-shadow: none; }
+        #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm::-webkit-outer-spin-button,
+        #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm:focus { border-color: #2bb3a6; box-shadow: 0 0 0 2px rgba(43, 179, 166, 0.18); }
         #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger {
-            border: 0; background: transparent; box-shadow: none; padding: 0; line-height: 1; font-size: 0.8em; border-radius: 0;
+            border: 0; background: transparent; box-shadow: none; width: 22px; height: 22px; padding: 0; line-height: 1;
+            font-size: 12px; border-radius: 6px; color: #dc3545;
         }
         #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:hover,
-        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:focus,
-        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:disabled { border: 0; background: transparent; box-shadow: none; }
-        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:disabled { opacity: 0.35; }
+        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:focus { border: 0; background: #fee2e2; color: #b91c1c; box-shadow: none; }
+        #gacRawBgtRulesModal .gac-bgt-col .btn-outline-danger:disabled { border: 0; background: transparent; box-shadow: none; opacity: 0.35; }
         #gacRawBgtRulesModal .gac-bgt-add {
-            width: 100%; border-radius: 6px; font-weight: 600; padding: 3px 8px; font-size: 12px; margin-top: auto; border-style: dashed;
+            width: 100%; border-radius: 8px; font-weight: 600; padding: 4px 8px; font-size: 13px; margin-top: auto; border-style: dashed;
         }
-        #gacRawBgtRulesModal .gac-bgt-col .table-responsive { margin-bottom: 0; flex: 1 1 auto; min-height: 0; overflow: auto; }
-        #gacRawBgtRulesModal .gac-bgt-col .gac-bgt-add { margin-top: 6px; }
+        #gacRawBgtRulesModal .gac-bgt-col .table-responsive { margin-bottom: 0; flex: 0 0 auto; overflow: visible; }
+        #gacRawBgtRulesModal .gac-bgt-col .gac-bgt-add { margin-top: 10px; }
 
         /* Summary bar (full width) */
         #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar {
             flex: 0 0 auto; align-self: stretch; width: 100%; max-width: none; flex-direction: column;
-            align-items: stretch; gap: 10px; margin-bottom: 8px; padding: 12px 14px 14px; overflow: visible;
+            align-items: stretch; gap: 10px; margin-bottom: 12px; padding: 12px 14px 14px; overflow: visible;
         }
         #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-col-head { margin: 0; flex: 0 0 auto; }
         #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-title { font-size: 16px; }
@@ -497,6 +506,8 @@
             padding: 7px 12px; font-size: 14px; line-height: 1.3; border-color: #eef2f7; background: #fff;
         }
         #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table thead th { font-size: 11px; padding: 8px 12px; }
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table th:first-child,
+        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table td:first-child { text-align: left; }
         #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table td:first-child { font-weight: 600; color: #0f172a; }
         #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table tr.fw-semibold td { background: #eff6ff; font-size: 15px; }
         #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min { flex: 0 0 auto; flex-direction: row; width: 100%; max-width: none; height: auto; min-width: 0; padding: 6px 8px; }
@@ -505,20 +516,15 @@
         #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min .gac-bgt-sum-sub { display: none; }
 
         /* SBID card form */
-        #gacRawBgtRulesModal .gac-bgt-sbid-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 8px; }
-        #gacRawBgtRulesModal .gac-bgt-sbid-grid label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.02em; margin: 0; }
-        #gacRawBgtRulesModal .gac-bgt-sbid-grid .form-control { font-size: 12px; padding: 2px 6px; }
-        #gacRawBgtRulesModal .gac-bgt-sbid-h { font-size: 11px; font-weight: 700; color: #0f172a; margin: 8px 0 4px; }
-        #gacRawBgtRulesModal .gac-bgt-sbid-note { font-size: 11px; color: #64748b; margin: 0 0 4px; }
-
-        @media (max-width: 1199px) {
-            #gacRawBgtRulesModal .gac-bgt-col { flex-basis: calc((100% - 8px) / 2); max-width: calc((100% - 8px) / 2); }
-            #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--wide { flex-basis: 100%; max-width: 100%; }
+        #gacRawBgtRulesModal .gac-bgt-sbid-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+        #gacRawBgtRulesModal .gac-bgt-sbid-grid label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 2px; }
+        #gacRawBgtRulesModal .gac-bgt-sbid-grid .form-control {
+            height: 30px; padding: 0 6px; font-size: 13px; font-weight: 600; text-align: center; color: #0f172a;
+            background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; box-shadow: none;
         }
-        @media (max-width: 767px) {
-            #gacRawBgtRulesModal .gac-bgt-col { flex-basis: 100%; max-width: 100%; }
-            #gacRawBgtRulesModal .gac-bgt-sbid-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
+        #gacRawBgtRulesModal .gac-bgt-sbid-grid .form-control:focus { border-color: #2bb3a6; box-shadow: 0 0 0 2px rgba(43, 179, 166, 0.18); }
+        #gacRawBgtRulesModal .gac-bgt-sbid-h { font-size: 12px; font-weight: 700; color: #0f172a; margin: 12px 0 6px; }
+        #gacRawBgtRulesModal .gac-bgt-sbid-note { font-size: 12px; color: #64748b; margin: 0 0 8px; line-height: 1.4; }
     </style>
 @endsection
 
@@ -781,7 +787,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <div>
-                        <h5 class="modal-title fs-6 mb-0" id="gacRawBgtRulesModalLabel">BGT Rules</h5>
+                        <h5 class="modal-title fs-6 mb-0" id="gacRawBgtRulesModalLabel"><i class="fas fa-tags me-1"></i> BGT Rules</h5>
                         <div class="gac-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC. INV ≤ 0 forces SBGT to 0, and SBGT 0 cannot be pushed (the campaign is paused). Save and apply writes every rule, then refreshes the grid.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -928,8 +934,7 @@
                     </div>
                 </div>
                 <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtRulesSaveBtn">Save &amp; apply</button>
+                    <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtRulesSaveBtn"><i class="fas fa-save me-1"></i> Save and Apply</button>
                 </div>
             </div>
         </div>
