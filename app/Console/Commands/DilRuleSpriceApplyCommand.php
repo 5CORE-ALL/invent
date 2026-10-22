@@ -14,7 +14,8 @@ class DilRuleSpriceApplyCommand extends Command
         {channel=all : remaining Dil channel, or all}
         {--dry-run : Compute Dil S PRC but do not write data_view}
         {--limit= : Max SKUs to save per channel (for testing)}
-        {--push : After save, queue S PRC → live listing price}';
+        {--push : After save, queue S PRC → live listing price}
+        {--daily : The once-a-day run. Required for Wayfair; other runs skip it}';
 
     protected $description = 'Remaining Dil pages: apply Sprc Dil and save S PRC (page not required). FB is save-only.';
 
@@ -26,6 +27,16 @@ class DilRuleSpriceApplyCommand extends Command
         @set_time_limit(0);
 
         $channels = DilRuleSpriceApplyService::channelsFromArg((string) $this->argument('channel'));
+        if ($channels !== [] && ! $this->option('daily')) {
+            $skipped = array_values(array_intersect($channels, DilRuleSpriceApplyService::DAILY_ONLY_CHANNELS));
+            if ($skipped !== []) {
+                $channels = array_values(array_diff($channels, $skipped));
+                $this->line(strtoupper(implode(', ', $skipped)).': runs once a day (12:00 AM PT) or by its Push button — skipped.');
+                if ($channels === []) {
+                    return self::SUCCESS;
+                }
+            }
+        }
         if ($channels === []) {
             $this->error('Unsupported channel. Use '.implode(', ', DilRuleSpriceApplyService::CHANNELS).', or all.');
 

@@ -19,6 +19,13 @@ class StdPrcVsDilPricer
     public const LOW_STD_UNDER = 15.0;
 
     public const LOW_STD_FACTOR = 0.5;
+
+    /**
+     * Channels that have the NROI Cap panel. These pages carry no ads cost, so NROI is the take-home
+     * margin result: (price × margin − ship − LP) ÷ LP.
+     */
+    public const NROI_CAP_CHANNELS = ['wayfair'];
+
     /** @var array<string, self> */
     private static array $cache = [];
 
@@ -63,6 +70,7 @@ class StdPrcVsDilPricer
             'roi' => self::roiRules($saved['roi'] ?? null),
             'lmp' => self::ranges($saved['lmp'] ?? null, $defaults['lmp']),
             'moq_m' => self::ranges($saved['moq_m'] ?? null, $defaults['moq_m']),
+            'nroi_cap' => self::normalizeNroiCapRules($saved['nroi_cap'] ?? null),
             'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
         ];
 
@@ -127,8 +135,110 @@ class StdPrcVsDilPricer
         if (! ($price > 0)) {
             return null;
         }
+        $price = $this->applyNroiCap($price, $dil, $row);
 
         return $price > 0 ? $price : null;
+    }
+
+    /**
+     * NROI Cap: when the NROI at this price is above the Target NROI % of the SKU's Dil slab, lower the price
+     * to the one that lands on the target. It only ever lowers a price.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function applyNroiCap(float $price, float $dil, array $row): float
+    {
+        if (! in_array($this->channel, self::NROI_CAP_CHANNELS, true)) {
+            return $price;
+        }
+        $target = $this->nroiCapFor($dil);
+        if ($target === null) {
+            return $price;
+        }
+        $lp = (float) ($row['lp'] ?? $row['LP'] ?? $row['LP_productmaster'] ?? 0);
+        $margin = (float) ($row['margin'] ?? 0);
+        if ($margin > 1) {
+            $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1)) {
+            $margin = 0.80;
+        }
+        $ship = self::excludesShip($this->channel) ? 0.0 : (float) ($row['ship'] ?? 0);
+
+        return self::capPriceToNroi($price, $target, $lp, $margin, $ship);
+    }
+
+    /** Target NROI % of the Dil slab this value falls in. Null when the slab has no cap or no slab matches. */
+    private function nroiCapFor(float $dil): ?float
+    {
+        $rules = $this->rules['nroi_cap'] ?? [];
+        if ($rules === [] || $dil < 0) {
+            return null;
+        }
+        $last = count($rules) - 1;
+        foreach ($rules as $i => $rule) {
+            $min = (float) $rule['min'];
+            $max = (float) $rule['max'];
+            $hit = abs($max - $min) < 0.00001
+                ? abs($dil - $min) < 0.00001
+                : ($dil >= $min && ($i === $last ? $dil <= $max : $dil < $max));
+            if ($hit) {
+                return $rule['cap'] === null ? null : (float) $rule['cap'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * NROI at a price: ((price × (margin − ads)) − ship − LP) ÷ LP × 100.
+     * Returns the price unchanged when it is already at or under the target. Otherwise the price that gives the
+     * target, rounded DOWN to the cent so the NROI never ends up above it.
+     */
+    public static function capPriceToNroi(float $price, float $target, float $lp, float $margin, float $ship = 0.0, float $ads = 0.0): float
+    {
+        $net = $margin - $ads;
+        if (! ($price > 0) || ! ($lp > 0) || ! ($net > 0)) {
+            return $price;
+        }
+        $nroi = (($price * $net) - $ship - $lp) / $lp * 100;
+        if ($nroi <= $target + 0.00001) {
+            return $price;
+        }
+        $capped = floor((($lp * (1 + $target / 100) + $ship) / $net) * 100 + 0.00001) / 100;
+        if (! ($capped > 0) || $capped >= $price) {
+            return $price;
+        }
+
+        return $capped;
+    }
+
+    /**
+     * One row per Dil % slab: min, max and a Target NROI % cap (null = no cap for that slab).
+     *
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,cap:float|null}>
+     */
+    public static function normalizeNroiCapRules($incoming): array
+    {
+        if (! is_array($incoming)) {
+            return [];
+        }
+        $rules = [];
+        foreach ($incoming as $item) {
+            if (! is_array($item) || ! is_numeric($item['min'] ?? null) || ! is_numeric($item['max'] ?? null)) {
+                continue;
+            }
+            $min = (float) $item['min'];
+            $max = (float) $item['max'];
+            if ($max < $min) {
+                [$min, $max] = [$max, $min];
+            }
+            $cap = is_numeric($item['cap'] ?? null) ? round(min(9999, max(-100, (float) $item['cap'])), 2) : null;
+            $rules[] = ['min' => round($min, 2), 'max' => round($max, 2), 'cap' => $cap];
+        }
+
+        return $rules;
     }
 
     /**

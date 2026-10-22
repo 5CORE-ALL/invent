@@ -1427,7 +1427,7 @@ class Kernel extends ConsoleKernel
             // temu / temu2 auto-push removed: push only by button on /new-temu1 and /new-temu2.
             ['05:55', '21:55', 'dil:rule-sprice-apply temu3 --push', 'temu3-sprc-dil'],
             ['06:35', '22:35', 'dil:rule-sprice-apply doba', 'doba-sprc-dil'],
-            ['07:05', '23:05', 'dil:rule-sprice-apply wayfair --push', 'wayfair-sprc-dil'],
+            // wayfair: once a day only, see the 12:00 AM PT entry below.
             ['07:25', '23:25', 'dil:rule-sprice-apply fb_marketplace', 'fb-marketplace-sprc-dil'],
             ['07:35', '23:35', 'dil:rule-sprice-apply walmart --push', 'walmart-sprc-dil'],
             ['05:50', '21:50', 'macys:rule-sprice-apply --push', 'macys-sprc-dil'],
@@ -1460,10 +1460,21 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
-        // Every 30 minutes (was once a day at 05:00). The command skips when nothing changed
-        // and never re-uploads a file that is already queued / in progress / successful.
+        // Wayfair S PRC: save + push once a day at 12:00 AM Pacific. Every other run skips Wayfair;
+        // the /wayfair-pricing "Push now" button covers anything in between.
+        $schedule->command('dil:rule-sprice-apply wayfair --push --daily')
+            ->dailyAt('00:00')
+            ->timezone('America/Los_Angeles')
+            ->name('wayfair-sprc-dil-daily-12am-pt')
+            ->withoutOverlapping(180)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
+        // Once a day at 12:30 AM PT (after the S PRC push above). Was every 30 minutes.
+        // The command skips when nothing changed and never re-uploads a file that is already
+        // queued / in progress / successful.
         $schedule->command('wayfair:daily-price-upload')
-            ->cron((string) config('wayfair_upload.schedule_cron', '*/30 * * * *'))
+            ->cron((string) config('wayfair_upload.schedule_cron', '30 0 * * *'))
             ->timezone(config('app.timezone'))
             ->name('wayfair-daily-price-upload')
             ->withoutOverlapping(25)

@@ -1400,6 +1400,7 @@ class ChannelPromoPricingController extends Controller
                 'lmp' => $defaults['lmp'],
                 'moq_m' => $defaults['moq_m'],
                 'roi' => $defaults['roi'],
+                'nroi_cap' => [],
                 'zero_sold_disc' => $defaults['zero_sold_disc'],
             ]);
         }
@@ -1417,6 +1418,7 @@ class ChannelPromoPricingController extends Controller
             'lmp' => $this->normalizeStdPrcRanges($saved['lmp'] ?? null, $defaults['lmp']),
             'moq_m' => $this->normalizeStdPrcRanges($saved['moq_m'] ?? null, $defaults['moq_m']),
             'roi' => $this->normalizeStdPrcRoiRules($saved['roi'] ?? null, $defaults['roi']),
+            'nroi_cap' => $this->normalizeStdPrcNroiCap($saved['nroi_cap'] ?? null),
             'zero_sold_disc' => $this->normalizeZeroSoldDisc($saved['zero_sold_disc'] ?? null),
         ]);
     }
@@ -1428,6 +1430,10 @@ class ChannelPromoPricingController extends Controller
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);
         }
         $defaults = $this->defaultStdPrcVsDil();
+        // An old page that does not send nroi_cap must not wipe the caps already saved.
+        $existing = ChannelTabulatorColumnSetting::query()->where('channel_name', $channel.'_std_prc_vs_dil')->first();
+        $existingVis = is_array($existing?->visibility) ? $existing->visibility : [];
+        $nroiCapIn = $request->has('nroi_cap') ? $request->input('nroi_cap') : ($existingVis['nroi_cap'] ?? null);
         $payload = [
             'dil' => $this->normalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
             'age' => $this->normalizeStdPrcRanges($request->input('age'), $defaults['age']),
@@ -1439,11 +1445,12 @@ class ChannelPromoPricingController extends Controller
             'lmp' => $this->normalizeStdPrcRanges($request->input('lmp'), $defaults['lmp']),
             'moq_m' => $this->normalizeStdPrcRanges($request->input('moq_m'), $defaults['moq_m']),
             'roi' => $this->normalizeStdPrcRoiRules($request->input('roi'), $defaults['roi']),
+            'nroi_cap' => $this->normalizeStdPrcNroiCap($nroiCapIn),
             'zero_sold_disc' => $this->normalizeZeroSoldDisc($request->input('zero_sold_disc')),
         ];
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => $channel.'_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'pricing', 'lmp', 'moq_m', 'roi', 'zero_sold']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'pricing', 'lmp', 'moq_m', 'roi', 'zero_sold', 'nroi_cap']]
         );
 
         // S PRC on these channels is saved by the server job, not by the page. Re-save it now (no push) so the
@@ -1668,6 +1675,17 @@ class ChannelPromoPricingController extends Controller
      * @param  list<array<string,float>>  $fallback
      * @return list<array{min:float,max:float,dil_min:float,dil_max:float,disc:float}>
      */
+    /**
+     * NROI Cap: one row per Dil % slab with a Target NROI %. A blank / non-numeric cap means no cap for that slab.
+     *
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,cap:float|null}>
+     */
+    private function normalizeStdPrcNroiCap($incoming): array
+    {
+        return \App\Support\StdPrcVsDilPricer::normalizeNroiCapRules($incoming);
+    }
+
     private function normalizeStdPrcRoiRules($incoming, array $fallback): array
     {
         if (! is_array($incoming)) {

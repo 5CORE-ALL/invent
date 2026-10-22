@@ -33,7 +33,7 @@ class WayfairUploadHealthService
 
         return [
             'enabled' => app(WayfairUploadSettings::class)->enabled(),
-            'schedule_time' => (string) config('wayfair_upload.schedule_label', 'Every 30 min'),
+            'schedule_time' => (string) config('wayfair_upload.schedule_label', 'Daily 12:30 AM PT'),
             'timezone' => '',
             'mode' => (string) config('wayfair_upload.mode', 'browser'),
             'upload_url_configured' => trim((string) config('wayfair_upload.upload_url', '')) !== '',

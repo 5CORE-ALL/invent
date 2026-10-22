@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.@if(in_array(($channelPromoChannel ?? ''), \App\Support\StdPrcVsDilPricer::NROI_CAP_CHANNELS, true)) NROI Cap then lowers S PRC so a SKU's NROI does not go above the Target NROI % of its Dil slab.@endif</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -280,6 +280,15 @@
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-all"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Disc %</th><th class="text-center">Count</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
                         </div>
+                        @if(in_array(($channelPromoChannel ?? ''), \App\Support\StdPrcVsDilPricer::NROI_CAP_CHANNELS, true))
+                        <div class="ch-sp-col" data-ch-sp-panel="nroicap">
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Same Dil % slabs. Cap is the Target NROI %. After all discounts, a SKU whose NROI at S PRC is above the Cap of its Dil slab gets a lower S PRC that lands on the Cap. It only lowers prices. Leave the Cap blank to turn it off for that slab.">NROI Cap</div><button type="button" class="ch-sp-min-btn" title="Minimize NROI Cap" aria-label="Minimize NROI Cap">−</button></div>
+                            <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-nroicap"></canvas></div>
+                            <div class="ch-sp-pie-legend" id="ch-sp-leg-nroicap"></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">Dil from</th><th class="text-center">Dil to</th><th class="text-center">Capped</th><th class="text-end">Cap NROI %</th></tr></thead><tbody id="ch-sp-nroicap-tbody"></tbody></table></div>
+                            <div class="small text-muted mt-1">Capped = SKUs whose S PRC was lowered to hold the Target NROI %.</div>
+                        </div>
+                        @endif
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -328,6 +337,9 @@
         ];
         let chStdRoi = CH_STD_ROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdLmp = [];
+        // NROI Cap (Wayfair): one { min, max, cap } per Dil slab. cap = Target NROI %, null = off.
+        const CH_STD_NROI_CAP_CHANNELS = @json(\App\Support\StdPrcVsDilPricer::NROI_CAP_CHANNELS);
+        let chStdNroiCap = [];
         let chStdMoqM = CH_STD_MOQM_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdCvr = Object.assign({}, CH_STD_CVR_DEFAULT);
         let chStdReviewMax = 4;
@@ -743,6 +755,108 @@
             if (!chStdRowHasLmp(d) || !(chStdStockForAge(d) > 0)) return 0;
             return chStdRangeDisc(chStdDilPct(d), rules || chStdLmp);
         }
+        function chStdUsesNroiCap() {
+            return typeof CHANNEL_PROMO_CHANNEL === 'string' && CH_STD_NROI_CAP_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
+        }
+        function chStdNormCap(r) {
+            let min = Number(r && r.min), max = Number(r && r.max);
+            if (!isFinite(min) || !isFinite(max)) return null;
+            if (max < min) { const t = min; min = max; max = t; }
+            const raw = r ? r.cap : null;
+            let cap = (raw === null || raw === undefined || raw === '') ? NaN : Number(raw);
+            cap = isFinite(cap) ? Math.min(9999, Math.max(-100, cap)) : null;
+            return { min: min, max: max, cap: cap };
+        }
+        /** NROI Cap rows follow the Dil slabs. The Cap stays on the same row when a Dil From/To is edited. */
+        function chStdAlignNroiCap(dilRules) {
+            if (!chStdUsesNroiCap()) return [];
+            const prev = [];
+            $('#ch-sp-nroicap-tbody tr').each(function() {
+                prev.push($(this).find('.ch-sp-nroicap-cap').val());
+            });
+            const next = (dilRules || []).map(function(r, i) {
+                let cap = prev[i];
+                if (cap == null) {
+                    const saved = (chStdNroiCap || []).find(function(s) {
+                        return s && Number(s.min) === Number(r.min) && Number(s.max) === Number(r.max);
+                    });
+                    cap = saved && saved.cap != null ? saved.cap : '';
+                }
+                return chStdNormCap({ min: r.min, max: r.max, cap: cap });
+            });
+            const $tb = $('#ch-sp-nroicap-tbody');
+            let same = $tb.find('tr').length === next.length;
+            if (same) {
+                $tb.find('tr').each(function(i) {
+                    if (String($(this).attr('data-min')) !== String(next[i].min) || String($(this).attr('data-max')) !== String(next[i].max)) same = false;
+                });
+            }
+            if (!same) {
+                $tb.html(next.map(function(rule) {
+                    return '<tr data-min="' + chStdEsc(rule.min) + '" data-max="' + chStdEsc(rule.max) + '">'
+                        + '<td class="text-center">' + chStdEsc(rule.min) + '</td>'
+                        + '<td class="text-center">' + chStdEsc(rule.max) + '</td>'
+                        + '<td class="ch-sp-count ch-sp-nroicap-count">0</td>'
+                        + '<td class="text-end"><input type="number" min="-100" step="0.1" placeholder="off" class="form-control form-control-sm ch-sp-input ch-sp-nroicap-cap" value="' + chStdEsc(rule.cap == null ? '' : rule.cap) + '"></td>'
+                        + '</tr>';
+                }).join(''));
+            }
+            return next;
+        }
+        function chStdNroiCapRulesLive() {
+            if (!chStdUsesNroiCap()) return [];
+            const modal = document.getElementById('chStdPrcModal');
+            if (modal && modal.classList.contains('show')) {
+                const dil = chStdReadRanges('#ch-sp-dil-tbody', '.ch-sp-dil-min', '.ch-sp-dil-max', '.ch-sp-dil-disc');
+                const rows = $('#ch-sp-nroicap-tbody tr');
+                if (dil.length && rows.length === dil.length) {
+                    const rules = [];
+                    rows.each(function(i) {
+                        rules.push(chStdNormCap({ min: dil[i].min, max: dil[i].max, cap: $(this).find('.ch-sp-nroicap-cap').val() }));
+                    });
+                    return rules;
+                }
+            }
+            return chStdNroiCap;
+        }
+        /** Target NROI % of the Dil slab this SKU is in. Null = no cap. Slab edges match the Dil Disc slabs. */
+        function chStdNroiCapSlab(d, rules) {
+            if (!chStdUsesNroiCap()) return -1;
+            const n = Number(chStdDilPct(d));
+            if (!isFinite(n) || n < 0 || !rules || !rules.length) return -1;
+            const last = rules.length - 1;
+            for (let i = 0; i < rules.length; i++) {
+                const r = rules[i];
+                if (!r) continue;
+                const min = Number(r.min), max = Number(r.max);
+                if (!isFinite(min) || !isFinite(max)) continue;
+                const hit = Math.abs(max - min) < 0.00001 ? Math.abs(n - min) < 0.00001 : (n >= min && (i === last ? n <= max : n < max));
+                if (hit) return i;
+            }
+            return -1;
+        }
+        /**
+         * Lower a price that has an NROI above the Target NROI % of its Dil slab to the price that lands on the target.
+         * NROI = ((price x margin) - ship - LP) / LP. Wayfair has no ads. Rounded down to the cent. Never raises a price.
+         * Same math as StdPrcVsDilPricer::capPriceToNroi on the server.
+         */
+        function chStdApplyNroiCap(d, price, rules) {
+            const p = Number(price);
+            if (!chStdUsesNroiCap() || !(p > 0)) return price;
+            rules = rules || chStdNroiCap;
+            const idx = chStdNroiCapSlab(d, rules);
+            if (idx < 0 || rules[idx].cap == null) return price;
+            const target = Number(rules[idx].cap);
+            const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
+            const margin = chStdMargin(d);
+            const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
+            if (!(lp > 0) || !(margin > 0)) return price;
+            const nroi = (((p * margin) - ship - lp) / lp) * 100;
+            if (nroi <= target + 0.00001) return price;
+            const capped = Math.floor((((lp * (1 + target / 100)) + ship) / margin) * 100 + 0.00001) / 100;
+            return (capped > 0 && capped < p) ? capped : price;
+        }
+        window.chStdApplyNroiCap = chStdApplyNroiCap;
         /** Dil MOQ % = OV L30 ÷ (MOQ ÷ 4). Same number as the Dil MOQ column. */
         function chStdRowDilMoqPct(d) {
             const moq = Number(d && d.moq);
@@ -906,6 +1020,7 @@
                 }),
             };
             draft.lmp = chStdAlignLmp(draft.dil);
+            draft.nroiCap = chStdAlignNroiCap(draft.dil);
             return draft;
         }
         function chStdRoiRow(rule) {
@@ -1010,6 +1125,9 @@
             const dilCounts = { outside: 0 }, ageCounts = { none: 0 }, revCounts = { none: 0 }, bussCounts = { outside: 0 }, pricingCounts = { outside: 0 }, roiCounts = { outside: 0 };
             const lmpCounts = { outside: 0 };
             const moqMCounts = { outside: 0 };
+            const nroiCapOn = chStdUsesNroiCap();
+            const nroiCapCounts = { off: 0 };
+            (draft.nroiCap || []).forEach(function(r, i) { nroiCapCounts['n' + i] = 0; });
             const cvrCounts = { down2: 0, down: 0, flat: 0, up: 0, up2: 0 };
             draft.dil.forEach(function(r, i) { dilCounts['d' + i] = 0; });
             draft.age.forEach(function(r, i) { ageCounts['a' + i] = 0; });
@@ -1106,7 +1224,17 @@
                     sumPctCounts[sumKey] = (sumPctCounts[sumKey] || 0) + 1;
                 }
                 if (std > 0) {
-                    const sprice = Math.round((std * (1 - sum / 100) - chStdShipOff(d)) * 100) / 100;
+                    let sprice = Math.round((std * (1 - sum / 100) - chStdShipOff(d)) * 100) / 100;
+                    if (nroiCapOn) {
+                        const capIdx = chStdNroiCapSlab(d, draft.nroiCap);
+                        const cappedPrice = chStdApplyNroiCap(d, sprice, draft.nroiCap);
+                        if (capIdx >= 0 && cappedPrice < sprice) {
+                            nroiCapCounts['n' + capIdx] += 1;
+                            sprice = cappedPrice;
+                        } else {
+                            nroiCapCounts.off += 1;
+                        }
+                    }
                     const lp = (typeof chPromoLp === 'function') ? chPromoLp(d) : 0;
                     const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? chPromoShipCost(d) : 0);
                     const gross = (sprice * chStdMargin(d)) - ship - lp;
@@ -1185,6 +1313,7 @@
             $('#ch-sp-zs-count').text(zsCounts.zero);
             $('#ch-sp-roi-tbody tr').each(function(i) { $(this).find('.ch-sp-roi-count').text(roiCounts['o' + i] || 0); });
             $('#ch-sp-lmp-tbody tr').each(function(i) { $(this).find('.ch-sp-lmp-count').text(lmpCounts['m' + i] || 0); });
+            $('#ch-sp-nroicap-tbody tr').each(function(i) { $(this).find('.ch-sp-nroicap-count').text(nroiCapCounts['n' + i] || 0); });
             $('#ch-sp-moqm-tbody tr').each(function(i) {
                 const rule = (draft.moqM || [])[i];
                 $(this).find('.ch-sp-moqm-count').text(moqMCounts['q' + i] || 0);
@@ -1216,6 +1345,7 @@
             // SKU count per discount type (bars + legend count). $ off is shown next to it, not a percentage.
             const allCounts = { age: skuHits.age, dil: skuHits.dil, cvr: skuHits.cvr, rev: skuHits.rev, buss: skuHits.buss, pricing: skuHits.pricing, roi: skuHits.roi, zs: skuHits.zs, lmp: skuHits.lmp, moqm: skuHits.moqm };
             const lmpSlices = (draft.lmp || []).map(function(r, i) { return { key: 'm' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
+            const nroiCapSlices = (draft.nroiCap || []).map(function(r, i) { return { key: 'n' + i, label: r.min + '–' + r.max + (r.cap == null ? ' · off' : ' · ' + r.cap + '%'), color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'off', label: 'Not capped', color: '#cbd5e1' }]);
             const moqMSlices = (draft.moqM || []).map(function(r, i) { return { key: 'q' + i, label: r.min + '–' + r.max, color: CH_STD_COLORS[i % CH_STD_COLORS.length] }; }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
             const zsSlices = [
                 { key: 'zero', label: '0 sold', color: '#f59e0b' },
@@ -1232,6 +1362,7 @@
             chStdLegend('#ch-sp-leg-age', ageSlices, ageCounts, 'age');
             chStdLegend('#ch-sp-leg-lmp', lmpSlices, lmpCounts, 'lmp');
             chStdLegend('#ch-sp-leg-moqm', moqMSlices, moqMCounts, 'moqm');
+            if (nroiCapOn) chStdLegend('#ch-sp-leg-nroicap', nroiCapSlices, nroiCapCounts, 'nroicap');
             chStdLegend('#ch-sp-leg-all', allSlices, allCounts, 'all', dollars);
             chStdDrawBars([
                 { id: 'ch-sp-pie-dil', slices: dilSlices, counts: dilCounts },
@@ -1245,7 +1376,7 @@
                 { id: 'ch-sp-pie-lmp', slices: lmpSlices, counts: lmpCounts },
                 { id: 'ch-sp-pie-moqm', slices: moqMSlices, counts: moqMCounts },
                 { id: 'ch-sp-pie-all', slices: allSlices, counts: allCounts },
-            ]);
+            ].concat(nroiCapOn ? [{ id: 'ch-sp-pie-nroicap', slices: nroiCapSlices, counts: nroiCapCounts }] : []));
             // Disc % wise: total (Sum disc) % per SKU -> number of SKUs at that %.
             const body = Object.keys(sumPctCounts).sort(function(a, b) { return Number(a) - Number(b); }).map(function(k) {
                 return '<tr><td>' + k + '%</td><td class="text-center">' + sumPctCounts[k] + '</td></tr>';
@@ -1290,6 +1421,8 @@
             $('#ch-sp-pricing-tbody').html(chStdPricing.map(function(r) { return chStdRangeRow('ch-sp-pricing', r); }).join(''));
             $('#ch-sp-roi-tbody').html(chStdRoi.map(function(r) { return chStdRoiRow(r); }).join(''));
             $('#ch-sp-moqm-tbody').html((chStdMoqM.length ? chStdMoqM : CH_STD_MOQM_DEFAULTS).map(function(r) { return chStdMoqMRow(r); }).join(''));
+            // Rebuilt from the saved caps by chStdAlignNroiCap on the refresh below.
+            $('#ch-sp-nroicap-tbody').empty();
             $('#ch-sp-zs-disc').val(chStdZeroSoldDisc);
             $('#ch-sp-review-max').val(chStdReviewMax);
             const cfg = chStdNormCvr(chStdCvr);
@@ -1314,6 +1447,7 @@
                 chStdPricing = (res.pricing || CH_STD_BUSS_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdRoi = (res.roi || CH_STD_ROI_DEFAULTS).map(chStdNormRoi).filter(Boolean);
                 chStdLmp = (res.lmp || []).map(chStdNormRange).filter(Boolean);
+                chStdNroiCap = (res.nroi_cap || []).map(chStdNormCap).filter(Boolean);
                 chStdMoqM = (res.moq_m || CH_STD_MOQM_DEFAULTS).map(chStdNormRange).filter(Boolean);
                 chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(-100, Number(res.zero_sold_disc))) : 0;
                 chStdCvr = chStdNormCvr(res.cvr);
@@ -1383,7 +1517,7 @@
                 .fail(function() { draw([]); });
         }
         function chStdDraftNow() {
-            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, pricing: chStdPricing, roi: chStdRoi, zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
+            return { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBuss, pricing: chStdPricing, roi: chStdRoi, zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive(), nroiCap: chStdNroiCapRulesLive() };
         }
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
@@ -1746,6 +1880,8 @@
             let raw = std * (1 - Math.min(99.99, sum) / 100);
             raw -= chStdShipOff(d);
             if (!(raw > 0)) return 0;
+            // NROI Cap: after all discounts, never let NROI go above the Target NROI % of the SKU's Dil slab.
+            if (chStdUsesNroiCap()) raw = chStdApplyNroiCap(d, raw, (draft && draft.nroiCap) || chStdNroiCapRulesLive());
             if (chStdIsEbay()) raw = chStdEbayCap(d, raw);
             if (!(raw > 0)) return 0;
             return (typeof chPromoRoundChannelSprice === 'function')
@@ -2209,7 +2345,7 @@
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, pricing: draft.pricing, roi: draft.roi, lmp: draft.lmp, moq_m: draft.moqM, zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, pricing: draft.pricing, roi: draft.roi, lmp: draft.lmp, moq_m: draft.moqM, nroi_cap: (draft.nroiCap || []).map(function(r) { return { min: r.min, max: r.max, cap: r.cap == null ? '' : r.cap }; }), zero_sold_disc: draft.zeroSoldDisc },
             }).done(function(res) {
                 if (res && res.dil) chStdDil = res.dil.map(chStdNormRange).filter(Boolean);
                 if (res && res.age) chStdAge = res.age.map(chStdNormRange).filter(Boolean);
@@ -2218,6 +2354,7 @@
                 if (res && res.pricing) chStdPricing = res.pricing.map(chStdNormRange).filter(Boolean);
                 if (res && res.roi) chStdRoi = res.roi.map(chStdNormRoi).filter(Boolean);
                 if (res && res.lmp) chStdLmp = res.lmp.map(chStdNormRange).filter(Boolean);
+                if (res && res.nroi_cap) chStdNroiCap = res.nroi_cap.map(chStdNormCap).filter(Boolean);
                 if (res && res.moq_m) chStdMoqM = res.moq_m.map(chStdNormRange).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(-100, Number(res.zero_sold_disc)));
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);

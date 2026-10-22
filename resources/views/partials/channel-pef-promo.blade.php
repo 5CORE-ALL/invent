@@ -23,6 +23,12 @@
     $channelPromoUsesAmazonDilPrmt = in_array($channelPromoChannel, ['tiktok', 'tiktok2', 'fb_marketplace'], true);
     $channelPromoUsesAmazonCvrDisc = false;
     $channelPromoPageReloadPushEnabled = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::isPageReloadPushEnabled($channelPromoChannel);
+    // Wayfair never pushes by itself from the page. The server pushes once a day (12:00 AM PT)
+    // and the "Push now" button pushes on demand.
+    $channelPromoManualPushOnly = strtolower((string) $channelPromoChannel) === 'wayfair';
+    if ($channelPromoManualPushOnly) {
+        $channelPromoPageReloadPushEnabled = false;
+    }
     $channelPromoIgnoreNegSnroi = \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::ignoreNegativeSnroiPush($channelPromoChannel);
     $channelPromoTakehome = ($channelPromoPart === 'script' || $channelPromoPart === 'all')
         ? \App\Models\MarketplacePercentage::takeHomeForPromoChannel($channelPromoChannel)
@@ -613,6 +619,14 @@
         @unless(strtolower((string) ($channelPromoChannel ?? 'ebay1')) === 'ebay2op')
         @push('page-title-after')
             <div class="ch-promo-reload-push-cluster" id="ch-promo-reload-push-cluster">
+                @if($channelPromoManualPushOnly)
+                <button type="button" class="btn btn-sm btn-primary" id="ch-promo-manual-push-btn"
+                    title="Push every S PRC that differs from the current Price now. The same push also runs automatically once a day at 12:00 AM PT. Price edits and page reloads never push by themselves.">
+                    <i class="fas fa-paper-plane"></i> Push now
+                </button>
+                <span class="small text-muted text-nowrap" id="ch-promo-daily-push-note"
+                    title="Automatic push: once a day at 12:00 AM Pacific Time">Auto: daily 12:00 AM PT</span>
+                @else
                 <label class="ch-promo-reload-push-switch{{ $channelPromoPageReloadPushEnabled ? '' : ' is-off' }}"
                     id="ch-promo-reload-push-wrap"
                     title="When ON, changing a price auto-pushes only those edited SKUs, then pulls live Price for those SKUs only. When OFF, price edits only save. Reload never pushes the whole catalog. Daily cron still pushes either way.">
@@ -623,6 +637,7 @@
                     <input type="checkbox" role="switch" id="ch-promo-reload-push-switch"
                         {{ $channelPromoPageReloadPushEnabled ? 'checked' : '' }}>
                 </label>
+                @endif
                 <div id="ch-promo-reload-push-progress" class="ch-promo-reload-push-progress"
                     aria-live="polite" title="S PRC push progress">
                     <div class="ch-promo-reload-push-progress-track">
@@ -9959,10 +9974,38 @@
             chPromoTryQueueAfterSlabs();
         }, 4000);
         /** Calc + store S PRC after Dil/CVR slabs load (Amazon-style). Live push stays off on local. */
+        /** Wayfair: pushes are allowed only while a "Push now" run is active (see chPromoStartManualPush). */
+        let chPromoManualPushUntil = 0;
         function chPromoPageReloadPushAllowed() {
+            if (Date.now() < chPromoManualPushUntil) return true;
             return chPromoPageReloadPushEnabled !== false;
         }
         window.chPromoPageReloadPushAllowed = chPromoPageReloadPushAllowed;
+        function chPromoStartManualPush() {
+            const $btn = $('#ch-promo-manual-push-btn');
+            if (!$btn.length || $btn.prop('disabled')) return;
+            const tbl = chPromoSafeTable();
+            if (typeof window.scanAndQueueChannelPushSprice !== 'function' || (!tbl && !(window.allTableData && window.allTableData.length))) {
+                if (typeof chPromoToast === 'function') chPromoToast('error', 'Table is still loading. Try again in a moment.');
+                return;
+            }
+            if (!confirm('Push every S PRC that differs from the current Price now?')) return;
+            const startedAt = Date.now();
+            chPromoManualPushUntil = startedAt + 10 * 60 * 1000;
+            window._chPushSpriceLeftoverPasses = 0;
+            $btn.prop('disabled', true);
+            window.scanAndQueueChannelPushSprice(tbl, { catalog: true, once: false, silent: false });
+            // Pushing is allowed only for this run: close the window once the progress bar goes idle.
+            const timer = setInterval(function() {
+                const busy = $('#ch-promo-reload-push-progress').hasClass('is-busy');
+                if ((!busy && Date.now() - startedAt > 15000) || Date.now() > chPromoManualPushUntil) {
+                    clearInterval(timer);
+                    chPromoManualPushUntil = 0;
+                    $btn.prop('disabled', false);
+                }
+            }, 1000);
+        }
+        $(document).on('click', '#ch-promo-manual-push-btn', chPromoStartManualPush);
         function syncChPromoReloadPushSwitchUi() {
             const on = chPromoPageReloadPushAllowed();
             const $wrap = $('#ch-promo-reload-push-wrap');

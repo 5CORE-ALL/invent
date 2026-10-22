@@ -432,4 +432,63 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(90.0, $pricer->priceFromRow($row + ['moq' => 12, 'ov_l30' => 7]));
         $this->assertSame(100.0, $pricer->priceFromRow($row + ['ov_l30' => 7]));
     }
+
+    public function test_cap_price_to_nroi_lowers_only_and_floors_to_the_cent(): void
+    {
+        // LP 50, margin 0.95: price 100 → NROI (95 − 50) / 50 = 90%. Target 60% → (50 × 1.6) / 0.95 = 84.2105… → 84.21.
+        $this->assertSame(84.21, StdPrcVsDilPricer::capPriceToNroi(100.0, 60.0, 50.0, 0.95));
+        // NROI at 84.21 is 59.99…%, never above the target.
+        $this->assertLessThanOrEqual(60.0, ((84.21 * 0.95) - 50) / 50 * 100);
+        // Already under the target: unchanged. A cap never raises a price.
+        $this->assertSame(70.0, StdPrcVsDilPricer::capPriceToNroi(70.0, 60.0, 50.0, 0.95));
+        // Exactly on target: unchanged.
+        $this->assertSame(80.0, StdPrcVsDilPricer::capPriceToNroi(80.0, 52.0, 50.0, 0.95));
+        // No LP: nothing to cap against.
+        $this->assertSame(100.0, StdPrcVsDilPricer::capPriceToNroi(100.0, 60.0, 0.0, 0.95));
+        // Ship counts when the channel pays it: (LP × 1.6 + 5) / 0.95.
+        $this->assertSame(89.47, StdPrcVsDilPricer::capPriceToNroi(100.0, 60.0, 50.0, 0.95, 5.0));
+    }
+
+    public function test_nroi_cap_rules_are_normalized(): void
+    {
+        $rules = StdPrcVsDilPricer::normalizeNroiCapRules([
+            ['min' => '0', 'max' => '10', 'cap' => '60'],
+            ['min' => '30', 'max' => '20', 'cap' => ''],
+            ['min' => 'x', 'max' => '5', 'cap' => '1'],
+            'nope',
+        ]);
+
+        $this->assertSame([
+            ['min' => 0.0, 'max' => 10.0, 'cap' => 60.0],
+            ['min' => 20.0, 'max' => 30.0, 'cap' => null],
+        ], $rules);
+        $this->assertSame([], StdPrcVsDilPricer::normalizeNroiCapRules(null));
+    }
+
+    public function test_nroi_cap_lowers_the_price_by_dil_slab_on_wayfair_only(): void
+    {
+        $rules = [
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 0, 'down_lt' => 7, 'down_disc' => 0,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'nroi_cap' => [
+                ['min' => 0, 'max' => 20, 'cap' => 60],
+                ['min' => 20, 'max' => 100, 'cap' => null],
+            ],
+        ];
+        $row = ['inv' => 1, 'std_price' => 100, 'cvr' => 8, 'cvr_60' => 8, 'sold' => 1, 'lp' => 50, 'margin' => 0.95];
+
+        $wayfair = new StdPrcVsDilPricer($rules, 'wayfair');
+        // Dil 10 is in the 60% cap slab: 100 → 84.21.
+        $this->assertSame(84.21, $wayfair->priceFromRow($row + ['dil' => 10]));
+        // Dil 50 is in a slab with no cap.
+        $this->assertSame(100.0, $wayfair->priceFromRow($row + ['dil' => 50]));
+        // Other channels have no NROI Cap.
+        $this->assertSame(100.0, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row + ['dil' => 10]));
+    }
 }

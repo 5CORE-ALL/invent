@@ -2,13 +2,15 @@
 
 namespace App\Console\Commands;
 
+use App\Services\DilRuleSpriceApplyService;
 use App\Services\Support\ChannelPushSpriceDailyEnqueue;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 
 class EnqueueDailyChannelPushSprice extends Command
 {
-    protected $signature = 'channel:push-sprice-daily {channel=all : ebay1, ebay2, ebay3, dil, or a single channel}';
+    protected $signature = 'channel:push-sprice-daily {channel=all : ebay1, ebay2, ebay3, dil, or a single channel}
+        {--daily : The once-a-day run. Required for Wayfair; other runs skip it}';
 
     protected $description = 'Once-daily: queue S PRC → live listing price for listed SKUs (no page needed)';
 
@@ -36,6 +38,16 @@ class EnqueueDailyChannelPushSprice extends Command
     {
         $arg = strtolower(trim((string) $this->argument('channel'))) ?: 'all';
         $channels = ChannelPushSpriceDailyEnqueue::channelsFromArg($arg);
+        if ($channels !== [] && ! $this->option('daily')) {
+            $skipped = array_values(array_intersect($channels, DilRuleSpriceApplyService::DAILY_ONLY_CHANNELS));
+            if ($skipped !== []) {
+                $channels = array_values(array_diff($channels, $skipped));
+                $this->line(strtoupper(implode(', ', $skipped)).': runs once a day (12:00 AM PT) or by its Push button — skipped.');
+                if ($channels === []) {
+                    return self::SUCCESS;
+                }
+            }
+        }
         if ($channels === []) {
             $this->error('Unsupported channel. Use ebay1, ebay2, ebay3, dil, or a Dil push channel.');
 

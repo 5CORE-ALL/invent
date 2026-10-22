@@ -68,6 +68,12 @@ class DilRuleSpriceApplyService
         'walmart',
     ];
 
+    /**
+     * Channels that run once a day only (the scheduled `--daily` call at 12:00 AM PT) or from the
+     * page's Push button. Every other cron / "all" run skips them.
+     */
+    public const DAILY_ONLY_CHANNELS = ['wayfair'];
+
     private readonly string $channel;
 
     private bool $applyStdPrcVsDil = false;
