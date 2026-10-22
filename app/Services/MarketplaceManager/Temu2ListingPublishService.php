@@ -697,25 +697,75 @@ class Temu2ListingPublishService
                 'weightUnit' => $this->v1WeightUnit($pkg['weightUnit'] ?? 2),
                 'volumeUnit' => $this->v1VolumeUnit($pkg['volumeUnit'] ?? 2),
             ];
-            if (is_array($price['basePrice'] ?? null)) {
-                $sku['basePrice'] = $price['basePrice'];
+            $money = $this->v1Money($price);
+            if ($money['basePrice'] !== null) {
+                $sku['basePrice'] = $money['basePrice'];
             }
-            if (is_array($price['listPrice'] ?? null)) {
-                $sku['listPrice'] = $price['listPrice'];
-            }
-            if (isset($price['listPriceType'])) {
-                $sku['listPriceType'] = (int) $price['listPriceType'];
+            if ($money['listPrice'] !== null) {
+                $sku['listPrice'] = $money['listPrice'];
+                $sku['listPriceType'] = 1;
             }
             $skuList[] = $sku;
         }
         $v1['skuList'] = $skuList;
 
         $data = $this->temuCallBody($v1, 120);
+        if (! ($data['success'] ?? false) && $this->isPriceTypeError($data)) {
+            foreach ($v1['skuList'] as $index => $sku) {
+                if (! is_array($sku)) {
+                    continue;
+                }
+                foreach (['basePrice', 'listPrice'] as $key) {
+                    if (! is_array($sku[$key] ?? null)) {
+                        continue;
+                    }
+                    $amount = $sku[$key]['amount'] ?? null;
+                    if (is_numeric($amount)) {
+                        $v1['skuList'][$index][$key]['amount'] = (float) number_format((float) $amount, 2, '.', '');
+                    }
+                }
+            }
+            $data = $this->temuCallBody($v1, 120);
+        }
 
         return [
             'success' => (bool) ($data['success'] ?? false),
             'data' => $data,
         ];
+    }
+
+    /**
+     * bg.local.goods.add prices are {amount, currency}. listPriceType 1 means the list price is set.
+     *
+     * @param  array<string, mixed>  $price
+     * @return array{basePrice: ?array{amount: string, currency: string}, listPrice: ?array{amount: string, currency: string}}
+     */
+    private function v1Money(array $price): array
+    {
+        $currency = strtoupper(trim((string) ($price['basePrice']['currency'] ?? $price['listPrice']['currency'] ?? 'USD'))) ?: 'USD';
+        $base = is_array($price['basePrice'] ?? null) ? (float) ($price['basePrice']['amount'] ?? 0) : 0.0;
+        $list = is_array($price['listPrice'] ?? null) ? (float) ($price['listPrice']['amount'] ?? 0) : 0.0;
+        if ($base <= 0) {
+            return ['basePrice' => null, 'listPrice' => null];
+        }
+        if ($list <= $base) {
+            $list = round($base + 1, 2);
+        }
+
+        return [
+            'basePrice' => ['amount' => number_format($base, 2, '.', ''), 'currency' => $currency],
+            'listPrice' => ['amount' => number_format($list, 2, '.', ''), 'currency' => $currency],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function isPriceTypeError(array $data): bool
+    {
+        $msg = strtolower(trim((string) ($data['errorMsg'] ?? $data['message'] ?? '')));
+
+        return str_contains($msg, 'baseprice type error') || str_contains($msg, 'listprice type error');
     }
 
     /**
