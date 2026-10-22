@@ -331,11 +331,11 @@ class BestBuySprcDilAutoPushService
         }
 
         // LMP cap (SGROI at LMP ≥ 20%), Std Prc is the maximum.
-        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, max($std, $effective));
+        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
-        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), 0.0, max($std, $effective));
+        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp(round($effective, 2), 0.0, $std);
 
         // Amz rule: S PRC is never below the Amazon price (A Price). It wins over the LMP cap.
         $amz = round((float) ($row['amz'] ?? 0), 2);

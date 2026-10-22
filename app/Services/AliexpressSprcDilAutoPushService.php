@@ -224,7 +224,7 @@ class AliexpressSprcDilAutoPushService
             return null;
         }
 
-        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, max($std, $effective));
+        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;

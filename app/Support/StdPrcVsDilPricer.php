@@ -122,7 +122,7 @@ class StdPrcVsDilPricer
             $dilMoq = (float) round(($ovL30 / ($moq / 4)) * 100);
             $moqMDisc = self::scaleRuleDisc($this->rangeDisc($dilMoq, $this->rules['moq_m'] ?? []), $std);
         }
-        $sum = min(99.99, max(-100, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $pricingDisc + $roiDisc + $zeroSoldDisc + $lmpDisc + $moqMDisc));
+        $sum = min(99.99, max(0, $ageDisc + $dilDisc + $cvrDisc + $reviewDisc + $bussDisc + $pricingDisc + $roiDisc + $zeroSoldDisc + $lmpDisc + $moqMDisc));
         $price = round($std * (1 - $sum / 100), 2);
         if (! ($price > 0)) {
             return null;

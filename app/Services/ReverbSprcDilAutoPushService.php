@@ -199,7 +199,7 @@ class ReverbSprcDilAutoPushService
         }
 
         // Only the LMP cap (no eBay / Amazon caps). Std Prc is the maximum.
-        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, max($std, $effective));
+        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;

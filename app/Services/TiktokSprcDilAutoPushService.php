@@ -309,7 +309,7 @@ class TiktokSprcDilAutoPushService
         }
 
         // Same cap order as Amazon: LMP cap (SGROI at LMP ≥ 20%), then Std Prc is the maximum.
-        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, max($std, $effective));
+        $capped = AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std);
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;

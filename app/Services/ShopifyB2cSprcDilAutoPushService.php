@@ -200,8 +200,8 @@ class ShopifyB2cSprcDilAutoPushService
         //       - capped price at/below A Price    → S PRC = A Price
         $amz = round((float) ($row['amz'] ?? 0), 2);
         $effective = round($effective, 2);
-        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, max($std, $effective));
-        $capped = round(AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, max($std, $effective)), 2);
+        $uncapped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
+        $capped = round(AmazonDilGroiRule::capSpriceToLmp($effective, $lmp, $lp, $ship, $margin, $std), 2);
         $lmpCapped = $lmp > 0
             && ($effective - $capped) > 0.009
             && abs($capped - round($lmp, 2)) <= 0.02;
