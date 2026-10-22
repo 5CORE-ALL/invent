@@ -406,7 +406,7 @@ class ListingManagerPublishStatus
 
         if ($isEbay) {
             $categoryId = trim((string) ($details['primary_category_id'] ?? $details['category_id'] ?? ''));
-            if ($categoryId === '') {
+            if ($categoryId === '' || ! preg_match('/^\d+$/', $categoryId)) {
                 $tabErrors['category'][] = 'Primary category is required.';
             }
             $condition = trim((string) ($details['condition'] ?? ''));

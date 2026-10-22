@@ -74,4 +74,19 @@ class TemuListingPublishService extends Temu2ListingPublishService
     {
         return ['listing_channel_counts_v1:temu'];
     }
+
+    /**
+     * Temu 1's seller token is authorized for the older local add API.
+     * temu.local.goods.v2.add returns 3000032 on this shop.
+     *
+     * @return list<string>
+     */
+    protected function goodsAddTypes(): array
+    {
+        return [
+            'bg.local.goods.add',
+            'temu.local.goods.add',
+            'temu.local.goods.v2.add',
+        ];
+    }
 }

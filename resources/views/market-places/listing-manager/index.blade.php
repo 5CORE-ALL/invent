@@ -3174,7 +3174,7 @@
         const channel = String((currentDraft && currentDraft.channel) || '').toLowerCase();
         const isEbay = /ebay/.test(channel);
         if (isEbay) {
-            if (!d.primary_category_id) errors.category.push('Category');
+            if (!/^\d+$/.test(String(d.primary_category_id || ''))) errors.category.push('Category');
             if (!d.condition) errors.category.push('Condition');
             if (!isEbay1Channel(channel) && !isEbay3Channel(channel)) {
                 if (!d.shipping_policy_id) errors.policies.push('Shipping');
@@ -3585,7 +3585,11 @@
         return fallback || 'default';
     }
 
-    function searchCategories(q) {
+    function isEbayNumericCategory(id) {
+        return /^\d+$/.test(String(id || '').trim());
+    }
+
+    function searchCategories(q, opts) {
         const $box = $('#lc-category-results');
         const channel = (currentDraft && currentDraft.channel) || '';
         let family = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
@@ -3668,7 +3672,10 @@
                     renderWayfairClassPicker(res || {});
                     return;
                 }
-                const rows = res.categories || [];
+                let rows = res.categories || [];
+                if (family === 'ebay') {
+                    rows = rows.filter(r => isEbayNumericCategory(r.id));
+                }
                 if (!rows.length) {
                     $box.html(`<div class="text-muted small p-3">${escapeHtml(res.message || 'No categories found.')}</div>`);
                     return;
@@ -3680,6 +3687,11 @@
                         ${r.restricted ? '<span class="badge bg-secondary ms-1">Restricted</span>' : ''}
                     </button>
                 `).join(''));
+                if (opts && opts.autoPick && family === 'ebay' && rows[0] && !isEbayNumericCategory($('#lc-category-id').val())) {
+                    $('#lc-category-id, #lc-category-id-visible').val(String(rows[0].id));
+                    $('#lc-category-path-input, #lc-category-path-visible').val(String(rows[0].path || ''));
+                    refreshEditorUi(currentDraft);
+                }
             },
             error: function (xhr, status) {
                 if (status === 'abort') return;
@@ -3849,8 +3861,13 @@
         $('#lc-price').val(draft.price != null ? draft.price : '');
         $('#lc-qty').val(draft.quantity != null ? draft.quantity : '');
         $('#lc-best-offer').prop('checked', isEbay3Channel(draft && draft.channel) ? false : !!d.best_offer);
-        $('#lc-category-id').val(d.primary_category_id || d.category_uuid || '');
-        $('#lc-category-path-input').val(d.primary_category_path || d.category_name || d.category || '');
+        $('#lc-category-search').val('');
+        $('#lc-category-results').empty();
+        const savedCategoryId = String(d.primary_category_id || d.category_uuid || '').trim();
+        const openingFamily = String((draft.editor && draft.editor.family) || editorFamilyFromChannel(draft.channel || '', '') || '');
+        const ebayCategoryId = openingFamily === 'ebay' && !isEbayNumericCategory(savedCategoryId) ? '' : savedCategoryId;
+        $('#lc-category-id').val(ebayCategoryId);
+        $('#lc-category-path-input').val(ebayCategoryId ? (d.primary_category_path || d.category_name || d.category || '') : (openingFamily === 'ebay' ? '' : (d.primary_category_path || d.category_name || d.category || '')));
         $('#lc-secondary-category-id').val(d.secondary_category_id || '');
         $('#lc-condition').val('New');
         $('#lc-condition-desc').val(d.condition_description || '');
@@ -3907,9 +3924,9 @@
                 $('#lc-category-path-input').val(amazonType);
             }
         }
-        $('#lc-category-id-visible').val(d.primary_category_id || d.category_uuid || '');
-        $('#lc-category-path-visible').val(d.primary_category_path || d.category_name || d.category || '');
-        if (d.category_uuid && !$('#lc-category-id').val()) {
+        $('#lc-category-id-visible').val(ebayCategoryId);
+        $('#lc-category-path-visible').val($('#lc-category-path-input').val() || '');
+        if (openingFamily !== 'ebay' && d.category_uuid && !$('#lc-category-id').val()) {
             $('#lc-category-id').val(d.category_uuid);
         }
         $('#lc-reverb-make').val(defaultBrand);
@@ -3932,6 +3949,10 @@
             $('#lc-editor-loading').hide();
             $('#lc-editor-body').show();
             refreshEditorUi(draft);
+            if (openingFamily === 'ebay' && !isEbayNumericCategory($('#lc-category-id').val())) {
+                const ebayTitle = String($('#lc-title').val() || draft.title || '').trim();
+                if (ebayTitle) searchCategories(ebayTitle, { autoPick: true });
+            }
             const savedParent = String((d.parent_group || (draft.family && (draft.family.parent || draft.family.parent_label)) || '')).trim();
             loadParentGroups(savedParent);
             const family = (draft.editor && draft.editor.family) || '';
@@ -5969,8 +5990,13 @@
             $('#wf-classes .wf-class-row').removeClass('is-active').find('.wf-radio').prop('checked', false);
         });
         $('#lc-category-results').on('click', '.lc-cat-item', function () {
-            const id = String($(this).data('id') || '');
-            const path = String($(this).data('path') || '');
+            const id = String($(this).attr('data-id') || '');
+            const path = String($(this).attr('data-path') || '');
+            const pickFamily = (currentDraft && currentDraft.editor && currentDraft.editor.family) || '';
+            if (pickFamily === 'ebay' && !isEbayNumericCategory(id)) {
+                toast('That is not an eBay category. Pick a category with a numeric eBay ID.', 'error');
+                return;
+            }
             $('#lc-category-id').val(id);
             $('#lc-category-path-input').val(path);
             $('#lc-category-id-visible').val(id);
