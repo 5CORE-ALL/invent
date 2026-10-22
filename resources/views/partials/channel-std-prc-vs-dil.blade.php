@@ -236,7 +236,7 @@
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-zs"></div>
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <label class="small fw-semibold mb-0" for="ch-sp-zs-disc">Disc %</label>
-                                <input type="number" id="ch-sp-zs-disc" class="form-control form-control-sm ch-sp-input" min="0" step="0.1" value="0">
+                                <input type="number" id="ch-sp-zs-disc" class="form-control form-control-sm ch-sp-input" min="-100" step="0.1" value="0">
                             </div>
                             <div class="small text-muted">0 sold SKUs: <strong id="ch-sp-zs-count">0</strong></div>
                         </div>
@@ -246,11 +246,11 @@
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-cvr"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0" id="ch-sp-cvr-table"><thead class="table-light"><tr><th>When</th><th class="text-center">CVR%</th><th class="text-end">Disc %</th><th class="text-center">Count</th></tr></thead>
                                 <tbody>
-                                    <tr><td><span class="ch-sp-when ch-sp-when-down2">Down</span></td><td class="text-center"><span class="ch-sp-cvr-thresh">&lt;<input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-down2-lt" value="4"></span></td><td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-down2-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-down2-count">0</td></tr>
-                                    <tr><td><span class="ch-sp-when ch-sp-when-down">Down</span></td><td class="text-center"><span class="ch-sp-cvr-thresh">&lt;<input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-down-lt" value="7"></span></td><td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-down-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-down-count">0</td></tr>
-                                    <tr><td><span class="ch-sp-when">Flat</span></td><td class="text-center text-muted">mid</td><td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-flat-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-flat-count">0</td></tr>
-                                    <tr><td><span class="ch-sp-when ch-sp-when-up">Up</span></td><td class="text-center"><span class="ch-sp-cvr-thresh">&gt;<input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-up-gt" value="10"></span></td><td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-up-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-up-count">0</td></tr>
-                                    <tr><td><span class="ch-sp-when ch-sp-when-up2">Up</span></td><td class="text-center"><span class="ch-sp-cvr-thresh">&gt;<input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-up2-gt" value="15"></span></td><td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-up2-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-up2-count">0</td></tr>
+                                    <tr><td><span class="ch-sp-when ch-sp-when-down2">Down</span></td><td class="text-center"><span class="ch-sp-cvr-thresh">&lt;<input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-down2-lt" value="4"></span></td><td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-down2-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-down2-count">0</td></tr>
+                                    <tr><td><span class="ch-sp-when ch-sp-when-down">Down</span></td><td class="text-center"><span class="ch-sp-cvr-thresh">&lt;<input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-down-lt" value="7"></span></td><td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-down-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-down-count">0</td></tr>
+                                    <tr><td><span class="ch-sp-when">Flat</span></td><td class="text-center text-muted">mid</td><td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-flat-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-flat-count">0</td></tr>
+                                    <tr><td><span class="ch-sp-when ch-sp-when-up">Up</span></td><td class="text-center"><span class="ch-sp-cvr-thresh">&gt;<input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-up-gt" value="10"></span></td><td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-up-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-up-count">0</td></tr>
+                                    <tr><td><span class="ch-sp-when ch-sp-when-up2">Up</span></td><td class="text-center"><span class="ch-sp-cvr-thresh">&gt;<input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-up2-gt" value="15"></span></td><td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-cvr-up2-disc" value="0"></td><td class="ch-sp-count" id="ch-sp-cvr-up2-count">0</td></tr>
                                 </tbody>
                             </table></div>
                         </div>
@@ -346,13 +346,15 @@
             if (!isFinite(min) || !isFinite(max)) return null;
             if (max < min) { const t = min; min = max; max = t; }
             let disc = Number(r && r.disc);
-            if (!isFinite(disc) || disc < 0) disc = 0;
+            // A negative Disc % is allowed. It offsets the other discounts in the sum.
+            if (!isFinite(disc)) disc = 0;
+            if (disc < -100) disc = -100;
             if (disc > 100) disc = 100;
             return { min: min, max: max, disc: disc };
         }
-        // ROI Disc (Best Buy only): GROI% slabs limited to a Dil % range.
+        // ROI Disc (Best Buy and Purchasing Power only): GROI% slabs limited to a Dil % range.
         function chStdUsesRoi() {
-            return typeof CHANNEL_PROMO_CHANNEL === 'string' && CHANNEL_PROMO_CHANNEL === 'bestbuy';
+            return typeof CHANNEL_PROMO_CHANNEL === 'string' && (CHANNEL_PROMO_CHANNEL === 'bestbuy' || CHANNEL_PROMO_CHANNEL === 'purchasing_power');
         }
         if (!chStdUsesRoi()) {
             $('[data-ch-sp-panel="roi"]').hide();
@@ -399,8 +401,10 @@
             const hadUp2 = raw.up2_disc !== undefined && raw.up2_disc !== null && raw.up2_disc !== '';
             ['down2_lt', 'down_lt', 'up_gt', 'up2_gt', 'down2_disc', 'down_disc', 'up_disc', 'up2_disc', 'flat_disc'].forEach(function(key) {
                 const n = Number(raw[key]);
-                if (!isFinite(n) || n < 0) return;
-                out[key] = key.indexOf('disc') !== -1 && n > 100 ? 100 : n;
+                if (!isFinite(n)) return;
+                if (key.indexOf('disc') !== -1) { out[key] = Math.min(100, Math.max(-100, n)); return; }
+                if (n < 0) return;
+                out[key] = n;
             });
             if (!hadDown2) out.down2_disc = out.down_disc;
             if (!hadUp2) out.up2_disc = out.up_disc;
@@ -433,7 +437,7 @@
                 const hit = Math.abs(max - min) < 0.00001 ? Math.abs(n - min) < 0.00001 : (n >= min && (i === last ? n <= max : n < max));
                 if (!hit) continue;
                 const disc = Number(rule.disc);
-                return isFinite(disc) && disc > 0 ? disc : 0;
+                return isFinite(disc) ? disc : 0;
             }
             return 0;
         }
@@ -689,7 +693,7 @@
                     disc = saved ? saved.disc : 0;
                 }
                 const n = Number(disc);
-                return { min: r.min, max: r.max, disc: isFinite(n) ? Math.min(100, Math.max(0, n)) : 0 };
+                return { min: r.min, max: r.max, disc: isFinite(n) ? Math.min(100, Math.max(-100, n)) : 0 };
             });
             const $tb = $('#ch-sp-lmp-tbody');
             let same = $tb.find('tr').length === next.length;
@@ -704,7 +708,7 @@
                         + '<td class="text-center">' + chStdEsc(rule.min) + '</td>'
                         + '<td class="text-center">' + chStdEsc(rule.max) + '</td>'
                         + '<td class="ch-sp-count ch-sp-lmp-count">0</td>'
-                        + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-lmp-disc" value="' + chStdEsc(rule.disc) + '"></td>'
+                        + '<td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-lmp-disc" value="' + chStdEsc(rule.disc) + '"></td>'
                         + '</tr>';
                 }).join(''));
             }
@@ -719,7 +723,7 @@
                     const rules = [];
                     rows.each(function(i) {
                         const n = Number($(this).find('.ch-sp-lmp-disc').val());
-                        rules.push({ min: dil[i].min, max: dil[i].max, disc: isFinite(n) ? Math.min(100, Math.max(0, n)) : 0 });
+                        rules.push({ min: dil[i].min, max: dil[i].max, disc: isFinite(n) ? Math.min(100, Math.max(-100, n)) : 0 });
                     });
                     return rules;
                 }
@@ -757,7 +761,7 @@
                 + '<td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-moqm-max" value="' + rule.max + '"></td>'
                 + '<td class="text-center ch-sp-moqm-band">' + chStdEsc(rule.min) + '–' + chStdEsc(rule.max) + '</td>'
                 + '<td class="ch-sp-count ch-sp-moqm-count">0</td>'
-                + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-moqm-disc" value="' + rule.disc + '"></td>'
+                + '<td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-moqm-disc" value="' + rule.disc + '"></td>'
                 + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ch-sp-moqm-del" title="Remove">&times;</button></td></tr>';
         }
         function chStdSumDisc(d, draft) {
@@ -879,7 +883,7 @@
                 pricing: chStdReadRanges('#ch-sp-pricing-tbody', '.ch-sp-pricing-min', '.ch-sp-pricing-max', '.ch-sp-pricing-disc'),
                 roi: chStdReadRoi(),
                 moqM: chStdReadRanges('#ch-sp-moqm-tbody', '.ch-sp-moqm-min', '.ch-sp-moqm-max', '.ch-sp-moqm-disc'),
-                zeroSoldDisc: (function() { const n = Number($('#ch-sp-zs-disc').val()); return isFinite(n) ? Math.min(100, Math.max(0, n)) : 0; })(),
+                zeroSoldDisc: (function() { const n = Number($('#ch-sp-zs-disc').val()); return isFinite(n) ? Math.min(100, Math.max(-100, n)) : 0; })(),
                 reviewMax: (function() { const n = parseInt($('#ch-sp-review-max').val(), 10); return isFinite(n) && n > 0 ? n : 4; })(),
                 cvr: chStdNormCvr({
                     down2_lt: $('#chStdPrcModal .ch-sp-cvr-down2-lt').val(), down2_disc: $('#chStdPrcModal .ch-sp-cvr-down2-disc').val(),
@@ -899,7 +903,7 @@
                 + '<td class="text-center">' + inp('ch-sp-roi-dmin', rule.dil_min) + '</td>'
                 + '<td class="text-center">' + inp('ch-sp-roi-dmax', rule.dil_max) + '</td>'
                 + '<td class="ch-sp-count ch-sp-roi-count">0</td>'
-                + '<td class="text-end">' + inp('ch-sp-roi-disc', rule.disc, 0) + '</td>'
+                + '<td class="text-end">' + inp('ch-sp-roi-disc', rule.disc, -100) + '</td>'
                 + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ch-sp-roi-del" title="Remove">&times;</button></td></tr>';
         }
         function chStdReadRoi() {
@@ -926,7 +930,7 @@
             return '<tr><td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm ch-sp-input ' + prefix + '-min" value="' + rule.min + '"></td>'
                 + '<td class="text-center"><input type="number" step="0.1" class="form-control form-control-sm ch-sp-input ' + prefix + '-max" value="' + rule.max + '"></td>'
                 + '<td class="ch-sp-count ' + prefix + '-count">0</td>'
-                + '<td class="text-end"><input type="number" min="0" step="0.1" class="form-control form-control-sm ch-sp-input ' + prefix + '-disc" value="' + rule.disc + '"></td>'
+                + '<td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ' + prefix + '-disc" value="' + rule.disc + '"></td>'
                 + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ' + prefix + '-del" title="Remove">&times;</button></td></tr>';
         }
         // `money` (optional): { key: dollars }. When given, the legend shows SKU count + $ off instead of count + %,
@@ -1065,7 +1069,7 @@
                 const bussDisc = bussIdx >= 0 ? (Number(draft.buss[bussIdx].disc) || 0) : 0;
                 const pricingDisc = pricingIdx >= 0 ? (Number(draft.pricing[pricingIdx].disc) || 0) : 0;
                 const roiDisc = invOk ? chStdScaleDisc(std, roiIdx >= 0 ? (Number(draft.roi[roiIdx].disc) || 0) : 0) : 0;
-                const cvrDisc = invOk ? chStdScaleDisc(std, Math.max(0, hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0))) : 0;
+                const cvrDisc = invOk ? chStdScaleDisc(std, hit ? (Number(hit.disc) || 0) : (Number(draft.cvr.flat_disc) || 0)) : 0;
                 const zeroSold = invOk && chStdRowIsZeroSold(d);
                 if (zeroSold) zsCounts.zero += 1; else zsCounts.sold += 1;
                 const zsDisc = zeroSold ? chStdScaleDisc(std, Number(draft.zeroSoldDisc) || 0) : 0;
@@ -1073,16 +1077,16 @@
                 const lmpDisc = chStdScaleDisc(std, lmpRaw);
                 const moqMRaw = (invOk && moqMIdx >= 0) ? (Number(draft.moqM[moqMIdx] && draft.moqM[moqMIdx].disc) || 0) : 0;
                 const moqMDisc = chStdScaleDisc(std, moqMRaw);
-                if (ageDisc > 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
-                if (dilDisc > 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
-                if (cvrDisc > 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
-                if (revDisc > 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
-                if (bussDisc > 0) { skuHits.buss++; dollars.buss += std * bussDisc / 100; pctTotals.buss += bussDisc; }
-                if (roiDisc > 0) { skuHits.roi++; dollars.roi += std * roiDisc / 100; pctTotals.roi += roiDisc; }
-                if (pricingDisc > 0) { skuHits.pricing++; dollars.pricing += std * pricingDisc / 100; pctTotals.pricing += pricingDisc; }
-                if (zsDisc > 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
-                if (lmpDisc > 0) { skuHits.lmp++; dollars.lmp += std * lmpDisc / 100; pctTotals.lmp += lmpDisc; }
-                if (moqMDisc > 0) { skuHits.moqm++; dollars.moqm += std * moqMDisc / 100; pctTotals.moqm += moqMDisc; }
+                if (ageDisc !== 0) { skuHits.age++; dollars.age += std * ageDisc / 100; pctTotals.age += ageDisc; }
+                if (dilDisc !== 0) { skuHits.dil++; dollars.dil += std * dilDisc / 100; pctTotals.dil += dilDisc; }
+                if (cvrDisc !== 0) { skuHits.cvr++; dollars.cvr += std * cvrDisc / 100; pctTotals.cvr += cvrDisc; }
+                if (revDisc !== 0) { skuHits.rev++; dollars.rev += std * revDisc / 100; pctTotals.rev += revDisc; }
+                if (bussDisc !== 0) { skuHits.buss++; dollars.buss += std * bussDisc / 100; pctTotals.buss += bussDisc; }
+                if (roiDisc !== 0) { skuHits.roi++; dollars.roi += std * roiDisc / 100; pctTotals.roi += roiDisc; }
+                if (pricingDisc !== 0) { skuHits.pricing++; dollars.pricing += std * pricingDisc / 100; pctTotals.pricing += pricingDisc; }
+                if (zsDisc !== 0) { skuHits.zs++; dollars.zs += std * zsDisc / 100; pctTotals.zs += zsDisc; }
+                if (lmpDisc !== 0) { skuHits.lmp++; dollars.lmp += std * lmpDisc / 100; pctTotals.lmp += lmpDisc; }
+                if (moqMDisc !== 0) { skuHits.moqm++; dollars.moqm += std * moqMDisc / 100; pctTotals.moqm += moqMDisc; }
                 const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc);
                 if (sum > 0) {
                     skuHits.all++;
@@ -1299,7 +1303,7 @@
                 chStdRoi = (res.roi || CH_STD_ROI_DEFAULTS).map(chStdNormRoi).filter(Boolean);
                 chStdLmp = (res.lmp || []).map(chStdNormRange).filter(Boolean);
                 chStdMoqM = (res.moq_m || CH_STD_MOQM_DEFAULTS).map(chStdNormRange).filter(Boolean);
-                chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(0, Number(res.zero_sold_disc))) : 0;
+                chStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? Math.min(100, Math.max(-100, Number(res.zero_sold_disc))) : 0;
                 chStdCvr = chStdNormCvr(res.cvr);
                 chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdDil.length) chStdDil = CH_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1371,8 +1375,10 @@
         }
         function chStdDiscBadge(pct) {
             const n = Number(pct) || 0;
-            if (!(n > 0)) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
+            if (!n) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
             const shown = Math.round(n * 10) / 10;
+            // A negative discount is shown in red (it offsets the other discounts).
+            if (shown < 0) return '<span style="font-weight:700;color:#dc2626;">' + shown + '</span>';
             return '<span style="font-weight:700;color:#0f172a;">' + shown + '</span>';
         }
         let chStdFamilyMap = null;
@@ -1467,7 +1473,7 @@
             const cfg = (draft && draft.cvr) ? draft.cvr : chStdCvr;
             const hit = chStdCvrMatch(d, cfg);
             const trend = hit ? (Number(hit.disc) || 0) : (Number(cfg.flat_disc) || 0);
-            return Math.max(0, trend);
+            return trend;
         }
         function chStdRevDiscPct(d) {
             const reviews = chStdReviews(d);
@@ -1562,7 +1568,7 @@
             const modal = document.getElementById('chStdPrcModal');
             if (modal && modal.classList.contains('show')) {
                 const n = Number($('#ch-sp-zs-disc').val());
-                if (isFinite(n)) return Math.min(100, Math.max(0, n));
+                if (isFinite(n)) return Math.min(100, Math.max(-100, n));
             }
             return Number(chStdZeroSoldDisc) || 0;
         }
@@ -2173,7 +2179,7 @@
                 if (res && res.roi) chStdRoi = res.roi.map(chStdNormRoi).filter(Boolean);
                 if (res && res.lmp) chStdLmp = res.lmp.map(chStdNormRange).filter(Boolean);
                 if (res && res.moq_m) chStdMoqM = res.moq_m.map(chStdNormRange).filter(Boolean);
-                if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(0, Number(res.zero_sold_disc)));
+                if (res && isFinite(Number(res.zero_sold_disc))) chStdZeroSoldDisc = Math.min(100, Math.max(-100, Number(res.zero_sold_disc)));
                 if (res && res.cvr) chStdCvr = chStdNormCvr(res.cvr);
                 if (res && res.review_max) chStdReviewMax = parseInt(res.review_max, 10) || 4;
                 if (!chStdOwnsSprice()) {

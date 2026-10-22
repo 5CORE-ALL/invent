@@ -311,7 +311,7 @@ class StdPrcVsDilPricer
                 ? abs($value - $min) < 0.00001
                 : ($value >= $min && ($i === $last ? $value <= $max : $value < $max));
             if ($hit) {
-                return max(0, (float) $rule['disc']);
+                return (float) $rule['disc'];
             }
         }
 
@@ -349,7 +349,7 @@ class StdPrcVsDilPricer
             usort($slabs, fn ($a, $b) => $a['lt'] <=> $b['lt']);
             foreach ($slabs as $slab) {
                 if ($cvr < $slab['lt']) {
-                    return max(0, $slab['disc']);
+                    return (float) $slab['disc'];
                 }
             }
         }
@@ -363,12 +363,12 @@ class StdPrcVsDilPricer
             usort($slabs, fn ($a, $b) => $b['gt'] <=> $a['gt']);
             foreach ($slabs as $slab) {
                 if ($cvr > $slab['gt']) {
-                    return max(0, $slab['disc']);
+                    return (float) $slab['disc'];
                 }
             }
         }
 
-        return max(0, (float) ($cfg['flat_disc'] ?? 0));
+        return (float) ($cfg['flat_disc'] ?? 0);
     }
 
     private function reviewDisc(float $reviews): float
@@ -379,7 +379,7 @@ class StdPrcVsDilPricer
         }
         foreach ($this->rules['reviews'] as $rule) {
             if ($reviews >= (float) $rule['min'] && $reviews <= (float) $rule['max']) {
-                return max(0, (float) $rule['disc']);
+                return (float) $rule['disc'];
             }
         }
 
@@ -407,7 +407,7 @@ class StdPrcVsDilPricer
                 [$min, $max] = [$max, $min];
             }
             $disc = is_numeric($item['disc'] ?? null) ? (float) $item['disc'] : 0.0;
-            $rules[] = ['min' => $min, 'max' => $max, 'disc' => min(100, max(0, $disc))];
+            $rules[] = ['min' => $min, 'max' => $max, 'disc' => min(100, max(-100, $disc))];
         }
 
         return $rules !== [] ? $rules : $fallback;
@@ -425,8 +425,15 @@ class StdPrcVsDilPricer
             return $out;
         }
         foreach (['down2_lt', 'down_lt', 'up_gt', 'up2_gt', 'down2_disc', 'down_disc', 'up_disc', 'up2_disc', 'flat_disc'] as $key) {
-            if (is_numeric($incoming[$key] ?? null) && (float) $incoming[$key] >= 0) {
-                $out[$key] = (float) $incoming[$key];
+            if (! is_numeric($incoming[$key] ?? null)) {
+                continue;
+            }
+            $n = (float) $incoming[$key];
+            // Thresholds stay >= 0. Discounts may be negative (they offset the other discounts).
+            if (str_ends_with($key, '_disc')) {
+                $out[$key] = min(100, max(-100, $n));
+            } elseif ($n >= 0) {
+                $out[$key] = $n;
             }
         }
         if (! is_numeric($incoming['down2_disc'] ?? null)) {
@@ -552,7 +559,7 @@ class StdPrcVsDilPricer
         foreach ($this->rules['roi'] ?? [] as $rule) {
             if (self::inSlab($roi, (float) $rule['min'], (float) $rule['max'])
                 && self::inSlab($dil, (float) $rule['dil_min'], (float) $rule['dil_max'])) {
-                return max(0.0, (float) $rule['disc']);
+                return (float) $rule['disc'];
             }
         }
 
@@ -594,7 +601,7 @@ class StdPrcVsDilPricer
             return 0.0;
         }
 
-        return round(min(100, max(0, (float) $value)), 2);
+        return round(min(100, max(-100, (float) $value)), 2);
     }
 
     /**

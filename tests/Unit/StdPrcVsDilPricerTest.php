@@ -134,6 +134,47 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(9.0, $pricer->priceFromRow(['inv' => 1, 'std' => 10]));
     }
 
+    public function test_negative_discounts_offset_the_other_discounts_and_never_lift_price_above_std(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'buss' => [
+                ['min' => 0, 'max' => 9999, 'disc' => 10],
+            ],
+            'pricing' => [
+                ['min' => 0, 'max' => 9999, 'disc' => -4],
+            ],
+            'roi' => [
+                ['min' => -9999, 'max' => 0, 'dil_min' => 0, 'dil_max' => 9999, 'disc' => -3],
+            ],
+        ]);
+
+        // B Disc 10% + Pricing -4% = 6%. $20 × 0.94 = $18.80.
+        $this->assertSame(18.8, $pricer->priceFromRow(['inv' => 1, 'std' => 20]));
+        // A negative GROI% (price 10, LP 20) also takes its slab: 10 − 4 − 3 = 3%. $20 × 0.97 = $19.40.
+        $this->assertSame(19.4, $pricer->priceFromRow(['inv' => 1, 'std' => 20, 'price' => 10, 'lp' => 20]));
+    }
+
+    public function test_negative_net_discount_is_floored_at_zero_so_std_stays_the_maximum(): void
+    {
+        $pricer = new StdPrcVsDilPricer([
+            'dil' => [],
+            'age' => [],
+            'cvr' => ['flat_disc' => 0],
+            'reviews' => [],
+            'review_max' => 4,
+            'buss' => [
+                ['min' => 0, 'max' => 9999, 'disc' => -8],
+            ],
+        ]);
+
+        $this->assertSame(20.0, $pricer->priceFromRow(['inv' => 1, 'std' => 20]));
+    }
+
     public function test_roi_discount_needs_both_the_groi_slab_and_the_dil_slab(): void
     {
         $pricer = new StdPrcVsDilPricer([

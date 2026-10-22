@@ -307,6 +307,8 @@ class PurchasingPowerSprcDilAutoPushService
             'reviews' => 0.0,
             // 0 Sold = PP L30 (MCM OR11 orders), same as the page.
             'pp_l30' => (float) ($row['pp_l30'] ?? 0),
+            // Live PP Price, so the ROI Disc can read this SKU's GROI% at the listing price.
+            'price' => (float) ($row['price'] ?? 0),
             'lp' => $lp,
             'ship' => $ship,
             'margin' => $margin,

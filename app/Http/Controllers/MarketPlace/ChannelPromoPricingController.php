@@ -1422,13 +1422,18 @@ class ChannelPromoPricingController extends Controller
         // Best Buy S PRC is saved by the server job, not by the page. Re-save it now (no push) so the page
         // shows the new rules at once instead of the old S PRC until the next scheduled run.
         $spriceRefreshed = false;
-        if ($channel === 'bestbuy') {
+        $refreshService = match ($channel) {
+            'bestbuy' => \App\Services\BestBuySprcDilAutoPushService::class,
+            'purchasing_power' => \App\Services\PurchasingPowerSprcDilAutoPushService::class,
+            default => null,
+        };
+        if ($refreshService !== null) {
             try {
                 @set_time_limit(0);
-                $summary = app(\App\Services\BestBuySprcDilAutoPushService::class)->run(skipPush: true, sleepMs: 0);
+                $summary = app($refreshService)->run(skipPush: true, sleepMs: 0);
                 $spriceRefreshed = empty($summary['stats']['errors']);
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::error('[BestBuy] S PRC refresh after rules save failed: '.$e->getMessage());
+                \Illuminate\Support\Facades\Log::error('['.$channel.'] S PRC refresh after rules save failed: '.$e->getMessage());
             }
         }
 
@@ -1586,7 +1591,7 @@ class ChannelPromoPricingController extends Controller
             return 0.0;
         }
 
-        return round(min(100, max(0, (float) $incoming)), 2);
+        return round(min(100, max(-100, (float) $incoming)), 2);
     }
 
     /**
@@ -1622,7 +1627,7 @@ class ChannelPromoPricingController extends Controller
                 'max' => round($max, 2),
                 'dil_min' => round($dilMin, 2),
                 'dil_max' => round($dilMax, 2),
-                'disc' => round(min(100, max(0, $disc)), 2),
+                'disc' => round(min(100, max(-100, $disc)), 2),
             ];
         }
 
@@ -1653,7 +1658,7 @@ class ChannelPromoPricingController extends Controller
             $rules[] = [
                 'min' => round($min, 2),
                 'max' => round($max, 2),
-                'disc' => round(min(100, max(0, $disc)), 2),
+                'disc' => round(min(100, max(-100, $disc)), 2),
             ];
         }
 
@@ -1681,7 +1686,7 @@ class ChannelPromoPricingController extends Controller
             if (! is_numeric($incoming[$key] ?? null)) {
                 continue;
             }
-            $out[$key] = round(min(100, max(0, (float) $incoming[$key])), 2);
+            $out[$key] = round(min(100, max(-100, (float) $incoming[$key])), 2);
         }
         if (! $hadDown2) {
             $out['down2_disc'] = $out['down_disc'];
