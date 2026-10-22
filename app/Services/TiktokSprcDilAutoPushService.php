@@ -120,7 +120,7 @@ class TiktokSprcDilAutoPushService
             return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => $stats];
         }
 
-        $lock = Cache::lock($this->lockKey(), 10800);
+        $lock = Cache::lock($skipPush && ! $dryRun ? $this->lockKey().'-save-only' : $this->lockKey(), 10800);
         if (! $lock->get()) {
             $this->log($logger, 'Skipped: another '.$this->label().' Sprc Dil push is already running');
             $stats['errors'][] = 'lock: already running';

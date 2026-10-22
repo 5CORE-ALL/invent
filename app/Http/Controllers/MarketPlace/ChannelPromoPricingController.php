@@ -1494,6 +1494,13 @@ class ChannelPromoPricingController extends Controller
             \App\Support\StdPrcVsDilPricer::flush();
             $names = array_map(fn ($p) => $p->getName(), (new \ReflectionMethod($service, 'run'))->getParameters());
             $args = ['skipPush' => true, 'sleepMs' => 0];
+            // Rules were just saved: every SKU must get its new S PRC. A push cooldown (recently pushed or
+            // recently errored) would leave the old, uncapped S PRC on the page.
+            foreach (['cooldownMinutes', 'errorCooldownMinutes'] as $cd) {
+                if (in_array($cd, $names, true)) {
+                    $args[$cd] = 0;
+                }
+            }
             if (in_array('blueCatchUp', $names, true)) {
                 // Save whenever the saved S PRC (or Amz flag) differs from the rules, no cooldown skips.
                 $args['blueCatchUp'] = true;

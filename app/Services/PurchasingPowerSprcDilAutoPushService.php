@@ -98,7 +98,7 @@ class PurchasingPowerSprcDilAutoPushService
             }
         }
 
-        $lock = Cache::lock(self::LOCK_KEY, 10800);
+        $lock = Cache::lock($skipPush && ! $dryRun ? self::LOCK_KEY.'-save-only' : self::LOCK_KEY, 10800);
         if (! $lock->get()) {
             $this->log($logger, 'Skipped: another Purchasing Power Sprc Dil push is already running');
             $stats['errors'][] = 'lock: already running';
