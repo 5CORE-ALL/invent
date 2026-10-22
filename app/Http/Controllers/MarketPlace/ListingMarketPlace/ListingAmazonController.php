@@ -23,6 +23,11 @@ class ListingAmazonController extends Controller
 {
     use HandlesListingPublishActions;
 
+    protected function listingPublishChannel(): string
+    {
+        return 'amazon';
+    }
+
     public function listingAmazon(Request $request)
     {
         $mode = $request->query('mode');

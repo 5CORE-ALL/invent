@@ -10,6 +10,8 @@ use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\ListingManagerFamily;
 use App\Support\Marketplace\VariationListingContent;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ListingVariationPreviewService
 {
@@ -190,6 +192,9 @@ class ListingVariationPreviewService
 
             return $this->mirakl->publishSkus($skus, $channel, $expandSiblings, $mode, $parentHint, $code, $overrides);
         }
+        if ($this->isAmazonChannel($channel)) {
+            return $this->publishAmazon($skus);
+        }
 
         $label = $this->channelLabel($channel);
 
@@ -306,7 +311,7 @@ class ListingVariationPreviewService
         $publishSkus = [];
         foreach ($children as $product) {
             $sku = trim((string) $product->sku);
-            $classified = $this->classifyChildSku($sku, $product, $listedMap, $nrValues);
+            $classified = $this->classifyChildSku($sku, $product, $listedMap, $nrValues, $channel);
             $shopifyRow = $shopify->get($sku);
             $selected = $classified['status'] === 'will_publish'
                 && isset($seedLookup[strtoupper($sku)]);
@@ -338,7 +343,7 @@ class ListingVariationPreviewService
      * @param  array<string, string>  $listedMap
      * @return array{status: string, reason: string}
      */
-    private function classifyChildSku(string $sku, ProductMaster $product, array $listedMap, $nrValues): array
+    private function classifyChildSku(string $sku, ProductMaster $product, array $listedMap, $nrValues, string $channel = ''): array
     {
         if (stripos($sku, 'PARENT') !== false) {
             return ['status' => 'skipped_parent', 'reason' => 'Parent row'];
@@ -352,6 +357,9 @@ class ListingVariationPreviewService
         );
         if ($nrReq === 'NR') {
             return ['status' => 'skipped_nrl', 'reason' => 'NRL'];
+        }
+        if ($this->isAmazonChannel($channel)) {
+            return $this->classifyAmazonChild($sku, $product);
         }
         if (VariationListingContent::active()) {
             $title = VariationListingContent::titleFor($product) ?? '';
@@ -368,6 +376,191 @@ class ListingVariationPreviewService
         }
 
         return ['status' => 'will_publish', 'reason' => ''];
+    }
+
+    /**
+     * Amazon listings are one SKU each, so copy comes from the masters even when
+     * the publish window is set to variation.
+     *
+     * @return array{status: string, reason: string}
+     */
+    private function classifyAmazonChild(string $sku, ProductMaster $product): array
+    {
+        $gap = $this->amazonMasterGap($sku, $product->toArray());
+        if ($gap !== null) {
+            return ['status' => 'skipped_no_'.$gap['key'], 'reason' => $gap['message']];
+        }
+
+        return ['status' => 'will_publish', 'reason' => ''];
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return array{success: bool, message: string, goods_id?: string|null, skus?: list<string>}
+     */
+    private function publishAmazon(array $skus): array
+    {
+        $publisher = app(AmazonListingPublishService::class);
+        $ok = [];
+        $errors = [];
+        $last = null;
+        foreach ($skus as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku === '' || stripos($sku, 'PARENT') === 0) {
+                continue;
+            }
+            $product = ProductMaster::query()->where('sku', $sku)->whereNull('deleted_at')->first();
+            $pm = $product ? $product->toArray() : [];
+            $gap = $this->amazonMasterGap($sku, $pm);
+            if ($gap !== null) {
+                $errors[] = $sku.': '.$gap['message'];
+                continue;
+            }
+            $content = $this->amazonMasterContent($sku, $pm);
+            if (! $publisher->apiIsConfigured()) {
+                $errors[] = $sku.': Amazon SP-API is not connected. Set Amazon client id, secret, refresh token, and seller id.';
+                continue;
+            }
+            $productType = $publisher->suggestProductType($sku, $content['title']);
+            if ($productType === '') {
+                $errors[] = $sku.': Amazon product type could not be matched from the title or an existing family listing.';
+                continue;
+            }
+            $qty = ListingManagerAmazonHydrator::shopifyQuantity($sku);
+            $details = [
+                'description' => $content['description'],
+                'product_type' => $productType,
+                'upc' => ListingManagerAmazonHydrator::upcFromCpMaster($sku, $pm),
+                'images' => $content['images'],
+                'image_source' => 'image_master',
+            ];
+            foreach ($content['bullets'] as $i => $line) {
+                $details['bullet_'.($i + 1)] = $line;
+            }
+            $result = $publisher->publishSku($sku, $details, $content['title'], $qty);
+            if (! ($result['success'] ?? false)) {
+                $errors[] = $sku.': '.trim((string) ($result['message'] ?? 'Amazon publish failed.'));
+                continue;
+            }
+            $ok[] = $sku;
+            $last = $result;
+        }
+
+        if ($ok === []) {
+            return [
+                'success' => false,
+                'message' => $errors !== [] ? implode("\n", $errors) : 'Amazon publish failed.',
+            ];
+        }
+
+        $message = trim((string) ($last['message'] ?? 'Published to Amazon.'));
+        if (count($ok) > 1) {
+            $message = 'Published '.count($ok).' Amazon SKUs.'.($errors !== [] ? ' '.implode(' ', $errors) : '');
+        } elseif ($errors !== []) {
+            $message .= ' '.implode(' ', $errors);
+        }
+
+        return [
+            'success' => true,
+            'message' => $message,
+            'goods_id' => $last['goods_id'] ?? null,
+            'skus' => $ok,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $pm
+     * @return array{key: string, message: string}|null
+     */
+    private function amazonMasterGap(string $sku, array $pm): ?array
+    {
+        if (ListingManagerAmazonHydrator::titleFromProductMaster($pm, 'amazon') === '') {
+            return ['key' => 'title', 'message' => 'Title missing in Title Master'];
+        }
+        if ($this->amazonDescriptionText($sku, $pm) === '') {
+            return ['key' => 'description', 'message' => 'Description missing in Description Master'];
+        }
+        if ($this->amazonBullets($pm) === []) {
+            return ['key' => 'bullets', 'message' => 'Bullet points missing in Bullet Points Master'];
+        }
+        if (ListingManagerAmazonHydrator::publishImageUrls($sku, null, 9) === []) {
+            return ['key' => 'image', 'message' => 'Images missing in Image Master'];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $pm
+     * @return array{title: string, description: string, bullets: list<string>, images: list<string>}
+     */
+    private function amazonMasterContent(string $sku, array $pm): array
+    {
+        $description = $this->amazonDescriptionText($sku, $pm);
+        $limit = (int) (ListingManagerAmazonHydrator::limitsForChannel('amazon')['description'] ?? 2000);
+        if ($limit > 0 && mb_strlen($description) > $limit) {
+            $description = mb_substr($description, 0, $limit);
+        }
+
+        return [
+            'title' => ListingManagerAmazonHydrator::titleFromProductMaster($pm, 'amazon'),
+            'description' => $description,
+            'bullets' => $this->amazonBullets($pm),
+            'images' => ListingManagerAmazonHydrator::publishImageUrls($sku, null, 9),
+        ];
+    }
+
+    /**
+     * Amazon Description Master text: this SKU's amazon_metrics row, then the Description Master columns.
+     *
+     * @param  array<string, mixed>  $pm
+     */
+    private function amazonDescriptionText(string $sku, array $pm): string
+    {
+        $text = '';
+        try {
+            if (Schema::hasTable('amazon_metrics') && Schema::hasColumn('amazon_metrics', 'description_master')) {
+                $text = trim((string) DB::table('amazon_metrics')->where('sku', $sku)->value('description_master'));
+            }
+        } catch (\Throwable) {
+            $text = '';
+        }
+        if ($text === '') {
+            foreach (['description_1500', 'product_description', 'description_html', 'description_1000', 'description_800', 'description_600'] as $col) {
+                $text = trim((string) ($pm[$col] ?? ''));
+                if ($text !== '') {
+                    break;
+                }
+            }
+        }
+        if ($text !== '' && preg_match('/<[^>]+>/', $text)) {
+            $text = html_entity_decode(strip_tags(str_ireplace(
+                ['<br>', '<br/>', '<br />', '</p>', '</li>', '</div>'],
+                "\n",
+                $text
+            )), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+        $text = preg_replace("/[ \t]+\n/", "\n", $text) ?? $text;
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+
+        return trim($text);
+    }
+
+    /**
+     * @param  array<string, mixed>  $pm
+     * @return list<string>
+     */
+    private function amazonBullets(array $pm): array
+    {
+        $bullets = [];
+        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
+            $line = trim((string) ($pm[$col] ?? ''));
+            if ($line !== '' && ! in_array($line, $bullets, true)) {
+                $bullets[] = mb_substr($line, 0, 500);
+            }
+        }
+
+        return $bullets;
     }
 
     private function groupKeyForProduct(ProductMaster $product): string
@@ -410,6 +603,11 @@ class ListingVariationPreviewService
     private function isMiraklChannel(string $channel): bool
     {
         return MiraklListingPublishService::isMiraklListingChannel($channel);
+    }
+
+    private function isAmazonChannel(string $channel): bool
+    {
+        return in_array($channel, ['amazon', 'amazonfba', 'amz', 'amzfbm'], true);
     }
 
     private function channelLabel(string $channel): string

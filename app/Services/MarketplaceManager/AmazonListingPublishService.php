@@ -2,6 +2,8 @@
 
 namespace App\Services\MarketplaceManager;
 
+use App\Models\AmazonListingRaw;
+use App\Models\ProductMaster;
 use App\Services\AmazonSpApiService;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
 use App\Support\Marketplace\LmpStdPrice;
@@ -42,6 +44,11 @@ class AmazonListingPublishService
         }
         if (\App\Support\Marketplace\VariationListingContent::active()) {
             $images = ListingManagerAmazonHydrator::variationSkuImageUrls($sku, 9);
+        } elseif (($details['image_source'] ?? '') === 'image_master') {
+            $images = $this->httpsImages(is_array($details['images'] ?? null) ? $details['images'] : []);
+            if ($images === []) {
+                $images = ListingManagerAmazonHydrator::publishImageUrls($sku, null, 9);
+            }
         } else {
             $images = ListingManagerAmazonHydrator::colorImageUrls($sku, null, 9);
             if ($images === []) {
@@ -135,6 +142,75 @@ class AmazonListingPublishService
             'goods_id' => $asin,
             'skus' => [$sku],
         ];
+    }
+
+    /**
+     * Product type for a new Amazon listing: this SKU's catalog row, a sibling
+     * listing in the same family, then Amazon's product-type search on the title.
+     */
+    public function apiIsConfigured(): bool
+    {
+        return $this->api->isConfigured();
+    }
+
+    public function suggestProductType(string $sku, string $title): string
+    {
+        $hydrated = ListingManagerAmazonHydrator::hydrate($sku, false, 'amazon');
+        $type = trim((string) ($hydrated['product_type'] ?? ''));
+        if ($this->usableProductType($type)) {
+            return $type;
+        }
+        $family = $this->productTypeFromFamily($sku);
+        if ($family !== '') {
+            return $family;
+        }
+        $title = trim($title);
+        if ($title === '' || ! $this->api->isConfigured()) {
+            return '';
+        }
+        $search = $this->api->searchProductTypes('', $title);
+        $id = trim((string) ($search['categories'][0]['id'] ?? ''));
+
+        return $this->usableProductType($id) ? $id : '';
+    }
+
+    private function productTypeFromFamily(string $sku): string
+    {
+        $product = ProductMaster::query()->where('sku', $sku)->whereNull('deleted_at')->first();
+        $parent = trim((string) ($product->parent ?? ''));
+        if ($parent === '') {
+            return '';
+        }
+        $skus = ProductMaster::query()
+            ->whereNull('deleted_at')
+            ->where('parent', $parent)
+            ->pluck('sku')
+            ->map(static fn ($row) => trim((string) $row))
+            ->filter(static fn ($row) => $row !== '' && stripos($row, 'PARENT') !== 0)
+            ->values()
+            ->all();
+        if ($skus === []) {
+            return '';
+        }
+        $types = AmazonListingRaw::query()
+            ->whereIn('seller_sku', $skus)
+            ->whereNotNull('product_type')
+            ->pluck('product_type');
+        foreach ($types as $type) {
+            $type = trim((string) $type);
+            if ($this->usableProductType($type)) {
+                return $type;
+            }
+        }
+
+        return '';
+    }
+
+    private function usableProductType(string $type): bool
+    {
+        $type = trim($type);
+
+        return $type !== '' && ! preg_match('/^\d+$/', $type) && strtoupper($type) !== 'PRODUCT';
     }
 
     /**
