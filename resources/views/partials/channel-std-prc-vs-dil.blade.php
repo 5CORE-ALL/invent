@@ -2371,8 +2371,19 @@
                             : 'Saved. The server job applies S PRC from these rules at its next scheduled run (twice daily, IST).')
                         : 'Saved. S PRC follows the ON rule.');
                     // The server re-saved S PRC: reload the rows so the S PRC column shows the new values.
-                    if (serverRefreshed && typeof table !== 'undefined' && table && typeof table.setData === 'function') {
-                        try { table.setData(); } catch (eReload) { /* ignore */ }
+                    // Always reload after Save Rule. When the server could not finish the recalculation in this
+                    // request, reload again a little later (the background job keeps saving S PRC from the rules).
+                    const chStdReloadRows = function() {
+                        if (typeof table !== 'undefined' && table && typeof table.setData === 'function') {
+                            try { table.setData(); } catch (eReload) { /* ignore */ }
+                        }
+                    };
+                    if (window.CH_STD_SERVER_OWNED === true) {
+                        chStdReloadRows();
+                        if (!serverRefreshed) {
+                            setTimeout(chStdReloadRows, 30000);
+                            setTimeout(chStdReloadRows, 120000);
+                        }
                     }
                     chStdRefresh();
                     chStdSaveHistory();
@@ -2405,6 +2416,17 @@
                 });
             }).fail(function() {
                 chStdEndGuard();
+                // A gateway timeout can hit while the server is still recalculating S PRC: rules are saved first,
+                // so reload the rows a little later on server-owned pages.
+                if (window.CH_STD_SERVER_OWNED === true) {
+                    [20000, 60000].forEach(function(ms) {
+                        setTimeout(function() {
+                            if (typeof table !== 'undefined' && table && typeof table.setData === 'function') {
+                                try { table.setData(); } catch (eReload) { /* ignore */ }
+                            }
+                        }, ms);
+                    });
+                }
                 $('#ch-sp-status').text('Save failed');
                 if (typeof chPromoToast === 'function') chPromoToast('error', 'Could not save Std prc vs dil');
             });
