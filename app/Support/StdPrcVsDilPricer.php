@@ -20,12 +20,6 @@ class StdPrcVsDilPricer
 
     public const LOW_STD_FACTOR = 0.5;
 
-    /**
-     * Channels that have the SNROI Cap panel. These pages carry no ads cost, so NROI is the take-home
-     * margin result: (price × margin − ship − LP) ÷ LP.
-     */
-    public const SNROI_CAP_CHANNELS = ['wayfair'];
-
     /** @var array<string, self> */
     private static array $cache = [];
 
@@ -148,9 +142,6 @@ class StdPrcVsDilPricer
      */
     private function applySnroiCap(float $price, float $dil, array $row): float
     {
-        if (! in_array($this->channel, self::SNROI_CAP_CHANNELS, true)) {
-            return $price;
-        }
         $target = $this->snroiCapFor($dil);
         if ($target === null) {
             return $price;
@@ -164,8 +155,16 @@ class StdPrcVsDilPricer
             $margin = 0.80;
         }
         $ship = self::excludesShip($this->channel) ? 0.0 : (float) ($row['ship'] ?? 0);
+        // Ads % as a fraction of the price (the auto-push rows pass 0.05 for 5%). Pages without ads pass 0 or nothing.
+        $ads = is_numeric($row['ads'] ?? null) ? (float) $row['ads'] : 0.0;
+        if ($ads > 1) {
+            $ads /= 100;
+        }
+        if ($ads < 0 || $ads >= $margin) {
+            $ads = 0.0;
+        }
 
-        return self::capPriceToSnroi($price, $target, $lp, $margin, $ship);
+        return self::capPriceToSnroi($price, $target, $lp, $margin, $ship, $ads);
     }
 
     /** Target SNROI % of the Dil slab this value falls in. Null when the slab has no cap or no slab matches. */

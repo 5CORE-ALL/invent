@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.@if(in_array(($channelPromoChannel ?? ''), \App\Support\StdPrcVsDilPricer::SNROI_CAP_CHANNELS, true)) SNROI Cap then lowers S PRC so a SKU's NROI does not go above the Target SNROI % of its Dil slab.@endif</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. SNROI Cap then lowers S PRC so a SKU's SNROI does not go above the Target SNROI % of its Dil slab.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -280,7 +280,6 @@
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-all"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Disc %</th><th class="text-center">Count</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
                         </div>
-                        @if(in_array(($channelPromoChannel ?? ''), \App\Support\StdPrcVsDilPricer::SNROI_CAP_CHANNELS, true))
                         <div class="ch-sp-col" data-ch-sp-panel="snroicap">
                             <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Same Dil % slabs. Cap is the Target SNROI %. After all discounts, a SKU whose SNROI at S PRC is above the Cap of its Dil slab gets a lower S PRC that lands on the Cap. It only lowers prices. Leave the Cap blank to turn it off for that slab.">SNROI Cap</div><button type="button" class="ch-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-snroicap"></canvas></div>
@@ -288,7 +287,6 @@
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">Dil from</th><th class="text-center">Dil to</th><th class="text-center">Capped</th><th class="text-end">Cap SNROI %</th></tr></thead><tbody id="ch-sp-snroicap-tbody"></tbody></table></div>
                             <div class="small text-muted mt-1">Capped = SKUs whose S PRC was lowered to hold the Target SNROI %.</div>
                         </div>
-                        @endif
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -338,7 +336,6 @@
         let chStdRoi = CH_STD_ROI_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdLmp = [];
         // SNROI Cap (Wayfair): one { min, max, cap } per Dil slab. cap = Target SNROI %, null = off.
-        const CH_STD_SNROI_CAP_CHANNELS = @json(\App\Support\StdPrcVsDilPricer::SNROI_CAP_CHANNELS);
         let chStdSnroiCap = [];
         let chStdMoqM = CH_STD_MOQM_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let chStdCvr = Object.assign({}, CH_STD_CVR_DEFAULT);
@@ -755,8 +752,8 @@
             if (!chStdRowHasLmp(d) || !(chStdStockForAge(d) > 0)) return 0;
             return chStdRangeDisc(chStdDilPct(d), rules || chStdLmp);
         }
-        function chStdUsesNroiCap() {
-            return typeof CHANNEL_PROMO_CHANNEL === 'string' && CH_STD_SNROI_CAP_CHANNELS.indexOf(CHANNEL_PROMO_CHANNEL) !== -1;
+        function chStdUsesSnroiCap() {
+            return true;
         }
         function chStdNormCap(r) {
             let min = Number(r && r.min), max = Number(r && r.max);
@@ -769,7 +766,7 @@
         }
         /** SNROI Cap rows follow the Dil slabs. The Cap stays on the same row when a Dil From/To is edited. */
         function chStdAlignSnroiCap(dilRules) {
-            if (!chStdUsesNroiCap()) return [];
+            if (!chStdUsesSnroiCap()) return [];
             const prev = [];
             $('#ch-sp-snroicap-tbody tr').each(function() {
                 prev.push($(this).find('.ch-sp-snroicap-cap').val());
@@ -804,7 +801,7 @@
             return next;
         }
         function chStdSnroiCapRulesLive() {
-            if (!chStdUsesNroiCap()) return [];
+            if (!chStdUsesSnroiCap()) return [];
             const modal = document.getElementById('chStdPrcModal');
             if (modal && modal.classList.contains('show')) {
                 const dil = chStdReadRanges('#ch-sp-dil-tbody', '.ch-sp-dil-min', '.ch-sp-dil-max', '.ch-sp-dil-disc');
@@ -821,7 +818,7 @@
         }
         /** Target SNROI % of the Dil slab this SKU is in. Null = no cap. Slab edges match the Dil Disc slabs. */
         function chStdSnroiCapSlab(d, rules) {
-            if (!chStdUsesNroiCap()) return -1;
+            if (!chStdUsesSnroiCap()) return -1;
             const n = Number(chStdDilPct(d));
             if (!isFinite(n) || n < 0 || !rules || !rules.length) return -1;
             const last = rules.length - 1;
@@ -836,19 +833,21 @@
             return -1;
         }
         /**
-         * Lower a price that has an NROI above the Target SNROI % of its Dil slab to the price that lands on the target.
-         * SSNROI = ((price x margin) - ship - LP) / LP. Wayfair has no ads. Rounded down to the cent. Never raises a price.
+         * Lower a price that has a SNROI above the Target SNROI % of its Dil slab to the price that lands on the target.
+         * SNROI = ((price x (margin - ads%)) - ship - LP) / LP, the same number the S NROI column shows (ads% is 0 on pages
+         * without ads, ship is 0 on pages that exclude it). Rounded down to the cent. Never raises a price.
          * Same math as StdPrcVsDilPricer::capPriceToSnroi on the server.
          */
         function chStdApplySnroiCap(d, price, rules) {
             const p = Number(price);
-            if (!chStdUsesNroiCap() || !(p > 0)) return price;
+            if (!chStdUsesSnroiCap() || !(p > 0)) return price;
             rules = rules || chStdSnroiCap;
             const idx = chStdSnroiCapSlab(d, rules);
             if (idx < 0 || rules[idx].cap == null) return price;
             const target = Number(rules[idx].cap);
             const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
-            const margin = chStdMargin(d);
+            const adsFrac = (typeof chPromoAdsFrac === 'function') ? (Number(chPromoAdsFrac()) || 0) : 0;
+            const margin = chStdMargin(d) - (adsFrac > 0 && adsFrac < chStdMargin(d) ? adsFrac : 0);
             const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
             if (!(lp > 0) || !(margin > 0)) return price;
             const snroi = (((p * margin) - ship - lp) / lp) * 100;
@@ -1125,7 +1124,7 @@
             const dilCounts = { outside: 0 }, ageCounts = { none: 0 }, revCounts = { none: 0 }, bussCounts = { outside: 0 }, pricingCounts = { outside: 0 }, roiCounts = { outside: 0 };
             const lmpCounts = { outside: 0 };
             const moqMCounts = { outside: 0 };
-            const snroiCapOn = chStdUsesNroiCap();
+            const snroiCapOn = chStdUsesSnroiCap();
             const snroiCapCounts = { off: 0 };
             (draft.snroiCap || []).forEach(function(r, i) { snroiCapCounts['n' + i] = 0; });
             const cvrCounts = { down2: 0, down: 0, flat: 0, up: 0, up2: 0 };
@@ -1880,8 +1879,8 @@
             let raw = std * (1 - Math.min(99.99, sum) / 100);
             raw -= chStdShipOff(d);
             if (!(raw > 0)) return 0;
-            // SNROI Cap: after all discounts, never let NROI go above the Target SNROI % of the SKU's Dil slab.
-            if (chStdUsesNroiCap()) raw = chStdApplySnroiCap(d, raw, (draft && draft.snroiCap) || chStdSnroiCapRulesLive());
+            // SNROI Cap: after all discounts, never let SNROI go above the Target SNROI % of the SKU's Dil slab.
+            if (chStdUsesSnroiCap()) raw = chStdApplySnroiCap(d, raw, (draft && draft.snroiCap) || chStdSnroiCapRulesLive());
             if (chStdIsEbay()) raw = chStdEbayCap(d, raw);
             if (!(raw > 0)) return 0;
             return (typeof chPromoRoundChannelSprice === 'function')

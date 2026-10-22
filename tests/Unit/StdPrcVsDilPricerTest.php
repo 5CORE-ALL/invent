@@ -433,7 +433,7 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(100.0, $pricer->priceFromRow($row + ['ov_l30' => 7]));
     }
 
-    public function test_cap_price_to_nroi_lowers_only_and_floors_to_the_cent(): void
+    public function test_cap_price_to_snroi_lowers_only_and_floors_to_the_cent(): void
     {
         // LP 50, margin 0.95: price 100 → SNROI (95 − 50) / 50 = 90%. Target 60% → (50 × 1.6) / 0.95 = 84.2105… → 84.21.
         $this->assertSame(84.21, StdPrcVsDilPricer::capPriceToSnroi(100.0, 60.0, 50.0, 0.95));
@@ -465,7 +465,7 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame([], StdPrcVsDilPricer::normalizeSnroiCapRules(null));
     }
 
-    public function test_snroi_cap_lowers_the_price_by_dil_slab_on_wayfair_only(): void
+    public function test_snroi_cap_lowers_the_price_by_dil_slab_on_every_channel(): void
     {
         $rules = [
             'dil' => [],
@@ -488,7 +488,13 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(84.21, $wayfair->priceFromRow($row + ['dil' => 10]));
         // Dil 50 is in a slab with no cap.
         $this->assertSame(100.0, $wayfair->priceFromRow($row + ['dil' => 50]));
-        // Other channels have no SNROI Cap.
-        $this->assertSame(100.0, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row + ['dil' => 10]));
+        // Every other channel page has the same SNROI Cap.
+        $this->assertSame(84.21, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row + ['dil' => 10]));
+        // A channel that pays ship counts it: (50 × 1.6 + 5) / 0.95 = 89.47.
+        $this->assertSame(89.47, (new StdPrcVsDilPricer($rules, 'reverb'))->priceFromRow($row + ['dil' => 10, 'ship' => 5]));
+        // Ads % comes off the margin: 0.95 − 0.10 = 0.85 → (50 × 1.6) / 0.85 = 94.11.
+        $this->assertSame(94.11, (new StdPrcVsDilPricer($rules, 'reverb'))->priceFromRow($row + ['dil' => 10, 'ads' => 0.10]));
+        // Ads given as a percent (10) is read the same way.
+        $this->assertSame(94.11, (new StdPrcVsDilPricer($rules, 'reverb'))->priceFromRow($row + ['dil' => 10, 'ads' => 10]));
     }
 }
