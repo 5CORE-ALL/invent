@@ -764,14 +764,16 @@
                 + '<td class="text-end"><input type="number" min="-100" step="0.1" class="form-control form-control-sm ch-sp-input ch-sp-moqm-disc" value="' + rule.disc + '"></td>'
                 + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ch-sp-moqm-del" title="Remove">&times;</button></td></tr>';
         }
-        function chStdSumDisc(d, draft) {
+        // raw = true: the Sum column shows the real total, negative included. S PRC always uses the floored sum (min 0 = no discount).
+        function chStdSumDisc(d, draft, raw) {
+            const lo = raw ? -100 : 0;
             draft = draft || { dil: chStdDil, age: chStdAge, cvr: chStdCvr, reviews: chStdRev, reviewMax: chStdReviewMax, buss: chStdBussRulesLive(), pricing: chStdPricingRulesLive(), roi: chStdRoiRulesLive(), zeroSoldDisc: chStdZeroSoldDisc, lmp: chStdLmpRulesLive(), moqM: chStdMoqMRulesLive() };
             // Amazon INV = 0 still allows the page 0 Sold discount (AB L30 = 0, page INV > 0).
             if (!(chStdStockForAge(d) > 0)) {
                 if (!chStdRowIsZeroSold(d)) return 0;
                 const stdOnly = chStdRowStd(d);
                 const zsOnly = Number(draft.zeroSoldDisc != null ? draft.zeroSoldDisc : chStdZeroSoldDisc) || 0;
-                return Math.min(99.99, Math.max(0, chStdScaleDisc(stdOnly, zsOnly)));
+                return Math.min(99.99, Math.max(lo, chStdScaleDisc(stdOnly, zsOnly)));
             }
             const std = chStdRowStd(d);
             const dil = chStdDilPct(d);
@@ -801,7 +803,7 @@
             const zsDisc = chStdScaleDisc(std, zsRaw);
             const lmpDisc = chStdScaleDisc(std, chStdLmpDiscRaw(d, draft.lmp || chStdLmp));
             const moqMDisc = chStdScaleDisc(std, chStdMoqMDiscRaw(d, draft.moqM || chStdMoqM));
-            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc));
+            return Math.min(99.99, Math.max(lo, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc));
         }
         function chStdFullDataset() {
             if (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length) return window.allTableData;
@@ -1676,7 +1678,7 @@
                     },
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
-                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + MOQ M + B Disc + Pricing + ROI + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100).', function(d) { return chStdSumDisc(d); }),
+                chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + MOQ M + B Disc + Pricing + ROI + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100). A negative total is shown in red, and S PRC then stays at Std Prc (no discount).', function(d) { return chStdSumDisc(d, undefined, true); }),
             ];
         }
         function chStdAppendDiscColumnsFilter(c) {
