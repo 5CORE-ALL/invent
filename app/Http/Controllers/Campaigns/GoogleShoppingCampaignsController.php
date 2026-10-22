@@ -542,24 +542,33 @@ class GoogleShoppingCampaignsController extends Controller
 
         /** @var GoogleAdsSbidService $sbidService */
         $sbidService = app(GoogleAdsSbidService::class);
+        $invResolver = $this->buildInventoryResolver();
         $results = [];
         $applied = 0;
 
         foreach ($ids as $cid) {
             $cid = (string) $cid;
             if (! isset($names[$cid])) {
-                $results[] = ['campaign_id' => $cid, 'name' => '', 'status' => 'error', 'add' => [], 'remove' => [], 'applied' => false, 'message' => 'Campaign not found in this grid.'];
+                $results[] = ['campaign_id' => $cid, 'name' => '', 'status' => 'error', 'add' => [], 'reinclude' => [], 'enable' => [], 'remove' => [], 'skip' => [], 'applied' => false, 'message' => 'Campaign not found in this grid.'];
 
                 continue;
             }
             $skus = $this->childSkusForCampaignName($names[$cid]);
             $expectedBySku = $this->resolveMerchantCenterItemIds($skus);
-            $expected = array_values(array_unique(array_filter(array_map(
-                static fn ($sku) => $expectedBySku[$sku] ?? '',
-                $skus
-            ))));
+            $expected = [];
+            $invByItem = [];
+            foreach ($skus as $sku) {
+                $itemId = $expectedBySku[$sku] ?? '';
+                if ($itemId === '') {
+                    continue;
+                }
+                $expected[$itemId] = $itemId;
+                $inv = $invResolver($sku);
+                $invByItem[$itemId] = $inv !== null ? (int) $inv : 0;
+            }
+            $expected = array_values($expected);
 
-            $res = $sbidService->syncShoppingItemIds((string) $customerId, $cid, $expected, $dryRun);
+            $res = $sbidService->syncShoppingItemIds((string) $customerId, $cid, $expected, $dryRun, $invByItem);
             $missingSkus = count($skus) - count($expected);
             if ($missingSkus > 0 && $res['status'] !== 'error') {
                 $res['message'] .= " ({$missingSkus} SKU(s) have no Merchant Center ID in the catalog and cannot be added.)";
@@ -567,6 +576,19 @@ class GoogleShoppingCampaignsController extends Controller
             if ($res['applied']) {
                 $applied++;
             }
+
+            // Remember the last problem so the grid's Reason column can show it after a reload.
+            $noteKey = 'gads_shopping_fix_note:'.$cid;
+            if (in_array($res['status'], ['error', 'unsupported'], true) || ($res['skip'] ?? []) !== []) {
+                $detail = $res['message'];
+                if (($res['skip'] ?? []) !== []) {
+                    $detail .= ' '.implode('; ', $res['skip']);
+                }
+                Cache::put($noteKey, '['.now()->format('M j H:i').'] '.$detail, now()->addDays(7));
+            } elseif ($res['applied'] || $res['status'] === 'nothing') {
+                Cache::forget($noteKey);
+            }
+
             $results[] = ['campaign_id' => $cid, 'name' => $names[$cid]] + $res;
         }
 
@@ -1279,6 +1301,7 @@ class GoogleShoppingCampaignsController extends Controller
                     $arr['ver_attached'] = null;
                     $arr['ver_total'] = null;
                     $arr['ver_status'] = '';
+                    $arr['ver_reason'] = '';
                 }
                 $pageRows[$i] = $arr;
             }
@@ -1324,6 +1347,7 @@ class GoogleShoppingCampaignsController extends Controller
             $arr['ver_attached'] = null;
             $arr['ver_total'] = null;
             $arr['ver_status'] = '';
+            $arr['ver_reason'] = '';
 
             return self::prepareRawRowForTabulator($arr);
         })->values();
@@ -4068,6 +4092,7 @@ class GoogleShoppingCampaignsController extends Controller
             'ver_attached',
             'ver_total',
             'ver_status',
+            'ver_reason',
         ];
     }
 
@@ -4376,10 +4401,28 @@ class GoogleShoppingCampaignsController extends Controller
 
             // Verification: Items attached on Google Ads (distinct Item IDs) vs SKUs under this campaign/parent.
             $skuTotal = count($skus);
+            $skusNoId = array_values(array_filter($skus, static fn ($sku) => empty($expectedBySku[$sku])));
             $attached = $apiError !== null ? null : count($live);
             $arr['ver_attached'] = $attached;
             $arr['ver_total'] = $skuTotal;
             $arr['ver_status'] = ($attached !== null && $skuTotal > 0 && $attached === $skuTotal) ? 'match' : 'mismatch';
+            // Exact reason shown in the Reason column (+ the last Fix attempt's error, if any).
+            if ($status === 'matched' && $arr['ver_status'] === 'match') {
+                $reason = "OK — all {$skuTotal} SKU(s) attached with matching Item IDs.";
+            } elseif ($status === 'matched') {
+                $reason = "Item IDs match, but Items attached ({$attached}) ≠ SKUs ({$skuTotal})"
+                    .($skusNoId !== [] ? ': no Merchant Center Item ID in catalog for SKU '.implode(', ', array_slice($skusNoId, 0, 5)).(count($skusNoId) > 5 ? ', …' : '') : '.');
+            } else {
+                $reason = $tip;
+                if ($status === 'mismatch' || $status === 'missing') {
+                    $reason .= ($skusNoId !== [] && $expected !== [] ? ' | No catalog Item ID for SKU '.implode(', ', array_slice($skusNoId, 0, 5)) : '');
+                }
+            }
+            $fixNote = Cache::get('gads_shopping_fix_note:'.$cid);
+            if (is_string($fixNote) && $fixNote !== '') {
+                $reason .= ' | Last fix: '.$fixNote;
+            }
+            $arr['ver_reason'] = $reason;
             $arr['id_status'] = $status;
             $arr['id_mismatch'] = in_array($status, ['mismatch', 'error'], true);
             $arr['id_alert_title'] = $tip;

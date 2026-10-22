@@ -1299,23 +1299,33 @@ class GoogleAdsSbidService
 
     /**
      * Align a Shopping campaign's listing-group Item IDs with the expected Merchant Center IDs:
-     * add the missing ones and remove the ones that do not belong. Only the simple tree this app
-     * builds is touched (root SUBDIVISION + one UNIT per Item ID + "everything else"); any other
-     * structure is reported as unsupported and left unchanged.
+     *  - add Item IDs that are missing,
+     *  - re-include (excluded) or enable (paused) Item IDs that already exist — only when the SKU has inventory,
+     *  - remove Item IDs that do not belong to the campaign's SKU(s).
+     * Only the simple tree this app builds is touched (root SUBDIVISION + one UNIT per Item ID +
+     * "everything else"); any other structure is reported as unsupported and left unchanged.
      *
      * @param  list<string>  $expectedIds
-     * @return array{status: string, add: list<string>, remove: list<string>, applied: bool, message: string}
+     * @param  array<string, int|float|bool>  $invByItem  Item ID => inventory (missing key = treated as available)
+     * @return array{status: string, add: list<string>, reinclude: list<string>, enable: list<string>, remove: list<string>, skip: list<string>, applied: bool, message: string}
      *         status: ok | nothing | unsupported | error
      */
-    public function syncShoppingItemIds(string $customerId, string $campaignId, array $expectedIds, bool $dryRun = true): array
+    public function syncShoppingItemIds(string $customerId, string $campaignId, array $expectedIds, bool $dryRun = true, array $invByItem = []): array
     {
         $customerId = str_replace('-', '', trim($customerId));
         $campaignId = preg_replace('/\D+/', '', $campaignId) ?: '';
         $expected = array_values(array_unique(array_filter(array_map(static fn ($v) => trim((string) $v), $expectedIds), static fn ($v) => $v !== '')));
         sort($expected);
 
-        $result = static fn (string $status, string $message, array $add = [], array $remove = [], bool $applied = false) => [
-            'status' => $status, 'add' => $add, 'remove' => $remove, 'applied' => $applied, 'message' => $message,
+        $result = static fn (string $status, string $message, array $p = [], bool $applied = false) => [
+            'status' => $status,
+            'add' => $p['add'] ?? [],
+            'reinclude' => $p['reinclude'] ?? [],
+            'enable' => $p['enable'] ?? [],
+            'remove' => $p['remove'] ?? [],
+            'skip' => $p['skip'] ?? [],
+            'applied' => $applied,
+            'message' => $message,
         ];
 
         if ($customerId === '' || $campaignId === '') {
@@ -1350,7 +1360,6 @@ class GoogleAdsSbidService
             return $result('error', self::briefGoogleError($e));
         }
 
-        // Ad group(s) of this campaign (needed even when there is no listing group yet).
         $adGroups = [];
         $nodes = [];
         foreach ($rows as $row) {
@@ -1363,13 +1372,12 @@ class GoogleAdsSbidService
                 'cpc' => (int) ($ag['cpcBidMicros'] ?? 0),
             ];
             $nodes[] = [
-                'ad_group' => $agResource,
                 'resource' => (string) ($crit['resourceName'] ?? ''),
                 'type' => (string) ($lg['type'] ?? ''),
                 'parent' => (string) ($lg['parentAdGroupCriterion'] ?? ''),
+                'status' => (string) ($crit['status'] ?? 'ENABLED'),
                 'negative' => (bool) ($crit['negative'] ?? false),
                 'item' => trim((string) ($lg['caseValue']['productItemId']['value'] ?? '')),
-                'has_item_dim' => isset($lg['caseValue']['productItemId']),
                 'cpc' => (int) ($crit['cpcBidMicros'] ?? 0),
             ];
         }
@@ -1379,7 +1387,6 @@ class GoogleAdsSbidService
         }
 
         if ($nodes === []) {
-            // No listing groups at all: look up the ad group so the full tree can be created.
             try {
                 $agRows = $this->runQuery($customerId, "SELECT ad_group.id, ad_group.resource_name, ad_group.cpc_bid_micros FROM ad_group WHERE campaign.id = {$campaignId} AND ad_group.status != 'REMOVED'");
             } catch (\Throwable $e) {
@@ -1393,15 +1400,15 @@ class GoogleAdsSbidService
             $agId = (int) ($ag['id'] ?? 0);
             $bid = (int) ($ag['cpcBidMicros'] ?? 0) ?: 500000;
             if ($dryRun) {
-                return $result('ok', 'No listing groups exist — a full tree will be created.', $expected, [], false);
+                return $result('ok', 'No listing groups exist — a full tree will be created.', ['add' => $expected]);
             }
             try {
                 $this->createFlatListingTree($customerId, $agResource, $agId, $expected, $bid);
             } catch (\Throwable $e) {
-                return $result('error', self::briefGoogleError($e), $expected);
+                return $result('error', self::briefGoogleError($e), ['add' => $expected]);
             }
 
-            return $result('ok', 'Created listing groups for '.count($expected).' Item ID(s).', $expected, [], true);
+            return $result('ok', 'Created listing groups for '.count($expected).' Item ID(s).', ['add' => $expected], true);
         }
 
         $agResource = (string) array_key_first($adGroups);
@@ -1413,7 +1420,8 @@ class GoogleAdsSbidService
         }
         $rootResource = $roots[0]['resource'];
 
-        $live = [];
+        // Item IDs are matched case-insensitively (Google treats them as the same product).
+        $byItem = [];
         $siblingBid = 0;
         $hasOthers = false;
         foreach ($nodes as $n) {
@@ -1428,8 +1436,8 @@ class GoogleAdsSbidService
 
                 continue;
             }
+            $byItem[strtolower($n['item'])][] = $n;
             if (! $n['negative']) {
-                $live[$n['item']][] = $n['resource'];
                 $siblingBid = $siblingBid ?: $n['cpc'];
             }
         }
@@ -1437,23 +1445,82 @@ class GoogleAdsSbidService
             return $result('unsupported', 'Listing group tree has no "everything else" node — fix manually in Google Ads.');
         }
 
-        $liveIds = array_keys($live);
-        sort($liveIds);
-        $add = array_values(array_diff($expected, $liveIds));
-        $remove = array_values(array_diff($liveIds, $expected));
+        $expectedKeys = [];
+        foreach ($expected as $e) {
+            $expectedKeys[strtolower($e)] = $e;
+        }
+
+        $add = $reinclude = $enable = $remove = $skip = [];
+        $removeOps = [];
+        $updateOps = [];
+        foreach ($expectedKeys as $key => $itemId) {
+            $existing = $byItem[$key] ?? [];
+            if ($existing === []) {
+                $add[] = $itemId;
+
+                continue;
+            }
+            $positive = array_values(array_filter($existing, static fn ($n) => ! $n['negative']));
+            if (array_filter($positive, static fn ($n) => $n['status'] === 'ENABLED') !== []) {
+                continue; // already attached and enabled
+            }
+            $hasInv = ((float) ($invByItem[$itemId] ?? 1)) > 0;
+            if ($positive !== []) {
+                if ($hasInv) {
+                    $enable[] = $itemId;
+                    $updateOps[] = $positive[0]['resource'];
+                } else {
+                    $skip[] = $itemId.' (paused in Ads, SKU has no inventory — left paused)';
+                }
+            } else {
+                if ($hasInv) {
+                    $reinclude[] = $itemId;
+                    foreach ($existing as $n) {
+                        $removeOps[] = $n['resource'];
+                    }
+                } else {
+                    $skip[] = $itemId.' (excluded in Ads, SKU has no inventory — left excluded)';
+                }
+            }
+        }
+        foreach ($byItem as $key => $existing) {
+            if (isset($expectedKeys[$key])) {
+                continue;
+            }
+            foreach ($existing as $n) {
+                if (! $n['negative']) {
+                    $remove[] = $n['item'];
+                    $removeOps[] = $n['resource'];
+                }
+            }
+        }
+        $remove = array_values(array_unique($remove));
         sort($add);
+        sort($reinclude);
+        sort($enable);
         sort($remove);
 
-        if ($add === [] && $remove === []) {
-            return $result('nothing', 'Item IDs already match Merchant Center — nothing to fix.');
+        $plan = ['add' => $add, 'reinclude' => $reinclude, 'enable' => $enable, 'remove' => $remove, 'skip' => $skip];
+        if ($add === [] && $reinclude === [] && $enable === [] && $remove === []) {
+            return $result('nothing', $skip === []
+                ? 'Item IDs already match Merchant Center — nothing to fix.'
+                : 'Nothing can be changed: '.count($skip).' Item ID(s) are excluded/paused and their SKU has no inventory.', $plan);
         }
         if ($dryRun) {
-            return $result('ok', 'Ready to apply.', $add, $remove, false);
+            return $result('ok', 'Ready to apply.', $plan);
         }
 
         $bid = $siblingBid ?: ($agInfo['cpc'] ?: 500000);
         $ops = [];
-        foreach ($add as $itemId) {
+        foreach (array_unique($removeOps) as $resource) {
+            $ops[] = (new AdGroupCriterionOperation())->setRemove($resource);
+        }
+        foreach ($updateOps as $resource) {
+            $ops[] = (new AdGroupCriterionOperation())
+                ->setUpdate(new AdGroupCriterion(['resource_name' => $resource, 'status' => AdGroupCriterionStatus::ENABLED]))
+                ->setUpdateMask(new FieldMask(['paths' => ['status']]));
+        }
+        foreach (array_merge($add, $reinclude) as $itemId) {
             $ops[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
                 'ad_group' => $agResource,
                 'status' => AdGroupCriterionStatus::ENABLED,
@@ -1467,11 +1534,6 @@ class GoogleAdsSbidService
                 'cpc_bid_micros' => $bid,
             ]));
         }
-        foreach ($remove as $itemId) {
-            foreach ($live[$itemId] as $resource) {
-                $ops[] = (new AdGroupCriterionOperation())->setRemove($resource);
-            }
-        }
 
         try {
             $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
@@ -1481,16 +1543,14 @@ class GoogleAdsSbidService
                 ])
             );
         } catch (\Throwable $e) {
-            Log::error('Failed to sync Shopping Item IDs', [
-                'campaign_id' => $campaignId, 'add' => $add, 'remove' => $remove, 'error' => $e->getMessage(),
-            ]);
+            Log::error('Failed to sync Shopping Item IDs', ['campaign_id' => $campaignId] + $plan + ['error' => $e->getMessage()]);
 
-            return $result('error', self::briefGoogleError($e), $add, $remove);
+            return $result('error', self::briefGoogleError($e), $plan);
         }
 
-        Log::info('Synced Shopping Item IDs', ['campaign_id' => $campaignId, 'add' => $add, 'remove' => $remove]);
+        Log::info('Synced Shopping Item IDs', ['campaign_id' => $campaignId] + $plan);
 
-        return $result('ok', 'Added '.count($add).', removed '.count($remove).' Item ID(s) in Google Ads.', $add, $remove, true);
+        return $result('ok', 'Added '.count($add).', re-included '.count($reinclude).', enabled '.count($enable).', removed '.count($remove).' Item ID(s) in Google Ads.', $plan, true);
     }
 
     /**

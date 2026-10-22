@@ -1238,6 +1238,7 @@
                 ver_attached: true,
                 ver_total: true,
                 ver_status: true,
+                ver_reason: true,
                 id_alert_title: true,
                 bgt_views_color: true,
                 bgt_views_label: true,
@@ -1486,6 +1487,16 @@
                 return btn;
             }
 
+            function gacRawReasonFormatter(cell) {
+                var row = cell.getRow().getData() || {};
+                var txt = String(row.ver_reason || '');
+                if (txt === '') return '';
+                var st = String(row.id_status || '');
+                var color = txt.indexOf('OK —') === 0 ? '#16a34a' : (st === 'missing' ? '#a16207' : '#dc2626');
+                var esc = txt.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                return '<span title="' + esc + '" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:' + color + ';">' + esc + '</span>';
+            }
+
             function gacRawFixPost(ids, dryRun) {
                 return fetch(gacRawFixItemIdsUrl, {
                     method: 'POST',
@@ -1532,7 +1543,10 @@
                 var tag = r.status === 'ok' ? (r.applied ? '[FIXED]' : '[PLAN]') : (r.status === 'nothing' ? '[OK]' : (r.status === 'unsupported' ? '[SKIP]' : '[ERROR]'));
                 var t = tag + ' ' + label + ': ' + (r.message || '');
                 if (r.add && r.add.length) t += '\n      + add: ' + r.add.join(', ');
+                if (r.reinclude && r.reinclude.length) t += '\n      ↺ re-include (was excluded): ' + r.reinclude.join(', ');
+                if (r.enable && r.enable.length) t += '\n      ▶ enable (was paused): ' + r.enable.join(', ');
                 if (r.remove && r.remove.length) t += '\n      - remove: ' + r.remove.join(', ');
+                if (r.skip && r.skip.length) t += '\n      ⏸ skipped: ' + r.skip.join('; ');
                 return t;
             }
 
@@ -1556,7 +1570,8 @@
                 gacRawFixBusy = true;
                 gacShowPushLoading('Checking ' + ids.length + ' campaign(s) against Merchant Center…', 'Reading listing groups from Google Ads — nothing is changed yet.');
                 gacRawFixRunChunks(ids, 5, true).then(function(plans) {
-                    var actionable = plans.filter(function(p) { return p.status === 'ok' && ((p.add && p.add.length) || (p.remove && p.remove.length)); });
+                    var cnt = function(p) { return (p.add || []).length + (p.reinclude || []).length + (p.enable || []).length + (p.remove || []).length; };
+                    var actionable = plans.filter(function(p) { return p.status === 'ok' && cnt(p) > 0; });
                     var planText = plans.map(gacRawFixLine).join('\n');
                     if (!actionable.length) {
                         gacRawFixBusy = false;
@@ -1564,10 +1579,10 @@
                         return null;
                     }
                     var nAdd = 0, nRem = 0;
-                    actionable.forEach(function(p) { nAdd += p.add.length; nRem += p.remove.length; });
+                    actionable.forEach(function(p) { nAdd += (p.add || []).length + (p.reinclude || []).length + (p.enable || []).length; nRem += (p.remove || []).length; });
                     gacShowPushResult('Fix plan — ' + actionable.length + ' campaign(s): +' + nAdd + ' / −' + nRem + ' Item ID(s)', planText, 'success');
                     var preview = actionable.slice(0, 8).map(gacRawFixLine).join('\n');
-                    if (!window.confirm('Apply this in Google Ads now?\n\n' + actionable.length + ' campaign(s): add ' + nAdd + ', remove ' + nRem + ' Item ID(s).\n\n' + preview + (actionable.length > 8 ? '\n…' : ''))) {
+                    if (!window.confirm('Apply this in Google Ads now?\n\n' + actionable.length + ' campaign(s): add/enable ' + nAdd + ', remove ' + nRem + ' Item ID(s).\n\n' + preview + (actionable.length > 8 ? '\n…' : ''))) {
                         gacRawFixBusy = false;
                         return null;
                     }
@@ -1577,7 +1592,8 @@
                         var fixed = results.filter(function(r) { return r.applied; }).length;
                         var bad = results.filter(function(r) { return r.status === 'error' || r.status === 'unsupported'; }).length;
                         gacShowPushResult('Fix in Google Ads — ' + fixed + ' fixed' + (bad ? ', ' + bad + ' failed/skipped' : ''), results.map(gacRawFixLine).join('\n'), bad ? 'error' : 'success');
-                        if (fixed && typeof gacRawReloadGridForFilters === 'function') gacRawReloadGridForFilters();
+                        // Reload either way so the Reason column shows the latest result / error.
+                        if (typeof gacRawReloadGridForFilters === 'function') gacRawReloadGridForFilters();
                     });
                 }).catch(function(err) {
                     gacRawFixBusy = false;
@@ -3044,6 +3060,19 @@
                             formatter: gacRawFixFormatter,
                         });
                     }
+                    // Reason column (right after Fix): the exact reason the ID / Verification check failed (+ last Fix error).
+                    if (!defs.some(function(d) { return d.field === 'reason'; })) {
+                        defs.push({
+                            title: 'Reason',
+                            field: 'reason',
+                            headerSort: false,
+                            hozAlign: 'left',
+                            headerHozAlign: 'center',
+                            width: 360,
+                            minWidth: 200,
+                            formatter: gacRawReasonFormatter,
+                        });
+                    }
                     // Column order: BGT ACOS sits immediately before Bgt Views.
                     var acosIdx = defs.findIndex(function(d) { return d.field === 'bgt_acos'; });
                     if (acosIdx !== -1) {
@@ -3177,7 +3206,7 @@
              */
             // Column picker groups. Any column not listed lands in "Other".
             var GAC_COL_GROUPS = [
-                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification', 'ver_fix'] },
+                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification', 'ver_fix', 'reason'] },
                 { key: 'bids', title: 'Bids', fields: ['cpc_L30', 'live_cpc', 'cpc_L7', 'cpc_L2', 'cpc_L1', 'lbid', 'sbid'] },
                 { key: 'util', title: 'Utilization', fields: ['spend', 'l7_spend', 'l2_spend', 'l1_spend', 'ub7', 'ub2', 'ub1'] },
                 { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'sbgt', 'lbgt'] },
