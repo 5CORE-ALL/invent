@@ -281,10 +281,11 @@
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Disc %</th><th class="text-center">Count</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
                         </div>
                         <div class="ch-sp-col" data-ch-sp-panel="snroicap">
-                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Same Dil % slabs. Cap is the Target SNROI %. After all discounts, a SKU whose SNROI at S PRC is above the Cap of its Dil slab gets a lower S PRC that lands on the Cap. It only lowers prices. Leave the Cap blank to turn it off for that slab.">SNROI Cap</div><button type="button" class="ch-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></div>
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Slabs on the Dil %. Cap is the Target SNROI %. After all discounts, a SKU whose SNROI at S PRC is above the Cap of its Dil slab gets a lower S PRC that lands on the Cap. It only lowers prices. Leave the Cap blank to turn it off for that slab.">SNROI Cap</div><button type="button" class="ch-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-snroicap"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-snroicap"></div>
-                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">Dil from</th><th class="text-center">Dil to</th><th class="text-center">Capped</th><th class="text-end">Cap SNROI %</th></tr></thead><tbody id="ch-sp-snroicap-tbody"></tbody></table></div>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">Dil from</th><th class="text-center">Dil to</th><th class="text-center">Capped</th><th class="text-end">Cap SNROI %</th><th></th></tr></thead><tbody id="ch-sp-snroicap-tbody"></tbody></table></div>
+                            <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-snroicap-add">Add slab</button>
                             <div class="small text-muted mt-1">Capped = SKUs whose S PRC was lowered to hold the Target SNROI %.</div>
                         </div>
                     </div>
@@ -764,56 +765,35 @@
             cap = isFinite(cap) ? Math.min(9999, Math.max(-100, cap)) : null;
             return { min: min, max: max, cap: cap };
         }
-        /** SNROI Cap rows follow the Dil slabs. The Cap stays on the same row when a Dil From/To is edited. */
-        function chStdAlignSnroiCap(dilRules) {
-            if (!chStdUsesSnroiCap()) return [];
-            const prev = [];
+        function chStdSnroiCapRow(rule) {
+            const num = function(cls, val) { return '<input type="number" step="0.1" class="form-control form-control-sm ch-sp-input ' + cls + '" value="' + chStdEsc(val) + '">'; };
+            return '<tr><td class="text-center">' + num('ch-sp-snroicap-min', rule.min) + '</td>'
+                + '<td class="text-center">' + num('ch-sp-snroicap-max', rule.max) + '</td>'
+                + '<td class="ch-sp-count ch-sp-snroicap-count">0</td>'
+                + '<td class="text-end"><input type="number" min="-100" step="0.1" placeholder="off" class="form-control form-control-sm ch-sp-input ch-sp-snroicap-cap" value="' + chStdEsc(rule.cap == null ? '' : rule.cap) + '"></td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm ch-sp-del ch-sp-snroicap-del" title="Remove">&times;</button></td></tr>';
+        }
+        /** Slabs on the Dil % value. They start as a copy of the Dil slabs and can be edited, added and removed on their own. */
+        function chStdReadSnroiCap() {
+            const rules = [];
             $('#ch-sp-snroicap-tbody tr').each(function() {
-                prev.push($(this).find('.ch-sp-snroicap-cap').val());
+                const rule = chStdNormCap({ min: $(this).find('.ch-sp-snroicap-min').val(), max: $(this).find('.ch-sp-snroicap-max').val(), cap: $(this).find('.ch-sp-snroicap-cap').val() });
+                if (rule) rules.push(rule);
             });
-            const next = (dilRules || []).map(function(r, i) {
-                let cap = prev[i];
-                if (cap == null) {
-                    const saved = (chStdSnroiCap || []).find(function(s) {
-                        return s && Number(s.min) === Number(r.min) && Number(s.max) === Number(r.max);
-                    });
-                    cap = saved && saved.cap != null ? saved.cap : '';
-                }
-                return chStdNormCap({ min: r.min, max: r.max, cap: cap });
-            });
+            return rules;
+        }
+        /** Paint the rows from the saved caps. With nothing saved yet, start from the Dil slabs (no cap). */
+        function chStdPaintSnroiCap() {
             const $tb = $('#ch-sp-snroicap-tbody');
-            let same = $tb.find('tr').length === next.length;
-            if (same) {
-                $tb.find('tr').each(function(i) {
-                    if (String($(this).attr('data-min')) !== String(next[i].min) || String($(this).attr('data-max')) !== String(next[i].max)) same = false;
-                });
+            let rules = (chStdSnroiCap || []).slice();
+            if (!rules.length) {
+                rules = (chStdDil || []).map(function(r) { return { min: r.min, max: r.max, cap: null }; });
             }
-            if (!same) {
-                $tb.html(next.map(function(rule) {
-                    return '<tr data-min="' + chStdEsc(rule.min) + '" data-max="' + chStdEsc(rule.max) + '">'
-                        + '<td class="text-center">' + chStdEsc(rule.min) + '</td>'
-                        + '<td class="text-center">' + chStdEsc(rule.max) + '</td>'
-                        + '<td class="ch-sp-count ch-sp-snroicap-count">0</td>'
-                        + '<td class="text-end"><input type="number" min="-100" step="0.1" placeholder="off" class="form-control form-control-sm ch-sp-input ch-sp-snroicap-cap" value="' + chStdEsc(rule.cap == null ? '' : rule.cap) + '"></td>'
-                        + '</tr>';
-                }).join(''));
-            }
-            return next;
+            $tb.html(rules.map(function(r) { return chStdSnroiCapRow(r); }).join('')).data('painted', true);
         }
         function chStdSnroiCapRulesLive() {
             if (!chStdUsesSnroiCap()) return [];
-            const modal = document.getElementById('chStdPrcModal');
-            if (modal && modal.classList.contains('show')) {
-                const dil = chStdReadRanges('#ch-sp-dil-tbody', '.ch-sp-dil-min', '.ch-sp-dil-max', '.ch-sp-dil-disc');
-                const rows = $('#ch-sp-snroicap-tbody tr');
-                if (dil.length && rows.length === dil.length) {
-                    const rules = [];
-                    rows.each(function(i) {
-                        rules.push(chStdNormCap({ min: dil[i].min, max: dil[i].max, cap: $(this).find('.ch-sp-snroicap-cap').val() }));
-                    });
-                    return rules;
-                }
-            }
+            if ($('#ch-sp-snroicap-tbody').data('painted')) return chStdReadSnroiCap();
             return chStdSnroiCap;
         }
         /** Target SNROI % of the Dil slab this SKU is in. Null = no cap. Slab edges match the Dil Disc slabs. */
@@ -1019,7 +999,7 @@
                 }),
             };
             draft.lmp = chStdAlignLmp(draft.dil);
-            draft.snroiCap = chStdAlignSnroiCap(draft.dil);
+            draft.snroiCap = chStdSnroiCapRulesLive();
             return draft;
         }
         function chStdRoiRow(rule) {
@@ -1420,8 +1400,7 @@
             $('#ch-sp-pricing-tbody').html(chStdPricing.map(function(r) { return chStdRangeRow('ch-sp-pricing', r); }).join(''));
             $('#ch-sp-roi-tbody').html(chStdRoi.map(function(r) { return chStdRoiRow(r); }).join(''));
             $('#ch-sp-moqm-tbody').html((chStdMoqM.length ? chStdMoqM : CH_STD_MOQM_DEFAULTS).map(function(r) { return chStdMoqMRow(r); }).join(''));
-            // Rebuilt from the saved caps by chStdAlignSnroiCap on the refresh below.
-            $('#ch-sp-snroicap-tbody').empty();
+            chStdPaintSnroiCap();
             $('#ch-sp-zs-disc').val(chStdZeroSoldDisc);
             $('#ch-sp-review-max').val(chStdReviewMax);
             const cfg = chStdNormCvr(chStdCvr);
@@ -2473,7 +2452,14 @@
                 $('#ch-sp-moqm-tbody').html(rules.map(function(r) { return chStdMoqMRow(r); }).join(''));
                 chStdRefresh();
             });
-            $(document).off('click.chstddel').on('click.chstddel', '#chStdPrcModal .ch-sp-dil-del, #chStdPrcModal .ch-sp-age-del, #chStdPrcModal .ch-sp-rev-del, #chStdPrcModal .ch-sp-buss-del, #chStdPrcModal .ch-sp-pricing-del, #chStdPrcModal .ch-sp-roi-del, #chStdPrcModal .ch-sp-moqm-del', function() {
+            $('#ch-sp-snroicap-add').off('click.chstd').on('click.chstd', function() {
+                const rules = chStdReadSnroiCap();
+                const last = rules.length ? rules[rules.length - 1].max : 0;
+                rules.push({ min: last, max: last + 25, cap: null });
+                $('#ch-sp-snroicap-tbody').html(rules.map(function(r) { return chStdSnroiCapRow(r); }).join('')).data('painted', true);
+                chStdRefresh();
+            });
+            $(document).off('click.chstddel').on('click.chstddel', '#chStdPrcModal .ch-sp-snroicap-del, #chStdPrcModal .ch-sp-dil-del, #chStdPrcModal .ch-sp-age-del, #chStdPrcModal .ch-sp-rev-del, #chStdPrcModal .ch-sp-buss-del, #chStdPrcModal .ch-sp-pricing-del, #chStdPrcModal .ch-sp-roi-del, #chStdPrcModal .ch-sp-moqm-del', function() {
                 $(this).closest('tr').remove();
                 chStdRefresh();
             });
