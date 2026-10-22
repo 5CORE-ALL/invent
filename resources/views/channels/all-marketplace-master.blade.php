@@ -2940,6 +2940,9 @@
                 },
                 columnCalcs: "both",
                 initialSort: [{
+                    column: "_pin",
+                    dir: "asc"
+                }, {
                     column: "L30 Sales",
                     dir: "desc"
                 }],
@@ -2949,6 +2952,8 @@
                             showToast('info', response.message || 'No channels to display.');
                         }
                         response.data.forEach(function(row) {
+                            var channelKey = String(row['Channel '] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                            row._pin = channelKey === 'cjdropshipping' ? 0 : 1;
                             row['P-Sales'] = projectedSalesFromL7(row['L7 Sales'] || 0);
                             row['P Growth'] = pGrowthFromRow(row);
                             row['Y PFT'] = yGrossPftFromRow(row);
@@ -3055,6 +3060,11 @@
                     if (typeof showToast === 'function') showToast('error', msg);
                 },
                 columns: [{
+                        title: "",
+                        field: "_pin",
+                        visible: false,
+                        sorter: "number"
+                    }, {
                         title: "Img",
                         field: "logo",
                         frozen: true,

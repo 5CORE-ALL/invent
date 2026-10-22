@@ -395,6 +395,14 @@ class ChannelListingRegistry
                 'buyer_tpl' => null,
                 'seller_tpl' => null,
             ],
+            'cjdropshipping' => [
+                'dataView' => null,
+                'status' => \App\Models\CjdropshippingListingStatus::class,
+                'listed' => ['type' => 'status', 'model' => \App\Models\CjdropshippingListingStatus::class],
+                'id_field' => 'listing_id',
+                'buyer_tpl' => null,
+                'seller_tpl' => null,
+            ],
             'depop' => [
                 'dataView' => null,
                 'status' => \App\Models\DepopListingStatus::class,

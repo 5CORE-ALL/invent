@@ -37,12 +37,13 @@ class MissingListingController extends Controller
     private const DEFAULT_SELLER_PORTALS = [
         'faire' => 'https://www.faire.com/brand-portal/my-shop/products',
         'depop' => 'https://www.depop.com/sellinghub/',
+        'cjdropshipping' => 'https://cjdropshipping.com/',
         'vinted' => 'https://www.vinted.com/inbox',
         'dhgate' => 'https://seller.dhgate.com/',
         'tiendamia' => 'https://www.tiendamia.com/',
     ];
 
-    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v6';
+    public const PAGE_CACHE_KEY = 'missing_listing.page_payload_v7';
 
     private const PAGE_CACHE_TTL_DAYS = 7;
 

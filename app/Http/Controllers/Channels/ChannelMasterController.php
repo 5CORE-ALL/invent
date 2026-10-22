@@ -207,6 +207,7 @@ class ChannelMasterController extends Controller
             'TikTok 2' => '/tiktok-2-pricing',
             'TikTok Shop 2' => '/tiktok-2-pricing',
             'Tiktok Shop 2' => '/tiktok-2-pricing',
+            'CJdropshipping' => '/listing-cjdropshipping',
             'Depop' => '/depop/pricing',
             'Shopify' => '/shopify-b2c-pricing',
             'Shopify B2C' => '/shopify-b2c-pricing',
@@ -8722,6 +8723,7 @@ class ChannelMasterController extends Controller
             
             // Get data from pre-calculated table
             $query = \App\Models\ChannelMasterCalculatedData::query()
+                ->orderByRaw("CASE WHEN LOWER(REPLACE(REPLACE(REPLACE(channel, ' ', ''), '-', ''), '_', '')) = 'cjdropshipping' THEN 0 ELSE 1 END")
                 ->orderBy('l30_sales', 'desc');
             
             if ($section && in_array($section, ['B2C', 'B2B', 'Dropship', 'Wholesale'], true)) {
