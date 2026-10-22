@@ -85,7 +85,16 @@ class TopDawgSprcDilAutoPushServiceTest extends TestCase
         );
 
         $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+        // 90.00 discount price (clearance keeps it) − Ship 8 = 82.00
+        $this->assertEqualsWithDelta(82.00, $out['sprice'], 0.001);
+    }
+
+    public function test_ship_is_reduced_from_sprice_after_the_calculation(): void
+    {
+        $out = (new TopDawgSprcDilAutoPushService)->computeTarget($this->row(['ship' => 8]), $this->pricer());
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(82.00, $out['sprice'], 0.001);
     }
 
     public function test_lmp_is_ignored(): void

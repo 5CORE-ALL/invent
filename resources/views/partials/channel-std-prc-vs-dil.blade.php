@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. SNROI Cap then lowers S PRC so a SKU's SNROI does not go above the Target SNROI % of its Dil slab.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair', 'topdawg'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. SNROI Cap then lowers S PRC so a SKU's SNROI does not go above the Target SNROI % of its Dil slab.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -666,7 +666,7 @@
         // Shopify B2B and Wayfair: S PRC = Std Prc after the discount, then minus the Ship column.
         function chStdSubtractsShip() {
             return typeof CHANNEL_PROMO_CHANNEL !== 'undefined'
-                && (CHANNEL_PROMO_CHANNEL === 'shopify_b2b' || CHANNEL_PROMO_CHANNEL === 'wayfair');
+                && (CHANNEL_PROMO_CHANNEL === 'shopify_b2b' || CHANNEL_PROMO_CHANNEL === 'wayfair' || CHANNEL_PROMO_CHANNEL === 'topdawg');
         }
         function chStdShipOff(d) {
             if (!chStdSubtractsShip()) return 0;

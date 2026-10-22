@@ -286,6 +286,16 @@ class TopDawgSprcDilAutoPushService
             return null;
         }
 
+        // After the calculation, reduce the Ship column (Ship_productmaster) from S PRC. The reduced price is
+        // what gets saved (overwrites SPRICE) and pushed.
+        $ship = (float) ($row['ship'] ?? 0);
+        if (is_finite($ship) && $ship > 0) {
+            $uncapped = round($uncapped - $ship, 2);
+            if ($uncapped < 0.01) {
+                return null;
+            }
+        }
+
         return [
             'sprice' => round($uncapped, 2),
             'uncapped' => round($uncapped, 2),
@@ -364,6 +374,7 @@ class TopDawgSprcDilAutoPushService
                 'td_l30' => (float) ($r['TD L30'] ?? 0),
                 'cvr' => 0.0,
                 'lp' => (float) ($r['LP_productmaster'] ?? 0),
+                'ship' => (float) ($r['Ship_productmaster'] ?? 0),
                 'margin' => (float) ($r['percentage'] ?? 0),
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),

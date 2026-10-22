@@ -1053,7 +1053,7 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center', width: 92, sorter: 'number',
                     editable: false,
-                    headerTooltip: 'Not editable. Saved by the server at 4:30 AM and 8:30 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap (same as Amazon), then pushed to TopDawg (no ship). TopDawg queues each price for review (1–24h). The page does not need to be open. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
+                    headerTooltip: 'Not editable. Saved by the server at 4:30 AM and 8:30 PM IST: Std Prc − Age/Dil/B/0 Sold/CVR/Rev Disc, then Ship is reduced from S PRC (S PRC = calc − Ship, saved over the old S PRC), then pushed to TopDawg. TopDawg queues each price for review (1–24h). The page does not need to be open. Blue triangle = S PRC ≠ Price. Red triangle = S PRC ≥ LMP.',
                     formatter: c => {
                         const rowData = c.getRow().getData();
                         if (tdIsParentRow(rowData)) return '';
