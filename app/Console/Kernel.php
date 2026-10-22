@@ -1248,9 +1248,10 @@ class Kernel extends ConsoleKernel
         }
 
         // Alibaba Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Std max, no LMP)
-        // → S PRC → Alibaba listing price. Same twice-daily idea as Amazon. /alibaba-analytics does not need to be open.
+        // → S PRC saved twice daily (--skip-push). Alibaba is NOT pushed from here: /alibaba-analytics pushes
+        // S PRC − Ship itself, on the first page open of the day or with its Push now button.
         // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
-        $schedule->command('alibaba:sprc-dil-auto-push')
+        $schedule->command('alibaba:sprc-dil-auto-push --skip-push')
             ->dailyAt('08:05')
             ->timezone('Asia/Kolkata')
             ->name('alibaba-sprc-dil-auto-push-am-ist')
@@ -1258,7 +1259,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        $schedule->command('alibaba:sprc-dil-auto-push')
+        $schedule->command('alibaba:sprc-dil-auto-push --skip-push')
             ->dailyAt('23:55')
             ->timezone('Asia/Kolkata')
             ->name('alibaba-sprc-dil-auto-push-pm-ist')
@@ -1266,14 +1267,8 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Headless "Push on reload" for /alibaba-analytics (same as amazon:push-blue-prices): blue-triangle SKUs
-        // (INV > 0, Price ≠ S PRC) are checked every 10 min, 24/7 on purpose (no $ist()).
-        $schedule->command('alibaba:push-blue-prices')
-            ->everyTenMinutes()
-            ->name('alibaba-push-blue-prices')
-            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
-            ->runInBackground()
-            ->appendOutputTo($log);
+        // alibaba:push-blue-prices (10-minute headless push of S PRC) is no longer scheduled: it would push the plain
+        // S PRC and break the once-a-day S PRC − Ship push that /alibaba-analytics owns.
 
         // Push and pull together (same as amazon:pull-pushed-prices): every pushed SKU is read back right after the
         // push; Alibaba reviews price changes, so this re-reads the pushed SKUs until the Price column matches.

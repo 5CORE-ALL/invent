@@ -1445,6 +1445,10 @@
                 return typeof global.spriceActiveRule === 'function' && global.spriceActiveRule() === 'dil';
             }
             function chPushSpriceSavedFromRow(d) {
+                // Alibaba pushes S PRC − Ship, nothing else. Never fall back to the plain S PRC.
+                if (CH_PUSH_SPRICE_CHANNEL === 'alibaba' && typeof global.abPushPrice === 'function') {
+                    return chPushSpriceRound2(global.abPushPrice(d));
+                }
                 // Shopify B2C: S PRC is owned by the server (Std prc vs dil + LMP / Amz cap, saved on the row).
                 // Queue and SNROI-check exactly the S PRC the cell shows, not a fresh client-side rule price.
                 if (CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c' && typeof global.shopifyB2cShownSprice === 'function') {

@@ -21,10 +21,10 @@ class StdPrcVsDilPricer
     public const LOW_STD_FACTOR = 0.5;
 
     /**
-     * Channels that have the NROI Cap panel. These pages carry no ads cost, so NROI is the take-home
+     * Channels that have the SNROI Cap panel. These pages carry no ads cost, so NROI is the take-home
      * margin result: (price × margin − ship − LP) ÷ LP.
      */
-    public const NROI_CAP_CHANNELS = ['wayfair'];
+    public const SNROI_CAP_CHANNELS = ['wayfair'];
 
     /** @var array<string, self> */
     private static array $cache = [];
@@ -70,7 +70,7 @@ class StdPrcVsDilPricer
             'roi' => self::roiRules($saved['roi'] ?? null),
             'lmp' => self::ranges($saved['lmp'] ?? null, $defaults['lmp']),
             'moq_m' => self::ranges($saved['moq_m'] ?? null, $defaults['moq_m']),
-            'nroi_cap' => self::normalizeNroiCapRules($saved['nroi_cap'] ?? null),
+            'snroi_cap' => self::normalizeSnroiCapRules($saved['snroi_cap'] ?? null),
             'zero_sold_disc' => self::discPercent($saved['zero_sold_disc'] ?? null),
         ];
 
@@ -135,23 +135,23 @@ class StdPrcVsDilPricer
         if (! ($price > 0)) {
             return null;
         }
-        $price = $this->applyNroiCap($price, $dil, $row);
+        $price = $this->applySnroiCap($price, $dil, $row);
 
         return $price > 0 ? $price : null;
     }
 
     /**
-     * NROI Cap: when the NROI at this price is above the Target NROI % of the SKU's Dil slab, lower the price
+     * SNROI Cap: when the SNROI at this price is above the Target SNROI % of the SKU's Dil slab, lower the price
      * to the one that lands on the target. It only ever lowers a price.
      *
      * @param  array<string, mixed>  $row
      */
-    private function applyNroiCap(float $price, float $dil, array $row): float
+    private function applySnroiCap(float $price, float $dil, array $row): float
     {
-        if (! in_array($this->channel, self::NROI_CAP_CHANNELS, true)) {
+        if (! in_array($this->channel, self::SNROI_CAP_CHANNELS, true)) {
             return $price;
         }
-        $target = $this->nroiCapFor($dil);
+        $target = $this->snroiCapFor($dil);
         if ($target === null) {
             return $price;
         }
@@ -165,13 +165,13 @@ class StdPrcVsDilPricer
         }
         $ship = self::excludesShip($this->channel) ? 0.0 : (float) ($row['ship'] ?? 0);
 
-        return self::capPriceToNroi($price, $target, $lp, $margin, $ship);
+        return self::capPriceToSnroi($price, $target, $lp, $margin, $ship);
     }
 
-    /** Target NROI % of the Dil slab this value falls in. Null when the slab has no cap or no slab matches. */
-    private function nroiCapFor(float $dil): ?float
+    /** Target SNROI % of the Dil slab this value falls in. Null when the slab has no cap or no slab matches. */
+    private function snroiCapFor(float $dil): ?float
     {
-        $rules = $this->rules['nroi_cap'] ?? [];
+        $rules = $this->rules['snroi_cap'] ?? [];
         if ($rules === [] || $dil < 0) {
             return null;
         }
@@ -191,18 +191,18 @@ class StdPrcVsDilPricer
     }
 
     /**
-     * NROI at a price: ((price × (margin − ads)) − ship − LP) ÷ LP × 100.
+     * SNROI at a price: ((price × (margin − ads)) − ship − LP) ÷ LP × 100.
      * Returns the price unchanged when it is already at or under the target. Otherwise the price that gives the
-     * target, rounded DOWN to the cent so the NROI never ends up above it.
+     * target, rounded DOWN to the cent so the SNROI never ends up above it.
      */
-    public static function capPriceToNroi(float $price, float $target, float $lp, float $margin, float $ship = 0.0, float $ads = 0.0): float
+    public static function capPriceToSnroi(float $price, float $target, float $lp, float $margin, float $ship = 0.0, float $ads = 0.0): float
     {
         $net = $margin - $ads;
         if (! ($price > 0) || ! ($lp > 0) || ! ($net > 0)) {
             return $price;
         }
-        $nroi = (($price * $net) - $ship - $lp) / $lp * 100;
-        if ($nroi <= $target + 0.00001) {
+        $snroi = (($price * $net) - $ship - $lp) / $lp * 100;
+        if ($snroi <= $target + 0.00001) {
             return $price;
         }
         $capped = floor((($lp * (1 + $target / 100) + $ship) / $net) * 100 + 0.00001) / 100;
@@ -214,12 +214,12 @@ class StdPrcVsDilPricer
     }
 
     /**
-     * One row per Dil % slab: min, max and a Target NROI % cap (null = no cap for that slab).
+     * One row per Dil % slab: min, max and a Target SNROI % cap (null = no cap for that slab).
      *
      * @param  mixed  $incoming
      * @return list<array{min:float,max:float,cap:float|null}>
      */
-    public static function normalizeNroiCapRules($incoming): array
+    public static function normalizeSnroiCapRules($incoming): array
     {
         if (! is_array($incoming)) {
             return [];

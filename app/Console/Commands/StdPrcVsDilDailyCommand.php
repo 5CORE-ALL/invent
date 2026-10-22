@@ -50,7 +50,8 @@ class StdPrcVsDilDailyCommand extends Command
                 ['faire:sprc-dil-auto-push', $save],
                 ['pls:sprc-dil-auto-push', $save],
                 ['shein:sprc-dil-auto-push', $save],
-                ['alibaba:sprc-dil-auto-push', $save],
+                // Alibaba pushes S PRC − Ship from its own page (once a day), never plain S PRC from here.
+                ['alibaba:sprc-dil-auto-push', ['--skip-push' => true] + $save],
                 ['tiktok:sprc-dil-auto-push', ['--channel' => 'tiktok'] + $save],
                 ['tiktok:sprc-dil-auto-push', ['--channel' => 'tiktok2'] + $save],
                 ['bestbuy:sprc-dil-auto-push', $save],

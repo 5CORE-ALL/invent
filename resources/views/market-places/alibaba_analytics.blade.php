@@ -276,6 +276,10 @@
                         <button type="button" class="btn btn-sm btn-warning" id="ab-bulk-push-btn" disabled title="Push S PRC to Alibaba for the checked SKUs">
                             <i class="fas fa-upload me-1"></i> Push selected
                         </button>
+                        <button type="button" class="btn btn-sm btn-danger" id="ab-push-now-btn"
+                            title="Emergency push: send SPRICE - Ship to Alibaba now for every SKU where it differs from the live Price. Skips the once-a-day limit.">
+                            <i class="fas fa-paper-plane me-1"></i> Push now
+                        </button>
                         <a href="{{ route('alibaba.analytics.export') }}" class="btn btn-sm btn-success" id="ab-export-btn">
                             <i class="fas fa-file-export me-1"></i> Export
                         </a>
@@ -304,7 +308,8 @@
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
-        // S PRC is saved + pushed by the server (alibaba:sprc-dil-auto-push). The page only shows it.
+        // S PRC is saved by the server (alibaba:sprc-dil-auto-push --skip-push). The page pushes S PRC − Ship to
+        // Alibaba: on the first page open of the day (once a day) or with the Push now button.
         window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'alibaba'])
         document.body.style.zoom = "90%";
@@ -326,13 +331,25 @@
          */
         function abShownSprice(data) {
             if (!data || isAbParentRow(data)) return 0;
-            if (typeof chPromoPushSpriceAmount === 'function') {
-                const live = Number(chPromoPushSpriceAmount(data)) || 0;
+            if (typeof chPromoRuleSpriceAmount === 'function') {
+                const live = Number(chPromoRuleSpriceAmount(data)) || 0;
                 if (live > 0) return live;
             }
             return parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
         }
         window.abShownSprice = abShownSprice;
+
+        /**
+         * What is pushed to Alibaba: S PRC − Ship (the SPRICE - Ship column). 0 when there is no S PRC or Ship
+         * would take the price to $0.01 or less, so nothing is pushed for that SKU.
+         */
+        function abPushPrice(data) {
+            const sp = abShownSprice(data);
+            if (!(sp > 0)) return 0;
+            const v = Math.round((sp - (parseFloat(data && data.ship) || 0)) * 100) / 100;
+            return v >= 0.01 ? v : 0;
+        }
+        window.abPushPrice = abPushPrice;
         /** Rules / maps load after first paint: repaint the price cells and counts from the live rule price. */
         window.abAfterRulesRedraw = function () {
             try { if (typeof updateSummary === 'function') updateSummary(); } catch (e) { /* ignore */ }
@@ -362,9 +379,10 @@
             const sku = String(data.sku || '').trim().toUpperCase();
             if (!sku || sku.indexOf('PARENT') === 0) return false;
             if (!(parseFloat(data.INV) > 0)) return false;
-            const sprice = abShownSprice(data);
+            // Blue = the price that gets pushed (S PRC − Ship) differs from the live Alibaba Price.
+            const push = abPushPrice(data);
             const price = parseFloat(data.price) || 0;
-            return sprice > 0 && price > 0 && Math.round(sprice * 100) !== Math.round(price * 100);
+            return push > 0 && price > 0 && Math.round(push * 100) !== Math.round(price * 100);
         }
         window.abHasBlueTriangle = abHasBlueAlert;
         /** SNGPFT = SGPFT (no ads, no ship): ((S PRC × margin) − LP) / S PRC. */
@@ -877,15 +895,6 @@
                             }
                         },
                         {
-                            title: 'Ship', field: 'ship', hozAlign: 'center', width: 62, sorter: 'number',
-                            headerTooltip: 'Ship cost from product master. Shown for reference; Alibaba GPFT / GROI do not subtract it.',
-                            formatter: function (cell) {
-                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
-                                const v = parseFloat(cell.getValue()) || 0;
-                                return v > 0 ? '$' + v.toFixed(2) : '<span style="color:#6c757d;">–</span>';
-                            }
-                        },
-                        {
                             title: 'GPFT', field: 'gpft', hozAlign: 'center', width: 55, sorter: 'number',
                             headerTooltip: 'GPFT = ((Price × margin) − LP) ÷ Price. Ship is not subtracted.',
                             formatter: function (cell) {
@@ -903,19 +912,54 @@
                         },
                         {
                             title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: abDisplayedSorter('SPRICE'),
-                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Std Prc is the maximum, no LMP. Shows the live rule price, the same amount Push Prc sends (same as Amazon). The server saves and pushes the same price (twice daily + every 10 min). Blue triangle = S PRC ≠ Price.',
+                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Std Prc is the maximum, no LMP. Shows the live rule price. What is pushed to Alibaba is S PRC − Ship (see the SPRICE - Ship column).',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
                                 const value = abShownSprice(row);
                                 if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
+                                return '<span style="white-space:nowrap;font-weight:600;">$' + value.toFixed(2) + '</span>';
+                            }
+                        },
+                        {
+                            title: 'Ship', field: 'ship', hozAlign: 'center', width: 62, sorter: 'number',
+                            headerTooltip: 'Ship cost from product master. Shown for reference; Alibaba GPFT / GROI do not subtract it.',
+                            formatter: function (cell) {
+                                if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
+                                const v = parseFloat(cell.getValue()) || 0;
+                                return v > 0 ? '$' + v.toFixed(2) : '<span style="color:#6c757d;">–</span>';
+                            }
+                        },
+                        {
+                            title: 'SPRICE - Ship', field: 'sprice_ship', hozAlign: 'center', width: 90,
+                            headerTooltip: 'SPRICE - Ship = S PRC minus Ship cost. This is the price pushed to Alibaba: automatically on the first page open of the day, or any time with the Push now button. Blue triangle = this price ≠ the live Alibaba Price.',
+                            sorter: function (a, b, aRow, bRow, col, dir) {
+                                const val = function (d) {
+                                    const p = abPushPrice(d);
+                                    return p > 0 ? p : null;
+                                };
+                                const x = val(aRow.getData() || {}), y = val(bRow.getData() || {});
+                                if (x === null && y === null) return 0;
+                                if (x === null) return dir === 'asc' ? 1 : -1;
+                                if (y === null) return dir === 'asc' ? -1 : 1;
+                                return x - y;
+                            },
+                            formatter: function (cell) {
+                                const row = cell.getRow().getData();
+                                if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
+                                const v = abPushPrice(row);
+                                if (!(v > 0)) {
+                                    const sp = abShownSprice(row);
+                                    return sp > 0
+                                        ? '<span style="color:#dc3545;" title="Ship is not below S PRC, so nothing is pushed">–</span>'
+                                        : '<span style="color:#6c757d;">–</span>';
+                                }
                                 const live = parseFloat(row.price) || 0;
-                                const differ = abHasBlueAlert(row);
-                                const tri = differ
-                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                const tri = abHasBlueAlert(row)
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="Push price $' + v.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                     : '';
                                 return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                    + '<span style="font-weight:600;">$' + value.toFixed(2) + '</span>'
+                                    + '<span style="font-weight:600;">$' + v.toFixed(2) + '</span>'
                                     + tri + '</span>';
                             }
                         },
@@ -1116,6 +1160,37 @@
         });
         abUpdateSelectionUi();
 
+        // Emergency push: every SKU whose SPRICE - Ship differs from the live Price, now. Ignores the once-a-day limit.
+        document.getElementById('ab-push-now-btn').addEventListener('click', function () {
+            const btn = this;
+            if (btn.disabled) return;
+            if (typeof window.scanAndQueueChannelPushSprice !== 'function' || !abTable) {
+                alert('Table is still loading. Try again in a moment.');
+                return;
+            }
+            const n = (abAllRows || []).filter(abHasBlueAlert).length;
+            if (!n) {
+                alert('Nothing to push: every SKU already has SPRICE - Ship as its Alibaba Price.');
+                return;
+            }
+            if (!confirm('Push SPRICE - Ship to Alibaba now for ' + n + ' SKU(s)?')) return;
+            const startedAt = Date.now();
+            const MAX_MS = 10 * 60 * 1000;
+            if (typeof window.chPromoAllowManualPush === 'function') window.chPromoAllowManualPush(MAX_MS);
+            window._chPushSpriceLeftoverPasses = 0;
+            btn.disabled = true;
+            window.scanAndQueueChannelPushSprice(abTable, { catalog: true, once: false, silent: false });
+            // The push window stays open while the progress bar is busy, then closes again.
+            const timer = setInterval(function () {
+                const busy = $('#ch-promo-reload-push-progress').hasClass('is-busy');
+                if ((!busy && Date.now() - startedAt > 15000) || Date.now() - startedAt > MAX_MS) {
+                    clearInterval(timer);
+                    if (typeof window.chPromoAllowManualPush === 'function') window.chPromoAllowManualPush(0);
+                    btn.disabled = false;
+                }
+            }, 1000);
+        });
+
         /**
          * Push on reload, same as /amazon-tabulator-view: once the rows and the Std prc vs dil rules are loaded, every
          * blue-triangle SKU (INV > 0, Price ≠ S PRC) is queued for the background push. Nothing else started it
@@ -1128,7 +1203,17 @@
             if (typeof chPromoPageReloadPushAllowed === 'function' && !chPromoPageReloadPushAllowed()) return;
             if (typeof chPromoQueueReloadSpricePush !== 'function') return;
             window._abReloadPushQueued = true;
-            chPromoQueueReloadSpricePush({ delay: 300 });
+            // Once a day: the server gives the day's slot to the first page open only. Later opens do not push.
+            $.ajax({
+                url: '/alibaba-analytics/claim-daily-push',
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '', 'Accept': 'application/json' },
+                timeout: 15000,
+            }).done(function (resp) {
+                if (resp && resp.allowed) chPromoQueueReloadSpricePush({ delay: 300 });
+            }).fail(function () {
+                // Could not reach the server: do not push (better to skip than to risk a second push today).
+            });
         }
         window.abQueuePushOnReload = abQueuePushOnReload;
         $(document).off('chStd:settled.abReloadPush').on('chStd:settled.abReloadPush', function () {

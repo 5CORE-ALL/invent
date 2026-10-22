@@ -397,6 +397,28 @@ class AlibabaAnalyticsController extends Controller
         ]);
     }
 
+    /** Day boundary for the once-a-day page push (same timezone as the other Alibaba schedules). */
+    public const DAILY_PUSH_TIMEZONE = 'Asia/Kolkata';
+
+    /**
+     * Once-a-day gate for the push that starts when /alibaba-analytics is opened.
+     * The first page open of the day gets allowed = true and takes the slot; every later open that day gets false.
+     * The manual "Push now" button does not use this gate.
+     */
+    public function claimDailyPush(): JsonResponse
+    {
+        $now = now(self::DAILY_PUSH_TIMEZONE);
+        $key = 'alibaba:page-push-claimed:'.$now->toDateString();
+        $claimed = Cache::add($key, $now->toDateTimeString(), $now->copy()->endOfDay()->addMinutes(5));
+
+        return response()->json([
+            'success' => true,
+            'allowed' => (bool) $claimed,
+            'date' => $now->toDateString(),
+            'claimed_at' => $claimed ? $now->toDateTimeString() : (string) Cache::get($key, ''),
+        ]);
+    }
+
     public function pushPrice(Request $request, AlibabaApiService $api): JsonResponse
     {
         if (empty(config('services.alibaba.access_token'))) {

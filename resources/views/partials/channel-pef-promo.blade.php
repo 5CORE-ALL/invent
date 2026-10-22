@@ -9319,8 +9319,18 @@
             const dil = Number(ebaySprcDilForRow(d)) || 0;
             return dil > 0 && Math.abs(price - dil) < 0.005;
         }
-        /** What Push Prc sends. Only the ON S PRC rule. */
+        /**
+         * What Push Prc sends. Alibaba sends S PRC − Ship (window.abPushPrice, defined on /alibaba-analytics).
+         * Every other channel sends the S PRC rule price.
+         */
         function chPromoPushSpriceAmount(d) {
+            if (CHANNEL_PROMO_CHANNEL === 'alibaba' && typeof window.abPushPrice === 'function') {
+                return Number(window.abPushPrice(d)) || 0;
+            }
+            return chPromoRuleSpriceAmount(d);
+        }
+        /** The S PRC rule price itself (the ON S PRC rule), before any channel-specific deduction. */
+        function chPromoRuleSpriceAmount(d) {
             if (!d) return 0;
             if (typeof window.spriceActiveRule === 'function' && window.spriceActiveRule() === 'dil') {
                 if (CHANNEL_PROMO_CHANNEL === 'shopify_b2b' && typeof window.shopifyB2bDisplayedSprice === 'function') {
@@ -9981,6 +9991,10 @@
             return chPromoPageReloadPushEnabled !== false;
         }
         window.chPromoPageReloadPushAllowed = chPromoPageReloadPushAllowed;
+        /** Lets a manual push button run even while "Push on reload" is Off. ms = 0 closes the window again. */
+        window.chPromoAllowManualPush = function(ms) {
+            chPromoManualPushUntil = ms > 0 ? Date.now() + ms : 0;
+        };
         function chPromoStartManualPush() {
             const $btn = $('#ch-promo-manual-push-btn');
             if (!$btn.length || $btn.prop('disabled')) return;
@@ -12112,6 +12126,7 @@
         window.chPromoTableSprice = chPromoTableSprice;
         window.chPromoSavedOrLiveSprice = chPromoSavedOrLiveSprice;
         window.chPromoPushSpriceAmount = chPromoPushSpriceAmount;
+        window.chPromoRuleSpriceAmount = chPromoRuleSpriceAmount;
         window.chPromoQueueReloadSpricePush = chPromoQueueReloadSpricePush;
         window.chPromoPageDisplayedSprice = chPromoPageDisplayedSprice;
         window.chPromoDilSgroiRuleSprice = chPromoDilSgroiRuleSprice;
