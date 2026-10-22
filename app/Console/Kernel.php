@@ -1249,7 +1249,7 @@ class Kernel extends ConsoleKernel
 
         // Alibaba Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Std max, no LMP)
         // → S PRC saved twice daily (--skip-push). Alibaba is NOT pushed from here: /alibaba-analytics pushes
-        // S PRC − Ship itself, on the first page open of the day or with its Push now button.
+        // S PRC (calc − Ship) itself, on the first page open of the day or with its Push now button.
         // Evening run is NOT wrapped in $ist() — the IST window ends at 20:00.
         $schedule->command('alibaba:sprc-dil-auto-push --skip-push')
             ->dailyAt('08:05')
@@ -1268,7 +1268,7 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo($log);
 
         // alibaba:push-blue-prices (10-minute headless push of S PRC) is no longer scheduled: it would push the plain
-        // S PRC and break the once-a-day S PRC − Ship push that /alibaba-analytics owns.
+        // S PRC and break the once-a-day push that /alibaba-analytics owns.
 
         // Push and pull together (same as amazon:pull-pushed-prices): every pushed SKU is read back right after the
         // push; Alibaba reviews price changes, so this re-reads the pushed SKUs until the Price column matches.

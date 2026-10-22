@@ -1445,7 +1445,7 @@
                 return typeof global.spriceActiveRule === 'function' && global.spriceActiveRule() === 'dil';
             }
             function chPushSpriceSavedFromRow(d) {
-                // Alibaba pushes S PRC − Ship, nothing else. Never fall back to the plain S PRC.
+                // Alibaba pushes its S PRC (the rule already took Ship off it) through abPushPrice.
                 if (CH_PUSH_SPRICE_CHANNEL === 'alibaba' && typeof global.abPushPrice === 'function') {
                     return chPushSpriceRound2(global.abPushPrice(d));
                 }

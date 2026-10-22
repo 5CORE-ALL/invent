@@ -54,6 +54,22 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
     }
 
+    public function test_ship_is_reduced_from_sprice_before_the_snroi_cap(): void
+    {
+        // 90.00 − Ship 8 = 82.00 (no cap rule).
+        $out = $this->target($this->row(['ship' => 8]));
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(82.00, $out['sprice'], 0.001);
+
+        // SNROI at 82 = ((82 × 0.80) − 20) / 20 = 128%. Cap 100% → (20 × 2) / 0.80 = 50.00. Ship is not taken off after the cap.
+        $capped = $this->target(
+            $this->row(['ship' => 8]),
+            $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 100, 'cap' => 100.0]]])
+        );
+        $this->assertNotNull($capped);
+        $this->assertEqualsWithDelta(50.00, $capped['sprice'], 0.001);
+    }
+
     public function test_zero_sold_uses_ab_l30(): void
     {
         $out = $this->target($this->row(['al30' => 0]));

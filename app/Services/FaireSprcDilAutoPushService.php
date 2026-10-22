@@ -143,12 +143,22 @@ class FaireSprcDilAutoPushService
                             break;
                         }
                         if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $errorCooldownMinutes)) {
-                            // Faire rejected the last push — retry after the cooldown, not every run.
+                            // Faire rejected the last push — retry the push after the cooldown, not every run.
+                            // The S PRC itself is still kept in step with the rules.
+                            if (! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
+                                $this->saveSprice($row, $computed, 'applied');
+                                $stats['applied']++;
+                            }
                             $stats['skipped']++;
                             continue;
                         }
                         if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                            // Pushed recently and Price still differs: do not loop on it every 10 minutes.
+                            // Pushed recently and Price still differs: do not push again every 10 minutes. The S PRC is
+                            // still saved from the rules, so the page never keeps an old S PRC.
+                            if (! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
+                                $this->saveSprice($row, $computed, 'applied');
+                                $stats['applied']++;
+                            }
                             $stats['skipped_unchanged']++;
                             continue;
                         }
@@ -274,6 +284,9 @@ class FaireSprcDilAutoPushService
             'al30' => (float) ($row['al30'] ?? 0),
             'lp' => $lp,
             'ship' => 0.0,
+            // S PRC = calc − Ship (Shipping Master "Ship"). Taken off inside the pricer before the SNROI cap, so the
+            // cap judges the S PRC that is really saved and pushed.
+            'ship_off' => max(0.0, (float) ($row['ship'] ?? 0)),
             'margin' => $margin,
             'ads' => 0.0,
         ];
@@ -366,6 +379,7 @@ class FaireSprcDilAutoPushService
                 'dil' => ((float) ($r['ov_l30'] ?? 0) / $inv) * 100,
                 'al30' => (float) ($r['al30'] ?? 0),
                 'lp' => (float) ($r['lp'] ?? 0),
+                'ship' => (float) ($r['ship'] ?? 0),
                 'margin' => (float) ($r['_margin'] ?? 0),
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['standard_price'] ?? 0),

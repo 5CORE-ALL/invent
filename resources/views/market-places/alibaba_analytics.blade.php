@@ -277,7 +277,7 @@
                             <i class="fas fa-upload me-1"></i> Push selected
                         </button>
                         <button type="button" class="btn btn-sm btn-danger" id="ab-push-now-btn"
-                            title="Emergency push: send SPRICE - Ship to Alibaba now for every SKU where it differs from the live Price. Skips the once-a-day limit.">
+                            title="Emergency push: send S PRC to Alibaba now for every SKU where it differs from the live Price. Skips the once-a-day limit.">
                             <i class="fas fa-paper-plane me-1"></i> Push now
                         </button>
                         <a href="{{ route('alibaba.analytics.export') }}" class="btn btn-sm btn-success" id="ab-export-btn">
@@ -308,7 +308,7 @@
 @section('script')
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
-        // S PRC is saved by the server (alibaba:sprc-dil-auto-push --skip-push). The page pushes S PRC − Ship to
+        // S PRC (calc − Ship) is saved by the server (alibaba:sprc-dil-auto-push --skip-push). The page pushes S PRC to
         // Alibaba: on the first page open of the day (once a day) or with the Push now button.
         window.CH_STD_SERVER_OWNED = true;
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'alibaba'])
@@ -340,14 +340,12 @@
         window.abShownSprice = abShownSprice;
 
         /**
-         * What is pushed to Alibaba: S PRC − Ship (the SPRICE - Ship column). 0 when there is no S PRC or Ship
-         * would take the price to $0.01 or less, so nothing is pushed for that SKU.
+         * What is pushed to Alibaba: the S PRC shown. The rule already took Ship off it (S PRC = calc − Ship, then the
+         * SNROI cap). 0 when there is no S PRC.
          */
         function abPushPrice(data) {
             const sp = abShownSprice(data);
-            if (!(sp > 0)) return 0;
-            const v = Math.round((sp - (parseFloat(data && data.ship) || 0)) * 100) / 100;
-            return v >= 0.01 ? v : 0;
+            return sp >= 0.01 ? Math.round(sp * 100) / 100 : 0;
         }
         window.abPushPrice = abPushPrice;
         /** Rules / maps load after first paint: repaint the price cells and counts from the live rule price. */
@@ -379,7 +377,7 @@
             const sku = String(data.sku || '').trim().toUpperCase();
             if (!sku || sku.indexOf('PARENT') === 0) return false;
             if (!(parseFloat(data.INV) > 0)) return false;
-            // Blue = the price that gets pushed (S PRC − Ship) differs from the live Alibaba Price.
+            // Blue = the price that gets pushed (S PRC, Ship already taken off) differs from the live Alibaba Price.
             const push = abPushPrice(data);
             const price = parseFloat(data.price) || 0;
             return push > 0 && price > 0 && Math.round(push * 100) !== Math.round(price * 100);
@@ -912,55 +910,26 @@
                         },
                         {
                             title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: abDisplayedSorter('SPRICE'),
-                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Std Prc is the maximum, no LMP. Shows the live rule price. What is pushed to Alibaba is S PRC − Ship (see the SPRICE - Ship column).',
+                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Then the Ship column is reduced from it (S PRC = calc − Ship) and the SNROI cap judges that price. Std Prc is the maximum, no LMP. Shows the live rule price, which is what is pushed to Alibaba. Blue triangle = S PRC ≠ the live Alibaba Price.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
                                 const value = abShownSprice(row);
                                 if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
-                                return '<span style="white-space:nowrap;font-weight:600;">$' + value.toFixed(2) + '</span>';
+                                const live = parseFloat(row.price) || 0;
+                                const tri = abHasBlueAlert(row)
+                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $' + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
+                                    : '';
+                                return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">$' + value.toFixed(2) + '</span>' + tri + '</span>';
                             }
                         },
                         {
                             title: 'Ship', field: 'ship', hozAlign: 'center', width: 62, sorter: 'number',
-                            headerTooltip: 'Ship cost from product master. Shown for reference; Alibaba GPFT / GROI do not subtract it.',
+                            headerTooltip: 'Ship cost from product master. It is reduced from S PRC by the rule (S PRC = calc − Ship).',
                             formatter: function (cell) {
                                 if (isAbParentRow(cell.getRow().getData())) return '<span style="color:#6c757d;">–</span>';
                                 const v = parseFloat(cell.getValue()) || 0;
                                 return v > 0 ? '$' + v.toFixed(2) : '<span style="color:#6c757d;">–</span>';
-                            }
-                        },
-                        {
-                            title: 'SPRICE - Ship', field: 'sprice_ship', hozAlign: 'center', width: 90,
-                            headerTooltip: 'SPRICE - Ship = S PRC minus Ship cost. This is the price pushed to Alibaba: automatically on the first page open of the day, or any time with the Push now button. Blue triangle = this price ≠ the live Alibaba Price.',
-                            sorter: function (a, b, aRow, bRow, col, dir) {
-                                const val = function (d) {
-                                    const p = abPushPrice(d);
-                                    return p > 0 ? p : null;
-                                };
-                                const x = val(aRow.getData() || {}), y = val(bRow.getData() || {});
-                                if (x === null && y === null) return 0;
-                                if (x === null) return dir === 'asc' ? 1 : -1;
-                                if (y === null) return dir === 'asc' ? -1 : 1;
-                                return x - y;
-                            },
-                            formatter: function (cell) {
-                                const row = cell.getRow().getData();
-                                if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';
-                                const v = abPushPrice(row);
-                                if (!(v > 0)) {
-                                    const sp = abShownSprice(row);
-                                    return sp > 0
-                                        ? '<span style="color:#dc3545;" title="Ship is not below S PRC, so nothing is pushed">–</span>'
-                                        : '<span style="color:#6c757d;">–</span>';
-                                }
-                                const live = parseFloat(row.price) || 0;
-                                const tri = abHasBlueAlert(row)
-                                    ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="Push price $' + v.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
-                                    : '';
-                                return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">'
-                                    + '<span style="font-weight:600;">$' + v.toFixed(2) + '</span>'
-                                    + tri + '</span>';
                             }
                         },
                         {
@@ -1160,7 +1129,7 @@
         });
         abUpdateSelectionUi();
 
-        // Emergency push: every SKU whose SPRICE - Ship differs from the live Price, now. Ignores the once-a-day limit.
+        // Emergency push: every SKU whose S PRC differs from the live Price, now. Ignores the once-a-day limit.
         document.getElementById('ab-push-now-btn').addEventListener('click', function () {
             const btn = this;
             if (btn.disabled) return;
@@ -1170,10 +1139,10 @@
             }
             const n = (abAllRows || []).filter(abHasBlueAlert).length;
             if (!n) {
-                alert('Nothing to push: every SKU already has SPRICE - Ship as its Alibaba Price.');
+                alert('Nothing to push: every SKU already has S PRC as its Alibaba Price.');
                 return;
             }
-            if (!confirm('Push SPRICE - Ship to Alibaba now for ' + n + ' SKU(s)?')) return;
+            if (!confirm('Push S PRC to Alibaba now for ' + n + ' SKU(s)?')) return;
             const startedAt = Date.now();
             const MAX_MS = 10 * 60 * 1000;
             if (typeof window.chPromoAllowManualPush === 'function') window.chPromoAllowManualPush(MAX_MS);

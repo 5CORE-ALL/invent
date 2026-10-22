@@ -288,6 +288,9 @@ class AlibabaSprcDilAutoPushService
             'al30' => (float) ($row['al30'] ?? 0),
             'lp' => $lp,
             'ship' => 0.0,
+            // S PRC = calc − Ship. Taken off inside the pricer before the SNROI cap, so the cap judges the S PRC
+            // that is really saved and pushed.
+            'ship_off' => max(0.0, (float) ($row['ship'] ?? 0)),
             'margin' => $margin,
             'ads' => $ads,
         ];
@@ -388,6 +391,7 @@ class AlibabaSprcDilAutoPushService
                 'dil' => ((float) ($r['ov_l30'] ?? 0) / $inv) * 100,
                 'al30' => (float) ($r['al30'] ?? 0),
                 'lp' => (float) ($r['lp'] ?? 0),
+                'ship' => (float) ($r['ship'] ?? 0),
                 'margin' => (float) ($r['_margin'] ?? 0),
                 'age_days' => $r['age_days'] ?? null,
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),

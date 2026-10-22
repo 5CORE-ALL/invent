@@ -9320,7 +9320,7 @@
             return dil > 0 && Math.abs(price - dil) < 0.005;
         }
         /**
-         * What Push Prc sends. Alibaba sends S PRC − Ship (window.abPushPrice, defined on /alibaba-analytics).
+         * What Push Prc sends. Alibaba sends its S PRC (Ship already taken off by the rule, window.abPushPrice on /alibaba-analytics).
          * Every other channel sends the S PRC rule price.
          */
         function chPromoPushSpriceAmount(d) {

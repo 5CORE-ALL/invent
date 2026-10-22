@@ -578,21 +578,13 @@
             const n = parseFloat(data.ship);
             return (isFinite(n) && n > 0) ? n : 0;
         }
-        /** Sprice − Ship. 0 when there is no Sprice or when Ship would eat the whole Sprice. */
-        function frSpriceMinusShip(data) {
+        /** Price this page pushes to Faire: the saved Sprice (the server already took Ship off it). */
+        function frPushPrice(data) {
             data = frRowData(data);
             if (!data || frIsParentRow(data)) return 0;
-            const sprice = frDisplayedSprice(data);
-            if (!(sprice > 0)) return 0;
-            const v = sprice - frShipAmount(data);
-            return v > 0 ? +v.toFixed(2) : 0;
-        }
-        /** Price this page pushes to Faire: Sprice − Ship (this page only). */
-        function frPushPrice(data) {
-            return frSpriceMinusShip(data);
+            return frDisplayedSprice(data);
         }
         window.frShipAmount = frShipAmount;
-        window.frSpriceMinusShip = frSpriceMinusShip;
         window.frPushPrice = frPushPrice;
         function frRefreshSpriceCells() {
             if (typeof table === 'undefined' || !table || typeof table.getRows !== 'function') return;
@@ -611,7 +603,7 @@
         }
         function frSpriceDiffersFromPrice(data, spriceOverride) {
             data = frRowData(data);
-            // Compared against the price this page pushes (Sprice − Ship).
+            // Compared against the price this page pushes (the saved Sprice).
             const sprice = spriceOverride != null ? Number(spriceOverride) : frPushPrice(data);
             const price = frListingPrice(data);
             return sprice > 0 && price > 0 && sprice.toFixed(2) !== price.toFixed(2);
@@ -1093,7 +1085,7 @@
                 } else if (status === 'error') {
                     el.innerHTML = '<button type="button" class="fr-push-single-btn" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" data-price="' + sprice + '" style="border:none;background:none;color:#dc3545;cursor:pointer;padding:4px 6px;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>';
                 } else if (sprice > 0) {
-                    el.innerHTML = '<button type="button" class="fr-push-single-btn" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" data-price="' + sprice + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push Sprice − Ship to Faire"><i class="fas fa-upload"></i></button>';
+                    el.innerHTML = '<button type="button" class="fr-push-single-btn" data-sku="' + String(d.sku || '').replace(/"/g, '&quot;') + '" data-price="' + sprice + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push Sprice to Faire"><i class="fas fa-upload"></i></button>';
                 } else {
                     el.innerHTML = '';
                 }
@@ -1105,12 +1097,12 @@
             const d = row.getData();
             if (d.is_parent) return;
             const sku = d.sku;
-            const price = frPushPrice(d);          // Sprice − Ship (pushed to Faire)
+            const price = frPushPrice(d);          // Sprice (pushed to Faire)
             const spriceSaved = frDisplayedSprice(d); // SPRICE itself stays unchanged in the DB
             const productId = d.product_id || '';
             if (!sku || price <= 0) {
-                if (window.toastr) toastr.warning('Sprice − Ship must be > 0 to push');
-                else alert('Sprice − Ship must be > 0 to push');
+                if (window.toastr) toastr.warning('Sprice must be > 0 to push');
+                else alert('Sprice must be > 0 to push');
                 return;
             }
 
@@ -1172,7 +1164,7 @@
             if (count > 0) {
                 const label = selectedPushable.length > 0
                     ? ('Push to Faire (' + count + ')')
-                    : ('Push all Sprice-Ship (' + count + ')');
+                    : ('Push all Sprice (' + count + ')');
                 $btn.show().prop('disabled', false).html('<i class="fas fa-upload"></i> ' + label);
             } else {
                 $btn.hide();
@@ -2289,7 +2281,7 @@
                     {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editable: false,
-                        headerTooltip: 'S PRC saved by the server job (faire:sprc-dil-auto-push, 04:45 and 20:45 IST, and every 10 min for blue triangles): Std Prc − Age/Dil/B/0 Sold (AL30)/CVR/Rev Disc (C = clearance). Std Prc is the maximum. Ship, LMP and Amz are not used. Blue triangle = S PRC ≠ Price.',
+                        headerTooltip: 'S PRC saved by the server job (faire:sprc-dil-auto-push, 04:45 and 20:45 IST, and every 10 min for blue triangles): Std Prc − Age/Dil/B/0 Sold (AL30)/CVR/Rev Disc (C = clearance). Then the Ship column is reduced from it (S PRC = calc − Ship, SNROI cap judges that price) and saved over the old S PRC. Std Prc is the maximum. LMP and Amz are not used. Blue triangle = S PRC ≠ Price.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
@@ -2297,28 +2289,14 @@
                             if (!(value > 0)) value = parseFloat(cell.getValue() || 0) || 0;
                             const clearanceMark = frClearanceMarkHtml(d);
                             if (!(value > 0)) return clearanceMark || '<span style="color:#6c757d;">–</span>';
-                            const formatted = money(value);
-                            // Blue triangle now lives on the Sprice - Ship column (that is the price pushed).
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + clearanceMark + '</span>';
-                        }
-                    },
-                    {
-                        title: 'Sprice - Ship', field: '_sprice_ship', headerSort: true, hozAlign: 'right', width: 92,
-                        headerTooltip: 'Sprice − Ship. This is the price pushed to Faire from this page (not Sprice). Blue triangle = pushed price ≠ Price.',
-                        sorter: function(a, b, aRow, bRow) {
-                            return frSpriceMinusShip(aRow.getData()) - frSpriceMinusShip(bRow.getData());
-                        },
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                            const value = frSpriceMinusShip(d);
-                            if (!(value > 0)) return '<span style="color:#6c757d;">–</span>';
                             const live = frListingPrice(d);
-                            const blueTri = (live > 0 && value.toFixed(2) !== live.toFixed(2))
-                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="Sprice − Ship $'
+                            const formatted = money(value);
+                            // Same as Amazon S PRC cell: blue triangle when painted S PRC ≠ Price.
+                            const blueTri = (value > 0 && live > 0 && value.toFixed(2) !== live.toFixed(2))
+                                ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                     + value.toFixed(2) + ' ≠ Price $' + live.toFixed(2) + '"></i>'
                                 : '';
-                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:700;">' + money(value) + '</span>' + blueTri + '</span>';
+                            return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + clearanceMark + blueTri + '</span>';
                         }
                     },
                     {
@@ -2391,7 +2369,7 @@
                             };
                             return rank(aRow.getData()) - rank(bRow.getData());
                         },
-                        headerTooltip: 'Push Sprice − Ship to Faire wholesale price API (same status UX as /doba-tabulator)',
+                        headerTooltip: 'Push Sprice to Faire wholesale price API (same status UX as /doba-tabulator)',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '';
@@ -2412,7 +2390,7 @@
                             if (pushStatus === 'error') {
                                 return '<button type="button" class="fr-push-single-btn" data-sku="' + esc(sku) + '" data-price="' + sprice + '" data-product-id="' + esc(productId) + '" style="border:none;background:none;color:#dc3545;cursor:pointer;padding:4px 6px;" title="Push failed — click to retry"><i class="fa-solid fa-x"></i></button>';
                             }
-                            return '<button type="button" class="fr-push-single-btn" data-sku="' + esc(sku) + '" data-price="' + sprice + '" data-product-id="' + esc(productId) + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push Sprice − Ship to Faire"><i class="fas fa-upload"></i></button>';
+                            return '<button type="button" class="fr-push-single-btn" data-sku="' + esc(sku) + '" data-price="' + sprice + '" data-product-id="' + esc(productId) + '" style="border:none;background:none;color:#0d6efd;cursor:pointer;padding:4px 6px;" title="Push Sprice to Faire"><i class="fas fa-upload"></i></button>';
                         },
                         // Tabulator can swallow nested button clicks — handle via cellClick too
                         cellClick: function(e, cell) {
