@@ -326,16 +326,18 @@
         }
 
         /**
-         * The S PRC shown, same as /amazon-tabulator-view: the live rule price (Std × (1 − sum of discounts)),
-         * the exact amount Push Prc sends. Falls back to the saved S PRC only when the rule gives nothing.
+         * The S PRC shown, same as /topdawg-pricing: the S PRC SAVED by the server job (Std rule − Ship, SNROI cap,
+         * refreshed every 10 min and on Save Rule). The live rule price is only used for a SKU with nothing saved yet.
          */
         function abShownSprice(data) {
             if (!data || isAbParentRow(data)) return 0;
+            const saved = parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            if (saved > 0) return Math.round(saved * 100) / 100;
             if (typeof chPromoRuleSpriceAmount === 'function') {
                 const live = Number(chPromoRuleSpriceAmount(data)) || 0;
                 if (live > 0) return live;
             }
-            return parseFloat(data.SPRICE != null ? data.SPRICE : data.sprice) || 0;
+            return 0;
         }
         window.abShownSprice = abShownSprice;
 
@@ -762,6 +764,9 @@
             abSaveColumnVisibility();
         });
 
+        // Save Rule on the Std prc vs dil modal: re-read the rows (S PRC saved by the server) without a page reload.
+        window.chStdReloadRows = function () { loadTable(); };
+
         function applyFilters() {
             if (!abTable) return;
             const filtered = (abAllRows || []).filter(abRowMatches);
@@ -910,7 +915,7 @@
                         },
                         {
                             title: 'S PRC', field: 'SPRICE', hozAlign: 'center', width: 78, sorter: abDisplayedSorter('SPRICE'),
-                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Then the Ship column is reduced from it (S PRC = calc − Ship) and the SNROI cap judges that price. Std Prc is the maximum, no LMP. Shows the live rule price, which is what is pushed to Alibaba. Blue triangle = S PRC ≠ the live Alibaba Price.',
+                            headerTooltip: 'S PRC = Amazon Std × (1 − (Age + Dil + B + 0 Sold + CVR + Rev Disc)/100). Then the Ship column is reduced from it (S PRC = calc − Ship) and the SNROI cap judges that price. Std Prc is the maximum, no LMP. Saved by the server job (every 10 min and on Save Rule), which is what is pushed to Alibaba. Blue triangle = S PRC ≠ the live Alibaba Price.',
                             formatter: function (cell) {
                                 const row = cell.getRow().getData();
                                 if (isAbParentRow(row)) return '<span style="color:#6c757d;">–</span>';

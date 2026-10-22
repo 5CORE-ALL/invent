@@ -181,8 +181,8 @@ class AlibabaSprcDilAutoPushService
                         continue;
                     }
 
-                    // The blue catch-up runs every 10 min: only rewrite the saved S PRC when it changed.
-                    if (! $dryRun && (! $blueCatchUp || ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice))) {
+                    // The blue catch-up and the save-only run (every 10 min) only rewrite the saved S PRC when it changed.
+                    if (! $dryRun && (! ($blueCatchUp || $skipPush) || ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice))) {
                         $this->saveSprice($row, $computed, 'applied');
                     }
                     $stats['applied']++;

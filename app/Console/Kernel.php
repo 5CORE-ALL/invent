@@ -1267,6 +1267,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // S PRC kept in step with the rules every 10 min (save only, nothing is pushed), same as /topdawg-pricing:
+        // a rule, Std Prc or Ship change shows on the page without waiting for the twice-daily run.
+        $schedule->command('alibaba:sprc-dil-auto-push --skip-push')
+            ->everyTenMinutes()
+            ->name('alibaba-sprc-dil-save-10min')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // alibaba:push-blue-prices (10-minute headless push of S PRC) is no longer scheduled: it would push the plain
         // S PRC and break the once-a-day push that /alibaba-analytics owns.
 

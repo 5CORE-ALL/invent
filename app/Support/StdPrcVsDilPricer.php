@@ -421,6 +421,7 @@ class StdPrcVsDilPricer
             'faire',
             'wayfair',
             'topdawg',
+            'alibaba',
             'depop',
             'mercari_woship',
         ], true);

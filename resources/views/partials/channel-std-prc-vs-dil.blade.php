@@ -678,6 +678,7 @@
                 || CHANNEL_PROMO_CHANNEL === 'faire'
                 || CHANNEL_PROMO_CHANNEL === 'wayfair'
                 || CHANNEL_PROMO_CHANNEL === 'topdawg'
+                || CHANNEL_PROMO_CHANNEL === 'alibaba'
                 || CHANNEL_PROMO_CHANNEL === 'depop'
                 || CHANNEL_PROMO_CHANNEL === 'mercari_woship';
         }
@@ -2333,6 +2334,19 @@
                 });
             });
         }
+        /**
+         * Reload the rows from the server. A page whose table is not fed by ajaxURL (Alibaba) sets
+         * window.chStdReloadRows to its own loader. Never call table.setData() on such a page: it would empty the table.
+         */
+        function chStdReloadPageRows() {
+            if (typeof window.chStdReloadRows === 'function') {
+                try { window.chStdReloadRows(); } catch (eReload) { /* ignore */ }
+                return;
+            }
+            if (typeof table !== 'undefined' && table && typeof table.setData === 'function') {
+                try { table.setData(); } catch (eReload) { /* ignore */ }
+            }
+        }
         function chStdApply() {
             const draft = chStdReadDraft();
             if (!draft.dil.length || !draft.age.length) {
@@ -2373,11 +2387,7 @@
                     // The server re-saved S PRC: reload the rows so the S PRC column shows the new values.
                     // Always reload after Save Rule. When the server could not finish the recalculation in this
                     // request, reload again a little later (the background job keeps saving S PRC from the rules).
-                    const chStdReloadRows = function() {
-                        if (typeof table !== 'undefined' && table && typeof table.setData === 'function') {
-                            try { table.setData(); } catch (eReload) { /* ignore */ }
-                        }
-                    };
+                    const chStdReloadRows = function() { chStdReloadPageRows(); };
                     if (window.CH_STD_SERVER_OWNED === true) {
                         chStdReloadRows();
                         if (!serverRefreshed) {
@@ -2419,13 +2429,7 @@
                 // A gateway timeout can hit while the server is still recalculating S PRC: rules are saved first,
                 // so reload the rows a little later on server-owned pages.
                 if (window.CH_STD_SERVER_OWNED === true) {
-                    [20000, 60000].forEach(function(ms) {
-                        setTimeout(function() {
-                            if (typeof table !== 'undefined' && table && typeof table.setData === 'function') {
-                                try { table.setData(); } catch (eReload) { /* ignore */ }
-                            }
-                        }, ms);
-                    });
+                    [20000, 60000].forEach(function(ms) { setTimeout(chStdReloadPageRows, ms); });
                 }
                 $('#ch-sp-status').text('Save failed');
                 if (typeof chPromoToast === 'function') chPromoToast('error', 'Could not save Std prc vs dil');
