@@ -154,14 +154,20 @@ class ChannelPushSpriceJobStore
      */
     private function alreadyDoneAtPrice(array $tasks, string $skuKey, float $price): bool
     {
-        if (! in_array($this->channel, ['ebay1', 'ebay2', 'ebay3'], true) || $skuKey === '' || ! ($price > 0)) {
+        if ($skuKey === '' || ! ($price > 0)) {
             return false;
         }
+        // Every channel: a running job never pushes the same SKU at the same price twice.
+        // The page re-scans blue SKUs while the job runs, and a SKU pushed a moment ago can still look blue
+        // until the next poll patches its Price. Without this the same SKU was appended again (queue 224 -> 679).
+        $doneStatuses = in_array($this->channel, ['ebay1', 'ebay2', 'ebay3'], true)
+            ? ['ok', 'pushing']
+            : ['ok', 'pushing', 'failed'];
         foreach ($tasks as $existing) {
             if (! is_array($existing) || strtoupper((string) ($existing['sku'] ?? '')) !== $skuKey) {
                 continue;
             }
-            if (in_array((string) ($existing['status'] ?? ''), ['ok', 'pushing'], true)
+            if (in_array((string) ($existing['status'] ?? ''), $doneStatuses, true)
                 && abs((float) ($existing['price'] ?? 0) - $price) < 0.005) {
                 return true;
             }
@@ -478,7 +484,8 @@ class ChannelPushSpriceJobStore
             if ($sku === '' || ! ($price > 0)) {
                 continue;
             }
-            $normalized[] = [
+            // One task per SKU (the last price wins), so a batch never pushes a SKU twice.
+            $normalized[strtoupper($sku)] = [
                 'sku' => $sku,
                 'price' => $price,
                 'status' => 'pending',
@@ -488,7 +495,7 @@ class ChannelPushSpriceJobStore
             ];
         }
 
-        return $normalized;
+        return array_values($normalized);
     }
 
     private function defaultState(): array

@@ -77,8 +77,8 @@
         .ab-stat-badge--inv { background: #0d9488; }
         .ab-stat-badge--ovl30 { background: #0369a1; }
         #ab-column-dropdown-menu.show {
-            min-width: min(92vw, 560px);
-            max-width: min(96vw, 640px);
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
             max-height: 70vh;
             overflow-y: auto;
             padding: 0.4rem 0.5rem 0.55rem;
@@ -88,7 +88,7 @@
         }
         #ab-column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(3, minmax(140px, 1fr));
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
             gap: 8px;
             list-style: none;
             margin: 0;
@@ -575,14 +575,16 @@
             abUpdateSelectionUi();
         }
 
-        const AB_COL_GROUPS = ['basic', 'price', 'other'];
-        const AB_COL_LABELS = { basic: 'Basic', price: 'Price', other: 'Other' };
+        const AB_COL_GROUPS = ['basic', 'price', 'discounts', 'other'];
+        const AB_COL_LABELS = { basic: 'Basic', price: 'Price', discounts: 'Discounts', other: 'Other' };
 
         function abColumnShown(value) {
             return value === true || value === 1 || value === '1' || value === 'true';
         }
 
         function abClassifyColumn(field) {
+            // Every discount column goes under one Discounts header.
+            if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(field)) return 'discounts';
             if (/^(price|groi|gpft|profit|sales|sprice|sgpft|sgroi|sroi|snroi|sngpft|snpft|sprc_dil|push_prc)$/i.test(field)) return 'price';
             if (/^(product_id|status)$/i.test(field)) return 'other';
             return 'basic';

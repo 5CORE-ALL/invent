@@ -1393,6 +1393,22 @@
             if (shown < 0) return '<span style="font-weight:700;color:#dc2626;">' + shown + '</span>';
             return '<span style="font-weight:700;color:#0f172a;">' + shown + '</span>';
         }
+        /** Dollar amount of the discount: Std Prc × Sum disc % ÷ 100 (negative when Sum disc is negative). */
+        function chStdSumDiscAmt(d) {
+            if (!d) return 0;
+            if (typeof chPromoIsChildRow === 'function' && !chPromoIsChildRow(d)) return 0;
+            const std = chStdRowStd(d);
+            if (!(std > 0)) return 0;
+            const pct = Number(chStdSumDisc(d, undefined, true)) || 0;
+            return Math.round(std * pct) / 100;
+        }
+        window.chStdSumDiscAmt = chStdSumDiscAmt;
+        function chStdMoneyBadge(amt) {
+            const n = Math.round((Number(amt) || 0) * 100) / 100;
+            if (!n) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
+            const txt = (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+            return '<span style="font-weight:700;color:' + (n < 0 ? '#dc2626' : '#0f172a') + ';">' + txt + '</span>';
+        }
         let chStdFamilyMap = null;
         let chStdFamilyLen = -1;
         function chStdIsParentRow(d) {
@@ -1539,7 +1555,7 @@
             if (typeof table === 'undefined' || !table || typeof table.getColumn !== 'function') return;
             // Tabulator 6 cells have no reformat(): it logs an error per cell. Reformat each row once instead.
             const rows = new Set();
-            ['age_discount', 'dil_discount', 'lmp_discount', 'moq_m_discount', 'buss_discount', 'pricing_discount', 'roi_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount'].forEach(function(field) {
+            ['age_discount', 'dil_discount', 'lmp_discount', 'moq_m_discount', 'buss_discount', 'pricing_discount', 'roi_discount', 'zero_sold_discount', 'cvr_discount', 'review_discount', 'sum_discount', 'sum_discount_amt'].forEach(function(field) {
                 let col = null;
                 try { col = table.getColumn(field); } catch (e) { col = null; }
                 if (!col || typeof col.getCells !== 'function') return;
@@ -1689,6 +1705,21 @@
                 }),
                 chStdDiscCol('Rev Disc.', 'review_discount', 'Review discount from Std prc vs dil. Max reviews or above → 0.', chStdRevDiscPct),
                 chStdDiscCol('Sum disc', 'sum_discount', 'Age + Dil + LMP + MOQ M + B Disc + Pricing + ROI + 0 Sold + CVR + Rev. S PRC = Std Prc × (1 − Sum disc / 100). A negative total is shown in red and raises S PRC above Std Prc (Std Prc is not a cap).', function(d) { return chStdSumDisc(d, undefined, true); }),
+                Object.assign(chStdDiscCol('Sum Disc $', 'sum_discount_amt', 'Sum disc in dollars = Std Prc × Sum disc % ÷ 100. A negative amount (red) means S PRC is raised above Std Prc. Parent rows show the average of their SKUs.', chStdSumDiscAmt), {
+                    width: 78,
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (chStdIsParentRow(d)) {
+                            const avg = chStdFamilyAvg(d, chStdSumDiscAmt);
+                            if (avg === null) return '';
+                            return '<span title="' + chStdEsc('Average of ' + chStdFamilyKids(d).length + ' SKUs') + '">' + chStdMoneyBadge(avg) + '</span>';
+                        }
+                        const std = chStdRowStd(d);
+                        const pct = chStdSumDisc(d, undefined, true);
+                        const tip = std > 0 ? ('Std Prc $' + std.toFixed(2) + ' × ' + (Math.round(pct * 10) / 10) + '%') : 'No Std Prc';
+                        return '<span title="' + chStdEsc(tip) + '">' + chStdMoneyBadge(chStdSumDiscAmt(d)) + '</span>';
+                    },
+                }),
             ];
         }
         function chStdAppendDiscColumnsFilter(c) {

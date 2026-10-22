@@ -121,6 +121,61 @@ class ChannelLivePriceSync
         }
     }
 
+    /**
+     * Channels whose analytics Price column is exactly the stored listing price (no review window, no Amazon floor,
+     * no base-price conversion), so "Price already = S PRC" can be decided from the database alone.
+     */
+    public const DB_LIVE_COMPARE_CHANNELS = ['wayfair'];
+
+    /**
+     * Subset of $prices (UPPER sku => S PRC) whose stored listing Price already equals that S PRC.
+     * Such SKUs need no push. Channels outside DB_LIVE_COMPARE_CHANNELS always return [].
+     *
+     * @param  array<string, float>  $prices
+     * @return list<string> UPPER skus that are already live at their S PRC
+     */
+    public static function skusAlreadyLive(string $channel, array $prices): array
+    {
+        $channel = self::normalize($channel);
+        if ($prices === [] || ! in_array($channel, self::DB_LIVE_COMPARE_CHANNELS, true)) {
+            return [];
+        }
+        $target = self::writeTargets($channel)[0] ?? null;
+        if ($target === null || ! class_exists($target['model'])) {
+            return [];
+        }
+        $class = $target['model'];
+        $column = $target['column'];
+        $skuCol = $target['sku'] ?? 'sku';
+        $table = (new $class)->getTable();
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column)) {
+            return [];
+        }
+
+        $same = [];
+        try {
+            foreach (array_chunk(array_keys($prices), 500) as $chunk) {
+                $rows = $class::query()
+                    ->whereIn(\Illuminate\Support\Facades\DB::raw('UPPER(TRIM('.$skuCol.'))'), $chunk)
+                    ->get([$skuCol, $column]);
+                foreach ($rows as $row) {
+                    $key = strtoupper(trim((string) $row->{$skuCol}));
+                    $live = round((float) ($row->{$column} ?? 0), 2);
+                    $want = $prices[$key] ?? null;
+                    if ($want !== null && $live > 0 && abs($live - $want) < 0.005) {
+                        $same[$key] = true;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            Log::warning('ChannelLivePriceSync skusAlreadyLive failed', ['channel' => $channel, 'error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        return array_keys($same);
+    }
+
     public static function isEbayChannel(string $channel): bool
     {
         return in_array(self::normalize($channel), ['ebay1', 'ebay2', 'ebay3'], true);

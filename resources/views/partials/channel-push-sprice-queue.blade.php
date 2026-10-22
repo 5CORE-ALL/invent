@@ -104,6 +104,16 @@
             const CH_PUSH_SPRICE_PUSH_URL = ''; // eBay price push endpoints were removed
             const CH_PUSH_SPRICE_CLIENT_MAX = 2;
             let chPushSpriceBuf = {};
+            // SKU|price already sent to the server queue by an auto push (reload scan / after save) this page load.
+            // The scan re-runs while the job works; a SKU pushed a moment ago still looks blue until its Price is
+            // patched, and without this memory it was queued again (a 224-SKU change became a 679-SKU push).
+            let chPushSpriceSent = {};
+            function chPushSpriceSentKey(sku, price) {
+                return String(sku || '').trim().toUpperCase() + '|' + (Math.round((Number(price) || 0) * 100) / 100).toFixed(2);
+            }
+            function chPushSpriceWasSent(sku, price) {
+                return !!chPushSpriceSent[chPushSpriceSentKey(sku, price)];
+            }
             let chPushSpriceTimer = null;
             let chPushSpricePollTimer = null;
             let chPushSpriceLastToastKey = '';
@@ -224,6 +234,7 @@
             /** Drop leftover catalog jobs without a confirm. Page reload then queues the blue-triangle set. */
             function chPushSpriceCancelSilent() {
                 stopChannelPushSpricePoll();
+                chPushSpriceSent = {};
                 chPushSpriceExpecting = false;
                 chPushSpriceExpectMisses = 0;
                 if (chPushSpriceUsesClientPump()) cancelChannelPushSpriceClient();
@@ -831,6 +842,10 @@
                     }
                 }).fail(function(xhr) {
                     chPushSpriceExpecting = false;
+                    // Never reached the server queue: allow the next scan to send these again.
+                    items.forEach(function(it) {
+                        if (it) delete chPushSpriceSent[chPushSpriceSentKey(it.sku, it.price)];
+                    });
                     chPushSpriceToast('error', (xhr.responseJSON && xhr.responseJSON.message) || 'Could not queue S PRC');
                 });
             }
@@ -912,7 +927,17 @@
                     const sku = String(item.sku || '').trim();
                     const price = chPushSpriceRound2(item.price);
                     if (!sku || !(price > 0) || sku.toUpperCase().indexOf('PARENT') !== -1) return;
-                    chPushSpriceBuf[sku.toUpperCase()] = { sku: sku, price: price };
+                    const key = sku.toUpperCase();
+                    // A manual Push Prc click (no onlyChanged) always goes through. Auto pushes are skipped when
+                    // this exact SKU + price was already sent this page load, and the server drops SKUs whose
+                    // stored Price already equals the S PRC.
+                    const prev = chPushSpriceBuf[key];
+                    const changedOnly = !!opts.onlyChanged && (!prev || prev.only_changed === 1);
+                    if (opts.onlyChanged) {
+                        if (chPushSpriceWasSent(sku, price)) return;
+                        chPushSpriceSent[chPushSpriceSentKey(sku, price)] = true;
+                    }
+                    chPushSpriceBuf[key] = { sku: sku, price: price, only_changed: changedOnly ? 1 : 0 };
                 });
                 const n = Object.keys(chPushSpriceBuf).length;
                 if (!n) return;
@@ -999,6 +1024,8 @@
                     if (!(live > 0) || chPushSpriceNearlyEqual(p, live)) return false;
                     if (chPushSpriceAlreadyPushedToSaved(d, p)) return false;
                     if (typeof chPromoIsEndedListing === 'function' && chPromoIsEndedListing(d)) return false;
+                    // Same SKU + price already sent to the queue this page load: do not queue it again.
+                    if (chPushSpriceWasSent(sku, p)) return false;
                 }
                 try {
                     chPushSafeRowUpdate(row, { SPRICE_STATUS: 'queued', push_status: 'queued' });
@@ -1009,6 +1036,7 @@
                 }
                 enqueueChannelPushSprice([{ sku: sku, price: p }], {
                     exclusive: true,
+                    onlyChanged: !force,
                     immediate: opts.immediate !== false,
                 });
                 return true;
@@ -1527,11 +1555,15 @@
                     // 200 "submitted for review" while live Price stays old. Do not
                     // re-queue the same S PRC or reload keeps sending 21/30 forever.
                     if (chPushSpriceAlreadyPushedToSaved(d, saved)) return;
+                    // Already sent at this S PRC this page load (the job is still working through it).
+                    if (chPushSpriceWasSent(sku, saved)) return;
                     jobs.push({ sku: sku, price: saved, row: row, data: d });
                 }
                 if (tbl) chPushSpriceWalkRows(tbl, consider);
                 extra.forEach(function(d) { if (d) consider(null, d); });
                 if (!jobs.length) {
+                    // Everything blue was already sent and the server job is still pushing it: leave the bar alone.
+                    if (chPushSpricePollTimer || chPushSpriceFlushing || chPushClientBusy()) return;
                     const retry = opts.retry || 0;
                     if (opts.catalog && retry < 6) {
                         setTimeout(function() {
@@ -1576,6 +1608,7 @@
                     });
                 } else {
                     enqueueChannelPushSprice(jobs, {
+                        onlyChanged: true,
                         silent: !!opts.silent,
                         replacePending: CH_PUSH_SPRICE_CHANNEL === 'shopify_b2c'
                             || CH_PUSH_SPRICE_CHANNEL === 'shopify_b2b',

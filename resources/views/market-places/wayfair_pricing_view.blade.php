@@ -75,6 +75,14 @@
 
     @include('market-places.partials.wayfair-price-upload')
 
+    {{-- Standard rolling-history dots + graph for the header badges --}}
+    @include('partials.channel-badge-history', [
+        'bhLabel' => 'Wayfair',
+        'bhChartUrl' => url('/wayfair/badge-chart-data'),
+        'bhPrevUrl' => url('/wayfair/badge-prev-day'),
+        'bhSnapshotUrl' => url('/wayfair/badge-snapshot'),
+    ])
+
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -868,6 +876,63 @@
             if (updates.length) saveWayfairSpriceUpdates(updates);
         }
 
+        /** Badge history metrics over ALL child rows (ignores table filters) — same definitions as the daily server snapshot. */
+        function wfBadgeHistoryTotals(rows) {
+            const t = { total_sales: 0, total_al30: 0, total_views: 0, missing_count: 0, zero_sold: 0, more_sold: 0, blue_triangle_count: 0 };
+            let profit = 0, cogs = 0;
+            (rows || []).forEach(function(row) {
+                if (!row || row.is_parent) return;
+                const fqty = parseFloat(row.al30) || 0;
+                const sales = parseFloat(row.sales) || 0;
+                const lp = parseFloat(row.lp) || 0;
+                const isMissing = wfRowIsMissing(row);
+                t.total_sales += sales;
+                t.total_al30 += fqty;
+                t.total_views += parseFloat(row.ov_l30) || 0;
+                cogs += lp * fqty;
+                if (sales > 0 && fqty > 0) {
+                    profit += wayfairMarginFromRow(row) * sales - lp * fqty;
+                } else if (fqty > 0 && !isMissing) {
+                    profit += fqty * (parseFloat(row.profit) || 0);
+                }
+                if (fqty === 0) t.zero_sold++; else t.more_sold++;
+                if (isMissing) t.missing_count++;
+                if (wayfairHasBlueTriangle(row)) t.blue_triangle_count++;
+            });
+            t.avg_gpft = t.total_sales > 0 ? (profit / t.total_sales) * 100 : 0;
+            t.avg_roi = cogs > 0 ? (profit / cogs) * 100 : 0;
+            t.cvr_percent = t.total_views > 0 ? (t.total_al30 / t.total_views) * 100 : 0;
+            return t;
+        }
+
+        function wfBhText(sel, text) {
+            if (window.ChBadgeHistory) ChBadgeHistory.setText(sel, text);
+            else $(sel).text(text);
+        }
+
+        if (window.ChBadgeHistory) {
+            ChBadgeHistory.init({
+                label: 'Wayfair',
+                chartUrl: '/wayfair/badge-chart-data',
+                prevUrl: '/wayfair/badge-prev-day',
+                snapshotUrl: '/wayfair/badge-snapshot'
+            });
+            ChBadgeHistory.register([
+                { sel: '#wf-total-sales-badge', metric: 'total_sales', format: 'money', label: 'Sales' },
+                { sel: '#wf-avg-gpft-badge', metric: 'avg_gpft', format: 'pct', label: 'GPFT%' },
+                { sel: '#wf-avg-roi-badge', metric: 'avg_roi', format: 'pct', label: 'GROI%' },
+                { sel: '#wf-total-views-badge', metric: 'total_views', format: 'number', label: 'Views' },
+                { sel: '#wf-total-fqty-badge', metric: 'total_al30', format: 'number', label: 'Qty' },
+                { sel: '#wf-avg-cvr-badge', metric: 'cvr_percent', format: 'pct', label: 'CVR%' },
+                { sel: '#wf-missing-badge', metric: 'missing_count', format: 'number', label: 'ML (Missing Listing)', invert: true, clickBadge: false },
+                { sel: '#wayfair-price-gt-lmp-badge', metric: 'prc_gt_lmp_count', format: 'number', label: 'Price > LMP', invert: true, post: true, clickBadge: false },
+                { sel: '#wayfair-price-lt80-lmp-badge', metric: 'price_lt80_lmp_count', format: 'number', label: 'Price < 80% LMP', invert: true, post: true, clickBadge: false },
+                { sel: '#wayfair-blue-triangle-badge', metric: 'blue_triangle_count', format: 'number', label: 'Blue Triangle (S PRC ≠ Price)', invert: true, post: true, clickBadge: false },
+                { sel: '#wf-more-sold-badge', metric: 'more_sold', format: 'number', label: 'Sold > 0', clickBadge: false },
+                { sel: '#wf-zero-sold-badge', metric: 'zero_sold', format: 'number', label: '0 Sold', invert: true, clickBadge: false }
+            ]);
+        }
+
         function updateSummary() {
             if (!table) return;
             let rows;
@@ -920,31 +985,41 @@
 
             // Same labels/order as /amazon-tabulator-view (Wayfair Ads%=0 → PFT=GPFT, NROI=GROI).
             $('#wf-rows-count-badge').text('Row: ' + visibleRowCount.toLocaleString());
-            $('#wf-total-sales-badge').text('Sales: $' + Math.round(totalSales).toLocaleString());
-            $('#wf-total-fqty-badge').text('Qty: ' + totalFqty.toLocaleString());
+            wfBhText('#wf-total-sales-badge', 'Sales: $' + Math.round(totalSales).toLocaleString());
+            wfBhText('#wf-total-fqty-badge', 'Qty: ' + totalFqty.toLocaleString());
             $('#wf-total-profit-badge').text('PFT: $' + Math.round(totalProfit).toLocaleString());
-            $('#wf-avg-gpft-badge').text('GPFT: ' + Math.round(pftPct) + '%');
-            $('#wf-avg-roi-badge').text('GROI: ' + Math.round(roiPct) + '%');
+            wfBhText('#wf-avg-gpft-badge', 'GPFT: ' + Math.round(pftPct) + '%');
+            wfBhText('#wf-avg-roi-badge', 'GROI: ' + Math.round(roiPct) + '%');
             $('#wf-avg-price-badge').text('Price: $' + avgPrice.toFixed(2));
-            $('#wf-total-views-badge').text('Views: ' + Math.round(totalViews).toLocaleString());
-            $('#wf-avg-cvr-badge').text('CVR: ' + avgCvr.toFixed(1) + '%');
-            $('#wf-missing-badge').text('ML: ' + missingCount.toLocaleString());
-            $('#wf-zero-sold-badge').text('0 Sold: ' + zeroSold.toLocaleString());
-            $('#wf-more-sold-badge').text('Sold >0: ' + moreSold.toLocaleString());
+            wfBhText('#wf-total-views-badge', 'Views: ' + Math.round(totalViews).toLocaleString());
+            wfBhText('#wf-avg-cvr-badge', 'CVR: ' + avgCvr.toFixed(1) + '%');
+            wfBhText('#wf-missing-badge', 'ML: ' + missingCount.toLocaleString());
+            wfBhText('#wf-zero-sold-badge', '0 Sold: ' + zeroSold.toLocaleString());
+            wfBhText('#wf-more-sold-badge', 'Sold >0: ' + moreSold.toLocaleString());
+            let priceGtLmpCount = NaN, priceLt80LmpCount = NaN;
             if (window.PriceGtLmpBadge && table) {
-                PriceGtLmpBadge.update('#wayfair-price-gt-lmp-badge', table.getData(), 'wayfair', 'price');
+                priceGtLmpCount = PriceGtLmpBadge.update('#wayfair-price-gt-lmp-badge', table.getData(), 'wayfair', 'price');
                 if (window.PriceLt80LmpBadge) {
-                    PriceLt80LmpBadge.update('#wayfair-price-lt80-lmp-badge', table.getData(), 'wayfair', 'price');
+                    priceLt80LmpCount = PriceLt80LmpBadge.update('#wayfair-price-lt80-lmp-badge', table.getData(), 'wayfair', 'price');
                 }
             }
-            let blueTriangleCount = 0;
-            (table ? table.getData() : []).forEach(function(row) {
-                if (wayfairHasBlueTriangle(row)) blueTriangleCount++;
-            });
-            $('#wayfair-blue-triangle-badge').html(
-                '<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString()
-            );
+            const wfHistTotals = wfBadgeHistoryTotals(table ? table.getData() : []);
+            const blueTriangleCount = wfHistTotals.blue_triangle_count;
+            const $blueBadge = $('#wayfair-blue-triangle-badge');
+            const blueDot = $blueBadge.find('.summary-trend-dot').detach();
+            $blueBadge.html('<i class="fas fa-exclamation-triangle"></i> ' + blueTriangleCount.toLocaleString());
+            if (blueDot.length) $blueBadge.prepend(blueDot);
             if (typeof syncWayfairTriangleBadgeState === 'function') syncWayfairTriangleBadgeState();
+
+            // History dots: live values use ALL rows (not the table filters) to match the daily snapshot.
+            if (window.ChBadgeHistory) {
+                ['total_sales', 'total_al30', 'total_views', 'avg_gpft', 'avg_roi', 'cvr_percent',
+                 'missing_count', 'zero_sold', 'more_sold', 'blue_triangle_count'].forEach(function(k) {
+                    ChBadgeHistory.setLive(k, wfHistTotals[k]);
+                });
+                if (isFinite(priceGtLmpCount)) ChBadgeHistory.setLive('prc_gt_lmp_count', priceGtLmpCount);
+                if (isFinite(priceLt80LmpCount)) ChBadgeHistory.setLive('price_lt80_lmp_count', priceLt80LmpCount);
+            }
 
             $('#wf-missing-badge').toggleClass('bg-secondary', !wfMissingActive).toggleClass('bg-danger', wfMissingActive);
         
@@ -1231,42 +1306,67 @@
             menu.innerHTML = html;
         }
 
+        // Same persistence as /amazon-tabulator-view: shared /tabulator-column-visibility endpoint,
+        // JSON body (real booleans — form-encoded "false" strings used to bring every column back).
+        const WF_COLUMN_VISIBILITY_URL = '/tabulator-column-visibility';
+        const WF_COLUMN_CHANNEL = 'wayfair_tabulator';
+        const WF_SKIP_COLVIS_FIELDS = ['_wf_select', '_select'];
+        let wfColVisSaveTimer = null;
+        let wfApplyingColumnVisibility = false;
+
         function wfSaveColumnVisibilityToServer() {
-            if (!table) return;
-            const visibility = {};
-            table.getColumns().forEach(function(col) {
-                const field = col.getField();
-                if (field && field !== '_wf_select') {
-                    visibility[field] = col.isVisible();
-                }
-            });
-            $.ajax({
-                url: '{{ route("wayfair.pricing.column.set") }}',
-                method: 'POST',
-                data: { visibility: visibility, _token: '{{ csrf_token() }}' }
-            });
+            if (!table || wfApplyingColumnVisibility) return;
+            if (wfColVisSaveTimer) clearTimeout(wfColVisSaveTimer);
+            wfColVisSaveTimer = setTimeout(function() {
+                wfColVisSaveTimer = null;
+                const visibility = {};
+                table.getColumns().forEach(function(col) {
+                    const field = col.getField();
+                    if (field && WF_SKIP_COLVIS_FIELDS.indexOf(field) === -1) {
+                        visibility[field] = !!col.isVisible();
+                    }
+                });
+                fetch(WF_COLUMN_VISIBILITY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ channel: WF_COLUMN_CHANNEL, visibility: visibility })
+                }).then(function(res) {
+                    if (!res.ok && window.toastr) toastr.error('Could not save column layout.');
+                }).catch(function(err) {
+                    console.error('Error saving column visibility:', err);
+                    if (window.toastr) toastr.error('Could not save column layout.');
+                });
+            }, 250);
         }
 
         function wfApplyColumnVisibilityFromServer() {
-            if (!table) return;
-            $.ajax({
-                url: '{{ route("wayfair.pricing.column.get") }}',
+            if (!table) return Promise.resolve();
+            return fetch(WF_COLUMN_VISIBILITY_URL + '?channel=' + encodeURIComponent(WF_COLUMN_CHANNEL), {
                 method: 'GET',
-                success: function(visibility) {
-                    if (visibility && typeof visibility === 'object' && Object.keys(visibility).length > 0) {
-                        Object.keys(visibility).forEach(function(field) {
-                            const col = table.getColumn(field);
-                            if (col) {
-                                if (visibility[field]) {
-                                    col.show();
-                                } else {
-                                    col.hide();
-                                }
-                            }
-                        });
-                        wfBuildColumnDropdown();
-                    }
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') || '{{ csrf_token() }}'
                 }
+            }).then(function(res) { return res.json(); }).then(function(saved) {
+                if (!saved || typeof saved !== 'object') return;
+                wfApplyingColumnVisibility = true;
+                try {
+                    table.getColumns().forEach(function(col) {
+                        const field = col.getField();
+                        if (!field || WF_SKIP_COLVIS_FIELDS.indexOf(field) !== -1) return;
+                        if (!Object.prototype.hasOwnProperty.call(saved, field)) return;
+                        if (saved[field]) col.show();
+                        else col.hide();
+                    });
+                } finally {
+                    wfApplyingColumnVisibility = false;
+                }
+            }).catch(function(err) {
+                console.error('Error applying column visibility:', err);
             });
         }
 
@@ -1442,7 +1542,7 @@
                         }
                     },
                     {
-                        title: 'A L30', field: 'al30', sorter: 'number', hozAlign: 'center', width: 55,
+                        title: 'W L30', field: 'al30', sorter: 'number', hozAlign: 'center', width: 55,
                         formatter: function(cell) {
                             const v = parseInt(cell.getValue(), 10) || 0;
                             return '<span style="font-weight:700;">' + v + '</span>';
@@ -1451,7 +1551,7 @@
                     {
                         // Same color bands as /amazon-tabulator-view CVR L30
                         title: 'CVR', field: 'cvr', hozAlign: 'center', width: 55,
-                        headerTooltip: 'CVR = A L30 ÷ OV L30',
+                        headerTooltip: 'CVR = W L30 ÷ OV L30',
                         sorter: function(a, b, aRow, bRow) {
                             const calc = function(d) {
                                 const sold = parseFloat(d.al30) || 0;
@@ -1616,6 +1716,7 @@
                             return money(cell.getValue());
                         }
                     },
+                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: 'Ship', field: 'ship', sorter: 'number', hozAlign: 'right', width: 62,
                         headerTooltip: 'Ship from Shipping Master (ship base + handling + o-size + PR). Std prc vs dil subtracts it from S PRC after the discount.',
@@ -1626,7 +1727,6 @@
                             return v > 0 ? money(v) : '<span style="color:#6c757d;">–</span>';
                         }
                     },
-                    ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: 'Sprc Dil',
                         field: 'SPRC_DIL',
@@ -1640,7 +1740,7 @@
                             };
                             return val(aRow.getData()) - val(bRow.getData());
                         },
-                        headerTooltip: 'S PRC from Dil → Target GROI% slabs. A L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + GROI%/100)) / margin. Ship not used.',
+                        headerTooltip: 'S PRC from Dil → Target GROI% slabs. W L30 = 0 still uses the Dil-matching slab. Formula: (LP × (1 + GROI%/100)) / margin. Ship not used.',
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (isWayfairParentRow(rowData)) return '';
@@ -1674,7 +1774,7 @@
                             return x < y ? -1 : 1;
                         },
                         editable: false,
-                        headerTooltip: 'Not editable. S PRC from Sprc Dil. A L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
+                        headerTooltip: 'Not editable. S PRC from Sprc Dil. W L30 = 0 still uses the Dil-matching slab. S PRC = (LP × (1 + GROI%/100)) / margin (Ship not used). Blue triangle = S PRC ≠ Price. Red text = S PRC > LMP.',
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
@@ -1831,8 +1931,9 @@
             }
 
             table.on('tableBuilt', function() {
-                wfBuildColumnDropdown();
-                wfApplyColumnVisibilityFromServer();
+                Promise.resolve(wfApplyColumnVisibilityFromServer()).then(function() {
+                    wfBuildColumnDropdown();
+                });
             });
 
             table.on('scrollVertical', wfRemoveImagePreview);
@@ -2429,10 +2530,6 @@
                     notify(res.message || 'Retry queued.', true);
                     refresh();
                 });
-            });
-            $('#wf-upload-toggle').on('click', function () {
-                const on = $('#wf-upload-enabled').text() !== 'ON';
-                post(urls.enabled, { enabled: on ? 1 : 0 }).done(function () { refresh(); });
             });
             $('#wf-upload-history-btn').on('click', loadHistory);
             $(document).on('click', '.wf-view-error', function () {

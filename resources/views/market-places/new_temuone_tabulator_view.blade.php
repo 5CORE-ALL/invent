@@ -149,8 +149,8 @@
             color: #fff;
         }
         #column-dropdown-menu.show {
-            min-width: min(92vw, 720px);
-            max-width: min(96vw, 780px);
+            min-width: min(92vw, 900px);
+            max-width: min(96vw, 960px);
             max-height: 70vh;
             overflow-y: auto;
             padding: 0.4rem 0.5rem 0.55rem;
@@ -158,7 +158,7 @@
         #column-dropdown-menu > li.col-vis-full { list-style: none; }
         #column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            grid-template-columns: repeat(5, minmax(130px, 1fr));
             gap: 8px;
             list-style: none;
             margin: 0;
@@ -2980,10 +2980,11 @@
     // Same hide/show + persist as /temu1-data, stored under this page's channel.
     const TABULATOR_COLUMN_CHANNEL = 'newtemuone';
     const TABULATOR_COLUMN_VISIBILITY_URL = '{{ url("/tabulator-column-visibility") }}';
-    const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'advertisement', 'others'];
+    const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'discounts', 'advertisement', 'others'];
     const COL_VIS_CATEGORY_LABELS = {
         basics: 'Basics',
         pricing: 'Pricing',
+        discounts: 'Discounts',
         advertisement: 'Advertisement',
         others: 'Others'
     };
@@ -2991,6 +2992,8 @@
 
     function classifyTemuoneColumn(field, title) {
         const f = String(field || '');
+        // Every discount column goes under one Discounts header.
+        if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
         const t = String(title || field || '').replace(/<[^>]*>/g, '');
         const fl = f.toLowerCase();
         const tl = t.toLowerCase();

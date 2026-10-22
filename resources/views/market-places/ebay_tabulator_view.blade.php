@@ -353,8 +353,8 @@
         /* Column visibility dropdown: 4 category panels (only when open) */
         #column-dropdown-menu.show {
             display: block;
-            min-width: min(92vw, 720px);
-            max-width: min(96vw, 780px);
+            min-width: min(92vw, 900px);
+            max-width: min(96vw, 960px);
             padding: 0.4rem 0.5rem 0.55rem;
         }
 
@@ -364,7 +364,7 @@
 
         #column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            grid-template-columns: repeat(5, minmax(130px, 1fr));
             gap: 8px;
             list-style: none;
             margin: 0;
@@ -6203,10 +6203,11 @@
              * Category placement (General / Pricing / Advertisement / Others) is classified by
              * defaults below and can be overridden via drag-and-drop (stored in localStorage).
              */
-            const COL_VIS_CATEGORY_KEYS = ['general', 'pricing', 'advertisement', 'others'];
+            const COL_VIS_CATEGORY_KEYS = ['general', 'pricing', 'discounts', 'advertisement', 'others'];
             const COL_VIS_CATEGORY_LABELS = {
                 general: 'General',
                 pricing: 'Pricing',
+                discounts: 'Discounts',
                 advertisement: 'Advertisement',
                 others: 'Others'
             };
@@ -6219,6 +6220,8 @@
             /** Default AI-style classification from field / title. */
             function classifyColumnDefault(field, title) {
                 const f = String(field || '');
+                // Every discount column goes under one Discounts header.
+                if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
                 const t = String(title || field || '');
                 const fl = f.toLowerCase();
                 const tl = t.toLowerCase();

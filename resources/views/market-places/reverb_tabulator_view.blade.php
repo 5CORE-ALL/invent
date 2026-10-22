@@ -53,8 +53,8 @@
         /* Column visibility — 4 groups (Basic / Pricing / Advertisement / Other) */
         #column-dropdown-menu.show,
         #column-dropdown-menu.column-dropdown-multicol {
-            min-width: min(92vw, 720px);
-            max-width: min(96vw, 780px);
+            min-width: min(92vw, 900px);
+            max-width: min(96vw, 960px);
             max-height: 70vh;
             overflow-y: auto;
             padding: 0.4rem 0.5rem 0.55rem;
@@ -67,7 +67,7 @@
         }
         #column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            grid-template-columns: repeat(5, minmax(130px, 1fr));
             gap: 8px;
             list-style: none;
             margin: 0;
@@ -4121,10 +4121,11 @@
             }
             if (resp && resp.active) startReverbPushBumpPoll();
         });
-        const COL_VIS_CATEGORY_KEYS = ['basic', 'pricing', 'advertisement', 'other'];
+        const COL_VIS_CATEGORY_KEYS = ['basic', 'pricing', 'discounts', 'advertisement', 'other'];
         const COL_VIS_CATEGORY_LABELS = {
             basic: 'Basic',
             pricing: 'Pricing',
+            discounts: 'Discounts',
             advertisement: 'Advertisement',
             other: 'Other'
         };
@@ -4153,6 +4154,8 @@
         }
         function classifyReverbColumn(field, title) {
             const f = String(field || '');
+            // Every discount column goes under one Discounts header.
+            if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
             const t = String(title || '').toLowerCase();
             if (COL_VIS_ADS[f] || /\b(ads?|bump|bid|campaign)\b/i.test(t)) return 'advertisement';
             if (COL_VIS_PRICING[f] || /\b(price|prc|lmp|roi|gpft|pft|nroi|sprice|sroi|sgpft|snpft|snroi|prmt|cpn|ship|profit|sales|push)\b/i.test(t)) {

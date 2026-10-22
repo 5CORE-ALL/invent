@@ -11,9 +11,7 @@
                 </div>
                 <div id="wf-upload-alert" class="alert alert-warning py-2" style="display:none;"></div>
                 <div class="row g-2 small">
-                    <div class="col-md-3"><strong>Automatic Upload:</strong> <span id="wf-upload-enabled">—</span>
-                        <button type="button" class="btn btn-sm btn-outline-primary ms-1" id="wf-upload-toggle">ON / OFF</button>
-                    </div>
+                    <div class="col-md-3"><strong>Automatic Upload:</strong> <span id="wf-upload-enabled">—</span>                    </div>
                     <div class="col-md-3"><strong>Schedule:</strong> <span id="wf-upload-schedule">—</span></div>
                     <div class="col-md-3"><strong>Last Upload:</strong> <span id="wf-upload-last">—</span></div>
                     <div class="col-md-3"><strong>Last Status:</strong> <span id="wf-upload-status">—</span></div>

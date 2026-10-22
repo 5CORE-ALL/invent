@@ -4020,6 +4020,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/wayfair/pricing-save-sprice', [WayfairController::class, 'saveWayfairSpriceUpdates'])->name('wayfair.pricing.save.sprice');
     Route::post('/wayfair/pricing-save-links', [WayfairController::class, 'saveWayfairLinks'])->name('wayfair.pricing.save.links');
     Route::get('/wayfair/badge-chart-data', [WayfairController::class, 'wayfairBadgeChartData'])->name('wayfair.pricing.badge.chart');
+    Route::get('/wayfair/badge-prev-day', [WayfairController::class, 'wayfairBadgePrevDay'])->name('wayfair.pricing.badge.prev.day');
+    Route::post('/wayfair/badge-snapshot', [WayfairController::class, 'wayfairBadgeSnapshot'])->name('wayfair.pricing.badge.snapshot');
     Route::get('/wayfair/pricing-column-visibility', [WayfairController::class, 'getWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.get');
     Route::post('/wayfair/pricing-column-visibility', [WayfairController::class, 'setWayfairPricingColumnVisibility'])->name('wayfair.pricing.column.set');
     Route::get('/wayfair/price-upload/status', [WayfairPriceUploadController::class, 'status'])->name('wayfair.price-upload.status');

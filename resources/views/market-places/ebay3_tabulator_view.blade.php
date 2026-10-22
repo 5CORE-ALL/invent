@@ -4297,15 +4297,18 @@
         window.updateEbay3Summary = updateSummary;
 
         // Build Column Visibility Dropdown
-        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'others'];
+        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'discounts', 'others'];
         const COL_VIS_CATEGORY_LABELS = {
             basics: 'Basics',
             pricing: 'Pricing',
+            discounts: 'Discounts',
             others: 'Others'
         };
 
         function classifyEbay3Column(field, title) {
             const f = String(field || '');
+            // Every discount column goes under one Discounts header.
+            if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
             const t = String(title || field || '').replace(/<[^>]*>/g, '');
             const tl = t.toLowerCase();
 

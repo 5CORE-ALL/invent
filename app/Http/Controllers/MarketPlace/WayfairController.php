@@ -1009,36 +1009,63 @@ class WayfairController extends Controller
         ]);
     }
 
+    /**
+     * Metrics stored in amazon_channel_summary_data (channel = wayfair) that feed the badge
+     * rolling-history dots / graph. Keys in CLIENT_BADGE_METRICS are computed in the browser
+     * (they depend on LMP / S PRC state) and saved via wayfairBadgeSnapshot().
+     */
+    private const WAYFAIR_BADGE_METRICS = [
+        'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
+        'total_al30', 'avg_dil', 'missing_count', 'map_count', 'nmap_count',
+        'total_sku', 'zero_sold', 'more_sold',
+        'total_views', 'cvr_percent',
+        'blue_triangle_count', 'prc_gt_lmp_count', 'price_lt80_lmp_count',
+    ];
+
+    private const WAYFAIR_CLIENT_BADGE_METRICS = [
+        'blue_triangle_count', 'prc_gt_lmp_count', 'price_lt80_lmp_count',
+    ];
+
+    private static function wayfairSummaryArray($row): array
+    {
+        if (! $row) {
+            return [];
+        }
+
+        return is_array($row->summary_data)
+            ? $row->summary_data
+            : (json_decode($row->summary_data ?? '{}', true) ?: []);
+    }
+
     public function wayfairBadgeChartData(Request $request)
     {
         try {
             $metric = (string) $request->input('metric', 'avg_gpft');
-            $days = max(1, (int) $request->input('days', 30));
+            $days = max(0, (int) $request->input('days', 30));
 
-            $validMetrics = [
-                'total_pft', 'total_sales', 'avg_gpft', 'avg_roi',
-                'total_al30', 'avg_dil', 'missing_count', 'map_count', 'nmap_count',
-                'total_sku', 'zero_sold', 'more_sold',
-            ];
-            if (!in_array($metric, $validMetrics, true)) {
+            if (!in_array($metric, self::WAYFAIR_BADGE_METRICS, true)) {
                 return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
             }
 
-            $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
-            $rows = AmazonChannelSummary::where('channel', 'wayfair')
-                ->where('snapshot_date', '>=', $startDate)
-                ->orderBy('snapshot_date', 'asc')
-                ->get(['snapshot_date', 'summary_data']);
+            $query = AmazonChannelSummary::where('channel', 'wayfair')
+                ->orderBy('snapshot_date', 'asc');
+            if ($days > 0) {
+                // Inclusive window: 30 days = today + 29 prior days.
+                $query->where('snapshot_date', '>=', now('America/Los_Angeles')->subDays($days - 1)->toDateString());
+            }
+            $rows = $query->get(['snapshot_date', 'summary_data']);
 
             $data = [];
             foreach ($rows as $row) {
-                $sd = is_array($row->summary_data)
-                    ? $row->summary_data
-                    : (json_decode($row->summary_data ?? '{}', true) ?: []);
-                $value = (float) ($sd[$metric] ?? 0);
+                $sd = self::wayfairSummaryArray($row);
+                // Days saved before a metric existed have no key: skip them instead of drawing a 0.
+                if (! array_key_exists($metric, $sd) || $sd[$metric] === null) {
+                    continue;
+                }
                 $data[] = [
                     'date' => optional($row->snapshot_date)->format('M d'),
-                    'value' => $value,
+                    'full_date' => optional($row->snapshot_date)->format('Y-m-d'),
+                    'value' => (float) $sd[$metric],
                 ];
             }
 
@@ -1047,6 +1074,72 @@ class WayfairController extends Controller
             Log::error('Wayfair badge chart data error: ' . $e->getMessage());
 
             return response()->json(['success' => false, 'data' => []], 500);
+        }
+    }
+
+    /** Previous-day snapshot metrics for the up / down / same history dots on the summary badges. */
+    public function wayfairBadgePrevDay(Request $request)
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            $row = AmazonChannelSummary::where('channel', 'wayfair')
+                ->where('snapshot_date', '<', $today)
+                ->orderBy('snapshot_date', 'desc')
+                ->first();
+
+            if (! $row) {
+                return response()->json(['success' => true, 'date' => null, 'metrics' => null]);
+            }
+
+            $sd = self::wayfairSummaryArray($row);
+            $metrics = [];
+            foreach (self::WAYFAIR_BADGE_METRICS as $key) {
+                $metrics[$key] = (array_key_exists($key, $sd) && $sd[$key] !== null) ? (float) $sd[$key] : null;
+            }
+
+            return response()->json([
+                'success' => true,
+                'date' => optional($row->snapshot_date)->format('Y-m-d'),
+                'metrics' => $metrics,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Wayfair badge prev day error: ' . $e->getMessage());
+
+            return response()->json(['success' => false, 'metrics' => null], 500);
+        }
+    }
+
+    /**
+     * Save today's browser-computed badge counts (blue triangle, Price > LMP, Price < 80% LMP)
+     * into today's Wayfair summary row without touching the server-computed keys.
+     */
+    public function wayfairBadgeSnapshot(Request $request)
+    {
+        try {
+            $incoming = [];
+            foreach (self::WAYFAIR_CLIENT_BADGE_METRICS as $key) {
+                if ($request->has($key) && is_numeric($request->input($key))) {
+                    $incoming[$key] = max(0, (int) $request->input($key));
+                }
+            }
+            if ($incoming === []) {
+                return response()->json(['success' => false, 'message' => 'No metrics'], 422);
+            }
+
+            $today = now('America/Los_Angeles')->toDateString();
+            $row = AmazonChannelSummary::firstOrNew(['channel' => 'wayfair', 'snapshot_date' => $today]);
+            $summary = self::wayfairSummaryArray($row);
+            $row->summary_data = array_merge($summary, $incoming);
+            if (! $row->exists) {
+                $row->notes = 'Auto-saved Wayfair badge snapshot';
+            }
+            $row->save();
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Wayfair badge snapshot error: ' . $e->getMessage());
+
+            return response()->json(['success' => false], 500);
         }
     }
 
@@ -1335,11 +1428,13 @@ class WayfairController extends Controller
                 }
             }
 
+            $totalViews = 0;
             foreach ($allChildRows as $r) {
                 $inv = (float) ($r['inv'] ?? 0);
                 $ovL30 = (float) ($r['ov_l30'] ?? 0);
                 $al30 = (float) ($r['al30'] ?? 0);
 
+                $totalViews += $ovL30;
                 $totalAl30 += $al30;
                 if ($al30 === 0.0) {
                     $zeroSold++;
@@ -1371,8 +1466,16 @@ class WayfairController extends Controller
                 'nmap_count' => $nmapCount,
                 'zero_sold' => $zeroSold,
                 'more_sold' => $moreSold,
+                'total_views' => round($totalViews, 0),
+                'cvr_percent' => $totalViews > 0 ? round(($totalAl30 / $totalViews) * 100, 2) : 0,
                 'calculated_at' => now()->toDateTimeString(),
             ];
+
+            // Keep browser-saved badge counts (blue triangle, Price > LMP, ...) already stored for today.
+            $existing = AmazonChannelSummary::where('channel', 'wayfair')
+                ->whereDate('snapshot_date', $today)
+                ->first();
+            $summaryData = array_merge(self::wayfairSummaryArray($existing), $summaryData);
 
             AmazonChannelSummary::updateOrCreate(
                 ['channel' => 'wayfair', 'snapshot_date' => $today],

@@ -178,8 +178,8 @@
         /* Column visibility — 2 groups (Basics / Pricing)
            Only style when open (.show); never force display:block or it stays open after refresh. */
         #column-dropdown-menu.show {
-            min-width: min(92vw, 420px);
-            max-width: min(96vw, 480px);
+            min-width: min(92vw, 560px);
+            max-width: min(96vw, 640px);
             max-height: 70vh;
             overflow-y: auto;
             padding: 0.4rem 0.5rem 0.55rem;
@@ -189,7 +189,7 @@
         }
         #column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(2, minmax(140px, 1fr));
+            grid-template-columns: repeat(3, minmax(140px, 1fr));
             gap: 8px;
             list-style: none;
             margin: 0;
@@ -5280,14 +5280,17 @@
          * with group-header checkboxes to select/deselect an entire group.
          * Persists via /tabulator-column-visibility (channel = 'temu3_decrease').
          */
-        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing'];
+        const COL_VIS_CATEGORY_KEYS = ['basics', 'pricing', 'discounts'];
         const COL_VIS_CATEGORY_LABELS = {
             basics: 'Basics',
-            pricing: 'Pricing'
+            pricing: 'Pricing',
+            discounts: 'Discounts',
         };
 
         function classifyTemu2Column(field, title) {
             const f = String(field || '');
+            // Every discount column goes under one Discounts header.
+            if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
             const t = String(title || field || '').replace(/<[^>]*>/g, '');
             const fl = f.toLowerCase();
             const tl = t.toLowerCase();

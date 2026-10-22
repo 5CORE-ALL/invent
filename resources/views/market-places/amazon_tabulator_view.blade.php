@@ -149,8 +149,8 @@
 
         /* Column visibility — 4 groups (Basic / Price / Ads / Other) */
         #column-dropdown-menu.show {
-            min-width: min(92vw, 720px);
-            max-width: min(96vw, 780px);
+            min-width: min(92vw, 900px);
+            max-width: min(96vw, 960px);
             max-height: 70vh;
             overflow-y: auto;
             padding: 0.4rem 0.5rem 0.55rem;
@@ -160,7 +160,7 @@
         }
         #column-dropdown-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            grid-template-columns: repeat(5, minmax(130px, 1fr));
             gap: 8px;
             list-style: none;
             margin: 0;
@@ -6153,10 +6153,11 @@
              * Persists in channel_tabulator_column_settings (channel = amazon_tabulator).
              * Every column with a field is listed; none are removed.
              */
-            const COL_VIS_CATEGORY_KEYS = ['basic', 'price', 'ads', 'other'];
+            const COL_VIS_CATEGORY_KEYS = ['basic', 'price', 'discounts', 'ads', 'other'];
             const COL_VIS_CATEGORY_LABELS = {
                 basic: 'Basic',
                 price: 'Price',
+                discounts: 'Discounts',
                 ads: 'Ads',
                 other: 'Other'
             };
@@ -6172,6 +6173,7 @@
                 if (field === 'cvr_discount') return 'CVR Disc.';
                 if (field === 'review_discount') return 'Rev Disc.';
                 if (field === 'sum_discount') return 'Sum disc';
+                if (field === 'sum_discount_amt') return 'Sum Disc $';
                 if (field === 't_discounts') return 'T Discounts';
                 if (field === 'SPRC_DIL') return 'Sprc Dil';
                 const raw = (def && def.title != null) ? def.title : field;
@@ -6181,6 +6183,8 @@
 
             function classifyAmazonColumn(field, title) {
                 const f = String(field || '');
+                // Every discount column goes under one Discounts header.
+                if (/^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i.test(f)) return 'discounts';
                 const t = String(title || field || '').toLowerCase();
                 const fl = f.toLowerCase();
 
@@ -6194,7 +6198,7 @@
 
                 // Price — selling price, LMP, SPRICE, profit/ROI %
                 if (
-                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
+                    /^(price|ship_productmaster|gpft%|groi%|pft%|nroi|standard_price|std_nroi|std_npft|lmp_price|linked_lmp_skus|linked_lmp_sku_add|lmp_diff_pct|sprice|sprc_dil|min_price|business_price|max_price|push_prc|age_discount|dil_discount|buss_discount|zero_sold_discount|cvr_discount|review_discount|sum_discount|sum_discount_amt|t_discounts|sgpft|sgroi|spft%|sroi)$/i.test(f) ||
                     /\b(price|prc|ship|gpft|groi|nroi|pft|sp\b|lmp|s\s*prc|sprc\s*dil|push|sgpft|sroi|snpft|snroi|diff)\b/i.test(t)
                 ) {
                     return 'price';

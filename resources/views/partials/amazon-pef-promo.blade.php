@@ -27,6 +27,7 @@
         .tabulator-row .tabulator-cell[tabulator-field="cvr_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="review_discount"],
         .tabulator-row .tabulator-cell[tabulator-field="sum_discount"],
+        .tabulator-row .tabulator-cell[tabulator-field="sum_discount_amt"],
         .tabulator-row .tabulator-cell[tabulator-field="t_discounts"] {
             padding: 2px 4px !important;
         }
@@ -967,6 +968,13 @@
         }
         function amzPefRound2(n) {
             return Math.round((Number(n) || 0) * 100) / 100;
+        }
+        /** Dollar amount of the Sum disc: Std Prc × Sum disc % ÷ 100 (negative when Sum disc is negative). */
+        function amzPefSumDiscAmt(d) {
+            const std = Number(d && d.STANDARD_PRICE) || 0;
+            if (!(std > 0) || typeof computeAmzSumDiscountPct !== 'function') return 0;
+            const pct = Number(computeAmzSumDiscountPct(d)) || 0;
+            return Math.round(std * pct) / 100;
         }
         function amzPefToast(type, msg) {
             if (typeof showToast === 'function') showToast(type, msg);
@@ -2985,6 +2993,28 @@
                         return '<span title="' + amzPefEscAttr(tip) + '">'
                             + (typeof fmtAmzStdDiscBadge === 'function' ? fmtAmzStdDiscBadge(pct, 'sum') : (pct || '—'))
                             + '</span>';
+                    },
+                },
+                {
+                    title: 'Sum Disc $',
+                    field: 'sum_discount_amt',
+                    width: 78,
+                    hozAlign: 'center',
+                    vertAlign: 'middle',
+                    headerSort: true,
+                    headerTooltip: 'Sum disc in dollars = Std Prc × Sum disc % ÷ 100. Negative (red) means S PRC is raised above Std Prc.',
+                    sorter: function(a, b, aRow, bRow) {
+                        return amzPefSumDiscAmt(aRow.getData() || {}) - amzPefSumDiscAmt(bRow.getData() || {});
+                    },
+                    formatter: function(cell) {
+                        const d = cell.getRow().getData() || {};
+                        if (!amzPefIsChildRow(d)) return '';
+                        const std = Number(d.STANDARD_PRICE) || 0;
+                        const amt = amzPefSumDiscAmt(d);
+                        if (!amt) return '<span style="color:#adb5bd;font-weight:600;">—</span>';
+                        const txt = (amt < 0 ? '-$' : '$') + Math.abs(amt).toFixed(2);
+                        const tip = 'Std Prc $' + std.toFixed(2) + ' × ' + (Number(computeAmzSumDiscountPct(d)) || 0) + '%';
+                        return '<span title="' + amzPefEscAttr(tip) + '" style="font-weight:700;color:' + (amt < 0 ? '#dc2626' : '#0f172a') + ';">' + txt + '</span>';
                     },
                 },
                 ...(typeof tDiscountsColumn === 'function' ? [Object.assign({}, tDiscountsColumn(computeAmzTDiscountsPct), {

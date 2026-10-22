@@ -1,6 +1,6 @@
 {{--
   Shared analytics Columns menu — Reverb style:
-  Show All / Show Default + Basic / Pricing / Advertisement / Other groups.
+  Show All / Show Default + Basic / Pricing / Discounts / Advertisement / Other groups.
   Include: css | script | all
 --}}
 @php $colVisPart = $colVisPart ?? 'all'; @endphp
@@ -10,8 +10,8 @@
         .analytics-col-vis-menu.column-dropdown-multicol,
         #column-dropdown-menu.analytics-col-vis-menu,
         .dropdown-menu.analytics-col-vis-menu {
-            min-width: min(92vw, 720px);
-            max-width: min(96vw, 780px);
+            min-width: min(92vw, 900px);
+            max-width: min(96vw, 960px);
             max-height: 70vh;
             overflow-y: auto;
             overflow-x: hidden;
@@ -29,7 +29,7 @@
         }
         .analytics-col-vis-menu .col-vis-groups {
             display: grid;
-            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            grid-template-columns: repeat(5, minmax(130px, 1fr));
             gap: 8px;
             list-style: none;
             margin: 0;
@@ -120,8 +120,10 @@
 @if($colVisPart === 'script' || $colVisPart === 'all')
         (function () {
             if (window.AnalyticsColVis) return;
-            const KEYS = ['basic', 'pricing', 'advertisement', 'other'];
-            const LABELS = { basic: 'Basic', pricing: 'Pricing', advertisement: 'Advertisement', other: 'Other' };
+            const KEYS = ['basic', 'pricing', 'discounts', 'advertisement', 'other'];
+            const LABELS = { basic: 'Basic', pricing: 'Pricing', discounts: 'Discounts', advertisement: 'Advertisement', other: 'Other' };
+            // Every discount column (Std prc vs dil rules + Sum disc + Sum Disc $) lives under one Discounts header.
+            const DISCOUNT_FIELD_RE = /^(age|dil|lmp|moq_m|buss|pricing|roi|zero_sold|cvr|review|sum)_discount(_amt)?$|^t_discounts$/i;
             const instances = {};
 
             function plainTitle(def, field) {
@@ -139,6 +141,7 @@
                 const f = String(field || '');
                 const t = String(title || field || '').replace(/<[^>]*>/g, '').toLowerCase();
                 const blob = (f + ' ' + t).toLowerCase();
+                if (DISCOUNT_FIELD_RE.test(f)) return 'discounts';
                 if (
                     /^(spend|ad_|acos|roas|impressions|t_clicks|bump|bid|campaign|ads_percent|missing_ad|push_bump|re_bid|api_rec)/i.test(f) ||
                     /\b(ads?|spend|acos|roas|impressions|clicks?|bump|bid|campaign|missing ad)\b/i.test(t)

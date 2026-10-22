@@ -95,17 +95,44 @@ class ChannelPromoPricingController extends Controller
         }
 
         $tasks = [];
+        $changedOnly = [];
         foreach ($items as $item) {
             if (! is_array($item)) {
                 continue;
             }
+            $price = $item['price'] ?? $item['sprice'] ?? $item['sale'] ?? null;
             $tasks[] = [
                 'sku' => $item['sku'] ?? null,
-                'price' => $item['price'] ?? $item['sprice'] ?? $item['sale'] ?? null,
+                'price' => $price,
             ];
+            // Auto pushes (reload scan / after save) only send SKUs whose Price must change.
+            // A manual Push Prc click does not set the flag and is always honoured.
+            if (! empty($item['only_changed']) && is_numeric($price) && trim((string) ($item['sku'] ?? '')) !== '') {
+                $changedOnly[strtoupper(trim((string) $item['sku']))] = round((float) $price, 2);
+            }
+        }
+
+        if ($changedOnly !== []) {
+            $already = array_flip(\App\Services\ChannelLivePriceSync::skusAlreadyLive($channel, $changedOnly));
+            if ($already !== []) {
+                $tasks = array_values(array_filter($tasks, function (array $t) use ($already, $changedOnly) {
+                    $key = strtoupper(trim((string) ($t['sku'] ?? '')));
+
+                    return ! (isset($already[$key]) && isset($changedOnly[$key]));
+                }));
+            }
         }
 
         $store = ChannelPushSpriceJobStore::for($channel);
+        if ($tasks === []) {
+            return response()->json(array_merge($store->toApiResponse($store->load()), [
+                'success' => true,
+                'mode' => 'none',
+                'worker_spawned' => false,
+                'message' => 'Nothing to push — Price already equals S PRC.',
+            ]));
+        }
+
         $replacePending = $request->boolean('replace_pending')
             || $request->input('source') === 'catalog';
         $exclusive = $request->boolean('exclusive')
