@@ -34,6 +34,10 @@ class NegativeSnroiPushGuard
         if ($channel === '') {
             return false;
         }
+        // New Temu One pushes every SKU, negative SNROI included. The guard is never on for it.
+        if ($channel === 'newtemuone') {
+            return false;
+        }
         if (array_key_exists($channel, self::$enabled) && (time() - (self::$enabledAt[$channel] ?? 0)) < 10) {
             return self::$enabled[$channel];
         }

@@ -2098,7 +2098,8 @@
     }
     window.temuHasBlueTriangle = temuHasBlueTriangle;
 
-    const NTO_IGNORE_NEG_SNROI = @json((bool) \App\Http\Controllers\MarketPlace\ChannelPromoPricingController::ignoreNegativeSnroiPush('newtemuone'));
+    // New Temu One pushes every SKU, negative SNROI included (NegativeSnroiPushGuard is off for it).
+    const NTO_IGNORE_NEG_SNROI = false;
     /**
      * Same test as NegativeSnroiPushGuard::shouldSkipTemuPromoBase(): S Promo Prc = base (+ $2.99 when base ≤ $27.01),
      * SNPFT = S Promo Prc × 0.95 − Ship − LP − Std Prc × Ads%. Negative SNROI is never pushed.

@@ -321,7 +321,11 @@ class ChannelPushSpriceDailyEnqueue
                     // old S Base: that is a different price, so a SKU the page has not priced yet is skipped.
                     $base = is_numeric($value['NTO_S_PROMO_BASE'] ?? null) ? round((float) $value['NTO_S_PROMO_BASE'], 2) : 0.0;
                     $pushed = is_numeric($value['NTO_PUSHED_BASE'] ?? null) ? round((float) $value['NTO_PUSHED_BASE'], 2) : 0.0;
-                    if ($base > 0 && ! ($pushed > 0 && abs($pushed - $base) < 0.015)) {
+                    if ($base > 0
+                        && ! ($pushed > 0 && abs($pushed - $base) < 0.015)
+                        // The runner already skipped this exact price (negative SNROI / already live) or it failed
+                        // recently: do not queue the same SKU at the same price every 10 minutes.
+                        && ! \App\Services\Support\NewTemuoneSuggestedPriceStore::wasSkippedAtBase($value, $base)) {
                         // Already pushed at this S Promo Base Prc: Temu holds the change for review, so the live base
                         // lags; do not queue the same price again every run.
                         $bases[$sku] = $base;

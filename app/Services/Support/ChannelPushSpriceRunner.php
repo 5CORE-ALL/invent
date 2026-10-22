@@ -270,12 +270,18 @@ class ChannelPushSpriceRunner
                         'price' => $price,
                     ]);
                     $store->appendMessage('Skip '.$sku.': negative SNROI');
+                    if ($this->channel === 'newtemuone') {
+                        NewTemuoneSuggestedPriceStore::markSkipped($sku, $price, 'negative_snroi');
+                    }
                 } else {
                 $matchedLive = $this->liveListingPriceIfMatches($sku, $price);
                 if ($matchedLive !== null) {
                     $ok = true;
                     $alreadyLive = true;
                     $live = $matchedLive;
+                    if ($this->channel === 'newtemuone') {
+                        NewTemuoneSuggestedPriceStore::markSkipped($sku, $price, 'already_live');
+                    }
                     $logger->info('S PRC background push skipped — Price already = S PRC', [
                         'channel' => $this->channel,
                         'sku' => $sku,
@@ -371,6 +377,14 @@ class ChannelPushSpriceRunner
                     'error' => $error,
                 ]);
                 $this->markListingEndedIfNeeded($sku, $error);
+                if ($this->channel === 'newtemuone' && $sku !== '' && $price > 0) {
+                    // Not retried at the same price by the 10-minute job for a few hours.
+                    try {
+                        NewTemuoneSuggestedPriceStore::markSkipped($sku, $price, 'failed');
+                    } catch (\Throwable) {
+                        // ignore
+                    }
+                }
                 if (EbaySpricePush::supports($this->channel) && $sku !== '' && $price > 0) {
                     // A SKU eBay refuses (e.g. multi-variation) is not retried on every 10-minute catch-up.
                     EbaySpricePush::startCooldown($this->channel, $sku, (float) $price, 60);

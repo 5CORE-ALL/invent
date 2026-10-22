@@ -42,6 +42,16 @@ class NewTemuoneSuggestedPriceStore
 
     public const KEY_PUSH_STATUS = 'NTO_PUSH_STATUS';
 
+    /** S Promo Base Prc the push runner looked at but did not send (negative SNROI, already live, or failed). */
+    public const KEY_SKIPPED_BASE = 'NTO_SKIPPED_BASE';
+
+    public const KEY_SKIPPED_REASON = 'NTO_SKIPPED_REASON';
+
+    public const KEY_SKIPPED_AT = 'NTO_SKIPPED_AT';
+
+    /** A failed push at the same price is not retried by the 10-minute job for this many minutes. */
+    public const FAILED_RETRY_MINUTES = 360;
+
     /** @var array<string, TemuDataView> */
     private array $views = [];
 
@@ -148,6 +158,53 @@ class NewTemuoneSuggestedPriceStore
         $view->sku = $view->sku ?: $sku;
         $view->value = $value;
         $view->save();
+    }
+
+    /**
+     * Remember that the push runner looked at this S Promo Base Prc and did not send it, so the 10-minute job
+     * does not queue the same SKU at the same price again and again. A new price clears the effect.
+     *
+     * @param  string  $reason  negative_snroi | already_live | failed
+     */
+    public static function markSkipped(string $sku, float $base, string $reason): void
+    {
+        $sku = trim($sku);
+        if ($sku === '' || ! ($base > 0)) {
+            return;
+        }
+        $view = TemuDataView::query()
+            ->whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($sku)])
+            ->first()
+            ?? new TemuDataView(['sku' => $sku]);
+        $value = is_array($view->value) ? $view->value : [];
+        $value[self::KEY_SKIPPED_BASE] = round($base, 2);
+        $value[self::KEY_SKIPPED_REASON] = $reason;
+        $value[self::KEY_SKIPPED_AT] = now()->toDateTimeString();
+        $view->sku = $view->sku ?: $sku;
+        $view->value = $value;
+        $view->save();
+    }
+
+    /**
+     * True when the push runner already skipped (or recently failed) this exact price for the SKU.
+     *
+     * @param  array<string, mixed>  $value  temu_data_view.value
+     */
+    public static function wasSkippedAtBase(array $value, float $base): bool
+    {
+        $skipped = $value[self::KEY_SKIPPED_BASE] ?? null;
+        if (! is_numeric($skipped) || abs((float) $skipped - $base) >= 0.015) {
+            return false;
+        }
+        if (($value[self::KEY_SKIPPED_REASON] ?? '') !== 'failed') {
+            return true;
+        }
+        $at = $value[self::KEY_SKIPPED_AT] ?? null;
+        try {
+            return $at && \Illuminate\Support\Carbon::parse((string) $at)->greaterThan(now()->subMinutes(self::FAILED_RETRY_MINUTES));
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
