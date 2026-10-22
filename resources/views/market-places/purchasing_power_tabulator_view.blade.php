@@ -307,21 +307,32 @@
             return Math.round((Number(data && (data['A Price'] != null ? data['A Price'] : (data.a_price || data.amazon_price))) || 0) * 100) / 100;
         }
         // Set by the server job when the Amz rule raised S PRC to A Price (AMZ_CAPPED on the saved row).
-        function ppHasAmzCap(data) {
-            if (ppIsParentRow(data)) return false;
-            const flag = data && data.AMZ_CAPPED;
-            if (!(flag === true || flag === 1 || flag === '1' || flag === 'true')) return false;
-            const amz = ppAmazonPrice(data);
-            const shown = ppDisplayedSprice(data);
-            return amz > 0 && shown > 0 && Math.abs(shown - amz) <= 0.015;
-        }
-        function ppDisplayedSprice(data) {
+        // Amz rule: S PRC is never below A Price. A saved S PRC under A Price (the server job has not caught up yet)
+        // is shown as A Price with the Amz cap applied. The server saves the same value on its next run.
+        function ppSavedSprice(data) {
             if (!data || ppIsParentRow(data)) return 0;
             if (typeof chPromoTableSprice === 'function') {
                 const saved = Number(chPromoTableSprice(data)) || 0;
                 if (saved > 0) return saved;
             }
             return parseFloat(data.SPRICE) || 0;
+        }
+        function ppHasAmzCap(data) {
+            if (ppIsParentRow(data)) return false;
+            const amz = ppAmazonPrice(data);
+            const saved = ppSavedSprice(data);
+            if (!(amz > 0) || !(saved > 0)) return false;
+            // S PRC lower than A Price: the cap applies.
+            if (saved < amz - 0.015) return true;
+            // Server already raised it: flag set and S PRC = A Price.
+            const flag = data && data.AMZ_CAPPED;
+            return (flag === true || flag === 1 || flag === '1' || flag === 'true') && Math.abs(saved - amz) <= 0.015;
+        }
+        function ppDisplayedSprice(data) {
+            const saved = ppSavedSprice(data);
+            if (!(saved > 0)) return 0;
+            const amz = ppAmazonPrice(data);
+            return (amz > 0 && saved < amz - 0.015) ? amz : saved;
         }
         window.ppDisplayedSprice = ppDisplayedSprice;
         function ppSpriceMetrics(data, sprice) {

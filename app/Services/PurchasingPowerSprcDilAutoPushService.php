@@ -144,7 +144,8 @@ class PurchasingPowerSprcDilAutoPushService
 
                     // Blue run: keep the saved S PRC (and SGPFT / SNPFT) on the current rule every 10 min, even for a SKU
                     // that is still inside the push cooldown. Without this a stale S PRC stays on the page until the cooldown ends.
-                    if ($blueCatchUp && ! $dryRun && ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice)) {
+                    $amzFlagStale = ! empty($row['amz_capped']) !== ! empty($computed['amz_capped']);
+                    if ($blueCatchUp && ! $dryRun && (! PushedListingPrice::same($row['sprice'] ?? 0, $sprice) || $amzFlagStale)) {
                         $this->saveSprice($row, $computed, 'applied');
                         $row['sprice'] = $sprice;
                         $stats['refreshed'] = ($stats['refreshed'] ?? 0) + 1;
@@ -175,7 +176,7 @@ class PurchasingPowerSprcDilAutoPushService
                     }
 
                     // The blue catch-up runs every 10 min: only rewrite the saved S PRC when it changed.
-                    if (! $dryRun && (! $blueCatchUp || ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice))) {
+                    if (! $dryRun && (! $blueCatchUp || ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice) || $amzFlagStale)) {
                         $this->saveSprice($row, $computed, 'applied');
                     }
                     $stats['applied']++;

@@ -1419,25 +1419,65 @@ class ChannelPromoPricingController extends Controller
             ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'reviews', 'buss', 'pricing', 'lmp', 'moq_m', 'roi', 'zero_sold']]
         );
 
-        // Best Buy S PRC is saved by the server job, not by the page. Re-save it now (no push) so the page
-        // shows the new rules at once instead of the old S PRC until the next scheduled run.
-        $spriceRefreshed = false;
-        $refreshService = match ($channel) {
-            'bestbuy' => \App\Services\BestBuySprcDilAutoPushService::class,
-            'purchasing_power' => \App\Services\PurchasingPowerSprcDilAutoPushService::class,
-            default => null,
-        };
-        if ($refreshService !== null) {
-            try {
-                @set_time_limit(0);
-                $summary = app($refreshService)->run(skipPush: true, sleepMs: 0);
-                $spriceRefreshed = empty($summary['stats']['errors']);
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::error('['.$channel.'] S PRC refresh after rules save failed: '.$e->getMessage());
-            }
-        }
+        // S PRC on these channels is saved by the server job, not by the page. Re-save it now (no push) so the
+        // page shows the new rules at once instead of the old S PRC until the next scheduled run.
+        $spriceRefreshed = $this->refreshServerOwnedSprice($channel);
 
         return response()->json(array_merge(['success' => true, 'sprice_refreshed' => $spriceRefreshed], $payload));
+    }
+
+    /**
+     * Recalculate and save S PRC for a server-owned channel right after its Std prc vs dil rules were saved.
+     * Nothing is pushed. Returns true when every row was recalculated.
+     */
+    private function refreshServerOwnedSprice(string $channel): bool
+    {
+        $services = [
+            'bestbuy' => \App\Services\BestBuySprcDilAutoPushService::class,
+            'purchasing_power' => \App\Services\PurchasingPowerSprcDilAutoPushService::class,
+            'faire' => \App\Services\FaireSprcDilAutoPushService::class,
+            'topdawg' => \App\Services\TopDawgSprcDilAutoPushService::class,
+            'pls' => \App\Services\PlsSprcDilAutoPushService::class,
+            'alibaba' => \App\Services\AlibabaSprcDilAutoPushService::class,
+            'shein' => \App\Services\SheinSprcDilAutoPushService::class,
+            'aliexpress' => \App\Services\AliexpressSprcDilAutoPushService::class,
+            'newtemutwo' => \App\Services\NewTemutwoSprcDilAutoPushService::class,
+            'reverb' => \App\Services\ReverbSprcDilAutoPushService::class,
+        ];
+        try {
+            if ($channel === 'tiktok' || $channel === 'tiktok2') {
+                $service = \App\Services\TiktokSprcDilAutoPushService::forChannel($channel);
+            } elseif (isset($services[$channel])) {
+                $service = app($services[$channel]);
+            } else {
+                return false;
+            }
+            @set_time_limit(0);
+            @ini_set('memory_limit', '1G');
+            \App\Support\StdPrcVsDilPricer::flush();
+            $names = array_map(fn ($p) => $p->getName(), (new \ReflectionMethod($service, 'run'))->getParameters());
+            $args = ['skipPush' => true, 'sleepMs' => 0];
+            if (in_array('blueCatchUp', $names, true)) {
+                // Save whenever the saved S PRC (or Amz flag) differs from the rules, no cooldown skips.
+                $args['blueCatchUp'] = true;
+            }
+            // The scheduled run may hold the lock for a moment. Wait for it instead of skipping the refresh.
+            $deadline = microtime(true) + 90;
+            do {
+                $summary = $service->run(...$args);
+                $errors = (array) ($summary['stats']['errors'] ?? []);
+                $locked = in_array('lock: already running', $errors, true);
+                if ($locked) {
+                    sleep(2);
+                }
+            } while ($locked && microtime(true) < $deadline);
+
+            return empty($errors);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('['.$channel.'] S PRC refresh after rules save failed: '.$e->getMessage());
+
+            return false;
+        }
     }
 
     public function stdPrcVsDilHistory(Request $request, string $channel): JsonResponse

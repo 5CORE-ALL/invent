@@ -36,6 +36,12 @@ class StdPrcVsDilPricer
         return in_array($channel, self::SKIP_CVR, true);
     }
 
+    /** Drop the per-process rules cache, so rules saved a moment ago are read again. */
+    public static function flush(): void
+    {
+        self::$cache = [];
+    }
+
     public static function forChannel(string $channel): self
     {
         if (isset(self::$cache[$channel])) {
