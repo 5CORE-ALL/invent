@@ -5,6 +5,7 @@ namespace App\Support\Marketplace;
 use App\Models\AppscenicListingStatus;
 use App\Models\AutoDSListingStatus;
 use App\Models\Business5CoreListingStatus;
+use App\Models\CjdropshippingListingStatus;
 use App\Models\DepopListingStatus;
 use App\Models\DHGateListingStatus;
 use App\Models\EbayVariationListingStatus;
@@ -36,6 +37,7 @@ class SheetListingCatalog
     public static function all(): array
     {
         return [
+            'cjdropshipping' => ['label' => 'CJdropshipping', 'status' => CjdropshippingListingStatus::class, 'seller_portal' => 'https://cjdropshipping.com/'],
             'depop' => ['label' => 'Depop', 'status' => DepopListingStatus::class, 'seller_portal' => 'https://www.depop.com/sellinghub/'],
             'vinted' => ['label' => 'Vinted', 'status' => VintedListingStatus::class, 'seller_portal' => 'https://www.vinted.com/inbox'],
             'dhgate' => ['label' => 'DHGate', 'status' => DHGateListingStatus::class, 'seller_portal' => 'https://seller.dhgate.com/'],
