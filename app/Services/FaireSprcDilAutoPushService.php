@@ -87,7 +87,12 @@ class FaireSprcDilAutoPushService
             return ['dry_run' => $dryRun, 'skip_push' => $skipPush, 'stats' => $stats];
         }
 
-        $lock = Cache::lock(self::LOCK_KEY, 10800);
+        // Save-only run (rules saved on the page): write the new S PRC for EVERY SKU, nothing is pushed.
+        // It must not be blocked by a running push, nor skip a SKU for a push cooldown, or the old (uncapped)
+        // S PRC stays on the page after "Save and Apply".
+        $saveOnly = $skipPush && ! $dryRun;
+
+        $lock = Cache::lock($saveOnly ? self::LOCK_KEY.'-save-only' : self::LOCK_KEY, $saveOnly ? 900 : 10800);
         if (! $lock->get()) {
             $this->log($logger, 'Skipped: another Faire Sprc Dil push is already running');
             $stats['errors'][] = 'lock: already running';
@@ -127,7 +132,9 @@ class FaireSprcDilAutoPushService
                         continue;
                     }
 
-                    if ($blueCatchUp) {
+                    if ($saveOnly) {
+                        // No push cooldown / unchanged skip: fall through to saveSprice() below.
+                    } elseif ($blueCatchUp) {
                         // Headless "Push on reload": SKUs whose Faire Price ≠ S PRC. The twice-daily run skips a SKU
                         // whose last pushed price already equals the target, so a Price that stayed different
                         // afterwards (Faire reverted it, or the link map re-read an older price) is picked up here.
