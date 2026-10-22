@@ -2169,7 +2169,7 @@ class Temu2ListingPublishService
     {
         $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
         $name = '';
-        if (preg_match('#/listing-manager/media/([^/?#]+)$#', $path, $match)) {
+        if (preg_match('#/listing-manager/media/([^/]+)$#', $path, $match)) {
             $name = basename(rawurldecode($match[1]));
             $relative = 'listing-manager/images/'.$name;
         } elseif (preg_match('#/storage/(.+)$#', $path, $match)) {
@@ -2195,7 +2195,7 @@ class Temu2ListingPublishService
     private function storeJpegForTemu(string $imageUrl, string $jpeg): string
     {
         $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
-        if (! preg_match('#/listing-manager/media/([^/?#]+)$#', $path, $match)) {
+        if (! preg_match('#/listing-manager/media/([^/]+)$#', $path, $match)) {
             return '';
         }
         $jpgName = pathinfo(basename(rawurldecode($match[1])), PATHINFO_FILENAME).'.jpg';
@@ -2204,7 +2204,7 @@ class Temu2ListingPublishService
         }
         Storage::disk('public')->put('listing-manager/images/'.$jpgName, $jpeg);
 
-        return (string) preg_replace('#/listing-manager/media/[^/?#]+#', '/listing-manager/media/'.$jpgName, $imageUrl);
+        return (string) preg_replace('#/listing-manager/media/[^/]+#', '/listing-manager/media/'.$jpgName, $imageUrl);
     }
 
     private function binaryToJpeg(string $raw): ?string
