@@ -279,7 +279,7 @@ class FaireSprcDilAutoPushService
         }
 
         // No LMP cap and no eBay / Amazon caps. Std Prc is the maximum.
-        $capped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, $std);
+        $capped = AmazonDilGroiRule::capToStdWhenNoLmp($effective, 0.0, max($std, $effective));
 
         if (! is_finite($capped) || $capped < 0.01) {
             return null;

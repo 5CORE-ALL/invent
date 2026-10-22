@@ -134,7 +134,7 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(9.0, $pricer->priceFromRow(['inv' => 1, 'std' => 10]));
     }
 
-    public function test_negative_discounts_offset_the_other_discounts_and_never_lift_price_above_std(): void
+    public function test_negative_discounts_offset_the_other_discounts(): void
     {
         $pricer = new StdPrcVsDilPricer([
             'dil' => [],
@@ -159,7 +159,7 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(19.4, $pricer->priceFromRow(['inv' => 1, 'std' => 20, 'price' => 10, 'lp' => 20]));
     }
 
-    public function test_negative_net_discount_is_floored_at_zero_so_std_stays_the_maximum(): void
+    public function test_negative_net_discount_raises_the_price_above_std(): void
     {
         $pricer = new StdPrcVsDilPricer([
             'dil' => [],
@@ -172,7 +172,8 @@ class StdPrcVsDilPricerTest extends TestCase
             ],
         ]);
 
-        $this->assertSame(20.0, $pricer->priceFromRow(['inv' => 1, 'std' => 20]));
+        // Net −8%: $20 × 1.08 = $21.60.
+        $this->assertSame(21.6, $pricer->priceFromRow(['inv' => 1, 'std' => 20]));
     }
 
     public function test_roi_discount_needs_both_the_groi_slab_and_the_dil_slab(): void

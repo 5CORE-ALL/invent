@@ -771,7 +771,7 @@
                 if (!chStdRowIsZeroSold(d)) return 0;
                 const stdOnly = chStdRowStd(d);
                 const zsOnly = Number(draft.zeroSoldDisc != null ? draft.zeroSoldDisc : chStdZeroSoldDisc) || 0;
-                return Math.min(99.99, Math.max(0, chStdScaleDisc(stdOnly, zsOnly)));
+                return Math.min(99.99, Math.max(-100, chStdScaleDisc(stdOnly, zsOnly)));
             }
             const std = chStdRowStd(d);
             const dil = chStdDilPct(d);
@@ -801,7 +801,7 @@
             const zsDisc = chStdScaleDisc(std, zsRaw);
             const lmpDisc = chStdScaleDisc(std, chStdLmpDiscRaw(d, draft.lmp || chStdLmp));
             const moqMDisc = chStdScaleDisc(std, chStdMoqMDiscRaw(d, draft.moqM || chStdMoqM));
-            return Math.min(99.99, Math.max(0, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc));
+            return Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc));
         }
         function chStdFullDataset() {
             if (typeof window !== 'undefined' && Array.isArray(window.allTableData) && window.allTableData.length) return window.allTableData;
@@ -1088,7 +1088,7 @@
                 if (lmpDisc !== 0) { skuHits.lmp++; dollars.lmp += std * lmpDisc / 100; pctTotals.lmp += lmpDisc; }
                 if (moqMDisc !== 0) { skuHits.moqm++; dollars.moqm += std * moqMDisc / 100; pctTotals.moqm += moqMDisc; }
                 const sum = Math.min(99.99, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + pricingDisc + roiDisc + zsDisc + lmpDisc + moqMDisc);
-                if (sum > 0) {
+                if (sum !== 0) {
                     skuHits.all++;
                     const sumKey = String(Math.round(sum * 10) / 10);
                     sumPctCounts[sumKey] = (sumPctCounts[sumKey] || 0) + 1;
