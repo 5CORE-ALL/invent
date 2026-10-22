@@ -240,24 +240,29 @@
             background: #f1f5f9;
             border: 1px solid #e2e8f0;
             border-radius: 8px;
-            padding: 12px 14px;
+            padding: 4px 8px;
+            flex: 1 1 auto;
+            min-width: 0;
         }
+        /* label sits beside its control so the whole bar is one line tall */
+        #gac-raw-filter-bar .gac-raw-filter-field { display: flex; align-items: center; gap: 4px; }
         #gac-raw-filter-bar .gac-raw-filter-label {
             display: block;
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             font-weight: 600;
             color: #475569;
-            margin-bottom: 4px;
+            margin-bottom: 0;
             letter-spacing: 0.01em;
+            white-space: nowrap;
         }
         #gac-raw-filter-bar .gac-raw-range-input {
-            width: 70px;
+            width: 52px;
             border-radius: 6px;
             border: 1px solid #cbd5e1;
             background: #fff;
             color: #334155;
             font-size: 0.8125rem;
-            padding: 0.35rem 0.4rem;
+            padding: 0.2rem 0.25rem;
             text-align: center;
         }
         #gac-raw-filter-bar .gac-raw-range-sep {
@@ -265,15 +270,18 @@
             font-weight: 600;
         }
         #gac-raw-filter-bar .gac-raw-filter-select {
-            min-width: 132px;
+            width: 86px;
+            min-width: 0;
             border-radius: 6px;
             border: 1px solid #cbd5e1;
             background: #fff;
             color: #64748b;
             font-size: 0.8125rem;
-            padding-top: 0.35rem;
-            padding-bottom: 0.35rem;
+            padding: 0.2rem 1.35rem 0.2rem 0.4rem;
+            background-size: 12px 9px;
+            background-position: right 0.4rem center;
         }
+        #gac-raw-filter-bar #gac-filter-stat { width: 120px; }
         #gac-raw-filter-bar .gac-raw-pill-dark {
             display: inline-block;
             background: #0f172a;
@@ -360,6 +368,64 @@
         .faas-stat-badge--ctr   { background: #0891b2; }   /* cyan    */
         .faas-stat-badge--cvr   { background: #db2777; }   /* pink    */
 
+        /* ── Summary cards (same look as the All Marketplace "Yesterday / L30" cards): yellow card + title + equal-size badge tiles ── */
+        .faas-stat-badge--util-green { background: #05bd30; }  /* matches the grid's green UB% cells */
+        .faas-stat-badge--util-yellow { background: #facc15; color: #713f12; }  /* 0.1–66% */
+        .faas-stat-badge--util-red  { background: #ff2727; }   /* matches the grid's red UB% cells  */
+        .faas-stat-badge--util-pink { background: #ff01d0; }   /* matches the grid's pink UB% cells */
+        .gac-cards {
+            display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0.5rem; align-items: start; margin-bottom: 0.5rem;
+        }
+        .gac-card {
+            min-width: 0; border-radius: 12px; padding: 0.55rem 0.6rem 0.65rem;
+            background: #fef9c3; border: 1px solid #facc15; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        /* One row on wide screens: Yesterday 4 · L30 4 · Utilized Y 2 · Utilized L7 2 (of 12). Narrower screens wrap (media queries below). */
+        .gac-card--yesterday, .gac-card--l30 { grid-column: span 4; }
+        .gac-card--util { grid-column: span 2; }
+        .gac-card--util .gac-card-badges { grid-template-columns: minmax(0, 1fr); }
+        .gac-card-title {
+            font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+            line-height: 1; margin: 0 0 0.35rem; color: #854d0e;
+        }
+        .gac-card-badges { display: grid; gap: 0.4rem; align-items: stretch; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .gac-card .faas-stat-badge {
+            width: 100%; min-width: 0; min-height: 36px; box-sizing: border-box; justify-content: center; text-align: center;
+            font-size: 0.78rem; line-height: 1.2; padding: 0.3rem 0.35rem; border-radius: 0.375rem; white-space: nowrap;
+        }
+        .gac-card .faas-stat-badge.faas-stat-badge--util-yellow { color: #713f12; }
+        .faas-stat-badge--util-total { background: #8b5cf6; color: #fff; }   /* purple */
+        .gac-card .faas-stat-badge.faas-stat-badge--util-total { color: #fff; }
+        .gac-card .faas-stat-badge > span { font-size: 0.85rem; }
+        .gac-card .faas-stat-badge > .gac-util-pct { font-size: 0.75rem; font-weight: 700; opacity: 0.95; margin-left: 5px; }
+        @media (max-width: 1399.98px) {
+            .gac-card--yesterday, .gac-card--l30, .gac-card--util { grid-column: span 6; }
+            .gac-card--util .gac-card-badges { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (max-width: 991.98px) {
+            .gac-card--yesterday, .gac-card--l30, .gac-card--util { grid-column: span 12; }
+        }
+        @media (max-width: 575.98px) {
+            .gac-card--util { grid-column: span 12; }
+            .gac-card-badges, .gac-card--util .gac-card-badges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        /* KPI tiles take the dashboard trend colour (dot up = green, down = red, same = yellow, none = grey). */
+        .gac-card .faas-stat-badge.gac-trend-up   { background: #22c55e; color: #052e16; }
+        .gac-card .faas-stat-badge.gac-trend-down { background: #ef4444; color: #fff; }
+        .gac-card .faas-stat-badge.gac-trend-flat { background: #facc15; color: #713f12; }
+        .gac-card .faas-stat-badge.gac-trend-none { background: #d1d5db; color: #111827; }
+        /* Dashboard-standard history dot: green = up, red = down, yellow = same, grey = no prior day. */
+        .gac-cards .summary-trend-dot {
+            display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex-shrink: 0;
+            cursor: pointer; position: relative; z-index: 2; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+            background: #9ca3af;
+        }
+        .gac-cards .summary-trend-dot:hover { transform: scale(1.3); box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.25); }
+        .gac-cards .summary-trend-dot.up { background: #22c55e; }
+        .gac-cards .summary-trend-dot.down { background: #ef4444; }
+        .gac-cards .summary-trend-dot.flat { background: #eab308; }
+        .gac-cards .summary-trend-dot.none { background: #9ca3af; }
+
         /* ── BGT Rules — single modal (layout matches the "Std prc vs dil" modal: one row of rule cards) ── */
         #gacRawBgtRulesModal .modal-dialog {
             width: calc(100vw - 1.25rem);
@@ -432,8 +498,8 @@
         #gacRawBgtRulesModal .gac-bgt-col.is-min .gac-bgt-title { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
 
         #gacRawBgtRulesModal .gac-bgt-chart { display: flex; flex-direction: column; margin-bottom: 8px; flex: 0 0 auto; }
-        #gacRawBgtRulesModal .gac-bgt-chart-canvas { position: relative; width: 100%; height: 150px; flex: 0 0 150px; }
-        #gacRawBgtRulesModal .gac-bgt-chart-canvas canvas { display: block; width: 100% !important; height: 150px !important; }
+        #gacRawBgtRulesModal .gac-bgt-chart-canvas { position: relative; width: 100%; height: 110px; flex: 0 0 110px; }
+        #gacRawBgtRulesModal .gac-bgt-chart-canvas canvas { display: block; width: 100% !important; height: 110px !important; }
         #gacRawBgtRulesModal .gac-bgt-legend { width: 100%; font-size: 12px; margin: 8px 0 0; color: #334155; line-height: 1.3; }
         #gacRawBgtRulesModal .gac-bgt-leg-row {
             display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 2px 0;
@@ -450,8 +516,8 @@
         }
         #gacRawBgtRulesModal .gac-bgt-col .table th,
         #gacRawBgtRulesModal .gac-bgt-col .table td { padding: 5px 6px; border-width: 0; vertical-align: middle; text-align: center; }
-        #gacRawBgtRulesModal .gac-bgt-col .table:not(.gac-bgt-sum-table) th:first-child,
-        #gacRawBgtRulesModal .gac-bgt-col .table:not(.gac-bgt-sum-table) td:first-child { display: none; }
+        #gacRawBgtRulesModal .gac-bgt-col .table th:first-child,
+        #gacRawBgtRulesModal .gac-bgt-col .table td:first-child { display: none; }
         /* Boxed number inputs, same as the Std prc vs dil modal. */
         #gacRawBgtRulesModal .gac-bgt-col .table .form-control-sm {
             width: 100%; min-width: 52px; max-width: 72px; height: 30px; margin: 0 auto; padding: 0 4px;
@@ -475,56 +541,30 @@
         #gacRawBgtRulesModal .gac-bgt-col .table-responsive { margin-bottom: 0; flex: 0 0 auto; overflow: visible; }
         #gacRawBgtRulesModal .gac-bgt-col .gac-bgt-add { margin-top: 10px; }
 
-        /* Summary bar (full width) */
-        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar {
-            flex: 0 0 auto; align-self: stretch; width: 100%; max-width: none; flex-direction: column;
-            align-items: stretch; gap: 10px; margin-bottom: 12px; padding: 12px 14px 14px; overflow: visible;
+        /* Sum card: last card in the row (right-hand side), same look as the rule cards. Data only, no chart. */
+        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--sum { flex: 1.4 1 0; min-width: 330px; }
+        #gacRawBgtRulesModal .gac-bgt-sum-dist-head {
+            display: grid; grid-template-columns: minmax(0, 1fr) 62px 62px 42px; gap: 6px; padding: 7px 8px 7px 22px;
+            background: #eaf1fb; border-radius: 8px 8px 0 0; color: #64748b; font-size: 10px; font-weight: 700;
+            letter-spacing: 0.04em; text-transform: uppercase;
         }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-col-head { margin: 0; flex: 0 0 auto; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-title { font-size: 16px; }
-        #gacRawBgtRulesModal .gac-bgt-sum-sub { color: #64748b; font-size: 12px; font-weight: 500; margin-top: 1px; }
-        #gacRawBgtRulesModal .gac-bgt-sum-body { display: flex; flex-wrap: wrap; gap: 18px; align-items: stretch; min-width: 0; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-chart { flex: 1 1 auto; align-items: stretch; gap: 8px; margin: 0; min-width: 0; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-chart-canvas { flex: 0 0 180px; width: 100%; height: 180px; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-chart-canvas,
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-chart-canvas canvas { height: 180px !important; flex-basis: 180px; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; flex: 0 0 auto; font-size: 13px; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-leg-row {
-            display: inline-flex; width: auto; gap: 6px; align-items: center; background: #f8fafc;
-            border: 1px solid #e8eef5; border-radius: 999px; padding: 4px 10px; font-size: 13px;
+        #gacRawBgtRulesModal .gac-bgt-sum-dist-head span:nth-child(n+2):nth-child(-n+3) { text-align: center; }
+        #gacRawBgtRulesModal .gac-bgt-sum-dist-head span:nth-child(4) { text-align: right; }
+        #gacRawBgtRulesModal .gac-bgt-col--sum .gac-bgt-legend {
+            margin: 0; font-size: 13px; padding: 0 8px; background: #fff;
+            border: 1px solid #e8eef5; border-top: 0; border-radius: 0 0 8px 8px;
         }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-leg-row strong { font-size: 14px; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-leg-total { border-top: 0; margin: 0; padding: 4px 10px; background: #0f172a; color: #fff; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-leg-total .gac-bgt-leg-pct { color: #cbd5e1; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-swatch { width: 10px; height: 10px; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .table-responsive { flex: 1 1 300px; width: auto; min-width: 280px; max-width: 420px; overflow: visible; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table {
-            width: 100%; height: 100%; border: 1px solid #e8eef5; border-radius: 10px; overflow: hidden; font-size: 14px;
+        #gacRawBgtRulesModal .gac-bgt-col--sum .gac-bgt-leg-row {
+            display: grid; grid-template-columns: 10px minmax(0, 1fr) 62px 62px 42px; gap: 6px; align-items: center;
+            padding: 6px 0; border-bottom: 1px solid #eef2f7;
         }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table th,
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table td {
-            padding: 7px 12px; font-size: 14px; line-height: 1.3; border-color: #eef2f7; background: #fff;
+        #gacRawBgtRulesModal .gac-bgt-col--sum .gac-bgt-leg-row > span:nth-child(2) { font-weight: 700; color: #0f172a; }
+        #gacRawBgtRulesModal .gac-bgt-col--sum .gac-bgt-leg-row strong { font-size: 13px; text-align: center; color: #334155; }
+        #gacRawBgtRulesModal .gac-bgt-col--sum .gac-bgt-leg-pct { min-width: 0; font-size: 12px; }
+        #gacRawBgtRulesModal .gac-bgt-col--sum .gac-bgt-leg-total {
+            margin: 0 -8px; padding: 6px 8px; border-top: 0; border-bottom: 0; background: #eff6ff;
+            grid-template-columns: 10px minmax(0, 1fr) 62px 62px 42px;
         }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table thead th { font-size: 11px; padding: 8px 12px; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table th:first-child,
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table td:first-child { text-align: left; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table td:first-child { font-weight: 600; color: #0f172a; }
-        #gacRawBgtRulesModal .gac-bgt-sumbar .gac-bgt-sum-table tr.fw-semibold td { background: #eff6ff; font-size: 15px; }
-        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min { flex: 0 0 auto; flex-direction: row; width: 100%; max-width: none; height: auto; min-width: 0; padding: 6px 8px; }
-        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min .gac-bgt-col-head { flex-direction: row; height: auto; }
-        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min .gac-bgt-title { writing-mode: horizontal-tb; transform: none; font-size: 12px; }
-        #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-sumbar.is-min .gac-bgt-sum-sub { display: none; }
-
-        /* SBID card form */
-        #gacRawBgtRulesModal .gac-bgt-sbid-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
-        #gacRawBgtRulesModal .gac-bgt-sbid-grid label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 2px; }
-        #gacRawBgtRulesModal .gac-bgt-sbid-grid .form-control {
-            height: 30px; padding: 0 6px; font-size: 13px; font-weight: 600; text-align: center; color: #0f172a;
-            background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; box-shadow: none;
-        }
-        #gacRawBgtRulesModal .gac-bgt-sbid-grid .form-control:focus { border-color: #2bb3a6; box-shadow: 0 0 0 2px rgba(43, 179, 166, 0.18); }
-        #gacRawBgtRulesModal .gac-bgt-sbid-h { font-size: 12px; font-weight: 700; color: #0f172a; margin: 12px 0 6px; }
-        #gacRawBgtRulesModal .gac-bgt-sbid-note { font-size: 12px; color: #64748b; margin: 0 0 8px; line-height: 1.4; }
     </style>
 @endsection
 
@@ -538,75 +578,129 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    {{-- Summary cards (same look as the All Marketplace "Yesterday / L30" cards). Every tile is the same size.
+                         Yesterday / L30 KPI tiles: BGT / Util / Avg Bid / CVR% / ACOS% / Clicks / Sold / Sales / Spend — Y = Yesterday (last completed US day).
+                         Dot + tile colour = trend vs the prior day (green up, red down, yellow same, grey none; Avg Bid and ACOS are lower-is-better).
+                         Click a tile or its dot for history. Filled by gacRawLoadKpiBadges() in the script below. --}}
+                    <div class="gac-cards" id="gacSummaryCards">
+                        @php
+                            $gacKpiRows = [
+                                ['tag' => 'Yesterday', 'items' => [
+                                    ['y_bgt',  'Y BGT',        'Y BGT',           'faas-stat-badge--acos',  'Total daily budget of the campaigns, as of yesterday (last completed US day).'],
+                                    ['y_util', 'Y UTIL',       'Y Utilization',   'faas-stat-badge--sold', 'Yesterday utilization = yesterday spend ÷ daily budget.'],
+                                    ['y_bid',  'Y AVG BID',    'Y Avg Bid',       'faas-stat-badge--impr',  'Yesterday avg bid = yesterday spend ÷ clicks (avg CPC).'],
+                                    ['y_cvr',  'Y CVR%',       'Y CVR%',          'faas-stat-badge--cvr',   'Yesterday CVR% = yesterday sold ÷ clicks.'],
+                                    ['y_acos', 'Y ACOS%',      'Y ACOS%',         'faas-stat-badge--clk',   'Yesterday ACOS% = yesterday spend ÷ sales.'],
+                                    ['y_clicks', 'Y CLICKS',   'Y Clicks',        'faas-stat-badge--impr',  'Yesterday clicks = total clicks of the campaigns on the last completed US day.'],
+                                    ['y_sold', 'Y SOLD',       'Y Sold',          'faas-stat-badge--clk',   'Yesterday sold = units sold by the campaigns on the last completed US day.'],
+                                    ['y_sales', 'Y SALES',     'Y Sales',         'faas-stat-badge--spend', 'Yesterday sales = sales of the campaigns on the last completed US day.'],
+                                    ['y_spend', 'Y SPEND',     'Y Spend',         'faas-stat-badge--spend', 'Yesterday spend = ad spend of the campaigns on the last completed US day.'],
+                                ]],
+                                ['tag' => 'L30', 'items' => [
+                                    ['l30_bgt',  'DAILY BGT',  'L30 Daily BGT',  'faas-stat-badge--acos',  'Average daily budget over the last 30 days.'],
+                                    ['l30_util', 'UTIL',       'L30 Utilization','faas-stat-badge--sold', 'L30 utilization = 30-day spend ÷ 30-day budget.'],
+                                    ['l30_bid',  'AVG BID',    'L30 Avg Bid',    'faas-stat-badge--impr',  'L30 avg bid = 30-day spend ÷ clicks (avg CPC).'],
+                                    ['l30_cvr',  'CVR%',       'L30 CVR%',       'faas-stat-badge--cvr',   'L30 CVR% = 30-day sold ÷ clicks.'],
+                                    ['l30_acos', 'ACOS%',      'L30 ACOS%',      'faas-stat-badge--clk',   'L30 ACOS% = 30-day spend ÷ sales.'],
+                                ]],
+                            ];
+                        @endphp
+                        @foreach ($gacKpiRows as $kpiRow)
+                            <div class="gac-card gac-card--{{ strtolower($kpiRow['tag']) }}">
+                                <div class="gac-card-title">{{ $kpiRow['tag'] }}</div>
+                                <div class="gac-card-badges">
+                                    @foreach ($kpiRow['items'] as [$kpiKey, $kpiText, $kpiLabel, $kpiClass, $kpiTip])
+                                        <span id="gacKpi_{{ $kpiKey }}" data-metric="{{ $kpiKey }}" data-label="{{ $kpiLabel }}" data-kpi="{{ $kpiKey }}"
+                                            class="faas-stat-badge gac-trend-none badge-chart-link"
+                                            title="{{ $kpiTip }} Click for history."><i class="summary-trend-dot none" data-kpi-dot="{{ $kpiKey }}" title="Click for history"></i>{{ $kpiText }}:<span class="gac-kpi-val">—</span></span>
+                                    @endforeach
+                                    @if ($kpiRow['tag'] === 'Yesterday')
+                                        {{-- ACTIVE: enabled / all campaigns (every status) + share; from the server summary (gacRawSummaryFromResponse()), not a chart link. --}}
+                                        <span id="faasActiveBadge" data-label="Active"
+                                    class="faas-stat-badge faas-stat-badge--sales is-static"
+                                    title="Enabled campaigns out of all campaigns (every status), and the share that is active.">ACTIVE:<span id="faasActiveValue">0 / 0</span><span class="gac-util-pct" id="faasActivePct">0%</span></span>
+                                    @endif
+                                    @if ($kpiRow['tag'] === 'L30')
+                                        {{-- L30 CLICKS: sum of the visible rows' L30 clicks (updateMetricBadges()); opens the clicks history chart. --}}
+                                        <span id="faasClicksBadge" data-metric="clicks" data-label="L30 Clicks"
+                                            class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
+                                            title="L30 clicks of the campaigns shown. Click for trend.">CLICKS:<span id="faasClicksValue">0</span></span>
+                                        {{-- L30 SOLD: units sold over 30 days, all campaigns incl. Paused / Removed (updateMetricBadges()); opens the sold history chart. --}}
+                                        <span id="faasL30SoldBadge" data-metric="sold" data-label="L30 Sold"
+                                            class="faas-stat-badge faas-stat-badge--clk badge-chart-link"
+                                            title="L30 sold of all campaigns, Paused and Removed included (ignores the Sts filter). Click for trend.">SOLD:<span id="faasL30SoldValue">0</span></span>
+                                        {{-- L30 SALES: 30-day sales, all campaigns incl. Paused / Removed (updateMetricBadges()); opens the sales history chart. --}}
+                                        <span id="faasL30SalesBadge" data-metric="sales" data-label="L30 Sales"
+                                            class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
+                                            title="L30 sales of all campaigns, Paused and Removed included (ignores the Sts filter). Click for trend.">SALES:<span id="faasL30SalesValue">$0</span></span>
+                                        {{-- L30 SPEND: 30-day spend, all campaigns incl. Paused / Removed (updateMetricBadges()); opens the spend history chart. --}}
+                                        <span id="faasL30SpendBadge" data-metric="spend" data-label="L30 Spend"
+                                            class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
+                                            title="L30 spend of all campaigns, Paused and Removed included (ignores the Sts filter). Click for trend.">SPEND:<span id="faasL30SpendValue">0</span></span>
+                                        {{-- TOTAL BGT: the daily budgets summed over the last 30 days, ALL campaigns (Active / Paused / Removed …).
+                                             A KPI tile (filled by gacKpiPaint()): dot + colour = trend vs the prior day; click for history. --}}
+                                        <span id="gacKpi_l30_bgt_total" data-metric="l30_bgt_total" data-label="L30 Total BGT" data-kpi="l30_bgt_total"
+                                            class="faas-stat-badge gac-trend-none badge-chart-link"
+                                            title="Daily budgets summed over the last 30 days, all campaigns (Active, Paused, Removed …). Click for history."><i class="summary-trend-dot none" data-kpi-dot="l30_bgt_total" title="Click for history"></i>TOTAL BGT:<span class="gac-kpi-val">—</span></span>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
 
-                        {{--
-                            Badge strip — kept on one line via flex-nowrap. flex-grow-1 and
-                            overflow-x-auto are intentionally NOT set so the strip sizes to its
-                            content; if the total width plus the right-side action buttons
-                            exceeds the row width, the OUTER `d-flex flex-wrap` (parent of this
-                            div) moves the action buttons to a second row instead of clipping
-                            or horizontally scrolling the badges.
-                        --}}
-                        <div class="d-flex align-items-center flex-wrap gap-2 py-1">
-                            {{-- Live sums of key Tabulator columns
-                                across whatever rows are currently visible
-                                (after search / header filters). Updated by
-                                updateMetricBadges() in the script below. --}}
-                            {{-- CAMPAIGNS badge — total campaign count matching the current
-                                 filter set (server-side `summary.filtered_row_count`, NOT just
-                                 the rows on this page). Not a chart link; intentionally lacks
-                                 .badge-chart-link so clicking does nothing. Updated by
-                                 gacRawSummaryFromResponse() in the script below. --}}
-                            <span id="faasCampaignsBadge" data-metric="campaigns" data-label="Campaigns"
-                                class="faas-stat-badge faas-stat-badge--count is-static"
-                                title="Total campaigns matching current filters">CAMPAIGNS:<span id="faasCampaignsValue">0</span></span>
+                        {{-- Utilization (grid bands: green 66–99%, pink > 99%, red < 66%): Y = yesterday ("1 UB%"), L7 = "U7%". --}}
+                        <div class="gac-card gac-card--util" id="gacUtilBlockY">
+                            <div class="gac-card-title">Utilized Y</div>
+                            <div class="gac-card-badges">
+                                <span id="faasGreenUtilYBadge" data-metric="util_y_green" data-label="Green Util (Y)"
+                                    class="faas-stat-badge faas-stat-badge--util-green badge-chart-link"
+                                    title="Campaigns whose yesterday utilisation (1 UB%) is 66–99% — the green cells in the grid. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_y_green" title="Click for history"></i>UTIL (Y):<span id="faasGreenUtilYValue">0</span><span class="gac-util-pct" id="faasGreenUtilYPct" title="Share of all campaigns">0%</span></span>
+                                <span id="faasYellowUtilYBadge" data-metric="util_y_yellow" data-label="Yellow Util (Y)"
+                                    class="faas-stat-badge faas-stat-badge--util-yellow badge-chart-link"
+                                    title="Campaigns whose yesterday utilisation (1 UB%) is 0.1% up to under 66%. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_y_yellow" title="Click for history"></i>UTIL (Y):<span id="faasYellowUtilYValue">0</span><span class="gac-util-pct" id="faasYellowUtilYPct" title="Share of all campaigns">0%</span></span>
+                                <span id="faasRedUtilYBadge" data-metric="util_y_red" data-label="Red Util (Y)"
+                                    class="faas-stat-badge faas-stat-badge--util-red badge-chart-link"
+                                    title="Campaigns with 0% yesterday utilisation (1 UB%) — nothing spent, or no budget. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_y_red" title="Click for history"></i>UTIL (Y):<span id="faasRedUtilYValue">0</span><span class="gac-util-pct" id="faasRedUtilYPct" title="Share of all campaigns">0%</span></span>
+                                <span id="faasPinkUtilYBadge" data-metric="util_y_pink" data-label="Pink Util (Y)"
+                                    class="faas-stat-badge faas-stat-badge--util-pink badge-chart-link"
+                                    title="Campaigns whose yesterday utilisation (1 UB%) is over 99% — the pink cells in the grid. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_y_pink" title="Click for history"></i>UTIL (Y):<span id="faasPinkUtilYValue">0</span><span class="gac-util-pct" id="faasPinkUtilYPct" title="Share of all campaigns">0%</span></span>
+                                <span id="faasTotalUtilYBadge" data-metric="util_y_avg" data-label="Avg Util (Y)"
+                                    class="faas-stat-badge faas-stat-badge--util-total badge-chart-link"
+                                    title="Total campaigns (all statuses), and their average yesterday utilisation (1 UB%) = total spend ÷ total budget (campaigns with a budget)."><i class="summary-trend-dot none" data-util-dot="util_y_avg" title="Click for history"></i>TOTAL (Y):<span id="faasTotalUtilYValue">0</span><span class="gac-util-pct" id="faasAvgUtilYPct">avg 0%</span></span>
 
-                            <span id="faasActiveBadge" data-label="Active"
-                                class="faas-stat-badge faas-stat-badge--sales is-static"
-                                title="Active (ENABLED) campaigns matching current filters">ACTIVE:<span id="faasActiveValue">0</span></span>
-
-                            <span id="faasGreenUtilL7Badge" data-metric="green_util_l7" data-label="Green Util (L7)"
-                                class="faas-stat-badge faas-stat-badge--sales badge-chart-link"
-                                title="Campaigns with Green utilisation (L7) — U7% 66–99%. Click for recorded daily history.">GREEN UTIL (L7):<span id="faasGreenUtilL7Value">0</span></span>
-
-                            <span id="faasL30SpendBadge" data-metric="spend" data-label="Spend"
-                                class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
-                                title="Click for trend">SPEND:<span id="faasL30SpendValue">0</span></span>
-
-                            <span id="faasClicksBadge" data-metric="clicks" data-label="Clicks"
-                                class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
-                                title="Click for trend">CLICKS:<span id="faasClicksValue">0</span></span>
-
-                            <span id="faasL30SoldBadge" data-metric="sold" data-label="Sold"
-                                class="faas-stat-badge faas-stat-badge--clk badge-chart-link"
-                                title="Click for trend">SOLD :<span id="faasL30SoldValue">0</span></span>
-
-                            <span id="faasL30SalesBadge" data-metric="sales" data-label="Sales"
-                                class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
-                                title="Click for trend">SALES:<span id="faasL30SalesValue">$0</span></span>
-
-                            <span id="faasAcosBadge" data-metric="acos" data-label="ACOS"
-                                class="faas-stat-badge faas-stat-badge--sales badge-chart-link"
-                                title="Click for trend">ACOS:<span id="faasAcosValue">0%</span></span>
-
-                            <span id="faasCvrBadge" data-metric="cvr" data-label="CVR"
-                                class="faas-stat-badge faas-stat-badge--sold badge-chart-link"
-                                title="Click for trend">CVR:<span id="faasCvrValue">0%</span></span>
-
-                            <span id="faasTotalBgtBadge" data-metric="bgt" data-label="Total BGT"
-                                class="faas-stat-badge faas-stat-badge--acos badge-chart-link"
-                                title="Click for trend">TOTAL BGT:<span id="faasTotalBgtValue">$0</span></span>
-                            
+                            </div>
                         </div>
-                        
-                        <span id="gac-raw-total" class="badge bg-secondary">Total: —</span>
-                        <span id="gac-raw-page-info" class="badge bg-light text-dark border">Page: —</span>
+                        <div class="gac-card gac-card--util" id="gacUtilBlockL7">
+                            <div class="gac-card-title">Utilized L7</div>
+                            <div class="gac-card-badges">
+                                <span id="faasGreenUtilL7Badge" data-metric="util_l7_green" data-label="Green Util (L7)"
+                                    class="faas-stat-badge faas-stat-badge--util-green badge-chart-link"
+                                    title="Campaigns with Green utilisation (L7) — U7% 66–99%. Click for history."><i class="summary-trend-dot none" data-util-dot="util_l7_green" title="Click for history"></i>UTIL (L7):<span id="faasGreenUtilL7Value">0</span><span class="gac-util-pct" id="faasGreenUtilL7Pct" title="Share of all campaigns">0%</span></span>
+                                <span id="faasYellowUtilL7Badge" data-metric="util_l7_yellow" data-label="Yellow Util (L7)"
+                                    class="faas-stat-badge faas-stat-badge--util-yellow badge-chart-link"
+                                    title="Campaigns whose L7 utilisation (U7%) is 0.1% up to under 66%. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_l7_yellow" title="Click for history"></i>UTIL (L7):<span id="faasYellowUtilL7Value">0</span><span class="gac-util-pct" id="faasYellowUtilL7Pct" title="Share of all campaigns">0%</span></span>
+                                <span id="faasRedUtilL7Badge" data-metric="util_l7_red" data-label="Red Util (L7)"
+                                    class="faas-stat-badge faas-stat-badge--util-red badge-chart-link"
+                                    title="Campaigns with 0% L7 utilisation (U7%) — nothing spent in 7 days, or no budget. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_l7_red" title="Click for history"></i>UTIL (L7):<span id="faasRedUtilL7Value">0</span><span class="gac-util-pct" id="faasRedUtilL7Pct" title="Share of all campaigns">0%</span></span>
+                                <span id="faasPinkUtilL7Badge" data-metric="util_l7_pink" data-label="Pink Util (L7)"
+                                    class="faas-stat-badge faas-stat-badge--util-pink badge-chart-link"
+                                    title="Campaigns whose L7 utilisation (U7%) is over 99% — the pink cells in the grid. Counts all campaigns (every status)."><i class="summary-trend-dot none" data-util-dot="util_l7_pink" title="Click for history"></i>UTIL (L7):<span id="faasPinkUtilL7Value">0</span><span class="gac-util-pct" id="faasPinkUtilL7Pct" title="Share of all campaigns">0%</span></span>
+                                <span id="faasTotalUtilL7Badge" data-metric="util_l7_avg" data-label="Avg Util (L7)"
+                                    class="faas-stat-badge faas-stat-badge--util-total badge-chart-link"
+                                    title="Total campaigns (all statuses), and their average L7 utilisation (U7%) = total spend ÷ total budget (campaigns with a budget)."><i class="summary-trend-dot none" data-util-dot="util_l7_avg" title="Click for history"></i>TOTAL (L7):<span id="faasTotalUtilL7Value">0</span><span class="gac-util-pct" id="faasAvgUtilL7Pct">avg 0%</span></span>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Toolbar buttons + filters share ONE row (wraps only when the screen is too narrow). --}}
+                    <div id="gac-raw-toolbar-row" class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span id="gac-raw-total" class="badge bg-secondary">Rows: —</span>
                         <button type="button" id="gac-raw-refresh" class="btn btn-sm btn-outline-primary gac-raw-icon-btn" title="Refresh grid" aria-label="Refresh grid">
                             <i class="fa fa-refresh"></i>
                         </button>
                         <button type="button" id="gac-raw-pull-data" class="btn btn-sm btn-primary" title="Runs app:fetch-google-ads-campaigns — pulls fresh campaign metrics from Google Ads + GA4. Waits until complete; shows success or error.">
-                            <i class="fa fa-cloud-download-alt"></i> Pull Data
+                            <i class="fa fa-cloud-download-alt"></i>
                             <input type="number" id="gac-raw-pull-days" min="1" max="30" value="1" class="form-control form-control-sm d-inline-block ms-1" style="width: 56px; padding: 1px 4px; height: 22px; font-size: 11px;" title="Days to fetch (1-30)" onclick="event.stopPropagation();">
                         </button>
                         <button type="button" id="gac-raw-export" class="btn btn-sm btn-success gac-raw-icon-btn" title="Export current page as CSV" aria-label="Export current page as CSV">
@@ -623,21 +717,21 @@
                                 {{-- Populated dynamically after the grid builds --}}
                             </ul>
                         </div>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-rules-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtRulesModal" title="Edit BGT Vs ACOS, BGT Vs VIEWS, BGT Vs CVR, BGT PRC and SBID rules in one place">BGT Rules</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="gac-raw-bgt-rules-btn" data-bs-toggle="modal" data-bs-target="#gacRawBgtRulesModal" title="Edit BGT Vs ACOS, BGT Vs VIEWS, BGT Vs CVR and BGT PRC rules in one place">BGT</button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbgt" title="Pushes each row’s SBGT as daily budget (chunks of 10). SBGT 0 / INV ≤ 0 pauses the campaign — $0 cannot be pushed.">
-                            <i class="fa fa-cloud-upload-alt"></i> Push SBGT
+                            <i class="fa fa-cloud-upload-alt"></i> SBGT
                         </button>
                         <button type="button" class="btn btn-sm btn-warning text-dark" id="gac-raw-push-sbid" title="Pushes SBIDs in chunks of 4 using grid values (by campaign_id). Skips SBID — and non-ENABLED rows. Waits until complete; shows success or error.">
-                            <i class="fa fa-cloud-upload-alt"></i> Push SBID
+                            <i class="fa fa-cloud-upload-alt"></i> SBID
                         </button>
                         <span class="vr align-self-center d-none d-md-inline-block mx-1"></span>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="gac-raw-verify-id" title="Filter L30 Spend = 0 and INV &gt; 0, then compare each campaign’s Google Ads Item ID to the live Merchant Center / Shopify product ID. Red triangle in the ID column = mismatch.">
-                            <i class="fa fa-id-card"></i> Verify ID
+                            <i class="fa fa-id-card"></i> ID
                         </button>
                     </div>
-                    <div id="gac-raw-filter-bar" class="mb-3">
-                        <div class="d-flex flex-wrap align-items-end gap-3 gap-md-4">
+                    <div id="gac-raw-filter-bar">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
                             <div class="gac-raw-filter-field">
                                 <label class="gac-raw-filter-label mb-0" for="gac-filter-ub7">U7%</label>
                                 <select id="gac-filter-ub7" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by 7 UB% band">
@@ -702,10 +796,8 @@
                                     <option value="eq0">INV=0</option>
                                 </select>
                             </div>
-                            <div class="gac-raw-filter-field d-flex align-items-end">
-                                <button type="button" class="btn btn-sm btn-outline-secondary" id="gac-raw-u7-pie-open" data-bs-toggle="modal" data-bs-target="#gacRawU7PieModal" title="Row counts by U7% band (U7 filter ignored). Opens chart; click a slice for last 30 days.">U7% mix</button>
-                            </div>
                         </div>
+                    </div>
                     </div>
                     <div id="gac-raw-push-result" class="alert alert-secondary small d-none mt-2 mb-0 py-2" role="status" aria-live="polite">
                         <div class="fw-semibold mb-1" id="gac-raw-push-result-title"></div>
@@ -774,7 +866,7 @@
         </div>
     </div>
 
-    {{-- BGT Rules — one modal for BGT Vs ACOS, VIEWS, CVR, PRC and SBID (same layout as /amazon-ads/all). --}}
+    {{-- BGT Rules — one modal for BGT Vs ACOS, VIEWS, CVR and PRC. --}}
     @php
         $gacBgtSlabCards = [
             ['key' => 'views', 'title' => 'BGT Vs VIEWS', 'hint' => 'Inclusive Shopify View L7 range (parent = sum of children). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-views-bands-body', 'add' => 'gac-bgt-views-add-band-btn', 'err' => 'gacRawBgtViewsRuleErr'],
@@ -794,34 +886,6 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-danger gac-bgt-global-err d-none" id="gacRawBgtRulesErr" role="alert"></p>
-
-                    <div class="gac-bgt-col gac-bgt-sumbar" data-gac-bgt-panel="sum">
-                        <div class="gac-bgt-col-head">
-                            <div>
-                                <div class="gac-bgt-title" title="SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC. A total of 0 pauses the campaign.">Sum</div>
-                                <div class="gac-bgt-sum-sub">SBGT for the rows on the current grid page (saved rules): campaigns per daily budget, and what each part adds up to. Charts below count the same rows against the bands you are editing.</div>
-                            </div>
-                            <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
-                        </div>
-                        <div class="gac-bgt-sum-body">
-                            <div class="gac-bgt-chart">
-                                <div class="gac-bgt-chart-canvas"><canvas id="gac-bgt-chart-sum"></canvas></div>
-                                <div class="gac-bgt-legend" id="gac-bgt-leg-sum"></div>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered align-middle mb-0 gac-bgt-sum-table">
-                                    <thead class="table-light">
-                                        <tr>
-                                            <th>Part</th>
-                                            <th class="text-center">Campaigns</th>
-                                            <th class="text-end">Budget</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="gac-bgt-sum-tbody"></tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
 
                     <div class="gac-bgt-cols">
                         <div class="gac-bgt-col" data-gac-bgt-panel="acos">
@@ -880,56 +944,15 @@
                             </div>
                         @endforeach
 
-                        <div class="gac-bgt-col gac-bgt-col--wide" data-gac-bgt-panel="sbid">
+                        <div class="gac-bgt-col gac-bgt-col--sum" data-gac-bgt-panel="sum">
                             <div class="gac-bgt-col-head">
-                                <div class="gac-bgt-title" title="When both 7UB% and 1UB% are above the high threshold, SBID = L1 CPC × over multiplier. When both are below the low threshold: if CPC is under the low-bid ceiling, SBID = CPC + flat incr; otherwise CPC × under multipliers (or fallback when no CPC). Otherwise SBID shows —.">SBID RULE — 7UB% / 1UB% → suggested bid</div>
-                                <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-min-btn" title="Minimize SBID RULE" aria-label="Minimize SBID RULE">−</button></span>
+                                <div class="gac-bgt-title" title="SBGT for the rows on the current grid page (saved rules): campaigns per daily budget, and BGT = daily budget x campaigns. SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC; a total of 0 pauses the campaign. The charts count the same rows against the bands you are editing.">Sum</div>
+                                <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
                             </div>
-                            <p class="gac-bgt-sbid-note">Both 7UB% and 1UB% above <strong>high</strong>: SBID = L1 CPC × over multiplier. Both below <strong>low</strong>: CPC under the ceiling gets CPC + flat incr, otherwise CPC × the under multipliers (fallback when no CPC). Otherwise SBID shows —.</p>
-                            <div class="gac-bgt-sbid-grid">
-                                <div>
-                                    <label for="gacSbidUtilLow">Low threshold (%)</label>
-                                    <input type="number" step="0.1" class="form-control form-control-sm" id="gacSbidUtilLow">
-                                </div>
-                                <div>
-                                    <label for="gacSbidUtilHigh">High threshold (%)</label>
-                                    <input type="number" step="0.1" class="form-control form-control-sm" id="gacSbidUtilHigh">
-                                </div>
-                                <div>
-                                    <label for="gacSbidUnderFallback">Fallback (no CPC)</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFallback">
-                                </div>
+                            <div class="gac-bgt-sum-dist">
+                                <div class="gac-bgt-sum-dist-head"><span>Daily budget</span><span>Campaigns</span><span>BGT</span><span>%</span></div>
+                                <div class="gac-bgt-legend" id="gac-bgt-leg-sum"></div>
                             </div>
-                            <div class="gac-bgt-sbid-h">Both below low — CPC multipliers</div>
-                            <div class="gac-bgt-sbid-grid">
-                                <div>
-                                    <label for="gacSbidUnderMultL1">× L1 CPC</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL1">
-                                </div>
-                                <div>
-                                    <label for="gacSbidUnderMultL7">× L7 CPC</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderMultL7">
-                                </div>
-                            </div>
-                            <div class="gac-bgt-sbid-h">Both below low — flat incr when CPC is low</div>
-                            <div class="gac-bgt-sbid-grid">
-                                <div>
-                                    <label for="gacSbidUnderFlatMax">If CPC &lt;</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatMax" title="When base CPC is below this, use CPC + incr instead of the multiplier">
-                                </div>
-                                <div>
-                                    <label for="gacSbidUnderFlatIncr">Bid incr (+)</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidUnderFlatIncr" title="Flat amount added to CPC when below the ceiling">
-                                </div>
-                            </div>
-                            <div class="gac-bgt-sbid-h">Both above high</div>
-                            <div class="gac-bgt-sbid-grid">
-                                <div>
-                                    <label for="gacSbidOverMultL1">× L1 CPC</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" id="gacSbidOverMultL1">
-                                </div>
-                            </div>
-                            <p class="small text-danger mb-0 mt-2 d-none" id="gacRawSbidRuleErr" role="alert"></p>
                         </div>
                     </div>
                 </div>
@@ -1042,6 +1065,8 @@
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
+            const gacRawBadgeKpisUrl = @json(route('google.shopping.campaigns.badge.kpis'));
+            const gacRawBadgeUtilUrl = @json(route('google.shopping.campaigns.badge.util'));
             const gacRawSbgtHistoryUrl = @json(route('google.shopping.campaigns.sbgt.history'));
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
@@ -1130,6 +1155,10 @@
             // Filtered-set weighted averages (from response.summary) that drive the CTR/CVR
             // flag colours. Refreshed by gacRawSummaryFromResponse() before each render.
             let gacRawAvgCtr = 0;
+            /** L30 Spend / Sales / Sold across every status (Paused + Removed included) from the server summary; null until loaded. */
+            let gacRawSpendL30All = null;
+            let gacRawSalesL30All = null;
+            let gacRawSoldL30All = null;
             let gacRawAvgCvr = 0;
             // Current average ACOS (%) — mirrors the toolbar ACOS badge
             // (ΣSpend / ΣSales over the loaded rows). Refreshed by
@@ -1488,17 +1517,49 @@
                 var campaignsEl = document.getElementById('faasCampaignsValue');
                 var activeEl = document.getElementById('faasActiveValue');
                 var greenUtilEl = document.getElementById('faasGreenUtilL7Value');
+                var redUtilYEl = document.getElementById('faasRedUtilYValue');
+                var greenUtilYEl = document.getElementById('faasGreenUtilYValue');
+                var redUtilL7El = document.getElementById('faasRedUtilL7Value');
+                var pinkUtilL7El = document.getElementById('faasPinkUtilL7Value');
+                var pinkUtilYEl = document.getElementById('faasPinkUtilYValue');
+                var yellowUtilYEl = document.getElementById('faasYellowUtilYValue');
+                var totalUtilYEl = document.getElementById('faasTotalUtilYValue');
+                var totalUtilL7El = document.getElementById('faasTotalUtilL7Value');
+                var yellowUtilL7El = document.getElementById('faasYellowUtilL7Value');
                 if (!response || typeof response !== 'object' || !response.summary) {
                     if (spiEl) spiEl.textContent = '—';
                     if (acosEl) acosEl.textContent = '—';
                     if (campaignsEl) campaignsEl.textContent = '0';
-                    if (activeEl) activeEl.textContent = '0';
+                    if (activeEl) activeEl.textContent = '0 / 0';
                     if (greenUtilEl) greenUtilEl.textContent = '0';
+                    if (redUtilYEl) redUtilYEl.textContent = '0';
+                    if (greenUtilYEl) greenUtilYEl.textContent = '0';
+                    if (redUtilL7El) redUtilL7El.textContent = '0';
+                    if (pinkUtilL7El) pinkUtilL7El.textContent = '0';
+                    if (pinkUtilYEl) pinkUtilYEl.textContent = '0';
+                    if (yellowUtilYEl) yellowUtilYEl.textContent = '0';
+                    if (yellowUtilL7El) yellowUtilL7El.textContent = '0';
+                    document.querySelectorAll('.gac-util-pct').forEach(function(el) { el.textContent = '0%'; });
+                    if (totalUtilYEl) totalUtilYEl.textContent = '0';
+                    if (totalUtilL7El) totalUtilL7El.textContent = '0';
+                    ['faasAvgUtilYPct', 'faasAvgUtilL7Pct'].forEach(function(id) {
+                        var el = document.getElementById(id);
+                        if (el) el.textContent = 'avg 0%';
+                    });
                     gacRawAvgCtr = 0;
                     gacRawAvgCvr = 0;
+                    gacRawSpendL30All = null;
+                    gacRawSalesL30All = null;
+                    gacRawSoldL30All = null;
                     return;
                 }
                 var s = response.summary;
+                var gacAllNum = function(v) {
+                    return (v !== null && v !== undefined && Number.isFinite(Number(v))) ? Number(v) : null;
+                };
+                gacRawSpendL30All = gacAllNum(s.spend_l30_all);
+                gacRawSalesL30All = gacAllNum(s.sales_l30_all);
+                gacRawSoldL30All = gacAllNum(s.sold_l30_all);
                 gacRawAvgCtr = Number.isFinite(Number(s.avg_ctr)) ? Number(s.avg_ctr) : 0;
                 gacRawAvgCvr = Number.isFinite(Number(s.avg_cvr)) ? Number(s.avg_cvr) : 0;
                 if (spiEl) {
@@ -1520,13 +1581,49 @@
                     campaignsEl.textContent = Number.isFinite(n) ? Math.round(n).toLocaleString() : '0';
                 }
                 if (activeEl) {
-                    var a = Number(s.active_count);
-                    activeEl.textContent = Number.isFinite(a) ? Math.round(a).toLocaleString() : '0';
+                    // Active / Total over ALL campaigns (every status), with the active share.
+                    var a = Number(s.util_active_count !== undefined ? s.util_active_count : s.active_count);
+                    var t = Number(s.util_total_count !== undefined ? s.util_total_count : s.filtered_row_count);
+                    activeEl.textContent = (Number.isFinite(a) ? Math.round(a).toLocaleString() : '0')
+                        + ' / ' + (Number.isFinite(t) ? Math.round(t).toLocaleString() : '0');
+                    var activePctEl = document.getElementById('faasActivePct');
+                    if (activePctEl) {
+                        activePctEl.textContent = (Number.isFinite(a) && Number.isFinite(t) && t > 0)
+                            ? Math.round((a / t) * 100) + '%' : '0%';
+                    }
                 }
                 if (greenUtilEl) {
                     var g = Number(s.green_util_l7_count);
                     greenUtilEl.textContent = Number.isFinite(g) ? Math.round(g).toLocaleString() : '0';
                 }
+                // Utilized blocks cover ALL campaigns (every status), so their total / % use util_total_count.
+                var gacTotalRows = Number(s.util_total_count !== undefined ? s.util_total_count : s.filtered_row_count);
+                var gacSetUtil = function(valEl, pctId, v) {
+                    var n = Number(v);
+                    if (valEl) valEl.textContent = Number.isFinite(n) ? Math.round(n).toLocaleString() : '0';
+                    var pctEl = document.getElementById(pctId);
+                    if (pctEl) {
+                        pctEl.textContent = (Number.isFinite(n) && Number.isFinite(gacTotalRows) && gacTotalRows > 0)
+                            ? Math.round((n / gacTotalRows) * 100) + '%' : '0%';
+                    }
+                };
+                gacSetUtil(greenUtilEl, 'faasGreenUtilL7Pct', s.green_util_l7_count);
+                gacSetUtil(redUtilL7El, 'faasRedUtilL7Pct', s.red_util_l7_count);
+                gacSetUtil(pinkUtilL7El, 'faasPinkUtilL7Pct', s.pink_util_l7_count);
+                gacSetUtil(yellowUtilL7El, 'faasYellowUtilL7Pct', s.yellow_util_l7_count);
+                gacSetUtil(yellowUtilYEl, 'faasYellowUtilYPct', s.yellow_util_y_count);
+                // Total campaigns + weighted average utilisation (Σ spend ÷ Σ budget).
+                var gacTotalTxt = Number.isFinite(gacTotalRows) ? Math.round(gacTotalRows).toLocaleString() : '0';
+                if (totalUtilYEl) totalUtilYEl.textContent = gacTotalTxt;
+                if (totalUtilL7El) totalUtilL7El.textContent = gacTotalTxt;
+                [['faasAvgUtilYPct', s.avg_util_y_pct], ['faasAvgUtilL7Pct', s.avg_util_l7_pct]].forEach(function(pair) {
+                    var el = document.getElementById(pair[0]);
+                    var v = Number(pair[1]);
+                    if (el) el.textContent = 'avg ' + (Number.isFinite(v) ? v.toFixed(1) : '0') + '%';
+                });
+                gacSetUtil(greenUtilYEl, 'faasGreenUtilYPct', s.green_util_y_count);
+                gacSetUtil(redUtilYEl, 'faasRedUtilYPct', s.red_util_y_count);
+                gacSetUtil(pinkUtilYEl, 'faasPinkUtilYPct', s.pink_util_y_count);
             }
 
             /** Read a numeric range box; returns '' when blank / negative / non-numeric. */
@@ -2068,7 +2165,7 @@
                         ub7: '7 UB%',
                         ub2: '2 UB%',
                         ub1: '1 UB%',
-                        bgt: 'BGT',
+                        bgt: 'C BGT',
                         bgt_acos: 'BGT ACOS',
                         bgt_views: 'Bgt Views',
                         bgt_cvr: 'Bgt Cvr',
@@ -2474,13 +2571,31 @@
                             formatter: gacRawIdCheckFormatter,
                         });
                     }
+                    // Column order: BGT ACOS sits immediately before Bgt Views.
+                    var acosIdx = defs.findIndex(function(d) { return d.field === 'bgt_acos'; });
+                    if (acosIdx !== -1) {
+                        var acosDef = defs.splice(acosIdx, 1)[0];
+                        var viewsIdx = defs.findIndex(function(d) { return d.field === 'bgt_views'; });
+                        if (viewsIdx === -1) {
+                            defs.splice(acosIdx, 0, acosDef);
+                        } else {
+                            defs.splice(viewsIdx, 0, acosDef);
+                        }
+                    }
+                    // Column order: LBid sits immediately before SBID (swapped).
+                    var sbidIdx = defs.findIndex(function(d) { return d.field === 'sbid'; });
+                    var lbidIdx = defs.findIndex(function(d) { return d.field === 'lbid'; });
+                    if (sbidIdx !== -1 && lbidIdx !== -1 && lbidIdx > sbidIdx) {
+                        var lbidDef = defs.splice(lbidIdx, 1)[0];
+                        defs.splice(sbidIdx, 0, lbidDef);
+                    }
                     return defs;
                 },
                 ajaxResponse: function(url, params, response) {
                     if (!response || typeof response !== 'object') {
                         var te0 = document.getElementById('gac-raw-total');
                         if (te0) {
-                            te0.textContent = 'Total rows: —';
+                            te0.textContent = 'Rows: —';
                         }
                         return { last_page: 1, last_row: 0, data: [] };
                     }
@@ -2490,7 +2605,7 @@
 
                     const totalEl = document.getElementById('gac-raw-total');
                     if (totalEl) {
-                        totalEl.textContent = 'Total rows: ' + lastRow.toLocaleString();
+                        totalEl.textContent = 'Rows: ' + lastRow.toLocaleString();
                     }
 
                     gacRawSummaryFromResponse(response);
@@ -3171,28 +3286,9 @@
                     };
                 });
             }
-            function gacFillSbidForm(sbid) {
-                if (!sbid) return;
-                gacSetVal('gacSbidUtilLow', sbid.util_low);
-                gacSetVal('gacSbidUtilHigh', sbid.util_high);
-                gacSetVal('gacSbidOverMultL1', sbid.over_mult_l1);
-                gacSetVal('gacSbidUnderMultL1', sbid.under_mult_l1);
-                gacSetVal('gacSbidUnderMultL7', sbid.under_mult_l7);
-                gacSetVal('gacSbidUnderFallback', sbid.under_fallback);
-                gacSetVal('gacSbidUnderFlatMax', sbid.under_flat_max);
-                gacSetVal('gacSbidUnderFlatIncr', sbid.under_flat_incr);
-            }
+            /** SBID is no longer edited on this page; re-send the saved rule so saving the BGT bands never resets it. */
             function gacCollectSbid() {
-                return {
-                    util_low: gacNum('gacSbidUtilLow'),
-                    util_high: gacNum('gacSbidUtilHigh'),
-                    over_mult_l1: gacNum('gacSbidOverMultL1'),
-                    under_mult_l1: gacNum('gacSbidUnderMultL1'),
-                    under_mult_l7: gacNum('gacSbidUnderMultL7'),
-                    under_fallback: gacNum('gacSbidUnderFallback'),
-                    under_flat_max: gacNum('gacSbidUnderFlatMax'),
-                    under_flat_incr: gacNum('gacSbidUnderFlatIncr'),
-                };
+                return (window.gacRawRule && window.gacRawRule.sbid) || {};
             }
             function gacRawNumber(value) {
                 if (value === null || value === undefined || value === '') {
@@ -3225,10 +3321,7 @@
                 var clicksEl = document.getElementById('faasClicksValue');
                 var soldEl = document.getElementById('faasL30SoldValue');
                 var salesEl = document.getElementById('faasL30SalesValue');
-                var acosEl = document.getElementById('faasAcosValue');
-                var cvrEl = document.getElementById('faasCvrValue');
-                var bgtEl = document.getElementById('faasTotalBgtValue');
-                if (!spendEl || !clicksEl || !soldEl || !salesEl || !acosEl || !cvrEl || !bgtEl || !table) {
+                if (!spendEl || !clicksEl || !soldEl || !salesEl || !table) {
                     return;
                 }
 
@@ -3236,7 +3329,6 @@
                 var clicksSum = 0;
                 var soldSum = 0;
                 var salesSum = 0;
-                var bgtSum = 0;
                 var rows = [];
                 try {
                     rows = table.getData('active') || [];
@@ -3249,16 +3341,14 @@
                     clicksSum += gacRawNumber(row.metrics_clicks);
                     soldSum += gacRawNumber(row.ad_sold_L30);
                     salesSum += gacRawNumber(row.ad_sales_L30);
-                    bgtSum += gacRawNumber(row.bgt);
                 });
 
-                spendEl.textContent = gacRawWholeMoney(spendSum);
+                // Spend / Sold / Sales badges = L30 of every campaign (Paused + Removed included), independent of the Sts filter.
+                // ACOS and CVR below keep using the visible rows so they stay ratios of the same set.
+                spendEl.textContent = gacRawWholeMoney(gacRawSpendL30All !== null ? gacRawSpendL30All : spendSum);
                 clicksEl.textContent = Math.round(clicksSum).toLocaleString();
-                soldEl.textContent = Math.round(soldSum).toLocaleString();
-                salesEl.textContent = gacRawWholeMoney(salesSum);
-                acosEl.textContent = gacRawPercent(spendSum, salesSum, 0);
-                cvrEl.textContent = gacRawPercent(soldSum, clicksSum, 1);
-                bgtEl.textContent = gacRawWholeMoney(bgtSum);
+                soldEl.textContent = Math.round(gacRawSoldL30All !== null ? gacRawSoldL30All : soldSum).toLocaleString();
+                salesEl.textContent = gacRawWholeMoney(gacRawSalesL30All !== null ? gacRawSalesL30All : salesSum);
 
                 // Keep the numeric average ACOS (matches the badge) in sync and
                 // repaint the Action column so its alert reflects the current average.
@@ -3267,6 +3357,151 @@
                     gacRawAvgAcos = newAvgAcos;
                     gacRawReformatActionColumn();
                 }
+
+                gacRawLoadKpiBadges();
+            }
+
+            // ---- KPI badges (Yesterday + L30): Daily BGT / Util / Avg Bid / Avg CVR% / ACOS% ----
+            // Lower is better for Avg Bid and ACOS, so their dot colours are inverted (standard dot rule).
+            var GAC_KPI_META = {
+                bgt:  { fmt: function(v) { return gacRawWholeMoney(v); }, eps: 0.5,   invert: false },
+                bgt_total: { fmt: function(v) { return gacRawWholeMoney(v); }, eps: 0.5, invert: false },
+                clicks: { fmt: function(v) { return Math.round(v).toLocaleString(); }, eps: 0.5, invert: false },
+                sold: { fmt: function(v) { return Math.round(v).toLocaleString(); }, eps: 0.5, invert: false },
+                sales: { fmt: function(v) { return gacRawWholeMoney(v); }, eps: 0.5, invert: false },
+                spend: { fmt: function(v) { return gacRawWholeMoney(v); }, eps: 0.5, invert: false },
+                util: { fmt: function(v) { return v.toFixed(1) + '%'; },   eps: 0.05,  invert: false },
+                bid:  { fmt: function(v) { return '$' + v.toFixed(2); },   eps: 0.005, invert: true },
+                cvr:  { fmt: function(v) { return v.toFixed(1) + '%'; },   eps: 0.05,  invert: false },
+                acos: { fmt: function(v) { return v.toFixed(1) + '%'; },   eps: 0.05,  invert: true }
+            };
+            var GAC_KPI_KEYS = ['y_bgt', 'y_util', 'y_bid', 'y_cvr', 'y_acos', 'y_clicks', 'y_sold', 'y_sales', 'y_spend', 'l30_bgt', 'l30_util', 'l30_bid', 'l30_cvr', 'l30_acos', 'l30_bgt_total'];
+            var gacKpiLastSig = '';
+            var gacKpiLastAt = 0;
+            var gacKpiAjaxSeq = 0;
+
+            function gacKpiKind(key) { return key.slice(key.indexOf('_') + 1); }
+
+            /** Standard dot: up green / down red / same grey (inverted for lower-is-better). */
+            function gacKpiTrend(key, cur, prev) {
+                var meta = GAC_KPI_META[gacKpiKind(key)];
+                if (!Number.isFinite(cur) || !Number.isFinite(prev)) return 'none';
+                var diff = cur - prev;
+                var cls = 'flat';
+                if (diff > meta.eps) cls = 'up';
+                else if (diff < -meta.eps) cls = 'down';
+                if (meta.invert && cls === 'up') cls = 'down';
+                else if (meta.invert && cls === 'down') cls = 'up';
+                return cls;
+            }
+
+            function gacKpiPaint(values, prev) {
+                GAC_KPI_KEYS.forEach(function(key) {
+                    var badge = document.getElementById('gacKpi_' + key);
+                    if (!badge) return;
+                    var valEl = badge.querySelector('.gac-kpi-val');
+                    var dot = badge.querySelector('.summary-trend-dot');
+                    var meta = GAC_KPI_META[gacKpiKind(key)];
+                    var cur = values ? Number(values[key]) : NaN;
+                    var old = prev ? Number(prev[key]) : NaN;
+                    if (valEl) valEl.textContent = Number.isFinite(cur) ? meta.fmt(cur) : '—';
+                    if (!dot) return;
+                    var cls = gacKpiTrend(key, cur, old);
+                    dot.className = 'summary-trend-dot ' + cls;
+                    badge.classList.remove('gac-trend-up', 'gac-trend-down', 'gac-trend-flat', 'gac-trend-none');
+                    badge.classList.add('gac-trend-' + cls);
+                    var word = cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : (cls === 'flat' ? 'Same' : ''));
+                    dot.title = word
+                        ? (word + ' vs prior day (' + meta.fmt(old) + ' → ' + meta.fmt(cur) + '). Click for history.')
+                        : 'Click for history (no prior day yet)';
+                });
+            }
+
+            // ---- Utilized Y / L7 badge dots: daily count (or avg %) vs the prior day, same dot rules as the KPI tiles ----
+            // More yellow / red campaigns is worse, so those two are inverted; more green / pink / higher avg is up.
+            var GAC_UTIL_INVERT = { util_y_yellow: true, util_y_red: true, util_l7_yellow: true, util_l7_red: true };
+            var gacUtilDotsAt = 0;
+            var gacUtilDotsBusy = false;
+
+            function gacUtilFmt(key, v) {
+                return /_avg$/.test(key) ? v.toFixed(1) + '%' : Math.round(v).toLocaleString();
+            }
+
+            function gacUtilDotsPaint(values, prev) {
+                document.querySelectorAll('[data-util-dot]').forEach(function(dot) {
+                    var key = dot.getAttribute('data-util-dot');
+                    var cur = values ? Number(values[key]) : NaN;
+                    var old = prev ? Number(prev[key]) : NaN;
+                    var cls = 'none';
+                    if (Number.isFinite(cur) && Number.isFinite(old)) {
+                        var eps = /_avg$/.test(key) ? 0.05 : 0.5;
+                        var diff = cur - old;
+                        cls = diff > eps ? 'up' : (diff < -eps ? 'down' : 'flat');
+                        if (GAC_UTIL_INVERT[key] && cls === 'up') cls = 'down';
+                        else if (GAC_UTIL_INVERT[key] && cls === 'down') cls = 'up';
+                    }
+                    dot.className = 'summary-trend-dot ' + cls;
+                    var word = cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : (cls === 'flat' ? 'Same' : ''));
+                    dot.title = word
+                        ? (word + ' vs prior day (' + gacUtilFmt(key, old) + ' → ' + gacUtilFmt(key, cur) + '). Click for history.')
+                        : 'Click for history (no prior day yet)';
+                });
+            }
+
+            function gacRawLoadUtilDots() {
+                if (gacUtilDotsBusy || Date.now() - gacUtilDotsAt < 60000) return;
+                gacUtilDotsBusy = true;
+                fetch(gacRawBadgeUtilUrl, {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function(res) { return res.json(); })
+                    .then(function(resp) {
+                        if (resp && resp.success) {
+                            gacUtilDotsAt = Date.now();
+                            gacUtilDotsPaint(resp.values, resp.prev);
+                        } else {
+                            gacUtilDotsPaint(null, null);
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error('google shopping utilisation dots failed', err);
+                        gacUtilDotsPaint(null, null);
+                    })
+                    .finally(function() { gacUtilDotsBusy = false; });
+            }
+
+            function gacRawLoadKpiBadges() {
+                if (typeof GAC_KPI_META === 'undefined' || !GAC_KPI_META) return; // script still initialising
+                gacRawLoadUtilDots(); // channel-wide (all campaigns) — independent of the visible rows
+                var ids = gacRawVisibleCampaignIds();
+                if (!ids.length) {
+                    gacKpiLastSig = '';
+                    gacKpiPaint(null, null);
+                    return;
+                }
+                var sig = ids.join(',');
+                // Same rows re-render a lot (sort, scroll, column toggles) — only refetch after 60s or when the rows change.
+                if (sig === gacKpiLastSig && Date.now() - gacKpiLastAt < 60000) return;
+                gacKpiLastSig = sig;
+                gacKpiLastAt = Date.now();
+                var seq = ++gacKpiAjaxSeq;
+                fetch(gacRawBadgeKpisUrl + '?' + new URLSearchParams({ campaign_ids: sig }).toString(), {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function(res) { return res.json(); })
+                    .then(function(resp) {
+                        if (seq !== gacKpiAjaxSeq) return;
+                        if (resp && resp.success) gacKpiPaint(resp.values, resp.prev);
+                        else { gacKpiLastSig = ''; gacKpiPaint(null, null); }
+                    })
+                    .catch(function(err) {
+                        if (seq !== gacKpiAjaxSeq) return;
+                        gacKpiLastSig = '';
+                        console.error('google shopping KPI badges failed', err);
+                        gacKpiPaint(null, null);
+                    });
             }
 
             function gacRawFormatBadgeChartValue(metric, value) {
@@ -3275,8 +3510,12 @@
                 if (metric === 'spend' || metric === 'sales' || metric === 'bgt') {
                     return '$' + Math.round(n).toLocaleString();
                 }
-                if (metric === 'acos' || metric === 'cvr') {
+                if (metric === 'acos' || metric === 'cvr' || /^util_(y|l7)_avg$/.test(metric)) {
                     return n.toFixed(1) + '%';
+                }
+                if (GAC_KPI_META[metric.slice(metric.indexOf('_') + 1)] && /^(y|l30)_/.test(metric)) {
+                    var kpiMeta = GAC_KPI_META[metric.slice(metric.indexOf('_') + 1)];
+                    return kpiMeta.fmt(n);
                 }
                 return Math.round(n).toLocaleString();
             }
@@ -3314,12 +3553,16 @@
                 var rangeEl = document.getElementById('gacRawBadgeChartRange');
                 var days = parseInt((rangeEl && rangeEl.value) || '30', 10) || 30;
                 var titleEl = document.getElementById('gacRawBadgeChartTitle');
-                var isGreenUtil = metric === 'green_util_l7';
+                // Green util (L7) legacy + Utilized Y / L7 badges: channel-wide daily counts, not scoped to visible rows.
+                var isGreenUtil = metric === 'green_util_l7' || /^util_(y|l7)_/.test(metric);
                 if (titleEl) {
                     var rangeLabel = days === 0 ? 'Lifetime' : ('L' + days);
                     // Green util history is a daily count (re-anchored windows), not a rolling L30 average.
                     if (isGreenUtil) {
                         titleEl.textContent = 'Google Shopping - ' + (label || 'Green Util (L7)') + ' (Daily · ' + rangeLabel + ')';
+                    } else if (/^y_/.test(metric)) {
+                        // Yesterday KPI badges: one point per day (that day's own value).
+                        titleEl.textContent = 'Google Shopping - ' + (label || metric.toUpperCase()) + ' (Daily · ' + rangeLabel + ')';
                     } else {
                         // Same title pattern as all-marketplace-master: "… (Rolling L30)"
                         titleEl.textContent = 'Google Shopping - ' + (label || metric.toUpperCase()) + ' (Rolling ' + rangeLabel + ')';
@@ -3390,7 +3633,8 @@
                 var range = (dataMax - dataMin) || 1;
                 var yMin = Math.max(0, dataMin - range * 0.1);
                 var yMax = dataMax + range * 0.1;
-                var inverted = (metric === 'acos');
+                // Lower is better for ACOS and Avg Bid (also their Y / L30 variants): invert the dot colours.
+                var inverted = (metric === 'acos' || /(^|_)(acos|bid)$/.test(metric) || /^util_(y|l7)_(yellow|red)$/.test(metric));
 
                 function fmtVal(v) {
                     return gacRawFormatBadgeChartValue(metric, v);
@@ -3644,21 +3888,28 @@
             function gacBgtDrawChart(key, items, total, axes) {
                 var legend = document.getElementById('gac-bgt-leg-' + key);
                 var canvas = document.getElementById('gac-bgt-chart-' + key);
-                if (!legend || !canvas) return;
+                if (!legend) return;
+                // Optional Budget column (Sum card): each item carries budget = daily budget x campaigns.
+                var hasBudget = items.some(function(r) { return r.budget != null; });
+                var totalBudget = items.reduce(function(s, r) { return s + (Number(r.budget) || 0); }, 0);
+                legend.classList.toggle('has-budget', hasBudget);
                 legend.innerHTML = items.map(function(r) {
                     var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
                     return '<div class="gac-bgt-leg-row"><span class="gac-bgt-swatch" style="background:' + gacBgtEsc(r.color) + '"></span>'
                         + '<span>' + gacBgtEsc(r.label) + '</span><strong>' + r.n + '</strong>'
+                        + (hasBudget ? '<strong class="gac-bgt-leg-bgt">' + gacBgtMoney(r.budget) + '</strong>' : '')
                         + '<span class="gac-bgt-leg-pct">' + pct + '%</span></div>';
                 }).join('') + (items.length
                     ? '<div class="gac-bgt-leg-row gac-bgt-leg-total"><span class="gac-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>'
-                        + total + '</strong><span class="gac-bgt-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>'
+                        + total + '</strong>' + (hasBudget ? '<strong class="gac-bgt-leg-bgt">' + gacBgtMoney(totalBudget) + '</strong>' : '')
+                        + '<span class="gac-bgt-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>'
                     : '<div class="text-muted">No rows on this page.</div>');
                 if (gacBgtCharts[key]) {
                     try { gacBgtCharts[key].destroy(); } catch (e) {}
                     gacBgtCharts[key] = null;
                 }
-                if (typeof Chart === 'undefined') return;
+                // The Sum card shows its data as a column only (no canvas).
+                if (!canvas || typeof Chart === 'undefined') return;
                 gacBgtCharts[key] = new Chart(canvas.getContext('2d'), {
                     type: 'bar',
                     data: {
@@ -3721,28 +3972,12 @@
                 });
                 var keys = Object.keys(byVal).sort(function(a, b) { return Number(a) - Number(b); });
                 var items = keys.map(function(k, i) {
-                    return { label: '$' + k, n: byVal[k], color: GAC_BGT_FALLBACK_COLORS[i % GAC_BGT_FALLBACK_COLORS.length] };
+                    return {
+                        label: '$' + k, n: byVal[k], budget: Number(k) * byVal[k],
+                        color: GAC_BGT_FALLBACK_COLORS[i % GAC_BGT_FALLBACK_COLORS.length]
+                    };
                 });
                 gacBgtDrawChart('sum', items, total, true);
-
-                var parts = [
-                    ['BGT ACOS', 'bgt_acos'], ['Bgt Views', 'bgt_views'], ['Bgt Cvr', 'bgt_cvr'],
-                    ['BGT PRC', 'bgt_prc'], ['SBGT', 'sbgt']
-                ];
-                var tbody = document.getElementById('gac-bgt-sum-tbody');
-                if (!tbody) return;
-                tbody.innerHTML = parts.map(function(p) {
-                    var n = 0, sum = 0;
-                    rows.forEach(function(r) {
-                        var v = parseFloat(r && r[p[1]]);
-                        if (!isFinite(v)) return;
-                        n++;
-                        sum += v;
-                    });
-                    var isTotal = p[1] === 'sbgt';
-                    return '<tr' + (isTotal ? ' class="fw-semibold"' : '') + '><td>' + gacBgtEsc(p[0]) + '</td>'
-                        + '<td class="text-center">' + n + '</td><td class="text-end">' + gacBgtMoney(sum) + '</td></tr>';
-                }).join('');
             }
 
             function gacBgtPaintAll() {
@@ -3959,7 +4194,7 @@
             // ---- Modal open: load every rule, then paint ----------------------------
             var gacBgtModalEl = document.getElementById('gacRawBgtRulesModal');
             var gacBgtSaveBtn = document.getElementById('gacRawBgtRulesSaveBtn');
-            var GAC_BGT_ERR_IDS = ['gacRawBgtRulesErr', 'gacRawSbgtRuleErr', 'gacRawSbidRuleErr'];
+            var GAC_BGT_ERR_IDS = ['gacRawBgtRulesErr', 'gacRawSbgtRuleErr'];
 
             function gacBgtClearErrors() {
                 GAC_BGT_ERR_IDS.forEach(function(id) { gacBgtShowErr(id, ''); });
@@ -3975,7 +4210,6 @@
                         new Promise(function(resolve) {
                             gacRefreshRuleFromServer(function() {
                                 gacLoadSbgtBandsFromRule((window.gacRawRule && window.gacRawRule.sbgt) || {});
-                                gacFillSbidForm((window.gacRawRule && window.gacRawRule.sbid) || {});
                                 resolve();
                             });
                         })

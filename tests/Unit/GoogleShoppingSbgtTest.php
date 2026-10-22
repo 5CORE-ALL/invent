@@ -17,10 +17,14 @@ class GoogleShoppingSbgtTest extends TestCase
         $this->assertSame(8, GoogleShoppingSbgt::sumFromParts(2, 3, 3, null));
     }
 
-    public function test_explicit_bgt_acos_zero_zeros_the_total(): void
+    public function test_bgt_acos_zero_adds_nothing_but_does_not_zero_the_total(): void
     {
-        $this->assertSame(0, GoogleShoppingSbgt::sumFromParts(5, 4, 0, 3));
+        // e.g. the 40–9999 ACOS band has BGT ACOS 0: SBGT is still Views + Cvr + PRC.
+        $this->assertSame(12, GoogleShoppingSbgt::sumFromParts(5, 4, 0, 3));
+        $this->assertSame(1, GoogleShoppingSbgt::sumFromParts(1, 0, 0, null));
+        // Nothing but zeros still sums to 0 (campaign is paused).
         $this->assertSame(0, GoogleShoppingSbgt::sumFromParts(null, null, 0, null));
+        $this->assertSame(0, GoogleShoppingSbgt::sumFromParts(0, 0, 0, 0));
     }
 
     public function test_all_missing_is_null(): void

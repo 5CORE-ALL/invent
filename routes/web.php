@@ -7209,6 +7209,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
         Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
+        Route::get('/google/shopping/google-shopping/badge-kpis', 'badgeKpis')->name('google.shopping.campaigns.badge.kpis');
+        Route::get('/google/shopping/google-shopping/badge-util-dots', 'badgeUtilDots')->name('google.shopping.campaigns.badge.util');
         Route::get('/google/shopping/google-shopping/sbgt-history', 'sbgtHistory')->name('google.shopping.campaigns.sbgt.history');
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');

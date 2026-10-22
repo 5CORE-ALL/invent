@@ -982,6 +982,8 @@ class GoogleShoppingCampaignsController extends Controller
         $invFilter = $this->normalizeInvFilter($request->input('filter_inv'));
         $collection = $this->filterRawGridRowsByInventory($collection, $invFilter, $invResolver);
         $summary = $this->summarizeRawGridRows($collection);
+        $summary = array_merge($summary, $this->rawGridL30TotalsAllStatuses($request, $collection, $invFilter, $invResolver));
+        $summary = array_merge($summary, $this->rawGridUtilizationAllCampaigns($request, $collection, $invFilter, $invResolver));
 
         [$sortField, $sortDir] = $this->rawGridSortFromRequest($request);
         $needsPhpSort = $sortField !== null && $this->isPhpSortField($sortField);
@@ -1650,7 +1652,11 @@ class GoogleShoppingCampaignsController extends Controller
     {
         $metric = strtolower((string) $request->input('metric', ''));
         $days = max(1, min(180, (int) $request->input('days', 30)));
-        $allowed = ['spend', 'clicks', 'sold', 'sales', 'acos', 'cvr', 'bgt', 'green_util_l7'];
+        $allowed = array_merge(
+            ['spend', 'clicks', 'sold', 'sales', 'acos', 'cvr', 'bgt', 'green_util_l7'],
+            self::KPI_BADGE_METRICS,
+            self::UTIL_BADGE_METRICS
+        );
         if (! in_array($metric, $allowed, true)) {
             return response()->json([
                 'success' => false,
@@ -1659,22 +1665,22 @@ class GoogleShoppingCampaignsController extends Controller
             ], 422);
         }
 
+        // Utilized Y / L7 badges: daily campaign counts per band (+ average utilisation).
+        if (in_array($metric, self::UTIL_BADGE_METRICS, true)) {
+            return $this->badgeHistoryUtil($metric, $days);
+        }
+
         // Green util (L7) = campaigns with U7% in the green band (66–99%). Daily
         // re-anchored counts — same model as u7DistributionHistory (U7 filter ignored).
         if ($metric === 'green_util_l7') {
             return $this->badgeHistoryGreenUtilL7($request, $days);
         }
 
-        $campaignIds = [];
-        $rawCampaignIds = (string) $request->input('campaign_ids', '');
-        foreach (explode(',', $rawCampaignIds) as $id) {
-            $d = preg_replace('/\D/', '', trim($id));
-            if ($d !== '' && strlen($d) <= 32) {
-                $campaignIds[$d] = true;
-            }
-            if (count($campaignIds) >= 1000) {
-                break;
-            }
+        $campaignIds = $this->parseBadgeCampaignIds($request);
+
+        // Daily BGT / Utilization / Avg Bid / Avg CVR% / ACOS% — yesterday (y_*) and rolling L30 (l30_*).
+        if (in_array($metric, self::KPI_BADGE_METRICS, true)) {
+            return $this->badgeHistoryKpi($metric, $days, array_keys($campaignIds));
         }
 
         // Persist the preceding completed US day's L30 snapshot when the lock is free.
@@ -1778,6 +1784,394 @@ class GoogleShoppingCampaignsController extends Controller
             'metric' => $metric,
             'days' => $days,
             'mode' => 'l30_avg',
+            'end_date' => $end->toDateString(),
+            'timezone' => 'America/Los_Angeles',
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Utilized Y / Utilized L7 badges. *_green / *_yellow / *_red / *_pink = campaigns per utilisation band,
+     * *_avg = average utilisation % (Σ spend ÷ Σ budget). y = that day's spend vs its budget, l7 = trailing 7 days.
+     */
+    public const UTIL_BADGE_METRICS = [
+        'util_y_green', 'util_y_yellow', 'util_y_red', 'util_y_pink', 'util_y_avg',
+        'util_l7_green', 'util_l7_yellow', 'util_l7_red', 'util_l7_pink', 'util_l7_avg',
+    ];
+
+    /**
+     * Per-day Utilized badge values for every day in [$start, $end] (all campaigns, every status — same scope
+     * as the badges). Same campaign set as the grid: a campaign counts on a day when it has a row in the 30 days
+     * up to it, and PARENT campaigns count from their first row on. Its budget is its latest row's budget.
+     *
+     * @return array<string, array<string, int|float>>  Y-m-d => metric => value
+     */
+    protected function utilizationDailySeries(Carbon $start, Carbon $end): array
+    {
+        $from = $start->copy()->subDays(29);
+        $query = DB::table('google_ads_campaigns')
+            ->whereNotNull('date')
+            ->whereNotNull('campaign_id')
+            ->where('date', '<=', $end->format('Y-m-d'))
+            ->where(function ($q) use ($from) {
+                $q->where('date', '>=', $from->format('Y-m-d'))
+                    ->orWhereRaw('UPPER(campaign_name) LIKE ?', ['PARENT %']);
+            });
+        $this->applyCampaignNameScope($query);
+        $rows = $query
+            ->groupBy('campaign_id', 'date')
+            ->selectRaw('campaign_id, `date` AS d, MAX(campaign_name) AS n, COALESCE(SUM(metrics_cost_micros), 0) / 1000000.0 AS spend, COALESCE(MAX(budget_amount_micros), 0) / 1000000.0 AS budget')
+            ->get();
+
+        $dayNo = static fn (string $ymd): int => intdiv((int) strtotime($ymd.' 00:00:00 UTC'), 86400);
+        $byCampaign = [];
+        $isParent = [];
+        foreach ($rows as $r) {
+            $cid = (string) $r->campaign_id;
+            $byCampaign[$cid][$dayNo(Carbon::parse((string) $r->d)->format('Y-m-d'))] = [(float) $r->spend, (float) $r->budget];
+            $isParent[$cid] = str_starts_with(strtoupper((string) $r->n), 'PARENT ');
+        }
+        $sortedDays = [];
+        foreach ($byCampaign as $cid => $days) {
+            $keys = array_keys($days);
+            sort($keys);
+            $sortedDays[$cid] = $keys;
+        }
+
+        $band = static function (float $ub): string {
+            if ($ub > 99) {
+                return 'pink';
+            }
+            if ($ub >= 66) {
+                return 'green';
+            }
+
+            return $ub >= 0.1 ? 'yellow' : 'red';
+        };
+
+        $out = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $dn = $dayNo($d->format('Y-m-d'));
+            $y = ['green' => 0, 'yellow' => 0, 'red' => 0, 'pink' => 0];
+            $l7 = ['green' => 0, 'yellow' => 0, 'red' => 0, 'pink' => 0];
+            $budgetSum = 0.0;
+            $spendY = 0.0;
+            $spend7 = 0.0;
+            foreach ($byCampaign as $cid => $days) {
+                // Latest row on or before this day (binary search over the campaign's sorted days).
+                $keys = $sortedDays[$cid];
+                $lo = 0;
+                $hi = count($keys) - 1;
+                $latest = null;
+                while ($lo <= $hi) {
+                    $mid = intdiv($lo + $hi, 2);
+                    if ($keys[$mid] <= $dn) {
+                        $latest = $keys[$mid];
+                        $lo = $mid + 1;
+                    } else {
+                        $hi = $mid - 1;
+                    }
+                }
+                if ($latest === null || ($dn - $latest >= 30 && ! $isParent[$cid])) {
+                    continue; // not in the grid that day
+                }
+                $budget = $days[$latest][1];
+                $sy = $days[$dn][0] ?? 0.0;
+                $s7 = 0.0;
+                for ($i = 0; $i < 7; $i++) {
+                    $s7 += $days[$dn - $i][0] ?? 0.0;
+                }
+                if ($budget > 0) {
+                    $budgetSum += $budget;
+                    $spendY += $sy;
+                    $spend7 += $s7;
+                }
+                $y[$band($budget > 0 ? $sy / $budget * 100.0 : 0.0)]++;
+                $l7[$band($budget > 0 ? $s7 / ($budget * 7.0) * 100.0 : 0.0)]++;
+            }
+
+            $row = [];
+            foreach (['green', 'yellow', 'red', 'pink'] as $b) {
+                $row['util_y_'.$b] = $y[$b];
+                $row['util_l7_'.$b] = $l7[$b];
+            }
+            $row['util_y_avg'] = $budgetSum > 0 ? round($spendY / $budgetSum * 100.0, 1) : 0.0;
+            $row['util_l7_avg'] = $budgetSum > 0 ? round($spend7 / ($budgetSum * 7.0) * 100.0, 1) : 0.0;
+            $out[$d->format('Y-m-d')] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * History chart for one Utilized badge (daily value per day).
+     */
+    protected function badgeHistoryUtil(string $metric, int $days): JsonResponse
+    {
+        $end = $this->badgeChartCompletedEndDate();
+        $start = $end->copy()->subDays($days - 1);
+        $series = Cache::remember(
+            'gads_util_series_v1:'.$this->channelKey().':'.$end->toDateString().':'.$days,
+            now()->addMinutes(10),
+            fn () => $this->utilizationDailySeries($start, $end)
+        );
+
+        $data = [];
+        foreach ($series as $ymd => $row) {
+            $data[] = [
+                'date' => Carbon::parse($ymd)->format('M d'),
+                'value' => $row[$metric] ?? 0,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'metric' => $metric,
+            'days' => $days,
+            'mode' => 'daily_count',
+            'end_date' => $end->toDateString(),
+            'timezone' => 'America/Los_Angeles',
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Dots for the Utilized badges: the value on the last completed US day and the day before.
+     */
+    public function badgeUtilDots(Request $request): JsonResponse
+    {
+        $end = $this->badgeChartCompletedEndDate();
+        $prevEnd = $end->copy()->subDay();
+        $series = Cache::remember(
+            'gads_util_dots_v1:'.$this->channelKey().':'.$end->toDateString(),
+            now()->addMinutes(10),
+            fn () => $this->utilizationDailySeries($prevEnd, $end)
+        );
+
+        return response()->json([
+            'success' => true,
+            'end_date' => $end->toDateString(),
+            'prev_date' => $prevEnd->toDateString(),
+            'values' => $series[$end->toDateString()] ?? [],
+            'prev' => $series[$prevEnd->toDateString()] ?? [],
+        ]);
+    }
+
+    /**
+     * Header KPI badges. `y_*` = the last completed US day, `l30_*` = rolling 30 days ending that day.
+     * bgt = daily budget, clicks / sold / sales / spend = totals, util = spend ÷ budget, bid = avg CPC (spend ÷ clicks), cvr = sold ÷ clicks, acos = spend ÷ sales.
+     */
+    public const KPI_BADGE_METRICS = [
+        'y_bgt', 'y_util', 'y_bid', 'y_cvr', 'y_acos', 'y_clicks', 'y_sold', 'y_sales', 'y_spend',
+        'l30_bgt', 'l30_util', 'l30_bid', 'l30_cvr', 'l30_acos',
+        'l30_bgt_total',
+    ];
+
+    /**
+     * KPI badges that always cover EVERY campaign (Active, Paused, Removed …), whatever rows the grid is showing.
+     * l30_bgt_total = the daily budgets summed over the last 30 days.
+     */
+    public const KPI_ALL_CAMPAIGN_METRICS = ['l30_bgt_total'];
+
+    /**
+     * @return array<string, true>  campaign_id => true (digits only, max 1000)
+     */
+    protected function parseBadgeCampaignIds(Request $request): array
+    {
+        $campaignIds = [];
+        foreach (explode(',', (string) $request->input('campaign_ids', '')) as $id) {
+            $d = preg_replace('/\D/', '', trim($id));
+            if ($d !== '' && strlen($d) <= 32) {
+                $campaignIds[$d] = true;
+            }
+            if (count($campaignIds) >= 1000) {
+                break;
+            }
+        }
+
+        return $campaignIds;
+    }
+
+    /**
+     * Per-day account totals from google_ads_campaigns for [$from, $to] (inclusive), keyed Y-m-d.
+     * bgt is the sum of the campaigns' daily budget on that day.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, array{spend: float, sales: float, clicks: float, sold: float, bgt: float}>
+     */
+    protected function dailyKpiTotals(Carbon $from, Carbon $to, array $campaignIds = []): array
+    {
+        $query = DB::table('google_ads_campaigns')
+            ->whereNotNull('date')
+            ->whereBetween('date', [$from->format('Y-m-d'), $to->format('Y-m-d')]);
+        $this->applyCampaignNameScope($query);
+        if ($campaignIds !== []) {
+            $query->whereIn('campaign_id', $campaignIds);
+        }
+
+        $rows = $query
+            ->groupBy('date')
+            ->selectRaw('
+                `date` AS d,
+                COALESCE(SUM(metrics_cost_micros), 0) / 1000000.0 AS spend,
+                COALESCE(SUM(ga4_actual_revenue), 0) AS actual_sales,
+                COALESCE(SUM(ga4_ad_sales), 0) AS ad_sales,
+                COALESCE(SUM(metrics_clicks), 0) AS clicks,
+                COALESCE(SUM(ga4_actual_sold_units), 0) AS actual_sold,
+                COALESCE(SUM(ga4_sold_units), 0) AS ads_sold,
+                COALESCE(SUM(budget_amount_micros), 0) / 1000000.0 AS bgt
+            ')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $key = Carbon::parse((string) $r->d)->format('Y-m-d');
+            $out[$key] = [
+                'spend' => (float) $r->spend,
+                'sales' => static::resolveSalesL30Value((float) $r->actual_sales, (float) $r->ad_sales),
+                'clicks' => (float) $r->clicks,
+                'sold' => static::resolveSoldL30Value((float) $r->actual_sold, (float) $r->ads_sold),
+                'bgt' => (float) $r->bgt,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Sum the daily totals for the $len days ending on $end (days without data add nothing).
+     *
+     * @param  array<string, array{spend: float, sales: float, clicks: float, sold: float, bgt: float}>  $daily
+     * @return array{spend: float, sales: float, clicks: float, sold: float, bgt: float, days: int}
+     */
+    protected function sumKpiWindow(array $daily, Carbon $end, int $len): array
+    {
+        $sum = ['spend' => 0.0, 'sales' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'bgt' => 0.0, 'days' => 0];
+        for ($i = 0; $i < $len; $i++) {
+            $row = $daily[$end->copy()->subDays($i)->format('Y-m-d')] ?? null;
+            if ($row === null) {
+                continue;
+            }
+            $sum['spend'] += $row['spend'];
+            $sum['sales'] += $row['sales'];
+            $sum['clicks'] += $row['clicks'];
+            $sum['sold'] += $row['sold'];
+            $sum['bgt'] += $row['bgt'];
+            $sum['days']++;
+        }
+
+        return $sum;
+    }
+
+    /**
+     * One KPI value from a summed window. $metric is y_* or l30_* (the prefix only picks the window).
+     *
+     * @param  array{spend: float, sales: float, clicks: float, sold: float, bgt: float, days: int}  $w
+     */
+    protected function kpiValueFromWindow(string $metric, array $w): float
+    {
+        $kind = substr($metric, (int) strpos($metric, '_') + 1);
+
+        switch ($kind) {
+            case 'bgt':
+                // Average daily budget across the window (one day for y_*).
+                return $w['days'] > 0 ? round($w['bgt'] / $w['days'], 2) : 0.0;
+            case 'bgt_total':
+                // Sum of the daily budgets across the whole window (30 days for l30_*).
+                return round($w['bgt'], 2);
+            case 'util':
+                return $w['bgt'] > 0 ? round(($w['spend'] / $w['bgt']) * 100, 1) : 0.0;
+            case 'clicks':
+                return round($w['clicks']);
+            case 'sold':
+                return round($w['sold']);
+            case 'sales':
+                return round($w['sales'], 2);
+            case 'spend':
+                return round($w['spend'], 2);
+            case 'bid':
+                return $w['clicks'] > 0 ? round($w['spend'] / $w['clicks'], 2) : 0.0;
+            case 'cvr':
+                return $w['clicks'] > 0 ? round(($w['sold'] / $w['clicks']) * 100, 1) : 0.0;
+            case 'acos':
+                if ($w['spend'] <= 0.0) {
+                    return 0.0;
+                }
+
+                return $w['sales'] < 1.0 ? 100.0 : round(($w['spend'] / $w['sales']) * 100, 1);
+        }
+
+        return 0.0;
+    }
+
+    protected function kpiWindowLength(string $metric): int
+    {
+        return str_starts_with($metric, 'l30_') ? 30 : 1;
+    }
+
+    /**
+     * Toolbar KPI badges: the value as of the last completed US day and as of the day before
+     * (the dot compares them). Optional ?campaign_ids=1,2 limits it to the visible grid rows.
+     */
+    public function badgeKpis(Request $request): JsonResponse
+    {
+        $cids = array_keys($this->parseBadgeCampaignIds($request));
+        $end = $this->badgeChartCompletedEndDate();
+        $prevEnd = $end->copy()->subDay();
+
+        // 30 days ending the day before yesterday ⇒ 31 days of data covers both windows.
+        $daily = $this->dailyKpiTotals($end->copy()->subDays(30), $end, $cids);
+        // All-campaign totals (no campaign filter) for the badges that ignore the grid's rows / Sts filter.
+        $dailyAll = $cids === [] ? $daily : $this->dailyKpiTotals($end->copy()->subDays(30), $end);
+
+        $values = [];
+        $prev = [];
+        foreach (self::KPI_BADGE_METRICS as $metric) {
+            $len = $this->kpiWindowLength($metric);
+            $src = in_array($metric, self::KPI_ALL_CAMPAIGN_METRICS, true) ? $dailyAll : $daily;
+            $values[$metric] = $this->kpiValueFromWindow($metric, $this->sumKpiWindow($src, $end, $len));
+            $prev[$metric] = $this->kpiValueFromWindow($metric, $this->sumKpiWindow($src, $prevEnd, $len));
+        }
+
+        return response()->json([
+            'success' => true,
+            'end_date' => $end->toDateString(),
+            'prev_date' => $prevEnd->toDateString(),
+            'timezone' => 'America/Los_Angeles',
+            'values' => $values,
+            'prev' => $prev,
+        ]);
+    }
+
+    /**
+     * History chart for one KPI badge: y_* = that day's value, l30_* = rolling 30 days ending that day.
+     *
+     * @param  list<string>  $campaignIds
+     */
+    protected function badgeHistoryKpi(string $metric, int $days, array $campaignIds): JsonResponse
+    {
+        $end = $this->badgeChartCompletedEndDate();
+        $start = $end->copy()->subDays($days - 1);
+        $len = $this->kpiWindowLength($metric);
+        if (in_array($metric, self::KPI_ALL_CAMPAIGN_METRICS, true)) {
+            $campaignIds = []; // every campaign, whatever the grid shows
+        }
+
+        $daily = $this->dailyKpiTotals($start->copy()->subDays($len - 1), $end, $campaignIds);
+
+        $data = [];
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $data[] = [
+                'date' => $d->format('M d'),
+                'value' => $this->kpiValueFromWindow($metric, $this->sumKpiWindow($daily, $d, $len)),
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'metric' => $metric,
+            'days' => $days,
+            'mode' => $len === 1 ? 'daily' : 'l30_avg',
             'end_date' => $end->toDateString(),
             'timezone' => 'America/Los_Angeles',
             'data' => $data,
@@ -2826,8 +3220,139 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * L30 Spend / Sales / Sold for the toolbar badges, counting every campaign status
+     * (Enabled, Paused and Removed). All other grid filters (search, UB%, ACOS, CTR/CVR, INV)
+     * still apply; only the status filter is ignored.
+     *
+     * @param  \Illuminate\Support\Collection<int, mixed>  $collection  rows for the current filters
+     * @param  \Closure(string): ?int  $invResolver
+     * @return array{spend_l30_all: float, sales_l30_all: float, sold_l30_all: float}
+     */
+    private function rawGridL30TotalsAllStatuses(Request $request, $collection, string $invFilter, \Closure $invResolver): array
+    {
+        $rows = $collection;
+        if ($this->normalizeStatFilter($request->input('filter_stat')) !== 'all') {
+            $allStatus = $request->duplicate();
+            $allStatus->merge(['filter_stat' => 'all']);
+            $query = $this->buildRawGridBaseQuery();
+            $this->applyRawGridDataFilters($query, $allStatus);
+            $this->applyRawGridSort($query, $allStatus);
+            $rows = $this->rememberRawGridRows($allStatus, $query);
+            $rows = $this->filterRawGridRowsByInventory($rows, $invFilter, $invResolver);
+        }
+
+        $spend = 0.0;
+        $sales = 0.0;
+        $sold = 0.0;
+        foreach ($rows as $row) {
+            $arr = self::rawGridRowToArray($row);
+            $spend += (float) ($arr['spend'] ?? 0);
+            $sales += $this->adjustChannelRowSales($arr, (float) ($arr['sales_l30_agg'] ?? 0));
+            $sold += (float) ($arr['sold_l30_agg'] ?? $arr['sum_ga4_actual_sold'] ?? 0);
+        }
+
+        return [
+            'spend_l30_all' => round($spend, 2),
+            'sales_l30_all' => round($sales, 2),
+            'sold_l30_all' => round($sold, 2),
+        ];
+    }
+
+    /**
+     * Utilized Y / Utilized L7 badges: counts over ALL campaigns — every status (Enabled, Paused, Removed)
+     * and ignoring the UB% filters (those would empty the other bands). Search, ACOS, CTR/CVR and INV
+     * filters still apply.
+     *
+     * @param  \Illuminate\Support\Collection<int, mixed>  $collection  rows for the current filters
+     * @param  \Closure(string): ?int  $invResolver
+     * @return array<string, int|float>
+     */
+    private function rawGridUtilizationAllCampaigns(Request $request, $collection, string $invFilter, \Closure $invResolver): array
+    {
+        $rows = $collection;
+        $narrowed = $this->normalizeStatFilter($request->input('filter_stat')) !== 'all'
+            || $this->normalizeUbColorFilter($request->input('filter_ub7')) !== 'all'
+            || $this->normalizeUbColorFilter($request->input('filter_ub1')) !== 'all'
+            || $this->normalizeUbColorFilter($request->input('filter_ub2')) !== 'all';
+        if ($narrowed) {
+            $allCampaigns = $request->duplicate();
+            $allCampaigns->merge(['filter_stat' => 'all', 'filter_ub7' => 'all', 'filter_ub1' => 'all', 'filter_ub2' => 'all']);
+            $query = $this->buildRawGridBaseQuery();
+            $this->applyRawGridDataFilters($query, $allCampaigns);
+            $this->applyRawGridSort($query, $allCampaigns);
+            $rows = $this->rememberRawGridRows($allCampaigns, $query);
+            $rows = $this->filterRawGridRowsByInventory($rows, $invFilter, $invResolver);
+        }
+
+        return $this->summarizeRawGridUtilization($rows);
+    }
+
+    /**
+     * Utilisation bands (same for Y = the grid's "1 UB%" and L7 = "U7%"): red = 0% (nothing spent / no budget),
+     * yellow = 0.1–66%, green = 66–99%, pink = over 99%. Under 0.1% shows as 0%, so it counts as red.
+     * Average = Σ spend ÷ Σ budget over the campaigns that have a budget.
+     *
      * @param  \Illuminate\Support\Collection<int, mixed>  $rows
-     * @return array{spi30: float, acos_pct: int, filtered_row_count: int, active_count: int, green_util_l7_count: int, avg_ctr: float, avg_cvr: float}
+     * @return array<string, int|float>
+     */
+    private function summarizeRawGridUtilization($rows): array
+    {
+        $y = ['green' => 0, 'yellow' => 0, 'red' => 0, 'pink' => 0];
+        $l7 = ['green' => 0, 'yellow' => 0, 'red' => 0, 'pink' => 0];
+        $budgetDaily = 0.0;
+        $spendL1 = 0.0;
+        $spendL7 = 0.0;
+        $total = 0;
+        $active = 0;
+        $band = static function (float $ub): string {
+            if ($ub > 99) {
+                return 'pink';
+            }
+            if ($ub >= 66) {
+                return 'green';
+            }
+
+            return $ub >= 0.1 ? 'yellow' : 'red';
+        };
+
+        foreach ($rows as $row) {
+            $arr = self::rawGridRowToArray($row);
+            $total++;
+            if (strtoupper(trim((string) ($arr['campaign_status'] ?? ''))) === 'ENABLED') {
+                $active++;
+            }
+            $bgtMicros = (float) ($arr['budget_amount_micros'] ?? 0);
+            $spend1 = (float) ($arr['l1_spend'] ?? 0);
+            $spend7 = (float) ($arr['l7_spend'] ?? 0);
+            $budget = $bgtMicros / 1000000.0;
+            if ($bgtMicros > 0) {
+                $budgetDaily += $budget;
+                $spendL1 += $spend1;
+                $spendL7 += $spend7;
+            }
+            $y[$band($bgtMicros > 0 ? $spend1 / $budget * 100.0 : 0.0)]++;
+            $l7[$band($bgtMicros > 0 ? $spend7 / ($budget * 7.0) * 100.0 : 0.0)]++;
+        }
+
+        return [
+            'util_total_count' => $total,
+            'util_active_count' => $active,
+            'avg_util_y_pct' => $budgetDaily > 0 ? round($spendL1 / $budgetDaily * 100.0, 1) : 0.0,
+            'avg_util_l7_pct' => $budgetDaily > 0 ? round($spendL7 / ($budgetDaily * 7.0) * 100.0, 1) : 0.0,
+            'green_util_y_count' => $y['green'],
+            'yellow_util_y_count' => $y['yellow'],
+            'red_util_y_count' => $y['red'],
+            'pink_util_y_count' => $y['pink'],
+            'green_util_l7_count' => $l7['green'],
+            'yellow_util_l7_count' => $l7['yellow'],
+            'red_util_l7_count' => $l7['red'],
+            'pink_util_l7_count' => $l7['pink'],
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, mixed>  $rows
+     * @return array{spi30: float, acos_pct: int, filtered_row_count: int, active_count: int, avg_ctr: float, avg_cvr: float}
      */
     private function summarizeRawGridRows($rows): array
     {
@@ -2837,7 +3362,6 @@ class GoogleShoppingCampaignsController extends Controller
         $sumImpr = 0.0;
         $sumSold = 0.0;
         $active = 0;
-        $green = 0;
         $count = 0;
 
         foreach ($rows as $row) {
@@ -2853,14 +3377,6 @@ class GoogleShoppingCampaignsController extends Controller
             if (strtoupper(trim((string) ($arr['campaign_status'] ?? ''))) === 'ENABLED') {
                 $active++;
             }
-            $bgtMicros = (float) ($arr['budget_amount_micros'] ?? 0);
-            $l7 = (float) ($arr['l7_spend'] ?? 0);
-            if ($bgtMicros > 0) {
-                $ub7 = $l7 / (($bgtMicros / 1000000.0) * 7.0) * 100.0;
-                if ($ub7 >= 66 && $ub7 <= 99) {
-                    $green++;
-                }
-            }
         }
 
         $acos = 0.0;
@@ -2875,7 +3391,6 @@ class GoogleShoppingCampaignsController extends Controller
             'acos_pct' => (int) round($acos),
             'filtered_row_count' => $count,
             'active_count' => $active,
-            'green_util_l7_count' => $green,
             'avg_ctr' => $sumImpr > 0 ? round(($sumClicks / $sumImpr) * 100.0, 2) : 0.0,
             'avg_cvr' => $sumClicks > 0 ? round(($sumSold / $sumClicks) * 100.0, 2) : 0.0,
         ];
