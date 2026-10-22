@@ -463,7 +463,7 @@ class Temu2ListingPublishService
         );
 
         $payloadV2 = [
-            'type' => (string) $this->shopConfig('goods_add_type', 'temu.local.goods.v2.add'),
+            'type' => $this->goodsAddTypes()[0],
             'language' => 'en',
             'goodsBasic' => [
                 'catId' => $catId,
@@ -501,47 +501,29 @@ class Temu2ListingPublishService
             'type' => $payloadV2['type'],
         ]);
 
-        $data = $this->temuCallBody($payloadV2, 120);
-        if (! ($data['success'] ?? false)) {
-            $fallback = $this->addViaV1($payloadV2);
-            if ($fallback['success'] ?? false) {
-                $data = $fallback['data'];
-            } else {
-                $msg = $this->apiErrorMessage($data);
-                $retrySn = $this->uniqueOutGoodsSn($primarySku, $primarySku.'-'.substr(md5($primarySku), 0, 6));
-                if ($this->isDuplicateSkuError($msg)) {
-                    if ($retrySn !== '' && strcasecmp($retrySn, $outGoodsSn) !== 0) {
-                        $payloadV2['goodsBasic']['outGoodsSn'] = $retrySn;
-                        $payloadV2['goodsBasic']['externalGoodsId'] = $retrySn;
-                    }
-                    $payloadV2['skuList'] = $this->withUniqueOutSkuSns($payloadV2['skuList'] ?? []);
-                    $retry = $this->temuCallBody($payloadV2, 120);
-                    if ($retry['success'] ?? false) {
-                        $data = $retry;
-                    } else {
-                        $retryFallback = $this->addViaV1($payloadV2);
-                        if ($retryFallback['success'] ?? false) {
-                            $data = $retryFallback['data'];
-                        } else {
-                            $msg = $this->apiErrorMessage($retry);
-                        }
-                    }
-                }
-                if (! ($data['success'] ?? false)) {
-                    $fallbackMsg = $this->apiErrorMessage($fallback['data'] ?? []);
-                    Log::warning('Temu2 publish add failed', [
-                        'parent' => $parentKey,
-                        'skus' => $skus,
-                        'v2' => $msg,
-                        'v1' => $fallbackMsg,
-                    ]);
-
-                    return [
-                        'success' => false,
-                        'message' => $msg !== '' ? $msg : $this->shopLabel().' add-goods API rejected the listing.',
-                    ];
-                }
+        $data = $this->submitGoodsAdd($payloadV2);
+        if (! ($data['success'] ?? false) && $this->isDuplicateSkuError($this->apiErrorMessage($data))) {
+            $retrySn = $this->uniqueOutGoodsSn($primarySku, $primarySku.'-'.substr(md5($primarySku), 0, 6));
+            if ($retrySn !== '' && strcasecmp($retrySn, $outGoodsSn) !== 0) {
+                $payloadV2['goodsBasic']['outGoodsSn'] = $retrySn;
+                $payloadV2['goodsBasic']['externalGoodsId'] = $retrySn;
             }
+            $payloadV2['skuList'] = $this->withUniqueOutSkuSns($payloadV2['skuList'] ?? []);
+            $data = $this->submitGoodsAdd($payloadV2);
+        }
+        if (! ($data['success'] ?? false)) {
+            $msg = $this->apiErrorMessage($data);
+            Log::warning('Temu2 publish add failed', [
+                'parent' => $parentKey,
+                'skus' => $skus,
+                'shop' => $this->shopLabel(),
+                'message' => $msg,
+            ]);
+
+            return [
+                'success' => false,
+                'message' => $msg !== '' ? $msg : $this->shopLabel().' add-goods API rejected the listing.',
+            ];
         }
 
         $goodsId = (string) ($data['result']['goodsId'] ?? '');
@@ -568,6 +550,69 @@ class Temu2ListingPublishService
             'sku_id' => $firstSkuId !== '' ? $firstSkuId : null,
             'skus' => $skus,
         ];
+    }
+
+    /**
+     * Add-goods API types to try. A 3000032 "no api access" response skips to the next type.
+     *
+     * @return list<string>
+     */
+    protected function goodsAddTypes(): array
+    {
+        $configured = trim((string) $this->shopConfig('goods_add_type', 'temu.local.goods.v2.add'));
+
+        return array_values(array_unique(array_filter([
+            $configured,
+            'temu.local.goods.v2.add',
+            'temu.local.goods.add',
+            'bg.local.goods.add',
+        ])));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payloadV2
+     * @return array<string, mixed>
+     */
+    private function submitGoodsAdd(array $payloadV2): array
+    {
+        $denied = null;
+        $other = null;
+        foreach ($this->goodsAddTypes() as $type) {
+            $data = $type === 'bg.local.goods.add'
+                ? ($this->addViaV1($payloadV2)['data'] ?? ['success' => false, 'errorMsg' => 'bg.local.goods.add failed.'])
+                : $this->temuCallBody(array_merge($payloadV2, ['type' => $type]), 120);
+            if ($data['success'] ?? false) {
+                return $data;
+            }
+            if ($this->isApiAccessDenied($data)) {
+                $denied ??= $data;
+                Log::info($this->shopLabel().' add-goods API is not authorized, trying the next type', [
+                    'type' => $type,
+                    'message' => $this->apiErrorMessage($data),
+                ]);
+                continue;
+            }
+            $other ??= $data;
+        }
+
+        return $other ?? $denied ?? [
+            'success' => false,
+            'errorMsg' => $this->shopLabel().' add-goods API rejected the listing.',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function isApiAccessDenied(array $data): bool
+    {
+        $code = trim((string) ($data['errorCode'] ?? ''));
+        $msg = strtolower(trim((string) ($data['errorMsg'] ?? $data['message'] ?? '')));
+
+        return $code === '3000032'
+            || str_contains($msg, 'don\'t have this api access')
+            || str_contains($msg, 'do not have this api access')
+            || str_contains($msg, 'dont have this api access');
     }
 
     /**
