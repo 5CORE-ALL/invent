@@ -2203,11 +2203,6 @@
                         const priceHtml = overLmp
                             ? `<span style="color:#dc3545;font-weight:600;${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`
                             : `<span style="font-weight: 600; ${bgColor} padding: 2px 6px; border-radius: 3px;">${formatted}</span>`;
-                        const amz = bestbuyAmazonPrice(rowData);
-                        const amzLbl = bestbuyHasAmzCap(rowData)
-                            ? '<span class="bestbuy-sprice-amz-lbl" title="S PRC raised to Amazon $'
-                                + Number(amz).toFixed(2) + '">Amz</span>'
-                            : '';
                         const blueTri = (live > 0 && Math.round(value * 100) !== Math.round(live * 100))
                             ? '<i class="fas fa-exclamation-triangle" style="color:#0d6efd;font-size:10px;margin-left:3px;" title="S PRC $'
                                 + value.toFixed(2) + ' ≠ BB Price $' + live.toFixed(2) + '"></i>'
@@ -2217,7 +2212,7 @@
                         const clearanceMark = isClearance
                             ? '<span class="bestbuy-sprice-clearance" title="Clearance" style="font-weight:800;color:#dc3545;margin-left:2px;">C</span>'
                             : '';
-                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${amzLbl}${redTri}${blueTri}</span>`;
+                        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">${priceHtml}${clearanceMark}${redTri}${blueTri}</span>`;
                     },
                     width: 120
                 },
