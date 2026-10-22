@@ -7207,6 +7207,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/bgt-prc-rule', 'saveBgtPrcRule')->name('google.shopping.campaigns.bgt-prc-rule.save');
         Route::post('/google/shopping/google-shopping/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.shopping.campaigns.push.sbgt');
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
+        Route::post('/google/shopping/google-shopping/toggle-status', 'toggleCampaignStatus')->name('google.shopping.campaigns.toggle.status');
         Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
         Route::get('/google/shopping/google-shopping/badge-kpis', 'badgeKpis')->name('google.shopping.campaigns.badge.kpis');

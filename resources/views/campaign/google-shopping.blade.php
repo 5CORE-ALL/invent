@@ -342,6 +342,15 @@
             color: #94a3b8;
             font-weight: 600;
         }
+        .gac-status-switch { margin: 0; padding: 0; min-height: 0; display: flex; justify-content: center; align-items: center; }
+        .gac-status-switch .form-check-input { margin: 0; float: none; cursor: pointer; width: 2.1em; height: 1.1em; }
+        .gac-status-switch .form-check-input:checked { background-color: #16a34a; border-color: #16a34a; }
+        .gac-status-switch .form-check-input:disabled { cursor: not-allowed; opacity: .45; }
+        #gac-filter-ver.gac-alert-match { background: #dcfce7; border-color: #16a34a; color: #166534; font-weight: 600; }
+        #gac-filter-ver.gac-alert-mismatch { background: #fee2e2; border-color: #dc2626; color: #991b1b; font-weight: 600; }
+        #gac-filter-idst.gac-alert-matched { background: #dcfce7; border-color: #16a34a; color: #166534; font-weight: 600; }
+        #gac-filter-idst.gac-alert-missing { background: #fef9c3; border-color: #eab308; color: #854d0e; font-weight: 600; }
+        #gac-filter-idst.gac-alert-mismatch { background: #fee2e2; border-color: #dc2626; color: #991b1b; font-weight: 600; }
         #gac-raw-filter-bar .gac-raw-filter-select {
             width: 86px;
             min-width: 0;
@@ -881,12 +890,20 @@
                                 </select>
                             </div>
                             <div class="gac-raw-filter-field">
-                                <label class="gac-raw-filter-label mb-0" for="gac-filter-idst">ID</label>
-                                <select id="gac-filter-idst" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by Item ID check against Merchant Center" title="Checks every campaign's Google Ads Item ID against Merchant Center. Matched = green, No ID found = yellow, Mismatch = red (ID column).">
+                                <label class="gac-raw-filter-label mb-0" for="gac-filter-idst">Alert</label>
+                                <select id="gac-filter-idst" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by Item ID check against Merchant Center" title="ID alert (checks Google Ads Item ID vs Merchant Center): Green = ID matched, Yellow = no ID found, Red = ID mismatch / lookup failed.">
                                     <option value="all" selected>All</option>
-                                    <option value="matched">✔ Matched</option>
-                                    <option value="missing">⚠ No ID</option>
-                                    <option value="mismatch">✖ Mismatch</option>
+                                    <option value="matched">🟢 Green</option>
+                                    <option value="missing">🟡 Yellow</option>
+                                    <option value="mismatch">🔴 Red</option>
+                                </select>
+                            </div>
+                            <div class="gac-raw-filter-field">
+                                <label class="gac-raw-filter-label mb-0" for="gac-filter-ver">Verif</label>
+                                <select id="gac-filter-ver" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by Verification" title="Verification: Items attached on Google Ads vs SKUs under the parent. Green = equal, Red = mismatch.">
+                                    <option value="all" selected>All</option>
+                                    <option value="match">🟢 Match</option>
+                                    <option value="mismatch">🔴 Mismatch</option>
                                 </select>
                             </div>
                         </div>
@@ -1184,6 +1201,7 @@
             const gacBgtPrcRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-prc-rule.save'));
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
+            const gacRawToggleStatusUrl = @json(route('google.shopping.campaigns.toggle.status'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
             const gacRawBadgeKpisUrl = @json(route('google.shopping.campaigns.badge.kpis'));
@@ -1213,6 +1231,9 @@
                 is_parent: true,
                 id_mismatch: true,
                 id_status: true,
+                ver_attached: true,
+                ver_total: true,
+                ver_status: true,
                 id_alert_title: true,
                 bgt_views_color: true,
                 bgt_views_label: true,
@@ -1322,6 +1343,137 @@
                     return '<i class="fas fa-exclamation-triangle" title="' + (tip || 'No Item ID found') + '" style="color:#eab308;font-size:15px;"></i>';
                 }
                 return '<i class="fas fa-exclamation-triangle" title="' + (tip || 'Item ID does not match Merchant Center') + '" style="color:#dc2626;font-size:15px;"></i>';
+            }
+
+            // Ads on/off switch: ON = ENABLED. Flipping it pushes PAUSED/ENABLED to Google Ads right away.
+            // If the row is one of several checked rows, the same change is applied to all checked rows (bulk).
+            var gacRawToggleBusy = false;
+            function gacRawStatusToggleFormatter(cell) {
+                var row = cell.getRow().getData() || {};
+                var cid = String(row.campaign_id || '').replace(/\D/g, '');
+                var st = String(row.campaign_status || '').toUpperCase();
+                var wrap = document.createElement('div');
+                wrap.className = 'form-check form-switch gac-status-switch';
+                var input = document.createElement('input');
+                input.type = 'checkbox';
+                input.className = 'form-check-input';
+                input.checked = st === 'ENABLED';
+                var locked = cid === '' || st === 'REMOVED';
+                input.disabled = locked;
+                input.title = locked ? 'Status cannot be changed (' + (st || 'no campaign id') + ')'
+                    : (st === 'ENABLED' ? 'Enabled — switch off to pause in Google Ads' : 'Not enabled (' + (st || '—') + ') — switch on to enable in Google Ads');
+                input.addEventListener('click', function(ev) { ev.stopPropagation(); });
+                input.addEventListener('change', function() {
+                    gacRawToggleStatus(cell.getRow(), input.checked);
+                });
+                wrap.appendChild(input);
+                return wrap;
+            }
+
+            function gacRawToggleStatus(clickedRow, wantEnabled) {
+                var target = wantEnabled ? 'ENABLED' : 'PAUSED';
+                if (gacRawToggleBusy) {
+                    clickedRow.reformat();
+                    return;
+                }
+                var selected = table && table.getSelectedRows ? table.getSelectedRows() : [];
+                var isBulk = selected.length > 1 && selected.indexOf(clickedRow) !== -1;
+                var rows = isBulk ? selected : [clickedRow];
+                var byCid = {};
+                rows.forEach(function(r) {
+                    var d = r.getData() || {};
+                    var cid = String(d.campaign_id || '').replace(/\D/g, '');
+                    var st = String(d.campaign_status || '').toUpperCase();
+                    if (cid && st !== 'REMOVED' && (isBulk ? st !== target : true)) byCid[cid] = r;
+                });
+                var ids = Object.keys(byCid);
+                var revert = function() { rows.forEach(function(r) { try { r.reformat(); } catch (e) {} }); };
+                if (!ids.length) {
+                    revert();
+                    if (isBulk) gacShowPushResult('Nothing to change', 'All checked campaigns are already ' + target + ' (or REMOVED).', 'success');
+                    return;
+                }
+                if (isBulk && !window.confirm((wantEnabled ? 'ENABLE' : 'PAUSE') + ' ' + ids.length + ' checked campaign(s) in Google Ads now?')) {
+                    revert();
+                    return;
+                }
+                gacRawToggleBusy = true;
+                gacShowPushLoading((wantEnabled ? 'Enabling' : 'Pausing') + ' ' + ids.length + ' campaign(s) in Google Ads…',
+                    'Updating Google Ads in chunks — keep this tab open.');
+                var chunkSize = 5;
+                var lines = [];
+                var okCount = 0, failCount = 0;
+                var chunks = [];
+                for (var i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+
+                var runChunk = function(idx) {
+                    if (idx >= chunks.length) return Promise.resolve();
+                    return fetch(gacRawToggleStatusUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': gacCsrfToken(),
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({ campaign_ids: chunks[idx], status: target }),
+                    })
+                        .then(function(res) {
+                            return res.json().catch(function() { return { results: [], message: 'HTTP ' + res.status }; })
+                                .then(function(b) { return { b: b, http: res.status }; });
+                        })
+                        .then(function(x) {
+                            var results = (x.b && x.b.results) || [];
+                            if (!results.length) {
+                                chunks[idx].forEach(function(cid) {
+                                    failCount++;
+                                    lines.push('[ERROR] ' + cid + ': ' + ((x.b && x.b.message) || ('HTTP ' + x.http)));
+                                });
+                            }
+                            results.forEach(function(r) {
+                                var label = (r.name ? r.name + ' ' : '') + '(' + r.campaign_id + ')';
+                                if (r.ok) {
+                                    okCount++;
+                                    lines.push('[OK] ' + label + ': ' + r.message);
+                                    var row = byCid[String(r.campaign_id)];
+                                    if (row) { try { row.update({ campaign_status: target }); } catch (e) {} }
+                                } else {
+                                    failCount++;
+                                    lines.push('[ERROR] ' + label + ': ' + r.message);
+                                }
+                            });
+                        })
+                        .catch(function(err) {
+                            chunks[idx].forEach(function(cid) {
+                                failCount++;
+                                lines.push('[ERROR] ' + cid + ': ' + (err && err.message ? err.message : err));
+                            });
+                        })
+                        .then(function() { return runChunk(idx + 1); });
+                };
+
+                runChunk(0).then(function() {
+                    gacRawToggleBusy = false;
+                    revert();
+                    var title = (wantEnabled ? 'Enable' : 'Pause') + ' in Google Ads — ' + okCount + ' updated'
+                        + (failCount ? ', ' + failCount + ' failed' : '');
+                    gacShowPushResult(title, lines.join('\n'), failCount ? 'error' : 'success');
+                    if (okCount && typeof gacRawRefreshTableUiSoon === 'function') gacRawRefreshTableUiSoon();
+                });
+            }
+
+            // Verification: "<Items attached> / <SKU count>" — green text when equal, red when not.
+            function gacRawVerificationFormatter(cell) {
+                var row = cell.getRow().getData() || {};
+                var st = String(row.ver_status || '');
+                if (st === '') return '';
+                var total = row.ver_total;
+                var att = row.ver_attached;
+                var attTxt = (att === null || att === undefined || att === '') ? '?' : String(att);
+                var color = st === 'match' ? '#16a34a' : '#dc2626';
+                var tip = 'Items attached on Google Ads: ' + attTxt + ' | SKUs under this parent: ' + (total === null || total === undefined ? '?' : total);
+                return '<span title="' + tip + '" style="color:' + color + ';font-weight:700;">' + attTxt + ' / ' + (total === null || total === undefined ? '?' : total) + '</span>';
             }
 
             // Re-run the Action column formatter after the average ACOS changes
@@ -1776,6 +1928,7 @@
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
                     filter_inv: gacRawFilterParamVal('gac-filter-inv'),
                     filter_id_status: gacRawFilterParamVal('gac-filter-idst'),
+                    filter_verification: gacRawFilterParamVal('gac-filter-ver'),
                     filter_ctr_min: gacRawRangeInputVal('gac-filter-ctr-min'),
                     filter_ctr_max: gacRawRangeInputVal('gac-filter-ctr-max'),
                     filter_cvr_min: gacRawRangeInputVal('gac-filter-cvr-min'),
@@ -2720,6 +2873,39 @@
                             formatter: gacRawIdCheckFormatter,
                         });
                     }
+                    // Pause / Enable switch right after the status column (bulk when several rows are checked).
+                    if (!defs.some(function(d) { return d.field === 'ads_toggle'; })) {
+                        var adsToggleDef = {
+                            title: 'Ads',
+                            field: 'ads_toggle',
+                            headerSort: false,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            width: 56,
+                            minWidth: 50,
+                            formatter: gacRawStatusToggleFormatter,
+                        };
+                        var stIdxForToggle = defs.findIndex(function(d) { return d.field === 'campaign_status'; });
+                        if (stIdxForToggle === -1) {
+                            defs.push(adsToggleDef);
+                        } else {
+                            defs.splice(stIdxForToggle + 1, 0, adsToggleDef);
+                        }
+                    }
+                    // Verification column (right after ID): "Items attached on Ads / SKUs under this parent".
+                    // Green when equal, red when not (populated when ID / Alert / Verification filter is active).
+                    if (!defs.some(function(d) { return d.field === 'verification'; })) {
+                        defs.push({
+                            title: 'Verification',
+                            field: 'verification',
+                            headerSort: false,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            width: 100,
+                            minWidth: 90,
+                            formatter: gacRawVerificationFormatter,
+                        });
+                    }
                     // Column order: BGT ACOS sits immediately before Bgt Views.
                     var acosIdx = defs.findIndex(function(d) { return d.field === 'bgt_acos'; });
                     if (acosIdx !== -1) {
@@ -2768,7 +2954,15 @@
                 },
             });
 
-            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat', 'gac-filter-inv', 'gac-filter-idst'].forEach(function(fid) {
+            ['gac-filter-idst', 'gac-filter-ver'].forEach(function(sid) {
+                var sel = document.getElementById(sid);
+                if (!sel) return;
+                sel.addEventListener('change', function() {
+                    sel.classList.remove('gac-alert-matched', 'gac-alert-missing', 'gac-alert-mismatch', 'gac-alert-match');
+                    if (sel.value !== 'all') sel.classList.add('gac-alert-' + sel.value);
+                });
+            });
+            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat', 'gac-filter-inv', 'gac-filter-idst', 'gac-filter-ver'].forEach(function(fid) {
                 var fel = document.getElementById(fid);
                 if (fel) {
                     fel.addEventListener('change', gacRawReloadGridForFilters);
@@ -2845,7 +3039,7 @@
              */
             // Column picker groups. Any column not listed lands in "Other".
             var GAC_COL_GROUPS = [
-                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'campaign_name', 'inventory', 'dil', 'price', 'id_check'] },
+                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification'] },
                 { key: 'bids', title: 'Bids', fields: ['cpc_L30', 'live_cpc', 'cpc_L7', 'cpc_L2', 'cpc_L1', 'lbid', 'sbid'] },
                 { key: 'util', title: 'Utilization', fields: ['spend', 'l7_spend', 'l2_spend', 'l1_spend', 'ub7', 'ub2', 'ub1'] },
                 { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'sbgt', 'lbgt'] },

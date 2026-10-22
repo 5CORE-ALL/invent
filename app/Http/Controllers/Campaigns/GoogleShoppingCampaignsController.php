@@ -414,6 +414,102 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Pause / enable campaigns straight from the grid's toggle switch (single or bulk).
+     * Each campaign is updated in Google Ads first; only on success is the local status changed.
+     *
+     * Request: `campaign_ids[]` (digits), `status` = ENABLED | PAUSED.
+     * Response: `{ ok, status, updated, skipped, failed, results: [{campaign_id, name, ok, status, message}] }`.
+     */
+    public function toggleCampaignStatus(Request $request): JsonResponse
+    {
+        $target = strtoupper(trim((string) $request->input('status', '')));
+        if (! in_array($target, ['ENABLED', 'PAUSED'], true)) {
+            return response()->json(['ok' => false, 'message' => 'status must be ENABLED or PAUSED.'], 422);
+        }
+
+        $ids = $this->validatedPushCampaignIds($request);
+        if ($ids === []) {
+            return response()->json(['ok' => false, 'message' => 'No campaign_ids to update.'], 422);
+        }
+        if (count($ids) > 50) {
+            return response()->json(['ok' => false, 'message' => 'Too many campaigns in one request (max 50). Send in chunks.'], 422);
+        }
+
+        @ini_set('max_execution_time', '120');
+        set_time_limit(120);
+
+        $customerId = config('services.google_ads.login_customer_id');
+        if (! $customerId) {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.'], 500);
+        }
+
+        // Latest known row per campaign (limited to this channel's campaigns).
+        $latestQuery = DB::table('google_ads_campaigns')->whereIn('campaign_id', $ids);
+        $this->applyCampaignNameScope($latestQuery);
+        $known = [];
+        foreach ($latestQuery->orderByDesc('date')->get(['campaign_id', 'campaign_name', 'campaign_status']) as $r) {
+            $cid = (string) $r->campaign_id;
+            if (! isset($known[$cid])) {
+                $known[$cid] = [
+                    'name' => (string) $r->campaign_name,
+                    'status' => strtoupper(trim((string) $r->campaign_status)),
+                ];
+            }
+        }
+
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $results = [];
+        $updated = $skipped = $failed = 0;
+
+        foreach ($ids as $cid) {
+            $cid = (string) $cid;
+            $info = $known[$cid] ?? null;
+            if ($info === null) {
+                $results[] = ['campaign_id' => $cid, 'name' => '', 'ok' => false, 'status' => null, 'message' => 'Campaign not found in this grid.'];
+                $skipped++;
+
+                continue;
+            }
+            if ($info['status'] === 'REMOVED') {
+                $results[] = ['campaign_id' => $cid, 'name' => $info['name'], 'ok' => false, 'status' => 'REMOVED', 'message' => 'Campaign is REMOVED in Google Ads and cannot be changed.'];
+                $skipped++;
+
+                continue;
+            }
+
+            try {
+                $resource = "customers/{$customerId}/campaigns/{$cid}";
+                if ($target === 'PAUSED') {
+                    $sbidService->pauseCampaign($customerId, $resource);
+                } else {
+                    $sbidService->enableCampaign($customerId, $resource);
+                }
+                GoogleAdsCampaign::where('campaign_id', $cid)->update(['campaign_status' => $target]);
+                $results[] = ['campaign_id' => $cid, 'name' => $info['name'], 'ok' => true, 'status' => $target, 'message' => $target === 'PAUSED' ? 'Paused in Google Ads.' : 'Enabled in Google Ads.'];
+                $updated++;
+            } catch (\Throwable $e) {
+                $results[] = ['campaign_id' => $cid, 'name' => $info['name'], 'ok' => false, 'status' => $info['status'], 'message' => GoogleAdsSbidService::briefGoogleError($e)];
+                $failed++;
+            }
+        }
+
+        if ($updated > 0) {
+            $this->bumpRawGridRowsCache();
+        }
+
+        return response()->json([
+            'ok' => $failed === 0 && $updated > 0,
+            'status' => $target,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'message' => "{$updated} updated, {$failed} failed, {$skipped} skipped.",
+            'results' => $results,
+        ]);
+    }
+
+    /**
      * Manually trigger `app:fetch-google-ads-campaigns` so missing rows can be back-filled
      * without waiting for the daily 09:00 IST cron. Runs synchronously — the request blocks
      * until the fetch completes or fails so the UI can show real success/failure.
@@ -1019,6 +1115,9 @@ class GoogleShoppingCampaignsController extends Controller
         $verifyId = $request->boolean('filter_verify_id');
         // ID filter (Matched / No ID / Mismatch): checks every filtered campaign against Merchant Center, so it needs the PHP path.
         $idStatus = $this->normalizeIdStatusFilter($request->input('filter_id_status'));
+        // Verification filter (attached Item IDs count vs SKU count): all / match (green) / mismatch (red).
+        $verFilter = $this->normalizeVerificationFilter($request->input('filter_verification'));
+        $needsIdCheck = $idStatus !== 'all' || $verFilter !== 'all';
 
         $query = $this->buildRawGridBaseQuery();
         $this->applyRawGridDataFilters($query, $request);
@@ -1045,8 +1144,8 @@ class GoogleShoppingCampaignsController extends Controller
 
         // Verify ID or PHP-only sort fields (INV / Dil / Views / Price / Bgt Views / BGT PRC / SBGT)
         // need hydrated rows before paginate.
-        if ($verifyId || $needsPhpSort || $idStatus !== 'all') {
-            if ($verifyId || $idStatus !== 'all') {
+        if ($verifyId || $needsPhpSort || $needsIdCheck) {
+            if ($verifyId || $needsIdCheck) {
                 @ini_set('max_execution_time', '120');
                 set_time_limit(120);
             }
@@ -1059,11 +1158,20 @@ class GoogleShoppingCampaignsController extends Controller
                 })->values();
                 $summary['filtered_row_count'] = $enriched->count();
             }
-            if ($idStatus !== 'all') {
+            if ($needsIdCheck) {
                 $this->attachMerchantIdVerification($enriched);
-                $enriched = $enriched->filter(static function (array $arr) use ($idStatus) {
-                    return ($arr['id_status'] ?? '') === $idStatus
-                        || ($idStatus === 'mismatch' && ($arr['id_status'] ?? '') === 'error');
+                $enriched = $enriched->filter(static function (array $arr) use ($idStatus, $verFilter) {
+                    if ($idStatus !== 'all') {
+                        $st = $arr['id_status'] ?? '';
+                        if ($st !== $idStatus && ! ($idStatus === 'mismatch' && $st === 'error')) {
+                            return false;
+                        }
+                    }
+                    if ($verFilter !== 'all' && ($arr['ver_status'] ?? '') !== $verFilter) {
+                        return false;
+                    }
+
+                    return true;
                 })->values();
                 $summary['filtered_row_count'] = $enriched->count();
             }
@@ -1090,14 +1198,17 @@ class GoogleShoppingCampaignsController extends Controller
                 $this->attachSbgtTrend($arr, $prevSbgtMap);
                 $this->attachNegativeTargetCount($arr, $negCounts);
                 $arr = $this->mergeLiveBidBgtColumns($arr, $liveStates);
-                if (! $verifyId && $idStatus === 'all') {
+                if (! $verifyId && ! $needsIdCheck) {
                     $arr['id_mismatch'] = false;
                     $arr['id_status'] = '';
                     $arr['id_alert_title'] = '';
+                    $arr['ver_attached'] = null;
+                    $arr['ver_total'] = null;
+                    $arr['ver_status'] = '';
                 }
                 $pageRows[$i] = $arr;
             }
-            if ($verifyId && $idStatus === 'all') {
+            if ($verifyId && ! $needsIdCheck) {
                 $this->attachMerchantIdVerification($pageRows);
             }
 
@@ -1136,6 +1247,9 @@ class GoogleShoppingCampaignsController extends Controller
             $arr['id_mismatch'] = false;
             $arr['id_status'] = '';
             $arr['id_alert_title'] = '';
+            $arr['ver_attached'] = null;
+            $arr['ver_total'] = null;
+            $arr['ver_status'] = '';
 
             return self::prepareRawRowForTabulator($arr);
         })->values();
@@ -2959,6 +3073,14 @@ class GoogleShoppingCampaignsController extends Controller
         return in_array($v, ['matched', 'missing', 'mismatch'], true) ? $v : 'all';
     }
 
+    /** Verification filter: match = green (attached Items = SKU count), mismatch = red. */
+    private function normalizeVerificationFilter(mixed $value): string
+    {
+        $v = is_string($value) ? strtolower(trim($value)) : 'all';
+
+        return in_array($v, ['match', 'mismatch'], true) ? $v : 'all';
+    }
+
     private function normalizeInvFilter(mixed $value): string
     {
         $v = is_string($value) ? strtolower(trim($value)) : 'all';
@@ -3869,6 +3991,9 @@ class GoogleShoppingCampaignsController extends Controller
             'id_mismatch',
             'id_status',
             'id_alert_title',
+            'ver_attached',
+            'ver_total',
+            'ver_status',
         ];
     }
 
@@ -4175,6 +4300,12 @@ class GoogleShoppingCampaignsController extends Controller
                     : 'Item ID mismatch vs Merchant Center.';
             }
 
+            // Verification: Items attached on Google Ads (distinct Item IDs) vs SKUs under this campaign/parent.
+            $skuTotal = count($skus);
+            $attached = $apiError !== null ? null : count($live);
+            $arr['ver_attached'] = $attached;
+            $arr['ver_total'] = $skuTotal;
+            $arr['ver_status'] = ($attached !== null && $skuTotal > 0 && $attached === $skuTotal) ? 'match' : 'mismatch';
             $arr['id_status'] = $status;
             $arr['id_mismatch'] = in_array($status, ['mismatch', 'error'], true);
             $arr['id_alert_title'] = $tip;
