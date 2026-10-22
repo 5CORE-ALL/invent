@@ -297,6 +297,7 @@
             </div>
         </div>
     </div>
+    @include('partials.bg-sprice-save')
 @endif
 
 @if($channelStdPrcPart === 'script' || $channelStdPrcPart === 'all')
@@ -2244,6 +2245,26 @@
             }
             return chain;
         }
+        /**
+         * Save and Apply: hand every S PRC value to the server in one go; a detached server process writes
+         * them through the channel's own save route, so the page can be closed right after.
+         * Falls back to the old browser-side chunked save if the hand-off fails.
+         * A page whose save route differs from chPromoCfg can set window.CH_BG_SPRICE_URL.
+         */
+        function chStdSavePricesBackground(updates) {
+            if (!updates.length) return $.Deferred().resolve().promise();
+            const cfg = (typeof chPromoCfg === 'object' && chPromoCfg) ? chPromoCfg : {};
+            const url = window.CH_BG_SPRICE_URL || (chStdIsEbay() ? cfg.saveSpriceUrl : cfg.saveSpriceBatchUrl);
+            if (!url || typeof window.bgSpriceSave !== 'function') return chStdSavePrices(updates);
+            const out = $.Deferred();
+            window.bgSpriceSave(url, updates, { extra: { skip_push: 1 }, label: 'Std prc vs dil' }).done(function() {
+                if (chStdIsEbay()) chStdMarkEbaySaved(updates);
+                out.resolve({ background: true });
+            }).fail(function() {
+                chStdSavePrices(updates).always(function() { out.resolve({ background: false }); });
+            });
+            return out.promise();
+        }
         function chStdOwnsSprice() {
             // Server-owned channels (AliExpress): a cron saves + pushes S PRC. The page never writes it on open.
             if (window.CH_STD_SERVER_OWNED === true) return false;
@@ -2319,6 +2340,11 @@
                 return;
             }
             $('#ch-sp-status').text('Saving…');
+            // Close the modal at once. The rules are saved and S PRC is written on the server, so the page can be
+            // closed after the "saved in background" message. Until the hand-off finishes the browser warns on close.
+            if (typeof window.bgSpriceCloseModal === 'function') window.bgSpriceCloseModal('chStdPrcModal');
+            if (typeof chPromoToast === 'function') chPromoToast('info', 'Saving Std prc vs dil…');
+            const chStdEndGuard = (typeof window.bgSpriceBegin === 'function') ? window.bgSpriceBegin() : function() {};
             $.ajax({
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
@@ -2350,22 +2376,35 @@
                     }
                     chStdRefresh();
                     chStdSaveHistory();
+                    chStdEndGuard();
+                    if (typeof chPromoToast === 'function') {
+                        chPromoToast('success', serverRefreshed
+                            ? 'Std prc vs dil saved. S PRC recalculated on the server — you can close this page.'
+                            : 'Std prc vs dil saved. The server applies S PRC — you can close this page.');
+                    }
                     return;
                 }
                 chStdLoadClearance().always(function() {
                     const updates = chStdWritePrices(draft);
-                    const done = function() {
+                    const done = function(handoff) {
                         chStdAutoApplied = true;
-                        $('#ch-sp-status').text('Saved. S PRC = Std Prc − Sum disc on ' + updates.length + ' SKU(s).');
+                        chStdEndGuard();
+                        const bg = !!(handoff && handoff.background);
+                        $('#ch-sp-status').text('Saved. S PRC = Std Prc − Sum disc on ' + updates.length + ' SKU(s).' + (bg ? ' Writing in the background.' : ''));
                         chStdRefresh();
                         chStdSaveHistory();
-                        if (typeof chPromoToast === 'function') chPromoToast('success', 'S PRC applied from Std prc vs dil');
+                        if (typeof chPromoToast === 'function') {
+                            chPromoToast('success', bg
+                                ? ('Std prc vs dil saved — S PRC for ' + updates.length + ' SKU(s) is being written in the background. You can close this page.')
+                                : 'S PRC applied from Std prc vs dil');
+                        }
                     };
-                    const pending = chStdSavePrices(updates);
+                    const pending = chStdSavePricesBackground(updates);
                     if (pending && typeof pending.always === 'function') pending.always(done);
                     else done();
                 });
             }).fail(function() {
+                chStdEndGuard();
                 $('#ch-sp-status').text('Save failed');
                 if (typeof chPromoToast === 'function') chPromoToast('error', 'Could not save Std prc vs dil');
             });

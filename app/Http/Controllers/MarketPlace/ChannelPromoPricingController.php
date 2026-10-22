@@ -1425,6 +1425,9 @@ class ChannelPromoPricingController extends Controller
 
     public function saveStdPrcVsDilRules(Request $request, string $channel): JsonResponse
     {
+        // Save and Apply: keep going (rules + server-side S PRC refresh) even if the page is closed mid-request.
+        ignore_user_abort(true);
+        @set_time_limit(0);
         $channel = $this->normalizeRulesChannel($channel);
         if ($channel === null) {
             return response()->json(['success' => false, 'message' => 'Unsupported channel'], 422);

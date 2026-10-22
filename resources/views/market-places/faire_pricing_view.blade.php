@@ -2276,6 +2276,17 @@
                     },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
+                        title: 'Ship', field: 'ship', sorter: 'number', headerSort: true, hozAlign: 'right', width: 62,
+                        headerTooltip: 'Ship from Shipping Master (the "Ship" column there = Ship + Handling + O-Size + PR charge).',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
+                            const v = frShipAmount(d);
+                            if (!(v > 0)) return '<span style="color:#6c757d;">–</span>';
+                            return '<span style="font-weight:600;">' + money(v) + '</span>';
+                        }
+                    },
+                    {
                         title: 'Sprice', field: 'sprice', sorter: 'number', headerSort: true, hozAlign: 'right',
                         editable: false,
                         headerTooltip: 'S PRC saved by the server job (faire:sprc-dil-auto-push, 04:45 and 20:45 IST, and every 10 min for blue triangles): Std Prc − Age/Dil/B/0 Sold (AL30)/CVR/Rev Disc (C = clearance). Std Prc is the maximum. Ship, LMP and Amz are not used. Blue triangle = S PRC ≠ Price.',
@@ -2289,17 +2300,6 @@
                             const formatted = money(value);
                             // Blue triangle now lives on the Sprice - Ship column (that is the price pushed).
                             return '<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:2px;"><span style="font-weight:600;">' + formatted + '</span>' + clearanceMark + '</span>';
-                        }
-                    },
-                    {
-                        title: 'Ship', field: 'ship', sorter: 'number', headerSort: true, hozAlign: 'right', width: 62,
-                        headerTooltip: 'Ship from Shipping Master (the "Ship" column there = Ship + Handling + O-Size + PR charge).',
-                        formatter: function(cell) {
-                            const d = cell.getRow().getData();
-                            if (frIsParentRow(d)) return '<span style="color:#6c757d;">–</span>';
-                            const v = frShipAmount(d);
-                            if (!(v > 0)) return '<span style="color:#6c757d;">–</span>';
-                            return '<span style="font-weight:600;">' + money(v) + '</span>';
                         }
                     },
                     {

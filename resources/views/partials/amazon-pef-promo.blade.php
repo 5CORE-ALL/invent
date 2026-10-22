@@ -838,6 +838,7 @@
             </div>
         </div>
     </div>
+    @include('partials.bg-sprice-save')
 
 @endif
 
@@ -3428,6 +3429,32 @@
         }
 
         /**
+         * Hand S PRC writes to the server ("Save and Apply" keeps running after the page is closed).
+         * jobs: [{ row, plan, sku }]. Falls back to the browser-side wipe-then-save if the hand-off fails.
+         * Returns a promise that resolves when the server has taken (or the browser has written) everything.
+         */
+        function amzPersistJobsInBackground(jobs, label) {
+            const out = $.Deferred();
+            jobs = (jobs || []).filter(function(j) { return j && j.sku && j.plan && j.plan.effective > 0; });
+            if (!jobs.length) return out.resolve(0).promise();
+            const browserSave = function() {
+                jobs.forEach(function(j) { amzPersistClearThenSprice(j.row, j.plan.effective, true); });
+                out.resolve(jobs.length);
+            };
+            if (typeof window.bgSpriceSave !== 'function') {
+                browserSave();
+                return out.promise();
+            }
+            window.bgSpriceSave('/save-amazon-sprice', jobs.map(function(j) {
+                return { sku: j.sku, sprice: j.plan.effective };
+            }), { mode: 'single', label: label || 'Amazon S PRC' }).done(function() {
+                jobs.forEach(function(j) { amzMarkPersistedSprice(j.row, j.plan.effective); });
+                out.resolve(jobs.length);
+            }).fail(browserSave);
+            return out.promise();
+        }
+
+        /**
          * Write S PRC from the live Push Prc stack (CVR Disc + Rev Disc + 0 Sold + Sprc Dil).
          * Each SKU uses its own matching data. Local save only — no Amazon API.
          */
@@ -3438,6 +3465,7 @@
             let ok = 0;
             let skipped = 0;
             let unmatched = 0;
+            const bgJobs = [];
             if (!targets.length) {
                 amzPefToast('error', toastLabel + ': no rows to apply');
                 return 0;
@@ -3457,24 +3485,21 @@
                 if (!plan || !(plan.effective > 0)) { skipped++; continue; }
                 plan.effective = amzFinalSpriceToSave(d, plan.effective);
                 if (!(plan.effective > 0)) { skipped++; continue; }
-                if (opts.skipWhenNoSale && plan.sale == null) {
-                    applyAmzPushPrcToSpriceRow(item.row, plan, null);
-                    amzPersistClearThenSprice(item.row, plan.effective, true);
-                    ok++;
-                    continue;
-                }
                 applyAmzPushPrcToSpriceRow(item.row, plan, null);
-                amzPersistClearThenSprice(item.row, plan.effective, true);
+                bgJobs.push({ row: item.row, plan: plan, sku: amzPefSku(d) });
                 ok++;
             }
             if (table) {
                 try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
             }
+            // Written by the server (detached process), so closing the page does not stop it.
+            amzPersistJobsInBackground(bgJobs, toastLabel);
             amzPefToast(
                 ok ? 'success' : 'error',
                 toastLabel + ' (' + label + '): S PRC → ' + ok + ' matching SKU(s)'
                     + (unmatched ? ('; ' + unmatched + ' no match') : '')
                     + (skipped ? ('; skipped ' + skipped) : '') + '.'
+                    + (ok ? ' Saving in the background — you can close this page.' : '')
             );
             amzScheduleRuleSpriceSync({ force: true, delay: 600 });
             return ok;
@@ -3635,9 +3660,26 @@
                 return done.promise();
             }
             amzBulkClearStoredSprice(clearSkus).always(function() {
-                saveJobs.forEach(function(job) {
-                    amzEnqueueRuleSpricePersist(job.row, job.plan);
-                });
+                const handOff = $.Deferred();
+                if (typeof window.bgSpriceSave === 'function' && saveJobs.length) {
+                    window.bgSpriceSave('/save-amazon-sprice', saveJobs.map(function(job) {
+                        return { sku: job.sku, sprice: job.plan.effective };
+                    }), { mode: 'single', label: 'Amazon S PRC' }).done(function() {
+                        saveJobs.forEach(function(job) {
+                            applyAmzPushPrcToSpriceRow(job.row, job.plan, null);
+                            amzMarkPersistedSprice(job.row, job.plan.effective);
+                        });
+                        handOff.resolve(true);
+                    }).fail(function() { handOff.resolve(false); });
+                } else {
+                    handOff.resolve(false);
+                }
+                handOff.done(function(handed) {
+                if (!handed) {
+                    saveJobs.forEach(function(job) {
+                        amzEnqueueRuleSpricePersist(job.row, job.plan);
+                    });
+                }
                 if (table) {
                     try { amzTableRedrawPreserveScroll(true); } catch (e) { /* ignore */ }
                 }
@@ -3653,6 +3695,7 @@
                     );
                 }
                 done.resolve(saveJobs.length);
+                });
             });
             return done.promise();
         }
@@ -4688,12 +4731,16 @@
                 const $btn = $(this);
                 const html = $btn.html();
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving…');
+                // Close the modal at once; the S PRC write continues on the server after the page is closed.
+                if (typeof window.bgSpriceCloseModal === 'function') window.bgSpriceCloseModal('amzDilGroiModal');
+                const amzDgEndGuard = (typeof window.bgSpriceBegin === 'function') ? window.bgSpriceBegin() : function() {};
                 try {
                     await saveAmzDilGroiRules();
-                    amzPefToast('success', 'Sprc Dil saved and applied');
+                    amzPefToast('success', 'Sprc Dil saved. S PRC is being written in the background — you can close this page.');
                 } catch (xhr) {
                     amzPefToast('error', 'Save failed: ' + ((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'error'));
                 } finally {
+                    amzDgEndGuard();
                     $btn.prop('disabled', false).html(html);
                 }
             });

@@ -596,6 +596,7 @@
             </div>
         </div>
     </div>
+    @include('partials.bg-sprice-save')
 @endif
 
 @if($amazonStdPrcPart === 'script' || $amazonStdPrcPart === 'all')
@@ -1516,6 +1517,9 @@
             if (typeof amzNoReviewsNoDiscount !== 'undefined') amzNoReviewsNoDiscount = !!draft.noReviewsNoDiscount;
             const status = $('#amz-sp-status');
             status.text('Saving…');
+            // Close the modal at once; S PRC is handed to the server and written there (page may be closed).
+            if (typeof window.bgSpriceCloseModal === 'function') window.bgSpriceCloseModal('amzStdPrcModal');
+            const amzSpEndGuard = (typeof window.bgSpriceBegin === 'function') ? window.bgSpriceBegin() : function() {};
             const stdSave = $.ajax({
                 url: '/amazon-std-prc-vs-dil',
                 method: 'POST',
@@ -1547,8 +1551,10 @@
                 status.text('Saved. S PRC = Std Prc − Sum disc.');
                 amzStdRefreshModal();
                 amzStdSaveDailyHistory();
-                if (typeof amzPefToast === 'function') amzPefToast('success', 'Std prc vs dil saved');
+                amzSpEndGuard();
+                if (typeof amzPefToast === 'function') amzPefToast('success', 'Std prc vs dil saved. S PRC is being written in the background — you can close this page.');
             }).fail(function() {
+                amzSpEndGuard();
                 amzStdApplied = false;
                 status.text('Save failed');
                 if (typeof amzPefToast === 'function') amzPefToast('error', 'Could not save Std prc vs dil');

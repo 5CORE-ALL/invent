@@ -659,6 +659,9 @@
                     formula: readFormula(),
                 };
                 if (status) status.textContent = 'Saving…';
+                // Save and Apply closes the modal at once; the rules are saved on the server.
+                const modalEl = document.getElementById('stdDilGroiModal');
+                if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
                 return fetch(@json(route('std.pricing.sprc-dil.save')), {
                     method: 'POST',
                     headers: {

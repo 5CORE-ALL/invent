@@ -1210,6 +1210,8 @@
         return ntoSaveSpriceChunks(updates || []);
     }
     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script'])
+    // Save and Apply (Std prc vs dil) writes S PRC through this route in a background server process.
+    window.CH_BG_SPRICE_URL = '{{ route("newtemuone.save.sprice") }}';
     async function ntoSaveSpriceChunks(updates) {
         const size = 200;
         for (let i = 0; i < updates.length; i += size) {

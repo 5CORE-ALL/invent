@@ -6035,6 +6035,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ads-pricing-analysis-data-views', [AdsMasterController::class, 'getViewPricingAnalysisData']);
     Route::post('/pricing-master/save', [AdsMasterController::class, 'save']);
 
+    // "Save and Apply" on every pricing page: write S PRC in a detached server process (page may close).
+    Route::post('/background-sprice-save', [\App\Http\Controllers\BackgroundSpriceSaveController::class, 'enqueue'])->name('background.sprice.save');
+    Route::get('/background-sprice-save/{id}', [\App\Http\Controllers\BackgroundSpriceSaveController::class, 'status'])->name('background.sprice.status');
+
     // Per-channel PRMT%/CPN%/DSC%/Appr/Push Prc (not amazon_data_view)
     Route::post('/channel-promo-pricing/save', [ChannelPromoPricingController::class, 'save'])->name('channel.promo.pricing.save');
     Route::get('/channel-promo-pricing/{channel}/dil-prmt', [ChannelPromoPricingController::class, 'dilPrmtRules'])->name('channel.promo.dil-prmt.get');

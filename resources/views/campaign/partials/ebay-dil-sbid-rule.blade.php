@@ -2302,6 +2302,9 @@ document.getElementById('dil-sbid-add-btn').addEventListener('click', function()
 document.getElementById('dil-sbid-apply-btn').addEventListener('click', function() {
     clearTimeout(dilSbidSaveTimer);
     dilSbidSave(true);
+    // Save and Apply closes the modal at once; the rules are saved by the server.
+    var dilSbidModalEl = document.getElementById('dilSbidRuleModal');
+    if (dilSbidModalEl && window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(dilSbidModalEl).hide();
 });
 document.querySelectorAll('.dil-sbid-push-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
