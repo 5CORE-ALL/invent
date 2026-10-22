@@ -31,7 +31,98 @@ class ListingManagerEbayTradingPublisher
             return ['success' => false, 'message' => $ctx['label'].' API credentials are not configured.'];
         }
 
+        $payload = self::ensureNumericCategory($payload);
+        $categoryId = trim((string) ($payload['primary_category_id'] ?? ''));
+        if (! preg_match('/^\d+$/', $categoryId)) {
+            return [
+                'success' => false,
+                'message' => 'eBay category must be a numeric leaf category. The saved category is not an eBay category ID. Search and select an eBay category, then publish again.',
+            ];
+        }
+
         return self::addFixedPriceItem($ctx, $payload);
+    }
+
+    /**
+     * eBay Trading CategoryID is a numeric leaf. A Reverb UUID or other marketplace
+     * id is replaced with the best eBay taxonomy match for the listing title.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private static function ensureNumericCategory(array $payload): array
+    {
+        $id = trim((string) ($payload['primary_category_id'] ?? ''));
+        $secondary = trim((string) ($payload['secondary_category_id'] ?? ''));
+        if ($secondary !== '' && ! preg_match('/^\d+$/', $secondary)) {
+            $payload['secondary_category_id'] = '';
+        }
+        if (preg_match('/^\d+$/', $id)) {
+            return $payload;
+        }
+
+        $resolved = self::suggestNumericCategory($payload);
+        if ($resolved['id'] === '') {
+            $payload['primary_category_id'] = '';
+
+            return $payload;
+        }
+        $payload['primary_category_id'] = $resolved['id'];
+        if ($resolved['path'] !== '') {
+            $payload['primary_category_path'] = $resolved['path'];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{id: string, path: string}
+     */
+    private static function suggestNumericCategory(array $payload): array
+    {
+        $empty = ['id' => '', 'path' => ''];
+        $ebay = new Ebay2ApiService();
+        if (! $ebay->isConfigured()) {
+            return $empty;
+        }
+
+        $queries = [];
+        $title = trim((string) preg_replace('/^\s*5\s*core\s+/i', '', (string) ($payload['title'] ?? '')));
+        if ($title !== '') {
+            $queries[] = mb_substr($title, 0, 80);
+        }
+        $path = trim((string) ($payload['primary_category_path'] ?? ''));
+        if ($path !== '') {
+            $leaf = trim((string) preg_replace('/^.*(?:\/|>|\|)/', '', str_replace(' / ', '/', $path)));
+            if ($leaf !== '' && ! in_array($leaf, $queries, true)) {
+                $queries[] = $leaf;
+            }
+        }
+
+        foreach ($queries as $query) {
+            try {
+                $result = $ebay->getCategorySuggestions($query);
+            } catch (\Throwable) {
+                continue;
+            }
+            foreach ($result['categories'] ?? [] as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $id = trim((string) ($row['id'] ?? ''));
+                if (! preg_match('/^\d+$/', $id)) {
+                    continue;
+                }
+
+                return [
+                    'id' => $id,
+                    'path' => trim((string) ($row['path'] ?? '')),
+                ];
+            }
+        }
+
+        return $empty;
     }
 
     /**
