@@ -766,8 +766,8 @@ class WayfairController extends Controller
                 $values = is_array($values) ? $values : [];
 
                 $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($productMaster->lp) ? (float) $productMaster->lp : 0);
-                // Ship from Product Master. The Std prc vs dil rule subtracts it from S PRC after the discount.
-                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($productMaster->ship) ? (float) $productMaster->ship : 0);
+                // Ship from Shipping Master (base + handling + o-size + PR). The Std prc vs dil rule subtracts it from S PRC after the discount.
+                $ship = \App\Support\ProductMasterShip::forPricing($values, $productMaster);
 
                 $al30  = (float) ($sale->al30 ?? 0);
                 $sales = (float) ($sale->sales ?? 0);

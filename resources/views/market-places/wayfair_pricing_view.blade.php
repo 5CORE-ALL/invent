@@ -1616,6 +1616,16 @@
                             return money(cell.getValue());
                         }
                     },
+                    {
+                        title: 'Ship', field: 'ship', sorter: 'number', hozAlign: 'right', width: 62,
+                        headerTooltip: 'Ship from Shipping Master (ship base + handling + o-size + PR). Std prc vs dil subtracts it from S PRC after the discount.',
+                        formatter: function(cell) {
+                            const d = cell.getRow().getData();
+                            if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            const v = parseFloat(cell.getValue()) || 0;
+                            return v > 0 ? money(v) : '<span style="color:#6c757d;">–</span>';
+                        }
+                    },
                     ...(typeof channelPromoAnalyticsColumns === 'function' ? channelPromoAnalyticsColumns() : (typeof channelPromoPricingColumns === 'function' ? channelPromoPricingColumns() : [])),
                     {
                         title: 'Sprc Dil',
