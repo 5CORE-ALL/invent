@@ -766,6 +766,8 @@ class WayfairController extends Controller
                 $values = is_array($values) ? $values : [];
 
                 $lp = isset($values['lp']) ? (float) $values['lp'] : (isset($productMaster->lp) ? (float) $productMaster->lp : 0);
+                // Ship from Product Master. The Std prc vs dil rule subtracts it from S PRC after the discount.
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($productMaster->ship) ? (float) $productMaster->ship : 0);
 
                 $al30  = (float) ($sale->al30 ?? 0);
                 $sales = (float) ($sale->sales ?? 0);
@@ -828,7 +830,8 @@ class WayfairController extends Controller
                     'al30'        => (int) round($al30),
                     'lp'          => round($lp, 2),
                     'LP_productmaster' => round($lp, 2),
-                    'ship'        => 0,
+                    'ship'        => round($ship, 2),
+                    'Ship_productmaster' => round($ship, 2),
                     'sprice'      => round($sprice, 2),
                     'sgpft'       => $sgpft,
                     'sroi'        => $sroi,
