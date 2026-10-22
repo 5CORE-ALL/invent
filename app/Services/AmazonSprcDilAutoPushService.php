@@ -377,6 +377,29 @@ class AmazonSprcDilAutoPushService
         if (! ($effective > 0)) {
             return null;
         }
+
+        // SNROI Cap: after all discounts, lower the price when its SNROI is above the Target SNROI % of the Dil slab.
+        // It only ever lowers a price. The LMP cap below can still bring it down further.
+        $snroiCap = StdPrcVsDilPricer::snroiCapTarget(
+            $dil,
+            is_array($stdPromo['snroi_cap'] ?? null) ? $stdPromo['snroi_cap'] : []
+        );
+        $snroiCapped = false;
+        if ($snroiCap !== null) {
+            $afterCap = StdPrcVsDilPricer::capPriceToSnroi(
+                $effective,
+                $snroiCap,
+                $lp,
+                AmazonDilGroiRule::TAKE_HOME,
+                $ship,
+                max(0.0, (float) $ads) / 100
+            );
+            if ($afterCap > 0 && $afterCap < $effective - 0.0001) {
+                $effective = $afterCap;
+                $sale = $afterCap;
+                $snroiCapped = true;
+            }
+        }
         $stdCeiling = $std;
         if ($totalDisc < 0 && $std > 0 && $sale !== null) {
             $stdCeiling = (float) $sale;
@@ -413,6 +436,7 @@ class AmazonSprcDilAutoPushService
             'sum_disc' => $totalDisc,
             'dil_groi' => $dilGroi,
             'lmp_capped' => $lmpCapped,
+            'snroi_capped' => $snroiCapped,
             'base' => $std > 0 ? round($std, 2) : round($sprice, 2),
         ];
     }
@@ -849,7 +873,7 @@ class AmazonSprcDilAutoPushService
      */
     protected function loadStdPrcVsDil(): array
     {
-        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => [], 'zero_sold_disc' => 0];
+        $empty = ['dil' => [], 'age' => [], 'cvr' => [], 'buss' => [], 'snroi_cap' => [], 'zero_sold_disc' => 0];
         try {
             $row = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_std_prc_vs_dil')->first();
         } catch (Throwable $e) {
@@ -865,6 +889,7 @@ class AmazonSprcDilAutoPushService
             'age' => is_array($saved['age'] ?? null) ? $saved['age'] : [],
             'cvr' => is_array($saved['cvr'] ?? null) ? $saved['cvr'] : [],
             'buss' => is_array($saved['buss'] ?? null) ? $saved['buss'] : [],
+            'snroi_cap' => StdPrcVsDilPricer::normalizeSnroiCapRules($saved['snroi_cap'] ?? null),
             'zero_sold_disc' => is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0,
         ];
     }

@@ -2989,8 +2989,20 @@ class OverallAmazonController extends Controller
                 ['min' => 75, 'max' => 125, 'disc' => 0],
                 ['min' => 125, 'max' => 9999, 'disc' => 0],
             ],
+            'snroi_cap' => [],
             'zero_sold_disc' => 0,
         ];
+    }
+
+    /**
+     * SNROI Cap: one row per Dil % slab with a Target SNROI %. A blank / non-numeric cap means no cap for that slab.
+     *
+     * @param  mixed  $incoming
+     * @return list<array{min:float,max:float,cap:float|null}>
+     */
+    private function amazonNormalizeStdPrcSnroiCap($incoming): array
+    {
+        return \App\Support\StdPrcVsDilPricer::normalizeSnroiCapRules($incoming);
     }
 
     /**
@@ -3088,6 +3100,7 @@ class OverallAmazonController extends Controller
                 'cvr' => $defaults['cvr'],
                 'buss' => $defaults['buss'],
                 'roi' => $defaults['roi'],
+                'snroi_cap' => $defaults['snroi_cap'],
                 'zero_sold_disc' => $defaults['zero_sold_disc'],
             ]);
         }
@@ -3100,6 +3113,7 @@ class OverallAmazonController extends Controller
             'cvr' => $this->amazonNormalizeStdPrcCvr($saved['cvr'] ?? null),
             'buss' => $this->amazonNormalizeStdPrcRanges($saved['buss'] ?? null, $defaults['buss']),
             'roi' => $this->amazonNormalizeStdPrcRanges($saved['roi'] ?? null, $defaults['roi']),
+            'snroi_cap' => $this->amazonNormalizeStdPrcSnroiCap($saved['snroi_cap'] ?? null),
             'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($saved['zero_sold_disc'] ?? null) ? (float) $saved['zero_sold_disc'] : 0),
         ]);
     }
@@ -3107,18 +3121,26 @@ class OverallAmazonController extends Controller
     public function amazonStdPrcVsDilSaveRules(Request $request)
     {
         $defaults = $this->amazonDefaultStdPrcVsDil();
+        // An old page that does not send snroi_cap must not wipe the caps already saved.
+        // The page sends snroi_cap_sent so that deleting every slab still clears them.
+        $existing = ChannelTabulatorColumnSetting::query()->where('channel_name', 'amazon_std_prc_vs_dil')->first();
+        $existingVis = is_array($existing?->visibility) ? $existing->visibility : [];
+        $snroiCapIn = ($request->has('snroi_cap') || $request->has('snroi_cap_sent'))
+            ? $request->input('snroi_cap')
+            : ($existingVis['snroi_cap'] ?? null);
         $payload = [
             'dil' => $this->amazonNormalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
             'age' => $this->amazonNormalizeStdPrcRanges($request->input('age'), $defaults['age']),
             'cvr' => $this->amazonNormalizeStdPrcCvr($request->input('cvr')),
             'buss' => $this->amazonNormalizeStdPrcRanges($request->input('buss'), $defaults['buss']),
             'roi' => $this->amazonNormalizeStdPrcRanges($request->input('roi'), $defaults['roi']),
+            'snroi_cap' => $this->amazonNormalizeStdPrcSnroiCap($snroiCapIn),
             'zero_sold_disc' => $this->amazonClampPromoDisc(is_numeric($request->input('zero_sold_disc')) ? (float) $request->input('zero_sold_disc') : 0),
         ];
 
         ChannelTabulatorColumnSetting::query()->updateOrCreate(
             ['channel_name' => 'amazon_std_prc_vs_dil'],
-            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'buss', 'roi', 'zero_sold']]
+            ['visibility' => $payload, 'column_order' => ['dil', 'age', 'cvr', 'buss', 'roi', 'zero_sold', 'snroi_cap']]
         );
 
         return response()->json([
@@ -3128,6 +3150,7 @@ class OverallAmazonController extends Controller
             'cvr' => $payload['cvr'],
             'buss' => $payload['buss'],
             'roi' => $payload['roi'],
+            'snroi_cap' => $payload['snroi_cap'],
             'zero_sold_disc' => $payload['zero_sold_disc'],
         ]);
     }

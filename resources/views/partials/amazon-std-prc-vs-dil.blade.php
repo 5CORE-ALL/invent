@@ -360,7 +360,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price.</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. SNROI Cap then lowers S PRC so a SKU's SNROI does not go above the Target SNROI % of its Dil slab.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -564,6 +564,29 @@
                             <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-age-add">Add range</button>
                         </div>
 
+                        <div class="amz-sp-col" data-amz-sp-panel="snroicap">
+                            <div class="amz-sp-col-head"><div class="amz-sp-pie-title" title="Slabs on the Dil %. Cap is the Target SNROI %. After all discounts, a SKU whose SNROI at S PRC is above the Cap of its Dil slab gets a lower S PRC that lands on the Cap. It only lowers prices. Leave the Cap blank to turn it off for that slab.">SNROI Cap</div><button type="button" class="amz-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></div>
+                            <div class="amz-sp-pie">
+                                <div class="amz-sp-pie-canvas"><canvas id="amz-sp-pie-snroicap"></canvas></div>
+                                <div class="amz-sp-pie-legend" id="amz-sp-leg-snroicap"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="text-center">Dil from</th>
+                                            <th class="text-center">Dil to</th>
+                                            <th class="text-center">Capped</th>
+                                            <th class="text-end">Cap SNROI %</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="amz-sp-snroicap-tbody"></tbody>
+                                </table>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary amz-sp-add" id="amz-sp-snroicap-add">Add slab</button>
+                        </div>
+
                         <div class="amz-sp-col" data-amz-sp-panel="all">
                             <div class="amz-sp-col-head"><div class="amz-sp-pie-title">All discounts</div><button type="button" class="amz-sp-min-btn" title="Minimize All discounts" aria-label="Minimize All discounts">−</button></div>
                             <div class="amz-sp-pie">
@@ -627,6 +650,8 @@
         let amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzStdBussRules = AMZ_STD_BUSS_DEFAULTS.map(function(r) { return Object.assign({}, r); });
         let amzStdZeroSoldDisc = 0;
+        // SNROI Cap: one { min, max, cap } per Dil slab. cap = Target SNROI %, null = off.
+        let amzStdSnroiCap = [];
         let amzStdCvrCfg = Object.assign({}, AMZ_STD_CVR_DEFAULT);
         const amzStdPieCharts = {};
         let amzStdPieGen = 0;
@@ -771,6 +796,93 @@
         window.amzStdCvrTrendDisc = amzStdCvrTrendDisc;
         window.fmtAmzStdDiscBadge = fmtAmzStdDiscBadge;
 
+        function amzStdNormCap(r) {
+            let min = Number(r && r.min);
+            let max = Number(r && r.max);
+            if (!isFinite(min) || !isFinite(max)) return null;
+            if (max < min) { const swap = min; min = max; max = swap; }
+            const raw = r ? r.cap : null;
+            let cap = (raw === null || raw === undefined || raw === '') ? NaN : Number(raw);
+            cap = isFinite(cap) ? Math.min(9999, Math.max(-100, cap)) : null;
+            return { min: min, max: max, cap: cap };
+        }
+        function amzStdSnroiCapRow(rule) {
+            const num = function(cls, val) {
+                return '<input type="number" step="0.1" class="form-control form-control-sm amz-sp-input ' + cls + '" value="' + amzStdEsc(val) + '">';
+            };
+            return '<tr><td class="text-center">' + num('amz-sp-snroicap-min', rule.min) + '</td>'
+                + '<td class="text-center">' + num('amz-sp-snroicap-max', rule.max) + '</td>'
+                + '<td class="amz-sp-count amz-sp-snroicap-count">0</td>'
+                + '<td class="text-end"><input type="number" min="-100" step="0.1" placeholder="off" class="form-control form-control-sm amz-sp-input amz-sp-snroicap-cap" value="' + amzStdEsc(rule.cap == null ? '' : rule.cap) + '"></td>'
+                + '<td class="text-center"><button type="button" class="btn btn-sm amz-sp-del amz-sp-snroicap-del" title="Remove">&times;</button></td></tr>';
+        }
+        function amzStdReadSnroiCap() {
+            const rules = [];
+            $('#amz-sp-snroicap-tbody tr').each(function() {
+                const rule = amzStdNormCap({
+                    min: $(this).find('.amz-sp-snroicap-min').val(),
+                    max: $(this).find('.amz-sp-snroicap-max').val(),
+                    cap: $(this).find('.amz-sp-snroicap-cap').val(),
+                });
+                if (rule) rules.push(rule);
+            });
+            return rules;
+        }
+        /** Paint the rows from the saved caps. With nothing saved yet, start from the Dil slabs (no cap). */
+        function amzStdPaintSnroiCap() {
+            let rules = (amzStdSnroiCap || []).slice();
+            if (!rules.length) {
+                rules = (amzStdDilRules || []).map(function(r) { return { min: r.min, max: r.max, cap: null }; });
+            }
+            $('#amz-sp-snroicap-tbody').html(rules.map(amzStdSnroiCapRow).join('')).data('painted', true);
+        }
+        /** Caps as typed in the open modal, else the saved ones. */
+        function amzStdSnroiCapRulesLive() {
+            if ($('#amz-sp-snroicap-tbody').data('painted')) return amzStdReadSnroiCap();
+            return amzStdSnroiCap;
+        }
+        /** Index of the cap slab this SKU's Dil % falls in, or -1. Slab edges match the Dil Disc slabs. */
+        function amzStdSnroiCapSlab(d, rules) {
+            const n = Number((typeof amzPefDil === 'function') ? amzPefDil(d) : 0);
+            if (!isFinite(n) || n < 0 || !rules || !rules.length) return -1;
+            const last = rules.length - 1;
+            for (let i = 0; i < rules.length; i++) {
+                const r = rules[i];
+                if (!r) continue;
+                const min = Number(r.min);
+                const max = Number(r.max);
+                if (!isFinite(min) || !isFinite(max)) continue;
+                const hit = Math.abs(max - min) < 0.00001 ? Math.abs(n - min) < 0.00001 : (n >= min && (i === last ? n <= max : n < max));
+                if (hit) return i;
+            }
+            return -1;
+        }
+        /**
+         * Lower a price whose SNROI is above the Target SNROI % of its Dil slab to the price that lands on the target.
+         * SNROI = ((price x (margin - ads%)) - ship - LP) / LP, the same number as the SNROI% column. Rounded down to the
+         * cent. Never raises a price. Same math as StdPrcVsDilPricer::capPriceToSnroi on the server.
+         */
+        function amzStdApplySnroiCap(d, price, rules) {
+            const p = Number(price);
+            if (!(p > 0)) return price;
+            rules = rules || amzStdSnroiCap;
+            const idx = amzStdSnroiCapSlab(d, rules);
+            if (idx < 0 || rules[idx].cap == null) return price;
+            const target = Number(rules[idx].cap);
+            const lp = parseFloat(d && d.LP_productmaster) || 0;
+            const ship = parseFloat(d && d.Ship_productmaster) || 0;
+            const margin = amzStdRowMargin(d);
+            const adsFrac = amzStdAdsPct() / 100;
+            const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
+            if (!(lp > 0) || !(net > 0)) return price;
+            const snroi = (((p * net) - ship - lp) / lp) * 100;
+            if (snroi <= target + 0.00001) return price;
+            const capped = Math.floor((((lp * (1 + target / 100)) + ship) / net) * 100 + 0.00001) / 100;
+            return (capped > 0 && capped < p) ? capped : price;
+        }
+        window.amzStdApplySnroiCap = amzStdApplySnroiCap;
+        window.amzStdSnroiCapRulesLive = amzStdSnroiCapRulesLive;
+
         function amzStdNormRange(r) {
             let min = Number(r && r.min);
             let max = Number(r && r.max);
@@ -839,6 +951,7 @@
                 cvr: cvr,
                 reviews: reviews,
                 buss: amzStdReadRanges('#amz-sp-buss-tbody', '.amz-sp-buss-min', '.amz-sp-buss-max', '.amz-sp-buss-disc'),
+                snroiCap: amzStdSnroiCapRulesLive(),
                 zeroSoldDisc: (function() { const n = Number($('#amz-sp-zs-disc').val()); return isFinite(n) ? amzStdDisc(n) : 0; })(),
                 reviewMax: reviewMax,
                 noReviewsNoDiscount: $('#amz-sp-no-reviews-no-disc').is(':checked'),
@@ -880,6 +993,7 @@
                 : [{ min: 1, max: 2, disc: 4 }, { min: 2, max: 3, disc: 4 }];
             amzStdPaintRanges('#amz-sp-rev-tbody', 'amz-sp-rev', reviews);
             amzStdPaintRanges('#amz-sp-buss-tbody', 'amz-sp-buss', amzStdBussRules);
+            amzStdPaintSnroiCap();
             $('#amz-sp-zs-disc').val(amzStdZeroSoldDisc);
             const maxRev = (typeof amzReviewDiscMax !== 'undefined') ? amzReviewDiscMax : 4;
             $('#amz-sp-review-max').val(maxRev);
@@ -1236,6 +1350,8 @@
             revCounts.noreviews = 0;
             draft.buss.forEach(function(r, i) { bussCounts['u' + i] = 0; });
             bussCounts.outside = 0;
+            const snroiCapCounts = { off: 0 };
+            (draft.snroiCap || []).forEach(function(r, i) { snroiCapCounts['n' + i] = 0; });
             const dollars = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
             const pctTotals = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0 };
             const skuHits = { age: 0, dil: 0, cvr: 0, rev: 0, buss: 0, zs: 0, all: 0 };
@@ -1313,7 +1429,16 @@
                 const sum = Math.min(99.99, Math.max(-100, ageDisc + dilDisc + cvrDisc + revDisc + bussDisc + zsDisc));
                 if (sum !== 0) skuHits.all++;
                 if (std > 0) {
-                    const sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
+                    let sprice = Math.round(std * (1 - (sum / 100)) * 100) / 100;
+                    // SNROI Cap: after all discounts, never let SNROI go above the Target SNROI % of the SKU's Dil slab.
+                    const capIdx = amzStdSnroiCapSlab(d, draft.snroiCap);
+                    const cappedPrice = amzStdApplySnroiCap(d, sprice, draft.snroiCap);
+                    if (capIdx >= 0 && cappedPrice < sprice) {
+                        snroiCapCounts['n' + capIdx] += 1;
+                        sprice = cappedPrice;
+                    } else {
+                        snroiCapCounts.off += 1;
+                    }
                     const profit = amzStdUnitProfit(d, sprice);
                     const net = profit - (sprice * adsPct / 100);
                     const lp = parseFloat(d.LP_productmaster) || 0;
@@ -1356,6 +1481,9 @@
             $('#amz-sp-buss-tbody tr').each(function(i) {
                 $(this).find('.amz-sp-buss-count').text(bussCounts['u' + i] || 0);
             });
+            $('#amz-sp-snroicap-tbody tr').each(function(i) {
+                $(this).find('.amz-sp-snroicap-count').text(snroiCapCounts['n' + i] || 0);
+            });
             $('#amz-sp-cvr-down2-count').text(cvrCounts.down2 || 0);
             $('#amz-sp-cvr-down-count').text(cvrCounts.down || 0);
             $('#amz-sp-cvr-flat-count').text(cvrCounts.flat || 0);
@@ -1379,6 +1507,9 @@
             const bussSlices = draft.buss.map(function(r, i) {
                 return { key: 'u' + i, label: r.min + '–' + r.max, color: AMZ_STD_PIE_COLORS[i % AMZ_STD_PIE_COLORS.length] };
             }).concat([{ key: 'outside', label: 'Outside', color: '#cbd5e1' }]);
+            const snroiCapSlices = (draft.snroiCap || []).map(function(r, i) {
+                return { key: 'n' + i, label: r.min + '–' + r.max + (r.cap == null ? ' · off' : ' · ' + r.cap + '%'), color: AMZ_STD_PIE_COLORS[i % AMZ_STD_PIE_COLORS.length] };
+            }).concat([{ key: 'off', label: 'Not capped', color: '#cbd5e1' }]);
             const cvrSlices = [
                 { key: 'down2', label: 'Down < ' + draft.cvr.down2_lt + '%', color: '#9f1239' },
                 { key: 'down', label: 'Down < ' + draft.cvr.down_lt + '%', color: '#dc3545' },
@@ -1410,6 +1541,7 @@
                 { id: 'amz-sp-pie-dil', slices: dilSlices, counts: dilCounts },
                 { id: 'amz-sp-pie-rev', slices: revSlices, counts: revCounts },
                 { id: 'amz-sp-pie-buss', slices: bussSlices, counts: bussCounts },
+                { id: 'amz-sp-pie-snroicap', slices: snroiCapSlices, counts: snroiCapCounts },
                 { id: 'amz-sp-pie-zs', slices: zsSlices, counts: zsCounts },
                 { id: 'amz-sp-pie-cvr', slices: cvrSlices, counts: cvrCounts },
                 { id: 'amz-sp-pie-age', slices: ageSlices, counts: ageCounts },
@@ -1419,6 +1551,7 @@
             amzStdLegend('#amz-sp-leg-dil', dilSlices, dilCounts, 'dil');
             amzStdLegend('#amz-sp-leg-rev', revSlices, revCounts, 'rev');
             amzStdLegend('#amz-sp-leg-buss', bussSlices, bussCounts, 'buss');
+            amzStdLegend('#amz-sp-leg-snroicap', snroiCapSlices, snroiCapCounts, 'snroicap');
             amzStdLegend('#amz-sp-leg-zs', zsSlices, zsCounts, 'zs');
             amzStdLegend('#amz-sp-leg-cvr', cvrSlices, cvrCounts, 'cvr');
             amzStdLegend('#amz-sp-leg-age', ageSlices, ageCounts, 'age');
@@ -1487,6 +1620,7 @@
                 amzStdAgeRules = (res.age || AMZ_STD_AGE_DEFAULTS).map(function(r) { return amzStdNormRange(r); }).filter(Boolean);
                 amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 amzStdBussRules = (res.buss || AMZ_STD_BUSS_DEFAULTS).map(function(r) { return amzStdNormRange(r); }).filter(Boolean);
+                amzStdSnroiCap = (res.snroi_cap || []).map(amzStdNormCap).filter(Boolean);
                 amzStdZeroSoldDisc = isFinite(Number(res.zero_sold_disc)) ? amzStdDisc(res.zero_sold_disc) : 0;
                 if (!amzStdDilRules.length) amzStdDilRules = AMZ_STD_DIL_DEFAULTS.map(function(r) { return Object.assign({}, r); });
                 if (!amzStdAgeRules.length) amzStdAgeRules = AMZ_STD_AGE_DEFAULTS.map(function(r) { return Object.assign({}, r); });
@@ -1505,6 +1639,7 @@
             amzStdAgeRules = draft.age;
             amzStdCvrCfg = draft.cvr;
             amzStdBussRules = draft.buss.length ? draft.buss : amzStdBussRules;
+            amzStdSnroiCap = draft.snroiCap || [];
             amzStdZeroSoldDisc = amzStdDisc(draft.zeroSoldDisc);
             if (typeof amzReviewDiscRules !== 'undefined') {
                 amzReviewDiscRules = draft.reviews.map(function(r) {
@@ -1524,7 +1659,7 @@
                 url: '/amazon-std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof amzPefCsrf === 'function' ? amzPefCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, buss: draft.buss, snroi_cap_sent: 1, snroi_cap: (draft.snroiCap || []).map(function(r) { return { min: r.min, max: r.max, cap: r.cap == null ? '' : r.cap }; }), zero_sold_disc: draft.zeroSoldDisc },
             });
             const revSave = $.ajax({
                 url: '/amazon-review-disc',
@@ -1538,6 +1673,7 @@
                 if (res && res.age) amzStdAgeRules = res.age.map(amzStdNormRange).filter(Boolean);
                 if (res && res.cvr) amzStdCvrCfg = amzStdNormCvr(res.cvr);
                 if (res && res.buss) amzStdBussRules = res.buss.map(amzStdNormRange).filter(Boolean);
+                if (res && res.snroi_cap) amzStdSnroiCap = res.snroi_cap.map(amzStdNormCap).filter(Boolean);
                 if (res && isFinite(Number(res.zero_sold_disc))) amzStdZeroSoldDisc = amzStdDisc(res.zero_sold_disc);
                 if (typeof table !== 'undefined' && table && typeof amzTableRedrawPreserveScroll === 'function') {
                     amzTableRedrawPreserveScroll(true);
@@ -1679,6 +1815,8 @@
             });
             $('#amzStdPrcModal').off('hidden.bs.modal.amzsp').on('hidden.bs.modal.amzsp', function() {
                 amzStdPieGen++;
+                // Unsaved cap edits must not leak into the page's pricing after the modal closes.
+                $('#amz-sp-snroicap-tbody').removeData('painted');
                 $('#amz-sp-hist-wrap').removeClass('is-open');
                 if (amzStdHistChart) { amzStdHistChart.destroy(); amzStdHistChart = null; }
                 Object.keys(amzStdPieCharts).forEach(function(id) {
@@ -1720,7 +1858,14 @@
                 amzStdPaintRanges('#amz-sp-buss-tbody', 'amz-sp-buss', rules);
                 amzStdRefreshModal();
             });
-            $(document).off('click.amzspdel').on('click.amzspdel', '#amzStdPrcModal .amz-sp-dil-del, #amzStdPrcModal .amz-sp-age-del, #amzStdPrcModal .amz-sp-rev-del, #amzStdPrcModal .amz-sp-buss-del', function() {
+            $('#amz-sp-snroicap-add').off('click.amzsp').on('click.amzsp', function() {
+                const rules = amzStdReadSnroiCap();
+                const last = rules.length ? rules[rules.length - 1].max : 0;
+                rules.push({ min: last, max: last + 25, cap: null });
+                $('#amz-sp-snroicap-tbody').html(rules.map(amzStdSnroiCapRow).join('')).data('painted', true);
+                amzStdRefreshModal();
+            });
+            $(document).off('click.amzspdel').on('click.amzspdel', '#amzStdPrcModal .amz-sp-snroicap-del, #amzStdPrcModal .amz-sp-dil-del, #amzStdPrcModal .amz-sp-age-del, #amzStdPrcModal .amz-sp-rev-del, #amzStdPrcModal .amz-sp-buss-del', function() {
                 $(this).closest('tr').remove();
                 amzStdRefreshModal();
             });

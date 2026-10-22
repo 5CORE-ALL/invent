@@ -3180,6 +3180,7 @@
             if (plan.reviewDisc) parts.push('Rev Disc ' + plan.reviewDisc + '%');
             if (plan.bussDisc) parts.push('B Disc ' + plan.bussDisc + '%');
             if (plan.zeroSoldDisc) parts.push('0 Sold ' + plan.zeroSoldDisc + '%');
+            if (plan.snroiCapped) parts.push('SNROI cap');
             if (plan.lmpAboveStd) parts.push('capped at Std — review Std Prc');
             else if (plan.stdCapped) parts.push('Std cap');
             if (plan.lmpCapped) parts.push('LMP cap');
@@ -3216,6 +3217,17 @@
                 if (!(sale >= 0.01)) sale = null;
             }
             let effective = sale != null ? sale : std;
+            // SNROI Cap: after all discounts, lower the price when its SNROI is above the Target SNROI % of the
+            // SKU's Dil slab. Only ever lowers. The sale price follows so the push writes the capped price.
+            let snroiCapped = false;
+            if (effective > 0 && typeof amzStdApplySnroiCap === 'function') {
+                const afterCap = amzPefRound2(amzStdApplySnroiCap(d, effective));
+                if (afterCap > 0 && afterCap < effective - 0.0001) {
+                    effective = afterCap;
+                    sale = afterCap;
+                    snroiCapped = true;
+                }
+            }
             const saleBase = effective;
             if (!(saleBase > 0)) return null;
             if (!(effective > 0)) return null;
@@ -3243,6 +3255,7 @@
                 dilGroiCvrAdj: stack.dilGroiCvrAdj,
                 dilGroiLabel: stack.dilGroiLabel,
                 totalDisc: stack.totalDisc,
+                snroiCapped: snroiCapped,
                 effective: effective,
             };
         }

@@ -343,6 +343,90 @@ class AmazonSprcDilAutoPushServiceTest extends TestCase
         ]), 0.001);
     }
 
+    public function test_snroi_cap_lowers_price_to_the_dil_slab_target(): void
+    {
+        // SNROI at $100 = (100 x 0.80 - 8 - 40) / 40 = 80%. Cap 50% -> (40 x 1.5 + 8) / 0.80 = $85.
+        $out = $this->compute($this->snroiRow(), 0.0, ['snroi_cap' => $this->snroiSlabs(50)]);
+
+        $this->assertNotNull($out);
+        $this->assertTrue($out['snroi_capped']);
+        $this->assertEqualsWithDelta(85.0, $out['sprice'], 0.001);
+    }
+
+    public function test_snroi_cap_counts_ads_percent_in_the_snroi(): void
+    {
+        // Ads 5% -> net margin 0.75. Cap 50% -> (40 x 1.5 + 8) / 0.75 = $90.66 (rounded down to the cent).
+        $out = $this->compute($this->snroiRow(), 5.0, ['snroi_cap' => $this->snroiSlabs(50)]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(90.66, $out['sprice'], 0.001);
+    }
+
+    public function test_snroi_cap_leaves_a_price_already_under_the_target(): void
+    {
+        $out = $this->compute($this->snroiRow(), 0.0, ['snroi_cap' => $this->snroiSlabs(200)]);
+
+        $this->assertNotNull($out);
+        $this->assertFalse($out['snroi_capped']);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
+    }
+
+    public function test_snroi_cap_blank_slab_means_no_cap(): void
+    {
+        $out = $this->compute($this->snroiRow(), 0.0, ['snroi_cap' => $this->snroiSlabs(null)]);
+
+        $this->assertNotNull($out);
+        $this->assertFalse($out['snroi_capped']);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
+    }
+
+    public function test_snroi_cap_uses_the_slab_of_the_sku_dil(): void
+    {
+        // Dil 40 is outside the 0.1-10 slab that carries the cap, so nothing is capped.
+        $out = $this->compute(array_merge($this->snroiRow(), ['dil' => 40]), 0.0, ['snroi_cap' => $this->snroiSlabs(50)]);
+
+        $this->assertNotNull($out);
+        $this->assertFalse($out['snroi_capped']);
+        $this->assertEqualsWithDelta(100.0, $out['sprice'], 0.001);
+    }
+
+    public function test_snroi_cap_applies_after_the_discounts(): void
+    {
+        // 10% off Std = $90 (SNROI 65%). Cap 50% still lowers it to $85.
+        $out = $this->compute($this->snroiRow(), 0.0, [
+            'dil' => [['min' => 0.1, 'max' => 10, 'disc' => 10]],
+            'snroi_cap' => $this->snroiSlabs(50),
+        ]);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(85.0, $out['sprice'], 0.001);
+    }
+
+    /** @return array<string, mixed> */
+    private function snroiRow(): array
+    {
+        return [
+            'inv' => 10,
+            'dil' => 2.5,
+            'lp' => 40,
+            'ship' => 8,
+            'standard_price' => 100,
+            'cvr' => 0,
+            'review_count' => 0,
+            'lmp' => 0,
+        ];
+    }
+
+    /** @return list<array{min:float,max:float,cap:float|null}> */
+    private function snroiSlabs(?float $cap): array
+    {
+        return [
+            ['min' => 0.0, 'max' => 0.0, 'cap' => null],
+            ['min' => 0.1, 'max' => 10.0, 'cap' => $cap],
+            ['min' => 10.0, 'max' => 9999.0, 'cap' => null],
+        ];
+    }
+
     public function test_clearance_sku_gets_no_sprice(): void
     {
         $out = $this->compute([

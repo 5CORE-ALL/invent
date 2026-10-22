@@ -179,7 +179,17 @@ class StdPrcVsDilPricer
     /** Target SNROI % of the Dil slab this value falls in. Null when the slab has no cap or no slab matches. */
     private function snroiCapFor(float $dil): ?float
     {
-        $rules = $this->rules['snroi_cap'] ?? [];
+        return self::snroiCapTarget($dil, $this->rules['snroi_cap'] ?? []);
+    }
+
+    /**
+     * Target SNROI % of the Dil slab a value falls in. Null when the slab has no cap or no slab matches.
+     * Shared with the Amazon auto-push, which keeps its own rules store.
+     *
+     * @param  list<array{min:float,max:float,cap:float|null}>  $rules
+     */
+    public static function snroiCapTarget(float $dil, array $rules): ?float
+    {
         if ($rules === [] || $dil < 0) {
             return null;
         }
