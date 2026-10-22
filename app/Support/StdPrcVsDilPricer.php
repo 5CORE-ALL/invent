@@ -129,6 +129,15 @@ class StdPrcVsDilPricer
         if (! ($price > 0)) {
             return null;
         }
+        // Channels whose S PRC is "calc − Ship" (TopDawg): take Ship off BEFORE the SNROI cap, so the cap
+        // judges the S PRC that is really saved and pushed.
+        $shipOff = is_numeric($row['ship_off'] ?? null) ? (float) $row['ship_off'] : 0.0;
+        if ($shipOff > 0) {
+            $price = round($price - $shipOff, 2);
+            if (! ($price > 0)) {
+                return null;
+            }
+        }
         $price = $this->applySnroiCap($price, $dil, $row);
 
         return $price > 0 ? $price : null;

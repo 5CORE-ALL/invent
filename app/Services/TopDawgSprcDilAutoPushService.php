@@ -293,6 +293,9 @@ class TopDawgSprcDilAutoPushService
             'sold' => (float) ($row['td_l30'] ?? 0),
             'lp' => $lp,
             'ship' => 0.0,
+            // S PRC = calc − Ship (Ship_productmaster). Taken off inside the pricer before the SNROI cap, so the
+            // cap lands on the final saved price and SNROI never ends up above (or below) what the rule says.
+            'ship_off' => max(0.0, (float) ($row['ship'] ?? 0)),
             'margin' => $margin,
             'ads' => $adsPct > 0 ? $adsPct / 100 : 0.0,
         ];
@@ -309,16 +312,6 @@ class TopDawgSprcDilAutoPushService
 
         if (! is_finite($uncapped) || $uncapped < 0.01) {
             return null;
-        }
-
-        // After the calculation, reduce the Ship column (Ship_productmaster) from S PRC. The reduced price is
-        // what gets saved (overwrites SPRICE) and pushed.
-        $ship = (float) ($row['ship'] ?? 0);
-        if (is_finite($ship) && $ship > 0) {
-            $uncapped = round($uncapped - $ship, 2);
-            if ($uncapped < 0.01) {
-                return null;
-            }
         }
 
         return [

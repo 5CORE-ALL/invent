@@ -97,6 +97,19 @@ class TopDawgSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(82.00, $out['sprice'], 0.001);
     }
 
+    public function test_snroi_cap_judges_the_price_after_ship_is_reduced(): void
+    {
+        // 90.00 − Ship 8 = 82.00. SNROI at 82 = ((82 × 0.95) − 20) / 20 = 194%. Cap 100% → price (20 × 2) / 0.95 = 42.10.
+        $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 100, 'cap' => 100.0]]]);
+        $out = (new TopDawgSprcDilAutoPushService)->computeTarget($this->row(['ship' => 8]), $pricer);
+
+        $this->assertNotNull($out);
+        $this->assertEqualsWithDelta(42.10, $out['sprice'], 0.001);
+
+        // Ship must never be taken off AFTER the cap: that would push SNROI below the target (even negative).
+        $this->assertGreaterThan(20 / 0.95, $out['sprice']);
+    }
+
     public function test_lmp_is_ignored(): void
     {
         // TopDawg has no LMP cap: even a low LMP on the row does not lower the target.
