@@ -226,6 +226,41 @@ class WayfairPriceUploadTest extends TestCase
         Bus::assertDispatched(UploadWayfairPriceFile::class);
     }
 
+    public function test_a_newer_queued_file_cancels_older_queued_files(): void
+    {
+        Bus::fake();
+        $old = $this->queuedUpload(['A' => 9.99]);
+        $new = $this->queuedUpload(['A' => 10.49]);
+
+        app(WayfairPriceUploadOrchestrator::class)->dispatchUpload($new);
+
+        $this->assertSame(WayfairPriceUpload::CANCELLED, $old->fresh()->status);
+        $this->assertStringContainsString('Superseded', (string) $old->fresh()->error_message);
+        $this->assertSame(WayfairPriceUpload::QUEUED, $new->fresh()->status);
+        Bus::assertDispatched(UploadWayfairPriceFile::class);
+    }
+
+    public function test_a_stale_queued_file_is_cancelled_instead_of_uploaded(): void
+    {
+        config()->set('wayfair_upload.max_file_age_hours', 12);
+        $upload = $this->queuedUpload(['A' => 9.99]);
+        $upload->generated_at = now()->subHours(40);
+        $upload->save();
+
+        app(UploadWayfairPriceFile::class, ['uploadId' => $upload->id])->handle(
+            app(WayfairUploadService::class),
+            app(WayfairPriceFileGenerator::class),
+            app(WayfairPriceFileValidator::class),
+            app(WayfairUploadLogger::class),
+            app(WayfairPriceUploadOrchestrator::class),
+        );
+
+        $upload->refresh();
+        $this->assertSame(WayfairPriceUpload::CANCELLED, $upload->status);
+        $this->assertStringContainsString('older than 12 hours', (string) $upload->error_message);
+        $this->assertNull($upload->uploaded_at);
+    }
+
     public function test_scheduler_lock_prevents_a_second_daily_run(): void
     {
         $orchestrator = app(WayfairPriceUploadOrchestrator::class);

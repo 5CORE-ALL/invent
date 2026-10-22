@@ -71,6 +71,13 @@ return [
 
     'queue' => env('WAYFAIR_UPLOAD_QUEUE', 'wayfair-upload'),
 
+    // Start the dedicated wayfair-upload worker when an upload / status check is dispatched
+    // (the queue:watchdog daemon is not reliable on production).
+    'ensure_worker' => filter_var(env('WAYFAIR_UPLOAD_ENSURE_WORKER', true), FILTER_VALIDATE_BOOLEAN),
+
+    // A queued file older than this is cancelled instead of uploaded (0 disables the check).
+    'max_file_age_hours' => (int) env('WAYFAIR_UPLOAD_MAX_FILE_AGE_HOURS', 12),
+
     'outgoing_directory' => 'wayfair/outgoing',
     'error_directory' => 'wayfair/errors',
 

@@ -67,6 +67,25 @@ class UploadWayfairPriceFile implements ShouldQueue
             return;
         }
 
+        // A file that waited too long in the queue carries old prices. Never push those to Wayfair.
+        $maxAgeHours = (int) config('wayfair_upload.max_file_age_hours', 12);
+        if ($maxAgeHours > 0
+            && $upload->status === WayfairPriceUpload::QUEUED
+            && $upload->generated_at
+            && $upload->generated_at->lt(now()->subHours($maxAgeHours))) {
+            $upload->status = WayfairPriceUpload::CANCELLED;
+            $upload->error_message = 'Price file is older than '.$maxAgeHours.' hours, so it was not uploaded. Generate a fresh file.';
+            $upload->processed_at = now();
+            $upload->save();
+            $logger->info('Wayfair upload skipped: stale file', [
+                'upload_id' => $upload->id,
+                'filename' => $upload->filename,
+                'status' => $upload->status,
+            ]);
+
+            return;
+        }
+
         $lock = Cache::lock('wayfair-price-upload-global', $this->timeout + 30);
         if (! $lock->get()) {
             $this->release(30);

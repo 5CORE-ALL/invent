@@ -5,6 +5,7 @@ namespace App\Services\Wayfair;
 use App\Jobs\CheckWayfairPriceUploadStatus;
 use App\Jobs\UploadWayfairPriceFile;
 use App\Models\WayfairPriceUpload;
+use App\Services\Support\QueueWorkerWatchdog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
@@ -244,8 +245,56 @@ class WayfairPriceUploadOrchestrator
         return $stuck->count();
     }
 
+    /**
+     * Make sure a dedicated worker is consuming the wayfair-upload queue.
+     *
+     * Nothing else starts it: the queue:watchdog daemon is not running on production, so jobs
+     * dispatched here (and their status checks) sat unprocessed for days. Best effort only.
+     */
+    public function ensureWorker(): void
+    {
+        if (app()->runningUnitTests() || ! (bool) config('wayfair_upload.ensure_worker', true)) {
+            return;
+        }
+
+        try {
+            QueueWorkerWatchdog::ensureRunning((string) config('wayfair_upload.queue', 'wayfair-upload'));
+        } catch (\Throwable $e) {
+            $this->logger->error('Wayfair upload worker could not be started', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Only the newest queued file may upload: older queued files carry older prices and must never
+     * overwrite a newer file that is waiting behind them.
+     */
+    public function cancelSupersededQueued(): int
+    {
+        $newest = WayfairPriceUpload::query()
+            ->where('status', WayfairPriceUpload::QUEUED)
+            ->max('id');
+        if (! $newest) {
+            return 0;
+        }
+
+        $older = WayfairPriceUpload::query()
+            ->where('status', WayfairPriceUpload::QUEUED)
+            ->where('id', '<', $newest)
+            ->get();
+        foreach ($older as $upload) {
+            $upload->status = WayfairPriceUpload::CANCELLED;
+            $upload->error_message = 'Superseded by a newer Wayfair price file (#'.$newest.'). Not uploaded.';
+            $upload->processed_at = now();
+            $upload->save();
+        }
+
+        return $older->count();
+    }
+
     public function dispatchUpload(WayfairPriceUpload $upload): void
     {
+        $this->cancelSupersededQueued();
+        $this->ensureWorker();
         UploadWayfairPriceFile::dispatch($upload->id);
         $this->logger->info('Wayfair upload queued', [
             'upload_id' => $upload->id,
@@ -258,6 +307,7 @@ class WayfairPriceUploadOrchestrator
 
     public function dispatchStatusCheck(WayfairPriceUpload $upload): void
     {
+        $this->ensureWorker();
         CheckWayfairPriceUploadStatus::dispatch($upload->id)
             ->delay(now()->addSeconds((int) config('wayfair_upload.status_check_delay', 180)));
     }

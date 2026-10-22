@@ -6,6 +6,7 @@ use App\Jobs\CheckWayfairPriceUploadStatus;
 use App\Models\WayfairPriceUpload;
 use App\Services\Wayfair\WayfairPriceUploadOrchestrator;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class WayfairCheckUploadStatus extends Command
 {
@@ -47,7 +48,24 @@ class WayfairCheckUploadStatus extends Command
         if ($this->option('upload-id')) {
             $pending->where('id', $this->option('upload-id'));
         }
+        $superseded = $orchestrator->cancelSupersededQueued();
+        if ($superseded > 0) {
+            $this->info('Cancelled '.$superseded.' superseded queued upload(s).');
+        }
+
+        // Keep the wayfair-upload worker alive while anything is waiting or being processed.
+        if ($pending->count() > 0 || WayfairPriceUpload::query()->where('status', WayfairPriceUpload::QUEUED)->exists()) {
+            $orchestrator->ensureWorker();
+        }
+
         foreach ($pending->get() as $upload) {
+            // One outstanding check per upload. Without this, every 15-minute run piled another
+            // job onto the queue while no worker was consuming it (187 jobs).
+            if (! Cache::add('wayfair-status-check-queued-'.$upload->id, true, now()->addMinutes(14))) {
+                $this->line('Status check for #'.$upload->id.' already queued recently. Skipped.');
+
+                continue;
+            }
             CheckWayfairPriceUploadStatus::dispatch($upload->id);
             $this->line('Status check queued for #'.$upload->id);
         }
