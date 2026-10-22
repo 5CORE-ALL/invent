@@ -1212,6 +1212,8 @@
     @include('partials.channel-std-prc-vs-dil', ['channelStdPrcPart' => 'script'])
     // Save and Apply (Std prc vs dil) writes S PRC through this route in a background server process.
     window.CH_BG_SPRICE_URL = '{{ route("newtemuone.save.sprice") }}';
+    // After Save and Apply succeeds, reload the page so S PRC, S Promo Prc, SNROI% and Push show the new rules.
+    window.CH_STD_RELOAD_AFTER_APPLY = true;
     async function ntoSaveSpriceChunks(updates) {
         const size = 200;
         for (let i = 0; i < updates.length; i += size) {
@@ -2221,12 +2223,40 @@
         const s = ntoRowSpriceStart(d);
         return s > 0 ? +(s * 0.12).toFixed(2) : 0;
     }
-    /** S Disc $ = Std Prc × Disc % (Disc % = Sum disc = PM). */
+    /**
+     * Highest S Promo Prc the SNROI Cap allows. Solves the SNROI% column for the price:
+     *   SNROI = ((S Promo Prc × 0.95 − Temu Ship − LP) − Std Prc × Ads%) / LP × 100
+     * so S Promo Prc = (LP × (1 + target/100) + Ship + Std × Ads%) / 0.95, rounded down to the cent.
+     * Null when the SKU's Dil slab has no cap (or LP is missing).
+     */
+    function ntoRowSnroiCapPrc(d) {
+        if (typeof window.chStdSnroiCapTarget !== 'function') return null;
+        const std = ntoRowSpriceStart(d);
+        const lp = parseFloat(d && d.lp) || 0;
+        if (!(std > 0) || !(lp > 0)) return null;
+        const target = window.chStdSnroiCapTarget(d);
+        if (target == null) return null;
+        const ship = parseFloat(d && d.temu_ship) || 0;
+        const adsFrac = (typeof temuAdsPercentForNet === 'function' ? temuAdsPercentForNet() : 0) / 100;
+        const cap = Math.floor((((lp * (1 + target / 100)) + ship + (std * adsFrac)) / 0.95) * 100 + 0.00001) / 100;
+        return cap > 0 ? cap : null;
+    }
+    /**
+     * S Disc $ = Std Prc × Disc % (Disc % = Sum disc = PM).
+     * SNROI Cap: when that leaves S Promo Prc with a SNROI above the Target SNROI % of the SKU's Dil slab, S Disc $ grows
+     * just enough to land on the target. It never lowers S Disc $, so the cap only ever lowers the price.
+     */
     function ntoRowSDiscAmt(d) {
         const s = ntoRowSpriceStart(d);
+        if (!(s > 0)) return 0;
         const pm = ntoRowPm(d);
-        if (!(s > 0) || !(pm > 0)) return 0;
-        return +(s * pm / 100).toFixed(2);
+        let amt = pm > 0 ? +(s * pm / 100).toFixed(2) : 0;
+        const capPrc = ntoRowSnroiCapPrc(d);
+        if (capPrc != null) {
+            const promo = s - ntoRowSTwelvePct(d) - amt;
+            if (promo > capPrc + 0.0001) amt = +(s - ntoRowSTwelvePct(d) - capPrc).toFixed(2);
+        }
+        return amt;
     }
     /** S Promo Prc before the LMP alert overwrite: Std Prc − S 12% $ − S Disc $. */
     function ntoRowSPromoPrcBase(d) {

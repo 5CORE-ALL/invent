@@ -151,6 +151,10 @@ class StdPrcVsDilPricer
      */
     private function applySnroiCap(float $price, float $dil, array $row): float
     {
+        // A caller that solves the cap on its own price chain (New Temu Two) asks for it to be skipped here.
+        if (! empty($row['skip_snroi_cap'])) {
+            return $price;
+        }
         $target = $this->snroiCapFor($dil);
         if ($target === null) {
             return $price;
@@ -174,6 +178,12 @@ class StdPrcVsDilPricer
         }
 
         return self::capPriceToSnroi($price, $target, $lp, $margin, $ship, $ads);
+    }
+
+    /** Target SNROI % of the saved SNROI Cap slab for this Dil %. Null when the slab has no cap or no slab matches. */
+    public function snroiCapTargetForDil(float $dil): ?float
+    {
+        return $this->snroiCapFor($dil);
     }
 
     /** Target SNROI % of the Dil slab this value falls in. Null when the slab has no cap or no slab matches. */

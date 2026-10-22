@@ -119,6 +119,60 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $this->assertSame(80.0, $zero['sprice']);
     }
 
+    /** @return list<array{min:float,max:float,cap:float|null}> */
+    private function capSlabs(?float $cap): array
+    {
+        return [
+            ['min' => 0.0, 'max' => 100.0, 'cap' => $cap],
+        ];
+    }
+
+    public function test_snroi_cap_lowers_price_after_discount_to_the_page_snroi_target(): void
+    {
+        $svc = new NewTemutwoSprcDilAutoPushService();
+        // LP 20, Ship 3, Std 100, Ads 2.2%. Cap 40% -> (20 x 1.4 + 3 + 100 x 0.022) / 0.95 = 34.947 -> $34.94.
+        $out = $svc->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(40)]));
+
+        $this->assertNotNull($out);
+        $this->assertTrue($out['snroi_capped']);
+        $this->assertSame(34.94, $out['sprice']);
+        // The SNROI% column at that price: ((34.94 x 0.95 - 3 - 20) - 2.2) / 20 x 100, never above the cap.
+        $snroi = (((34.94 * 0.95) - 3 - 20) - (100 * 0.022)) / 20 * 100;
+        $this->assertLessThanOrEqual(40.0, $snroi);
+        $this->assertGreaterThan(39.9, $snroi);
+    }
+
+    public function test_snroi_cap_leaves_a_price_already_under_the_target(): void
+    {
+        $svc = new NewTemutwoSprcDilAutoPushService();
+        $out = $svc->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(500)]));
+
+        $this->assertNotNull($out);
+        $this->assertFalse($out['snroi_capped']);
+        $this->assertSame(90.0, $out['sprice']);
+    }
+
+    public function test_snroi_cap_blank_slab_means_no_cap(): void
+    {
+        $svc = new NewTemutwoSprcDilAutoPushService();
+        $out = $svc->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(null)]));
+
+        $this->assertNotNull($out);
+        $this->assertFalse($out['snroi_capped']);
+        $this->assertSame(90.0, $out['sprice']);
+    }
+
+    public function test_snroi_cap_takes_the_ship_disc_after_the_cap(): void
+    {
+        $svc = new NewTemutwoSprcDilAutoPushService();
+        // Cap 10% puts Price After Discount under $30, so the $2.99 ship disc comes off after the cap.
+        $out = $svc->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(10)]));
+
+        $this->assertNotNull($out);
+        // (20 x 1.1 + 3 + 2.2) / 0.95 = 28.63, then minus $2.99.
+        $this->assertSame(25.64, $out['sprice']);
+    }
+
     public function test_ebay_and_amazon_prices_do_not_cap_s_prc(): void
     {
         $svc = new NewTemutwoSprcDilAutoPushService();

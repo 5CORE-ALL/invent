@@ -838,6 +838,19 @@
             return (capped > 0 && capped < p) ? capped : price;
         }
         window.chStdApplySnroiCap = chStdApplySnroiCap;
+        /**
+         * Target SNROI % of the saved SNROI Cap slab this SKU's Dil % falls in. Null = no cap for it.
+         * For pages that price from their own chain (Temu One S Promo Prc) and solve the cap with their own SNROI formula.
+         */
+        function chStdSnroiCapTarget(d, rules) {
+            if (!chStdUsesSnroiCap()) return null;
+            rules = rules || chStdSnroiCap;
+            const idx = chStdSnroiCapSlab(d, rules);
+            if (idx < 0 || !rules[idx] || rules[idx].cap == null) return null;
+            const n = Number(rules[idx].cap);
+            return isFinite(n) ? n : null;
+        }
+        window.chStdSnroiCapTarget = chStdSnroiCapTarget;
         /** Dil MOQ % = OV L30 ÷ (MOQ ÷ 4). Same number as the Dil MOQ column. */
         function chStdRowDilMoqPct(d) {
             const moq = Number(d && d.moq);
@@ -2398,6 +2411,10 @@
                     chStdRefresh();
                     chStdSaveHistory();
                     chStdEndGuard();
+                    // Server recalculated S PRC: reload now. Otherwise give the server job a moment first.
+                    if (window.CH_STD_RELOAD_AFTER_APPLY === true) {
+                        setTimeout(function() { window.location.reload(); }, serverRefreshed ? 1200 : 8000);
+                    }
                     if (typeof chPromoToast === 'function') {
                         chPromoToast('success', serverRefreshed
                             ? 'Std prc vs dil saved. S PRC recalculated on the server — you can close this page.'
@@ -2418,6 +2435,11 @@
                             chPromoToast('success', bg
                                 ? ('Std prc vs dil saved — S PRC for ' + updates.length + ' SKU(s) is being written in the background. You can close this page.')
                                 : 'S PRC applied from Std prc vs dil');
+                        }
+                        // Pages that price from several columns (Temu One) set this: reload once the rules are saved and
+                        // S PRC is handed to the server, so every column shows the new rule's prices.
+                        if (window.CH_STD_RELOAD_AFTER_APPLY === true) {
+                            setTimeout(function() { window.location.reload(); }, 1200);
                         }
                     };
                     const pending = chStdSavePricesBackground(updates);

@@ -197,7 +197,7 @@ class NewTemutwoSprcDilAutoPushService
      * Page S PRC formula (INV > 0 child SKUs): Std rule, then LMP cap, Std is the maximum.
      *
      * @param  array<string, mixed>  $row  Loaded candidate (see loadCandidates)
-     * @return array{sprice:float,uncapped:float,lmp_capped:bool,labels:list<string>,base:float,full:float}|null
+     * @return array{sprice:float,uncapped:float,lmp_capped:bool,snroi_capped:bool,labels:list<string>,base:float,full:float}|null
      */
     public function computeTarget(array $row, ?StdPrcVsDilPricer $pricer = null): ?array
     {
@@ -244,6 +244,9 @@ class NewTemutwoSprcDilAutoPushService
             // MOQ M uses Dil MOQ % = OV L30 ÷ (MOQ ÷ 4), same as the page.
             'moq' => $row['moq'] ?? null,
             'ov_l30' => (float) ($row['L30'] ?? $row['ov_l30'] ?? 0),
+            // SNROI Cap is solved below on Price After Discount (the price the SNROI% column is measured at),
+            // not on the Std × (1 − Sum disc) price the pricer sees.
+            'skip_snroi_cap' => true,
         ];
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];
@@ -271,6 +274,17 @@ class NewTemutwoSprcDilAutoPushService
         $twelvePct = round($temuPrice * 0.12, 2);
         $discAmt = max(0.0, round($std - $discounted, 2));
         $priceAfterDisc = round($std - $twelvePct - $discAmt, 2);
+        // SNROI Cap: same as the page. SNROI% = ((Price After Discount × 0.95 − Ship − LP) − Std × Ads%) / LP × 100.
+        // When it is above the Target SNROI % of the SKU's Dil slab, Disc $ grows so Price After Discount lands on it.
+        $snroiCapped = false;
+        $capTarget = $pricer->snroiCapTargetForDil((float) ($row['dil'] ?? 0));
+        if ($capTarget !== null && $lp > 0) {
+            $capPrice = floor((((($lp * (1 + $capTarget / 100)) + $ship + ($std * $adsPct / 100)) / 0.95) * 100) + 0.00001) / 100;
+            if ($capPrice > 0 && $priceAfterDisc > $capPrice + 0.0001) {
+                $priceAfterDisc = round($capPrice, 2);
+                $snroiCapped = true;
+            }
+        }
         $shipDisc = $priceAfterDisc <= 30 ? 2.99 : 0.0;
         $effective = round($priceAfterDisc - $shipDisc, 2);
         if (! ($effective > 0)) {
@@ -309,6 +323,7 @@ class NewTemutwoSprcDilAutoPushService
             'sprice' => $sprice,
             'uncapped' => round($effective, 2),
             'lmp_capped' => $lmpCapped,
+            'snroi_capped' => $snroiCapped,
             'labels' => $labels,
             'base' => round($base, 2),
             'promo_base' => round($promoBase, 2),

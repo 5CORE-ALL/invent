@@ -273,8 +273,6 @@ class FetchGoogleAdsCampaigns extends Command
                 campaign.experiment_type,
                 campaign.bidding_strategy_type,
                 campaign.payment_mode,
-                campaign.start_date,
-                campaign.end_date,
                 campaign.network_settings.target_google_search,
                 campaign.network_settings.target_search_network,
                 campaign.network_settings.target_content_network,
@@ -331,8 +329,6 @@ class FetchGoogleAdsCampaigns extends Command
                 campaign.experiment_type,
                 campaign.bidding_strategy_type,
                 campaign.payment_mode,
-                campaign.start_date,
-                campaign.end_date,
                 campaign.network_settings.target_google_search,
                 campaign.network_settings.target_search_network,
                 campaign.network_settings.target_content_network,
@@ -416,8 +412,8 @@ class FetchGoogleAdsCampaigns extends Command
             'experiment_type' => $campaign['experimentType'] ?? null,
             'bidding_strategy_type' => $campaign['biddingStrategyType'] ?? null,
             'payment_mode' => $campaign['paymentMode'] ?? null,
-            'start_date' => $campaign['startDate'] ?? null,
-            'end_date' => $campaign['endDate'] ?? null,
+            // start_date / end_date removed: Google Ads API v25 no longer exposes
+            // campaign.start_date / campaign.end_date (UNRECOGNIZED_FIELD broke the sync).
             
             // Network Settings - Fixed: Safe nested array access
             'target_google_search' => (bool) ($networkSettings['targetGoogleSearch'] ?? false),
@@ -521,8 +517,6 @@ class FetchGoogleAdsCampaigns extends Command
             'experiment_type' => $campaign['experimentType'] ?? null,
             'bidding_strategy_type' => $campaign['biddingStrategyType'] ?? null,
             'payment_mode' => $campaign['paymentMode'] ?? null,
-            'start_date' => $campaign['startDate'] ?? null,
-            'end_date' => $campaign['endDate'] ?? null,
             
             // Network Settings
             'target_google_search' => (bool) ($networkSettings['targetGoogleSearch'] ?? false),
