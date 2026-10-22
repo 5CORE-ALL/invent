@@ -621,14 +621,55 @@ class Temu2ListingPublishService
      */
     private function addViaV1(array $payloadV2): array
     {
-        $v1 = $payloadV2;
-        $v1['type'] = 'bg.local.goods.add';
-        $v1['version'] = 'V1';
+        $basic = is_array($payloadV2['goodsBasic'] ?? null) ? $payloadV2['goodsBasic'] : [];
+        $bullets = $basic['bulletPoints'] ?? [];
+        $brand = is_array($basic['brand'] ?? null) ? $basic['brand'] : [];
+        unset($basic['bulletPoints'], $basic['brand'], $basic['goodsDesc'], $basic['externalGoodsId']);
+        if (isset($basic['catId'])) {
+            $basic['catId'] = (int) $basic['catId'];
+        }
+
+        $origin = is_array($payloadV2['goodsOriginInfo'] ?? null) ? $payloadV2['goodsOriginInfo'] : [];
+        unset($origin['importDesignation']);
+
+        $service = is_array($payloadV2['goodsServicePromise'] ?? null) ? $payloadV2['goodsServicePromise'] : [];
+        if (isset($service['shipmentLimitDay'])) {
+            $service['shipmentLimitDay'] = (int) $service['shipmentLimitDay'];
+        }
+        if (isset($service['fulfillmentType'])) {
+            $service['fulfillmentType'] = (int) $service['fulfillmentType'];
+        }
+        if (isset($service['costTemplateId'])) {
+            $service['costTemplateId'] = (string) $service['costTemplateId'];
+        }
+
+        $v1 = [
+            'type' => 'bg.local.goods.add',
+            'language' => 'en',
+            'goodsBasic' => $basic,
+            'goodsDesc' => (string) ($basic['goodsDesc'] ?? $payloadV2['goodsBasic']['goodsDesc'] ?? ''),
+            'bulletPoints' => array_values(array_filter(array_map(
+                static fn ($line) => trim((string) $line),
+                is_array($bullets) ? $bullets : []
+            ), static fn ($line) => $line !== '')),
+            'goodsServicePromise' => $service,
+            'goodsOriginInfo' => $origin,
+        ];
+        if ($v1['goodsDesc'] === '') {
+            unset($v1['goodsDesc']);
+        }
+        if ($v1['bulletPoints'] === []) {
+            unset($v1['bulletPoints']);
+        }
+        if (isset($brand['brandId']) && (int) $brand['brandId'] > 0) {
+            $v1['goodsTrademark'] = ['brandId' => (int) $brand['brandId']];
+        }
+
         if (! empty($payloadV2['goodsProperty']) && is_array($payloadV2['goodsProperty'])) {
             $first = $payloadV2['goodsProperty'][0] ?? null;
-            if (is_array($first) && ! isset($payloadV2['goodsProperty']['goodsProperties'])) {
-                $v1['goodsProperty'] = ['goodsProperties' => $payloadV2['goodsProperty']];
-            }
+            $v1['goodsProperty'] = is_array($first) && ! isset($payloadV2['goodsProperty']['goodsProperties'])
+                ? ['goodsProperties' => $payloadV2['goodsProperty']]
+                : $payloadV2['goodsProperty'];
         }
 
         $skuList = [];
@@ -643,20 +684,29 @@ class Temu2ListingPublishService
                 }
             }
             $pkg = is_array($item['packageInfo'] ?? null) ? $item['packageInfo'] : [];
-            $skuList[] = [
-                'externalSkuId' => $item['externalSkuId'] ?? '',
-                'outSkuSn' => $item['outSkuSn'] ?? ($item['externalSkuId'] ?? ''),
-                'quantity' => $item['quantity'] ?? 0,
+            $price = is_array($item['price'] ?? null) ? $item['price'] : [];
+            $sku = [
+                'outSkuSn' => (string) ($item['outSkuSn'] ?? ($item['externalSkuId'] ?? '')),
+                'quantity' => max(0, (int) ($item['quantity'] ?? 0)),
                 'specIdList' => $specIds,
-                'images' => $item['images'] ?? [],
-                'weight' => (string) ($pkg['weight'] ?? '1'),
-                'length' => (string) ($pkg['length'] ?? '1'),
-                'width' => (string) ($pkg['width'] ?? '1'),
-                'height' => (string) ($pkg['height'] ?? '1'),
-                'weightUnit' => (int) ($pkg['weightUnit'] ?? 2),
-                'volumeUnit' => (int) ($pkg['volumeUnit'] ?? 2),
-                'price' => $item['price'] ?? [],
+                'images' => array_values(array_filter(array_map('strval', is_array($item['images'] ?? null) ? $item['images'] : []))),
+                'weight' => $this->v1Measure($pkg['weight'] ?? '1', 4),
+                'length' => $this->v1Measure($pkg['length'] ?? '1', 3),
+                'width' => $this->v1Measure($pkg['width'] ?? '1', 3),
+                'height' => $this->v1Measure($pkg['height'] ?? '1', 3),
+                'weightUnit' => $this->v1WeightUnit($pkg['weightUnit'] ?? 2),
+                'volumeUnit' => $this->v1VolumeUnit($pkg['volumeUnit'] ?? 2),
             ];
+            if (is_array($price['basePrice'] ?? null)) {
+                $sku['basePrice'] = $price['basePrice'];
+            }
+            if (is_array($price['listPrice'] ?? null)) {
+                $sku['listPrice'] = $price['listPrice'];
+            }
+            if (isset($price['listPriceType'])) {
+                $sku['listPriceType'] = (int) $price['listPriceType'];
+            }
+            $skuList[] = $sku;
         }
         $v1['skuList'] = $skuList;
 
@@ -666,6 +716,47 @@ class Temu2ListingPublishService
             'success' => (bool) ($data['success'] ?? false),
             'data' => $data,
         ];
+    }
+
+    /**
+     * bg.local.goods.add wants measure fields as strings with at most one decimal place.
+     */
+    private function v1Measure(mixed $value, int $maxIntegers): string
+    {
+        $number = is_numeric($value) ? (float) $value : 1.0;
+        if ($number <= 0) {
+            $number = 1.0;
+        }
+        $number = round($number, 1);
+        $cap = (10 ** $maxIntegers) - 0.1;
+        if ($number > $cap) {
+            $number = $cap;
+        }
+
+        return number_format($number, 1, '.', '');
+    }
+
+    private function v1WeightUnit(mixed $unit): string
+    {
+        $unit = is_string($unit) ? strtolower(trim($unit)) : (string) $unit;
+
+        return match ($unit) {
+            '1', 'kg' => 'kg',
+            'g' => 'g',
+            'oz' => 'oz',
+            default => 'lb',
+        };
+    }
+
+    private function v1VolumeUnit(mixed $unit): string
+    {
+        $unit = is_string($unit) ? strtolower(trim($unit)) : (string) $unit;
+
+        return match ($unit) {
+            '1', 'cm' => 'cm',
+            'mm' => 'mm',
+            default => 'in',
+        };
     }
 
     /**
