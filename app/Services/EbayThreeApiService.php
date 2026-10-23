@@ -229,6 +229,7 @@ class EbayThreeApiService
             
             $xml->addChild('ItemID', $itemId);
             $xml->addChild('DetailLevel', 'ReturnAll');
+            $xml->addChild('IncludeItemSpecifics', 'true');
             
             $xmlBody = $xml->asXML();
             

@@ -54,6 +54,9 @@ class EbayTechnicalSpecificationSync
             }
 
             $specs = $this->specsFromItem($item, $sku);
+            if ($specs === []) {
+                return $this->emptyResult(false, $label.': the listing has no item specifics. Saved specifications were left unchanged.');
+            }
             $count = count($specs);
 
             return [
