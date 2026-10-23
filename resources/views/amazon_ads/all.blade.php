@@ -497,7 +497,8 @@
         }
         .amz-badge-history-dot.is-up > span { background: #22c55e; }
         .amz-badge-history-dot.is-down > span { background: #ef4444; }
-        .amz-badge-history-dot.is-flat > span { background: #9ca3af; }
+        .amz-badge-history-dot.is-flat > span { background: #eab308; }
+        .amz-badge-history-dot.is-none > span { background: #9ca3af; }
         .amz-badge-history-dot:hover { transform: scale(1.15); }
         /* Count history dot: one per count row, same standard as the Std prc vs dil modal. Click for the last 30 days. */
         .amz-hist-dot {
@@ -537,6 +538,7 @@
             font-size: 0.78rem; font-weight: 700; line-height: 1.2; padding: 0.3rem 0.35rem; border-radius: 0.375rem;
             background: #fff; color: #111827; border: 1px solid #e5e7eb;
         }
+        .amz-kpi-tile .amz-badge-history-dot { margin-right: 6px; }
         .amz-kpi-tile > .amz-kpi-val { margin-left: 4px; font-size: 0.85rem; font-weight: 800; }
         .amz-kpi-tile > .amz-kpi-pct { margin-left: 5px; font-size: 0.75rem; font-weight: 700; opacity: 0.95; }
         .amz-kpi-tile.amz-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
@@ -1216,7 +1218,7 @@
                                 <div class="amz-card-title">{{ $kpiCard['title'] }}</div>
                                 <div class="amz-card-tiles">
                                     @foreach ($kpiCard['items'] as [$kpiKey, $kpiText, $kpiTip, $kpiDot])
-                                        <span id="amzKpi_{{ $kpiKey }}" class="amz-kpi-tile" data-kpi="{{ $kpiKey }}" title="{{ $kpiTip }}">@if ($kpiDot)<button type="button" class="amz-badge-history-dot is-flat" id="{{ $kpiDot[0] }}" data-history="{{ $kpiDot[1] }}" data-label="{{ $kpiDot[2] }}" title="{{ $kpiText }} history. Click for the last days."><span></span></button>@endif{{ $kpiText }}:<span class="amz-kpi-val">—</span></span>
+                                        <span id="amzKpi_{{ $kpiKey }}" class="amz-kpi-tile" data-kpi="{{ $kpiKey }}" title="{{ $kpiTip }}">@if ($kpiDot)<button type="button" class="amz-badge-history-dot is-none" id="{{ $kpiDot[0] }}" data-history="{{ $kpiDot[1] }}" data-label="{{ $kpiDot[2] }}" title="Click for history"><span></span></button>@else<button type="button" class="amz-badge-history-dot is-none" id="amzDot_{{ $kpiKey }}" data-history="kpi" data-kpi="{{ $kpiKey }}" data-label="{{ $kpiCard['tag'] }} {{ $kpiText }}" title="Click for history"><span></span></button>@endif{{ $kpiText }}:<span class="amz-kpi-val">—</span></span>
                                     @endforeach
                                     @if ($kpiCard['tag'] === 'Yesterday')
                                         <span id="amazonAdsCampaignBadgeWrap" class="amz-kpi-tile amz-kpi-campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span class="amz-kpi-val" id="amazonAdsCampaignBadgeValue">0</span></span>
@@ -1231,10 +1233,10 @@
                             <div class="amz-card amz-card--util" id="amzUtilBlock_{{ $uc['id'] }}">
                                 <div class="amz-card-title">{{ $uc['title'] }}</div>
                                 <div class="amz-card-tiles">
-                                    <span class="amz-kpi-tile amz-util-green" title="Campaigns whose {{ $uc['src'] }} is 66–99%.">UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_66_99">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_66_99_pct">0%</span></span>
-                                    <span class="amz-kpi-tile amz-util-red" title="Campaigns whose {{ $uc['src'] }} is under 66%.">UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_lt66">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_lt66_pct">0%</span></span>
-                                    <span class="amz-kpi-tile amz-util-pink" title="Campaigns whose {{ $uc['src'] }} is over 99%.">UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_gt99">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_gt99_pct">0%</span></span>
-                                    <span class="amz-kpi-tile amz-util-total" id="amzUtil_{{ $uc['id'] }}_totalTile" title="All campaigns matching the filters (incl. those with no budget), and their average {{ $uc['src'] }} = total spend ÷ total budget (campaigns with a budget).">TOTAL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_total">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_avg">avg 0%</span></span>
+                                    <span class="amz-kpi-tile amz-util-green" title="Campaigns whose {{ $uc['src'] }} is 66–99%."><button type="button" class="amz-badge-history-dot is-none" id="amzDot_{{ $uc['id'] }}_green" data-history="kpi" data-kpi="{{ $uc['id'] }}_green" data-label="Green util {{ $uc['short'] }}" title="Click for history"><span></span></button>UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_66_99">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_66_99_pct">0%</span></span>
+                                    <span class="amz-kpi-tile amz-util-red" title="Campaigns whose {{ $uc['src'] }} is under 66%."><button type="button" class="amz-badge-history-dot is-none" id="amzDot_{{ $uc['id'] }}_red" data-history="kpi" data-kpi="{{ $uc['id'] }}_red" data-label="Red util {{ $uc['short'] }}" title="Click for history"><span></span></button>UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_lt66">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_lt66_pct">0%</span></span>
+                                    <span class="amz-kpi-tile amz-util-pink" title="Campaigns whose {{ $uc['src'] }} is over 99%."><button type="button" class="amz-badge-history-dot is-none" id="amzDot_{{ $uc['id'] }}_pink" data-history="kpi" data-kpi="{{ $uc['id'] }}_pink" data-label="Pink util {{ $uc['short'] }}" title="Click for history"><span></span></button>UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_gt99">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_gt99_pct">0%</span></span>
+                                    <span class="amz-kpi-tile amz-util-total" id="amzUtil_{{ $uc['id'] }}_totalTile" title="All campaigns matching the filters (incl. those with no budget), and their average {{ $uc['src'] }} = total spend ÷ total budget (campaigns with a budget)."><button type="button" class="amz-badge-history-dot is-none" id="amzDot_{{ $uc['id'] }}_avg" data-history="kpi" data-kpi="{{ $uc['id'] }}_avg" data-label="Avg util {{ $uc['short'] }}" title="Click for history"><span></span></button>TOTAL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_total">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_avg">avg 0%</span></span>
                                 </div>
                             </div>
                         @endforeach
@@ -2116,6 +2118,7 @@
             var ySpendHistoryUrl = @json(route('amazon.ads.y-spend-history'));
             var ySalesHistoryUrl = @json(route('amazon.ads.y-sales-history'));
             var yesterdayBadgeHistoryUrl = @json(route('amazon.ads.yesterday-badge-history'));
+            var kpiBadgeHistoryUrl = @json(route('amazon.ads.kpi-badge-history'));
             var ltCvrHistoryUrl = @json(route('amazon.ads.lt-cvr-history'));
             var ltAcosHistoryUrl = @json(route('amazon.ads.lt-acos-history'));
             var sbidHistoryUrl = @json(route('amazon.ads.sbid-history'));
@@ -3728,20 +3731,81 @@
                     }
                 });
             }
+            // ---- History dots on every summary tile: trend of the latest day vs the day before (daily history from the Amazon reports) ----
+            // green = up, red = down, yellow = same, grey = no prior day. Lower-is-better (AVG BID, ACOS%) and the red util band are inverted.
+            // The three original Yesterday dots (Spend / Sales / ACOS) keep their own tones and history.
+            var AMZ_KPI_EPS = { bgt: 0.5, bgt_total: 0.5, clicks: 0.5, sold: 0.5, sales: 0.5, spend: 0.5, util: 0.05, bid: 0.005, cvr: 0.05, acos: 0.05 };
+            var AMZ_KPI_OLD_DOTS = { y_spend: 1, y_sales: 1, y_acos: 1 };
+            function amzKpiKind(key) { return key.replace(/^(y|p|l30)_/, ''); }
+            function amzKpiUtilKey(key) { return /^u[17]_/.test(key); }
+            function amzKpiFmt(key, v) {
+                if (amzKpiUtilKey(key)) return /_avg$/.test(key) ? v.toFixed(1) + '%' : Math.round(v).toLocaleString('en-US');
+                return AMZ_KPI_KIND[amzKpiKind(key)].fmt(v);
+            }
+            function amzKpiTrend(key, cur, prev) {
+                if (!isFinite(cur) || !isFinite(prev)) return 'none';
+                var util = amzKpiUtilKey(key);
+                var eps = util ? (/_avg$/.test(key) ? 0.05 : 0.5) : AMZ_KPI_EPS[amzKpiKind(key)];
+                var invert = util ? /_red$/.test(key) : AMZ_KPI_KIND[amzKpiKind(key)].lower;
+                var diff = cur - prev;
+                var cls = diff > eps ? 'up' : (diff < -eps ? 'down' : 'flat');
+                if (invert && cls === 'up') cls = 'down';
+                else if (invert && cls === 'down') cls = 'up';
+                return cls;
+            }
+            function amzPaintKpiDots(values, prev) {
+                document.querySelectorAll('#amzSummaryCards .amz-badge-history-dot[data-kpi]').forEach(function (dot) {
+                    var key = dot.getAttribute('data-kpi');
+                    if (AMZ_KPI_OLD_DOTS[key]) return;
+                    var cur = values && values[key] != null ? Number(values[key]) : NaN;
+                    var old = prev && prev[key] != null ? Number(prev[key]) : NaN;
+                    var cls = amzKpiTrend(key, cur, old);
+                    amzPaintYesterdayBadgeTone(dot.id, cls);
+                    var word = cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : (cls === 'flat' ? 'Same' : ''));
+                    dot.title = word
+                        ? (word + ' vs prior day (' + amzKpiFmt(key, old) + ' → ' + amzKpiFmt(key, cur) + '). Click for history.')
+                        : 'Click for history (no prior day yet)';
+                });
+            }
+            function amzLoadKpiDots(req) {
+                var src = activeRawSourceKey || 'all_reports';
+                if (src !== 'all_reports' && src !== 'sp_reports' && src !== 'sb_reports') return;
+                var params = new URLSearchParams();
+                var filters = {};
+                try { filters = amzFilterPayload(); } catch (e) { filters = {}; }
+                Object.keys(filters).forEach(function (k) {
+                    if (filters[k] != null) params.set(k, String(filters[k]));
+                });
+                try { params.set('search', amzSearchQueryVal() || ''); } catch (e2) {}
+                params.set('metric', 'tones');
+                params.set('days', '2');
+                params.set('source', src);
+                fetch(kpiBadgeHistoryUrl + '?' + params.toString(), {
+                    method: 'GET',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                }).then(function (r) { return r.json(); }).then(function (body) {
+                    if (req !== amzYesterdayToneReq) return;
+                    amzPaintKpiDots(body && body.values, body && body.prev);
+                }).catch(function () {});
+            }
             var amzYesterdayToneReq = 0;
             function amzPaintYesterdayBadgeTone(id, tone) {
                 var el = document.getElementById(id);
                 if (!el) return;
-                el.classList.remove('is-up', 'is-down', 'is-flat');
-                el.classList.add(tone === 'green' ? 'is-up' : (tone === 'red' ? 'is-down' : 'is-flat'));
+                el.classList.remove('is-up', 'is-down', 'is-flat', 'is-none');
+                var map = { green: 'is-up', up: 'is-up', red: 'is-down', down: 'is-down', flat: 'is-flat', none: 'is-none' };
+                el.classList.add(map[tone] || 'is-flat');
             }
             function amzRefreshYesterdayBadgeTones() {
                 var req = ++amzYesterdayToneReq;
+                amzLoadKpiDots(req);
                 var src = activeRawSourceKey || 'all_reports';
                 if (src !== 'all_reports' && src !== 'sp_reports' && src !== 'sb_reports') {
-                    amzPaintYesterdayBadgeTone('amazonAdsYesterdaySpendBadgeDot', 'gray');
-                    amzPaintYesterdayBadgeTone('amazonAdsYesterdaySalesBadgeDot', 'gray');
-                    amzPaintYesterdayBadgeTone('amazonAdsYesterdayAcosBadgeDot', 'gray');
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdaySpendBadgeDot', 'none');
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdaySalesBadgeDot', 'none');
+                    amzPaintYesterdayBadgeTone('amazonAdsYesterdayAcosBadgeDot', 'none');
+                    amzPaintKpiDots(null, null);
                     return;
                 }
                 var params = new URLSearchParams();
@@ -4757,13 +4821,20 @@
                     return;
                 }
                 var badgeDot = e.target.closest ? e.target.closest('.amz-badge-history-dot') : null;
+                if (!badgeDot && e.target.closest) {
+                    // Clicking anywhere on a summary tile opens its history too.
+                    var kpiTile = e.target.closest('#amzSummaryCards .amz-kpi-tile');
+                    if (kpiTile) badgeDot = kpiTile.querySelector('.amz-badge-history-dot');
+                }
                 if (badgeDot) {
                     e.stopPropagation();
                     e.preventDefault();
+                    var dotKind = badgeDot.getAttribute('data-history') || 'yspend';
                     amzOpenCpcAvgHistory({
                         badgeHistory: true,
-                        campaignName: 'Yesterday',
-                        historyKind: badgeDot.getAttribute('data-history') || 'yspend',
+                        campaignName: dotKind === 'kpi' ? 'Summary' : 'Yesterday',
+                        historyKind: dotKind,
+                        kpiKey: badgeDot.getAttribute('data-kpi') || '',
                         metricLabel: badgeDot.getAttribute('data-label') || 'Spend'
                     });
                     return;
@@ -4872,8 +4943,15 @@
                 return days === 0 ? 'Lifetime' : (days + ' Days');
             }
             function amzHistoryIsCvr() { return amzHistoryKind === 'cvr'; }
-            function amzHistoryIsPercent() { return amzHistoryKind === 'cvr' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos'; }
+            function amzHistoryIsPercent() {
+                if (amzHistoryKind === 'kpi') return /^(util|cvr|acos)$/.test(amzKpiKind(amzCpcAvgRow.kpiKey || '')) || /_avg$/.test(amzCpcAvgRow.kpiKey || '');
+                return amzHistoryKind === 'cvr' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos';
+            }
             function amzHistoryLowerIsBetter() {
+                if (amzHistoryKind === 'kpi') {
+                    var kk = amzCpcAvgRow.kpiKey || '';
+                    return amzKpiUtilKey(kk) ? /_red$/.test(kk) : AMZ_KPI_KIND[amzKpiKind(kk)].lower;
+                }
                 if (amzHistoryKind === 'count') return !!(amzCpcAvgRow && amzCpcAvgRow.lowerIsBetter);
                 return amzHistoryKind === 'cpc' || amzHistoryKind === 'acos' || amzHistoryKind === 'yacos';
             }
@@ -4892,6 +4970,7 @@
             function amzHistoryFmt(v) {
                 var n = Number(v);
                 if (!isFinite(n)) return '-';
+                if (amzHistoryKind === 'kpi') return amzKpiFmt(amzCpcAvgRow.kpiKey || '', n);
                 if (amzHistoryKind === 'count') return Math.round(n).toLocaleString('en-US');
                 if (amzCpcAvgRow && amzCpcAvgRow.badgeHistory) {
                     if (amzHistoryIsPercent()) return Math.round(n) + '%';
@@ -4903,6 +4982,10 @@
             function amzCpcDotColors(values) {
                 var gray = '#6c757d', green = '#28a745', red = '#dc3545';
                 var eps = amzHistoryKind === 'count' ? 0.5 : (amzHistoryIsPercent() ? 0.05 : 0.005);
+                if (amzHistoryKind === 'kpi') {
+                    var ek = amzCpcAvgRow.kpiKey || '';
+                    eps = amzKpiUtilKey(ek) ? (/_avg$/.test(ek) ? 0.05 : 0.5) : AMZ_KPI_EPS[amzKpiKind(ek)];
+                }
                 return values.map(function (v, i) {
                     if (i === 0) return gray;
                     var diff = v - values[i - 1];
@@ -4926,6 +5009,7 @@
                     if (amzHistoryKind === 'ysales') return Number(p.ysales);
                     if (amzHistoryKind === 'yacos') return Number(p.yacos);
                     if (amzHistoryKind === 'count') return Number(p.count);
+                    if (amzHistoryKind === 'kpi') return Number(p.value);
                     return Number(p.cpc);
                 });
                 var dataMin = Math.min.apply(null, values);
@@ -5123,7 +5207,8 @@
                     params.set('metric', amzHistoryKind);
                     params.set('days', String(amzCpcAvgDays));
                     params.set('source', activeRawSourceKey || 'all_reports');
-                    fetch(yesterdayBadgeHistoryUrl + '?' + params.toString(), {
+                    if (amzHistoryKind === 'kpi') params.set('metric', row.kpiKey || '');
+                    fetch((amzHistoryKind === 'kpi' ? kpiBadgeHistoryUrl : yesterdayBadgeHistoryUrl) + '?' + params.toString(), {
                         method: 'GET',
                         headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                         credentials: 'same-origin'
@@ -5193,7 +5278,7 @@
             }
             function amzOpenCpcAvgHistory(row) {
                 amzCpcAvgRow = row || {};
-                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt', 'yspend', 'ysales', 'yacos', 'count'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
+                amzHistoryKind = (row && ['cvr', 'acos', 'lbid', 'sbid', 'sbgt', 'yspend', 'ysales', 'yacos', 'count', 'kpi'].indexOf(row.historyKind) !== -1) ? row.historyKind : 'cpc';
                 amzCpcAvgDays = 30;
                 var range = document.getElementById('amazonAdsCpcAvgRange');
                 if (range) range.value = '30';

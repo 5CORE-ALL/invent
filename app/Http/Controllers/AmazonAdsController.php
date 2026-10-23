@@ -5027,6 +5027,293 @@ class AmazonAdsController extends Controller
     }
 
     /**
+     * History for every KPI tile on the summary cards (Yesterday / L30 / Projected / Utilized Y / Utilized L7).
+     * Same campaign universe as the Yesterday badges; one daily row per campaign (+ ad_type) and day, combined here:
+     *   y_*   = that day,  l30_* = rolling 30 days ending that day,  p_* = rolling 7 days ending that day (× 30 ÷ 7 for volume),
+     *   u1_* / u7_* = campaigns per utilisation band that day (U1% = day spend ÷ budget, U7% = 7-day spend ÷ 7-day budget).
+     * metric=tones → last two days for all keys (dots). metric=<key> → daily points for that key (chart).
+     */
+    public function kpiBadgeHistory(Request $request): JsonResponse
+    {
+        $keys = self::kpiHistoryKeys();
+        $metric = trim((string) $request->query('metric', 'tones'));
+        if ($metric !== 'tones' && ! in_array($metric, $keys, true)) {
+            $metric = 'tones';
+        }
+        $days = (int) $request->query('days', 30);
+        if (! in_array($days, [0, 2, 7, 30, 31, 32, 35, 60, 90], true)) {
+            $days = 30;
+        }
+        if ($metric === 'tones') {
+            $days = 2;
+        }
+        $tables = self::yesterdayBadgeHistoryTables($request->query('source'));
+        if ($tables === []) {
+            return response()->json(['ok' => true, 'points' => [], 'values' => [], 'prev' => [], 'message' => 'History is available for SP and SB.']);
+        }
+
+        $end = null;
+        foreach ($tables as $table) {
+            $latest = self::latestDailyReportYmdInTable($table);
+            if (is_string($latest) && $latest !== '' && ($end === null || $latest > $end)) {
+                $end = $latest;
+            }
+        }
+        if ($end === null) {
+            return response()->json(['ok' => true, 'points' => [], 'values' => [], 'prev' => []]);
+        }
+
+        $span = $days === 0 ? 364 : max(1, $days - 1);
+        $start = Carbon::parse($end)->subDays($span)->toDateString();
+        $from = Carbon::parse($start)->subDays(29)->toDateString();
+
+        $camp = [];
+        foreach ($tables as $table) {
+            foreach (self::dailyCampaignRowsForFilteredCampaigns($request, $table, $from, $end) as $r) {
+                $camp[$table.'|'.$r['key']][$r['day']] = $r;
+            }
+        }
+        if ($camp === []) {
+            return response()->json(['ok' => true, 'points' => [], 'values' => [], 'prev' => []]);
+        }
+
+        // Portfolio totals per day.
+        $tot = [];
+        foreach ($camp as $byDay) {
+            foreach ($byDay as $day => $r) {
+                if (! isset($tot[$day])) {
+                    $tot[$day] = ['spend' => 0.0, 'sales' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'budget' => 0.0];
+                }
+                foreach (['spend', 'sales', 'clicks', 'sold', 'budget'] as $f) {
+                    $tot[$day][$f] += (float) $r[$f];
+                }
+            }
+        }
+
+        $firstData = array_key_first($tot);
+        ksort($tot);
+        $firstData = (string) array_key_first($tot);
+        if ($firstData > $start) {
+            $start = $firstData;
+        }
+        $window = static function (array $tot, string $day, int $len): array {
+            $sum = ['spend' => 0.0, 'sales' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'budget' => 0.0];
+            $d = new \DateTimeImmutable($day);
+            for ($i = 0; $i < $len; $i++) {
+                $row = $tot[$d->modify('-'.$i.' day')->format('Y-m-d')] ?? null;
+                if ($row === null) {
+                    continue;
+                }
+                foreach ($sum as $f => $_) {
+                    $sum[$f] += $row[$f];
+                }
+            }
+
+            return $sum;
+        };
+        $derive = static function (array $w, int $len, bool $project): array {
+            $mul = $project ? 30 / 7 : 1;
+            $spend = $w['spend'];
+            $o = [];
+            $o['bgt'] = $len > 0 ? $w['budget'] / $len : null;
+            $o['util'] = $w['budget'] > 0 ? $spend / $w['budget'] * 100 : null;
+            $o['bid'] = $w['clicks'] > 0 ? $spend / $w['clicks'] : null;
+            $o['cvr'] = $w['clicks'] > 0 ? $w['sold'] / $w['clicks'] * 100 : null;
+            $o['acos'] = AmazonAdsYesterdayBadgeHistory::acos($spend, $w['sales']);
+            $o['clicks'] = $w['clicks'] * $mul;
+            $o['sold'] = $w['sold'] * $mul;
+            $o['sales'] = $w['sales'] * $mul;
+            $o['spend'] = $spend * $mul;
+            $o['bgt_total'] = $o['bgt'] === null ? null : $o['bgt'] * 30;
+
+            return $o;
+        };
+        $band = static function (float $spend, float $budget): string {
+            if ($budget <= 0) {
+                return 'na';
+            }
+            $u = $spend / $budget * 100;
+
+            return $u < 66 ? 'red' : ($u <= 99 ? 'green' : 'pink');
+        };
+
+        $series = [];
+        $cursor = new \DateTimeImmutable($start);
+        $last = new \DateTimeImmutable($end);
+        while ($cursor <= $last) {
+            $day = $cursor->format('Y-m-d');
+            $vals = [];
+            foreach ($derive($tot[$day] ?? ['spend' => 0.0, 'sales' => 0.0, 'clicks' => 0.0, 'sold' => 0.0, 'budget' => 0.0], 1, false) as $k => $v) {
+                if ($k !== 'bgt_total') {
+                    $vals['y_'.$k] = $v;
+                }
+            }
+            foreach ($derive($window($tot, $day, 30), 30, false) as $k => $v) {
+                $vals['l30_'.$k] = $v;
+            }
+            foreach ($derive($window($tot, $day, 7), 7, true) as $k => $v) {
+                $vals['p_'.$k] = $v;
+            }
+            // Utilisation bands: U1% (day) and U7% (7 days).
+            foreach (['u1' => 1, 'u7' => 7] as $uk => $len) {
+                $cnt = ['green' => 0, 'red' => 0, 'pink' => 0];
+                $spSum = 0.0;
+                $bdSum = 0.0;
+                foreach ($camp as $byDay) {
+                    $sp = 0.0;
+                    $bd = 0.0;
+                    $seen = false;
+                    for ($i = 0; $i < $len; $i++) {
+                        $r = $byDay[$cursor->modify('-'.$i.' day')->format('Y-m-d')] ?? null;
+                        if ($r === null) {
+                            continue;
+                        }
+                        $seen = true;
+                        $sp += $r['spend'];
+                        $bd += $r['budget'];
+                    }
+                    if (! $seen) {
+                        continue;
+                    }
+                    $b = $band($sp, $bd);
+                    if ($b !== 'na') {
+                        $cnt[$b]++;
+                        $spSum += $sp;
+                        $bdSum += $bd;
+                    }
+                }
+                $vals[$uk.'_green'] = $cnt['green'];
+                $vals[$uk.'_red'] = $cnt['red'];
+                $vals[$uk.'_pink'] = $cnt['pink'];
+                $vals[$uk.'_avg'] = $bdSum > 0 ? $spSum / $bdSum * 100 : null;
+            }
+            foreach ($vals as $k => $v) {
+                $vals[$k] = $v === null ? null : round((float) $v, 4);
+            }
+            $series[] = ['date' => $day] + $vals;
+            $cursor = $cursor->modify('+1 day');
+        }
+
+        $n = count($series);
+        if ($metric === 'tones') {
+            $cur = $n >= 1 ? $series[$n - 1] : [];
+            $prev = $n >= 2 ? $series[$n - 2] : [];
+            unset($cur['date'], $prev['date']);
+
+            return response()->json(['ok' => true, 'end_date' => $end, 'values' => $cur, 'prev' => $prev, 'points' => []]);
+        }
+        $points = [];
+        foreach ($series as $row) {
+            if ($row[$metric] === null) {
+                continue;
+            }
+            $points[] = ['date' => $row['date'], 'value' => $row[$metric]];
+        }
+
+        return response()->json(['ok' => true, 'metric' => $metric, 'points' => $points]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function kpiHistoryKeys(): array
+    {
+        $kinds = ['bgt', 'util', 'bid', 'cvr', 'acos', 'clicks', 'sold', 'sales', 'spend'];
+        $keys = [];
+        foreach (['y', 'l30', 'p'] as $w) {
+            foreach ($kinds as $k) {
+                $keys[] = $w.'_'.$k;
+            }
+        }
+        $keys[] = 'l30_bgt_total';
+        $keys[] = 'p_bgt_total';
+        foreach (['u1', 'u7'] as $u) {
+            foreach (['green', 'red', 'pink', 'avg'] as $b) {
+                $keys[] = $u.'_'.$b;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * One daily row per campaign (+ ad_type) and day for the Yesterday-badge universe.
+     *
+     * @return list<array{key: string, day: string, spend: float, sales: float, clicks: float, sold: float, budget: float}>
+     */
+    private static function dailyCampaignRowsForFilteredCampaigns(Request $request, string $table, string $from, string $to): array
+    {
+        if (! SchemaMemo::hasTable($table)) {
+            return [];
+        }
+        $dbColumns = self::orderedColumnsForTable($table);
+        if (! in_array('campaign_id', $dbColumns, true)
+            || ! in_array('report_date_range', $dbColumns, true)
+            || ! in_array('id', $dbColumns, true)) {
+            return [];
+        }
+        $costExpr = self::costPreferCoalesceExprForTableAlias('t', $dbColumns);
+        $universe = self::badgeUniverseQuery($request, $table, $dbColumns);
+        if ($costExpr === null || $universe === null) {
+            return [];
+        }
+        $hasAd = in_array('ad_type', $dbColumns, true);
+        $pairs = $universe->clone()->reorder()->select($table.'.campaign_id');
+        if ($hasAd) {
+            $pairs->addSelect($table.'.ad_type');
+        }
+        $pairs->whereNotNull($table.'.campaign_id')->distinct();
+
+        $latest = DB::table($table.' as src')
+            ->whereRaw('CHAR_LENGTH(TRIM(src.report_date_range)) = 10')
+            ->whereBetween('src.report_date_range', [$from, $to]);
+        $latest->joinSub($pairs, 'flt', function ($join) use ($hasAd) {
+            $join->on('flt.campaign_id', '=', 'src.campaign_id');
+            if ($hasAd) {
+                $join->whereRaw('flt.ad_type <=> src.ad_type');
+            }
+        });
+        $latest->selectRaw('MAX(src.id) AS max_id');
+        if ($hasAd) {
+            $latest->groupBy('src.report_date_range', 'src.campaign_id', 'src.ad_type');
+        } else {
+            $latest->groupBy('src.report_date_range', 'src.campaign_id');
+        }
+
+        $salesCol = self::l30SummarySalesDbColumn($dbColumns);
+        $purchCol = self::l30SummaryPurchasesDbColumn($dbColumns);
+        $q = DB::query()
+            ->fromSub($latest, 'm')
+            ->join($table.' as t', 't.id', '=', 'm.max_id')
+            ->selectRaw('t.report_date_range AS day, t.campaign_id AS cid')
+            ->selectRaw($hasAd ? 't.ad_type AS ad' : '\'\' AS ad')
+            ->selectRaw('COALESCE('.$costExpr.', 0) AS sp')
+            ->selectRaw($salesCol !== null ? 'COALESCE(t.`'.$salesCol.'`, 0) AS sa' : '0 AS sa')
+            ->selectRaw(in_array('clicks', $dbColumns, true) ? 'COALESCE(t.`clicks`, 0) AS cl' : '0 AS cl')
+            ->selectRaw($purchCol !== null ? 'COALESCE(t.`'.$purchCol.'`, 0) AS so' : '0 AS so')
+            ->selectRaw(in_array('campaignBudgetAmount', $dbColumns, true) ? 'COALESCE(t.`campaignBudgetAmount`, 0) AS bd' : '0 AS bd');
+
+        $out = [];
+        foreach ($q->get() as $r) {
+            $day = trim((string) ($r->day ?? ''));
+            if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+                continue;
+            }
+            $out[] = [
+                'key' => (string) $r->cid.'|'.(string) ($r->ad ?? ''),
+                'day' => $day,
+                'spend' => (float) $r->sp,
+                'sales' => (float) $r->sa,
+                'clicks' => (float) $r->cl,
+                'sold' => (float) $r->so,
+                'budget' => (float) $r->bd,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * @return list<string>
      */
     private static function yesterdayBadgeHistoryTables(mixed $source): array
