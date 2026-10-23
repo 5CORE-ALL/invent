@@ -1887,6 +1887,7 @@
                                     + '<i class="fa fa-plus"></i></button>';
                             }
                         },
+                        countColumnDef('kw', 'KW K Count', 'Keywords (enabled + paused) in the linked KW campaign(s), counted through the Amazon Ads API. Click to see them.'),
                         {
                             title: 'Campaign KW', field: 'kw', widthGrow: 2,
                             hozAlign: 'center', headerHozAlign: 'center',
@@ -1897,7 +1898,6 @@
                             formatter: chipsFormatter('KW'),
                             accessorDownload: linkNamesAccessor
                         },
-                        countColumnDef('kw', 'KW K Count', 'Keywords (enabled + paused) in the linked KW campaign(s), counted through the Amazon Ads API. Click to see them.'),
                         {
                             title: 'Create PT', field: '_create_pt', width: 100,
                             hozAlign: 'center', headerHozAlign: 'center',
