@@ -1017,6 +1017,7 @@ final class AmazonAdsCampaignSkuMetrics
         return [
             'sku' => $sku,
             'price' => null,
+            'gpft' => null,
             'dil' => null,
             'inv' => null,
             'l30' => null,
@@ -1322,6 +1323,7 @@ final class AmazonAdsCampaignSkuMetrics
             : collect();
         $lmpByCompact = self::lmpLandedBySkuKeys($lookupSkus);
         $reviewsBySku = self::reviewsBySkus($lookupSkus);
+        $gpftByCompact = self::gpftByCompactSku($lookupSkus, $sheetByCompact);
 
         $out = [];
         foreach ($skuKeys as $key) {
@@ -1360,7 +1362,10 @@ final class AmazonAdsCampaignSkuMetrics
                 $l30 = 0.0;
                 $price = null;
                 $lmpPrice = null;
+                // Avg GPFT% of the family's SKUs — the same average /amazon-tabulator-view shows on the PARENT row.
+                $gpftSum = 0.0;
                 foreach ($kids as $sku) {
+                    $gpftSum += $gpftByCompact[AmazonDatasheet::normalizeSkuForLookup($sku)] ?? 0.0;
                     $sh = $shopifyByPm->get($sku) ?? ShopifySku::firstForProductSku($sku);
                     $inv += (float) ($sh?->inv ?? 0);
                     $ovl30 += (float) ($sh?->quantity ?? 0);
@@ -1381,6 +1386,7 @@ final class AmazonAdsCampaignSkuMetrics
                 $out[$key] = [
                     'sku' => $key,
                     'price' => $price,
+                    'gpft' => round($gpftSum / count($kids), 2),
                     'dil' => self::tabulatorDil($inv, $ovl30),
                     'inv' => $inv,
                     'l30' => $l30,
@@ -1414,6 +1420,7 @@ final class AmazonAdsCampaignSkuMetrics
             $out[$key] = [
                 'sku' => $key,
                 'price' => $price,
+                'gpft' => $gpftByCompact[AmazonDatasheet::normalizeSkuForLookup($key)] ?? null,
                 'dil' => self::tabulatorDil($inv, $ovl30),
                 'inv' => $inv,
                 'l30' => $l30,
@@ -1422,6 +1429,117 @@ final class AmazonAdsCampaignSkuMetrics
                 'rating' => $rev['rating'],
                 'review_count' => $rev['review_count'],
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * GPFT% per SKU, exactly as /amazon-tabulator-view: ((price × 0.80 − ship − LP) ÷ price) × 100, 2 dp.
+     * Price is the Amazon.com listing price (amazon_buybox_data) when present, else the datasheet price.
+     * LP and ship come from Product Master (Values.lp / Values.ship, then the lp / ship columns).
+     * A SKU with no price is 0, like the tabulator.
+     *
+     * @param  list<string>  $skus
+     * @param  array<string, mixed>  $sheetByCompact  amazon_datsheets rows keyed by compact SKU
+     * @return array<string, float>  compact SKU => GPFT%
+     */
+    private static function gpftByCompactSku(array $skus, array $sheetByCompact): array
+    {
+        $skus = array_values(array_unique(array_filter(array_map(
+            static fn ($s) => is_string($s) ? trim($s) : '',
+            $skus
+        ), static fn (string $s): bool => $s !== '' && ! str_starts_with(strtoupper($s), 'PARENT'))));
+        if ($skus === [] || ! SchemaMemo::hasTable('product_master')) {
+            return [];
+        }
+
+        $spaceKeys = array_values(array_unique(array_filter(array_map(
+            static fn (string $s): string => AmazonDatasheet::normalizeSkuSpaces($s),
+            $skus
+        ))));
+        $compactKeys = array_values(array_unique(array_filter(array_map(
+            static fn (string $s): string => AmazonDatasheet::normalizeSkuForLookup($s),
+            $skus
+        ))));
+
+        $costBySku = [];
+        foreach (array_chunk($spaceKeys, 400) as $chunk) {
+            $ph = implode(',', array_fill(0, count($chunk), '?'));
+            foreach (ProductMaster::query()->whereRaw('UPPER(TRIM(sku)) IN ('.$ph.')', $chunk)->get() as $pm) {
+                $ck = AmazonDatasheet::normalizeSkuForLookup((string) ($pm->sku ?? ''));
+                if ($ck === '') {
+                    continue;
+                }
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : (is_string($pm->Values) ? (json_decode($pm->Values, true) ?: []) : []);
+                $lp = 0.0;
+                foreach ($values as $k => $v) {
+                    if (strtolower((string) $k) === 'lp') {
+                        $lp = (float) $v;
+                        break;
+                    }
+                }
+                if ($lp == 0.0 && isset($pm->lp)) {
+                    $lp = (float) $pm->lp;
+                }
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? (float) $pm->ship : 0.0);
+                $costBySku[$ck] = ['lp' => $lp, 'ship' => $ship];
+            }
+        }
+
+        $sitePrice = [];
+        if (SchemaMemo::hasTable('amazon_buybox_data')) {
+            foreach (array_chunk($compactKeys, 400) as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $rows = \Illuminate\Support\Facades\DB::table('amazon_buybox_data')
+                    ->where('our_listing_price', '>', 0)
+                    ->whereRaw('UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) IN ('.$ph.')', $chunk)
+                    ->get(['sku', 'our_listing_price']);
+                foreach ($rows as $row) {
+                    $ck = AmazonDatasheet::normalizeSkuForLookup((string) $row->sku);
+                    if ($ck !== '') {
+                        $sitePrice[$ck] = (float) $row->our_listing_price;
+                    }
+                }
+            }
+        }
+
+        // Child SKUs of a PARENT campaign are not in $sheetByCompact (it only holds the campaign keys).
+        $missingSheet = array_values(array_filter($compactKeys, static fn (string $ck): bool => ! isset($sheetByCompact[$ck])));
+        if ($missingSheet !== [] && SchemaMemo::hasTable('amazon_datsheets')) {
+            foreach (array_chunk($missingSheet, 400) as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $rows = AmazonDatasheet::query()
+                    ->whereNotNull('sku')
+                    ->whereRaw('UPPER(REPLACE(REPLACE(TRIM(sku), " ", ""), CHAR(9), "")) IN ('.$ph.')', $chunk)
+                    ->get();
+                foreach ($rows as $row) {
+                    $ck = AmazonDatasheet::normalizeSkuForLookup((string) ($row->sku ?? ''));
+                    if ($ck === '') {
+                        continue;
+                    }
+                    $sheetByCompact[$ck] = isset($sheetByCompact[$ck])
+                        ? AmazonDatasheet::pickBestForProductSku((string) ($row->sku ?? ''), [$sheetByCompact[$ck], $row])
+                        : $row;
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($compactKeys as $ck) {
+            if (! isset($costBySku[$ck])) {
+                continue; // not in Product Master — nothing to average
+            }
+            $sheet = $sheetByCompact[$ck] ?? null;
+            $price = $sheet !== null ? (float) ($sheet->price ?? 0) : 0.0;
+            if (isset($sitePrice[$ck]) && $sitePrice[$ck] > 0) {
+                $price = $sitePrice[$ck];
+            }
+            $out[$ck] = $price > 0
+                ? round((($price * 0.80 - $costBySku[$ck]['ship'] - $costBySku[$ck]['lp']) / $price) * 100, 2)
+                : 0.0;
         }
 
         return $out;

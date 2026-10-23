@@ -115,8 +115,10 @@ final class AmazonAdsDesiredSbgtResolver
             $bgtReviews = AmazonAdsBgtReviewsRule::apply($rating)['bgt'] ?? null;
             $bgtDil = AmazonAdsBgtDilRule::apply($dilVal)['bgt'] ?? null;
             $bgtInv = AmazonAdsBgtInvRule::apply($inv)['bgt'] ?? null;
+            $gpftVal = isset($mSku['gpft']) && is_numeric($mSku['gpft']) ? (float) $mSku['gpft'] : null;
+            $bgtGpft = AmazonAdsBgtGpftRule::apply($gpftVal)['bgt'] ?? null;
 
-            $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtInv);
+            $sum = AmazonAdsSbgt::sumFromParts($bgtViews, $bgtCvr, $bgtAcos, $bgtPrc, $bgtReviews, $bgtDil, $bgtInv, $bgtGpft);
             if ($sum === null && isset($arr['sbgt']) && is_numeric($arr['sbgt'])) {
                 $sum = (int) $arr['sbgt'];
             }

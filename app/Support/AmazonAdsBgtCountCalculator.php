@@ -31,6 +31,7 @@ final class AmazonAdsBgtCountCalculator
         $dil = AmazonAdsBgtDilRule::resolvedRule()['bands'] ?? [];
         $inv = AmazonAdsBgtInvRule::resolvedRule()['bands'] ?? [];
         $spend = AmazonAdsBgtSpendRule::resolvedRule()['bands'] ?? [];
+        $gpft = AmazonAdsBgtGpftRule::resolvedRule()['bands'] ?? [];
 
         $columns = [
             'acos' => $this->tally($campaigns, $acos, 'acos_from', 'acos_to', fn (array $row): ?float => $this->num($row['ltAcos'] ?? null)),
@@ -41,12 +42,13 @@ final class AmazonAdsBgtCountCalculator
             'dil' => $this->tally($campaigns, $dil, 'dil_from', 'dil_to', fn (array $row): ?float => $this->dilOf($row)),
             'inv' => $this->tally($campaigns, $inv, 'inv_from', 'inv_to', fn (array $row): ?float => $this->picked($row, 'bgt_inv_value', 'Inv')),
             'spend' => $this->tally($campaigns, $spend, 'spend_from', 'spend_to', fn (array $row): ?float => $this->picked($row, 'cost', 'spend')),
+            'gpft' => $this->tally($campaigns, $gpft, 'gpft_from', 'gpft_to', fn (array $row): ?float => $this->picked($row, 'bgt_gpft_value', 'gpft')),
         ];
 
         $saved = [
             'filter' => self::STATUS,
             'columns' => $columns,
-            'sum' => $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $inv),
+            'sum' => $this->sum($campaigns, $views, $cvr, $acos, $prc, $reviews, $dil, $inv, $gpft),
         ];
         AmazonAdsBgtCountStore::write($saved);
 
@@ -223,9 +225,10 @@ final class AmazonAdsBgtCountCalculator
      * @param  list<array<string, mixed>>  $reviews
      * @param  list<array<string, mixed>>  $dil
      * @param  list<array<string, mixed>>  $inv
+     * @param  list<array<string, mixed>>  $gpft
      * @return array<string, mixed>
      */
-    private function sum(array $rows, array $views, array $cvr, array $acos, array $prc, array $reviews, array $dil, array $inv): array
+    private function sum(array $rows, array $views, array $cvr, array $acos, array $prc, array $reviews, array $dil, array $inv, array $gpft = []): array
     {
         $order = [
             ['key' => 'views', 'label' => 'Views'],
@@ -235,6 +238,7 @@ final class AmazonAdsBgtCountCalculator
             ['key' => 'reviews', 'label' => 'Reviews'],
             ['key' => 'dil', 'label' => 'Dil'],
             ['key' => 'inv', 'label' => 'Inv'],
+            ['key' => 'gpft', 'label' => 'GPFT'],
         ];
         $partCount = [];
         $partSum = [];
@@ -254,6 +258,7 @@ final class AmazonAdsBgtCountCalculator
                 'reviews' => $this->amount($reviews, $this->reviewsIndex($this->picked($row, 'bgt_reviews_rating', 'reviews'), $reviews), 'bgt'),
                 'dil' => $this->amount($dil, $this->bandIndex($this->dilOf($row), $dil, 'dil_from', 'dil_to'), 'bgt'),
                 'inv' => $this->amount($inv, $this->bandIndex($this->picked($row, 'bgt_inv_value', 'Inv'), $inv, 'inv_from', 'inv_to'), 'bgt'),
+                'gpft' => $this->amount($gpft, $this->bandIndex($this->picked($row, 'bgt_gpft_value', 'gpft'), $gpft, 'gpft_from', 'gpft_to'), 'bgt'),
             ];
             foreach ($order as $part) {
                 $n = $parts[$part['key']];
@@ -270,7 +275,8 @@ final class AmazonAdsBgtCountCalculator
                 $parts['prc'],
                 $parts['reviews'],
                 $parts['dil'],
-                $parts['inv']
+                $parts['inv'],
+                $parts['gpft']
             );
             if ($total === null) {
                 continue;

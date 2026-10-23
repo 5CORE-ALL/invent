@@ -337,6 +337,11 @@ class AmazonBidUtilizationService
         return ($l2Spend / ($budget * 2.0)) * 100.0;
     }
 
+    /** Under-utilized rule: an L1 / L7 CPC below this gets {@see LOW_CPC_FLAT_ADD} added instead of the × multiplier. */
+    public const LOW_CPC_THRESHOLD = 0.25;
+
+    public const LOW_CPC_FLAT_ADD = 0.07;
+
     /**
      * Suggested SBID from U2%/U1% bands using {@see AmazonAdsSbidRule::resolvedRule()} (thresholds and multipliers).
      *
@@ -376,14 +381,15 @@ class AmazonBidUtilizationService
         }
 
         if ($ub2 < $low && $ub1 < $low) {
+            // A very low L1 / L7 CPC barely moves with a ×1.10 multiplier, so below LOW_CPC_THRESHOLD add a flat amount instead.
             if ($l1 > 0.0) {
-                return ['sbid' => round($l1 * $m1, 2), 'band' => 'under'];
+                return ['sbid' => round($l1 < self::LOW_CPC_THRESHOLD ? $l1 + self::LOW_CPC_FLAT_ADD : $l1 * $m1, 2), 'band' => 'under'];
             }
             if ($l2 > 0.0) {
                 return ['sbid' => round($l2 * $m2, 2), 'band' => 'under'];
             }
             if ($l7 > 0.0) {
-                return ['sbid' => round($l7 * $m7, 2), 'band' => 'under'];
+                return ['sbid' => round($l7 < self::LOW_CPC_THRESHOLD ? $l7 + self::LOW_CPC_FLAT_ADD : $l7 * $m7, 2), 'band' => 'under'];
             }
             if ($avgCpc !== null && $avgCpc > 0) {
                 return ['sbid' => round($avgCpc + $avgAdd, 2), 'band' => 'under'];

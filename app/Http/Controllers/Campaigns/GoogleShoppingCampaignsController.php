@@ -2802,7 +2802,12 @@ class GoogleShoppingCampaignsController extends Controller
      * KPI badges that always cover EVERY campaign (Active, Paused, Removed …), whatever rows the grid is showing.
      * l30_bgt_total = the daily budgets summed over the last 30 days.
      */
-    public const KPI_ALL_CAMPAIGN_METRICS = ['l30_bgt_total', 'p_sold', 'p_sales', 'p_spend', 'p_bgt_total'];
+    public const KPI_ALL_CAMPAIGN_METRICS = [
+        'l30_bgt_total',
+        // The whole Projected block uses every campaign, so its ratios (util / bid / cvr / ACOS) are
+        // computed from the same totals as the Spend / Sales / Clicks / Sold tiles beside them.
+        'p_bgt', 'p_util', 'p_bid', 'p_cvr', 'p_acos', 'p_clicks', 'p_sold', 'p_sales', 'p_spend', 'p_bgt_total',
+    ];
 
     /**
      * Projected badges (p_*): the last 7 completed US days, divided by 7 and multiplied by 30.
@@ -2940,11 +2945,16 @@ class GoogleShoppingCampaignsController extends Controller
             case 'cvr':
                 return $w['clicks'] > 0 ? ($round ? round(($w['sold'] / $w['clicks']) * 100, 1) : (($w['sold'] / $w['clicks']) * 100)) : 0.0;
             case 'acos':
-                if ($w['spend'] <= 0.0) {
-                    return 0.0;
+                // ACOS = Spend ÷ Sales of the SAME block, using the whole-dollar Spend / Sales the tiles display
+                // (identical to the grid's ACOS column), so anyone can re-check it from the two tiles.
+                $spendR = round($w['spend']);
+                $salesR = round($w['sales']);
+                if ($salesR < 1.0) {
+                    return $spendR > 0.0 ? 100.0 : 0.0;
                 }
+                $acos = ($spendR / $salesR) * 100;
 
-                return $w['sales'] < 1.0 ? 100.0 : ($round ? round(($w['spend'] / $w['sales']) * 100, 1) : (($w['spend'] / $w['sales']) * 100));
+                return $round ? round($acos, 1) : $acos;
         }
 
         return 0.0;
