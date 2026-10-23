@@ -515,6 +515,48 @@
         .amz-metric-block-label {
             font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #334155;
         }
+        /* ── Summary cards (same structure as Google Shopping): yellow card + title + equal-size tiles ── */
+        .amz-cards {
+            display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0.5rem; align-items: start; margin-bottom: 0.5rem;
+        }
+        .amz-card {
+            min-width: 0; border-radius: 12px; padding: 0.55rem 0.6rem 0.65rem;
+            background: #fef9c3; border: 1px solid #facc15; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        .amz-card--yesterday, .amz-card--l30, .amz-card--projected { grid-column: span 4; }
+        .amz-card--util { grid-column: span 2; }
+        .amz-card--util .amz-card-tiles { grid-template-columns: minmax(0, 1fr); }
+        .amz-card-title {
+            font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+            line-height: 1; margin: 0 0 0.35rem; color: #854d0e;
+        }
+        .amz-card-tiles { display: grid; gap: 0.4rem; align-items: stretch; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .amz-kpi-tile {
+            display: inline-flex; align-items: center; justify-content: center; text-align: center;
+            width: 100%; min-width: 0; min-height: 36px; box-sizing: border-box; white-space: nowrap;
+            font-size: 0.78rem; font-weight: 700; line-height: 1.2; padding: 0.3rem 0.35rem; border-radius: 0.375rem;
+            background: #fff; color: #111827; border: 1px solid #e5e7eb;
+        }
+        .amz-kpi-tile > .amz-kpi-val { margin-left: 4px; font-size: 0.85rem; font-weight: 800; }
+        .amz-kpi-tile > .amz-kpi-pct { margin-left: 5px; font-size: 0.75rem; font-weight: 700; opacity: 0.95; }
+        .amz-kpi-tile.amz-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
+        .amz-kpi-tile.amz-cmp-worse { background: #ef4444; color: #fff; border-color: #dc2626; }
+        .amz-kpi-tile.amz-kpi-campaign { background: #4c7ed8; color: #fff; border-color: #3b6cc4; }
+        .amz-kpi-tile.amz-kpi-active { background: #16a34a; color: #fff; border-color: #15803d; }
+        .amz-kpi-tile.amz-util-red { background: #dc2626; color: #fff; border-color: #b91c1c; }
+        .amz-kpi-tile.amz-util-green { background: #16a34a; color: #fff; border-color: #15803d; }
+        .amz-kpi-tile.amz-util-pink { background: #db2777; color: #fff; border-color: #be185d; }
+        .amz-kpi-tile.amz-util-total { background: #8b5cf6; color: #fff; border-color: #7c3aed; }
+        @media (max-width: 1399.98px) {
+            .amz-card--yesterday, .amz-card--l30, .amz-card--projected, .amz-card--util { grid-column: span 6; }
+            .amz-card--util .amz-card-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+        @media (max-width: 991.98px) {
+            .amz-card--yesterday, .amz-card--l30, .amz-card--projected, .amz-card--util { grid-column: span 12; }
+        }
+        @media (max-width: 575.98px) {
+            .amz-card-tiles, .amz-card--util .amz-card-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
         #amz-ads-raw-wrap #amazonAdsU7Pie { width: 100%; min-height: 400px; }
 
         @media (max-width: 991.98px) {
@@ -1124,33 +1166,84 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
+                    {{-- Summary cards: same block structure as Google Shopping. Values come from Amazon data (payload.kpiBlocks + the existing Spend / Sales / ACOS totals) and are filled by amzPaintKpiBlocks(). --}}
+                    @php
+                        $amzKpiCards = [
+                            ['tag' => 'Yesterday', 'title' => 'Yesterday', 'items' => [
+                                ['y_bgt', 'Y BGT', 'Total daily budget of the campaigns shown (Amazon L1 row).', null],
+                                ['y_util', 'Y UTIL', 'Yesterday utilization = yesterday spend ÷ daily budget.', null],
+                                ['y_bid', 'Y AVG BID', 'Yesterday avg bid = yesterday spend ÷ clicks (avg CPC).', null],
+                                ['y_cvr', 'Y CVR%', 'Yesterday CVR% = yesterday sold ÷ clicks.', null],
+                                ['y_acos', 'Y ACOS%', 'Yesterday ACOS% = yesterday spend ÷ yesterday ads sales.', ['amazonAdsYesterdayAcosBadgeDot', 'yacos', 'ACOS']],
+                                ['y_clicks', 'Y CLICKS', 'Yesterday clicks (Amazon L1).', null],
+                                ['y_sold', 'Y SOLD', 'Yesterday units sold (Amazon L1).', null],
+                                ['y_sales', 'Y SALES', 'Yesterday ads sales (Amazon L1).', ['amazonAdsYesterdaySalesBadgeDot', 'ysales', 'Ads Sales']],
+                                ['y_spend', 'Y SPEND', 'Yesterday spend (Amazon L1).', ['amazonAdsYesterdaySpendBadgeDot', 'yspend', 'Spend']],
+                            ]],
+                            ['tag' => 'L30', 'title' => 'L30', 'items' => [
+                                ['l30_bgt', 'DAILY BGT', 'Total daily budget of the campaigns shown (Amazon L30 row).', null],
+                                ['l30_util', 'UTIL', 'L30 utilization = 30-day spend ÷ (daily budget × 30).', null],
+                                ['l30_bid', 'AVG BID', 'L30 avg bid = 30-day spend ÷ clicks (avg CPC).', null],
+                                ['l30_cvr', 'CVR%', 'Ads CVR = ads sold ÷ ads clicks (L30).', null],
+                                ['l30_acos', 'ACOS%', 'Overall ACOS from Amazon L30.', null],
+                                ['l30_clicks', 'CLICKS', 'Clicks (L30).', null],
+                                ['l30_sold', 'SOLD', 'Sold (L30).', null],
+                                ['l30_sales', 'SALES', 'Ads sales (L30).', null],
+                                ['l30_spend', 'SPEND', 'Amazon L30 spend for the selected table (SP+SB on All).', null],
+                                ['l30_bgt_total', 'TOTAL BGT', 'Daily budget × 30.', null],
+                            ]],
+                            ['tag' => 'Projected', 'title' => 'Projected · L7 ÷ 7 × 30', 'items' => [
+                                ['p_bgt', 'DAILY BGT', 'Total daily budget of the campaigns shown (Amazon L7 row).', null],
+                                ['p_util', 'UTIL', 'L7 utilization = 7-day spend ÷ (daily budget × 7).', null],
+                                ['p_bid', 'AVG BID', 'L7 avg bid = 7-day spend ÷ clicks (avg CPC).', null],
+                                ['p_cvr', 'CVR%', 'L7 CVR% = 7-day sold ÷ clicks.', null],
+                                ['p_acos', 'ACOS%', 'Projected ACOS% = projected spend ÷ projected ads sales.', null],
+                                ['p_clicks', 'CLICKS', 'Projected clicks = L7 clicks ÷ 7 × 30.', null],
+                                ['p_sold', 'SOLD', 'Projected sold = L7 sold ÷ 7 × 30.', null],
+                                ['p_sales', 'SALES', 'Projected ads sales = L7 ads sales ÷ 7 × 30.', null],
+                                ['p_spend', 'SPEND', 'Projected spend = L7 spend ÷ 7 × 30.', null],
+                                ['p_bgt_total', 'TOTAL BGT', 'Daily budget × 30.', null],
+                            ]],
+                        ];
+                        $amzUtilCards = [
+                            ['id' => 'u1', 'title' => 'Utilized Y', 'short' => 'Y', 'src' => 'yesterday utilisation (U1%)'],
+                            ['id' => 'u7', 'title' => 'Utilized L7', 'short' => 'L7', 'src' => 'L7 utilisation (U7%)'],
+                        ];
+                    @endphp
+                    <div class="amz-cards" id="amzSummaryCards">
+                        @foreach ($amzKpiCards as $kpiCard)
+                            <div class="amz-card amz-card--{{ strtolower($kpiCard['tag']) }}">
+                                <div class="amz-card-title">{{ $kpiCard['title'] }}</div>
+                                <div class="amz-card-tiles">
+                                    @foreach ($kpiCard['items'] as [$kpiKey, $kpiText, $kpiTip, $kpiDot])
+                                        <span id="amzKpi_{{ $kpiKey }}" class="amz-kpi-tile" data-kpi="{{ $kpiKey }}" title="{{ $kpiTip }}">@if ($kpiDot)<button type="button" class="amz-badge-history-dot is-flat" id="{{ $kpiDot[0] }}" data-history="{{ $kpiDot[1] }}" data-label="{{ $kpiDot[2] }}" title="{{ $kpiText }} history. Click for the last days."><span></span></button>@endif{{ $kpiText }}:<span class="amz-kpi-val">—</span></span>
+                                    @endforeach
+                                    @if ($kpiCard['tag'] === 'Yesterday')
+                                        <span id="amazonAdsCampaignBadgeWrap" class="amz-kpi-tile amz-kpi-campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span class="amz-kpi-val" id="amazonAdsCampaignBadgeValue">0</span></span>
+                                        <span id="amzKpiActive" class="amz-kpi-tile amz-kpi-active" title="ENABLED campaigns out of the campaigns matching the current filters, and the share that is active.">ACTIVE:<span class="amz-kpi-val" id="amzKpiActiveValue">—</span><span class="amz-kpi-pct" id="amzKpiActivePct"></span></span>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+
+                        {{-- Utilization bands (same as the grid / U7% pie): red < 66%, green 66–99%, pink > 99%. Y = U1%, L7 = U7%. --}}
+                        @foreach ($amzUtilCards as $uc)
+                            <div class="amz-card amz-card--util" id="amzUtilBlock_{{ $uc['id'] }}">
+                                <div class="amz-card-title">{{ $uc['title'] }}</div>
+                                <div class="amz-card-tiles">
+                                    <span class="amz-kpi-tile amz-util-green" title="Campaigns whose {{ $uc['src'] }} is 66–99%.">UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_66_99">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_66_99_pct">0%</span></span>
+                                    <span class="amz-kpi-tile amz-util-red" title="Campaigns whose {{ $uc['src'] }} is under 66%.">UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_lt66">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_lt66_pct">0%</span></span>
+                                    <span class="amz-kpi-tile amz-util-pink" title="Campaigns whose {{ $uc['src'] }} is over 99%.">UTIL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_gt99">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_gt99_pct">0%</span></span>
+                                    <span class="amz-kpi-tile amz-util-total" id="amzUtil_{{ $uc['id'] }}_totalTile" title="All campaigns matching the filters (incl. those with no budget), and their average {{ $uc['src'] }} = total spend ÷ total budget (campaigns with a budget).">TOTAL ({{ $uc['short'] }}):<span class="amz-kpi-val" id="amzUtil_{{ $uc['id'] }}_total">0</span><span class="amz-kpi-pct" id="amzUtil_{{ $uc['id'] }}_avg">avg 0%</span></span>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+
                     <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
                         <div class="amz-metric-blocks">
                             <div class="amz-metric-block">
-                                <span class="amz-metric-block-label">Last 30</span>
-                                <span id="amazonAdsCampaignBadgeWrap" class="amz-stat-badge amz-stat-badge--campaign" title="Distinct campaigns matching Table + Stat + calendar. Amazon Enabled SP+SB is ~199; Stat=Enabled + All includes zero-activity ENABLED campaigns synced from Amazon.">CAMPAIGN:<span id="amazonAdsCampaignBadgeValue">0</span></span>
-                                <span id="amazonAdsSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Amazon L30 spend for the selected table (SP+SB on All). Includes paused campaigns that spent in L30 even if they have no row on the calendar day.">SPEND:<span id="amazonAdsSpendBadgeValue">$0</span></span>
-                                <span id="amazonAdsSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Ads sales (L30) — same Amazon L30 universe as Spend">ADS SALES:<span id="amazonAdsSalesBadgeValue">$0</span></span>
-                                <span id="amazonAdsOverallAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Overall ACOS from Amazon L30. Turns red when ACOS is above 40%.">ACOS%:<span id="amazonAdsOverallAcosBadgeValue">0%</span></span>
-                                <span id="amazonAdsClicksBadgeWrap" class="amz-stat-badge amz-stat-badge--clicks" title="Clicks (L30) — same Amazon L30 universe as Spend">CLICKS:<span id="amazonAdsClicksBadgeValue">0</span></span>
-                                <span id="amazonAdsSoldBadgeWrap" class="amz-stat-badge amz-stat-badge--sold" title="Sold (L30) — same Amazon L30 universe as Spend">SOLD:<span id="amazonAdsSoldBadgeValue">0</span></span>
-                                <span id="amazonAdsCvrBadgeWrap" class="amz-stat-badge amz-stat-badge--cvr" title="Ads CVR = Ads Sold / Ads Clicks (L30)">CVR:<span id="amazonAdsCvrBadgeValue">0%</span></span>
-                                <span id="amazonAdsCpcBadgeWrap" class="amz-stat-badge amz-stat-badge--cpc" title="CPC = Spend / Clicks">CPC:<span id="amazonAdsCpcBadgeValue">$0</span></span>
-                            </div>
-                            <div class="amz-metric-block">
-                                <span class="amz-metric-block-label">Yesterday</span>
-                                <span id="amazonAdsYesterdaySpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Yesterday spend (Amazon L1) for the current filters. Green = up vs the prior day, red = down, gray = unchanged. Click the dot for history."><button type="button" class="amz-badge-history-dot is-flat" id="amazonAdsYesterdaySpendBadgeDot" data-history="yspend" data-label="Spend" title="Yesterday spend history. Green = up, red = down, gray = unchanged."><span></span></button>SPEND:<span id="amazonAdsYesterdaySpendBadgeValue">$0</span></span>
-                                <span id="amazonAdsYesterdaySalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Yesterday ads sales (Amazon L1) for the current filters. Green = up vs the prior day, red = down, gray = unchanged. Click the dot for history."><button type="button" class="amz-badge-history-dot is-flat" id="amazonAdsYesterdaySalesBadgeDot" data-history="ysales" data-label="Ads Sales" title="Yesterday ads sales history. Green = up, red = down, gray = unchanged."><span></span></button>ADS SALES:<span id="amazonAdsYesterdaySalesBadgeValue">$0</span></span>
-                                <span id="amazonAdsYesterdayAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Yesterday ACOS% = yesterday spend ÷ yesterday ads sales. Green = ACOS down, red = ACOS up, gray = unchanged. Click the dot for history."><button type="button" class="amz-badge-history-dot is-flat" id="amazonAdsYesterdayAcosBadgeDot" data-history="yacos" data-label="ACOS" title="Yesterday ACOS history. Green = down, red = up, gray = unchanged."><span></span></button>ACOS%:<span id="amazonAdsYesterdayAcosBadgeValue">—</span></span>
-                            </div>
-                            <div class="amz-metric-block">
-                                <span class="amz-metric-block-label">Projected</span>
-                                <span id="amazonAdsProjectedSpendBadgeWrap" class="amz-stat-badge amz-stat-badge--spend" title="Projected spend = last 7 days of spend ÷ 7 × 30.">SPEND:<span id="amazonAdsProjectedSpendBadgeValue">$0</span></span>
-                                <span id="amazonAdsProjectedSalesBadgeWrap" class="amz-stat-badge amz-stat-badge--sales" title="Projected ads sales = last 7 days of ads sales ÷ 7 × 30.">ADS SALES:<span id="amazonAdsProjectedSalesBadgeValue">$0</span></span>
-                                <span id="amazonAdsProjectedAcosBadgeWrap" class="amz-stat-badge amz-stat-badge--acos" title="Projected ACOS% = projected spend ÷ projected ads sales.">ACOS%:<span id="amazonAdsProjectedAcosBadgeValue">—</span></span>
-                            </div>
-                            <div class="amz-metric-block">
-                                <span class="amz-metric-block-label">Budget</span>
+                                <span class="amz-metric-block-label">SBGT Budget</span>
                                 <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--budget" title="Sum of floored SBGT across campaigns in the current filters. Open BGT Rules for the count at each budget.">DAILY BGT:<span id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
                                 <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--month" title="Monthly budget = daily budget × 30.">MONTHLY BUDGET:<span id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
                                 <div class="amz-sync-toolbar-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
@@ -3527,45 +3620,113 @@
             function amzUpdateBadges(json) {
                 var camp = (json && typeof json.distinctCampaignCount === 'number' && isFinite(json.distinctCampaignCount)) ? json.distinctCampaignCount : null;
                 if (camp !== null) amzDistinctCampaignCount = camp;
-                var acos = (json && typeof json.overallAcosPercent === 'number' && isFinite(json.overallAcosPercent)) ? json.overallAcosPercent : null;
-                var spend = (json && typeof json.spendTotal === 'number' && isFinite(json.spendTotal)) ? json.spendTotal : null;
-                var clicks = (json && typeof json.clicksTotal === 'number' && isFinite(json.clicksTotal)) ? json.clicksTotal : null;
-                var sold = (json && typeof json.soldTotal === 'number' && isFinite(json.soldTotal)) ? json.soldTotal : null;
-                var sales = (json && typeof json.salesTotal === 'number' && isFinite(json.salesTotal)) ? json.salesTotal : null;
-
                 amzSetText('amazonAdsCampaignBadgeValue', camp === null ? '0' : Number(camp).toLocaleString('en-US'));
-                amzSetText('amazonAdsOverallAcosBadgeValue', acos === null ? '—' : (Math.round(acos) + '%'));
-                var acosWrap = document.getElementById('amazonAdsOverallAcosBadgeWrap');
-                if (acosWrap) acosWrap.classList.toggle('is-high', acos !== null && acos > 40);
-                amzSetText('amazonAdsSpendBadgeValue', spend === null ? '$0' : ('$' + Number(spend).toLocaleString('en-US', { maximumFractionDigits: 0 })));
-                amzSetText('amazonAdsClicksBadgeValue', clicks === null ? '0' : Number(clicks).toLocaleString('en-US'));
-                amzSetText('amazonAdsSoldBadgeValue', sold === null ? '0' : Number(sold).toLocaleString('en-US'));
-                amzSetText('amazonAdsSalesBadgeValue', sales === null ? '$0' : ('$' + Number(sales).toLocaleString('en-US', { maximumFractionDigits: 0 })));
-                amzSetText('amazonAdsCvrBadgeValue', (sold !== null && clicks && clicks > 0) ? ((sold / clicks * 100).toFixed(2) + '%') : '—');
-                amzSetText('amazonAdsCpcBadgeValue', (spend !== null && clicks && clicks > 0) ? ('$' + (spend / clicks).toFixed(2)) : '$0');
-
-                function amzMoneyBadge(n) {
-                    return (typeof n === 'number' && isFinite(n)) ? ('$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 })) : '$0';
-                }
-                function amzAcosBadge(id, wrapId, n) {
-                    var known = typeof n === 'number' && isFinite(n);
-                    amzSetText(id, known ? (Math.round(n) + '%') : '—');
-                    var wrap = document.getElementById(wrapId);
-                    if (wrap) wrap.classList.toggle('is-high', known && n > 40);
-                }
-                var ySpend = json && json.yesterdaySpend;
-                var ySales = json && json.yesterdaySales;
-                var yAcos = json && json.yesterdayAcosPercent;
-                var pSpend = json && json.projectedSpend;
-                var pSales = json && json.projectedSales;
-                var pAcos = json && json.projectedAcosPercent;
-                amzSetText('amazonAdsYesterdaySpendBadgeValue', amzMoneyBadge(ySpend));
-                amzSetText('amazonAdsYesterdaySalesBadgeValue', amzMoneyBadge(ySales));
-                amzAcosBadge('amazonAdsYesterdayAcosBadgeValue', 'amazonAdsYesterdayAcosBadgeWrap', yAcos);
-                amzSetText('amazonAdsProjectedSpendBadgeValue', amzMoneyBadge(pSpend));
-                amzSetText('amazonAdsProjectedSalesBadgeValue', amzMoneyBadge(pSales));
-                amzAcosBadge('amazonAdsProjectedAcosBadgeValue', 'amazonAdsProjectedAcosBadgeWrap', pAcos);
+                amzPaintKpiBlocks(json || {});
                 amzRefreshYesterdayBadgeTones();
+            }
+            // ---- Summary cards (Yesterday / L30 / Projected / Utilized Y / Utilized L7) ----
+            // Amazon data only: existing Spend / Sales / ACOS totals + payload.kpiBlocks raw sums. BGT = campaignBudgetAmount of the
+            // latest L1 / L7 / L30 row per campaign; UTIL = spend ÷ (BGT × days); AVG BID = spend ÷ clicks; CVR = sold ÷ clicks.
+            var AMZ_KPI_KIND = {
+                bgt: { fmt: function (v) { return '$' + Math.round(v).toLocaleString('en-US'); }, lower: false },
+                bgt_total: { fmt: function (v) { return '$' + Math.round(v).toLocaleString('en-US'); }, lower: false },
+                util: { fmt: function (v) { return v.toFixed(1) + '%'; }, lower: false },
+                bid: { fmt: function (v) { return '$' + v.toFixed(2); }, lower: true },
+                cvr: { fmt: function (v) { return v.toFixed(2) + '%'; }, lower: false },
+                acos: { fmt: function (v) { return Math.round(v) + '%'; }, lower: true },
+                clicks: { fmt: function (v) { return Math.round(v).toLocaleString('en-US'); }, lower: false },
+                sold: { fmt: function (v) { return Math.round(v).toLocaleString('en-US'); }, lower: false },
+                sales: { fmt: function (v) { return '$' + Math.round(v).toLocaleString('en-US'); }, lower: false },
+                spend: { fmt: function (v) { return '$' + Math.round(v).toLocaleString('en-US'); }, lower: false }
+            };
+            function amzNum(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+            function amzWindowKpis(w, days, acosPct) {
+                var o = {};
+                if (!w) return o;
+                var bud = amzNum(w.budget), sp = amzNum(w.spend), cl = amzNum(w.clicks), so = amzNum(w.sold);
+                o.bgt = bud;
+                o.util = (bud !== null && bud > 0 && sp !== null) ? sp / (bud * days) * 100 : null;
+                o.bid = (sp !== null && cl !== null && cl > 0) ? sp / cl : null;
+                o.cvr = (so !== null && cl !== null && cl > 0) ? so / cl * 100 : null;
+                o.acos = amzNum(acosPct);
+                o.clicks = cl; o.sold = so; o.sales = amzNum(w.sales); o.spend = sp;
+                return o;
+            }
+            function amzPaintKpiBlocks(json) {
+                var b = json.kpiBlocks || null;
+                var vals = {};
+                var cmp = {};
+                var base = {};
+                if (b) {
+                    var y = amzWindowKpis(b.y, 1, json.yesterdayAcosPercent);
+                    var l30 = amzWindowKpis(b.l30, 30, json.overallAcosPercent);
+                    var p = amzWindowKpis(b.l7, 7, json.projectedAcosPercent);
+                    // Projected volume tiles = L7 ÷ 7 × 30 (same formula as the existing projected spend / sales).
+                    var proj = function (v) { return v === null ? null : v / 7 * 30; };
+                    var pv = {
+                        bgt: p.bgt, util: p.util, bid: p.bid, cvr: p.cvr, acos: p.acos,
+                        clicks: proj(p.clicks), sold: proj(p.sold),
+                        sales: amzNum(json.projectedSales), spend: amzNum(json.projectedSpend),
+                        bgt_total: p.bgt === null ? null : p.bgt * 30
+                    };
+                    l30.bgt_total = l30.bgt === null ? null : l30.bgt * 30;
+                    Object.keys(y).forEach(function (k) { vals['y_' + k] = y[k]; });
+                    Object.keys(l30).forEach(function (k) { vals['l30_' + k] = l30[k]; });
+                    Object.keys(pv).forEach(function (k) { vals['p_' + k] = pv[k]; });
+                    // Yesterday and Projected vs L30: better = green, otherwise red (one day vs the L30 per-day average for volume tiles).
+                    Object.keys(vals).forEach(function (key) {
+                        if (key.indexOf('l30_') === 0) return;
+                        var kind = key.replace(/^(y|p)_/, '');
+                        var cur = vals[key];
+                        var ref = l30[kind];
+                        if (key.charAt(0) === 'y' && /^(clicks|sold|sales|spend)$/.test(kind) && ref !== null && ref !== undefined) ref = ref / 30;
+                        if (cur === null || cur === undefined || ref === null || ref === undefined) return;
+                        var lower = AMZ_KPI_KIND[kind].lower;
+                        cmp[key] = (lower ? cur < ref - 1e-9 : cur > ref + 1e-9) ? 'better' : 'worse';
+                        base[key] = ref;
+                    });
+                }
+                document.querySelectorAll('#amzSummaryCards .amz-kpi-tile[data-kpi]').forEach(function (el) {
+                    var key = el.getAttribute('data-kpi');
+                    var kind = key.replace(/^(y|p|l30)_/, '');
+                    var v = vals[key];
+                    var valEl = el.querySelector('.amz-kpi-val');
+                    if (valEl) valEl.textContent = (v === null || v === undefined || !AMZ_KPI_KIND[kind]) ? '—' : AMZ_KPI_KIND[kind].fmt(v);
+                    el.classList.remove('amz-cmp-better', 'amz-cmp-worse');
+                    if (el.dataset.tip === undefined) el.dataset.tip = el.getAttribute('title') || '';
+                    var tip = el.dataset.tip;
+                    if (cmp[key]) {
+                        el.classList.add(cmp[key] === 'better' ? 'amz-cmp-better' : 'amz-cmp-worse');
+                        var refLbl = (key.charAt(0) === 'y' && /_(clicks|sold|sales|spend)$/.test(key)) ? 'L30 daily avg' : 'L30';
+                        tip += ' · ' + (cmp[key] === 'better' ? 'Better' : 'Worse') + ' than ' + refLbl + ' (' + AMZ_KPI_KIND[kind].fmt(base[key]) + ').';
+                    }
+                    el.setAttribute('title', tip);
+                });
+                // ACTIVE = ENABLED campaigns / campaigns matching the filters.
+                var act = b && b.active ? b.active : null;
+                var actTotal = act ? amzNum(act.total) : null;
+                var actOn = act ? amzNum(act.enabled) : null;
+                amzSetText('amzKpiActiveValue', (actOn !== null && actTotal !== null) ? (actOn.toLocaleString('en-US') + ' / ' + actTotal.toLocaleString('en-US')) : '—');
+                amzSetText('amzKpiActivePct', (actOn !== null && actTotal) ? (Math.round(actOn / actTotal * 100) + '%') : '');
+                // Utilized Y (U1%) / Utilized L7 (U7%).
+                ['u1', 'u7'].forEach(function (id) {
+                    var u = b ? b[id] : null;
+                    var total = u ? (amzNum(u.total) || 0) : 0;
+                    ['66_99', 'lt66', 'gt99'].forEach(function (band) {
+                        var c = u ? (amzNum(u[band]) || 0) : 0;
+                        amzSetText('amzUtil_' + id + '_' + band, c.toLocaleString('en-US'));
+                        amzSetText('amzUtil_' + id + '_' + band + '_pct', (total > 0 ? Math.round(c / total * 100) : 0) + '%');
+                    });
+                    amzSetText('amzUtil_' + id + '_total', total.toLocaleString('en-US'));
+                    var avg = (u && amzNum(u.bd) > 0) ? (u.spend / u.bd * 100) : null;
+                    amzSetText('amzUtil_' + id + '_avg', 'avg ' + (avg === null ? '0' : avg.toFixed(1)) + '%');
+                    var tile = document.getElementById('amzUtil_' + id + '_totalTile');
+                    if (tile) {
+                        var nNa = u ? (amzNum(u.na) || 0) : 0;
+                        if (tile.dataset.tip === undefined) tile.dataset.tip = tile.getAttribute('title') || '';
+                        tile.setAttribute('title', tile.dataset.tip + (nNa > 0 ? ' ' + nNa + ' campaign(s) have no budget / no data (n/a) and are not in any band.' : ''));
+                    }
+                });
             }
             var amzYesterdayToneReq = 0;
             function amzPaintYesterdayBadgeTone(id, tone) {

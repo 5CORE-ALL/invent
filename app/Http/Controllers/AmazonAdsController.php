@@ -1460,6 +1460,9 @@ class AmazonAdsController extends Controller
             $salesCol !== null ? 'COALESCE(SUM(t.`'.$salesCol.'`), 0) AS sales_sum' : '0 AS sales_sum',
             $purchCol !== null ? 'COALESCE(SUM(t.`'.$purchCol.'`), 0) AS purchases_sum' : '0 AS purchases_sum',
             $clicksCol !== null ? 'COALESCE(SUM(t.`'.$clicksCol.'`), 0) AS clicks_sum' : '0 AS clicks_sum',
+            in_array('campaignBudgetAmount', $dbColumns, true)
+                ? 'COALESCE(SUM(t.`campaignBudgetAmount`), 0) AS budget_sum'
+                : '0 AS budget_sum',
         ];
 
         $row = DB::query()
@@ -1473,7 +1476,77 @@ class AmazonAdsController extends Controller
             'sales_sum' => (float) ($row->sales_sum ?? 0),
             'purchases_sum' => (float) ($row->purchases_sum ?? 0),
             'clicks_sum' => (float) ($row->clicks_sum ?? 0),
+            'budget_sum' => (float) ($row->budget_sum ?? 0),
         ];
+    }
+
+    /**
+     * Utilized Y / Utilized L7 blocks: campaigns (distinct campaign_id [+ ad_type]) bucketed by utilisation of the
+     * latest L1 or L7 summary row — spend ÷ (campaignBudgetAmount × days), same bands and n/a rule as
+     * {@see sqlU7BucketCaseExpression} (< 66, 66–99, > 99).
+     *
+     * @param  array<int, string>  $dbColumns
+     * @return array{lt66: int, 66_99: int, gt99: int, na: int, total: int, spend: float, bd: float}
+     */
+    private static function utilBucketsLatestSummaryForFilteredCampaigns(Builder $filteredBaseQuery, string $table, array $dbColumns, string $range, int $days): array
+    {
+        $out = ['lt66' => 0, '66_99' => 0, 'gt99' => 0, 'na' => 0, 'total' => 0, 'spend' => 0.0, 'bd' => 0.0];
+        $spendCol = self::spendColumnForLRange($dbColumns);
+        if ($spendCol === null || ! in_array('campaignBudgetAmount', $dbColumns, true) || ! in_array($range, ['L1', 'L7'], true)) {
+            return $out;
+        }
+        $hasAd = in_array('ad_type', $dbColumns, true);
+
+        $pairs = $filteredBaseQuery->clone()->reorder()->select($table.'.campaign_id');
+        if ($hasAd) {
+            $pairs->addSelect($table.'.ad_type');
+        }
+        $pairs->distinct();
+
+        $latest = DB::table($table.' as src')->where('src.report_date_range', $range);
+        $latest->joinSub($pairs, 'flt', function ($join) use ($hasAd) {
+            $join->on('flt.campaign_id', '=', 'src.campaign_id');
+            if ($hasAd) {
+                $join->whereRaw('flt.ad_type <=> src.ad_type');
+            }
+        });
+        if ($hasAd) {
+            $latest->selectRaw('MAX(src.id) AS max_id')->groupBy('src.campaign_id', 'src.ad_type');
+        } else {
+            $latest->selectRaw('MAX(src.id) AS max_id')->groupBy('src.campaign_id');
+        }
+
+        $sp = 't.`'.$spendCol.'`';
+        $bud = 't.`campaignBudgetAmount`';
+        $days = max(1, $days);
+        $bucket = 'CASE WHEN '.$bud.' IS NULL OR '.$bud.' <= 0 OR '.$sp.' IS NULL THEN \'na\' '
+            .'WHEN ('.$sp.' / ('.$bud.' * '.$days.') * 100) < 66 THEN \'lt66\' '
+            .'WHEN ('.$sp.' / ('.$bud.' * '.$days.') * 100) <= 99 THEN \'66_99\' '
+            .'ELSE \'gt99\' END';
+
+        $perCampaign = DB::query()
+            ->fromSub($latest, 'm')
+            ->join($table.' as t', 't.id', '=', 'm.max_id')
+            ->selectRaw($bucket.' AS bucket, '
+                .'CASE WHEN '.$bud.' > 0 AND '.$sp.' IS NOT NULL THEN '.$sp.' ELSE 0 END AS sp_v, '
+                .'CASE WHEN '.$bud.' > 0 AND '.$sp.' IS NOT NULL THEN '.$bud.' * '.$days.' ELSE 0 END AS bd_v');
+        $rows = DB::query()
+            ->fromSub($perCampaign, 'x')
+            ->selectRaw('x.bucket AS bucket, COUNT(*) AS cnt, COALESCE(SUM(x.sp_v), 0) AS sp_sum, COALESCE(SUM(x.bd_v), 0) AS bd_sum')
+            ->groupBy('x.bucket')
+            ->get();
+
+        foreach ($rows as $r) {
+            $k = (string) ($r->bucket ?? 'na');
+            $k = array_key_exists($k, $out) && $k !== 'total' && $k !== 'spend' && $k !== 'bd' ? $k : 'na';
+            $c = (int) ($r->cnt ?? 0);
+            $out[$k] += $c;
+            $out['total'] += $c;
+            $out['spend'] += (float) ($r->sp_sum ?? 0);
+            $out['bd'] += (float) ($r->bd_sum ?? 0);
+        }
+
+        return $out;
     }
 
     /**
@@ -6207,6 +6280,7 @@ class AmazonAdsController extends Controller
         $projectedSpend = null;
         $projectedSales = null;
         $projectedAcosPercent = null;
+        $kpiBlocks = null;
         if (! $forBgtUniverse && $l30AggDistinct !== null) {
             $l1Agg = self::sumLatestSummaryMetricsForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L1');
             $l7Agg = self::sumLatestSummaryMetricsForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L7');
@@ -6216,6 +6290,44 @@ class AmazonAdsController extends Controller
             $projectedSpend = self::projectMonthFromLast7((float) $l7Agg['cost_sum']);
             $projectedSales = self::projectMonthFromLast7((float) $l7Agg['sales_sum']);
             $projectedAcosPercent = self::overallAcosPercentFromAggregatedSums($projectedSpend, $projectedSales);
+
+            // Google-style KPI blocks (Yesterday / L30 / Projected / Utilized Y / Utilized L7): raw sums only, the
+            // page derives BGT, UTIL, AVG BID, CVR from them. Existing spend / sales / ACOS above are unchanged.
+            $l30Budget = self::sumLatestSummaryMetricsForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L30');
+            $enabledCount = null;
+            if (in_array('campaignStatus', $dbColumns, true)) {
+                $enabledCount = (int) $queryForAggregates->clone()
+                    ->reorder()
+                    ->where($table.'.campaignStatus', 'ENABLED')
+                    ->selectRaw('COUNT(DISTINCT `'.$table.'`.campaign_id) AS c')
+                    ->value('c');
+            }
+            $kpiBlocks = [
+                'y' => [
+                    'spend' => (float) $l1Agg['cost_sum'],
+                    'sales' => (float) $l1Agg['sales_sum'],
+                    'clicks' => (float) $l1Agg['clicks_sum'],
+                    'sold' => (float) $l1Agg['purchases_sum'],
+                    'budget' => (float) $l1Agg['budget_sum'],
+                ],
+                'l7' => [
+                    'spend' => (float) $l7Agg['cost_sum'],
+                    'sales' => (float) $l7Agg['sales_sum'],
+                    'clicks' => (float) $l7Agg['clicks_sum'],
+                    'sold' => (float) $l7Agg['purchases_sum'],
+                    'budget' => (float) $l7Agg['budget_sum'],
+                ],
+                'l30' => [
+                    'spend' => (float) $l30AggDistinct['cost_sum'],
+                    'sales' => (float) $l30AggDistinct['sales_sum'],
+                    'clicks' => (float) $l30AggDistinct['clicks_sum'],
+                    'sold' => (float) $l30AggDistinct['purchases_sum'],
+                    'budget' => (float) $l30Budget['budget_sum'],
+                ],
+                'u1' => self::utilBucketsLatestSummaryForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L1', 1),
+                'u7' => self::utilBucketsLatestSummaryForFilteredCampaigns($queryForAggregates, $table, $dbColumns, 'L7', 7),
+                'active' => ['enabled' => $enabledCount, 'total' => (int) ($distinctCampaignCount ?? 0)],
+            ];
         }
 
         $requestedOrderCol = ($orderColumnIndex >= 0 && $orderColumnIndex < count($columns))
@@ -6948,6 +7060,9 @@ class AmazonAdsController extends Controller
             $payload['projectedSales'] = $projectedSales;
             $payload['projectedAcosPercent'] = $projectedAcosPercent;
         }
+        if ($kpiBlocks !== null) {
+            $payload['kpiBlocks'] = $kpiBlocks;
+        }
 
         return $payload;
     }
@@ -7082,6 +7197,7 @@ class AmazonAdsController extends Controller
         $projectedSpendSum = 0.0;
         $projectedSalesSum = 0.0;
         $haveYesterday = false;
+        $kpiBlocksSum = null;
         $bgtSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
         $bidSyncCounts = ['green' => 0, 'yellow' => 0, 'red' => 0];
 
@@ -7127,6 +7243,9 @@ class AmazonAdsController extends Controller
                 $projectedSpendSum += (float) ($part['projectedSpend'] ?? 0);
                 $projectedSalesSum += (float) ($part['projectedSales'] ?? 0);
                 $haveYesterday = true;
+            }
+            if (isset($part['kpiBlocks']) && is_array($part['kpiBlocks'])) {
+                $kpiBlocksSum = self::sumKpiBlocks($kpiBlocksSum, $part['kpiBlocks']);
             }
             foreach (['green', 'yellow', 'red'] as $color) {
                 $bgtSyncCounts[$color] += (int) ($part['bgt_sync_counts'][$color] ?? 0);
@@ -7186,8 +7305,37 @@ class AmazonAdsController extends Controller
             $payload['projectedSales'] = round($projectedSalesSum, 2);
             $payload['projectedAcosPercent'] = self::overallAcosPercentFromAggregatedSums($projectedSpendSum, $projectedSalesSum);
         }
+        if ($kpiBlocksSum !== null) {
+            $payload['kpiBlocks'] = $kpiBlocksSum;
+        }
 
         return $payload;
+    }
+
+    /**
+     * Add two kpiBlocks payloads (SP + SB) key by key; every leaf is a plain sum or count. Null leaves stay null
+     * only when both sides are null.
+     *
+     * @param  array<string, mixed>|null  $acc
+     * @param  array<string, mixed>  $part
+     * @return array<string, mixed>
+     */
+    private static function sumKpiBlocks(?array $acc, array $part): array
+    {
+        if ($acc === null) {
+            return $part;
+        }
+        foreach ($part as $k => $v) {
+            if (is_array($v)) {
+                $acc[$k] = self::sumKpiBlocks(isset($acc[$k]) && is_array($acc[$k]) ? $acc[$k] : null, $v);
+            } elseif ($v === null) {
+                $acc[$k] = $acc[$k] ?? null;
+            } else {
+                $acc[$k] = (isset($acc[$k]) && is_numeric($acc[$k]) ? $acc[$k] : 0) + $v;
+            }
+        }
+
+        return $acc;
     }
 
     /**

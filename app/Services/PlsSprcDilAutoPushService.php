@@ -22,7 +22,9 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with PLS as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  PLS has no ads, so NPFT = GPFT. Clearance SKUs keep the discount price.
+ *  PLS has no ads, so NPFT = GPFT. Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
+ *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI, judged like the page's
+ *  SNROI% column, (S PRC × PLS% − Ship − LP) ÷ LP with no Ads%, instead of the discounts. Std Prc stays the maximum.
  *  0 Sold = P L30 (pls_products.p_l30), the page's sold qty. Std Prc is the maximum.
  *  PLS has no LMP and no Amz rule, so neither is used.
  *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
@@ -58,7 +60,7 @@ class PlsSprcDilAutoPushService
         ?callable $logger = null,
         bool $pushAll = false,
         bool $blueCatchUp = false,
-        int $cooldownMinutes = 60,
+        int $cooldownMinutes = 120,
         int $errorCooldownMinutes = 120,
         int $maxPushes = 0
     ): array {
@@ -121,22 +123,37 @@ class PlsSprcDilAutoPushService
                     }
 
                     if ($blueCatchUp) {
-                        // Headless "Push on reload": SKUs whose PLS Price ≠ S PRC. The twice-daily run skips a SKU
-                        // whose last pushed price already equals the target, so a Price that stayed different
-                        // afterwards (the store reverted it, or the Price column is stale) is picked up here.
+                        // Headless "Push on reload": the blue-triangle SKUs (INV > 0, Price ≠ S PRC), same as Amazon.
+                        // The twice-daily run skips a SKU whose last pushed price already equals the target, so a Price
+                        // that drifted afterwards (the store reverted it) stayed blue until someone opened the page.
                         if ($maxPushes > 0 && $stats['pushed'] + $stats['push_failed'] >= $maxPushes) {
                             $this->log($logger, "Reached max pushes ({$maxPushes}) — rest next run");
                             break;
                         }
-                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $errorCooldownMinutes)) {
+                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $cooldownMinutes)) {
                             // Shopify rejected the last push — retry after the cooldown, not every run.
                             $stats['skipped']++;
                             continue;
                         }
-                        if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                            // Pushed recently and Price still differs: do not loop on it every 10 minutes.
-                            $stats['skipped_unchanged']++;
-                            continue;
+                        if ($this->isUnchanged($row, $computed)) {
+                            if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
+                                $stats['skipped_unchanged']++;
+                                continue;
+                            }
+                            // Pull the live Price first. The store may already be right and only the Price column stale.
+                            if (! $dryRun && $canPush) {
+                                $pull = $this->pullLive((string) $row['sku'], $sprice);
+                                if ($sleepMs > 0) {
+                                    usleep($sleepMs * 1000);
+                                }
+                                if ($pull && ! empty($pull['success']) && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
+                                    $stats['price_repaired']++;
+                                    $stats['skipped_unchanged']++;
+                                    $this->saveSprice($row, $computed, 'pushed');
+                                    $this->setPlsStatus((string) $row['sku'], 'pushed');
+                                    continue;
+                                }
+                            }
                         }
                     } elseif (! $pushAll && $this->isUnchanged($row, $computed)) {
                         // Last push already equals the target. Refresh the live PLS Price column, no push.
@@ -168,22 +185,6 @@ class PlsSprcDilAutoPushService
                         $stats['skipped']++;
                         $this->log($logger, 'Skip '.$row['sku'].': negative SNROI');
                         continue;
-                    }
-
-                    if ($blueCatchUp) {
-                        // Pull the live PLS price first: the store may already be right and only the Price column
-                        // stale. A matching live price is written, no push.
-                        $pull = $this->pullLive((string) $row['sku'], $sprice);
-                        if ($sleepMs > 0) {
-                            usleep($sleepMs * 1000);
-                        }
-                        if ($pull && ! empty($pull['success']) && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
-                            $stats['price_repaired']++;
-                            $stats['skipped_unchanged']++;
-                            $this->saveSprice($row, $computed, 'pushed');
-                            $this->setPlsStatus((string) $row['sku'], 'pushed');
-                            continue;
-                        }
                     }
 
                     $this->pushOne($row, $computed, $stats, $logger);
@@ -236,6 +237,10 @@ class PlsSprcDilAutoPushService
         }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
+            return null;
+        }
+        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        if ((new StdPrcVsDilPricer([], 'pls'))->isClearanceRow($row)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);

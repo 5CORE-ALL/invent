@@ -505,7 +505,7 @@ class StdPrcVsDilPricer
     }
 
     /**
-     * Pages that have the SNROI Cap rule: Amazon, AliExpress, TikTok 1 / 2, eBay 1 / 2 / 3 and Temu 1 / 2 / 3 (same rule chain as Amazon, SNROI%
+     * Pages that have the SNROI Cap rule: Amazon, AliExpress, TikTok 1 / 2, PLS, eBay 1 / 2 / 3 and Temu 1 / 2 / 3 (same rule chain as Amazon, SNROI%
      * judged with each page's own take-home %, Ship and Ads%) and the pages with no Ship (Wayfair, Faire, Topdawg,
      * Alibaba, Shopify B2B, Depop, Mercari w/o ship, Doba w/o ship, FB Marketplace, Instagram). Every other page prices
      * from its discounts only.
@@ -517,7 +517,7 @@ class StdPrcVsDilPricer
 
         return $c === 'amazon'
             || $c === 'aliexpress'
-            || in_array($c, ['tiktok', 'tiktok2'], true)
+            || in_array($c, ['tiktok', 'tiktok2', 'pls'], true)
             || self::usesOwnChannelMetrics($c)
             || in_array($c, ['newtemuone', 'newtemutwo', 'temu3'], true)
             || self::excludesShip($c)

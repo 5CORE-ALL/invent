@@ -497,7 +497,7 @@ class StdPrcVsDilPricerTest extends TestCase
             $this->assertNull((new StdPrcVsDilPricer($rules, $channel))->snroiCapTargetForDil(10.0), $channel);
         }
         // The no-Ship pages, eBay and Temu keep it.
-        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'aliexpress', 'tiktok', 'tiktok2', 'ebay1', 'ebay2', 'ebay3', 'newtemuone', 'newtemutwo', 'temu3'] as $channel) {
+        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'aliexpress', 'tiktok', 'tiktok2', 'pls', 'ebay1', 'ebay2', 'ebay3', 'newtemuone', 'newtemutwo', 'temu3'] as $channel) {
             $this->assertTrue(StdPrcVsDilPricer::supportsSnroiCap($channel), $channel);
         }
     }

@@ -292,6 +292,8 @@
 <script>
     // S PRC is saved + pushed by the server (pls:sprc-dil-auto-push). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
+    // The SNROI% column here is (S PRC x PLS% - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
+    window.CH_PROMO_ADS_FN = function() { return 0; };
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'pls'])
     const COLUMN_VIS_KEY = "pls_tabulator_column_visibility";
     const PLS_PERCENTAGE = {{ (float) ($plsTakeHome ?? (($plsPercentage ?? 100) / 100)) }};
@@ -991,6 +993,10 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (plsIsParentRow(rowData)) return '';
+                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
+                            return '<span class="pls-sprice-clearance" title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                        }
                         const value = plsVisibleSprice(rowData);
                         if (!(value > 0)) return '';
                         const live = parseFloat(rowData.price) || 0;
@@ -1447,6 +1453,21 @@
         }
 
         table.on('tableBuilt', buildColumnDropdown);
+        // Clearance SKUs show "C" in S PRC: repaint once the Inv days clearance list is loaded.
+        function plsRepaintClearance() {
+            try { table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
+        }
+        (function loadClearanceMarks(tries) {
+            if (typeof window.chStdLoadClearance !== 'function') {
+                if (tries < 40) setTimeout(function() { loadClearanceMarks(tries + 1); }, 250);
+                return;
+            }
+            window.chStdLoadClearance().always(function() {
+                plsRepaintClearance();
+                setTimeout(plsRepaintClearance, 2500);
+            });
+        })(0);
+        $(document).off('chStd:settled.plsClearance').on('chStd:settled.plsClearance', plsRepaintClearance);
 
         document.getElementById('column-dropdown-menu').addEventListener('change', function (e) {
             if (e.target.classList.contains('column-toggle')) {

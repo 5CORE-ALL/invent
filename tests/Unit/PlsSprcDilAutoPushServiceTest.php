@@ -64,12 +64,10 @@ class PlsSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_target_like_amazon(): void
     {
-        $out = $this->target($this->row(['standard_price' => 120, 'lp' => 70, 'ship' => 10, 'clearance' => true]));
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(108.00, $out['sprice'], 0.001);
+        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
+        $this->assertNull($this->target($this->row(['standard_price' => 120, 'lp' => 70, 'ship' => 10, 'clearance' => true])));
     }
 
     public function test_lmp_has_no_effect_on_pls(): void
@@ -100,5 +98,38 @@ class PlsSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(1.0, $out['margin'], 0.0001);
+    }
+
+    /** @return list<array{min:float,max:float,cap:float|null}> */
+    private function capSlabs(?float $cap): array
+    {
+        return [['min' => 0.0, 'max' => 100.0, 'cap' => $cap]];
+    }
+
+    public function test_snroi_cap_prices_s_prc_from_the_target_with_ship_and_no_ads(): void
+    {
+        // LP 20, Ship 5, PLS% 0.80. Cap 100% -> (20 x 2 + 5) / 0.80 = 56.25 (the 90.00 discount price is not used).
+        $out = $this->target($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(100)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(56.25, $out['sprice']);
+        // The page SNROI% = (S PRC x PLS% - Ship - LP) / LP lands on the target.
+        $this->assertEqualsWithDelta(100.0, ((56.25 * 0.80) - 5 - 20) / 20 * 100, 0.01);
+    }
+
+    public function test_snroi_cap_above_what_std_can_reach_holds_at_std(): void
+    {
+        $out = $this->target($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(1000)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(100.0, $out['sprice']);
+    }
+
+    public function test_snroi_cap_blank_slab_keeps_the_discount_price(): void
+    {
+        $out = $this->target($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(null)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(90.0, $out['sprice']);
     }
 }
