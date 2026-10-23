@@ -1858,6 +1858,8 @@
             }
             // ---- "+" modal: SKUs of a campaign with INV / Item ID / state in the ad / Enable-Pause-Remove ----
             var gacSkuCid = '';
+            var gacSkuNeededOnly = false; // true when opened from the purple Ads Needed pill
+            var gacSkuLast = null;
             var GAC_SKU_STATE = {
                 ENABLED: { label: 'Enabled', bg: '#dcfce7', fg: '#166534', sel: 'enable' },
                 PAUSED: { label: 'Paused', bg: '#fef3c7', fg: '#92400e', sel: 'pause' },
@@ -1876,16 +1878,31 @@
                 var body = document.getElementById('gacSkuBody');
                 var meta = document.getElementById('gacSkuMeta');
                 if (!body) return;
-                var rows = resp.rows || [];
+                gacSkuLast = resp;
+                var allRows = resp.rows || [];
+                var rows = allRows;
+                if (gacSkuNeededOnly) {
+                    // Ads Needed view: SKUs with stock whose Item ID is not running in the ad.
+                    rows = allRows.filter(function(r) {
+                        return !r.extra && r.item_id && r.state !== 'ENABLED' && r.inv !== null && r.inv !== undefined && Number(r.inv) > 0;
+                    });
+                }
                 if (meta) {
                     var invT = resp.inv_total === null || resp.inv_total === undefined ? '—' : Number(resp.inv_total).toLocaleString();
-                    meta.textContent = 'Campaign ' + (resp.campaign_id || '') + ' · Status ' + (resp.campaign_status || '—') + ' · Total INV ' + invT + ' · ' + rows.filter(function(r) { return !r.extra; }).length + ' SKU(s)';
+                    meta.textContent = 'Campaign ' + (resp.campaign_id || '') + ' · Status ' + (resp.campaign_status || '—') + ' · Total INV ' + invT + ' · '
+                        + (gacSkuNeededOnly
+                            ? rows.length + ' SKU(s) with INV but not running in the ad'
+                            : allRows.filter(function(r) { return !r.extra; }).length + ' SKU(s)');
                 }
                 var warn = '';
                 if (resp.live_error) warn = '<div class="alert alert-warning py-1 px-2 small mb-2">Could not read the live ad: ' + gacRawEscAttr(resp.live_error) + '</div>';
                 else if (resp.live_note) warn = '<div class="text-muted small mb-2">' + gacRawEscAttr(resp.live_note) + '</div>';
-                if (!rows.length) { body.innerHTML = warn + '<p class="text-muted small mb-0">No SKUs found for this campaign.</p>'; return; }
-                var html = warn + '<table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px;">'
+                var toggle = '<div class="mb-2"><a href="#" class="small gac-sku-toggle">' + (gacSkuNeededOnly ? 'Show all SKUs of this campaign' : 'Show only SKUs not in ads') + '</a></div>';
+                if (!rows.length) {
+                    body.innerHTML = warn + toggle + '<p class="text-muted small mb-0">' + (gacSkuNeededOnly ? 'No ads needed — every SKU with inventory is running.' : 'No SKUs found for this campaign.') + '</p>';
+                    return;
+                }
+                var html = warn + toggle + '<table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px;">'
                     + '<thead class="table-light"><tr><th>SKU</th><th class="text-center">INV</th><th>Item ID</th><th class="text-center">Current status in ad</th><th class="text-center" style="width:130px;">Action</th></tr></thead><tbody>';
                 rows.forEach(function(r, i) {
                     var st = GAC_SKU_STATE[r.state] || GAC_SKU_STATE.NOT_ATTACHED;
@@ -1923,10 +1940,11 @@
                     if (body) body.innerHTML = '<p class="text-danger small mb-0">Failed to load SKUs.</p>';
                 });
             }
-            function gacOpenSkuModal(campaignId, name) {
+            function gacOpenSkuModal(campaignId, name, neededOnly) {
                 var cid = String(campaignId || '').replace(/\D/g, '');
                 if (!cid) return;
                 gacSkuCid = cid;
+                gacSkuNeededOnly = !!neededOnly;
                 var nameEl = document.getElementById('gacSkuName');
                 if (nameEl) nameEl.textContent = name || cid;
                 var metaEl = document.getElementById('gacSkuMeta');
@@ -2679,6 +2697,14 @@
                     e.preventDefault();
                     gacRawOpenSbgtHistory(dot.getAttribute('data-sbgt-cid'));
                 });
+                // "Show only SKUs not in ads" / "Show all SKUs" link inside the SKUs modal.
+                document.addEventListener('click', function (e) {
+                    var a = e.target.closest ? e.target.closest('.gac-sku-toggle') : null;
+                    if (!a) return;
+                    e.preventDefault();
+                    gacSkuNeededOnly = !gacSkuNeededOnly;
+                    if (gacSkuLast) gacSkuRender(gacSkuLast);
+                });
                 // Click the blue + icon in the campaign name cell → open the campaign's SKUs modal.
                 document.addEventListener('click', function (e) {
                     var icon = e.target.closest ? e.target.closest('.gac-sku-plus') : null;
@@ -2688,7 +2714,7 @@
                     var nameAttr = icon.getAttribute('data-sku-name') || '';
                     var tmp = document.createElement('textarea');
                     tmp.innerHTML = nameAttr;
-                    gacOpenSkuModal(icon.getAttribute('data-sku-cid'), tmp.value);
+                    gacOpenSkuModal(icon.getAttribute('data-sku-cid'), tmp.value, icon.classList.contains('gac-ads-needed-pill'));
                 });
                 // Click the red ban icon in the campaign name cell → open that campaign's negatives.
                 document.addEventListener('click', function (e) {

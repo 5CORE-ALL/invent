@@ -1018,6 +1018,16 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Headless "Push on reload" for /aliexpress-pricing (same as amazon:push-blue-prices): re-prices every SKU (rules,
+        // SNROI Cap, LMP cap), saves S PRC where it changed and pushes blue-triangle SKUs (INV > 0, Price ≠ S PRC).
+        // A push writes the Price column at once. Every 10 min, 24/7 on purpose (no $ist()), page closed. Starts at :05.
+        $schedule->command('aliexpress:push-blue-prices')
+            ->cron('5-59/10 * * * *')
+            ->name('aliexpress-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // DISABLED: Temu 2 auto-push is off. Prices push only from the /new-temu2 push button.
         if (false) {
         // New Temu Two Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, LMP cap) → S PRC → Temu 2 base price.
