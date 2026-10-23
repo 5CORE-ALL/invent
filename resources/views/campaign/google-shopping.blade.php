@@ -721,8 +721,8 @@
                                     @endforeach
                                     @if ($kpiRow['tag'] === 'Yesterday')
                                         {{-- ACTIVE: enabled / all campaigns (every status) + share; from the server summary (gacRawSummaryFromResponse()), not a chart link. --}}
-                                        <span id="faasActiveBadge" data-label="Active"
-                                    class="faas-stat-badge faas-stat-badge--sales is-static"
+                            <span id="faasActiveBadge" data-label="Active"
+                                class="faas-stat-badge faas-stat-badge--sales is-static"
                                     title="Enabled campaigns out of all campaigns (every status), and the share that is active.">ACTIVE:<span id="faasActiveValue">0 / 0</span><span class="gac-util-pct" id="faasActivePct">0%</span></span>
                                         {{-- ADS NEEDED: SKUs with INV > 0 and no running ad, across all enabled campaigns (purple). --}}
                                         <span id="gacAdsNeededBadge" data-label="Ads Needed"
@@ -736,15 +736,15 @@
                                     @if ($kpiRow['tag'] === 'L30')
                                         {{-- L30 CLICKS: sum of the visible rows' L30 clicks (updateMetricBadges()); opens the clicks history chart. --}}
                                         <span id="faasClicksBadge" data-metric="clicks" data-label="L30 Clicks"
-                                            class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
+                                class="faas-stat-badge faas-stat-badge--impr badge-chart-link"
                                             title="L30 clicks of the campaigns shown. Click for trend.">CLICKS:<span id="faasClicksValue">0</span></span>
                                         {{-- L30 SOLD: units sold over 30 days, all campaigns incl. Paused / Removed (updateMetricBadges()); opens the sold history chart. --}}
                                         <span id="faasL30SoldBadge" data-metric="sold" data-label="L30 Sold"
-                                            class="faas-stat-badge faas-stat-badge--clk badge-chart-link"
+                                class="faas-stat-badge faas-stat-badge--clk badge-chart-link"
                                             title="L30 sold of all campaigns, Paused and Removed included (ignores the Sts filter). Click for trend.">SOLD:<span id="faasL30SoldValue">0</span></span>
                                         {{-- L30 SALES: 30-day sales, all campaigns incl. Paused / Removed (updateMetricBadges()); opens the sales history chart. --}}
                                         <span id="faasL30SalesBadge" data-metric="sales" data-label="L30 Sales"
-                                            class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
+                                class="faas-stat-badge faas-stat-badge--spend badge-chart-link"
                                             title="L30 sales of all campaigns, Paused and Removed included (ignores the Sts filter). Click for trend.">SALES:<span id="faasL30SalesValue">$0</span></span>
                                         {{-- L30 SPEND: 30-day spend, all campaigns incl. Paused / Removed (updateMetricBadges()); opens the spend history chart. --}}
                                         <span id="faasL30SpendBadge" data-metric="spend" data-label="L30 Spend"
@@ -803,8 +803,8 @@
 
                             </div>
                         </div>
-                    </div>
-
+                        </div>
+                        
                     {{-- Toolbar buttons + filters share ONE row (wraps only when the screen is too narrow). --}}
                     <div id="gac-raw-toolbar-row" class="d-flex flex-wrap align-items-center gap-2 mb-3">
                     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -946,7 +946,7 @@
                                 </select>
                             </div>
                         </div>
-                    </div>
+                        </div>
                     </div>
                     <div id="gac-raw-push-result" class="alert alert-secondary small d-none mt-2 mb-0 py-2" role="status" aria-live="polite">
                         <div class="fw-semibold mb-1" id="gac-raw-push-result-title"></div>
@@ -1123,16 +1123,16 @@
                             <div class="gac-bgt-sum-dist">
                                 <div class="gac-bgt-sum-dist-head"><span>Daily budget</span><span>Campaigns</span><span>BGT</span><span>%</span></div>
                                 <div class="gac-bgt-legend" id="gac-bgt-leg-sum"></div>
+                                </div>
+                                </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-sm btn-primary" id="gacRawBgtRulesSaveBtn"><i class="fas fa-save me-1"></i> Save and Apply</button>
-                </div>
-            </div>
-        </div>
-    </div>
+                                </div>
+                                </div>
+                            </div>
+                                </div>
 
     {{-- SBID Rules — editable. Rendered by gacSbidRulesRender() from the saved rule each time it opens; numbers can be edited
          inline with live previews (threshold scale, rows per rule, a try-it calculator). Save and Apply stores the rule
@@ -1141,16 +1141,16 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
-                    <div>
+                                <div>
                         <h5 class="modal-title fs-6 mb-0" id="gacRawSbidRulesModalLabel"><i class="fas fa-list-check me-1"></i> SBID Rules</h5>
                         <div class="gac-sbid-sub">How the grid's SBID is worked out. Edit any purple number and everything below updates live; SBID is rounded down to the cent. Nothing changes until you Save and Apply.</div>
-                    </div>
+                                </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
+                            </div>
                 <div class="modal-body">
                     <p class="text-danger gac-sbid-err d-none" id="gacRawSbidRulesErr" role="alert"></p>
                     <div id="gacRawSbidRulesBody"><p class="text-muted small mb-0">Loading…</p></div>
-                </div>
+                                </div>
                 <div class="modal-footer">
                     <span><span class="gac-sbid-dirty d-none" id="gacRawSbidRulesDirty">Unsaved changes</span></span>
                     <span class="d-flex gap-2">
@@ -5687,12 +5687,12 @@
                     });
                 } else {
                     gacBgtGridRows().forEach(function(r) {
-                        var n = parseFloat(r && r.sbgt);
-                        if (!isFinite(n)) return;
-                        var k = String(n);
-                        byVal[k] = (byVal[k] || 0) + 1;
-                        total++;
-                    });
+                    var n = parseFloat(r && r.sbgt);
+                    if (!isFinite(n)) return;
+                    var k = String(n);
+                    byVal[k] = (byVal[k] || 0) + 1;
+                    total++;
+                });
                 }
                 var keys = Object.keys(byVal).sort(function(a, b) { return Number(a) - Number(b); });
                 var items = keys.map(function(k, i) {

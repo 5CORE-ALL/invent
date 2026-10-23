@@ -850,6 +850,49 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
+     * Add title + image to suggested products (Catalog Items API). Found items are cached per ASIN for 7 days;
+     * a failure leaves title / image null so the list still works.
+     *
+     * @param  list<array{asin: string, themes: list<string>}>  $products
+     * @return list<array{asin: string, themes: list<string>, title: string|null, image: string|null}>
+     */
+    private function attachProductMeta(array $products): array
+    {
+        $meta = [];
+        $missing = [];
+        foreach ($products as $p) {
+            $hit = Cache::get('amz_asin_meta:'.$p['asin']);
+            if (is_array($hit)) {
+                $meta[$p['asin']] = $hit;
+            } else {
+                $missing[] = $p['asin'];
+            }
+        }
+        if ($missing !== []) {
+            @ini_set('max_execution_time', '120');
+            try {
+                $found = (new \App\Services\AmazonSpApiService())->getCatalogTitlesAndImages($missing);
+            } catch (\Throwable $e) {
+                Log::warning('Amazon catalog titles failed', ['error' => $e->getMessage()]);
+                $found = [];
+            }
+            foreach ($found as $asin => $row) {
+                $meta[$asin] = $row;
+                if (! empty($row['title']) || ! empty($row['image'])) {
+                    Cache::put('amz_asin_meta:'.$asin, $row, now()->addDays(7));
+                }
+            }
+        }
+
+        return array_map(static function (array $p) use ($meta) {
+            $p['title'] = $meta[$p['asin']]['title'] ?? null;
+            $p['image'] = $meta[$p['asin']]['image'] ?? null;
+
+            return $p;
+        }, $products);
+    }
+
+    /**
      * Amazon's own product-target suggestions for the selected child ASINs (same data as
      * "Product targeting → Suggested" in the Amazon console).
      */
@@ -914,6 +957,8 @@ class AmazonAdsMissingController extends Controller
                 Cache::put($cacheKey, $products, now()->addHours(6));
             }
         }
+
+        $products = $this->attachProductMeta($products);
 
         return response()->json([
             'ok' => true,

@@ -2705,6 +2705,83 @@ class AmazonSpApiService
     }
 
     /**
+     * Title + main image for many ASINs (any ASIN on the marketplace, not only ours).
+     * Catalog Items API v2022-04-01 searchCatalogItems: up to 20 ASINs per call.
+     *
+     * @param  list<string>  $asins
+     * @return array<string, array{title: string|null, image: string|null}>  keyed by upper-case ASIN
+     */
+    public function getCatalogTitlesAndImages(array $asins): array
+    {
+        $asins = array_values(array_unique(array_filter(array_map(
+            static fn ($a) => strtoupper(trim((string) $a)),
+            $asins
+        ))));
+        $out = [];
+        if ($asins === []) {
+            return $out;
+        }
+        try {
+            $accessToken = $this->getAccessToken();
+            $marketplaceId = config('services.amazon_sp.marketplace_id') ?: $this->marketplaceId;
+            if (! $accessToken || empty($marketplaceId)) {
+                return $out;
+            }
+            foreach (array_chunk($asins, 20) as $i => $chunk) {
+                if ($i > 0) {
+                    usleep(600000); // searchCatalogItems is limited to ~2 requests / second
+                }
+                $url = 'https://sellingpartnerapi-na.amazon.com/catalog/2022-04-01/items'
+                    .'?marketplaceIds='.rawurlencode((string) $marketplaceId)
+                    .'&identifiersType=ASIN&identifiers='.rawurlencode(implode(',', $chunk))
+                    .'&includedData='.rawurlencode('summaries,images')
+                    .'&pageSize=20';
+                $response = Http::withoutVerifying()->timeout(30)->withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                    'Content-Type' => 'application/json',
+                ])->get($url);
+                if ($response->status() === 429) {
+                    usleep(1500000);
+                    $response = Http::withoutVerifying()->timeout(30)->withHeaders([
+                        'x-amz-access-token' => $accessToken,
+                        'Content-Type' => 'application/json',
+                    ])->get($url);
+                }
+                if ($response->failed()) {
+                    Log::warning('Catalog search failed', ['status' => $response->status(), 'body' => substr((string) $response->body(), 0, 300)]);
+
+                    continue;
+                }
+                foreach ((array) ($response->json('items') ?? []) as $item) {
+                    if (! is_array($item) || empty($item['asin'])) {
+                        continue;
+                    }
+                    $title = trim((string) data_get($item, 'summaries.0.itemName', ''));
+                    $image = null;
+                    $imgs = (array) data_get($item, 'images.0.images', []);
+                    foreach ($imgs as $im) {
+                        if (is_array($im) && ($im['variant'] ?? '') === 'MAIN' && ! empty($im['link'])) {
+                            $image = (string) $im['link'];
+                            break;
+                        }
+                    }
+                    if ($image === null && isset($imgs[0]['link'])) {
+                        $image = (string) $imgs[0]['link'];
+                    }
+                    $out[strtoupper((string) $item['asin'])] = [
+                        'title' => $title !== '' ? $title : null,
+                        'image' => $image,
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Catalog search exception', ['error' => $e->getMessage()]);
+        }
+
+        return $out;
+    }
+
+    /**
      * Avg star rating + review count from Catalog Items customerReviews (when role allows).
      *
      * @return array{rating: float|null, review_count: int|null}

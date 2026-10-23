@@ -488,7 +488,7 @@
                                         <div class="tab-content">
                                             <div class="tab-pane fade show active" id="amzPtPaneSug">
                                                 <div class="p-2 d-flex flex-wrap align-items-center gap-3 small border-bottom">
-                                                    <input type="text" class="form-control form-control-sm" style="width:180px;" id="amzPtSugSearch" placeholder="Search ASINs">
+                                                    <input type="text" class="form-control form-control-sm" style="width:180px;" id="amzPtSugSearch" placeholder="Search ASIN or title">
                                                     <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzPtLoadBtn"><i class="fa fa-sync me-1"></i>Reload</button>
                                                 </div>
                                                 <div class="px-2 py-1 small text-muted d-flex justify-content-between">
@@ -497,7 +497,7 @@
                                                 </div>
                                                 <div style="max-height:300px; overflow:auto;">
                                                     <table class="table table-sm align-middle mb-0 small">
-                                                        <thead class="table-light sticky-top"><tr><th>Product (ASIN)</th><th>Why Amazon suggests it</th><th class="text-end"></th></tr></thead>
+                                                        <thead class="table-light sticky-top"><tr><th>Product</th><th>Why Amazon suggests it</th><th class="text-end"></th></tr></thead>
                                                         <tbody id="amzPtSugBody"></tbody>
                                                     </table>
                                                 </div>
@@ -1336,15 +1336,29 @@
                 el.textContent = msg;
                 el.classList.toggle('text-danger', !!isErr);
             }
+            var ptMeta = {};        // asin -> {title, image} (from Amazon's catalog)
             function ptIsAdded(asin) { return ptAsins.some(function (x) { return x.asin === asin; }); }
+            // Thumbnail + title + ASIN (links to the Amazon product page).
+            function ptProductCell(asin) {
+                var m = ptMeta[asin] || {};
+                var img = m.image
+                    ? '<img src="' + esc(m.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:40px;height:40px;object-fit:contain;flex:0 0 40px;">'
+                    : '<div class="bg-light border rounded" style="width:40px;height:40px;flex:0 0 40px;"></div>';
+                var title = m.title
+                    ? '<div style="font-size:12px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;" title="' + esc(m.title) + '">' + esc(m.title) + '</div>'
+                    : '';
+                return '<div class="d-flex align-items-center gap-2">' + img
+                    + '<div style="min-width:0;">' + title
+                    + '<a href="https://www.amazon.com/dp/' + encodeURIComponent(asin) + '" target="_blank" rel="noopener" class="fw-semibold text-decoration-none" style="font-size:11px;">' + esc(asin) + '</a></div></div>';
+            }
             function ptRenderSuggestions() {
                 var body = document.getElementById('amzPtSugBody');
                 if (!body) { return; }
                 var q = String((document.getElementById('amzPtSugSearch') || {}).value || '').toLowerCase().trim();
                 var html = '';
                 ptSuggestions.forEach(function (row, i) {
-                    if (q && String(row.asin).toLowerCase().indexOf(q) === -1) { return; }
-                    html += '<tr><td class="fw-semibold">' + esc(row.asin) + '</td>'
+                    if (q && (String(row.asin) + ' ' + String((ptMeta[row.asin] || {}).title || '')).toLowerCase().indexOf(q) === -1) { return; }
+                    html += '<tr><td>' + ptProductCell(row.asin) + '</td>'
                         + '<td class="text-muted" style="font-size:11px;">' + esc((row.themes || []).join(' · ') || '—') + '</td>'
                         + '<td class="text-end">' + (ptIsAdded(row.asin) ? '<span class="text-muted fst-italic">Added</span>'
                             : '<a href="#" class="fw-semibold amz-pt-sug-add" data-i="' + i + '">Add</a>') + '</td></tr>';
@@ -1368,6 +1382,9 @@
                     if (btn) { btn.disabled = false; }
                     if (out.ok && out.body && out.body.ok) {
                         ptSuggestions = Array.isArray(out.body.products) ? out.body.products : [];
+                        ptSuggestions.forEach(function (p) {
+                            if (p.title || p.image) { ptMeta[p.asin] = { title: p.title || '', image: p.image || '' }; }
+                        });
                         ptSetStatus(ptSuggestions.length
                             ? (ptSuggestions.length + ' products suggested by Amazon.')
                             : (out.body.message || 'Amazon returned no suggestions.'), false);
@@ -1409,14 +1426,14 @@
                     }).join('');
                 }
                 var rows = auto
-                    ? ptAutoAdded.map(function (a, i) { return { label: ptGroupLabel(a.type), type: 'Auto group', bid: a.bid, i: i }; })
-                    : ptAsins.map(function (a, i) { return { label: a.asin, type: 'ASIN', bid: a.bid, i: i }; });
+                    ? ptAutoAdded.map(function (a, i) { return { label: esc(ptGroupLabel(a.type)), type: 'Auto group', bid: a.bid, i: i }; })
+                    : ptAsins.map(function (a, i) { return { label: ptProductCell(a.asin), type: 'ASIN', bid: a.bid, i: i }; });
                 ptRenderSuggestions();
                 var cnt = document.getElementById('amzPtAddedCount'); if (cnt) { cnt.textContent = String(rows.length); }
                 var body = document.getElementById('amzPtAddedBody');
                 if (body) {
                     body.innerHTML = rows.length ? rows.map(function (r) {
-                        return '<tr><td>' + esc(r.label) + '</td><td>' + esc(r.type) + '</td>'
+                        return '<tr><td>' + r.label + '</td><td>' + esc(r.type) + '</td>'
                             + '<td><input type="number" class="form-control form-control-sm py-0 amz-pt-bid" data-i="' + r.i + '" min="0.02" step="0.01" value="' + Number(r.bid).toFixed(2) + '"></td>'
                             + '<td><a href="#" class="text-danger amz-pt-del" data-i="' + r.i + '" title="Remove">&times;</a></td></tr>';
                     }).join('') : '<tr><td colspan="4" class="text-muted text-center py-3">' + (auto ? 'No auto groups: they will all be paused.' : 'No ASINs added yet.') + '</td></tr>';
@@ -1490,7 +1507,7 @@
                     var q = String((document.getElementById('amzPtSugSearch') || {}).value || '').toLowerCase().trim();
                     var bid = ptResolveBid();
                     ptSuggestions.forEach(function (row) {
-                        if (q && String(row.asin).toLowerCase().indexOf(q) === -1) { return; }
+                        if (q && (String(row.asin) + ' ' + String((ptMeta[row.asin] || {}).title || '')).toLowerCase().indexOf(q) === -1) { return; }
                         if (!ptIsAdded(row.asin)) { ptAsins.push({ asin: row.asin, bid: bid }); }
                     });
                     ptRender();
