@@ -108,7 +108,6 @@ class TemuListingPublishService extends Temu2ListingPublishService
             ];
         }
 
-        $encoded = base64_encode($prepared['bytes']);
         $lastMsg = '';
         $remember = function (array $data) use (&$lastMsg): bool {
             $msg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
@@ -140,15 +139,11 @@ class TemuListingPublishService extends Temu2ListingPublishService
             }
         }
 
-        foreach (['image', 'imageBase64', 'fileBase64'] as $field) {
-            $data = $this->api->callOpenApi('bg.local.goods.image.upload', [$field => $encoded], 90);
-            $hosted = $this->extractUploadedImageUrl($data);
-            if ($hosted !== null) {
-                return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
-            }
-            if ($remember($data)) {
-                return ['success' => false, 'message' => $lastMsg];
-            }
+        if ($prepared['file_urls'] === []) {
+            return [
+                'success' => false,
+                'message' => 'Temu needs a public JPEG or PNG link for this photo. Add the photo in Image Master as JPEG or PNG.',
+            ];
         }
 
         return [
@@ -259,16 +254,20 @@ class TemuListingPublishService extends Temu2ListingPublishService
     private function storeJpegForTemu(string $imageUrl, string $jpeg): string
     {
         $path = (string) (parse_url($imageUrl, PHP_URL_PATH) ?? '');
-        if (! preg_match('#/listing-manager/media/([^/]+)$#', $path, $match)) {
-            return '';
+        $stem = '';
+        if (preg_match('#/listing-manager/media/([^/]+)$#', $path, $match)) {
+            $stem = pathinfo(basename(rawurldecode($match[1])), PATHINFO_FILENAME);
         }
-        $jpgName = pathinfo(basename(rawurldecode($match[1])), PATHINFO_FILENAME).'.jpg';
-        if (! preg_match('/^[a-f0-9]{40}\.jpg$/', $jpgName)) {
-            return '';
+        if (! preg_match('/^[a-f0-9]{40}$/', $stem)) {
+            $stem = sha1($jpeg);
         }
-        Storage::disk('public')->put('listing-manager/images/'.$jpgName, $jpeg);
+        $jpgName = $stem.'.jpg';
+        $relative = 'listing-manager/images/'.$jpgName;
+        if (! Storage::disk('public')->exists($relative)) {
+            Storage::disk('public')->put($relative, $jpeg);
+        }
 
-        return (string) preg_replace('#/listing-manager/media/[^/]+#', '/listing-manager/media/'.$jpgName, $imageUrl);
+        return rtrim((string) config('app.url'), '/').'/listing-manager/media/'.$jpgName;
     }
 
     private function binaryToJpeg(string $raw): ?string

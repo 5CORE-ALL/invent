@@ -19,6 +19,7 @@ use App\Services\PurchasingPowerApiService;
 use App\Support\Marketplace\ChannelListingRegistry;
 use App\Support\Marketplace\ListingChannelCounts;
 use App\Support\Marketplace\ListingManagerAmazonHydrator;
+use App\Support\Marketplace\ListingManagerImageStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -133,6 +134,7 @@ class MiraklListingPublishService
         if ($images === []) {
             $images = $this->overrideImages($overrides);
         }
+        $images = array_slice(ListingManagerImageStore::withAllowedFormats($images), 0, 8);
         if ($images === []) {
             return ['success' => false, 'message' => 'No public image URL for '.$sku.'. Add an https image on CP Master (or Image Master).'];
         }

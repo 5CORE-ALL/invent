@@ -4407,7 +4407,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/price-lt-80-lmp/report', [\App\Http\Controllers\MarketPlace\PriceLt80LmpController::class, 'report'])->name('price.lt80.lmp.report');
 
     // Listing Manager — Amazon catalog + multi-channel drafts
-    Route::get('/listing-manager/media/{file}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'media'])->name('listing.manager.media')->where('file', '[A-Za-z0-9._-]+');
+    Route::get('/listing-manager/media/{file}', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'media'])->name('listing.manager.media')->where('file', '[A-Za-z0-9._-]+')
+        ->withoutMiddleware([\App\Http\Middleware\Authenticate::class]);
     Route::get('/listing-manager', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'index'])->name('listing.manager');
     Route::get('/listing-manager/data', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'data'])->name('listing.manager.data');
     Route::get('/listing-manager/product', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'showProduct'])->name('listing.manager.product');
@@ -4445,6 +4446,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-manager/product-types', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'productTypes'])->name('listing.manager.product.types');
     Route::get('/listing-manager/parent-groups', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'parentGroups'])->name('listing.manager.parent.groups');
     Route::get('/listing-manager/family', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'familyByParent'])->name('listing.manager.family');
+    Route::get('/listing-manager/variation-content', [\App\Http\Controllers\MarketPlace\ListingManagerController::class, 'variationContent'])->name('listing.manager.variation.content');
 
     // Variations Verify Masters — active channel_master rows (Channel Image + Channels)
     Route::get('/variations-verify-masters', [\App\Http\Controllers\MarketPlace\VariationsVerifyMasterController::class, 'index'])->name('variations.verify.masters');
