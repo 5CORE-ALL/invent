@@ -6869,6 +6869,8 @@
             }
             function amzBgtApplySavedSum(sum) {
                 if (!sum || !Array.isArray(sum.rows)) return false;
+                // A sum saved before the GPFT part existed has no GPFT row and a total that leaves it out. Recount instead.
+                if (!Array.isArray(sum.parts) || !sum.parts.some(function (p) { return p && p.label === 'GPFT'; })) return false;
                 var legend = document.getElementById('amz-bgt-leg-sum');
                 var canvas = document.getElementById('amz-bgt-chart-sum');
                 var tbody = document.getElementById('amz-bgt-sum-tbody');
