@@ -5158,9 +5158,17 @@
         function chPromoZeroSoldTakehomeMargin(d) {
             return chPromoTakehomeMargin(d);
         }
-        function chPromoAdsFrac() {
+        function chPromoAdsFrac(d) {
             const ch = (typeof CHANNEL_PROMO_CHANNEL !== 'undefined') ? CHANNEL_PROMO_CHANNEL : '';
             let raw = 0;
+            // A page whose SNROI% column uses its own Ads% (Shopify B2C TCOS, TikTok listing TACOS%) sets this hook,
+            // so the SNROI Cap judges the same Ads% the column shows.
+            if (typeof window.CH_PROMO_ADS_FN === 'function') {
+                try {
+                    const hooked = Number(window.CH_PROMO_ADS_FN(d));
+                    if (isFinite(hooked)) return hooked > 0 ? hooked / 100 : 0;
+                } catch (eHook) { /* fall through to the channel constants */ }
+            }
             try {
                 if (ch === 'ebay1' && typeof EBAY_CHANNEL_ADS_PCT !== 'undefined') raw = EBAY_CHANNEL_ADS_PCT;
                 else if (ch === 'ebay2' && typeof EBAY2_CHANNEL_ADS_PCT !== 'undefined') raw = EBAY2_CHANNEL_ADS_PCT;

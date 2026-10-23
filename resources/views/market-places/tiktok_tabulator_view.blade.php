@@ -1391,6 +1391,8 @@
             const tacos = parseFloat(rowData && rowData['TACOS%']);
             return (isFinite(tacos) && tacos > 0) ? tacos : 0;
         }
+        // The SNROI Cap (Std prc vs dil) judges the same Ads% the SNROI column uses (listing TACOS%, TikTok 2 = 0).
+        window.CH_PROMO_ADS_FN = function(d) { return d ? ttDilAdsPct(d) : 0; };
         function ttSnroiPrice(rowData) {
             const live = ttDisplayedSprice(rowData);
             return live > 0 ? live : ttSavedSpriceAmount(rowData);

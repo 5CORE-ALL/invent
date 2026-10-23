@@ -281,7 +281,16 @@ class TiktokSprcDilAutoPushService
             $margin = 0.80;
         }
         $lmp = (float) ($row['lmp'] ?? 0);
-        $ads = $adsFrac ?? $this->channelAdsFrac();
+        // The SNROI Cap must judge the Ads% the page's SNROI column uses: the listing's own TACOS% on TikTok,
+        // and none on TikTok 2. Without a TACOS% on the row, fall back to the channel Ads%.
+        if ($this->channel === 'tiktok2') {
+            $ads = 0.0;
+        } elseif (is_numeric($row['tacos'] ?? null)) {
+            $tacos = (float) $row['tacos'];
+            $ads = ($tacos > 0 && $tacos < 100) ? $tacos / 100 : 0.0;
+        } else {
+            $ads = $adsFrac ?? $this->channelAdsFrac();
+        }
 
         $pricer ??= StdPrcVsDilPricer::forChannel($this->channel);
         // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
@@ -418,6 +427,7 @@ class TiktokSprcDilAutoPushService
                 'lp' => (float) ($r['LP_productmaster'] ?? 0),
                 'ship' => (float) ($r['Ship_productmaster'] ?? 0),
                 'margin' => (float) ($r['percentage'] ?? 0),
+                'tacos' => is_numeric($r['TACOS%'] ?? null) ? (float) $r['TACOS%'] : null,
                 'age_days' => $ageDays->ageDays($sku, $inv, $agePushBySku, $ageLastSaleBySku),
                 'standard_price' => (float) ($r['STANDARD_PRICE'] ?? 0),
                 'lmp' => is_numeric($r['lmp_price'] ?? null) ? (float) $r['lmp_price'] : 0.0,

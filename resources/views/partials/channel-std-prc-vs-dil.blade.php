@@ -828,7 +828,7 @@
             if (idx < 0 || rules[idx].cap == null) return price;
             const target = Number(rules[idx].cap);
             const lp = (typeof chPromoLp === 'function') ? (Number(chPromoLp(d)) || 0) : 0;
-            const adsFrac = (typeof chPromoAdsFrac === 'function') ? (Number(chPromoAdsFrac()) || 0) : 0;
+            const adsFrac = (typeof chPromoAdsFrac === 'function') ? (Number(chPromoAdsFrac(d)) || 0) : 0;
             const margin = chStdMargin(d) - (adsFrac > 0 && adsFrac < chStdMargin(d) ? adsFrac : 0);
             const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
             if (!(lp > 0) || !(margin > 0)) return price;
@@ -2220,6 +2220,31 @@
          * eBay: S PRC is saved through the channel's own save endpoint ({ updates }) and never pushed to eBay.
          * Only SKUs whose S PRC differs from the saved value are sent.
          */
+        /** True when a chunk of the last eBay S PRC save failed: the page must not reload as if every row followed the rule. */
+        let chStdEbaySaveFailed = false;
+        /** A hard reload of the page. The table's own redraw never re-reads the saved S PRC, Price, badges and triangles. */
+        function chStdHardReload(delayMs) {
+            setTimeout(function() { window.location.reload(); }, delayMs > 0 ? delayMs : 800);
+        }
+        /**
+         * The auto-apply on page open may reload the page once its S PRC writes have landed. At most 2 reloads in a row
+         * (per channel, per browser tab, 5 minutes apart) so a row that never settles can not loop.
+         */
+        function chStdAutoReloadAllowed() {
+            try {
+                const key = 'chStdAutoReload:' + ((typeof CHANNEL_PROMO_CHANNEL !== 'undefined') ? CHANNEL_PROMO_CHANNEL : '');
+                const now = Date.now();
+                let s = JSON.parse(sessionStorage.getItem(key) || 'null');
+                if (!s || !(now - s.t < 300000)) s = { n: 0, t: now };
+                if (s.n >= 2) return false;
+                s.n += 1;
+                s.t = now;
+                sessionStorage.setItem(key, JSON.stringify(s));
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
         function chStdSaveEbayPrices(updates) {
             const url = (typeof chPromoCfg === 'object' && chPromoCfg) ? chPromoCfg.saveSpriceUrl : '';
             if (!url || !updates.length) return $.Deferred().resolve().promise();
@@ -2238,6 +2263,8 @@
                         data: JSON.stringify({ _token: csrf, updates: chunk, skip_push: 1 }),
                     }).done(function() {
                         chStdMarkEbaySaved(chunk);
+                    }).fail(function() {
+                        chStdEbaySaveFailed = true;
                     }).always(function() {
                         done.resolve();
                     });
@@ -2338,11 +2365,16 @@
                     }
                     if (typeof updateSummary === 'function') updateSummary();
                 };
+                chStdEbaySaveFailed = false;
                 chStdSavePrices(updates).always(function() {
                     redraw();
+                    // eBay: updates holds only the SKUs whose S PRC differed from the saved one. Once those writes
+                    // landed every row follows the rule, so hard-reload the page to show it everywhere.
+                    const reload = updates.length > 0 && chStdIsEbay() && !chStdEbaySaveFailed && chStdAutoReloadAllowed();
                     if (updates.length && typeof chPromoToast === 'function') {
-                        chPromoToast('success', 'S PRC set from Std prc vs dil (' + updates.length + ')');
+                        chPromoToast('success', 'S PRC set from Std prc vs dil (' + updates.length + ')' + (reload ? ' — reloading the page' : ''));
                     }
+                    if (reload) chStdHardReload(1200);
                 });
                 });
             });
@@ -2436,13 +2468,27 @@
                                 ? ('Std prc vs dil saved — S PRC for ' + updates.length + ' SKU(s) is being written in the background. You can close this page.')
                                 : 'S PRC applied from Std prc vs dil');
                         }
+                        // eBay saves every changed S PRC from the browser and waits for it, so the reload below shows
+                        // the saved prices on every row. A failed chunk keeps the page as it is.
+                        if (chStdIsEbay()) {
+                            if (chStdEbaySaveFailed) {
+                                if (typeof chPromoToast === 'function') chPromoToast('error', 'Some S PRC could not be saved — page not reloaded. Click Save and Apply again.');
+                            } else {
+                                chStdHardReload(800);
+                            }
+                            return;
+                        }
                         // Pages that price from several columns (Temu One) set this: reload once the rules are saved and
                         // S PRC is handed to the server, so every column shows the new rule's prices.
                         if (window.CH_STD_RELOAD_AFTER_APPLY === true) {
                             setTimeout(function() { window.location.reload(); }, 1200);
                         }
                     };
-                    const pending = chStdSavePricesBackground(updates);
+                    chStdEbaySaveFailed = false;
+                    // eBay: write the changed S PRC from the browser and wait for every chunk, so the reload sees them all.
+                    const pending = chStdIsEbay()
+                        ? chStdSavePrices(updates).then(function() { return { background: false }; })
+                        : chStdSavePricesBackground(updates);
                     if (pending && typeof pending.always === 'function') pending.always(done);
                     else done();
                 });

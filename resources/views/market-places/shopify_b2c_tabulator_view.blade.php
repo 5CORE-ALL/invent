@@ -874,6 +874,8 @@
     function shopifyChannelAdsPct() {
         return parseFloat(SHOPIFY_DIRECT_TCOS_PCT) || 0;
     }
+    // The SNROI Cap (Std prc vs dil) judges the same Ads% the SNROI column uses.
+    window.CH_PROMO_ADS_FN = function() { return shopifyChannelAdsPct(); };
 
     const shopifyB2cBadgeMetricLabels = {
         total_sales: 'Sales', total_orders: 'Orders', total_qty: 'Qty', total_pft: 'PFT',

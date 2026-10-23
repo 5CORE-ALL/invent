@@ -174,6 +174,18 @@ class NegativeSnroiPushGuard
         return $lp > 0 ? self::$cost[$key] : null;
     }
 
+    /** Take-home fraction the page SNROI uses for this channel (same source as the negative-SNROI check). */
+    public static function snroiMarginFor(string $channel): float
+    {
+        return self::marginFor(strtolower(trim($channel)));
+    }
+
+    /** Ads % the page SNROI uses for this channel (same source as the negative-SNROI check). */
+    public static function snroiAdsPctFor(string $channel): float
+    {
+        return self::adsFor(strtolower(trim($channel)));
+    }
+
     private static function marginFor(string $channel): float
     {
         if (isset(self::$margin[$channel])) {

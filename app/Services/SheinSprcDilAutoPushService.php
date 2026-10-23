@@ -277,7 +277,8 @@ class SheinSprcDilAutoPushService
             'lp' => $lp,
             'ship' => $ship,
             'margin' => $margin,
-            'ads' => $ads,
+            // Shein's SNROI% column has no Ads%, so the SNROI Cap must not take any off either.
+            'ads' => 0.0,
         ];
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];

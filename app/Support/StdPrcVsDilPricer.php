@@ -160,16 +160,27 @@ class StdPrcVsDilPricer
             return $price;
         }
         $lp = (float) ($row['lp'] ?? $row['LP'] ?? $row['LP_productmaster'] ?? 0);
+        // A row that does not carry the take-home % / Ads % (a channel job that forgot to send them) takes the
+        // channel's own values, the ones its SNROI% column and the negative-SNROI check use. Channels without Ship
+        // keep the plain defaults: they are left exactly as they were.
+        $fallback = $this->usesChannelSnroiInputs();
         $margin = (float) ($row['margin'] ?? 0);
         if ($margin > 1) {
             $margin /= 100;
+        }
+        if (! ($margin > 0 && $margin <= 1) && $fallback) {
+            $margin = $this->channelSnroiMargin();
         }
         if (! ($margin > 0 && $margin <= 1)) {
             $margin = 0.80;
         }
         $ship = self::excludesShip($this->channel) ? 0.0 : (float) ($row['ship'] ?? 0);
-        // Ads % as a fraction of the price (the auto-push rows pass 0.05 for 5%). Pages without ads pass 0 or nothing.
-        $ads = is_numeric($row['ads'] ?? null) ? (float) $row['ads'] : 0.0;
+        // Ads % as a fraction of the price (the auto-push rows pass 0.05 for 5%). Pages without ads pass 0.
+        if (is_numeric($row['ads'] ?? null)) {
+            $ads = (float) $row['ads'];
+        } else {
+            $ads = $fallback ? $this->channelSnroiAdsFrac() : 0.0;
+        }
         if ($ads > 1) {
             $ads /= 100;
         }
@@ -178,6 +189,41 @@ class StdPrcVsDilPricer
         }
 
         return self::capPriceToSnroi($price, $target, $lp, $margin, $ship, $ads);
+    }
+
+    /** Pages with no Ship (and Amazon, which has its own job) keep their own inputs: never use the channel fallback. */
+    private function usesChannelSnroiInputs(): bool
+    {
+        $c = strtolower(trim($this->channel));
+        if ($c === '' || $c === 'amazon' || self::excludesShip($c)) {
+            return false;
+        }
+
+        return ! in_array($c, ['doba_withoutship', 'fb_marketplace', 'instagram'], true);
+    }
+
+    private function channelSnroiMargin(): float
+    {
+        try {
+            return (float) NegativeSnroiPushGuard::snroiMarginFor($this->channel);
+        } catch (\Throwable) {
+            return 0.0;
+        }
+    }
+
+    private function channelSnroiAdsFrac(): float
+    {
+        // Only these pages take Ads % off in their SNROI% column. Every other page's column has no Ads %.
+        if (! in_array(strtolower(trim($this->channel)), ['ebay1', 'ebay2', 'ebay3', 'reverb', 'shopify_b2c'], true)) {
+            return 0.0;
+        }
+        try {
+            $pct = (float) NegativeSnroiPushGuard::snroiAdsPctFor($this->channel);
+        } catch (\Throwable) {
+            return 0.0;
+        }
+
+        return ($pct > 0 && $pct < 100) ? $pct / 100 : 0.0;
     }
 
     /** Target SNROI % of the saved SNROI Cap slab for this Dil %. Null when the slab has no cap or no slab matches. */
