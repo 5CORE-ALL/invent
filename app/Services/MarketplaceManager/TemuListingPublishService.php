@@ -110,43 +110,44 @@ class TemuListingPublishService extends Temu2ListingPublishService
 
         $encoded = base64_encode($prepared['bytes']);
         $lastMsg = '';
-        foreach (['bg.local.goods.image.upload', 'temu.local.image.upload', 'files/upload_image'] as $type) {
-            foreach (['image', 'imageBase64', 'fileBase64', 'base64'] as $field) {
-                $data = $this->api->callOpenApi($type, [$field => $encoded], 90);
+        $remember = function (array $data) use (&$lastMsg): bool {
+            $msg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
+            if ($this->isIpWhitelistMessage($msg)) {
+                $lastMsg = $msg;
+
+                return true;
+            }
+            if ($msg !== '' && ! $this->isSkippableImageError($msg) && ! $this->isApiAccessDenied($data)) {
+                $lastMsg = $msg;
+            }
+
+            return false;
+        };
+
+        foreach ($prepared['file_urls'] as $url) {
+            foreach ([
+                ['fileUrl' => $url, 'scalingType' => 1, 'compressionType' => 0, 'formatConversionType' => 1],
+                ['fileUrl' => $url],
+            ] as $params) {
+                $data = $this->api->callOpenApi('bg.local.goods.image.upload', $params, 60);
                 $hosted = $this->extractUploadedImageUrl($data);
                 if ($hosted !== null) {
                     return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
                 }
-                if ($this->isIpWhitelistMessage((string) ($data['errorMsg'] ?? $data['message'] ?? ''))) {
-                    return ['success' => false, 'message' => (string) ($data['errorMsg'] ?? $data['message'] ?? '')];
-                }
-                if (! $this->isApiAccessDenied($data)) {
-                    $byteMsg = trim((string) ($data['errorMsg'] ?? ''));
-                    if ($byteMsg !== '' && ! str_contains(strtolower($byteMsg), '.webp')) {
-                        $lastMsg = $byteMsg;
-                    }
+                if ($remember($data)) {
+                    return ['success' => false, 'message' => $lastMsg];
                 }
             }
         }
 
-        foreach ($prepared['file_urls'] as $url) {
-            foreach ([
-                ['bg.local.goods.image.upload', ['fileUrl' => $url, 'scalingType' => 1, 'compressionType' => 0, 'formatConversionType' => 1]],
-                ['bg.local.goods.image.upload', ['fileUrl' => $url]],
-                ['temu.local.goods.image.v2.upload', ['fileUrl' => $url, 'usage' => 1]],
-            ] as [$type, $params]) {
-                $data = $this->api->callOpenApi($type, $params, 60);
-                $hosted = $this->extractUploadedImageUrl($data);
-                if ($hosted !== null) {
-                    return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
-                }
-                $msg = trim((string) ($data['errorMsg'] ?? $data['message'] ?? ''));
-                if ($this->isIpWhitelistMessage($msg)) {
-                    return ['success' => false, 'message' => $msg];
-                }
-                if ($msg !== '' && ! str_contains(strtolower($msg), '.webp')) {
-                    $lastMsg = $msg;
-                }
+        foreach (['image', 'imageBase64', 'fileBase64'] as $field) {
+            $data = $this->api->callOpenApi('bg.local.goods.image.upload', [$field => $encoded], 90);
+            $hosted = $this->extractUploadedImageUrl($data);
+            if ($hosted !== null) {
+                return ['success' => true, 'url' => $hosted, 'message' => 'OK'];
+            }
+            if ($remember($data)) {
+                return ['success' => false, 'message' => $lastMsg];
             }
         }
 
@@ -180,6 +181,15 @@ class TemuListingPublishService extends Temu2ListingPublishService
         }
 
         return ['bytes' => $jpeg, 'file_urls' => array_values(array_unique($fileUrls))];
+    }
+
+    private function isSkippableImageError(string $message): bool
+    {
+        $message = strtolower($message);
+
+        return str_contains($message, 'type not exists')
+            || str_contains($message, 'type not exist')
+            || str_contains($message, '.webp');
     }
 
     private function isTemuFetchableImageUrl(string $url): bool
