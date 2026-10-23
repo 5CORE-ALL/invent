@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
- * BGT Rules "Pause ads if price below $X": pauses every ENABLED Shopping campaign whose price
+ * BGT Rules "Pause ads if price below $X" / "Pause ads if Dil above X%": pauses every ENABLED Shopping campaign whose price
  * (same Shopify price as the grid's Price column) is below the saved threshold. Runs hourly so a
  * low price pauses the ad without waiting for the daily SBGT push.
  */
@@ -20,13 +20,15 @@ class PauseLowPriceShoppingCampaignsCommand extends Command
     protected $signature = 'google:pause-low-price-shopping
                             {--dry-run : List the campaigns that would be paused without pausing them}';
 
-    protected $description = 'Pause ENABLED Google Shopping campaigns whose price is below the BGT Rules "pause ads if price below" amount';
+    protected $description = 'Pause ENABLED Google Shopping campaigns whose price is below, or Dil% above, the BGT Rules "pause ads" amounts';
 
     public function handle(GoogleAdsSbidService $sbidService): int
     {
-        $below = (float) (GoogleShoppingCampaignsRawRule::resolvedRule()['sbgt']['pause_price_below'] ?? 20.0);
-        if ($below <= 0) {
-            $this->info('Rule is off (pause price below = 0). Nothing to do.');
+        $cfg = GoogleShoppingCampaignsRawRule::resolvedRule()['sbgt'] ?? [];
+        $below = (float) ($cfg['pause_price_below'] ?? 20.0);
+        $dilAbove = (float) ($cfg['pause_dil_above'] ?? 50.0);
+        if ($below <= 0 && $dilAbove <= 0) {
+            $this->info('Both rules are off (price below = 0, Dil above = 0). Nothing to do.');
 
             return self::SUCCESS;
         }
@@ -67,11 +69,20 @@ class PauseLowPriceShoppingCampaignsCommand extends Command
         $paused = 0;
         $failed = 0;
         foreach ($enabled as $cid => $name) {
-            $price = $resolver($name)['price'] ?? null;
-            if (! is_numeric($price) || (float) $price <= 0 || (float) $price >= $below) {
+            $m = $resolver($name);
+            $price = $m['price'] ?? null;
+            $dil = $m['dil'] ?? null;
+            $reasons = [];
+            if ($below > 0 && is_numeric($price) && (float) $price > 0 && (float) $price < $below) {
+                $reasons[] = 'price $'.round((float) $price, 2).' < $'.$below;
+            }
+            if ($dilAbove > 0 && is_numeric($dil) && (float) $dil > $dilAbove) {
+                $reasons[] = 'Dil '.round((float) $dil, 1).'% > '.$dilAbove.'%';
+            }
+            if ($reasons === []) {
                 continue;
             }
-            $label = "{$cid} ({$name}) price \$".round((float) $price, 2).' < $'.$below;
+            $label = "{$cid} ({$name}) ".implode(', ', $reasons);
             if ($dryRun) {
                 $this->info("[DRY RUN] Would pause {$label}");
                 $paused++;
@@ -98,7 +109,7 @@ class PauseLowPriceShoppingCampaignsCommand extends Command
             }
         }
 
-        $this->info(($dryRun ? 'Would pause ' : 'Paused ')."{$paused} campaign(s) priced below \${$below}; {$failed} failed.");
+        $this->info(($dryRun ? 'Would pause ' : 'Paused ')."{$paused} campaign(s) (price below \${$below} or Dil above {$dilAbove}%); {$failed} failed.");
 
         return $failed > 0 ? self::FAILURE : self::SUCCESS;
     }

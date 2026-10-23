@@ -86,6 +86,21 @@ final class GoogleShoppingBgtParts
         self::applyPriceCap($arr, $price, (float) ($cfg['max_pct_of_price'] ?? 10.0));
         self::applyInventoryGate($arr, $inv, (bool) ($cfg['pause_if_inv_zero'] ?? true));
         self::applyPricePause($arr, $price, (float) ($cfg['pause_price_below'] ?? 20.0));
+        self::applyDilPause($arr, $dil, (float) ($cfg['pause_dil_above'] ?? 50.0));
+    }
+
+    /**
+     * Rule "Pause ads if Dil% is above X": a known Dil% over the threshold forces SBGT to 0 — Google cannot
+     * push a $0 daily budget, so the campaign is paused instead. Threshold 0 = rule off; an unknown Dil never pauses.
+     */
+    public static function applyDilPause(array &$arr, ?float $dil, float $above): void
+    {
+        if ($above <= 0 || $dil === null || ! is_finite($dil)) {
+            return;
+        }
+        if ($dil > $above) {
+            $arr['sbgt'] = 0;
+        }
     }
 
     /**

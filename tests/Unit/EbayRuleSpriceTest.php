@@ -242,17 +242,54 @@ class EbayRuleSpriceTest extends TestCase
         }
     }
 
-    public function test_ebay_has_no_snroi_cap_so_the_discount_price_is_used(): void
+    public function test_ebay_snroi_cap_prices_from_the_target_with_the_page_ads_and_ship(): void
     {
-        $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 1000, 'cap' => 20.0]]], 'ebay2');
+        foreach (EbayRuleSprice::CHANNELS as $channel) {
+            $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 1000, 'cap' => 20.0]]], $channel);
+            $input = EbayRuleSprice::inputFromTabulatorRow([
+                '(Child) sku' => 'SKU-1', 'INV' => 10, 'L30' => 2, 'STANDARD_PRICE' => 100,
+                'LP_productmaster' => 40, 'Ship_productmaster' => 3, 'percentage' => 0.88,
+                'AD%' => 3.0, 'SCVR' => 5, 'CVR_45' => 5,
+            ], 6.0);
+
+            // Page Ads% (6), not the row AD% (3): (40 x 1.20 + 3) / (0.88 - 0.06) = 62.2 → 62.19 (rounded down).
+            $priced = EbayRuleSprice::price($pricer, $input);
+            $this->assertSame(62.19, $priced['sprice'], $channel);
+            // The SNROI% column of the page at that S PRC is not above the target.
+            $snroi = (62.19 * (0.88 - 0.06) - 3 - 40) / 40 * 100;
+            $this->assertLessThanOrEqual(20.0 + 1e-9, $snroi, $channel);
+            $this->assertGreaterThan(19.9, $snroi, $channel);
+        }
+    }
+
+    public function test_ebay_snroi_cap_target_above_std_holds_at_std_and_lmp_cap_still_applies(): void
+    {
+        $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 1000, 'cap' => 500.0]]], 'ebay1');
+        $row = [
+            '(Child) sku' => 'SKU-1', 'INV' => 10, 'L30' => 2, 'STANDARD_PRICE' => 100,
+            'LP_productmaster' => 40, 'Ship_productmaster' => 3, 'percentage' => 0.88,
+            'SCVR' => 5, 'CVR_45' => 5,
+        ];
+        // A target that needs more than Std holds at Std Prc.
+        $this->assertSame(100.0, EbayRuleSprice::price($pricer, EbayRuleSprice::inputFromTabulatorRow($row, 6.0))['sprice']);
+        // Amazon order: SNROI cap first, then the LMP cap can still bring it down (SGROI at LMP stays >= 20%).
+        $withLmp = EbayRuleSprice::inputFromTabulatorRow($row + ['lmp_price' => 80], 6.0);
+        $this->assertSame(80.0, EbayRuleSprice::price($pricer, $withLmp)['sprice']);
+    }
+
+    public function test_ebay_slab_without_a_cap_keeps_the_discount_price(): void
+    {
+        $pricer = $this->pricer([
+            'dil' => [['min' => 0, 'max' => 100, 'disc' => 10]],
+            'snroi_cap' => [['min' => 0, 'max' => 1000, 'cap' => null]],
+        ], 'ebay3');
         $input = EbayRuleSprice::inputFromTabulatorRow([
             '(Child) sku' => 'SKU-1', 'INV' => 10, 'L30' => 2, 'STANDARD_PRICE' => 100,
             'LP_productmaster' => 40, 'Ship_productmaster' => 3, 'percentage' => 0.88,
-            'AD%' => 3.0, 'SCVR' => 5, 'CVR_45' => 5,
+            'SCVR' => 5, 'CVR_45' => 5,
         ], 6.0);
 
-        // A saved SNROI Cap slab on eBay is ignored (no cap: the price stays at Std when no discount applies).
-        $this->assertSame(100.0, EbayRuleSprice::price($pricer, $input)["sprice"]);
+        $this->assertSame(90.0, EbayRuleSprice::price($pricer, $input)['sprice']);
     }
 
     public function test_cvr_trend_override_is_ignored_when_invalid(): void

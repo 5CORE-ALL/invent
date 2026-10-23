@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class GoogleShoppingCampaignsRawRule
 {
-    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v7';
+    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v8';
 
     /**
      * Same ACOS → SBGT brackets as /facebook-ads (live facebook_sbgt_rules),
@@ -44,6 +44,8 @@ final class GoogleShoppingCampaignsRawRule
                 'max_pct_of_price' => 10.0,
                 // Price below this ($) forces SBGT to 0, which pauses the ad; 0 = rule off.
                 'pause_price_below' => 20.0,
+                // Dil% above this forces SBGT to 0, which pauses the ad; 0 = rule off.
+                'pause_dil_above' => 50.0,
             ],
             'sbid' => [
                 'util_low' => 66.0,
@@ -139,6 +141,12 @@ final class GoogleShoppingCampaignsRawRule
         $pausePrice = array_key_exists('pause_price_below', $sbIn) && is_numeric($sbIn['pause_price_below'])
             ? (float) $sbIn['pause_price_below']
             : (float) $d['sbgt']['pause_price_below'];
+        $pauseDil = array_key_exists('pause_dil_above', $sbIn) && is_numeric($sbIn['pause_dil_above'])
+            ? (float) $sbIn['pause_dil_above']
+            : (float) $d['sbgt']['pause_dil_above'];
+        if (! is_finite($pauseDil) || $pauseDil < 0 || $pauseDil > 100000) {
+            throw new \InvalidArgumentException('Pause-above Dil% must be 0 or more (0 = rule off).');
+        }
         if (! is_finite($pausePrice) || $pausePrice < 0 || $pausePrice > 1000000) {
             throw new \InvalidArgumentException('Pause-below price must be 0 or more (0 = rule off).');
         }
@@ -180,7 +188,7 @@ final class GoogleShoppingCampaignsRawRule
             throw new \InvalidArgumentException('SBID low-bid increment must be between 0.01 and 5.');
         }
 
-        return ['sbgt' => ['bands' => $bands, 'pause_if_inv_zero' => $pauseIfInvZero, 'max_pct_of_price' => $maxPct, 'pause_price_below' => $pausePrice], 'sbid' => $sbid];
+        return ['sbgt' => ['bands' => $bands, 'pause_if_inv_zero' => $pauseIfInvZero, 'max_pct_of_price' => $maxPct, 'pause_price_below' => $pausePrice, 'pause_dil_above' => $pauseDil], 'sbid' => $sbid];
     }
 
     /**

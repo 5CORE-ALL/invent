@@ -1032,6 +1032,11 @@
                             <span>Pause ads if price below $</span>
                             <input type="number" id="gac-bgt-pause-price" value="20" step="1" min="0" class="form-control form-control-sm">
                         </label>
+                        <label class="gac-bgt-opt" title="Rule: when Dil% (OV L30 ÷ INV × 100; parent = children total) is above this, SBGT becomes 0, and a $0 budget cannot be pushed, so the ad is paused automatically. Change the amount any time; 0 = rule off.">
+                            <span>Pause ads if Dil above</span>
+                            <input type="number" id="gac-bgt-pause-dil" value="50" step="1" min="0" class="form-control form-control-sm">
+                            <span>%</span>
+                        </label>
                     </div>
 
                     <div class="gac-bgt-cols">
@@ -1706,6 +1711,11 @@
                 var rowPrice = parseFloat(row && row.price);
                 if (pBelow > 0 && isFinite(rowPrice) && rowPrice > 0 && rowPrice < pBelow) {
                     tip += ' · Price under $' + pBelow + ' zeros SBGT — cannot push $0, campaign will be paused';
+                }
+                var dAbove = gacPauseDilAbove();
+                var rowDil = parseFloat(row && row.dil);
+                if (dAbove > 0 && isFinite(rowDil) && rowDil > dAbove) {
+                    tip += ' · Dil ' + Math.round(rowDil) + '% is above ' + dAbove + '% — zeros SBGT, cannot push $0, campaign will be paused';
                 }
                 var capV = parseInt(row.sbgt_cap, 10);
                 if (isFinite(capV)) tip += ' · max $' + capV + ' (% of price cap)';
@@ -3945,6 +3955,17 @@
                 var v = parseFloat(sb.pause_price_below);
                 return isFinite(v) ? v : 20;
             }
+            function gacBgtPauseDil() {
+                var el = document.getElementById('gac-bgt-pause-dil');
+                var v = el ? parseFloat(el.value) : 50;
+                return (isFinite(v) && v >= 0) ? v : 50;
+            }
+            /** Saved "pause ads if Dil above X%" threshold (default 50; 0 = off). */
+            function gacPauseDilAbove() {
+                var sb = (window.gacRawRule && window.gacRawRule.sbgt) || {};
+                var v = parseFloat(sb.pause_dil_above);
+                return isFinite(v) ? v : 50;
+            }
             function gacBgtMaxPct() {
                 var el = document.getElementById('gac-bgt-max-pct');
                 var v = el ? parseFloat(el.value) : 10;
@@ -5143,6 +5164,8 @@
                                 if (maxPctEl) maxPctEl.value = (sbOpt.max_pct_of_price != null ? sbOpt.max_pct_of_price : 10);
                                 var pausePriceEl = document.getElementById('gac-bgt-pause-price');
                                 if (pausePriceEl) pausePriceEl.value = (sbOpt.pause_price_below != null ? sbOpt.pause_price_below : 20);
+                                var pauseDilEl = document.getElementById('gac-bgt-pause-dil');
+                                if (pauseDilEl) pauseDilEl.value = (sbOpt.pause_dil_above != null ? sbOpt.pause_dil_above : 50);
                                 resolve();
                             });
                         })
@@ -5217,7 +5240,7 @@
                             'X-Requested-With': 'XMLHttpRequest',
                         },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ sbgt: { bands: sbgtBands, pause_if_inv_zero: gacBgtPauseInv0(), max_pct_of_price: gacBgtMaxPct(), pause_price_below: gacBgtPausePrice() }, sbid: gacCollectSbid() }),
+                        body: JSON.stringify({ sbgt: { bands: sbgtBands, pause_if_inv_zero: gacBgtPauseInv0(), max_pct_of_price: gacBgtMaxPct(), pause_price_below: gacBgtPausePrice(), pause_dil_above: gacBgtPauseDil() }, sbid: gacCollectSbid() }),
                     })
                         .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
                         .then(function(out) {

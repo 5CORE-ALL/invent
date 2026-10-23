@@ -490,15 +490,45 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(100.0, $wayfair->priceFromRow($row + ['dil' => 50]));
         // Every other channel page has the same SNROI Cap.
         $this->assertSame(84.21, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row + ['dil' => 10]));
-        // Only Amazon and the no-Ship pages have the SNROI Cap. Pages with Ship (eBay, Reverb, Best Buy, Temu ...) price from
-        // their discounts only, so the same Dil slab leaves the Std price alone.
-        foreach (['reverb', 'ebay2', 'bestbuy', 'newtemuone', 'shopify_b2c'] as $channel) {
+        // Only Amazon, eBay 1 / 2 / 3 and the no-Ship pages have the SNROI Cap. The other pages with Ship (Reverb, Best Buy,
+        // Temu ...) price from their discounts only, so the same Dil slab leaves the Std price alone.
+        foreach (['reverb', 'bestbuy', 'newtemuone', 'shopify_b2c'] as $channel) {
             $this->assertSame(100.0, (new StdPrcVsDilPricer($rules, $channel))->priceFromRow($row + ['dil' => 10, 'ship' => 5, 'ads' => 0.10]), $channel);
             $this->assertNull((new StdPrcVsDilPricer($rules, $channel))->snroiCapTargetForDil(10.0), $channel);
         }
-        // The no-Ship pages keep it.
-        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon'] as $channel) {
+        // The no-Ship pages and eBay keep it.
+        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'ebay1', 'ebay2', 'ebay3'] as $channel) {
             $this->assertTrue(StdPrcVsDilPricer::supportsSnroiCap($channel), $channel);
+        }
+    }
+
+    public function test_ebay_snroi_cap_solves_the_price_with_ship_and_ads(): void
+    {
+        $rules = [
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 0, 'down_lt' => 7, 'down_disc' => 0,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'snroi_cap' => [
+                ['min' => 0, 'max' => 20, 'cap' => 60],
+                ['min' => 20, 'max' => 100, 'cap' => null],
+            ],
+        ];
+        // Same columns the eBay SNROI% uses: SNROI = (price x (margin - ads) - ship - LP) / LP.
+        $row = ['inv' => 1, 'std_price' => 100, 'cvr' => 8, 'cvr_60' => 8, 'ebay_l30' => 1, 'lp' => 50, 'margin' => 0.85, 'ship' => 5, 'ads' => 0.10];
+        foreach (['ebay1', 'ebay2', 'ebay3'] as $channel) {
+            $pricer = new StdPrcVsDilPricer($rules, $channel);
+            // Target 60%: (50 x 1.6 + 5) / (0.85 - 0.10) = 113.33, which is above Std, so Std holds.
+            $this->assertSame(100.0, $pricer->priceFromRow($row + ['dil' => 10]), $channel);
+            // Lower LP: (30 x 1.6 + 5) / 0.75 = 70.666… → 70.66, SNROI never above the target.
+            $this->assertSame(70.66, $pricer->priceFromRow(['lp' => 30] + $row + ['dil' => 10]), $channel);
+            // Slab without a cap keeps the discount price (no discounts here: Std).
+            $this->assertSame(100.0, $pricer->priceFromRow(['lp' => 30] + $row + ['dil' => 50]), $channel);
+            $this->assertSame(60.0, $pricer->snroiCapTargetForDil(10.0), $channel);
         }
     }
 
