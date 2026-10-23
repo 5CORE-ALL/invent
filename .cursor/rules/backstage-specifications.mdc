@@ -1,0 +1,18 @@
+---
+description: Reuse Technical Specifications backstage data when a marketplace needs item specifics. Ask the user only for required values that are not stored.
+globs: app/Services/MarketplaceManager/**/*Publish*.php,app/Http/Controllers/MarketPlace/ListingMarketPlace/**/*.php,app/Http/Controllers/ProductMaster/TechnicalSpecificationsController.php,app/Services/ProductMaster/**/*.php
+alwaysApply: false
+---
+
+# Backstage specifications
+
+Technical Specifications (`/technical-specifications`) is the pull and push page. A successful push writes `backstage_specifications` through `App\Services\ProductMaster\BackstageSpecificationStore`.
+
+Each row is the latest non-blank value pushed for one SKU, marketplace, and specification name, plus the category used for that marketplace.
+
+When a marketplace push needs item specifics or attributes:
+
+- Read `latestForSku($sku, $marketplace)` and map matching names. Do not ask for those values.
+- Call `missingForSku($sku, $requiredNames, $marketplace)` and prompt only for the names it returns.
+- After a successful push, call `recordPush($sku, $marketplace, $specs)`. Blank values are not stored.
+- Do not mention backstage data unless the task is a marketplace specification push.

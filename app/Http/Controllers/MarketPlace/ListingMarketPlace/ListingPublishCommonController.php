@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace\ListingMarketPlace;
 use App\Http\Controllers\Controller;
 use App\Services\MarketplaceManager\EbayListingPublishService;
 use App\Services\MarketplaceManager\ListingVariationPreviewService;
+use App\Services\ProductMaster\BackstageSpecificationStore;
 use Illuminate\Http\Request;
 
 class ListingPublishCommonController extends Controller
@@ -95,7 +96,35 @@ class ListingPublishCommonController extends Controller
             ], 500);
         }
 
+        $this->rememberBackstage($result, $channel, $skus, $itemSpecifics);
+
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
+    /**
+     * Keep the specifications that went out with this push for other marketplaces.
+     *
+     * @param  array<string, mixed>  $result
+     * @param  list<string>  $requestedSkus
+     * @param  array<string, string>  $itemSpecifics
+     */
+    private function rememberBackstage(array $result, string $channel, array $requestedSkus, array $itemSpecifics): void
+    {
+        $listed = [];
+        foreach ((array) ($result['skus'] ?? []) as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $listed[] = $sku;
+            }
+        }
+        if ($listed === [] && ($result['success'] ?? false)) {
+            $listed = $requestedSkus;
+        }
+        if ($listed === []) {
+            return;
+        }
+
+        app(BackstageSpecificationStore::class)->recordProducts($listed, $channel, $itemSpecifics);
     }
 
     /**

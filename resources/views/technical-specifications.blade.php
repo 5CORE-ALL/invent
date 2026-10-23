@@ -9,6 +9,24 @@
         .card.ts-master-card .card-body { padding: 1.25rem 1.5rem; }
         .ts-master-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
         .ts-master-toolbar .btn { padding:.3rem .6rem; font-size:.8rem; }
+        .ts-search-row { display:flex; flex-wrap:wrap; gap:.6rem; margin:0 0 .7rem; }
+        .ts-search-row label {
+            display:flex; flex-direction:column; gap:.2rem; min-width:180px; flex:1;
+            font-size:.72rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+        }
+        .ts-search-row input {
+            height:32px; border-radius:8px; border:1px solid #cbd5e1; padding:0 .6rem;
+            font-size:.84rem; font-weight:500; text-transform:none; letter-spacing:0;
+        }
+        .ts-search-row input:focus { outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.15); }
+        .ts-search-parent { color:#6d28d9; }
+        .ts-search-parent input { background:#f5f3ff; border-color:#c4b5fd; }
+        .ts-search-sku { color:#1d4ed8; }
+        .ts-search-sku input { background:#eff6ff; border-color:#93c5fd; }
+        .ts-search-category { color:#b45309; }
+        .ts-search-category input { background:#fffbeb; border-color:#fcd34d; }
+        .ts-search-any { color:#0f766e; }
+        .ts-search-any input { background:#f0fdfa; border-color:#5eead4; }
         #ts-hscroll {
             overflow-x: auto;
             overflow-y: hidden;
@@ -25,7 +43,115 @@
             color: #fff;
         }
         #technical-specs-table .tabulator-col { background:transparent !important; border-right:1px solid rgba(255,255,255,.15); }
-        #technical-specs-table .tabulator-col-title { color:#fff; font-size:13.2px; font-weight:600; text-transform:uppercase; }
+        #technical-specs-table .tabulator-header .tabulator-col.tabulator-frozen {
+            background: #2c6ed5 !important;
+            z-index: 30;
+        }
+        #technical-specs-table .tabulator-row .tabulator-cell.tabulator-frozen {
+            background: #fff;
+            z-index: 12;
+        }
+        #technical-specs-table .tabulator-row.tabulator-row-even .tabulator-cell.tabulator-frozen {
+            background: #f8fafc;
+        }
+        #technical-specs-table .tabulator-row:hover:not([class*="parent-row"]) .tabulator-cell.tabulator-frozen {
+            background: #e8f0fe !important;
+        }
+        #technical-specs-table .tabulator-row.tabulator-selected .tabulator-cell.tabulator-frozen {
+            background: #d6e6ff;
+        }
+        #technical-specs-table .tabulator-header .tabulator-col[tabulator-field="SKU"] {
+            position: sticky !important;
+            left: 44px !important;
+            z-index: 32;
+            background: #2c6ed5 !important;
+            box-shadow: 3px 0 6px rgba(15, 23, 42, .18);
+        }
+        #technical-specs-table .tabulator-row .tabulator-cell[tabulator-field="SKU"] {
+            position: sticky !important;
+            left: 44px !important;
+            z-index: 13;
+            background: #fff;
+            box-shadow: 3px 0 6px rgba(15, 23, 42, .12);
+        }
+        #technical-specs-table .tabulator-row.tabulator-row-even .tabulator-cell[tabulator-field="SKU"] {
+            background: #f8fafc;
+        }
+        #technical-specs-table .tabulator-row:hover:not([class*="parent-row"]) .tabulator-cell[tabulator-field="SKU"] {
+            background: #e8f0fe !important;
+        }
+        #technical-specs-table .tabulator-row.tabulator-selected .tabulator-cell[tabulator-field="SKU"] {
+            background: #d6e6ff;
+        }
+        #technical-specs-table .tabulator-header,
+        #technical-specs-table .tabulator-header .tabulator-headers,
+        #technical-specs-table .tabulator-col,
+        #technical-specs-table .tabulator-col-content,
+        #technical-specs-table .tabulator-col-title-holder {
+            height: 200px !important;
+        }
+        #technical-specs-table .tabulator-col-content {
+            display: flex !important;
+            align-items: flex-end;
+            justify-content: center;
+            padding: 8px 2px !important;
+        }
+        #technical-specs-table .tabulator-col-title-holder {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+        #technical-specs-table .tabulator-col-title {
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-height: 184px;
+            line-height: 1.15;
+            letter-spacing: .03em;
+        }
+        #technical-specs-table .tabulator-cell {
+            text-align: center;
+        }
+        #technical-specs-table .ts-cat-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: help;
+            vertical-align: middle;
+            transition: transform .12s ease, box-shadow .12s ease;
+        }
+        #technical-specs-table .ts-cat-dot--ok { background: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.18); }
+        #technical-specs-table .ts-cat-dot--none { background: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,.18); }
+        #technical-specs-table .ts-cat-dot:hover { transform: scale(1.35); }
+        .ts-cat-tip {
+            position: fixed;
+            z-index: 2000;
+            max-width: 420px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: #0f172a;
+            color: #fff;
+            font-size: 12px;
+            line-height: 1.35;
+            pointer-events: none;
+            box-shadow: 0 6px 18px rgba(15,23,42,.25);
+        }
+        #technical-specs-table .ts-missing {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            font-weight: 700;
+            color: #b91c1c;
+            white-space: nowrap;
+        }
         #technical-specs-table .tabulator-header-filter input {
             background:rgba(255,255,255,.95); border:none; border-radius:4px; color:#333;
             padding:4px 6px; width:100%; font-size:12px;
@@ -212,6 +338,44 @@
             background: linear-gradient(120deg, #16a34a, #0d9488);
             border: 0;
         }
+        #ebaySyncOutcome:not(.d-none) {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: .35rem;
+            padding: .35rem 0 .85rem;
+        }
+        #ebaySyncOutcome .ts-sync-mark {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        #ebaySyncOutcome .ts-sync-mark i { font-size: 3.4rem; }
+        #ebaySyncOutcome.is-failed .ts-sync-mark {
+            width: auto;
+            height: auto;
+            border-radius: 0;
+            background: transparent;
+            color: #dc2626;
+        }
+        #ebaySyncOutcome.is-failed .ts-sync-mark i { font-size: 4.6rem; }
+        #ebaySyncOutcome .ts-sync-outcome-title { font-size: 1.2rem; font-weight: 700; }
+        #ebaySyncOutcome.is-success .ts-sync-outcome-title { color: #166534; }
+        #ebaySyncOutcome.is-failed .ts-sync-outcome-title { color: #b91c1c; }
+        #ebaySyncSkuList { list-style: none; padding-left: 0; }
+        #ebaySyncSkuList .ts-sync-row {
+            display: flex;
+            align-items: flex-start;
+            gap: .45rem;
+            margin: .2rem 0;
+        }
+        #ebaySyncSkuList .ts-sync-row i { margin-top: .15rem; }
         @media (max-width: 1100px) {
             #editSpecsModal .ts-spec-grid,
             #editSpecsModal .ts-spec-grid.ts-spec-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -260,6 +424,15 @@
                         <button type="button" id="importBtn" class="btn btn-info btn-sm">
                             <i class="fas fa-upload"></i> Import
                         </button>
+                        <button type="button" id="maxAlertBtn" class="btn btn-sm btn-outline-danger" title="Show only SKUs with the highest missing count">
+                            <i class="fas fa-exclamation-triangle"></i> Max alerts
+                        </button>
+                        <span class="badge bg-danger d-none" id="maxAlertBatch">0 rows</span>
+                        <select id="rowTypeFilter" class="form-select form-select-sm" style="width:auto; min-width:110px;" title="Show SKU rows, parent rows, or both">
+                            <option value="sku" selected>SKU</option>
+                            <option value="parent">Parent</option>
+                            <option value="all">All</option>
+                        </select>
                         <select id="statusFilter" class="form-select form-select-sm" style="width:auto; min-width:200px;">
                             <option value="all">All rows</option>
                             <option value="has">Has Specifications</option>
@@ -268,6 +441,20 @@
                         <span class="text-muted small" id="rowCountBadge">0 products</span>
                         <span class="text-muted small" id="selectedCountBadge">0 selected</span>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
+                    </div>
+                    <div class="ts-search-row">
+                        <label class="ts-search-parent">Parent
+                            <input type="search" id="parentSearch" placeholder="Search parent column" autocomplete="off">
+                        </label>
+                        <label class="ts-search-sku">SKU
+                            <input type="search" id="skuSearch" placeholder="Search SKU column" autocomplete="off">
+                        </label>
+                        <label class="ts-search-category">Category
+                            <input type="search" id="categorySearch" placeholder="Search eBay, Amazon, and Temu categories" autocomplete="off">
+                        </label>
+                        <label class="ts-search-any">Anything
+                            <input type="search" id="anythingSearch" placeholder="Search every other column" autocomplete="off">
+                        </label>
                     </div>
 
                     <div id="ts-hscroll" title="Scroll columns"><div id="ts-hscroll-inner"></div></div>
@@ -307,7 +494,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-success" id="modalSaveBtn">
-                        <i class="fas fa-save"></i> <span id="modalSaveBtnLabel">Save</span>
+                        <i class="fas fa-cloud-upload-alt"></i> <span id="modalSaveBtnLabel">Save and push</span>
                     </button>
                 </div>
             </div>
@@ -341,6 +528,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="ebaySyncOutcome" class="d-none"></div>
                     <div id="ebaySyncAlert" class="alert alert-danger d-none">
                         <div class="fw-semibold"><i class="fas fa-exclamation-triangle me-2"></i><span id="ebaySyncAlertText"></span></div>
                         <ul id="ebaySyncAlertList" class="mb-0 mt-2"></ul>
@@ -370,6 +558,7 @@
             let viewModal = null;
             let bulkEditSkus = [];
             let navParent = null;
+            let maxAlertOnly = false;
             let parentPlayback = null;
             let ebayAspectNames = [];
             const aspectFields = {};
@@ -394,12 +583,15 @@
                 return {
                     title: title,
                     field: field,
-                    width: 180,
-                    headerFilter: 'input',
-                    headerFilterPlaceholder: 'Filter',
+                    minWidth: 52,
+                    hozAlign: 'center',
+                    headerHozAlign: 'center',
+                    headerTooltip: title,
+                    width: 52,
                     formatter: function (cell) {
                         const v = String(cell.getValue() || '').trim();
-                        return v ? esc(v) : '<span class="text-muted">—</span>';
+                        const tip = v ? v : 'No ' + title.replace(/^Category\s*/i, '') + ' category';
+                        return '<span class="ts-cat-dot ' + (v ? 'ts-cat-dot--ok' : 'ts-cat-dot--none') + '" data-tip="' + esc(tip) + '" aria-label="' + esc(tip) + '"></span>';
                     },
                 };
             }
@@ -424,18 +616,89 @@
                 badge.textContent = table.getSelectedData().length + ' selected';
             }
 
+            function searchValue(id) {
+                const el = document.getElementById(id);
+                return String(el && el.value || '').trim().toLowerCase();
+            }
+
+            function containsText(value, query) {
+                return String(value || '').toLowerCase().indexOf(query) !== -1;
+            }
+
+            function categoryText(data) {
+                return [data.category_ebay, data.category_amz, data.category_temu].join('\n');
+            }
+
+            function anythingText(data) {
+                const parts = [
+                    data.category_ebay,
+                    data.category_amz,
+                    data.category_temu,
+                    specsText(data),
+                ];
+                ebayAspectNames.forEach(function (name) {
+                    parts.push(data[aspectKey(name)]);
+                });
+                (data.description_v2_specifications || []).forEach(function (spec) {
+                    parts.push(spec && spec.key, spec && spec.value);
+                });
+                return parts.join('\n');
+            }
+
             function applyStatusFilter() {
                 if (!table) return;
                 const mode = document.getElementById('statusFilter')?.value || 'all';
-                table.setFilter(function (data) {
+                const rowType = document.getElementById('rowTypeFilter')?.value || 'sku';
+                const parentQ = searchValue('parentSearch');
+                const skuQ = searchValue('skuSearch');
+                const categoryQ = searchValue('categorySearch');
+                const anyQ = searchValue('anythingSearch');
+                function passesBase(data) {
+                    const isParent = window.isPmParentRowData
+                        ? window.isPmParentRowData(data)
+                        : String(data.SKU || '').toUpperCase().includes('PARENT');
+                    if (rowType === 'sku' && isParent) return false;
+                    if (rowType === 'parent' && !isParent) return false;
                     if (navParent != null && String(data.Parent || '') !== String(navParent)) return false;
+                    if (parentQ && !containsText(data.Parent || data.title150 || '', parentQ)) return false;
+                    if (skuQ && !containsText(data.SKU, skuQ)) return false;
+                    if (categoryQ && !containsText(categoryText(data), categoryQ)) return false;
+                    if (anyQ && !containsText(anythingText(data), anyQ)) return false;
                     const text = specsText(data);
                     if (mode === 'has') return text !== '';
                     if (mode === 'missing') return text === '';
                     return true;
+                }
+                let maxMissing = 0;
+                if (maxAlertOnly) {
+                    table.getData().forEach(function (data) {
+                        if (!passesBase(data)) return;
+                        const n = missingSpecs(data).length;
+                        if (n > maxMissing) maxMissing = n;
+                    });
+                }
+                table.setFilter(function (data) {
+                    if (!passesBase(data)) return false;
+                    if (maxAlertOnly && missingSpecs(data).length !== maxMissing) return false;
+                    return true;
                 });
-                updateRowCount(table.getDataCount('active'));
+                const shown = table.getDataCount('active');
+                updateRowCount(shown);
                 updateSelectedCount();
+                const batch = document.getElementById('maxAlertBatch');
+                const btn = document.getElementById('maxAlertBtn');
+                if (batch) {
+                    if (maxAlertOnly) {
+                        batch.textContent = shown + ' row' + (shown === 1 ? '' : 's') + ' · max ' + maxMissing;
+                        batch.classList.remove('d-none');
+                    } else {
+                        batch.classList.add('d-none');
+                    }
+                }
+                if (btn) {
+                    btn.classList.toggle('btn-danger', maxAlertOnly);
+                    btn.classList.toggle('btn-outline-danger', !maxAlertOnly);
+                }
             }
 
             function aspectKey(name) {
@@ -459,6 +722,14 @@
                 });
             }
 
+            function missingSpecs(row) {
+                const names = [];
+                (row.ebay_required || []).forEach(function (name) {
+                    if (!String(row[aspectKey(name)] || '').trim()) names.push(name);
+                });
+                return names;
+            }
+
             function stampAspectFields(row) {
                 const values = row.ebay_values || {};
                 ebayAspectNames.forEach(function (name) {
@@ -471,11 +742,10 @@
                     return {
                         title: name,
                         field: aspectKey(name),
-                        width: 150,
-                        minWidth: 120,
-                        headerTooltip: 'Required by eBay for this category',
-                        headerFilter: 'input',
-                        headerFilterPlaceholder: 'Filter',
+                        minWidth: 52,
+                        hozAlign: 'center',
+                        headerHozAlign: 'center',
+                        headerTooltip: name,
                         editor: 'input',
                         editable: function (cell) {
                             return rowRequiresAspect(cell.getRow().getData(), name);
@@ -603,13 +873,13 @@
                     listWrap.style.display = '';
                     listEl.textContent = bulkEditSkus.join(', ');
                     titleEl.innerHTML = '<i class="fas fa-layer-group me-2"></i>Bulk Edit Technical Specifications';
-                    saveLabel.textContent = 'Save to ' + bulkEditSkus.length + ' SKUs';
+                    saveLabel.textContent = 'Save and push to ' + bulkEditSkus.length + ' SKUs';
                 } else {
                     banner.style.display = 'none';
                     listWrap.style.display = 'none';
                     listEl.textContent = '';
                     titleEl.innerHTML = '<i class="fas fa-edit me-2"></i>Edit Technical Specifications';
-                    saveLabel.textContent = 'Save';
+                    saveLabel.textContent = 'Save and push';
                 }
 
                 renderSpecFields(rowsForEdit(rowData));
@@ -884,6 +1154,31 @@
                 });
             }
 
+            function autofitColumns() {
+                if (!table) return;
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                ctx.font = '600 13.2px Arial, sans-serif';
+                const data = table.getData();
+                table.getColumns().forEach(function (col) {
+                    const field = col.getField();
+                    if (!field || field === '_action' || field === '_missing' || field.indexOf('category_') === 0) return;
+                    let max = 52;
+                    data.forEach(function (row) {
+                        const text = String(field === 'Parent'
+                            ? (row.Parent || row.title150 || row.SKU || '')
+                            : (row[field] == null ? '' : row[field])).trim();
+                        if (!text) return;
+                        const width = Math.ceil(ctx.measureText(text).width) + 22;
+                        if (width > max) max = width;
+                    });
+                    let width = Math.min(Math.max(max, 52), 340);
+                    if (field === 'Parent' || field === 'SKU') width = Math.max(58, Math.round(width * 0.8));
+                    col.setWidth(width);
+                });
+            }
+
             function initTable(rows, aspectNames) {
                 const nextNames = Array.isArray(aspectNames) ? aspectNames : ebayAspectNames;
                 if (table && nextNames.join('\n') !== ebayAspectNames.join('\n')) {
@@ -896,6 +1191,7 @@
                 if (table) {
                     table.replaceData(rows);
                     applyStatusFilter();
+                    autofitColumns();
                     buildTsColumnPicker();
                     bindTopHScroll();
                     return;
@@ -903,11 +1199,11 @@
 
                 table = new Tabulator('#technical-specs-table', {
                     data: rows,
-                    layout: 'fitColumns',
+                    layout: 'fitData',
                     height: 'calc(100vh - 250px)',
                     pagination: true,
                     paginationSize: 50,
-                    paginationSizeSelector: [25, 50, 100, 200],
+                    paginationSizeSelector: [25, 50, 100, 200, true],
                     placeholder: 'No products found',
                     selectableRows: true,
                     rowFormatter: window.pmParentRowFormatter,
@@ -928,33 +1224,57 @@
                                 cell.getRow().toggleSelect();
                             },
                         },
+                        {
+                            title: 'SKU',
+                            field: 'SKU',
+                            minWidth: 58,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerTooltip: 'SKU',
+                            frozen: true,
+                        },
+                        {
+                            title: 'Missing',
+                            field: '_missing',
+                            width: 70,
+                            minWidth: 70,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerTooltip: 'Blank required specifications for this SKU',
+                            frozen: true,
+                            sorter: function (a, b, aRow, bRow) {
+                                return missingSpecs(aRow.getData()).length - missingSpecs(bRow.getData()).length;
+                            },
+                            formatter: function (cell) {
+                                const names = missingSpecs(cell.getRow().getData());
+                                if (!names.length) return '<span class="text-muted">0</span>';
+                                return '<span class="ts-missing" title="' + esc(names.join(', ')) + '"><i class="fas fa-exclamation-triangle"></i>' + names.length + '</span>';
+                            },
+                        },
                         categoryColumn('Category eBay', 'category_ebay'),
                         categoryColumn('Category Amz', 'category_amz'),
                         categoryColumn('Category Temu', 'category_temu'),
                         {
                             title: 'Parent',
                             field: 'Parent',
-                            width: 200,
-                            headerFilter: 'input',
-                            headerFilterPlaceholder: 'Filter parent',
+                            minWidth: 58,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerTooltip: 'Parent',
                             formatter: function (cell) {
                                 const d = cell.getRow().getData();
                                 return esc(d.Parent || d.title150 || d.SKU || '');
                             },
                         },
-                        {
-                            title: 'SKU',
-                            field: 'SKU',
-                            width: 180,
-                            headerFilter: 'input',
-                            headerFilterPlaceholder: 'Filter SKU',
-                        },
                         ...ebayAspectColumns(),
                         {
                             title: 'Action',
                             field: '_action',
-                            width: 150,
+                            width: 96,
+                            minWidth: 96,
                             hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerTooltip: 'Action',
                             headerSort: false,
                             formatter: function () {
                                 return '<div class="d-flex gap-1 justify-content-center">' +
@@ -972,6 +1292,7 @@
                 });
 
                 table.on('tableBuilt', function () {
+                    autofitColumns();
                     buildTsColumnPicker();
                     bindTopHScroll();
                 });
@@ -1093,7 +1414,35 @@
                 }
             }
 
+            function hideSyncOutcome() {
+                const box = document.getElementById('ebaySyncOutcome');
+                box.className = 'd-none';
+                box.innerHTML = '';
+            }
+
+            function showSyncOutcome(success, title, detail) {
+                const box = document.getElementById('ebaySyncOutcome');
+                box.className = success ? 'is-success' : 'is-failed';
+                const mark = document.createElement('div');
+                mark.className = 'ts-sync-mark';
+                const icon = document.createElement('i');
+                icon.className = success ? 'fas fa-check' : 'fas fa-exclamation-triangle';
+                mark.appendChild(icon);
+                const heading = document.createElement('div');
+                heading.className = 'ts-sync-outcome-title';
+                heading.textContent = title;
+                box.appendChild(mark);
+                box.appendChild(heading);
+                if (detail) {
+                    const note = document.createElement('div');
+                    note.className = 'small text-muted';
+                    note.textContent = detail;
+                    box.appendChild(note);
+                }
+            }
+
             function openEbayPrompt(opts) {
+                hideSyncOutcome();
                 document.getElementById('ebaySyncTitle').textContent = opts.title;
                 document.getElementById('ebaySyncBody').textContent = opts.body;
                 document.getElementById('ebaySyncStatus').textContent = '';
@@ -1127,6 +1476,48 @@
                     ebaySyncAction = opts.onConfirm;
                 }
                 ebaySyncModal.show();
+            }
+
+            function rowsBySku(skus) {
+                const wanted = new Set(skus);
+                const rows = (table ? table.getData() : []).filter(function (row) {
+                    return wanted.has(String(row.SKU || '').trim());
+                });
+                skus.forEach(function (sku) {
+                    if (!rows.some(function (row) { return row.SKU === sku; })) rows.push({ SKU: sku });
+                });
+                return rows;
+            }
+
+            function pushSavedSpecs(skus, failedSaves) {
+                const rows = rowsBySku(skus);
+                const blanks = [];
+                rows.forEach(function (row) {
+                    const missing = blankFieldsForRow(row);
+                    if (missing.length) blanks.push({ sku: row.SKU || '', missing: missing });
+                });
+                const failedNote = failedSaves
+                    ? failedSaves + ' SKU' + (failedSaves === 1 ? '' : 's') + ' could not be saved and will not be pushed. '
+                    : '';
+                if (blanks.length) {
+                    openEbayPrompt({
+                        title: 'Save and push to eBay 1',
+                        body: failedNote + 'Saved. These rows still have blank specifications.',
+                        rows: rows,
+                        blanks: blanks,
+                        alertText: 'Blank values are not sent, so eBay 1 keeps its current value. Push anyway only if that is what you want.',
+                        confirmText: 'Push anyway',
+                        confirmClass: 'btn-danger',
+                        onConfirm: function () { runEbaySync('push', skus, true); },
+                    });
+                    return;
+                }
+                openEbayPrompt({
+                    title: 'Save and push to eBay 1',
+                    body: failedNote + 'Saved. Pushing the filled specifications to eBay 1…',
+                    rows: rows,
+                });
+                runEbaySync('push', skus, false);
             }
 
             function promptEbaySync(mode) {
@@ -1176,6 +1567,7 @@
                 const list = document.getElementById('ebaySyncSkuList');
                 confirmBtn.disabled = true;
                 cancelBtn.disabled = true;
+                hideSyncOutcome();
                 list.innerHTML = '';
                 const url = mode === 'pull' ? '/technical-specifications/pull-ebay' : '/technical-specifications/push-ebay';
                 let done = 0;
@@ -1214,8 +1606,13 @@
                         if (!res.ok) throw new Error(json.message || 'eBay request failed');
                         (json.results || []).forEach(function (result) {
                             const li = document.createElement('li');
-                            li.textContent = (result.sku || '') + ' — ' + (result.message || '');
-                            li.className = result.success ? 'text-success' : 'text-danger';
+                            li.className = 'ts-sync-row ' + (result.success ? 'text-success' : 'text-danger');
+                            const icon = document.createElement('i');
+                            icon.className = result.success ? 'fas fa-check' : 'fas fa-exclamation-triangle';
+                            const text = document.createElement('span');
+                            text.textContent = (result.sku || '') + ' — ' + (result.message || '');
+                            li.appendChild(icon);
+                            li.appendChild(text);
                             list.appendChild(li);
                             if (!result.success) failed++;
                             if (mode === 'pull' && result.success) {
@@ -1228,10 +1625,17 @@
                         status.textContent = 'Refreshing columns…';
                         await loadData();
                     }
-                    status.textContent = 'Finished ' + done + ' row' + (done === 1 ? '' : 's') + (failed ? ', ' + failed + ' failed' : '') + '.';
+                    const verb = mode === 'pull' ? 'Pulled from eBay 1' : 'Pushed to eBay 1';
+                    const summary = 'Finished ' + done + ' row' + (done === 1 ? '' : 's') + (failed ? ', ' + failed + ' failed' : '') + '.';
+                    status.textContent = summary;
+                    document.getElementById('ebaySyncBody').textContent = '';
+                    showSyncOutcome(failed === 0, failed === 0 ? verb : (mode === 'pull' ? 'Pull failed' : 'Push failed'), summary);
                     applyStatusFilter();
                 } catch (e) {
-                    status.textContent = e.message || 'eBay request failed';
+                    const message = e.message || 'eBay request failed';
+                    status.textContent = message;
+                    document.getElementById('ebaySyncBody').textContent = '';
+                    showSyncOutcome(false, mode === 'pull' ? 'Pull failed' : 'Push failed', message);
                 }
                 confirmBtn.classList.add('d-none');
                 cancelBtn.disabled = false;
@@ -1239,7 +1643,40 @@
                 ebaySyncAction = null;
             }
 
+            function bindCategoryTips() {
+                let tip = null;
+                function hide() {
+                    if (tip) tip.style.display = 'none';
+                }
+                document.addEventListener('mouseover', function (e) {
+                    const dot = e.target.closest && e.target.closest('.ts-cat-dot');
+                    if (!dot) return;
+                    if (!tip) {
+                        tip = document.createElement('div');
+                        tip.className = 'ts-cat-tip';
+                        document.body.appendChild(tip);
+                    }
+                    tip.textContent = dot.getAttribute('data-tip') || '';
+                    tip.style.display = 'block';
+                    const r = dot.getBoundingClientRect();
+                    const w = tip.offsetWidth;
+                    const h = tip.offsetHeight;
+                    let left = r.left + r.width / 2 - w / 2;
+                    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+                    let top = r.top - h - 8;
+                    if (top < 8) top = r.bottom + 8;
+                    tip.style.left = left + 'px';
+                    tip.style.top = top + 'px';
+                });
+                document.addEventListener('mouseout', function (e) {
+                    const dot = e.target.closest && e.target.closest('.ts-cat-dot');
+                    if (dot && !dot.contains(e.relatedTarget)) hide();
+                });
+                document.addEventListener('scroll', hide, true);
+            }
+
             document.addEventListener('DOMContentLoaded', function () {
+                bindCategoryTips();
                 editModal = new bootstrap.Modal(document.getElementById('editSpecsModal'));
                 viewModal = new bootstrap.Modal(document.getElementById('viewSpecsModal'));
                 ebaySyncModal = new bootstrap.Modal(document.getElementById('ebaySyncModal'));
@@ -1265,6 +1702,18 @@
                     e.target.value = '';
                 });
                 document.getElementById('statusFilter').addEventListener('change', applyStatusFilter);
+                document.getElementById('rowTypeFilter').addEventListener('change', applyStatusFilter);
+                document.getElementById('maxAlertBtn').addEventListener('click', function () {
+                    maxAlertOnly = !maxAlertOnly;
+                    applyStatusFilter();
+                });
+                let searchTimer = null;
+                ['parentSearch', 'skuSearch', 'categorySearch', 'anythingSearch'].forEach(function (id) {
+                    document.getElementById(id).addEventListener('input', function () {
+                        clearTimeout(searchTimer);
+                        searchTimer = setTimeout(applyStatusFilter, 150);
+                    });
+                });
 
                 document.getElementById('modalSaveBtn').addEventListener('click', async function () {
                     const specs = collectSpecFields();
@@ -1276,30 +1725,38 @@
                         return;
                     }
                     const btn = this;
+                    const label = document.getElementById('modalSaveBtnLabel');
+                    const previousLabel = label.textContent;
                     btn.disabled = true;
-                    let ok = 0, fail = 0;
+                    label.textContent = 'Saving…';
+                    const saved = [];
+                    let fail = 0;
                     try {
                         for (const sku of skus) {
                             try {
                                 const json = await saveSpecs(sku, '', specs);
                                 applySaveToRow(sku, json, json.technical_specifications || '');
-                                ok++;
+                                saved.push(sku);
                             } catch (_) {
                                 fail++;
                             }
                         }
-                        if (skus.length === 1) {
-                            toast(fail ? 'Save failed' : ('Saved specs for ' + skus[0]), fail ? 'error' : 'success');
-                        } else {
-                            toast('Bulk save: ' + ok + ' updated' + (fail ? ', ' + fail + ' failed' : ''), fail ? 'error' : 'success');
+                        if (!saved.length) {
+                            toast('Save failed', 'error');
+                            return;
                         }
-                        if (ok > 0) {
-                            editModal.hide();
-                            applyStatusFilter();
-                            updateSelectedCount();
-                        }
+                        applyStatusFilter();
+                        updateSelectedCount();
+                        const editEl = document.getElementById('editSpecsModal');
+                        const afterHide = function () {
+                            editEl.removeEventListener('hidden.bs.modal', afterHide);
+                            pushSavedSpecs(saved, fail);
+                        };
+                        editEl.addEventListener('hidden.bs.modal', afterHide);
+                        editModal.hide();
                     } finally {
                         btn.disabled = false;
+                        label.textContent = previousLabel;
                     }
                 });
 
