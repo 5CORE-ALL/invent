@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Channels;
 
 use App\Http\Controllers\Controller;
 use App\Models\VeeqoChargeback;
+use App\Services\Veeqo\VeeqoChargebackCsvImport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -14,12 +15,15 @@ use Illuminate\Support\Facades\Schema;
 class VeeqoChargebackController extends Controller
 {
     private const COLUMNS = [
-        'transaction_id', 'transaction_type', 'description', 'transaction_status', 'posted_at', 'amazon_order_id',
-        'settlement_id', 'financial_event_group_id', 'marketplace_name', 'total_amount', 'currency', 'direction',
-        'item_types', 'customer_charge', 'carrier_charge',
+        'transaction_id', 'source', 'transaction_type', 'description', 'reason', 'transaction_status', 'posted_at',
+        'amazon_order_id', 'order_number', 'settlement_id', 'financial_event_group_id', 'marketplace_name',
+        'total_amount', 'currency', 'direction', 'item_types', 'carrier', 'service', 'payment_status',
+        'payment_method', 'customer_charge', 'carrier_charge',
     ];
 
-    private const SEARCHABLE = ['amazon_order_id', 'settlement_id', 'transaction_id', 'item_types'];
+    private const SEARCHABLE = ['order_number', 'settlement_id', 'transaction_id', 'item_types', 'reason', 'service'];
+
+    private const CHARGEBACK_TYPES = ['LabmanLabelChargeBack', 'Chargeback Debit - Outbound', 'Chargeback Credit - Outbound'];
 
     public function index()
     {
@@ -45,7 +49,7 @@ class VeeqoChargebackController extends Controller
         $query->orderByDesc('posted_at')->orderByDesc('id');
 
         $page = $query->paginate($size, ['*'], 'page', max(1, (int) $request->input('page', 1)));
-        $shipments = $this->shipmentsFor(collect($page->items())->pluck('amazon_order_id')->filter()->unique()->values()->all());
+        $shipments = $this->shipmentsFor(collect($page->items())->pluck('order_number')->filter()->unique()->values()->all());
 
         $rows = collect($page->items())->map(function (VeeqoChargeback $row) use ($shipments) {
             $out = ['id' => $row->id] + $row->only(self::COLUMNS);
@@ -54,7 +58,7 @@ class VeeqoChargebackController extends Controller
                 $out['c_'.$type] = $amount;
             }
 
-            return $out + ($shipments[$row->amazon_order_id] ?? []);
+            return $out + ($shipments[$row->order_number] ?? []);
         });
 
         return response()->json([
@@ -72,7 +76,9 @@ class VeeqoChargebackController extends Controller
 
         $totals = $this->filtered($request)
             ->selectRaw('COUNT(*) as rows_count')
-            ->selectRaw('COUNT(DISTINCT amazon_order_id) as orders')
+            ->selectRaw('COUNT(DISTINCT order_number) as orders')
+            ->selectRaw("COALESCE(SUM(CASE WHEN source = 'veeqo_csv' THEN total_amount END), 0) as veeqo_net")
+            ->selectRaw("COALESCE(SUM(CASE WHEN source = 'amazon_api' THEN total_amount END), 0) as amazon_net")
             ->selectRaw("SUM(CASE WHEN direction = 'debit' THEN 1 ELSE 0 END) as debits")
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'debit' THEN total_amount END), 0) as debit_total")
             ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'credit' THEN total_amount END), 0) as credit_total")
@@ -91,9 +97,12 @@ class VeeqoChargebackController extends Controller
             ],
             'sync' => [
                 'rows' => VeeqoChargeback::query()->count(),
-                'first_posted_at' => VeeqoChargeback::query()->min('posted_at'),
-                'last_posted_at' => VeeqoChargeback::query()->max('posted_at'),
-                'last_sync_at' => VeeqoChargeback::query()->max('updated_at'),
+                'api_first' => VeeqoChargeback::query()->where('source', 'amazon_api')->min('posted_at'),
+                'api_last' => VeeqoChargeback::query()->where('source', 'amazon_api')->max('posted_at'),
+                'api_synced_at' => VeeqoChargeback::query()->where('source', 'amazon_api')->max('updated_at'),
+                'csv_first' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->min('posted_at'),
+                'csv_last' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->max('posted_at'),
+                'csv_imported_at' => VeeqoChargeback::query()->where('source', 'veeqo_csv')->max('updated_at'),
             ],
         ]);
     }
@@ -122,6 +131,16 @@ class VeeqoChargebackController extends Controller
         }
     }
 
+    public function import(Request $request, VeeqoChargebackCsvImport $import)
+    {
+        $request->validate(['file' => ['required', 'file', 'max:51200']]);
+        $file = $request->file('file');
+        @set_time_limit(600);
+        $result = $import->import($file->getRealPath(), $file->getClientOriginalName());
+
+        return response()->json(['success' => $result['ok']] + $result, $result['ok'] ? 200 : 422);
+    }
+
     private function filtered(Request $request): Builder
     {
         $query = VeeqoChargeback::query();
@@ -134,9 +153,12 @@ class VeeqoChargebackController extends Controller
         if ($to !== '') {
             $query->where('posted_at', '<=', $to.' 23:59:59');
         }
-        foreach (['description' => 'type', 'direction' => 'direction', 'transaction_status' => 'status'] as $column => $param) {
+        if ($request->input('type') === 'chargebacks') {
+            $query->whereIn('description', self::CHARGEBACK_TYPES);
+        }
+        foreach (['description' => 'type', 'direction' => 'direction', 'transaction_status' => 'status', 'source' => 'source'] as $column => $param) {
             $value = trim((string) $request->input($param, ''));
-            if ($value !== '') {
+            if ($value !== '' && $value !== 'chargebacks') {
                 $query->where($column, $value);
             }
         }
