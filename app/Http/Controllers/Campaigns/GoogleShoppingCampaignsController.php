@@ -698,12 +698,8 @@ class GoogleShoppingCampaignsController extends Controller
             }
         }
 
-        // Separate campaigns named after one of these SKUs (enabled, paused or removed) — can be managed from here.
-        $children = $this->childCampaignsForSkus($skus, $cid, $invResolver);
-
         return response()->json([
             'ok' => true,
-            'child_campaigns' => $children,
             'campaign_id' => $cid,
             'name' => $name,
             'campaign_status' => strtoupper(trim((string) $latest->campaign_status)),
@@ -712,103 +708,6 @@ class GoogleShoppingCampaignsController extends Controller
             'live_note' => $live['status'] === 'ok' ? $live['message'] : '',
             'rows' => $rows,
         ]);
-    }
-
-    /**
-     * Campaigns (other than $exceptCid) whose name is one of the given SKUs, with their latest status.
-     *
-     * @param  list<string>  $skus
-     * @return list<array{campaign_id: string, name: string, sku: string, status: string, inv: int|null}>
-     */
-    private function childCampaignsForSkus(array $skus, string $exceptCid, \Closure $invResolver): array
-    {
-        $skus = array_values(array_filter($skus, static fn ($s) => trim((string) $s) !== ''));
-        if ($skus === []) {
-            return [];
-        }
-        // No date window: paused / removed campaigns stop getting fresh rows, but must still be listed.
-        $q = DB::table('google_ads_campaigns')
-            ->where('advertising_channel_type', 'SHOPPING')
-            ->where('campaign_id', '!=', $exceptCid)
-            ->where(function ($w) use ($skus) {
-                foreach ($skus as $sku) {
-                    $w->orWhere('campaign_name', 'like', '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($sku)).'%');
-                }
-            });
-        $this->applyCampaignNameScope($q);
-
-        $out = [];
-        $rows = $q->groupBy('campaign_id', 'campaign_name', 'campaign_status')
-            ->selectRaw('campaign_id, campaign_name, campaign_status, MAX(`date`) AS last_date')
-            ->orderByDesc('last_date')
-            ->get();
-        foreach ($rows as $r) {
-            $id = (string) $r->campaign_id;
-            if (isset($out[$id])) {
-                continue; // newest row per campaign wins
-            }
-            foreach ($skus as $sku) {
-                if (\App\Support\GoogleShoppingCampaignNameMatcher::matches((string) $r->campaign_name, $sku)) {
-                    $out[$id] = [
-                        'campaign_id' => $id,
-                        'name' => (string) $r->campaign_name,
-                        'sku' => $sku,
-                        'status' => strtoupper(trim((string) $r->campaign_status)),
-                        'inv' => $invResolver($sku),
-                    ];
-                    break;
-                }
-            }
-        }
-        $list = array_values($out);
-        usort($list, static fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
-
-        return $list;
-    }
-
-    /**
-     * "+" modal, "Campaigns under this parent": enable / pause / remove a whole child campaign in Google Ads.
-     * Request: campaign_id, action (enable|pause|remove).
-     */
-    public function childCampaignAction(Request $request): JsonResponse
-    {
-        $cid = preg_replace('/\D+/', '', (string) $request->input('campaign_id', ''));
-        $action = strtolower(trim((string) $request->input('action', '')));
-        if ($cid === '' || ! in_array($action, ['enable', 'pause', 'remove'], true)) {
-            return response()->json(['ok' => false, 'message' => 'campaign_id and a valid action are required.'], 422);
-        }
-        $customerId = config('services.google_ads.login_customer_id');
-        if (! $customerId) {
-            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.'], 500);
-        }
-        $q = DB::table('google_ads_campaigns')->where('campaign_id', $cid)->where('advertising_channel_type', 'SHOPPING');
-        $this->applyCampaignNameScope($q);
-        if (! $q->exists()) {
-            return response()->json(['ok' => false, 'message' => 'Campaign not found in this grid.'], 404);
-        }
-
-        /** @var GoogleAdsSbidService $sbidService */
-        $sbidService = app(GoogleAdsSbidService::class);
-        $resource = "customers/{$customerId}/campaigns/{$cid}";
-        try {
-            if ($action === 'pause') {
-                $sbidService->pauseCampaign((string) $customerId, $resource);
-                $status = 'PAUSED';
-            } elseif ($action === 'enable') {
-                $sbidService->enableCampaign((string) $customerId, $resource);
-                $status = 'ENABLED';
-            } else {
-                $sbidService->removeCampaign((string) $customerId, $resource);
-                $status = 'REMOVED';
-            }
-        } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'message' => GoogleAdsSbidService::briefGoogleError($e)], 422);
-        }
-
-        GoogleAdsCampaign::where('campaign_id', $cid)->update(['campaign_status' => $status]);
-        $this->bumpRawGridRowsCache();
-
-        return response()->json(['ok' => true, 'message' => 'Campaign '.strtolower($status).' in Google Ads.', 'state' => $status]);
     }
 
     /**
