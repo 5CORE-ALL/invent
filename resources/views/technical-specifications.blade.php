@@ -112,6 +112,115 @@
         @media (max-width: 768px) {
             #ts-column-dropdown .col-vis-groups { grid-template-columns: 1fr; }
         }
+        #editSpecsModal .ts-edit-dialog {
+            width: min(1440px, 96vw);
+            max-width: min(1440px, 96vw);
+            margin: 8px auto;
+        }
+        #editSpecsModal .modal-content {
+            border: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, .28);
+        }
+        #editSpecsModal .modal-header-gradient {
+            background: linear-gradient(120deg, #1d4ed8 0%, #6d28d9 55%, #db2777 100%);
+            border: 0;
+            padding: .45rem 1rem;
+        }
+        #editSpecsModal .modal-body {
+            background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 72px);
+            padding: .55rem .85rem .45rem;
+        }
+        #editSpecsModal .ts-edit-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .4rem;
+            margin-bottom: .4rem;
+        }
+        #editSpecsModal .ts-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            border-radius: 999px;
+            padding: .22rem .65rem;
+            font-size: .78rem;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        #editSpecsModal .ts-chip-sku { background: #dbeafe; color: #1e40af; }
+        #editSpecsModal .ts-chip-product { background: #ede9fe; color: #5b21b6; }
+        #editSpecsModal .ts-chip-filled { background: #dcfce7; color: #166534; }
+        #editSpecsModal .ts-chip-blank { background: #ffedd5; color: #c2410c; }
+        #editSpecsModal #bulkEditBanner {
+            border: 0;
+            border-radius: 10px;
+            background: #e0f2fe;
+            color: #0c4a6e;
+        }
+        #editSpecsModal #bulkSkuList {
+            background: #fff;
+            border-color: #bfdbfe !important;
+            border-radius: 8px;
+        }
+        #editSpecsModal .ts-spec-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+        }
+        #editSpecsModal .ts-spec-grid.ts-spec-grid-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        #editSpecsModal .ts-spec-card {
+            border-radius: 8px;
+            padding: .22rem .45rem .28rem;
+            border: 1px solid transparent;
+            min-width: 0;
+        }
+        #editSpecsModal .ts-spec-card.is-filled {
+            background: #f0fdf4;
+            border-color: #86efac;
+        }
+        #editSpecsModal .ts-spec-card.is-blank {
+            background: #fff7ed;
+            border-color: #fdba74;
+        }
+        #editSpecsModal .ts-spec-card .form-label {
+            font-size: .72rem;
+            font-weight: 700;
+            letter-spacing: .01em;
+            margin-bottom: .15rem;
+            text-transform: uppercase;
+        }
+        #editSpecsModal .ts-spec-card.is-filled .form-label { color: #166534; }
+        #editSpecsModal .ts-spec-card.is-blank .form-label { color: #c2410c; }
+        #editSpecsModal .ts-spec-card .form-control {
+            height: 28px;
+            padding: .1rem .45rem;
+            font-size: .82rem;
+            border-radius: 6px;
+            background: #fff;
+        }
+        #editSpecsModal .ts-spec-card.is-filled .form-control { border-color: #86efac; }
+        #editSpecsModal .ts-spec-card.is-blank .form-control { border-color: #fb923c; }
+        #editSpecsModal .modal-footer {
+            background: #fff;
+            border-top: 1px solid #e2e8f0;
+            padding: .4rem .85rem;
+        }
+        #editSpecsModal #modalSaveBtn {
+            background: linear-gradient(120deg, #16a34a, #0d9488);
+            border: 0;
+        }
+        @media (max-width: 1100px) {
+            #editSpecsModal .ts-spec-grid,
+            #editSpecsModal .ts-spec-grid.ts-spec-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 700px) {
+            #editSpecsModal .ts-spec-grid,
+            #editSpecsModal .ts-spec-grid.ts-spec-grid-2,
+            #editSpecsModal .ts-spec-grid.ts-spec-grid-3 { grid-template-columns: 1fr; }
+        }
     </style>
 @endsection
 
@@ -169,7 +278,7 @@
     </div>
 
     <div class="modal fade" id="editSpecsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog ts-edit-dialog">
             <div class="modal-content">
                 <div class="modal-header modal-header-gradient">
                     <h5 class="modal-title" id="editModalTitle"><i class="fas fa-edit me-2"></i>Edit Technical Specifications</h5>
@@ -177,18 +286,22 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="modalSku">
-                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-3" style="display:none;">
+                    <div id="bulkEditBanner" class="alert alert-info py-2 px-3 mb-2" style="display:none;">
                         <i class="fas fa-layer-group me-1"></i>
                         <strong>Bulk Edit:</strong> Saving will update
                         <strong id="bulkEditCount">0</strong> selected SKU(s).
                     </div>
-                    <div class="mb-2"><strong>SKU:</strong> <span id="modalSkuLabel"></span></div>
-                    <div class="mb-3"><strong>Product:</strong> <span id="modalProductLabel"></span></div>
-                    <div id="bulkSkuListWrap" class="mb-3" style="display:none;">
-                        <div class="small text-muted mb-1">Applying to SKUs:</div>
-                        <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
+                    <div class="ts-edit-meta">
+                        <span class="ts-chip ts-chip-sku"><i class="fas fa-barcode"></i> <span id="modalSkuLabel"></span></span>
+                        <span class="ts-chip ts-chip-product"><i class="fas fa-box"></i> <span id="modalProductLabel"></span></span>
+                        <span class="ts-chip ts-chip-filled" id="specFilledChip">0 filled</span>
+                        <span class="ts-chip ts-chip-blank" id="specBlankChip">0 blank</span>
                     </div>
-                    <div id="specFields" class="d-flex flex-column gap-2"></div>
+                    <div id="bulkSkuListWrap" class="mb-2" style="display:none;">
+                        <div class="small text-muted mb-1">Applying to SKUs:</div>
+                        <div id="bulkSkuList" class="small border rounded p-2" style="max-height:72px; overflow:auto;"></div>
+                    </div>
+                    <div id="specFields" class="ts-spec-grid"></div>
                     <p id="specFieldsEmpty" class="text-muted small mb-0 d-none">No specifications for this category yet.</p>
                 </div>
                 <div class="modal-footer">
@@ -551,16 +664,20 @@
                 const source = rows[0] || {};
                 if (!names.length) {
                     empty.classList.remove('d-none');
+                    refreshSpecCounts();
                     return;
                 }
                 empty.classList.add('d-none');
+                wrap.classList.toggle('ts-spec-grid-3', names.length > 14);
+                wrap.classList.toggle('ts-spec-grid-2', names.length <= 14);
                 names.forEach(function (name) {
                     const group = document.createElement('div');
+                    group.className = 'ts-spec-card';
                     const label = document.createElement('label');
-                    label.className = 'form-label mb-1';
+                    label.className = 'form-label';
                     label.textContent = name;
                     const alert = document.createElement('i');
-                    alert.className = 'fas fa-exclamation-triangle text-danger spec-blank-alert ms-1';
+                    alert.className = 'fas fa-exclamation-triangle spec-blank-alert ms-1';
                     alert.title = 'Blank';
                     label.appendChild(alert);
                     const input = document.createElement('input');
@@ -574,13 +691,28 @@
                     wrap.appendChild(group);
                     markBlankSpec(group, input);
                 });
+                refreshSpecCounts();
+            }
+
+            function refreshSpecCounts() {
+                const inputs = document.querySelectorAll('#specFields .spec-field');
+                let blank = 0;
+                inputs.forEach(function (input) {
+                    if (!String(input.value || '').trim()) blank++;
+                });
+                const filledEl = document.getElementById('specFilledChip');
+                const blankEl = document.getElementById('specBlankChip');
+                if (filledEl) filledEl.textContent = (inputs.length - blank) + ' filled';
+                if (blankEl) blankEl.textContent = blank + ' blank';
             }
 
             function markBlankSpec(group, input) {
                 const blank = !String(input.value || '').trim();
                 const alert = group.querySelector('.spec-blank-alert');
                 if (alert) alert.style.display = blank ? '' : 'none';
-                input.classList.toggle('border-danger', blank);
+                group.classList.toggle('is-blank', blank);
+                group.classList.toggle('is-filled', !blank);
+                refreshSpecCounts();
             }
 
             function collectSpecFields() {
