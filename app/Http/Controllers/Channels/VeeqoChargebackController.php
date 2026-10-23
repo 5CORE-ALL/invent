@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Channels;
 
 use App\Http\Controllers\Controller;
 use App\Models\VeeqoChargeback;
+use App\Services\Veeqo\ChargebackOsizeSync;
 use App\Services\Veeqo\OrderSkuLookup;
 use App\Services\Veeqo\VeeqoChargebackCsvImport;
+use App\Services\Veeqo\VeeqoOrderSkuResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -24,7 +26,7 @@ class VeeqoChargebackController extends Controller
 
     private const SEARCHABLE = ['order_number', 'settlement_id', 'transaction_id', 'item_types', 'reason', 'service'];
 
-    private const CHARGEBACK_TYPES = ['LabmanLabelChargeBack', 'Chargeback Debit - Outbound', 'Chargeback Credit - Outbound'];
+    public const CHARGEBACK_TYPES = ['LabmanLabelChargeBack', 'Chargeback Debit - Outbound', 'Chargeback Credit - Outbound'];
 
     public function index()
     {
@@ -106,6 +108,7 @@ class VeeqoChargebackController extends Controller
             'components' => $this->componentTypes(),
             'filters' => [
                 'types' => $this->distinct('description'),
+                'reasons' => $this->distinct('reason'),
                 'statuses' => $this->distinct('transaction_status'),
             ],
             'sync' => [
@@ -150,17 +153,24 @@ class VeeqoChargebackController extends Controller
      */
     public function skuReport(Request $request)
     {
+        return response()->json($this->skuReportData($request));
+    }
+
+    public function skuReportData(Request $request): array
+    {
         if (! Schema::hasTable('veeqo_chargebacks')) {
-            return response()->json(['rows' => [], 'totals' => []]);
+            return ['rows' => [], 'totals' => []];
         }
 
         $from = now()->subMonths(12)->startOfDay();
         $params = $request->except(['from', 'to', 'search', 'filter', 'sort', 'page', 'size']);
         $chargebacks = $this->filtered($request->duplicate($params))
             ->where('posted_at', '>=', $from)
-            ->get(['id', 'order_number', 'total_amount']);
+            ->get(['id', 'order_number', 'total_amount', 'carrier']);
 
         $skusByOrder = app(OrderSkuLookup::class)->forOrders($chargebacks->pluck('order_number')->filter()->unique()->values()->all());
+        $carrierById = $this->resolveCarriers($chargebacks);
+        $carriers = $this->carrierBreakdown($chargebacks, $carrierById);
 
         $bySku = [];
         foreach ($chargebacks as $cb) {
@@ -172,9 +182,12 @@ class VeeqoChargebackController extends Controller
             $share = round((float) $cb->total_amount / count($skus), 4);
             foreach ($skus as $sku) {
                 $key = $this->skuKey($sku);
-                $bySku[$key] ??= ['sku' => $sku, 'count' => 0, 'total' => 0.0, 'orders' => []];
+                $bySku[$key] ??= ['sku' => $sku, 'count' => 0, 'total' => 0.0, 'orders' => [], 'carriers' => []];
                 $bySku[$key]['count']++;
                 $bySku[$key]['total'] += $share;
+                $carrier = $carrierById[$cb->id] ?? 'Unknown carrier';
+                $orderKey = $cb->order_number ?: 'line:'.$cb->id;
+                $bySku[$key]['carriers'][$carrier][$orderKey] = true;
                 if ($cb->order_number) {
                     $bySku[$key]['orders'][$cb->order_number] = true;
                 }
@@ -187,27 +200,38 @@ class VeeqoChargebackController extends Controller
         foreach ($bySku as $key => $s) {
             $units = $sold[$key] ?? null;
             $count = max(1, count($s['orders']));
+            $skuCarriers = array_map('count', $s['carriers']);
+            arsort($skuCarriers);
             $rows[] = [
                 'sku' => $s['sku'],
+                'carriers' => $skuCarriers,
+                'carrier_text' => implode(', ', array_map(fn ($name, $n) => $name.' ('.$n.')', array_keys($skuCarriers), $skuCarriers)),
                 'count' => $count,
                 'lines' => $s['count'],
                 'total' => round($s['total'], 2),
                 'average' => round($s['total'] / $count, 2),
                 'sold' => $units,
+                'per_unit' => $units ? round($s['total'] / $units, 2) : null,
                 'pct' => $units ? round($count / $units * 100, 2) : null,
             ];
         }
         usort($rows, fn ($a, $b) => abs($b['total']) <=> abs($a['total']));
+        $skuCountTotal = array_sum(array_column($rows, 'count'));
+        foreach ($rows as &$row) {
+            $row['pct_tc'] = $skuCountTotal ? round($row['count'] / $skuCountTotal * 100, 4) : 0;
+        }
+        unset($row);
 
         $withSales = array_filter($rows, fn ($r) => $r['sold'] !== null);
         $soldMatched = array_sum(array_column($withSales, 'sold'));
         $countMatched = array_sum(array_column($withSales, 'count'));
         $orders = $chargebacks->pluck('order_number')->filter()->unique()->count();
 
-        return response()->json([
+        return [
             'from' => $from->toDateString(),
             'to' => now()->toDateString(),
             'rows' => $rows,
+            'carriers' => $carriers,
             'totals' => [
                 'skus' => count($rows),
                 'chargebacks' => $orders,
@@ -217,7 +241,92 @@ class VeeqoChargebackController extends Controller
                 'sold' => $soldMatched,
                 'pct' => $soldMatched ? round($countMatched / $soldMatched * 100, 2) : null,
             ],
-        ]);
+        ];
+    }
+
+    /**
+     * Orders charged back per carrier. Veeqo CSV rows carry the carrier; Amazon API rows borrow it from a CSV
+     * chargeback on the same order, else from the Veeqo shipment.
+     *
+     * @param  \Illuminate\Support\Collection<int, VeeqoChargeback>  $chargebacks
+     * @return list<array{carrier: string, count: int, lines: int, amount: float, pct: float}>
+     */
+    private function carrierBreakdown($chargebacks, array $carrierById): array
+    {
+        $by = [];
+        foreach ($chargebacks as $c) {
+            $name = $carrierById[$c->id] ?? 'Unknown carrier';
+            $by[$name] ??= ['carrier' => $name, 'orders' => [], 'blank' => 0, 'lines' => 0, 'amount' => 0.0];
+            $by[$name]['lines']++;
+            $by[$name]['amount'] += (float) $c->total_amount;
+            if ($c->order_number) {
+                $by[$name]['orders'][$c->order_number] = true;
+            } else {
+                $by[$name]['blank']++;
+            }
+        }
+
+        $total = array_sum(array_map(fn ($b) => count($b['orders']) + $b['blank'], $by));
+        $totalAmount = array_sum(array_column($by, 'amount'));
+        $out = [];
+        foreach ($by as $b) {
+            $count = count($b['orders']) + $b['blank'];
+            $out[] = [
+                'carrier' => $b['carrier'],
+                'count' => $count,
+                'lines' => $b['lines'],
+                'amount' => round($b['amount'], 2),
+                'pct' => $total ? round($count / $total * 100, 2) : 0,
+                'value_pct' => abs($totalAmount) > 0 ? round($b['amount'] / $totalAmount * 100, 2) : 0,
+            ];
+        }
+        usort($out, fn ($a, $b) => $b['count'] <=> $a['count']);
+
+        return $out;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, VeeqoChargeback>  $chargebacks
+     * @return array<int, string> chargeback id => carrier name
+     */
+    private function resolveCarriers($chargebacks): array
+    {
+        $needShipment = $chargebacks->filter(fn ($c) => ! $c->carrier && $c->order_number)->pluck('order_number')->unique()->values()->all();
+        $byOrder = [];
+        foreach (array_chunk($needShipment, 1000) as $chunk) {
+            DB::table('veeqo_chargebacks')->whereIn('order_number', $chunk)->whereNotNull('carrier')
+                ->get(['order_number', 'carrier'])
+                ->each(function ($s) use (&$byOrder) {
+                    $byOrder[$s->order_number] ??= $s->carrier;
+                });
+            DB::table('veeqo_billing_shipments')->whereIn('order_number', $chunk)->whereNotNull('sub_carrier_id')
+                ->get(['order_number', 'sub_carrier_id'])
+                ->each(function ($s) use (&$byOrder) {
+                    $byOrder[$s->order_number] ??= $s->sub_carrier_id;
+                });
+        }
+
+        $out = [];
+        foreach ($chargebacks as $c) {
+            $out[$c->id] = $this->carrierName((string) ($c->carrier ?: ($byOrder[$c->order_number] ?? '')));
+        }
+
+        return $out;
+    }
+
+    private function carrierName(string $raw): string
+    {
+        $key = strtolower(preg_replace('/[^a-z]/i', '', $raw));
+
+        return match (true) {
+            $key === '' => 'Unknown carrier',
+            str_contains($key, 'fedex') => 'FedEx',
+            str_contains($key, 'usps') => 'USPS',
+            str_contains($key, 'ups') => 'UPS',
+            str_contains($key, 'dhl') => 'DHL',
+            str_contains($key, 'amazon') => 'Amazon Shipping',
+            default => strtoupper($raw),
+        };
     }
 
     /**
@@ -248,6 +357,56 @@ class VeeqoChargebackController extends Controller
         return strtoupper((string) preg_replace('/\s+/', ' ', trim($sku)));
     }
 
+    public function fillOsize(ChargebackOsizeSync $sync)
+    {
+        $lock = Cache::lock('veeqo_chargeback_osize', 600);
+        if (! $lock->get()) {
+            return response()->json(['success' => false, 'message' => 'An O-Size fill is already running. Try again in a minute.'], 409);
+        }
+        try {
+            set_time_limit(600);
+            $r = $sync->run();
+        } finally {
+            $lock->release();
+        }
+
+        return response()->json([
+            'success' => $r['failed'] === 0,
+            'message' => "Shipping Master O-Size Charge: updated {$r['updated']} SKUs, {$r['unchanged']} already up to date"
+                .($r['missing'] ? ", {$r['missing']} not found in Shipping Master" : '')
+                .($r['failed'] ? ", {$r['failed']} failed (see log)" : '').'.',
+            'result' => $r,
+        ]);
+    }
+
+    public function findMissingSkus(VeeqoOrderSkuResolver $resolver)
+    {
+        $lock = Cache::lock('veeqo_fill_order_skus', 300);
+        if (! $lock->get()) {
+            return response()->json(['success' => false, 'message' => 'A Veeqo SKU lookup is already running.'], 409);
+        }
+        try {
+            @set_time_limit(300);
+            $missing = $resolver->missingChargebackOrders();
+            $result = $resolver->resolve($missing, 150);
+            $left = max(0, count($missing) - $result['found'] - $result['skipped']);
+            $message = 'Checked '.$result['checked'].' orders in Veeqo; found SKUs for '.$result['found'].'.';
+            if ($result['skipped']) {
+                $message .= ' '.$result['skipped'].' were already checked recently (not in Veeqo or no SKU).';
+            }
+            if ($result['checked'] >= 150 && $left > 0) {
+                $message .= ' More remain; click again or wait for the hourly lookup.';
+            }
+            if ($result['error']) {
+                $message .= ' Last error: '.$result['error'];
+            }
+
+            return response()->json(['success' => true, 'message' => $message] + $result);
+        } finally {
+            $lock->release();
+        }
+    }
+
     public function import(Request $request, VeeqoChargebackCsvImport $import)
     {
         $request->validate(['file' => ['required', 'file', 'max:51200']]);
@@ -273,7 +432,11 @@ class VeeqoChargebackController extends Controller
         if ($request->input('type') === 'chargebacks') {
             $query->whereIn('description', self::CHARGEBACK_TYPES);
         }
-        foreach (['description' => 'type', 'direction' => 'direction', 'transaction_status' => 'status', 'source' => 'source'] as $column => $param) {
+        $types = array_values(array_filter(array_map('trim', explode('|', (string) $request->input('types', '')))));
+        if ($types !== []) {
+            $query->whereIn('description', $types);
+        }
+        foreach (['description' => 'type', 'direction' => 'direction', 'transaction_status' => 'status', 'source' => 'source', 'reason' => 'reason'] as $column => $param) {
             $value = trim((string) $request->input($param, ''));
             if ($value !== '' && $value !== 'chargebacks') {
                 $query->where($column, $value);
