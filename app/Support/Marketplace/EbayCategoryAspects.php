@@ -3,6 +3,7 @@
 namespace App\Support\Marketplace;
 
 use App\Models\AmazonListingRaw;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -62,24 +63,7 @@ class EbayCategoryAspects
             if (! $res || ! $res->successful()) {
                 return [];
             }
-            $out = [];
-            foreach ((array) ($res->json('aspects') ?? []) as $a) {
-                $name = trim((string) ($a['localizedAspectName'] ?? ''));
-                if ($name === '') {
-                    continue;
-                }
-                $c = (array) ($a['aspectConstraint'] ?? []);
-                $out[] = [
-                    'name' => $name,
-                    'required' => (bool) ($c['aspectRequired'] ?? false),
-                    'variations' => (bool) ($c['aspectEnabledForVariations'] ?? false),
-                    'free_text' => strtoupper((string) ($c['aspectMode'] ?? 'FREE_TEXT')) !== 'SELECTION_ONLY',
-                    'values' => array_values(array_filter(array_map(
-                        static fn ($v) => trim((string) ($v['localizedValue'] ?? '')),
-                        (array) ($a['aspectValues'] ?? [])
-                    ))),
-                ];
-            }
+            $out = self::parseAspects((array) ($res->json('aspects') ?? []));
             Cache::put($cacheKey, $out, now()->addDays(7));
 
             return $out;
@@ -88,6 +72,132 @@ class EbayCategoryAspects
 
             return [];
         }
+    }
+
+    /**
+     * Required aspect names for many categories. Uses the same cache as forCategory.
+     *
+     * @param  list<string>  $categoryIds
+     * @return array<string, list<string>>
+     */
+    public static function requiredNamesByCategory(array $categoryIds, string $userToken, string $appId = '', string $certId = ''): array
+    {
+        $out = [];
+        $missing = [];
+        foreach ($categoryIds as $categoryId) {
+            $categoryId = trim($categoryId);
+            if ($categoryId === '' || array_key_exists($categoryId, $out)) {
+                continue;
+            }
+            $cached = Cache::get(self::cacheKey($categoryId));
+            if (is_array($cached) && $cached !== []) {
+                $out[$categoryId] = self::requiredNames($cached);
+
+                continue;
+            }
+            $missing[] = $categoryId;
+            $out[$categoryId] = [];
+        }
+
+        if ($missing === []) {
+            return $out;
+        }
+
+        $token = self::appToken($appId, $certId);
+        if ($token === '') {
+            $token = trim($userToken);
+        }
+        if ($token === '') {
+            return $out;
+        }
+
+        foreach (array_chunk($missing, 8) as $chunk) {
+            try {
+                $responses = Http::pool(function (Pool $pool) use ($chunk, $token) {
+                    foreach ($chunk as $categoryId) {
+                        $pool->as($categoryId)
+                            ->timeout(15)
+                            ->withToken($token)
+                            ->acceptJson()
+                            ->withHeaders(['Accept-Encoding' => 'gzip'])
+                            ->get('https://api.ebay.com/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category', [
+                                'category_id' => $categoryId,
+                            ]);
+                    }
+                });
+            } catch (\Throwable $e) {
+                Log::warning('eBay taxonomy aspects batch failed', ['error' => $e->getMessage()]);
+
+                continue;
+            }
+
+            foreach ($chunk as $categoryId) {
+                $res = $responses[$categoryId] ?? null;
+                if (! is_object($res) || ! method_exists($res, 'successful') || ! $res->successful()) {
+                    continue;
+                }
+                $parsed = self::parseAspects((array) ($res->json('aspects') ?? []));
+                if ($parsed === []) {
+                    continue;
+                }
+                Cache::put(self::cacheKey($categoryId), $parsed, now()->addDays(7));
+                $out[$categoryId] = self::requiredNames($parsed);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $aspects
+     * @return list<array{name: string, required: bool, variations: bool, free_text: bool, values: list<string>}>
+     */
+    private static function parseAspects(array $aspects): array
+    {
+        $out = [];
+        foreach ($aspects as $a) {
+            if (! is_array($a)) {
+                continue;
+            }
+            $name = trim((string) ($a['localizedAspectName'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $c = (array) ($a['aspectConstraint'] ?? []);
+            $out[] = [
+                'name' => $name,
+                'required' => (bool) ($c['aspectRequired'] ?? false),
+                'variations' => (bool) ($c['aspectEnabledForVariations'] ?? false),
+                'free_text' => strtoupper((string) ($c['aspectMode'] ?? 'FREE_TEXT')) !== 'SELECTION_ONLY',
+                'values' => array_values(array_filter(array_map(
+                    static fn ($v) => trim((string) (is_array($v) ? ($v['localizedValue'] ?? '') : '')),
+                    (array) ($a['aspectValues'] ?? [])
+                ))),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array{name: string, required: bool}>  $aspects
+     * @return list<string>
+     */
+    private static function requiredNames(array $aspects): array
+    {
+        $names = [];
+        foreach ($aspects as $aspect) {
+            if (! empty($aspect['required']) && trim((string) ($aspect['name'] ?? '')) !== '') {
+                $names[] = (string) $aspect['name'];
+            }
+        }
+
+        return $names;
+    }
+
+    private static function cacheKey(string $categoryId): string
+    {
+        return 'ebay_category_aspects_v2:'.$categoryId;
     }
 
     /**

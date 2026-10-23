@@ -25,6 +25,81 @@
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
         #tsCharCount { font-variant-numeric: tabular-nums; }
         #tsLineCount { font-variant-numeric: tabular-nums; }
+        #ts-column-dropdown.show {
+            min-width: min(92vw, 720px);
+            max-width: min(96vw, 780px);
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 0.4rem 0.5rem 0.55rem;
+        }
+        #ts-column-dropdown .col-vis-groups {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(160px, 1fr));
+            gap: 8px;
+            margin: 0;
+        }
+        #ts-column-dropdown .col-vis-group {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 6px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+        }
+        #ts-column-dropdown .col-vis-group-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #495057;
+            margin: 0 0 6px;
+            padding: 2px 4px;
+            border-bottom: 1px solid #dee2e6;
+            user-select: none;
+            cursor: pointer;
+        }
+        #ts-column-dropdown .col-vis-group-list {
+            flex: 1;
+            min-height: 60px;
+            max-height: 320px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        #ts-column-dropdown .col-vis-item { list-style: none; margin: 0; padding: 0; }
+        #ts-column-dropdown .col-vis-item > label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin: 0;
+            font-size: 0.8rem;
+            user-select: none;
+        }
+        #ts-column-dropdown input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+            width: 14px;
+            height: 14px;
+            accent-color: #0d6efd;
+            cursor: pointer;
+        }
+        #ts-column-dropdown .col-vis-item > label:hover {
+            background: rgba(0, 0, 0, 0.04);
+            border-radius: 3px;
+        }
+        @media (max-width: 768px) {
+            #ts-column-dropdown .col-vis-groups { grid-template-columns: 1fr; }
+        }
     </style>
 @endsection
 
@@ -44,6 +119,14 @@
                 <div class="card-body">
                     <div class="mb-3 ts-master-toolbar">
                         @include('partials.parent-playback-controls')
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-outline-primary" type="button"
+                                id="tsColumnVisibility" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                aria-expanded="false" title="Columns">
+                                <i class="fas fa-columns"></i>
+                            </button>
+                            <div class="dropdown-menu" id="ts-column-dropdown" aria-labelledby="tsColumnVisibility"></div>
+                        </div>
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm">
                             <i class="fas fa-download"></i> Export
                         </button>
@@ -136,6 +219,14 @@
             let bulkEditSkus = [];
             let navParent = null;
             let parentPlayback = null;
+            let ebayAspectNames = [];
+            const aspectFields = {};
+            const TS_COL_VIS_KEY = 'technical_specs_col_vis_v1';
+            const TS_COL_GROUPS = [
+                { key: 'ebay', label: 'eBay' },
+                { key: 'amz', label: 'Amz' },
+                { key: 'temu', label: 'Temu' },
+            ];
 
             function toast(message, type) {
                 const wrap = document.getElementById('toastContainer');
@@ -201,7 +292,91 @@
                 updateSelectedCount();
             }
 
-            async function saveSpecs(sku, text) {
+            function aspectKey(name) {
+                if (aspectFields[name]) return aspectFields[name];
+                let base = 'ebay_aspect_' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+                if (!base || base === 'ebay_aspect_') base = 'ebay_aspect';
+                let key = base;
+                const taken = Object.values(aspectFields);
+                let n = 2;
+                while (taken.indexOf(key) !== -1) {
+                    key = base + '_' + n;
+                    n++;
+                }
+                aspectFields[name] = key;
+                return key;
+            }
+
+            function rowRequiresAspect(row, name) {
+                return (row.ebay_required || []).some(function (n) {
+                    return String(n).toLowerCase() === String(name).toLowerCase();
+                });
+            }
+
+            function stampAspectFields(row) {
+                const values = row.ebay_values || {};
+                ebayAspectNames.forEach(function (name) {
+                    row[aspectKey(name)] = rowRequiresAspect(row, name) ? (values[name] || '') : '';
+                });
+            }
+
+            function ebayAspectColumns() {
+                return ebayAspectNames.map(function (name) {
+                    return {
+                        title: name,
+                        field: aspectKey(name),
+                        width: 150,
+                        minWidth: 120,
+                        headerTooltip: 'Required by eBay for this category',
+                        headerFilter: 'input',
+                        headerFilterPlaceholder: 'Filter',
+                        editor: 'input',
+                        editable: function (cell) {
+                            return rowRequiresAspect(cell.getRow().getData(), name);
+                        },
+                        formatter: function (cell) {
+                            const d = cell.getRow().getData();
+                            if (!rowRequiresAspect(d, name)) return '<span class="text-muted">—</span>';
+                            const v = String(cell.getValue() || '').trim();
+                            if (!v) return '<span class="text-warning">Required</span>';
+                            return esc(v);
+                        },
+                        cellEdited: async function (cell) {
+                            const d = cell.getRow().getData();
+                            const value = String(cell.getValue() || '').trim();
+                            const specs = (d.description_v2_specifications || []).map(function (s) {
+                                return { key: s.key, value: s.value };
+                            });
+                            const idx = specs.findIndex(function (s) {
+                                return String(s.key || '').trim().toLowerCase() === name.toLowerCase();
+                            });
+                            if (value === '') {
+                                if (idx >= 0) specs.splice(idx, 1);
+                            } else if (idx >= 0) {
+                                specs[idx] = { key: name, value: value };
+                            } else {
+                                specs.push({ key: name, value: value });
+                            }
+                            try {
+                                const json = await saveSpecs(d.SKU, '', specs);
+                                applySaveToRow(d.SKU, json, json.technical_specifications || '');
+                                toast('Saved ' + name + ' for ' + d.SKU, 'success');
+                            } catch (e) {
+                                toast(e.message || 'Save failed', 'error');
+                                cell.restoreOldValue();
+                            }
+                        },
+                    };
+                });
+            }
+
+            async function saveSpecs(sku, text, specs) {
+                const body = {
+                    sku: sku,
+                    technical_specifications: text,
+                    specifications_text: text,
+                };
+                if (Array.isArray(specs)) body.description_v2_specifications = specs;
                 const res = await fetch('/technical-specifications/save', {
                     method: 'POST',
                     headers: {
@@ -209,11 +384,7 @@
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
                     },
-                    body: JSON.stringify({
-                        sku: sku,
-                        technical_specifications: text,
-                        specifications_text: text,
-                    }),
+                    body: JSON.stringify(body),
                 });
                 const json = await res.json();
                 if (!res.ok || !json.success) {
@@ -227,11 +398,24 @@
                 const specs = json.description_v2_specifications || [];
                 const tRow = table?.getRows().find(r => r.getData().SKU === sku);
                 if (tRow) {
-                    tRow.update({
+                    const data = tRow.getData();
+                    const byKey = {};
+                    specs.forEach(function (s) {
+                        const k = String(s.key || '').trim().toLowerCase();
+                        if (k) byKey[k] = String(s.value || '');
+                    });
+                    const patch = {
                         technical_specifications: text,
                         specifications_text: text,
                         description_v2_specifications: specs,
+                        ebay_values: Object.assign({}, data.ebay_values || {}),
+                    };
+                    ebayAspectNames.forEach(function (name) {
+                        const value = rowRequiresAspect(data, name) ? (byKey[String(name).toLowerCase()] || '') : '';
+                        patch[aspectKey(name)] = value;
+                        if (rowRequiresAspect(data, name)) patch.ebay_values[name] = value;
                     });
+                    tRow.update(patch);
                 }
             }
 
@@ -302,11 +486,145 @@
                 document.getElementById('tsLineCount').textContent = String(lines);
             }
 
-            function initTable(rows) {
+            function tsColumnGroup(field) {
+                if (field === 'category_ebay' || String(field).indexOf('ebay_aspect_') === 0) return 'ebay';
+                if (field === 'category_amz') return 'amz';
+                if (field === 'category_temu') return 'temu';
+                return '';
+            }
+
+            function loadTsColumnVisibility() {
+                try {
+                    const parsed = JSON.parse(localStorage.getItem(TS_COL_VIS_KEY) || '{}');
+                    return parsed && typeof parsed === 'object' ? parsed : {};
+                } catch (e) {
+                    return {};
+                }
+            }
+
+            function saveTsColumnVisibility() {
+                if (!table) return;
+                const visibility = loadTsColumnVisibility();
+                table.getColumns().forEach(function (col) {
+                    const field = col.getDefinition().field;
+                    if (!tsColumnGroup(field)) return;
+                    visibility[field] = col.isVisible();
+                });
+                try { localStorage.setItem(TS_COL_VIS_KEY, JSON.stringify(visibility)); } catch (e) {}
+            }
+
+            function applyTsColumnVisibility() {
+                if (!table) return;
+                const saved = loadTsColumnVisibility();
+                table.getColumns().forEach(function (col) {
+                    const field = col.getDefinition().field;
+                    if (!tsColumnGroup(field) || !Object.prototype.hasOwnProperty.call(saved, field)) return;
+                    if (saved[field] === false) col.hide();
+                    else col.show();
+                });
+            }
+
+            function syncTsGroupHeader(groupEl) {
+                const headerCb = groupEl.querySelector('.col-vis-group-toggle');
+                const itemCbs = groupEl.querySelectorAll('.col-vis-field-toggle');
+                if (!headerCb) return;
+                if (!itemCbs.length) {
+                    headerCb.checked = false;
+                    headerCb.indeterminate = false;
+                    headerCb.disabled = true;
+                    return;
+                }
+                headerCb.disabled = false;
+                let checked = 0;
+                itemCbs.forEach(function (cb) { if (cb.checked) checked++; });
+                headerCb.checked = checked === itemCbs.length;
+                headerCb.indeterminate = checked > 0 && checked < itemCbs.length;
+            }
+
+            function buildTsColumnPicker() {
+                const menu = document.getElementById('ts-column-dropdown');
+                if (!menu || !table) return;
+                applyTsColumnVisibility();
+                menu.innerHTML = '';
+                const wrap = document.createElement('div');
+                wrap.className = 'col-vis-groups';
+                const lists = {};
+                const groups = {};
+                TS_COL_GROUPS.forEach(function (spec) {
+                    const group = document.createElement('div');
+                    group.className = 'col-vis-group';
+                    group.dataset.group = spec.key;
+                    const title = document.createElement('label');
+                    title.className = 'col-vis-group-title';
+                    const groupCb = document.createElement('input');
+                    groupCb.type = 'checkbox';
+                    groupCb.className = 'col-vis-group-toggle';
+                    groupCb.title = 'Select / deselect all in ' + spec.label;
+                    title.appendChild(groupCb);
+                    title.appendChild(document.createTextNode(spec.label));
+                    const list = document.createElement('ul');
+                    list.className = 'col-vis-group-list';
+                    group.appendChild(title);
+                    group.appendChild(list);
+                    wrap.appendChild(group);
+                    lists[spec.key] = list;
+                    groups[spec.key] = group;
+                    groupCb.addEventListener('change', function () {
+                        list.querySelectorAll('.col-vis-field-toggle').forEach(function (cb) {
+                            cb.checked = groupCb.checked;
+                            const col = table.getColumn(cb.value);
+                            if (col) groupCb.checked ? col.show() : col.hide();
+                        });
+                        groupCb.indeterminate = false;
+                        saveTsColumnVisibility();
+                    });
+                });
+                table.getColumns().forEach(function (col) {
+                    const def = col.getDefinition();
+                    const field = def.field;
+                    const groupKey = tsColumnGroup(field);
+                    if (!groupKey || !lists[groupKey]) return;
+                    const titleText = String(def.title || field).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    const li = document.createElement('li');
+                    li.className = 'col-vis-item';
+                    const label = document.createElement('label');
+                    label.title = titleText;
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.className = 'col-vis-field-toggle';
+                    cb.value = field;
+                    cb.checked = col.isVisible();
+                    label.appendChild(cb);
+                    label.appendChild(document.createTextNode(titleText));
+                    li.appendChild(label);
+                    lists[groupKey].appendChild(li);
+                    cb.addEventListener('change', function () {
+                        const column = table.getColumn(field);
+                        if (column) cb.checked ? column.show() : column.hide();
+                        syncTsGroupHeader(groups[groupKey]);
+                        saveTsColumnVisibility();
+                    });
+                });
+                TS_COL_GROUPS.forEach(function (spec) {
+                    if (!lists[spec.key].children.length) {
+                        const empty = document.createElement('li');
+                        empty.className = 'text-muted small px-1';
+                        empty.textContent = 'No columns';
+                        lists[spec.key].appendChild(empty);
+                    }
+                    syncTsGroupHeader(groups[spec.key]);
+                });
+                menu.appendChild(wrap);
+            }
+
+            function initTable(rows, aspectNames) {
+                if (Array.isArray(aspectNames)) ebayAspectNames = aspectNames;
+                rows.forEach(stampAspectFields);
                 allRows = rows;
                 if (table) {
                     table.replaceData(rows);
                     applyStatusFilter();
+                    buildTsColumnPicker();
                     return;
                 }
 
@@ -395,6 +713,7 @@
                                 }
                             },
                         },
+                        ...ebayAspectColumns(),
                         {
                             title: 'Action',
                             field: '_action',
@@ -416,6 +735,9 @@
                     ],
                 });
 
+                table.on('tableBuilt', function () {
+                    buildTsColumnPicker();
+                });
                 table.on('dataFiltered', function () {
                     updateRowCount(table.getDataCount('active'));
                     updateSelectedCount();
@@ -425,6 +747,7 @@
                 });
                 updateRowCount(rows.length);
                 updateSelectedCount();
+                buildTsColumnPicker();
             }
 
             async function loadData() {
@@ -435,7 +758,7 @@
                     if (!res.ok || json.status === 500) {
                         throw new Error(json.message || 'Failed to load data');
                     }
-                    initTable(json.data || []);
+                    initTable(json.data || [], json.ebay_aspects || []);
                     applyStatusFilter();
                 } catch (e) {
                     toast(e.message || 'Failed to load Technical Specifications data', 'error');
@@ -445,19 +768,25 @@
 
             function exportExcel() {
                 if (!table) return;
-                const rows = table.getData('active').map(r => ({
-                    SKU: r.SKU || '',
-                    'Category eBay': r.category_ebay || '',
-                    'Category Amz': r.category_amz || '',
-                    'Category Temu': r.category_temu || '',
-                    Parent: r.Parent || '',
-                    title150: r.title150 || '',
-                    technical_specifications: specsText(r),
-                    description_1500: r.description_1500 || '',
-                    description_1000: r.description_1000 || '',
-                    description_800: r.description_800 || '',
-                    description_600: r.description_600 || '',
-                }));
+                const rows = table.getData('active').map(function (r) {
+                    const row = {
+                        SKU: r.SKU || '',
+                        'Category eBay': r.category_ebay || '',
+                        'Category Amz': r.category_amz || '',
+                        'Category Temu': r.category_temu || '',
+                        Parent: r.Parent || '',
+                        title150: r.title150 || '',
+                        technical_specifications: specsText(r),
+                    };
+                    ebayAspectNames.forEach(function (name) {
+                        row[name] = rowRequiresAspect(r, name) ? (r[aspectKey(name)] || '') : '';
+                    });
+                    row.description_1500 = r.description_1500 || '';
+                    row.description_1000 = r.description_1000 || '';
+                    row.description_800 = r.description_800 || '';
+                    row.description_600 = r.description_600 || '';
+                    return row;
+                });
                 const ws = XLSX.utils.json_to_sheet(rows);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Technical Specs');
