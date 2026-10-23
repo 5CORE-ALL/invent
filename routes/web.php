@@ -3824,6 +3824,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-amazon-price', action: [OverallAmazonController::class, 'updatePrice'])->name('amazon.priceChange');
 
     Route::get('/amazon-ads/all', [AmazonAdsController::class, 'index'])->name('amazon.ads.all');
+    Route::get('/amazon-ads/parent-vs-ads', [\App\Http\Controllers\MarketPlace\AmzVariationVerifyController::class, 'parentAdsSummary'])->name('amazon.ads.parent-vs-ads');
     Route::get('/amazon-ads/campaign-skus', [AmazonAdsController::class, 'campaignSkus'])->name('amazon.ads.campaign-skus');
     Route::post('/amazon-ads/sb-ads/products', [AmazonAdsController::class, 'addSbAdProducts'])->name('amazon.ads.sb-ads.products.add');
     Route::post('/amazon-ads/sb-ads/products/remove', [AmazonAdsController::class, 'removeSbAdProducts'])->name('amazon.ads.sb-ads.products.remove');

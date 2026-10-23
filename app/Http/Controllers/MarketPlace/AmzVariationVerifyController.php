@@ -17,6 +17,7 @@ use App\Support\Marketplace\AmazonListingCounts;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -331,6 +332,54 @@ class AmzVariationVerifyController extends Controller
                 'ads_source' => 'amazon_sp_campaign_reports (L30 KW/PT)',
             ],
         ]);
+    }
+
+    /**
+     * Per-parent "Parent Vs Ads SKU" KW / PT result, computed by the same logic as data() above, for pages that
+     * show the same column (amazon-ads/all and amazon-ads/missing). Keyed by UPPER(parent) with spaces collapsed.
+     * Cached briefly because data() reads the whole campaign / listing set; ?refresh=1 bypasses the cache.
+     */
+    public function parentAdsSummary(Request $request): JsonResponse
+    {
+        $build = function (): array {
+            $payload = $this->data(request())->getData(true);
+            $keys = [
+                'ad_status', 'ad_label', 'missing', 'extra', 'archived_extra', 'over',
+                'missing_skus', 'over_skus', 'extra_skus', 'archived_extra_skus', 'added_campaigns', 'added_skus',
+            ];
+            $map = [];
+            foreach ((array) ($payload['data'] ?? []) as $row) {
+                if (empty($row['is_parent'])) {
+                    continue;
+                }
+                $key = strtoupper(preg_replace('/\s+/', ' ', trim((string) ($row['parent'] ?? ''))));
+                if ($key === '') {
+                    continue;
+                }
+                foreach (['kw', 'pt'] as $type) {
+                    $f = [];
+                    foreach ($keys as $k) {
+                        $f[$k] = $row[$type.'_'.$k] ?? null;
+                    }
+                    $map[$key][$type] = $f;
+                }
+            }
+
+            return $map;
+        };
+
+        try {
+            if ($request->boolean('refresh')) {
+                Cache::forget('amz_parent_vs_ads_summary');
+            }
+            $map = Cache::remember('amz_parent_vs_ads_summary', 120, $build);
+        } catch (\Throwable $e) {
+            Log::warning('Parent vs ads summary failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'message' => 'Could not compute Parent Vs Ads SKU.', 'data' => (object) []], 500);
+        }
+
+        return response()->json(['ok' => true, 'data' => (object) $map]);
     }
 
     /**

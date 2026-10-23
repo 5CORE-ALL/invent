@@ -1163,7 +1163,19 @@
                 grid-template-columns: repeat(2, minmax(120px, 1fr));
             }
         }
-    </style>
+            .amz-pva-added { color: #16a34a; font-weight: 700; }
+        .amz-pva-missing { color: #dc2626; font-weight: 700; }
+        .amz-pva-over { color: #ea580c; font-weight: 700; }
+        .amz-pva-extra { color: #2563eb; font-weight: 700; }
+        .amz-pva-archived { color: #6b7280; font-weight: 700; }
+        .amz-pva-na { color: #94a3b8; }
+        .amz-pva-wrap { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; line-height: 1.25; }
+        .amz-pva-skus { display: inline-block; font-size: 10px; font-weight: 700; max-width: 240px; white-space: normal; word-break: break-word; padding: 2px 6px; border-radius: 4px; line-height: 1.35; text-align: left; }
+        .amz-pva-skus--missing { color: #991b1b; background: #fee2e2; border: 1px solid #fca5a5; }
+        .amz-pva-skus--over { color: #9a3412; background: #ffedd5; border: 1px solid #fdba74; }
+        .amz-pva-skus--extra { color: #1e3a8a; background: #dbeafe; border: 1px solid #93c5fd; }
+        .amz-pva-skus--archived { color: #374151; background: #e5e7eb; border: 1px solid #9ca3af; }
+</style>
 @endsection
 
 @section('content')
@@ -3279,6 +3291,90 @@
                 if (c === 'clicks') { col.title = 'Clicks'; col.headerTooltip = 'Amazon Ads clicks (L30).'; col.formatter = fmtDashInt; return; }
             }
 
+            // ---- Parent Vs Ads SKU KW / PT: same result as /amz-variation-verify (each child SKU of the parent is in the parent's KW / PT campaign) ----
+            var amzPvaUrl = @json(route('amazon.ads.parent-vs-ads'));
+            var amzPvaMap = null;       // UPPER(parent) -> {kw: {...}, pt: {...}}
+            var amzPvaLoading = false;
+            var amzPvaFailed = false;
+            function amzPvaEsc(s) {
+                return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+            function amzPvaNorm(s) { return String(s || '').replace(/\s+/g, ' ').trim().toUpperCase(); }
+            function amzPvaLoad(force, done) {
+                if (amzPvaLoading) { return; }
+                if (amzPvaMap && !force) { if (done) { done(); } return; }
+                amzPvaLoading = true;
+                fetch(amzPvaUrl + (force ? '?refresh=1' : ''), {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                }).then(function (res) { return res.json(); }).then(function (j) {
+                    amzPvaMap = (j && j.data && typeof j.data === 'object') ? j.data : {};
+                    amzPvaFailed = !(j && j.ok);
+                }).catch(function () {
+                    amzPvaMap = {};
+                    amzPvaFailed = true;
+                }).then(function () {
+                    amzPvaLoading = false;
+                    if (done) { done(); }
+                });
+            }
+            function amzPvaList(f, k) { return Array.isArray(f && f[k]) ? f[k] : []; }
+            function amzPvaHover(type, f) {
+                var parts = [];
+                var camps = amzPvaList(f, 'added_campaigns');
+                var added = amzPvaList(f, 'added_skus');
+                if (camps.length) { parts.push('Added campaigns (' + camps.length + '): ' + camps.join(', ')); }
+                else if (added.length) { parts.push('Added SKUs (' + added.length + '): ' + added.join(', ')); }
+                if (amzPvaList(f, 'missing_skus').length) { parts.push('Missing: ' + amzPvaList(f, 'missing_skus').join(', ')); }
+                if (amzPvaList(f, 'over_skus').length) { parts.push('Over: ' + amzPvaList(f, 'over_skus').join(', ')); }
+                if (amzPvaList(f, 'extra_skus').length) { parts.push('Extra: ' + amzPvaList(f, 'extra_skus').join(', ')); }
+                if (amzPvaList(f, 'archived_extra_skus').length) { parts.push('Archived: ' + amzPvaList(f, 'archived_extra_skus').join(', ')); }
+                return type.toUpperCase() + (parts.length ? ' — ' + parts.join(' | ') : ' siblings OK');
+            }
+            function amzPvaCellHtml(type, f) {
+                if (!f || f.ad_status == null || !f.ad_label || f.ad_label === '—') { return '<span class="amz-pva-na">--</span>'; }
+                var status = f.ad_status;
+                var missing = parseInt(f.missing, 10) || 0;
+                var extra = parseInt(f.extra, 10) || 0;
+                var archivedExtra = parseInt(f.archived_extra, 10) || 0;
+                var cls = 'amz-pva-missing';
+                var main = amzPvaEsc(f.ad_label);
+                if (status === 'ok') { cls = 'amz-pva-added'; main = '<i class="fas fa-check"></i> ' + main; }
+                else if (status === 'extra' && missing === 0) { cls = 'amz-pva-extra'; }
+                else if (status === 'archived_extra' && missing === 0 && extra === 0) { cls = 'amz-pva-archived'; }
+                else if (status === 'over' && missing === 0 && extra === 0 && archivedExtra === 0) { cls = 'amz-pva-over'; }
+                var lines = '';
+                if (amzPvaList(f, 'missing_skus').length) { lines += '<span class="amz-pva-skus amz-pva-skus--missing">Missing: ' + amzPvaEsc(amzPvaList(f, 'missing_skus').join(', ')) + '</span>'; }
+                if (amzPvaList(f, 'over_skus').length) { lines += '<span class="amz-pva-skus amz-pva-skus--over">Over: ' + amzPvaEsc(amzPvaList(f, 'over_skus').join(', ')) + '</span>'; }
+                if (amzPvaList(f, 'extra_skus').length) { lines += '<span class="amz-pva-skus amz-pva-skus--extra">Extra: ' + amzPvaEsc(amzPvaList(f, 'extra_skus').join(', ')) + '</span>'; }
+                if (amzPvaList(f, 'archived_extra_skus').length) { lines += '<span class="amz-pva-skus amz-pva-skus--archived">Archived: ' + amzPvaEsc(amzPvaList(f, 'archived_extra_skus').join(', ')) + '</span>'; }
+                return '<span class="amz-pva-wrap" title="' + amzPvaEsc(amzPvaHover(type, f)) + '"><span class="' + cls + '">' + main + '</span>' + lines + '</span>';
+            }
+            // Cell content for a parent + type ('kw' | 'pt'); shows "…" until the summary has loaded.
+            function amzPvaCell(parent, type) {
+                if (!parent) { return '<span class="amz-pva-na">--</span>'; }
+                if (amzPvaMap === null) { return '<span class="amz-pva-na">…</span>'; }
+                var entry = amzPvaMap[amzPvaNorm(parent)];
+                return amzPvaCellHtml(type, entry ? entry[type] : null);
+            }
+
+            // Campaign rows named "PARENT <parent> KW" / "PARENT <parent> PT" show that parent's Parent Vs Ads SKU result for the same type.
+            function amzPvaColumn() {
+                return {
+                    title: 'Parent Vs Ads SKU',
+                    field: '_pva',
+                    headerTooltip: 'For PARENT … KW / PT campaigns: same check as /amz-variation-verify. Every child SKU of the parent that needs ads is in this campaign (2/2 = all present). Hover a value for the SKU lists.',
+                    hozAlign: 'center', headerHozAlign: 'center',
+                    headerSort: false, download: false,
+                    minWidth: 130, widthGrow: 0,
+                    formatter: function (cell) {
+                        var m = String((cell.getData() || {}).campaignName || '').match(/^PARENT\s+(.+?)\s+(KW|PT)\.?\s*$/i);
+                        if (!m) { return '<span class="amz-pva-na">--</span>'; }
+                        return amzPvaCell(m[1], m[2].toLowerCase());
+                    }
+                };
+            }
+
             function amzBuildColumns(source) {
                 var cols = (rawSources[source] && rawSources[source].columns) ? rawSources[source].columns : [];
                 var defs = [{
@@ -3326,6 +3422,7 @@
                             return amzCampaignLowInvN(data) === null ? '' : '!';
                         }
                     });
+                    defs.splice(nameIdx + 2, 0, amzPvaColumn());
                 }
                 var againIdx = -1;
                 for (var ak = 0; ak < defs.length; ak++) {
@@ -3950,6 +4047,13 @@
             });
 
             table.on('pageLoaded', amzRefreshUiSoon);
+            // Parent Vs Ads SKU (same logic as /amz-variation-verify): load once, then repaint the column.
+            table.on('dataLoaded', function () {
+                if (amzPvaMap !== null) { return; }
+                amzPvaLoad(false, function () {
+                    table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
+                });
+            });
             table.on('dataLoaded', function () {
                 amzRefreshUiSoon();
                 if (typeof amzAutoPushPullOn === 'function' && amzAutoPushPullOn()) amzAutoPushChangedSbgt();
