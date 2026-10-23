@@ -426,6 +426,25 @@ class AmazonAdsService
      * @param  list<string>  $campaignIds
      * @return list<array<string, mixed>>
      */
+    public function listTargetsByCampaignIdsBulk(array $campaignIds, int $maxPages = 40): array
+    {
+        return $this->listSpEntitiesByCampaignIds(
+            '/sp/targets/list',
+            'application/vnd.spTargetingClause.v3+json',
+            ['targetingClauses', 'targets'],
+            $campaignIds,
+            $maxPages,
+            1000,
+            50
+        );
+    }
+
+    /**
+     * SP targeting clauses for one or more campaigns (walks nextToken).
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
     public function listTargetsByCampaignIds(array $campaignIds, int $maxPages = 80): array
     {
         return $this->listSpEntitiesByCampaignIds(
@@ -1991,6 +2010,183 @@ class AmazonAdsService
             'message' => $msg,
             'errors' => $errors,
             'ad_group_id' => $adGroupId,
+        ];
+    }
+
+    /**
+     * Create Sponsored Products manual product (ASIN) targets on an ad group of a MANUAL campaign.
+     * POST /sp/targets (expression ASIN_SAME_AS).
+     *
+     * @param  list<array{asin: string, bid?: float|null}>  $targets
+     * @return array{success: bool, added: int, failed: int, duplicates: int, message: string, errors: list<string>}
+     */
+    public function createAsinTargets(string $campaignId, string $adGroupId, array $targets, float $defaultBid = 0.60): array
+    {
+        $campaignId = trim($campaignId);
+        $adGroupId = trim($adGroupId);
+        $items = [];
+        $seen = [];
+        foreach ($targets as $t) {
+            $asin = strtoupper(trim((string) ($t['asin'] ?? '')));
+            if ($asin === '' || isset($seen[$asin])) {
+                continue;
+            }
+            $seen[$asin] = true;
+            $bid = isset($t['bid']) && is_numeric($t['bid']) ? (float) $t['bid'] : $defaultBid;
+            $items[] = [
+                'campaignId' => $campaignId,
+                'adGroupId' => $adGroupId,
+                'state' => 'ENABLED',
+                'expressionType' => 'MANUAL',
+                'expression' => [['type' => 'ASIN_SAME_AS', 'value' => $asin]],
+                'bid' => round(max(0.02, $bid), 2),
+            ];
+        }
+        if ($campaignId === '' || $adGroupId === '' || $items === []) {
+            return ['success' => false, 'added' => 0, 'failed' => 0, 'duplicates' => 0, 'message' => 'Campaign, ad group and at least one ASIN are required.', 'errors' => []];
+        }
+
+        $added = 0;
+        $failed = 0;
+        $duplicates = 0;
+        $errors = [];
+        foreach (array_chunk($items, 100) as $chunk) {
+            try {
+                $resp = $this->post('/sp/targets', ['targetingClauses' => $chunk], [
+                    'Content-Type' => 'application/vnd.spTargetingClause.v3+json',
+                    'Accept' => 'application/vnd.spTargetingClause.v3+json',
+                ]);
+            } catch (\Throwable $e) {
+                $failed += count($chunk);
+                $errors[] = $this->formatAmazonException($e);
+
+                continue;
+            }
+            $okList = data_get($resp, 'targetingClauses.success', []);
+            if (is_array($okList)) {
+                $added += count($okList);
+            }
+            $errList = data_get($resp, 'targetingClauses.error', []);
+            if (is_array($errList)) {
+                foreach ($errList as $e) {
+                    $msg = $this->extractAmazonErrorMessage($e);
+                    if (stripos($msg, 'duplicate') !== false) {
+                        $duplicates++;
+                    } else {
+                        $failed++;
+                        if ($msg !== '') {
+                            $errors[] = $msg;
+                        }
+                    }
+                }
+            }
+        }
+
+        $errors = array_values(array_unique(array_filter($errors)));
+        $msg = "Added {$added} product target(s).";
+        if ($duplicates > 0) {
+            $msg .= " ({$duplicates} already existed.)";
+        }
+        if ($failed > 0) {
+            $msg .= " ({$failed} rejected.)";
+            if ($errors !== []) {
+                $msg .= ' '.implode(' | ', array_slice($errors, 0, 3));
+            }
+        }
+
+        return [
+            'success' => $added > 0 || ($failed === 0 && $duplicates > 0),
+            'added' => $added,
+            'failed' => $failed,
+            'duplicates' => $duplicates,
+            'message' => $msg,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Set state + bid of the four automatic targeting groups of an AUTO campaign
+     * (close match, loose match, substitutes, complements). Amazon creates them with the campaign.
+     *
+     * @param  array<string, array{enabled: bool, bid: float|null}>  $groups  keyed by expression type
+     *                                                                         (QUERY_HIGH_REL_MATCHES, QUERY_BROAD_REL_MATCHES, ASIN_SUBSTITUTE_RELATED, ASIN_ACCESSORY_RELATED)
+     * @return array{success: bool, updated: int, failed: int, message: string, errors: list<string>}
+     */
+    public function applyAutoTargetGroups(string $campaignId, array $groups): array
+    {
+        $campaignId = trim($campaignId);
+        if ($campaignId === '' || $groups === []) {
+            return ['success' => false, 'updated' => 0, 'failed' => 0, 'message' => 'Nothing to update.', 'errors' => []];
+        }
+
+        // The auto groups appear a moment after the campaign is created: look for them a few times.
+        $clauses = [];
+        for ($try = 0; $try < 4; $try++) {
+            try {
+                $resp = $this->post('/sp/targets/list', [
+                    'campaignIdFilter' => ['include' => [$campaignId]],
+                    'stateFilter' => ['include' => ['ENABLED', 'PAUSED']],
+                    'maxResults' => 100,
+                ], [
+                    'Content-Type' => 'application/vnd.spTargetingClause.v3+json',
+                    'Accept' => 'application/vnd.spTargetingClause.v3+json',
+                ]);
+                $clauses = (array) ($resp['targetingClauses'] ?? []);
+            } catch (\Throwable $e) {
+                $clauses = [];
+            }
+            if ($clauses !== []) {
+                break;
+            }
+            sleep(2);
+        }
+
+        $updates = [];
+        foreach ($clauses as $c) {
+            $type = strtoupper((string) data_get($c, 'expression.0.type', ''));
+            if (! isset($groups[$type]) || empty($c['targetId'])) {
+                continue;
+            }
+            $g = $groups[$type];
+            $item = [
+                'targetId' => (string) $c['targetId'],
+                'state' => ! empty($g['enabled']) ? 'ENABLED' : 'PAUSED',
+            ];
+            if (isset($g['bid']) && is_numeric($g['bid'])) {
+                $item['bid'] = round(max(0.02, (float) $g['bid']), 2);
+            }
+            $updates[] = $item;
+        }
+        if ($updates === []) {
+            return ['success' => false, 'updated' => 0, 'failed' => 0, 'message' => 'Amazon has not created the auto targeting groups yet; adjust them in Amazon Ads.', 'errors' => []];
+        }
+
+        try {
+            $resp = $this->put('/sp/targets', ['targetingClauses' => $updates], [
+                'Content-Type' => 'application/vnd.spTargetingClause.v3+json',
+                'Accept' => 'application/vnd.spTargetingClause.v3+json',
+            ]);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'updated' => 0, 'failed' => count($updates), 'message' => $this->formatAmazonException($e), 'errors' => [$this->formatAmazonException($e)]];
+        }
+
+        $updated = count((array) data_get($resp, 'targetingClauses.success', []));
+        $errors = [];
+        foreach ((array) data_get($resp, 'targetingClauses.error', []) as $e) {
+            $m = $this->extractAmazonErrorMessage($e);
+            if ($m !== '') {
+                $errors[] = $m;
+            }
+        }
+        $failed = count((array) data_get($resp, 'targetingClauses.error', []));
+        $errors = array_values(array_unique($errors));
+
+        return [
+            'success' => $updated > 0,
+            'updated' => $updated,
+            'failed' => $failed,
+            'message' => "Updated {$updated} auto targeting group(s)".($failed > 0 ? ", {$failed} rejected".($errors !== [] ? ' ('.implode(' | ', array_slice($errors, 0, 2)).')' : '') : '').'.',
+            'errors' => $errors,
         ];
     }
 

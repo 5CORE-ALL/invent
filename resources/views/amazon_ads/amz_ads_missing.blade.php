@@ -232,8 +232,8 @@
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingPtValue">0</span>
                         </div>
                         <span class="small text-muted ms-2" id="amzKwCountStatus"></span>
-                        <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzKwCountReloadBtn" title="Load keyword counts from Amazon for rows that don't have one yet">
-                            <i class="fa fa-sync me-1"></i> KW counts
+                        <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzKwCountReloadBtn" title="Load keyword / target counts from Amazon for rows that don't have one yet">
+                            <i class="fa fa-sync me-1"></i> Counts
                         </button>
                         <button type="button" class="btn btn-success btn-sm" id="amzMissingExportBtn" title="Export the current (filtered) view to CSV">
                             <i class="fa fa-download me-1"></i> Export
@@ -264,7 +264,7 @@
                     <form id="amzCreateCampaignForm">
                         <input type="hidden" id="amzCreateParent" name="parent">
                         <input type="hidden" id="amzCreateType" name="type" value="KW">
-                        {{-- Shown only when this parent already has a linked KW campaign: add keywords / negatives to it instead of creating a new one. --}}
+                        {{-- Shown only when this parent already has a linked campaign of this type: add keywords / targets to it instead of creating a new one. --}}
                         <div id="amzModeBox" class="border rounded p-2 mb-2 small d-none">
                             <div class="d-flex flex-wrap align-items-center gap-3">
                                 <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzCreateMode" value="new" checked>Create new campaign</label>
@@ -272,7 +272,7 @@
                                 <select class="form-select form-select-sm w-auto d-none" id="amzUpdateCampaign"></select>
                             </div>
                             <div class="text-muted mt-1 d-none" id="amzUpdateHint">
-                                Adds the keywords and negative keywords below to the selected campaign (duplicates are skipped). Budget, strategy and product ads are not changed; the selected child SKUs are only used to load Amazon's suggestions.
+                                Adds the keywords / ASIN targets below to the selected campaign, or applies the auto targeting group changes (duplicates are skipped). Budget, strategy and product ads are not changed; the selected child SKUs are only used to load Amazon's suggestions.
                             </div>
                         </div>
                         <div class="row g-2 mb-2">
@@ -461,34 +461,55 @@
                             </div>
                         </div>
 
-                        {{-- Campaign negative keywords (Amazon console "Negative keyword targeting"): Phrase / Exact only. --}}
-                        <div id="amzNegSection" class="mt-3">
+                        {{-- Product targeting for PT campaigns: same two-panel layout as Keyword targeting. --}}
+                        <div id="amzPtSection" class="mt-3 d-none">
                             <div class="fw-semibold small mb-1">
-                                Negative keywords
-                                <span class="text-muted fw-normal">(optional) - campaign level, Phrase / Exact only</span>
+                                Product targeting
+                                <span class="text-muted fw-normal">- Amazon's automatic groups, or your own ASIN targets</span>
+                            </div>
+                            <div class="d-flex flex-wrap align-items-center gap-3 small mb-2">
+                                <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzPtMode" value="AUTO" checked>Auto targeting groups</label>
+                                <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzPtMode" value="MANUAL">Product (ASIN) targets</label>
                             </div>
                             <div class="row g-2">
                                 <div class="col-lg-7">
-                                    <div class="border rounded p-2 small">
-                                        <textarea class="form-control form-control-sm" id="amzNegText" rows="3" placeholder="Enter one negative keyword per line (or separate with commas)"></textarea>
-                                        <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
-                                            <span class="fw-semibold">Match types</span>
-                                            <label><input type="checkbox" class="form-check-input me-1 amz-neg-mt" value="PHRASE" checked>Phrase</label>
-                                            <label><input type="checkbox" class="form-check-input me-1 amz-neg-mt" value="EXACT">Exact</label>
-                                            <input type="file" class="form-control form-control-sm w-auto" id="amzNegFile" accept=".csv,.txt,text/csv,text/plain">
-                                            <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzNegAddBtn">Add negatives</button>
+                                    <div class="border rounded">
+                                        <div id="amzPtPaneAuto">
+                                            <div class="p-2 border-bottom small text-muted">Amazon matches shoppers automatically. Groups you remove from the list on the right are paused.</div>
+                                            <table class="table table-sm align-middle mb-0 small">
+                                                <thead class="table-light"><tr><th>Targeting group</th><th class="text-end"></th></tr></thead>
+                                                <tbody id="amzPtAutoBody"></tbody>
+                                            </table>
+                                            <div class="px-2 py-1 text-end small"><a href="#" id="amzPtAutoAddAll" class="fw-semibold">Add all</a></div>
+                                        </div>
+                                        <div id="amzPtPaneManual" class="d-none">
+                                            <div class="p-2 small">
+                                                <textarea class="form-control form-control-sm" id="amzPtAsinText" rows="7" placeholder="Enter one ASIN per line (or separate with commas)"></textarea>
+                                                <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                    <input type="file" class="form-control form-control-sm w-auto" id="amzPtFile" accept=".csv,.txt,text/csv,text/plain">
+                                                    <span class="fw-semibold">Bid ($)</span>
+                                                    <input type="number" class="form-control form-control-sm" style="width:90px;" id="amzPtBid" min="0.02" step="0.01" placeholder="default">
+                                                    <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzPtAddBtn">Add ASINs</button>
+                                                </div>
+                                                <div class="form-text">ASIN targets need a MANUAL campaign: choosing this creates a manual product-targeting campaign.</div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="col-lg-5">
                                     <div class="border rounded h-100">
                                         <div class="p-2 border-bottom d-flex justify-content-between align-items-center small">
-                                            <span class="fw-bold"><span id="amzNegCount">0</span> negatives</span>
-                                            <a href="#" id="amzNegClear" class="text-danger">Remove all</a>
+                                            <span class="fw-bold"><span id="amzPtAddedCount">0</span> added</span>
+                                            <span class="d-flex align-items-center gap-1">
+                                                <input type="number" class="form-control form-control-sm py-0" style="width:78px;" id="amzPtBulkBid" min="0.02" step="0.01" placeholder="Bid $">
+                                                <a href="#" id="amzPtBulkBidApply" title="Set this bid for every added target">Set all</a>
+                                                <a href="#" id="amzPtClearAll" class="text-danger ms-2">Remove all</a>
+                                            </span>
                                         </div>
-                                        <div style="max-height:150px; overflow:auto;">
+                                        <div style="max-height:300px; overflow:auto;">
                                             <table class="table table-sm align-middle mb-0 small">
-                                                <tbody id="amzNegBody"></tbody>
+                                                <thead class="table-light sticky-top"><tr><th>Target</th><th>Type</th><th style="width:84px;">Bid ($)</th><th style="width:28px;"></th></tr></thead>
+                                                <tbody id="amzPtAddedBody"></tbody>
                                             </table>
                                         </div>
                                     </div>
@@ -516,7 +537,7 @@
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header py-2">
-                    <h5 class="modal-title" id="amzKwListModalLabel">Keywords</h5>
+                    <h5 class="modal-title" id="amzKwListModalLabel">Keywords / targets</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -540,7 +561,7 @@
                     <div class="border rounded" style="max-height:60vh; overflow:auto;">
                         <table class="table table-sm table-hover align-middle mb-0 small">
                             <thead class="table-light sticky-top">
-                                <tr><th style="width:50px;">#</th><th>Keyword</th><th>Match</th><th class="text-end">Bid ($)</th><th>State</th><th class="amz-kwlist-camp-col">Campaign</th></tr>
+                                <tr><th style="width:50px;">#</th><th id="amzKwListThKeyword">Keyword</th><th id="amzKwListThMatch">Match</th><th class="text-end">Bid ($)</th><th>State</th><th class="amz-kwlist-camp-col">Campaign</th></tr>
                             </thead>
                             <tbody id="amzKwListBody"></tbody>
                         </table>
@@ -763,31 +784,62 @@
             var updateUrl = @json(route('amazon.ads.missing.update-campaign'));
             var kwCountUrl = @json(route('amazon.ads.missing.keyword-counts'));
             var kwListUrl = @json(route('amazon.ads.missing.keyword-list'));
-            // KW K Count column state: key (campaign id, or "n:<name>" when only the name is linked) => {total, enabled, paused}
-            var kwCountMap = {};
-            var kwCountsLoading = false;
+            // KW K Count / PT Count columns: key (campaign id, or "n:<name>" when only the name is linked) => {total, enabled, paused}
+            var cntState = {
+                kw: { map: {}, loading: false, field: 'kw' },
+                pt: { map: {}, loading: false, field: 'pt' }
+            };
             function kwRefKey(c) { return c && c.campaign_id ? String(c.campaign_id) : 'n:' + String((c && c.campaign_name) || ''); }
-            function kwRowRefs(d) {
-                return (Array.isArray(d && d.kw) ? d.kw : []).map(function (c) {
+            function kwRowRefs(d, kind) {
+                return (Array.isArray(d && d[cntState[kind].field]) ? d[cntState[kind].field] : []).map(function (c) {
                     return { key: kwRefKey(c), campaign_id: c.campaign_id ? String(c.campaign_id) : '', campaign_name: c.campaign_name || '' };
                 }).filter(function (r) { return r.key !== 'n:'; });
             }
-            function kwCountForRow(d) {
-                var refs = kwRowRefs(d);
+            function kwCountForRow(d, kind) {
+                var refs = kwRowRefs(d, kind);
                 if (!refs.length) { return null; }
                 var sum = 0;
                 for (var i = 0; i < refs.length; i++) {
-                    var c = kwCountMap[refs[i].key];
+                    var c = cntState[kind].map[refs[i].key];
                     if (!c || c.total == null) { return null; }
                     sum += c.total;
                 }
                 return sum;
             }
-            var deleteUrl = @json(route('amazon.ads.missing.delete'));
-            var aiNegUrl = @json(route('amazon.ads.missing.ai-negatives'));
-            var pushNegUrl = @json(route('amazon.ads.missing.push-negatives'));
-            var aiPosUrl = @json(route('amazon.ads.missing.ai-positives'));
-            var pushPosUrl = @json(route('amazon.ads.missing.push-positives'));
+            // Column definition shared by "KW K Count" (keywords) and "PT Count" (targets).
+            function countColumnDef(kind, title, tip) {
+                return {
+                    title: title, field: '_' + kind + '_count', width: 110,
+                    hozAlign: 'center', headerHozAlign: 'center',
+                    headerSort: true,
+                    sorter: function (a, b, aRow, bRow) {
+                        var x = kwCountForRow(aRow.getData(), kind), y = kwCountForRow(bRow.getData(), kind);
+                        x = x == null ? -1 : x; y = y == null ? -1 : y;
+                        return x - y;
+                    },
+                    headerTooltip: tip,
+                    formatter: function (cell) {
+                        var d = cell.getData();
+                        var st = cntState[kind];
+                        var refs = kwRowRefs(d, kind);
+                        if (!refs.length) { return '<span class="text-muted">—</span>'; }
+                        var n = kwCountForRow(d, kind);
+                        var attrs = ' data-kind="' + kind + '" data-sku="' + esc(d.sku || '') + '"';
+                        if (n == null) {
+                            var bad = refs.some(function (r) { return st.map[r.key] && st.map[r.key].unresolved; });
+                            if (bad) { return '<a href="#" class="amz-kwcount text-muted"' + attrs + ' title="No Amazon campaign id found - click to try">?</a>'; }
+                            return st.loading
+                                ? '<i class="fa fa-spinner fa-spin text-muted" title="Loading from Amazon…"></i>'
+                                : '<a href="#" class="amz-kwcount text-muted"' + attrs + ' title="Click to load from Amazon"><i class="fa fa-sync"></i></a>';
+                        }
+                        var en = 0, pa = 0;
+                        refs.forEach(function (r) { var c = st.map[r.key] || {}; en += c.enabled || 0; pa += c.paused || 0; });
+                        return '<a href="#" class="amz-kwcount fw-semibold"' + attrs + ' title="Enabled ' + en + ' / Paused ' + pa + ' - click to view">'
+                            + Number(n).toLocaleString('en-US') + '</a>';
+                    },
+                    accessorDownload: function (value, data) { var n = kwCountForRow(data, kind); return n == null ? '' : n; }
+                };
+            }
             var kwSuggestUrl = @json(route('amazon.ads.missing.keyword-suggestions'));
             var kwIdeasUrl = @json(route('amazon.ads.missing.keyword-ideas'));
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
@@ -1049,12 +1101,9 @@
                 });
             }
             function kwResetForOpen() {
+                ptResetForOpen();
                 kwSuggestions = [];
                 kwAdded = [];
-                kwNegatives = [];
-                kwNegRender();
-                var negTa = document.getElementById('amzNegText'); if (negTa) { negTa.value = ''; }
-                var negF = document.getElementById('amzNegFile'); if (negF) { negF.value = ''; }
                 var sq = document.getElementById('amzKwSugSearch'); if (sq) { sq.value = ''; }
                 var bb = document.getElementById('amzKwBulkBid'); if (bb) { bb.value = ''; }
                 var st = document.getElementById('amzCreateStrategy'); if (st) { st.value = 'LEGACY_FOR_SALES'; }
@@ -1122,7 +1171,7 @@
                     kwAdded.forEach(function (k) { k.bid = v; });
                     kwRenderAdded();
                 });
-                kwWireNegatives();
+                ptWire();
                 document.getElementById('amzKwSugBody').addEventListener('click', function (e) {
                     var a = e.target.closest ? e.target.closest('.amz-kw-add') : null;
                     if (!a) { return; }
@@ -1197,65 +1246,157 @@
             }
 
 
-            // ---- Negative keywords (campaign level, Phrase / Exact) ----
-            var kwNegatives = [];     // [{text, match_type: PHRASE|EXACT}]
-            function kwNegRender() {
-                var body = document.getElementById('amzNegBody');
-                if (!body) { return; }
-                document.getElementById('amzNegCount').textContent = String(kwNegatives.length);
-                body.innerHTML = kwNegatives.length ? kwNegatives.map(function (n, i) {
-                    return '<tr><td>' + esc(n.text) + '</td><td>' + esc(n.match_type.charAt(0) + n.match_type.slice(1).toLowerCase()) + '</td>'
-                        + '<td style="width:28px;"><a href="#" class="text-danger amz-neg-del" data-i="' + i + '" title="Remove">&times;</a></td></tr>';
-                }).join('') : '<tr><td class="text-muted text-center py-2">None added.</td></tr>';
+            // ---- Product targeting (PT campaigns): auto targeting groups or ASIN targets ----
+            var PT_GROUPS = [
+                { type: 'QUERY_HIGH_REL_MATCHES', label: 'Close match', desc: 'Shoppers searching for terms closely related to your product' },
+                { type: 'QUERY_BROAD_REL_MATCHES', label: 'Loose match', desc: 'Shoppers searching for terms loosely related to your product' },
+                { type: 'ASIN_SUBSTITUTE_RELATED', label: 'Substitutes', desc: 'Detail pages of products similar to yours' },
+                { type: 'ASIN_ACCESSORY_RELATED', label: 'Complements', desc: 'Detail pages of products that complement yours' }
+            ];
+            var ptAutoAdded = [];   // [{type, bid}]
+            var ptAsins = [];       // [{asin, bid}]
+            function ptMode() {
+                var r = document.querySelector('input[name="amzPtMode"]:checked');
+                return r && r.value === 'MANUAL' ? 'MANUAL' : 'AUTO';
             }
-            function kwNegAddTexts(texts) {
-                var mts = kwSelectedMts('amz-neg-mt');
-                if (!mts.length) { window.alert('Pick Phrase and/or Exact for negatives.'); return; }
-                var skipped = 0;
-                texts.forEach(function (t) {
-                    if (t.length > 80 || t.split(' ').length > 10) { skipped++; return; }
-                    mts.forEach(function (mt) {
-                        var k = t.toLowerCase() + '|' + mt;
-                        if (!kwNegatives.some(function (n) { return (n.text.toLowerCase() + '|' + n.match_type) === k; })) {
-                            kwNegatives.push({ text: t, match_type: mt });
-                        }
+            function ptGroupLabel(type) {
+                var g = PT_GROUPS.filter(function (x) { return x.type === type; })[0];
+                return g ? g.label : type;
+            }
+            function ptRender() {
+                var auto = ptMode() === 'AUTO';
+                var paneA = document.getElementById('amzPtPaneAuto'); if (paneA) { paneA.classList.toggle('d-none', !auto); }
+                var paneM = document.getElementById('amzPtPaneManual'); if (paneM) { paneM.classList.toggle('d-none', auto); }
+                var left = document.getElementById('amzPtAutoBody');
+                if (left) {
+                    left.innerHTML = PT_GROUPS.map(function (g) {
+                        var added = ptAutoAdded.some(function (a) { return a.type === g.type; });
+                        return '<tr><td><div class="fw-semibold">' + esc(g.label) + '</div><div class="text-muted" style="font-size:11px;">' + esc(g.desc) + '</div></td>'
+                            + '<td class="text-end">' + (added ? '<span class="text-muted fst-italic">Added</span>'
+                                : '<a href="#" class="fw-semibold amz-pt-auto-add" data-type="' + g.type + '">Add</a>') + '</td></tr>';
+                    }).join('');
+                }
+                var rows = auto
+                    ? ptAutoAdded.map(function (a, i) { return { label: ptGroupLabel(a.type), type: 'Auto group', bid: a.bid, i: i }; })
+                    : ptAsins.map(function (a, i) { return { label: a.asin, type: 'ASIN', bid: a.bid, i: i }; });
+                var cnt = document.getElementById('amzPtAddedCount'); if (cnt) { cnt.textContent = String(rows.length); }
+                var body = document.getElementById('amzPtAddedBody');
+                if (body) {
+                    body.innerHTML = rows.length ? rows.map(function (r) {
+                        return '<tr><td>' + esc(r.label) + '</td><td>' + esc(r.type) + '</td>'
+                            + '<td><input type="number" class="form-control form-control-sm py-0 amz-pt-bid" data-i="' + r.i + '" min="0.02" step="0.01" value="' + Number(r.bid).toFixed(2) + '"></td>'
+                            + '<td><a href="#" class="text-danger amz-pt-del" data-i="' + r.i + '" title="Remove">&times;</a></td></tr>';
+                    }).join('') : '<tr><td colspan="4" class="text-muted text-center py-3">' + (auto ? 'No auto groups: they will all be paused.' : 'No ASINs added yet.') + '</td></tr>';
+                }
+            }
+            function ptResetForOpen() {
+                ptAutoAdded = PT_GROUPS.map(function (g) { return { type: g.type, bid: kwDefaultBid() }; });
+                ptAsins = [];
+                var r = document.querySelector('input[name="amzPtMode"][value="AUTO"]'); if (r) { r.checked = true; }
+                ['amzPtAsinText', 'amzPtBid', 'amzPtBulkBid'].forEach(function (id) { var el = document.getElementById(id); if (el) { el.value = ''; } });
+                var f = document.getElementById('amzPtFile'); if (f) { f.value = ''; }
+                ptRender();
+            }
+            function ptPayload() {
+                var mode = ptMode();
+                var out = { pt_mode: mode, pt_groups: [], pt_targets: [] };
+                if (mode === 'AUTO') {
+                    out.pt_groups = PT_GROUPS.map(function (g) {
+                        var a = ptAutoAdded.filter(function (x) { return x.type === g.type; })[0];
+                        return { type: g.type, enabled: !!a, bid: a ? a.bid : null };
                     });
-                });
-                kwNegRender();
-                if (skipped) { window.alert(skipped + ' negative(s) skipped: Amazon allows up to 80 characters / 10 words.'); }
+                } else {
+                    out.pt_targets = ptAsins.map(function (a) { return { asin: a.asin, bid: a.bid }; });
+                }
+                return out;
             }
-            function kwWireNegatives() {
-                var addBtn = document.getElementById('amzNegAddBtn');
+            function ptAddAsins(texts) {
+                var bidEl = document.getElementById('amzPtBid');
+                var bid = parseFloat(bidEl && bidEl.value);
+                bid = (isFinite(bid) && bid >= 0.02) ? Math.round(bid * 100) / 100 : kwDefaultBid();
+                var bad = 0;
+                texts.forEach(function (t) {
+                    var a = String(t || '').toUpperCase().trim();
+                    if (!a) { return; }
+                    if (!/^[A-Z0-9]{10}$/.test(a)) { bad++; return; }
+                    if (!ptAsins.some(function (x) { return x.asin === a; })) { ptAsins.push({ asin: a, bid: bid }); }
+                });
+                ptRender();
+                if (bad) { window.alert(bad + ' value(s) skipped: an ASIN is 10 letters / digits.'); }
+            }
+            function ptWire() {
+                var addBtn = document.getElementById('amzPtAddBtn');
                 if (!addBtn) { return; }
+                document.querySelectorAll('input[name="amzPtMode"]').forEach(function (r) {
+                    r.addEventListener('change', function () { ptRender(); syncPtModeUi(); });
+                });
+                document.getElementById('amzPtAutoBody').addEventListener('click', function (e) {
+                    var a = e.target.closest ? e.target.closest('.amz-pt-auto-add') : null;
+                    if (!a) { return; }
+                    e.preventDefault();
+                    var type = a.getAttribute('data-type');
+                    if (!ptAutoAdded.some(function (x) { return x.type === type; })) { ptAutoAdded.push({ type: type, bid: kwDefaultBid() }); }
+                    ptRender();
+                });
+                document.getElementById('amzPtAutoAddAll').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    PT_GROUPS.forEach(function (g) {
+                        if (!ptAutoAdded.some(function (x) { return x.type === g.type; })) { ptAutoAdded.push({ type: g.type, bid: kwDefaultBid() }); }
+                    });
+                    ptRender();
+                });
                 addBtn.addEventListener('click', function () {
-                    var ta = document.getElementById('amzNegText');
-                    var fileInput = document.getElementById('amzNegFile');
+                    var ta = document.getElementById('amzPtAsinText');
+                    var fileInput = document.getElementById('amzPtFile');
                     var file = fileInput.files && fileInput.files[0];
                     if (file) {
                         var reader = new FileReader();
                         reader.onload = function () {
-                            kwNegAddTexts(kwParseList(String(reader.result || ''), /\.csv$/i.test(file.name)));
+                            ptAddAsins(String(reader.result || '').split(/[\s,;]+/));
                             fileInput.value = '';
                         };
                         reader.readAsText(file);
                     }
                     if (ta.value.trim()) {
-                        kwNegAddTexts(kwParseList(ta.value, false));
+                        ptAddAsins(ta.value.split(/[\s,;]+/));
                         ta.value = '';
                     }
                 });
-                document.getElementById('amzNegClear').addEventListener('click', function (e) {
+                document.getElementById('amzPtClearAll').addEventListener('click', function (e) {
                     e.preventDefault();
-                    kwNegatives = [];
-                    kwNegRender();
+                    if (ptMode() === 'AUTO') { ptAutoAdded = []; } else { ptAsins = []; }
+                    ptRender();
                 });
-                document.getElementById('amzNegBody').addEventListener('click', function (e) {
-                    var d = e.target.closest ? e.target.closest('.amz-neg-del') : null;
+                document.getElementById('amzPtBulkBidApply').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var v = parseFloat((document.getElementById('amzPtBulkBid') || {}).value);
+                    if (!isFinite(v) || v < 0.02) { window.alert('Enter a bid of at least $0.02.'); return; }
+                    v = Math.round(v * 100) / 100;
+                    (ptMode() === 'AUTO' ? ptAutoAdded : ptAsins).forEach(function (x) { x.bid = v; });
+                    ptRender();
+                });
+                var addedBody = document.getElementById('amzPtAddedBody');
+                addedBody.addEventListener('click', function (e) {
+                    var d = e.target.closest ? e.target.closest('.amz-pt-del') : null;
                     if (!d) { return; }
                     e.preventDefault();
-                    kwNegatives.splice(Number(d.getAttribute('data-i')), 1);
-                    kwNegRender();
+                    (ptMode() === 'AUTO' ? ptAutoAdded : ptAsins).splice(Number(d.getAttribute('data-i')), 1);
+                    ptRender();
                 });
+                addedBody.addEventListener('change', function (e) {
+                    var inp = e.target;
+                    if (!inp || !inp.classList || !inp.classList.contains('amz-pt-bid')) { return; }
+                    var item = (ptMode() === 'AUTO' ? ptAutoAdded : ptAsins)[Number(inp.getAttribute('data-i'))];
+                    var v = parseFloat(inp.value);
+                    if (item) { item.bid = (isFinite(v) && v >= 0.02) ? Math.round(v * 100) / 100 : kwDefaultBid(); }
+                    ptRender();
+                });
+            }
+            function syncPtModeUi() {
+                var title = document.getElementById('amzCreateCampaignModalLabel');
+                if (title && currentCreateType() === 'PT') {
+                    title.textContent = 'Create Amz SP Campaign (PT / ' + (ptMode() === 'MANUAL' ? 'MANUAL ASIN targets' : 'AUTO') + ')';
+                }
             }
 
             // ---- Search ideas tab: type seed keywords -> Keyword Planner ideas ----
@@ -1383,7 +1524,7 @@
                         ? 'Creates <strong>one PAUSED</strong> Sponsored Products <strong>PT / AUTO</strong> campaign for the parent'
                             + ' (e.g. <code>' + example + '</code>). Selected child SKUs become product ads'
                             + ' (Amz seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).'
-                            + ' Amazon product targeting is automatic; positive keywords are not used.'
+                            + ' Choose Amazon\'s automatic targeting groups, or your own ASIN targets, under Product targeting.'
                         : 'Creates <strong>one PAUSED</strong> Sponsored Products <strong>KW / MANUAL</strong> campaign for the parent'
                             + ' (e.g. <code>' + example + '</code>). Selected child SKUs become product ads'
                             + ' (Amz seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).'
@@ -1395,11 +1536,13 @@
                 var note = document.getElementById('amzCreateTypeNote');
                 if (note) {
                     note.textContent = type === 'PT'
-                        ? 'Campaigns are created as PT/AUTO. Use AI negative keywords if needed; positive keywords are not available.'
+                        ? 'PT campaigns use the targeting you pick above: the auto groups (PT / AUTO) or ASIN targets (a manual campaign).'
                         : 'KW / MANUAL campaigns are created with the keywords you add above.';
                 }
                 var kwSec = document.getElementById('amzKwSection');
                 if (kwSec) { kwSec.classList.toggle('d-none', type === 'PT'); }
+                var ptSec = document.getElementById('amzPtSection');
+                if (ptSec) { ptSec.classList.toggle('d-none', type !== 'PT'); }
                 var posLink = document.getElementById('amzCreateAiPosLink');
                 if (posLink) { posLink.classList.toggle('d-none', type === 'PT'); }
             }
@@ -1587,34 +1730,7 @@
                             formatter: chipsFormatter('KW'),
                             accessorDownload: linkNamesAccessor
                         },
-                        {
-                            title: 'KW K Count', field: '_kw_count', width: 110,
-                            hozAlign: 'center', headerHozAlign: 'center',
-                            headerSort: true, sorter: function (a, b, aRow, bRow) {
-                                var x = kwCountForRow(aRow.getData()), y = kwCountForRow(bRow.getData());
-                                x = x == null ? -1 : x; y = y == null ? -1 : y;
-                                return x - y;
-                            },
-                            headerTooltip: 'Keywords (enabled + paused) in the linked KW campaign(s), counted through the Amazon Ads API. Click to see them.',
-                            formatter: function (cell) {
-                                var d = cell.getData();
-                                var refs = kwRowRefs(d);
-                                if (!refs.length) { return '<span class="text-muted">—</span>'; }
-                                var n = kwCountForRow(d);
-                                if (n == null) {
-                                    var bad = refs.some(function (r) { return kwCountMap[r.key] && kwCountMap[r.key].unresolved; });
-                                    if (bad) { return '<a href="#" class="amz-kwcount text-muted" data-sku="' + esc(d.sku || '') + '" title="No Amazon campaign id found - click to try">?</a>'; }
-                                    return kwCountsLoading
-                                        ? '<i class="fa fa-spinner fa-spin text-muted" title="Loading from Amazon…"></i>'
-                                        : '<a href="#" class="amz-kwcount text-muted" data-sku="' + esc(d.sku || '') + '" title="Click to load keywords from Amazon"><i class="fa fa-sync"></i></a>';
-                                }
-                                var en = 0, pa = 0;
-                                refs.forEach(function (r) { var c = kwCountMap[r.key] || {}; en += c.enabled || 0; pa += c.paused || 0; });
-                                return '<a href="#" class="amz-kwcount fw-semibold" data-sku="' + esc(d.sku || '') + '" title="Enabled ' + en + ' / Paused ' + pa + ' - click to view keywords">'
-                                    + Number(n).toLocaleString('en-US') + '</a>';
-                            },
-                            accessorDownload: function (value, data) { var n = kwCountForRow(data); return n == null ? '' : n; }
-                        },
+                        countColumnDef('kw', 'KW K Count', 'Keywords (enabled + paused) in the linked KW campaign(s), counted through the Amazon Ads API. Click to see them.'),
                         {
                             title: 'Create PT', field: '_create_pt', width: 100,
                             hozAlign: 'center', headerHozAlign: 'center',
@@ -1638,7 +1754,8 @@
                             headerFilterFunc: missingHeaderFilter,
                             formatter: chipsFormatter('PT'),
                             accessorDownload: linkNamesAccessor
-                        }
+                        },
+                        countColumnDef('pt', 'PT Count', 'Targets (auto groups + ASIN / category targets, enabled + paused) in the linked PT campaign(s), counted through the Amazon Ads API. Click to see them.')
                     ]
                 });
 
@@ -1656,7 +1773,7 @@
                 }
 
 
-                // ---- KW K Count column: keyword counts of the linked KW campaigns, loaded through the Amazon Ads API ----
+                // ---- KW K Count / PT Count columns: counts of the linked campaigns, loaded through the Amazon Ads API ----
                 function kwCountsReformat() {
                     table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
                 }
@@ -1666,63 +1783,77 @@
                     el.textContent = msg || '';
                     el.classList.toggle('text-danger', !!isErr);
                 }
-                // refsOverride: load exactly these refs (refreshing them); otherwise every linked KW campaign not loaded yet.
-                function amzLoadKwCounts(refsOverride) {
-                    if (kwCountsLoading) { return; }
+                // kind: 'kw' | 'pt'. refsOverride: load exactly these refs (refreshing them); otherwise every linked campaign not loaded yet.
+                function amzLoadCounts(kind, refsOverride, onDone) {
+                    var st = cntState[kind];
+                    var label = kind === 'pt' ? 'target' : 'keyword';
+                    if (st.loading) { if (onDone) { onDone(); } return; }
                     var all = {};
                     if (refsOverride) {
                         refsOverride.forEach(function (r) { all[r.key] = r; });
                     } else {
                         table.getData().forEach(function (d) {
-                            kwRowRefs(d).forEach(function (r) {
-                                var known = kwCountMap[r.key];
+                            kwRowRefs(d, kind).forEach(function (r) {
+                                var known = st.map[r.key];
                                 if (!known || known.unresolved) { all[r.key] = r; }
                             });
                         });
                     }
                     var refs = Object.keys(all).map(function (k) { return all[k]; });
-                    if (!refs.length) { kwCountStatus('', false); return; }
+                    if (!refs.length) { if (onDone) { onDone(); } return; }
                     var chunks = [];
                     for (var i = 0; i < refs.length; i += 40) { chunks.push(refs.slice(i, i + 40)); }
                     var done = 0;
-                    kwCountsLoading = true;
+                    st.loading = true;
                     kwCountsReformat();
-                    kwCountStatus('Loading keyword counts from Amazon… 0/' + refs.length, false);
+                    kwCountStatus('Loading ' + label + ' counts from Amazon… 0/' + refs.length, false);
 
                     function finish(msg, isErr) {
-                        kwCountsLoading = false;
+                        st.loading = false;
                         kwCountsReformat();
                         kwCountStatus(msg, isErr);
+                        if (onDone) { onDone(isErr); }
                     }
                     function next() {
                         if (!chunks.length) { finish('', false); return; }
                         var chunk = chunks.shift();
-                        postForm(kwCountUrl, { campaigns: chunk, refresh: !!refsOverride }).then(function (out) {
+                        postForm(kwCountUrl, { campaigns: chunk, refresh: !!refsOverride, kind: kind }).then(function (out) {
                             var body = out.body || {};
                             if (body.counts) {
-                                Object.keys(body.counts).forEach(function (k) { kwCountMap[k] = body.counts[k]; });
+                                Object.keys(body.counts).forEach(function (k) { st.map[k] = body.counts[k]; });
                             }
-                            (body.unresolved || []).forEach(function (k) { kwCountMap[k] = { total: null, unresolved: true }; });
+                            (body.unresolved || []).forEach(function (k) { st.map[k] = { total: null, unresolved: true }; });
                             if (!out.ok || body.ok === false) {
-                                finish(body.message || ('Could not load keyword counts (HTTP ' + out.status + '). Use the KW counts button to retry.'), true);
+                                finish(body.message || ('Could not load ' + label + ' counts (HTTP ' + out.status + '). Use the Counts button to retry.'), true);
                                 return;
                             }
                             done += chunk.length;
-                            kwCountStatus('Loading keyword counts from Amazon… ' + done + '/' + refs.length, false);
+                            kwCountStatus('Loading ' + label + ' counts from Amazon… ' + done + '/' + refs.length, false);
                             kwCountsReformat();
                             next();
                         }).catch(function () {
-                            finish('Network error loading keyword counts. Use the KW counts button to retry.', true);
+                            finish('Network error loading ' + label + ' counts. Use the Counts button to retry.', true);
                         });
                     }
                     next();
                 }
+                // Keywords first, then targets (one after the other: Amazon throttles parallel calls).
+                function amzLoadAllCounts() {
+                    amzLoadCounts('kw', null, function (err) {
+                        if (!err) { amzLoadCounts('pt', null, null); }
+                    });
+                }
                 var kwCountReloadBtn = document.getElementById('amzKwCountReloadBtn');
-                if (kwCountReloadBtn) { kwCountReloadBtn.addEventListener('click', function () { amzLoadKwCounts(null); }); }
-                table.on('dataLoaded', function () { amzLoadKwCounts(null); });
+                if (kwCountReloadBtn) { kwCountReloadBtn.addEventListener('click', amzLoadAllCounts); }
+                table.on('dataLoaded', amzLoadAllCounts);
 
                 // ---- Keyword list modal (click a KW K Count) ----
-                var kwListState = { rows: [], campaigns: [], refs: [], parent: '' };
+                var kwListState = { kind: 'kw', rows: [], campaigns: [], refs: [], parent: '' };
+                function kwListNoun(plural) { return kwListState.kind === 'pt' ? (plural ? 'targets' : 'target') : (plural ? 'keywords' : 'keyword'); }
+                function kwListTypeLabel(t) {
+                    if (kwListState.kind === 'pt') { return t === 'AUTO' ? 'Auto group' : (t === 'ASIN' ? 'ASIN' : (t === 'CATEGORY' ? 'Category' : (t || '—'))); }
+                    return t ? t.charAt(0) + t.slice(1).toLowerCase() : '—';
+                }
                 function getKwListModal() {
                     var el = document.getElementById('amzKwListModal');
                     return el && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(el) : null;
@@ -1747,28 +1878,28 @@
                     document.querySelectorAll('.amz-kwlist-camp-col').forEach(function (el) { el.classList.toggle('d-none', !multi); });
                     var shown = rows.slice(0, 1000);
                     body.innerHTML = shown.length ? shown.map(function (r, i) {
-                        var mtLabel = r.match_type ? r.match_type.charAt(0) + r.match_type.slice(1).toLowerCase() : '—';
+                        var mtLabel = kwListTypeLabel(r.match_type);
                         return '<tr><td class="text-muted">' + (i + 1) + '</td><td>' + esc(r.keyword) + '</td><td>' + esc(mtLabel) + '</td>'
                             + '<td class="text-end">' + (r.bid == null ? '—' : Number(r.bid).toFixed(2)) + '</td>'
                             + '<td>' + (r.state === 'ENABLED' ? '<span class="text-success">Enabled</span>' : '<span class="text-muted">' + esc(r.state ? r.state.charAt(0) + r.state.slice(1).toLowerCase() : '—') + '</span>') + '</td>'
                             + (multi ? '<td>' + esc(r.campaign_name) + '</td>' : '<td class="d-none amz-kwlist-camp-col"></td>') + '</tr>';
-                    }).join('') : '<tr><td colspan="6" class="text-muted text-center py-3">No keywords to show.</td></tr>';
+                    }).join('') : '<tr><td colspan="6" class="text-muted text-center py-3">No ' + kwListNoun(true) + ' to show.</td></tr>';
                     var en = 0, pa = 0;
                     rows.forEach(function (r) { if (r.state === 'ENABLED') { en++; } else if (r.state === 'PAUSED') { pa++; } });
-                    document.getElementById('amzKwListSummary').textContent = rows.length.toLocaleString('en-US') + ' keywords (' + en + ' enabled, ' + pa + ' paused)'
+                    document.getElementById('amzKwListSummary').textContent = rows.length.toLocaleString('en-US') + ' ' + kwListNoun(true) + ' (' + en + ' enabled, ' + pa + ' paused)'
                         + (rows.length > shown.length ? ' - showing the first ' + shown.length.toLocaleString('en-US') + ', narrow the filters to see the rest' : '');
                 }
                 function kwListLoad() {
                     var errEl = document.getElementById('amzKwListError');
                     errEl.classList.add('d-none');
-                    document.getElementById('amzKwListBody').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="fa fa-spinner fa-spin me-1"></i>Loading keywords from Amazon…</td></tr>';
+                    document.getElementById('amzKwListBody').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="fa fa-spinner fa-spin me-1"></i>Loading ' + kwListNoun(true) + ' from Amazon…</td></tr>';
                     document.getElementById('amzKwListSummary').textContent = '';
-                    postForm(kwListUrl, { campaigns: kwListState.refs }).then(function (out) {
+                    postForm(kwListUrl, { campaigns: kwListState.refs, kind: kwListState.kind }).then(function (out) {
                         var b = out.body || {};
                         if (!out.ok || !b.ok) {
                             kwListState.rows = [];
                             kwListRender();
-                            errEl.textContent = b.message || ('Could not load keywords (HTTP ' + out.status + '). If this is 404, run php artisan route:clear on the server.');
+                            errEl.textContent = b.message || ('Could not load ' + kwListNoun(true) + ' (HTTP ' + out.status + '). If this is 404, run php artisan route:clear on the server.');
                             errEl.classList.remove('d-none');
                             return;
                         }
@@ -1784,24 +1915,31 @@
                             var mine = kwListState.rows.filter(function (r) { return r.campaign_id === c.campaign_id; });
                             var t = { total: mine.length, enabled: 0, paused: 0 };
                             mine.forEach(function (r) { if (r.state === 'ENABLED') { t.enabled++; } else if (r.state === 'PAUSED') { t.paused++; } });
-                            (c.keys || []).forEach(function (k) { kwCountMap[k] = t; });
+                            (c.keys || []).forEach(function (k) { cntState[kwListState.kind].map[k] = t; });
                         });
                         kwCountsReformat();
                         if (b.truncated) {
-                            errEl.textContent = 'Amazon returned ' + Number(b.total).toLocaleString('en-US') + ' keywords; only the first 5,000 are listed.';
+                            errEl.textContent = 'Amazon returned ' + Number(b.total).toLocaleString('en-US') + ' ' + kwListNoun(true) + '; only the first 5,000 are listed.';
                             errEl.classList.remove('d-none');
                         }
                         kwListRender();
                     }).catch(function () {
-                        errEl.textContent = 'Network error loading keywords.';
+                        errEl.textContent = 'Network error loading ' + kwListNoun(true) + '.';
                         errEl.classList.remove('d-none');
                     });
                 }
-                function kwListOpen(d) {
-                    var refs = kwRowRefs(d);
+                function kwListOpen(d, kind) {
+                    kind = kind === 'pt' ? 'pt' : 'kw';
+                    var refs = kwRowRefs(d, kind);
                     if (!refs.length) { return; }
-                    kwListState = { rows: [], campaigns: [], refs: refs, parent: d.parent || '' };
-                    document.getElementById('amzKwListModalLabel').textContent = 'Keywords - ' + (d.parent || d.sku || '');
+                    kwListState = { kind: kind, rows: [], campaigns: [], refs: refs, parent: d.parent || '' };
+                    document.getElementById('amzKwListModalLabel').textContent = (kind === 'pt' ? 'Targets - ' : 'Keywords - ') + (d.parent || d.sku || '');
+                    document.getElementById('amzKwListThKeyword').textContent = kind === 'pt' ? 'Target' : 'Keyword';
+                    document.getElementById('amzKwListThMatch').textContent = kind === 'pt' ? 'Type' : 'Match';
+                    document.getElementById('amzKwListSearch').placeholder = kind === 'pt' ? 'Search targets / ASINs' : 'Search keywords';
+                    document.getElementById('amzKwListMatch').innerHTML = kind === 'pt'
+                        ? '<option value="">All types</option><option value="ASIN">ASIN</option><option value="AUTO">Auto group</option><option value="CATEGORY">Category</option>'
+                        : '<option value="">All match types</option><option value="BROAD">Broad</option><option value="PHRASE">Phrase</option><option value="EXACT">Exact</option>';
                     ['amzKwListMatch', 'amzKwListState'].forEach(function (id) { document.getElementById(id).value = ''; });
                     document.getElementById('amzKwListSearch').value = '';
                     document.getElementById('amzKwListCampaign').classList.add('d-none');
@@ -1816,7 +1954,7 @@
                         if (!a) { return; }
                         e.preventDefault();
                         var row = table.getRow(a.getAttribute('data-sku'));
-                        if (row) { kwListOpen(row.getData()); }
+                        if (row) { kwListOpen(row.getData(), a.getAttribute('data-kind')); }
                     });
                 }
                 ['amzKwListCampaign', 'amzKwListMatch', 'amzKwListState'].forEach(function (id) {
@@ -1826,7 +1964,7 @@
                 document.getElementById('amzKwListRefreshBtn').addEventListener('click', kwListLoad);
                 document.getElementById('amzKwListCsvBtn').addEventListener('click', function () {
                     var rows = kwListFiltered();
-                    var csv = ['Campaign,Keyword,Match type,Bid,State'].concat(rows.map(function (r) {
+                    var csv = [kwListState.kind === 'pt' ? 'Campaign,Target,Type,Bid,State' : 'Campaign,Keyword,Match type,Bid,State'].concat(rows.map(function (r) {
                         return [r.campaign_name, r.keyword, r.match_type, r.bid == null ? '' : r.bid, r.state].map(function (v) {
                             return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
                         }).join(',');
@@ -1835,7 +1973,7 @@
                     var url = URL.createObjectURL(blob);
                     var link = document.createElement('a');
                     link.href = url;
-                    link.download = 'amazon-kw-' + String(kwListState.parent || 'keywords').replace(/[^a-z0-9]+/gi, '-') + '.csv';
+                    link.download = 'amazon-' + kwListState.kind + '-' + String(kwListState.parent || 'keywords').replace(/[^a-z0-9]+/gi, '-') + '.csv';
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
@@ -2854,16 +2992,23 @@
                             parent: document.getElementById('amzCreateParent').value,
                             campaign_id: (document.getElementById('amzUpdateCampaign') || {}).value || '',
                             default_bid: parseFloat(document.getElementById('amzCreateDefaultBid').value) || 0.60,
-                            keywords: kwAdded.map(function (k) { return { text: k.text, match_type: k.match_type, bid: k.bid }; }),
-                            negatives: kwNegatives.map(function (n) { return { text: n.text, match_type: n.match_type }; })
+                            keywords: currentCreateType() === 'KW'
+                                ? kwAdded.map(function (k) { return { text: k.text, match_type: k.match_type, bid: k.bid }; })
+                                : []
                         };
+                        if (currentCreateType() === 'PT') { Object.assign(updPayload, ptPayload()); }
                         if (!updPayload.campaign_id) {
                             errEl.textContent = 'Pick the campaign to update.';
                             errEl.classList.remove('d-none');
                             return;
                         }
-                        if (!updPayload.keywords.length && !updPayload.negatives.length) {
-                            errEl.textContent = 'Add at least one keyword or negative keyword to update the campaign.';
+                        if (currentCreateType() === 'KW' && !updPayload.keywords.length) {
+                            errEl.textContent = 'Add at least one keyword to update the campaign.';
+                            errEl.classList.remove('d-none');
+                            return;
+                        }
+                        if (currentCreateType() === 'PT' && updPayload.pt_mode === 'MANUAL' && !updPayload.pt_targets.length) {
+                            errEl.textContent = 'Add at least one valid ASIN to update the campaign.';
                             errEl.classList.remove('d-none');
                             return;
                         }
@@ -2874,11 +3019,11 @@
                             btn.innerHTML = amzSubmitHtml();
                             if (out.ok && out.body && out.body.ok) {
                                 kwAdded = [];
-                                kwNegatives = [];
+                                ptAsins = [];
                                 kwRenderAdded();
                                 kwRenderSuggestions();
-                                kwNegRender();
-                                amzLoadKwCounts([{ key: String(updPayload.campaign_id), campaign_id: String(updPayload.campaign_id), campaign_name: '' }]);
+                                ptRender();
+                                amzLoadCounts(currentCreateType() === 'PT' ? 'pt' : 'kw', [{ key: String(updPayload.campaign_id), campaign_id: String(updPayload.campaign_id), campaign_name: '' }]);
                                 window.alert(out.body.message || 'Campaign updated.');
                             } else {
                                 errEl.textContent = (out.body && out.body.message) || ('Failed to update campaign (HTTP ' + out.status + ').');
@@ -2906,9 +3051,9 @@
                             : [],
                         bidding_strategy: document.getElementById('amzCreateStrategy').value || 'LEGACY_FOR_SALES',
                         top_of_search_pct: parseInt(document.getElementById('amzCreateTopPct').value, 10) || 0,
-                        product_pages_pct: parseInt(document.getElementById('amzCreateProdPct').value, 10) || 0,
-                        negatives: kwNegatives.map(function (n) { return { text: n.text, match_type: n.match_type }; })
+                        product_pages_pct: parseInt(document.getElementById('amzCreateProdPct').value, 10) || 0
                     };
+                    if (payload.type === 'PT') { Object.assign(payload, ptPayload()); }
                     if (!payload.parent || !(payload.campaign_name || '').trim()) {
                         errEl.textContent = 'Parent and campaign name are required.';
                         errEl.classList.remove('d-none');

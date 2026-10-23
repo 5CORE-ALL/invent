@@ -257,10 +257,15 @@ class AmazonAdsMissingController extends Controller
             'bidding_strategy' => ['nullable', 'string', 'in:LEGACY_FOR_SALES,AUTO_FOR_SALES,MANUAL'],
             'top_of_search_pct' => ['nullable', 'integer', 'min:0', 'max:900'],
             'product_pages_pct' => ['nullable', 'integer', 'min:0', 'max:900'],
-            // Campaign negative keywords (Amazon: phrase / exact only).
-            'negatives' => ['nullable', 'array', 'max:1000'],
-            'negatives.*.text' => ['required', 'string', 'max:255'],
-            'negatives.*.match_type' => ['nullable', 'string', 'in:PHRASE,EXACT'],
+            // PT campaigns: AUTO (the 4 automatic targeting groups) or MANUAL (ASIN product targets).
+            'pt_mode' => ['nullable', 'string', 'in:AUTO,MANUAL'],
+            'pt_groups' => ['nullable', 'array', 'max:8'],
+            'pt_groups.*.type' => ['required', 'string', 'in:QUERY_HIGH_REL_MATCHES,QUERY_BROAD_REL_MATCHES,ASIN_SUBSTITUTE_RELATED,ASIN_ACCESSORY_RELATED'],
+            'pt_groups.*.enabled' => ['nullable', 'boolean'],
+            'pt_groups.*.bid' => ['nullable', 'numeric', 'min:0.02'],
+            'pt_targets' => ['nullable', 'array', 'max:1000'],
+            'pt_targets.*.asin' => ['required', 'string', 'max:32'],
+            'pt_targets.*.bid' => ['nullable', 'numeric', 'min:0.02'],
         ]);
 
         $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
@@ -273,6 +278,16 @@ class AmazonAdsMissingController extends Controller
             return response()->json([
                 'ok' => false,
                 'message' => 'Add at least one keyword in Keyword targeting (Suggested, Enter list or Upload file) before creating a KW campaign.',
+            ], 422);
+        }
+
+        $ptMode = $type === 'PT' && strtoupper((string) ($validated['pt_mode'] ?? 'AUTO')) === 'MANUAL' ? 'MANUAL' : 'AUTO';
+        $ptTargets = $type === 'PT' && $ptMode === 'MANUAL' ? $this->normalizeAsinTargets($validated['pt_targets'] ?? []) : [];
+        $ptGroups = $type === 'PT' && $ptMode === 'AUTO' ? $this->normalizeAutoGroups($validated['pt_groups'] ?? []) : [];
+        if ($type === 'PT' && $ptMode === 'MANUAL' && $ptTargets === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Add at least one valid ASIN (10 characters) in Product targeting before creating a manual PT campaign.',
             ], 422);
         }
 
@@ -317,8 +332,8 @@ class AmazonAdsMissingController extends Controller
         $campaignName = $this->ensureUniqueCampaignName($campaignName);
         $budget = (float) ($validated['budget_amount'] ?? 3);
         $defaultBid = (float) ($validated['default_bid'] ?? 0.60);
-        // Amazon rule: positive keywords require MANUAL; AUTO is for PT-style product ads.
-        $targetingType = $type === 'KW' ? 'MANUAL' : 'AUTO';
+        // Amazon rule: positive keywords and ASIN product targets require MANUAL; AUTO uses the automatic groups.
+        $targetingType = ($type === 'KW' || $ptMode === 'MANUAL') ? 'MANUAL' : 'AUTO';
 
         $created = null;
         $lastError = '';
@@ -393,12 +408,17 @@ class AmazonAdsMissingController extends Controller
             $extra .= ' Keywords: '.$keywordResult['message'];
         }
 
-        // Campaign negative keywords picked in the "Negative keywords" box.
-        $negativeResult = null;
-        $pickedNegatives = $this->normalizePickedNegatives($validated['negatives'] ?? []);
-        if ($pickedNegatives !== [] && $campaignId !== '') {
-            $negativeResult = $this->pushPickedNegatives($campaignId, $pickedNegatives);
-            $extra .= ' Negatives: '.$negativeResult['message'];
+        // PT: ASIN product targets (MANUAL) or the bids / on-off of the 4 auto targeting groups (AUTO).
+        $targetsResult = null;
+        if ($campaignId !== '') {
+            $service = app(AmazonAdsService::class);
+            if ($ptTargets !== [] && $adGroupId !== '') {
+                $targetsResult = $service->createAsinTargets($campaignId, $adGroupId, $ptTargets, $defaultBid);
+                $extra .= ' Targets: '.$targetsResult['message'];
+            } elseif ($ptGroups !== []) {
+                $targetsResult = $service->applyAutoTargetGroups($campaignId, $ptGroups);
+                $extra .= ' Auto targeting: '.$targetsResult['message'];
+            }
         }
 
         return response()->json([
@@ -415,15 +435,15 @@ class AmazonAdsMissingController extends Controller
             'children' => $resolvedChildren,
             'campaign' => $created,
             'keywords_result' => $keywordResult,
-            'negatives_result' => $negativeResult,
+            'targets_result' => $targetsResult,
             'pt' => $this->linksResponseForSku($sku)['pt'],
             'kw' => $this->linksResponseForSku($sku)['kw'],
         ]);
     }
 
     /**
-     * Update an EXISTING KW / MANUAL campaign linked to this parent: add the keywords (with match type + bid) and
-     * campaign negatives picked in the Create modal. Keywords that already exist are skipped by Amazon (counted as duplicates).
+     * Update an EXISTING campaign linked to this parent: add keywords (KW / MANUAL), add ASIN product targets
+     * (PT / MANUAL) or change the auto targeting groups (PT / AUTO). Duplicates are skipped by Amazon.
      */
     public function updateCampaign(Request $request): JsonResponse
     {
@@ -435,9 +455,15 @@ class AmazonAdsMissingController extends Controller
             'keywords.*.text' => ['required', 'string', 'max:255'],
             'keywords.*.match_type' => ['nullable', 'string', 'in:BROAD,PHRASE,EXACT'],
             'keywords.*.bid' => ['nullable', 'numeric', 'min:0.02'],
-            'negatives' => ['nullable', 'array', 'max:1000'],
-            'negatives.*.text' => ['required', 'string', 'max:255'],
-            'negatives.*.match_type' => ['nullable', 'string', 'in:PHRASE,EXACT'],
+            // PT campaigns: AUTO (the 4 automatic targeting groups) or MANUAL (ASIN product targets).
+            'pt_mode' => ['nullable', 'string', 'in:AUTO,MANUAL'],
+            'pt_groups' => ['nullable', 'array', 'max:8'],
+            'pt_groups.*.type' => ['required', 'string', 'in:QUERY_HIGH_REL_MATCHES,QUERY_BROAD_REL_MATCHES,ASIN_SUBSTITUTE_RELATED,ASIN_ACCESSORY_RELATED'],
+            'pt_groups.*.enabled' => ['nullable', 'boolean'],
+            'pt_groups.*.bid' => ['nullable', 'numeric', 'min:0.02'],
+            'pt_targets' => ['nullable', 'array', 'max:1000'],
+            'pt_targets.*.asin' => ['required', 'string', 'max:32'],
+            'pt_targets.*.bid' => ['nullable', 'numeric', 'min:0.02'],
         ]);
 
         $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
@@ -454,11 +480,12 @@ class AmazonAdsMissingController extends Controller
         }
 
         $keywords = $this->normalizePickedKeywords($validated['keywords'] ?? []);
-        $negatives = $this->normalizePickedNegatives($validated['negatives'] ?? []);
-        if ($keywords === [] && $negatives === []) {
+        $ptTargets = $this->normalizeAsinTargets($validated['pt_targets'] ?? []);
+        $ptGroups = $this->normalizeAutoGroups($validated['pt_groups'] ?? []);
+        if ($keywords === [] && $ptTargets === [] && $ptGroups === []) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Add at least one keyword or negative keyword to update the campaign.',
+                'message' => 'Add at least one keyword, product target or auto targeting change to update the campaign.',
             ], 422);
         }
 
@@ -466,7 +493,7 @@ class AmazonAdsMissingController extends Controller
         $parts = [];
         $ok = true;
         $keywordResult = null;
-        $negativeResult = null;
+        $targetsResult = null;
 
         if ($keywords !== []) {
             $adGroupId = app(AmazonAdsService::class)->resolvePrimaryAdGroupId($campaignId);
@@ -482,10 +509,24 @@ class AmazonAdsMissingController extends Controller
                 $ok = false;
             }
         }
-        if ($negatives !== []) {
-            $negativeResult = $this->pushPickedNegatives($campaignId, $negatives);
-            $parts[] = 'Negatives: '.$negativeResult['message'];
-            if ($negativeResult['added'] === 0 && $negativeResult['duplicates'] === 0) {
+        if ($ptTargets !== []) {
+            $adGroupId = app(AmazonAdsService::class)->resolvePrimaryAdGroupId($campaignId);
+            if ($adGroupId === '') {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Could not find an ad group for this campaign on Amazon.',
+                ], 422);
+            }
+            $targetsResult = app(AmazonAdsService::class)->createAsinTargets($campaignId, $adGroupId, $ptTargets, $defaultBid);
+            $parts[] = 'Targets: '.$targetsResult['message'];
+            if ($targetsResult['added'] === 0 && $targetsResult['duplicates'] === 0) {
+                $ok = false;
+            }
+        }
+        if ($ptGroups !== []) {
+            $groupsResult = app(AmazonAdsService::class)->applyAutoTargetGroups($campaignId, $ptGroups);
+            $parts[] = 'Auto targeting: '.$groupsResult['message'];
+            if (empty($groupsResult['success'])) {
                 $ok = false;
             }
         }
@@ -496,7 +537,7 @@ class AmazonAdsMissingController extends Controller
             'campaign_id' => $campaignId,
             'campaign_name' => (string) $link->campaign_name,
             'keywords_result' => $keywordResult,
-            'negatives_result' => $negativeResult,
+            'targets_result' => $targetsResult,
         ]);
     }
 
@@ -529,6 +570,37 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
+     * Human label + type for a Sponsored Products targeting clause.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{0: string, 1: string}  [label, type]
+     */
+    private function describeTargetExpression(array $row): array
+    {
+        $expr = (array) ($row['expression'] ?? []);
+        $first = is_array($expr[0] ?? null) ? $expr[0] : [];
+        $type = strtoupper((string) ($first['type'] ?? ''));
+        $value = (string) ($first['value'] ?? '');
+        $auto = [
+            'QUERY_HIGH_REL_MATCHES' => 'Close match',
+            'QUERY_BROAD_REL_MATCHES' => 'Loose match',
+            'ASIN_SUBSTITUTE_RELATED' => 'Substitutes',
+            'ASIN_ACCESSORY_RELATED' => 'Complements',
+        ];
+        if (isset($auto[$type])) {
+            return [$auto[$type], 'AUTO'];
+        }
+        if ($type === 'ASIN_SAME_AS') {
+            return [$value, 'ASIN'];
+        }
+        if ($type === 'ASIN_CATEGORY_SAME_AS') {
+            return ['Category '.$value, 'CATEGORY'];
+        }
+
+        return [$value !== '' ? $value : ($type !== '' ? $type : '—'), $type !== '' ? $type : 'TARGET'];
+    }
+
+    /**
      * Keyword counts (enabled + paused) per linked KW campaign, straight from the Amazon Ads API.
      * Cached 30 minutes per campaign; "refresh" bypasses the cache.
      */
@@ -540,8 +612,10 @@ class AmazonAdsMissingController extends Controller
             'campaigns.*.campaign_id' => ['nullable', 'string', 'max:64'],
             'campaigns.*.campaign_name' => ['nullable', 'string', 'max:255'],
             'refresh' => ['nullable', 'boolean'],
+            'kind' => ['nullable', 'string', 'in:kw,pt'],
         ]);
 
+        $kind = ($validated['kind'] ?? 'kw') === 'pt' ? 'pt' : 'kw';
         $refs = $this->resolveKeywordCampaignRefs($validated['campaigns']);
         $force = ! empty($validated['refresh']);
         $counts = [];
@@ -554,7 +628,7 @@ class AmazonAdsMissingController extends Controller
 
         $toFetch = [];
         foreach ($refs as $key => $ref) {
-            $cached = $force ? null : Cache::get('amz_kw_cnt:'.$ref['id']);
+            $cached = $force ? null : Cache::get('amz_'.$kind.'_cnt:'.$ref['id']);
             if (is_array($cached)) {
                 $counts[$key] = $cached;
             } else {
@@ -566,7 +640,9 @@ class AmazonAdsMissingController extends Controller
         $status = 200;
         if ($toFetch !== []) {
             try {
-                $rows = app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($toFetch));
+                $rows = $kind === 'pt'
+                    ? app(AmazonAdsService::class)->listTargetsByCampaignIdsBulk(array_keys($toFetch))
+                    : app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($toFetch));
                 $tally = [];
                 foreach (array_keys($toFetch) as $id) {
                     $tally[$id] = ['total' => 0, 'enabled' => 0, 'paused' => 0];
@@ -585,7 +661,7 @@ class AmazonAdsMissingController extends Controller
                     }
                 }
                 foreach ($tally as $id => $t) {
-                    Cache::put('amz_kw_cnt:'.$id, $t, now()->addMinutes(30));
+                    Cache::put('amz_'.$kind.'_cnt:'.$id, $t, now()->addMinutes(30));
                     foreach ($toFetch[$id] as $key) {
                         $counts[$key] = $t;
                     }
@@ -596,7 +672,7 @@ class AmazonAdsMissingController extends Controller
                     && $e->getResponse()->getStatusCode() === 429) ? 429 : 502;
                 $error = $status === 429
                     ? 'Amazon is rate-limiting keyword requests right now. Try again in a minute.'
-                    : 'Amazon keyword count failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e);
+                    : 'Amazon '.($kind === 'pt' ? 'target' : 'keyword').' count failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e);
             }
         }
 
@@ -618,8 +694,10 @@ class AmazonAdsMissingController extends Controller
             'campaigns.*.key' => ['required', 'string', 'max:300'],
             'campaigns.*.campaign_id' => ['nullable', 'string', 'max:64'],
             'campaigns.*.campaign_name' => ['nullable', 'string', 'max:255'],
+            'kind' => ['nullable', 'string', 'in:kw,pt'],
         ]);
 
+        $kind = ($validated['kind'] ?? 'kw') === 'pt' ? 'pt' : 'kw';
         $refs = $this->resolveKeywordCampaignRefs($validated['campaigns']);
         if ($refs === []) {
             return response()->json([
@@ -636,7 +714,9 @@ class AmazonAdsMissingController extends Controller
         }
 
         try {
-            $rows = app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($names));
+            $rows = $kind === 'pt'
+                ? app(AmazonAdsService::class)->listTargetsByCampaignIdsBulk(array_keys($names))
+                : app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($names));
         } catch (\Throwable $e) {
             Log::warning('Amazon keyword list failed', ['error' => $e->getMessage()]);
             $throttled = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()
@@ -646,18 +726,24 @@ class AmazonAdsMissingController extends Controller
                 'ok' => false,
                 'message' => $throttled
                     ? 'Amazon is rate-limiting keyword requests right now. Try again in a minute.'
-                    : 'Amazon keyword list failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
+                    : 'Amazon '.($kind === 'pt' ? 'target' : 'keyword').' list failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
             ], $throttled ? 429 : 502);
         }
 
         $keywords = [];
         foreach ($rows as $row) {
             $cid = (string) ($row['campaignId'] ?? '');
+            if ($kind === 'pt') {
+                [$label, $typeLabel] = $this->describeTargetExpression($row);
+            } else {
+                $label = (string) ($row['keywordText'] ?? '');
+                $typeLabel = strtoupper((string) ($row['matchType'] ?? ''));
+            }
             $keywords[] = [
                 'campaign_id' => $cid,
                 'campaign_name' => $names[$cid] ?? $cid,
-                'keyword' => (string) ($row['keywordText'] ?? ''),
-                'match_type' => strtoupper((string) ($row['matchType'] ?? '')),
+                'keyword' => $label,
+                'match_type' => $typeLabel,
                 'bid' => isset($row['bid']) && is_numeric($row['bid']) ? round((float) $row['bid'], 2) : null,
                 'state' => strtoupper((string) ($row['state'] ?? '')),
             ];
@@ -858,9 +944,9 @@ class AmazonAdsMissingController extends Controller
 
     /**
      * @param  array<int, mixed>  $rows
-     * @return list<array{text: string, match_type: string}>
+     * @return list<array{asin: string, bid: float|null}>
      */
-    private function normalizePickedNegatives(array $rows): array
+    private function normalizeAsinTargets(array $rows): array
     {
         $out = [];
         $seen = [];
@@ -868,70 +954,43 @@ class AmazonAdsMissingController extends Controller
             if (! is_array($row)) {
                 continue;
             }
-            $text = preg_replace('/\s+/', ' ', trim((string) ($row['text'] ?? '')));
-            // Campaign negatives: up to 80 characters / 10 words.
-            if ($text === '' || mb_strlen($text) > 80 || count(explode(' ', $text)) > 10) {
+            $asin = strtoupper(trim((string) ($row['asin'] ?? '')));
+            if (! preg_match('/^[A-Z0-9]{10}$/', $asin) || isset($seen[$asin])) {
                 continue;
             }
-            $mt = strtoupper(trim((string) ($row['match_type'] ?? 'PHRASE'))) === 'EXACT' ? 'NEGATIVE_EXACT' : 'NEGATIVE_PHRASE';
-            $key = mb_strtolower($text).'|'.$mt;
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $out[] = ['text' => $text, 'match_type' => $mt];
+            $seen[$asin] = true;
+            $bid = isset($row['bid']) && is_numeric($row['bid']) ? max(0.02, round((float) $row['bid'], 2)) : null;
+            $out[] = ['asin' => $asin, 'bid' => $bid];
         }
 
         return $out;
     }
 
     /**
-     * Push campaign negative keywords grouped by match type.
+     * Auto targeting groups the user set: expression type => {enabled, bid}.
      *
-     * @param  list<array{text: string, match_type: string}>  $negatives
-     * @return array{added: int, failed: int, duplicates: int, message: string}
+     * @param  array<int, mixed>  $rows
+     * @return array<string, array{enabled: bool, bid: float|null}>
      */
-    private function pushPickedNegatives(string $campaignId, array $negatives): array
+    private function normalizeAutoGroups(array $rows): array
     {
-        $groups = [];
-        foreach ($negatives as $n) {
-            $groups[$n['match_type']][] = $n['text'];
-        }
-
-        $service = app(AmazonAdsService::class);
-        $added = 0;
-        $failed = 0;
-        $dups = 0;
-        $errors = [];
-        foreach ($groups as $mt => $texts) {
-            try {
-                $res = $service->pushCampaignNegativeKeywords($campaignId, $texts, $mt);
-            } catch (\Throwable $e) {
-                $failed += count($texts);
-                $errors[] = $service->amazonErrorMessage($e);
-
+        $allowed = ['QUERY_HIGH_REL_MATCHES', 'QUERY_BROAD_REL_MATCHES', 'ASIN_SUBSTITUTE_RELATED', 'ASIN_ACCESSORY_RELATED'];
+        $out = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
                 continue;
             }
-            $added += (int) ($res['added'] ?? 0);
-            $failed += (int) ($res['failed'] ?? 0);
-            $dups += (int) ($res['duplicates'] ?? 0);
-            foreach ((array) ($res['errors'] ?? []) as $err) {
-                $errors[] = (string) $err;
+            $type = strtoupper(trim((string) ($row['type'] ?? '')));
+            if (! in_array($type, $allowed, true)) {
+                continue;
             }
-        }
-        $msg = "added {$added} negative keyword(s)";
-        if ($dups > 0) {
-            $msg .= ", {$dups} already existed";
-        }
-        if ($failed > 0) {
-            $msg .= ", {$failed} rejected";
-            $errors = array_values(array_unique(array_filter($errors)));
-            if ($errors !== []) {
-                $msg .= ' ('.implode(' | ', array_slice($errors, 0, 2)).')';
-            }
+            $out[$type] = [
+                'enabled' => ! array_key_exists('enabled', $row) || filter_var($row['enabled'], FILTER_VALIDATE_BOOLEAN),
+                'bid' => isset($row['bid']) && is_numeric($row['bid']) ? max(0.02, round((float) $row['bid'], 2)) : null,
+            ];
         }
 
-        return ['added' => $added, 'failed' => $failed, 'duplicates' => $dups, 'message' => $msg.'.'];
+        return $out;
     }
 
     /**
