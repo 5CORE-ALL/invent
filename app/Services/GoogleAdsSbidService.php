@@ -1668,18 +1668,27 @@ class GoogleAdsSbidService
         $state = '';
         $note = '';
         if ($action === 'pause') {
-            if ($positive === []) {
-                return $fail('This Item ID is not attached in the ad — nothing to pause.');
-            }
-            foreach ($positive as $n) {
-                if ($n['status'] !== 'PAUSED') {
-                    $ops[] = (new AdGroupCriterionOperation())
-                        ->setUpdate(new AdGroupCriterion(['resource_name' => $n['resource'], 'status' => AdGroupCriterionStatus::PAUSED]))
-                        ->setUpdateMask(new FieldMask(['paths' => ['status']]));
+            if ($positive === [] && $mine !== []) {
+                // Already excluded (grey "−"): finish the job and take it out of the campaign completely.
+                $action = 'remove';
+                foreach ($mine as $n) {
+                    $ops[] = (new AdGroupCriterionOperation())->setRemove($n['resource']);
                 }
+                $state = 'NOT_ATTACHED';
+                $note = 'Item was already excluded — removed from the ad completely.';
+            } elseif ($positive === []) {
+                return $fail('This Item ID is not in the ad — nothing to pause.');
+            } else {
+                foreach ($positive as $n) {
+                    if ($n['status'] !== 'PAUSED') {
+                        $ops[] = (new AdGroupCriterionOperation())
+                            ->setUpdate(new AdGroupCriterion(['resource_name' => $n['resource'], 'status' => AdGroupCriterionStatus::PAUSED]))
+                            ->setUpdateMask(new FieldMask(['paths' => ['status']]));
+                    }
+                }
+                $state = 'PAUSED';
+                $note = $ops === [] ? 'Already paused.' : 'Item paused in the ad.';
             }
-            $state = 'PAUSED';
-            $note = $ops === [] ? 'Already paused.' : 'Item paused in the ad.';
         } elseif ($action === 'remove') {
             if ($mine === []) {
                 return $fail('This Item ID is not in the ad — nothing to remove.');
@@ -1774,8 +1783,9 @@ class GoogleAdsSbidService
     }
 
     /**
-     * Stops an Item ID from serving by replacing its unit with an excluded (grey "−") one.
-     * Used when a plain pause does not stick. Flat tree only.
+     * Stops an Item ID from serving by removing its unit from the listing groups. The products then fall into
+     * "Everything else in All products" (excluded), and the Item ID disappears from the campaign's list.
+     * Used when a plain pause does not stick.
      *
      * @return array{ok: bool, message: string, state: string}
      */
@@ -1787,42 +1797,33 @@ class GoogleAdsSbidService
         } catch (\Throwable $e) {
             return $fail($why.'; could not re-read the ad: '.self::briefGoogleError($e));
         }
-        $nodes = $data['nodes'];
-        $roots = array_values(array_filter($nodes, static fn ($n) => $n['parent'] === ''));
-        if (count($data['adGroups']) !== 1 || count($roots) !== 1 || $roots[0]['type'] !== 'SUBDIVISION') {
-            return $fail($why.'. Campaign has a custom listing-group tree — pause it manually in Google Ads.');
-        }
         $key = strtolower($itemId);
         $ops = [];
-        foreach ($nodes as $n) {
+        foreach ($data['nodes'] as $n) {
             if ($n['item'] !== '' && strtolower($n['item']) === $key) {
                 $ops[] = (new AdGroupCriterionOperation())->setRemove($n['resource']);
             }
         }
-        $ops[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
-            'ad_group' => (string) array_key_first($data['adGroups']),
-            'status' => AdGroupCriterionStatus::ENABLED,
-            'negative' => true,
-            'listing_group' => new ListingGroupInfo([
-                'type' => ListingGroupType::UNIT,
-                'parent_ad_group_criterion' => $roots[0]['resource'],
-                'case_value' => new ListingDimensionInfo([
-                    'product_item_id' => new ProductItemIdInfo(['value' => $itemId]),
-                ]),
-            ]),
-        ]));
+        if ($ops === []) {
+            return ['ok' => true, 'message' => 'Item ID is no longer in the ad.', 'state' => 'NOT_ATTACHED'];
+        }
         try {
             $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
                 new MutateAdGroupCriteriaRequest(['customer_id' => $customerId, 'operations' => $ops])
             );
         } catch (\Throwable $e) {
-            Log::error('Failed to exclude Shopping Item ID', ['campaign_id' => $campaignId, 'item' => $itemId, 'error' => $e->getMessage()]);
+            Log::error('Failed to remove Shopping Item ID (pause fallback)', ['campaign_id' => $campaignId, 'item' => $itemId, 'error' => $e->getMessage()]);
 
-            return $fail($why.'; excluding it also failed: '.self::briefGoogleError($e));
+            return $fail($why.'; removing it also failed: '.self::briefGoogleError($e));
         }
-        Log::info('Excluded Shopping Item ID (pause fallback)', ['campaign_id' => $campaignId, 'item' => $itemId, 'why' => $why]);
+        Log::info('Removed Shopping Item ID (pause fallback)', ['campaign_id' => $campaignId, 'item' => $itemId, 'why' => $why]);
 
-        return ['ok' => true, 'message' => $why.' — so the Item ID was excluded instead (it no longer serves).', 'state' => 'EXCLUDED'];
+        $live = $this->listShoppingItemStates($customerId, $campaignId);
+        if ($live['status'] === 'ok' && isset($live['items'][$key])) {
+            return $fail($why.'; removed it, but Google still lists it as '.$live['items'][$key]['state'].'.');
+        }
+
+        return ['ok' => true, 'message' => $why.' — so the Item ID was removed from the ad (it no longer serves).', 'state' => 'NOT_ATTACHED'];
     }
 
     /**

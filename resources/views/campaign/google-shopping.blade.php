@@ -1836,8 +1836,8 @@
             var GAC_SKU_STATE = {
                 ENABLED: { label: 'Enabled', bg: '#dcfce7', fg: '#166534', sel: 'enable' },
                 PAUSED: { label: 'Paused', bg: '#fef3c7', fg: '#92400e', sel: 'pause' },
-                EXCLUDED: { label: 'Excluded', bg: '#fee2e2', fg: '#991b1b', sel: 'remove' },
-                NOT_ATTACHED: { label: 'Not in ad', bg: '#f3f4f6', fg: '#4b5563', sel: 'remove' },
+                EXCLUDED: { label: 'Excluded', bg: '#fee2e2', fg: '#991b1b', sel: '' },
+                NOT_ATTACHED: { label: 'Not in ad', bg: '#f3f4f6', fg: '#4b5563', sel: '' },
                 NO_ITEM_ID: { label: 'No Item ID', bg: '#f3f4f6', fg: '#9ca3af', sel: '' }
             };
             function gacSkuShowMsg(text, ok) {
@@ -1869,6 +1869,7 @@
                     var skuTxt = r.extra ? '— (not in this parent)' : r.sku;
                     var dis = r.item_id ? '' : ' disabled';
                     var sel = '<select class="form-select form-select-sm gac-sku-action" data-item="' + gacRawEscAttr(r.item_id || '') + '" data-prev="' + st.sel + '"' + dis + '>'
+                        + (st.sel ? '' : '<option value="" selected disabled>Select…</option>')
                         + ['enable:Enable', 'pause:Pause', 'remove:Remove'].map(function(o) {
                             var kv = o.split(':');
                             return '<option value="' + kv[0] + '"' + (st.sel === kv[0] ? ' selected' : '') + '>' + kv[1] + '</option>';
@@ -1916,7 +1917,7 @@
                 var item = selectEl.getAttribute('data-item') || '';
                 var action = selectEl.value;
                 var prev = selectEl.getAttribute('data-prev') || '';
-                if (!item || action === prev) return;
+                if (!item || !action || action === prev) return;
                 if (action === 'remove' && !window.confirm('Remove Item ID ' + item + ' from this campaign in Google Ads?')) {
                     selectEl.value = prev;
                     return;
