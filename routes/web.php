@@ -3913,6 +3913,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/missing/create', [\App\Http\Controllers\AmazonAdsMissingController::class, 'create'])->name('amazon.ads.missing.create');
     Route::post('/amazon-ads/missing/keyword-suggestions', [\App\Http\Controllers\AmazonAdsMissingController::class, 'keywordSuggestions'])->name('amazon.ads.missing.keyword-suggestions');
     Route::post('/amazon-ads/missing/keyword-ideas', [\App\Http\Controllers\AmazonAdsMissingController::class, 'keywordIdeas'])->name('amazon.ads.missing.keyword-ideas');
+    Route::post('/amazon-ads/missing/update-campaign', [\App\Http\Controllers\AmazonAdsMissingController::class, 'updateCampaign'])->name('amazon.ads.missing.update-campaign');
     Route::post('/amazon-ads/missing/delete', [\App\Http\Controllers\AmazonAdsMissingController::class, 'delete'])->name('amazon.ads.missing.delete');
     Route::post('/amazon-ads/missing/ai-negatives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'aiNegativeKeywords'])->name('amazon.ads.missing.ai-negatives');
     Route::post('/amazon-ads/missing/push-negatives', [\App\Http\Controllers\AmazonAdsMissingController::class, 'pushNegativeKeywords'])->name('amazon.ads.missing.push-negatives');

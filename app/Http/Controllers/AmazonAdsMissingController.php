@@ -422,6 +422,85 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
+     * Update an EXISTING KW / MANUAL campaign linked to this parent: add the keywords (with match type + bid) and
+     * campaign negatives picked in the Create modal. Keywords that already exist are skipped by Amazon (counted as duplicates).
+     */
+    public function updateCampaign(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent' => ['required', 'string', 'max:255'],
+            'campaign_id' => ['required', 'string', 'max:64'],
+            'default_bid' => ['nullable', 'numeric', 'min:0.02'],
+            'keywords' => ['nullable', 'array', 'max:1000'],
+            'keywords.*.text' => ['required', 'string', 'max:255'],
+            'keywords.*.match_type' => ['nullable', 'string', 'in:BROAD,PHRASE,EXACT'],
+            'keywords.*.bid' => ['nullable', 'numeric', 'min:0.02'],
+            'negatives' => ['nullable', 'array', 'max:1000'],
+            'negatives.*.text' => ['required', 'string', 'max:255'],
+            'negatives.*.match_type' => ['nullable', 'string', 'in:PHRASE,EXACT'],
+        ]);
+
+        $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
+        $sku = 'PARENT '.$parent;
+        $campaignId = preg_replace('/\D+/', '', (string) $validated['campaign_id']);
+
+        // Only campaigns linked to this parent on this page can be updated here.
+        $link = $campaignId === '' ? null : AmazonAdsMissingLink::where('sku', $sku)->where('campaign_id', $campaignId)->first();
+        if (! $link) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'That campaign is not linked to this parent. Link it first, then update it.',
+            ], 422);
+        }
+
+        $keywords = $this->normalizePickedKeywords($validated['keywords'] ?? []);
+        $negatives = $this->normalizePickedNegatives($validated['negatives'] ?? []);
+        if ($keywords === [] && $negatives === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Add at least one keyword or negative keyword to update the campaign.',
+            ], 422);
+        }
+
+        $defaultBid = (float) ($validated['default_bid'] ?? 0.60);
+        $parts = [];
+        $ok = true;
+        $keywordResult = null;
+        $negativeResult = null;
+
+        if ($keywords !== []) {
+            $adGroupId = app(AmazonAdsService::class)->resolvePrimaryAdGroupId($campaignId);
+            if ($adGroupId === '') {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Could not find an ad group for this campaign on Amazon (is it a KW / MANUAL campaign?).',
+                ], 422);
+            }
+            $keywordResult = $this->pushPickedKeywords($campaignId, $adGroupId, $keywords, $defaultBid);
+            $parts[] = 'Keywords: '.$keywordResult['message'];
+            if ($keywordResult['added'] === 0 && $keywordResult['duplicates'] === 0) {
+                $ok = false;
+            }
+        }
+        if ($negatives !== []) {
+            $negativeResult = $this->pushPickedNegatives($campaignId, $negatives);
+            $parts[] = 'Negatives: '.$negativeResult['message'];
+            if ($negativeResult['added'] === 0 && $negativeResult['duplicates'] === 0) {
+                $ok = false;
+            }
+        }
+
+        return response()->json([
+            'ok' => $ok,
+            'message' => 'Campaign '.($link->campaign_name ?: $campaignId).' updated. '.implode(' ', $parts),
+            'campaign_id' => $campaignId,
+            'campaign_name' => (string) $link->campaign_name,
+            'keywords_result' => $keywordResult,
+            'negatives_result' => $negativeResult,
+        ]);
+    }
+
+    /**
      * Amazon's own keyword suggestions for the selected child ASINs (same data as "Keyword targeting → Suggested"
      * in the Amazon console): keyword, impression share / rank and suggested bid per match type.
      */

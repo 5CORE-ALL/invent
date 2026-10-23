@@ -260,16 +260,27 @@
                     <form id="amzCreateCampaignForm">
                         <input type="hidden" id="amzCreateParent" name="parent">
                         <input type="hidden" id="amzCreateType" name="type" value="KW">
+                        {{-- Shown only when this parent already has a linked KW campaign: add keywords / negatives to it instead of creating a new one. --}}
+                        <div id="amzModeBox" class="border rounded p-2 mb-2 small d-none">
+                            <div class="d-flex flex-wrap align-items-center gap-3">
+                                <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzCreateMode" value="new" checked>Create new campaign</label>
+                                <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzCreateMode" value="update">Update existing campaign</label>
+                                <select class="form-select form-select-sm w-auto d-none" id="amzUpdateCampaign"></select>
+                            </div>
+                            <div class="text-muted mt-1 d-none" id="amzUpdateHint">
+                                Adds the keywords and negative keywords below to the selected campaign (duplicates are skipped). Budget, strategy and product ads are not changed; the selected child SKUs are only used to load Amazon's suggestions.
+                            </div>
+                        </div>
                         <div class="row g-2 mb-2">
                             <div class="col-md-4">
                                 <label class="form-label small mb-1">Parent</label>
                                 <input type="text" class="form-control form-control-sm" id="amzCreateParentDisplay" readonly>
                             </div>
-                            <div class="col-md-8">
+                            <div class="col-md-8 amz-new-only">
                                 <label class="form-label small mb-1">Campaign name</label>
                                 <input type="text" class="form-control form-control-sm" id="amzCreateCampaignName" name="campaign_name" required placeholder="PARENT PMX KW" maxlength="128">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-4 amz-new-only">
                                 <label class="form-label small mb-1">Daily budget ($)</label>
                                 <input type="number" class="form-control form-control-sm" id="amzCreateBudget" name="budget_amount" min="1" step="0.01" value="3">
                             </div>
@@ -277,7 +288,7 @@
                                 <label class="form-label small mb-1">Default bid ($)</label>
                                 <input type="number" class="form-control form-control-sm" id="amzCreateDefaultBid" name="default_bid" min="0.02" step="0.01" value="0.60">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-4 amz-new-only">
                                 <label class="form-label small mb-1">Campaign bidding strategy</label>
                                 <select class="form-select form-select-sm" id="amzCreateStrategy" name="bidding_strategy">
                                     <option value="LEGACY_FOR_SALES">Dynamic bids - down only</option>
@@ -285,11 +296,11 @@
                                     <option value="MANUAL">Fixed bids</option>
                                 </select>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-4 amz-new-only">
                                 <label class="form-label small mb-1">Top of search (first page) +%</label>
                                 <input type="number" class="form-control form-control-sm" id="amzCreateTopPct" name="top_of_search_pct" min="0" max="900" step="1" value="0">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-4 amz-new-only">
                                 <label class="form-label small mb-1">Product pages +%</label>
                                 <input type="number" class="form-control form-control-sm" id="amzCreateProdPct" name="product_pages_pct" min="0" max="900" step="1" value="0">
                             </div>
@@ -702,6 +713,7 @@
             var linkUrl = @json(route('amazon.ads.missing.link'));
             var unlinkUrl = @json(route('amazon.ads.missing.unlink'));
             var createUrl = @json(route('amazon.ads.missing.create'));
+            var updateUrl = @json(route('amazon.ads.missing.update-campaign'));
             var deleteUrl = @json(route('amazon.ads.missing.delete'));
             var aiNegUrl = @json(route('amazon.ads.missing.ai-negatives'));
             var pushNegUrl = @json(route('amazon.ads.missing.push-negatives'));
@@ -1341,6 +1353,36 @@
                 return '';
             }
 
+            function amzMode() {
+                var r = document.querySelector('input[name="amzCreateMode"]:checked');
+                var box = document.getElementById('amzModeBox');
+                return (r && r.value === 'update' && box && !box.classList.contains('d-none')) ? 'update' : 'new';
+            }
+            function amzSubmitHtml() {
+                return amzMode() === 'update'
+                    ? '<i class="fa fa-save me-1"></i> Update campaign'
+                    : '<i class="fa fa-plus me-1"></i> Create campaign';
+            }
+            function amzApplyMode() {
+                var upd = amzMode() === 'update';
+                document.querySelectorAll('.amz-new-only').forEach(function (el) { el.classList.toggle('d-none', upd); });
+                var sel = document.getElementById('amzUpdateCampaign'); if (sel) { sel.classList.toggle('d-none', !upd); }
+                var hint = document.getElementById('amzUpdateHint'); if (hint) { hint.classList.toggle('d-none', !upd); }
+                var btn = document.getElementById('amzCreateSubmitBtn'); if (btn) { btn.innerHTML = amzSubmitHtml(); }
+            }
+            function amzSetupModeBox(d, type) {
+                var box = document.getElementById('amzModeBox');
+                if (!box) { return; }
+                var list = (type === 'KW' && Array.isArray(d.kw)) ? d.kw.filter(function (c) { return c && c.campaign_id; }) : [];
+                var sel = document.getElementById('amzUpdateCampaign');
+                sel.innerHTML = list.map(function (c) {
+                    return '<option value="' + esc(c.campaign_id) + '">' + esc(c.campaign_name || c.campaign_id) + '</option>';
+                }).join('');
+                box.classList.toggle('d-none', !list.length);
+                var rn = document.querySelector('input[name="amzCreateMode"][value="new"]'); if (rn) { rn.checked = true; }
+                amzApplyMode();
+            }
+
             function openCreateModal(d, type) {
                 type = normalizeCreateType(type);
                 lastCreateRowData = d || null;
@@ -1385,6 +1427,7 @@
                 document.getElementById('amzCreateChildCount').textContent = '(' + children.length + ')';
                 syncCreateAiHiddenFromSelection();
                 kwResetForOpen();
+                amzSetupModeBox(d || {}, type);
                 var modal = getCreateModal();
                 if (modal) { modal.show(); }
                 if (type === 'KW') { kwLoadSuggestions(); }
@@ -2512,12 +2555,59 @@
                     }
                 });
 
+                document.querySelectorAll('input[name="amzCreateMode"]').forEach(function (r) { r.addEventListener('change', amzApplyMode); });
+
                 document.getElementById('amzCreateSubmitBtn').addEventListener('click', function () {
                     var btn = document.getElementById('amzCreateSubmitBtn');
                     var errEl = document.getElementById('amzCreateError');
                     errEl.classList.add('d-none');
                     errEl.textContent = '';
                     syncCreateAiHiddenFromSelection();
+
+                    // Update an existing campaign: add the picked keywords / negatives to it.
+                    if (amzMode() === 'update') {
+                        var updPayload = {
+                            parent: document.getElementById('amzCreateParent').value,
+                            campaign_id: (document.getElementById('amzUpdateCampaign') || {}).value || '',
+                            default_bid: parseFloat(document.getElementById('amzCreateDefaultBid').value) || 0.60,
+                            keywords: kwAdded.map(function (k) { return { text: k.text, match_type: k.match_type, bid: k.bid }; }),
+                            negatives: kwNegatives.map(function (n) { return { text: n.text, match_type: n.match_type }; })
+                        };
+                        if (!updPayload.campaign_id) {
+                            errEl.textContent = 'Pick the campaign to update.';
+                            errEl.classList.remove('d-none');
+                            return;
+                        }
+                        if (!updPayload.keywords.length && !updPayload.negatives.length) {
+                            errEl.textContent = 'Add at least one keyword or negative keyword to update the campaign.';
+                            errEl.classList.remove('d-none');
+                            return;
+                        }
+                        btn.disabled = true;
+                        btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Updating…';
+                        postForm(updateUrl, updPayload).then(function (out) {
+                            btn.disabled = false;
+                            btn.innerHTML = amzSubmitHtml();
+                            if (out.ok && out.body && out.body.ok) {
+                                kwAdded = [];
+                                kwNegatives = [];
+                                kwRenderAdded();
+                                kwRenderSuggestions();
+                                kwNegRender();
+                                window.alert(out.body.message || 'Campaign updated.');
+                            } else {
+                                errEl.textContent = (out.body && out.body.message) || ('Failed to update campaign (HTTP ' + out.status + ').');
+                                errEl.classList.remove('d-none');
+                            }
+                        }).catch(function () {
+                            btn.disabled = false;
+                            btn.innerHTML = amzSubmitHtml();
+                            errEl.textContent = 'Network error updating campaign.';
+                            errEl.classList.remove('d-none');
+                        });
+                        return;
+                    }
+
                     var children = collectSelectedChildren();
                     var payload = {
                         parent: document.getElementById('amzCreateParent').value,
