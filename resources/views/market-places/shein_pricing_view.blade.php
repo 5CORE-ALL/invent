@@ -543,6 +543,8 @@
     <script>
         // S PRC is saved + pushed by the server (shein:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
+        // The SNROI% column here is (S PRC x margin - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
+        window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'shein'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
@@ -2157,6 +2159,10 @@
                         formatter: function(cell) {
                             const d = cell.getRow().getData();
                             if (d.is_parent) return '<span style="color:#6c757d;">–</span>';
+                            // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                                return '<span title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                            }
                             const raw = sheinRuleSpriceRaw(d);
                             if (!(raw > 0)) return '';
                             const lmpNow = sheinEffectiveLmp(d);
@@ -2866,9 +2872,26 @@
                 }
             });
 
+            function sheinRepaintClearance() {
+                const run = function() {
+                    try { table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
+                };
+                run();
+                setTimeout(run, 2500);
+            }
+            $(document).off('chStd:settled.sheinClearance').on('chStd:settled.sheinClearance', sheinRepaintClearance);
+
             table.on('tableBuilt', function() {
                 aeApplyColumnVisibilityFromServer();
                 aeBuildColumnDropdown();
+                // Clearance SKUs show "C" in S PRC: repaint once the Inv days clearance list is loaded.
+                (function loadClearanceMarks(tries) {
+                    if (typeof window.chStdLoadClearance !== 'function') {
+                        if (tries < 40) setTimeout(function() { loadClearanceMarks(tries + 1); }, 250);
+                        return;
+                    }
+                    window.chStdLoadClearance().always(sheinRepaintClearance);
+                })(0);
             });
 
             // Badge click → table filter only (same as /ebay2-tabulator-view — no hover/click chart)

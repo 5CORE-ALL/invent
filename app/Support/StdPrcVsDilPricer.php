@@ -517,7 +517,7 @@ class StdPrcVsDilPricer
 
         return $c === 'amazon'
             || $c === 'aliexpress'
-            || in_array($c, ['tiktok', 'tiktok2', 'pls'], true)
+            || in_array($c, ['tiktok', 'tiktok2', 'pls', 'shein'], true)
             || self::usesOwnChannelMetrics($c)
             || in_array($c, ['newtemuone', 'newtemutwo', 'temu3'], true)
             || self::excludesShip($c)

@@ -18,8 +18,8 @@ class SheinPushBluePricesCommand extends Command
 {
     protected $signature = 'shein:push-blue-prices
         {--dry-run : Compute only, do NOT push to Shein}
-        {--max-pushes=100 : Max Shein pushes per run (rest next run)}
-        {--cooldown=60 : Minutes a SKU that was just pushed is left alone before it is re-pushed}
+        {--max-pushes=300 : Max Shein pushes per run (rest next run)}
+        {--cooldown=10 : Minutes the store gets to apply a push before the same SKU is checked/re-pushed}
         {--sleep-ms=300 : Delay between Shein pushes (ms)}
         {--respect-switch : Skip the run when the page Push on reload switch is off}';
 
