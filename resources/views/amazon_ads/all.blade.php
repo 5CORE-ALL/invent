@@ -526,6 +526,9 @@
         }
         .amz-card--yesterday, .amz-card--l30, .amz-card--projected { grid-column: span 4; }
         .amz-card--util { grid-column: span 2; }
+        .amz-card--sbgt { grid-column: span 4; }
+        .amz-card--sbgt .amz-card-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .amz-kpi-tile.amz-sbgt-group { flex-direction: row; gap: 8px; }
         .amz-card--util .amz-card-tiles { grid-template-columns: minmax(0, 1fr); }
         .amz-card-title {
             font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
@@ -550,11 +553,11 @@
         .amz-kpi-tile.amz-util-pink { background: #db2777; color: #fff; border-color: #be185d; }
         .amz-kpi-tile.amz-util-total { background: #8b5cf6; color: #fff; border-color: #7c3aed; }
         @media (max-width: 1399.98px) {
-            .amz-card--yesterday, .amz-card--l30, .amz-card--projected, .amz-card--util { grid-column: span 6; }
+            .amz-card--yesterday, .amz-card--l30, .amz-card--projected, .amz-card--util, .amz-card--sbgt { grid-column: span 6; }
             .amz-card--util .amz-card-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         }
         @media (max-width: 991.98px) {
-            .amz-card--yesterday, .amz-card--l30, .amz-card--projected, .amz-card--util { grid-column: span 12; }
+            .amz-card--yesterday, .amz-card--l30, .amz-card--projected, .amz-card--util, .amz-card--sbgt { grid-column: span 12; }
         }
         @media (max-width: 575.98px) {
             .amz-card-tiles, .amz-card--util .amz-card-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1172,7 +1175,7 @@
                     @php
                         $amzKpiCards = [
                             ['tag' => 'Yesterday', 'title' => 'Yesterday', 'items' => [
-                                ['y_bgt', 'Y BGT', 'Total daily budget of the campaigns shown (Amazon L1 row).', null],
+                                ['y_bgt', 'Y CURRENT BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L1 row), summed over the campaigns shown. Not the suggested SBGT.', null],
                                 ['y_util', 'Y UTIL', 'Yesterday utilization = yesterday spend ÷ daily budget.', null],
                                 ['y_bid', 'Y AVG BID', 'Yesterday avg bid = yesterday spend ÷ clicks (avg CPC).', null],
                                 ['y_cvr', 'Y CVR%', 'Yesterday CVR% = yesterday sold ÷ clicks.', null],
@@ -1183,7 +1186,7 @@
                                 ['y_spend', 'Y SPEND', 'Yesterday spend (Amazon L1).', ['amazonAdsYesterdaySpendBadgeDot', 'yspend', 'Spend']],
                             ]],
                             ['tag' => 'L30', 'title' => 'L30', 'items' => [
-                                ['l30_bgt', 'DAILY BGT', 'Total daily budget of the campaigns shown (Amazon L30 row).', null],
+                                ['l30_bgt', 'CURRENT BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L30 row), summed over the campaigns shown. Not the suggested SBGT.', null],
                                 ['l30_util', 'UTIL', 'L30 utilization = 30-day spend ÷ (daily budget × 30).', null],
                                 ['l30_bid', 'AVG BID', 'L30 avg bid = 30-day spend ÷ clicks (avg CPC).', null],
                                 ['l30_cvr', 'CVR%', 'Ads CVR = ads sold ÷ ads clicks (L30).', null],
@@ -1192,10 +1195,10 @@
                                 ['l30_sold', 'SOLD', 'Sold (L30).', null],
                                 ['l30_sales', 'SALES', 'Ads sales (L30).', null],
                                 ['l30_spend', 'SPEND', 'Amazon L30 spend for the selected table (SP+SB on All).', null],
-                                ['l30_bgt_total', 'TOTAL BGT', 'Daily budget × 30.', null],
+                                ['l30_bgt_total', 'CURRENT BGT × 30', 'CURRENT daily budget (Amazon) × 30.', null],
                             ]],
                             ['tag' => 'Projected', 'title' => 'Projected · L7 ÷ 7 × 30', 'items' => [
-                                ['p_bgt', 'DAILY BGT', 'Total daily budget of the campaigns shown (Amazon L7 row).', null],
+                                ['p_bgt', 'CURRENT BGT', 'CURRENT daily budget set on Amazon (campaignBudgetAmount, L7 row), summed over the campaigns shown. Not the suggested SBGT.', null],
                                 ['p_util', 'UTIL', 'L7 utilization = 7-day spend ÷ (daily budget × 7).', null],
                                 ['p_bid', 'AVG BID', 'L7 avg bid = 7-day spend ÷ clicks (avg CPC).', null],
                                 ['p_cvr', 'CVR%', 'L7 CVR% = 7-day sold ÷ clicks.', null],
@@ -1204,7 +1207,7 @@
                                 ['p_sold', 'SOLD', 'Projected sold = L7 sold ÷ 7 × 30.', null],
                                 ['p_sales', 'SALES', 'Projected ads sales = L7 ads sales ÷ 7 × 30.', null],
                                 ['p_spend', 'SPEND', 'Projected spend = L7 spend ÷ 7 × 30.', null],
-                                ['p_bgt_total', 'TOTAL BGT', 'Daily budget × 30.', null],
+                                ['p_bgt_total', 'CURRENT BGT × 30', 'CURRENT daily budget (Amazon, L7 row) × 30.', null],
                             ]],
                         ];
                         $amzUtilCards = [
@@ -1228,6 +1231,23 @@
                             </div>
                         @endforeach
 
+                        {{-- Suggested BGT (SBGT): what the ACOS vs SBGT rule wants (not the budget currently set on Amazon — that is CURRENT BGT in the cards above). Same block structure as the other cards; element ids are unchanged so the existing budget / Lbgt / BID code keeps filling them. --}}
+                        <div class="amz-card amz-card--sbgt" id="amzSbgtCard">
+                            <div class="amz-card-title">Suggested BGT (SBGT)</div>
+                            <div class="amz-card-tiles">
+                                <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-kpi-tile" title="SUGGESTED daily budget = sum of floored SBGT (from the ACOS vs SBGT rule) across campaigns in the current filters. This is what the rules want, not what is set on Amazon now (see CURRENT BGT in the L30 card). Open BGT Rules for the count at each budget.">SUGGESTED DAILY BGT:<span class="amz-kpi-val" id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
+                                <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-kpi-tile" title="SUGGESTED monthly budget = suggested daily budget (SBGT) × 30.">SUGGESTED MONTHLY BGT:<span class="amz-kpi-val" id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
+                                <div class="amz-kpi-tile amz-sbgt-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
+                                    <span class="amz-sync-toolbar-label">Lbgt</span>
+                                    <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
+                                </div>
+                                <div class="amz-kpi-tile amz-sbgt-group" title="Click a BID color to show only those rows. Click again to clear.">
+                                    <span class="amz-sync-toolbar-label">BID</span>
+                                    <div class="amz-sync-head-badges" data-sync-field="bid"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         {{-- Utilization bands (same as the grid / U7% pie): red < 66%, green 66–99%, pink > 99%. Y = U1%, L7 = U7%. --}}
                         @foreach ($amzUtilCards as $uc)
                             <div class="amz-card amz-card--util" id="amzUtilBlock_{{ $uc['id'] }}">
@@ -1243,22 +1263,6 @@
                     </div>
 
                     <div class="amz-ads-toolbar d-flex flex-wrap align-items-center gap-2 mb-2">
-                        <div class="amz-metric-blocks">
-                            <div class="amz-metric-block">
-                                <span class="amz-metric-block-label">SBGT Budget</span>
-                                <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--budget" title="Sum of floored SBGT across campaigns in the current filters. Open BGT Rules for the count at each budget.">DAILY BGT:<span id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
-                                <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-stat-badge amz-stat-badge--month" title="Monthly budget = daily budget × 30.">MONTHLY BUDGET:<span id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
-                                <div class="amz-sync-toolbar-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
-                                    <span class="amz-sync-toolbar-label">Lbgt</span>
-                                    <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
-                                </div>
-                                <div class="amz-sync-toolbar-group" title="Click a BID color to show only those rows. Click again to clear.">
-                                    <span class="amz-sync-toolbar-label">BID</span>
-                                    <div class="amz-sync-head-badges" data-sync-field="bid"></div>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="amz-ads-toolbar-actions">
                             <span id="amz-raw-total" class="badge bg-secondary">Total: —</span>
                             <span id="amz-raw-page-info" class="badge bg-light text-dark border">Page: —</span>
