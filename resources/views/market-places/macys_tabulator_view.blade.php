@@ -327,6 +327,8 @@
 @section('script-bottom')
     @include('partials.lazy-chart-js')
 <script>
+    // The SNROI% column here is (S PRC x take-home - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
+    window.CH_PROMO_ADS_FN = function() { return 0; };
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'macys'])
     @include('partials.ebay-sprc-dil', ['ebaySprcDilPart' => 'script', 'ebaySprcDilChannel' => 'macys'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])

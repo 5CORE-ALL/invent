@@ -21,6 +21,8 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + Rev Disc) / 100)
  *  CVR Disc is off: Best Buy has no session CVR (Amazon A L30 / Sess30 is not used).
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
+ *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts.
+ *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
  *  Std Prc is the maximum, then the LMP cap (SGROI at LMP ≥ 20%).
  *  Last, the Amz rule: S PRC never sits below the Amazon price (A Price). That floor wins over the LMP cap.
  *  Ship BB is part of profit (same as the page). Best Buy has no ads, so none is used.
@@ -165,8 +167,10 @@ class BestBuySprcDilAutoPushService
                             $stats['skipped']++;
                             continue;
                         }
-                        if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                            // Pushed recently. BB Price only follows after the next MCM sync, so give it time.
+                        if ($this->isUnchanged($row, $computed)
+                            && $this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
+                            // This exact price was pushed and BB Price only follows after the next MCM sync, so give it
+                            // time. A changed target (a rule was saved) is pushed at once, same as Amazon.
                             $stats['skipped_unchanged']++;
                             continue;
                         }
@@ -292,6 +296,10 @@ class BestBuySprcDilAutoPushService
         if (! ($std > 0)) {
             return null;
         }
+        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        if ((new StdPrcVsDilPricer([], 'bestbuy'))->isClearanceRow($row)) {
+            return null;
+        }
         $lp = (float) ($row['lp'] ?? 0);
         $ship = (float) ($row['ship'] ?? 0);
         $margin = (float) ($row['margin'] ?? 0);
@@ -304,7 +312,8 @@ class BestBuySprcDilAutoPushService
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $pricer ??= StdPrcVsDilPricer::forChannel('bestbuy');
-        // Age / Dil / B / 0 Sold / Rev discounts, then clearance SKUs keep the discount price. CVR is off.
+        // Age / Dil / B / 0 Sold / Rev discounts, or the SNROI Cap price when the Dil slab has a Target SNROI %. CVR is off.
+        // The cap judges the page's SNROI%: (S PRC × take-home − Ship BB − LP) ÷ LP, no Ads%.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,

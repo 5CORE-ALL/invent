@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Http\Controllers\MarketPlace\ReverbController;
 use App\Models\ReverbViewData;
 use App\Support\AmazonDilGroiRule;
+use App\Support\NegativeSnroiPushGuard;
 use App\Support\PushedListingPrice;
 use App\Support\StdPrcVsDilPricer;
 use Carbon\Carbon;
@@ -31,7 +32,10 @@ class ReverbSprcDilAutoPushService
         ?array $onlySkus = null,
         ?callable $logger = null,
         bool $pushAll = false,
-        int $cooldownMinutes = 120
+        int $cooldownMinutes = 120,
+        bool $blueCatchUp = false,
+        int $errorCooldownMinutes = 120,
+        int $maxPushes = 0
     ): array {
         $pricer = StdPrcVsDilPricer::forChannel('reverb');
 
@@ -90,8 +94,15 @@ class ReverbSprcDilAutoPushService
                         continue;
                     }
 
-                    if (! $pushAll) {
-                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $cooldownMinutes)) {
+                    if ($blueCatchUp) {
+                        // Headless "Push on reload": the blue-triangle SKUs (INV > 0, RV Price ≠ S PRC), same as Amazon.
+                        // The twice-daily run skips a SKU whose last pushed price already equals the target, so a Price
+                        // that drifted afterwards (the listing was edited on Reverb) stayed blue until someone opened the page.
+                        if ($maxPushes > 0 && $stats['pushed'] + $stats['push_failed'] >= $maxPushes) {
+                            $this->log($logger, "Reached max pushes ({$maxPushes}) — rest next run");
+                            break;
+                        }
+                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $errorCooldownMinutes)) {
                             // Reverb rejected the last push — retry after the cooldown, not every run.
                             $stats['skipped']++;
                             continue;
@@ -101,14 +112,25 @@ class ReverbSprcDilAutoPushService
                             $stats['skipped_unchanged']++;
                             continue;
                         }
+                    } elseif (! $pushAll && $this->isUnchanged($row, $computed)) {
+                        // Last push already equals the target. The blue catch-up handles a Price that stayed different.
+                        $stats['skipped_unchanged']++;
+                        continue;
                     }
 
-                    if (! $dryRun) {
+                    // The blue catch-up runs often: only rewrite the saved S PRC when it changed.
+                    if (! $dryRun && (! $blueCatchUp || ! PushedListingPrice::same($row['sprice'] ?? 0, $sprice))) {
                         $this->saveSprice((string) $row['sku'], $computed, 'saved');
                     }
                     $stats['applied']++;
 
                     if (! $canPush) {
+                        continue;
+                    }
+
+                    if (NegativeSnroiPushGuard::shouldSkip('reverb', (string) $row['sku'], $sprice)) {
+                        $stats['skipped']++;
+                        $this->log($logger, 'Skip '.$row['sku'].': negative SNROI');
                         continue;
                     }
 
@@ -147,7 +169,8 @@ class ReverbSprcDilAutoPushService
     }
 
     /**
-     * Page S PRC formula (INV > 0 child SKUs): Std rule, then LMP cap, Std is the maximum.
+     * Page S PRC formula (INV > 0 child SKUs): Std rule (or the SNROI Cap price), then LMP cap, Std is the maximum.
+     * Clearance SKUs have no target.
      *
      * @param  array<string, mixed>  $row
      * @return array{sprice:float,lmp_capped:bool,base:float,margin:float,lp:float,ship:float,ads:float}|null
@@ -160,6 +183,10 @@ class ReverbSprcDilAutoPushService
         }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
+            return null;
+        }
+        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        if ((new StdPrcVsDilPricer([], 'reverb'))->isClearanceRow($row)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);
@@ -175,7 +202,8 @@ class ReverbSprcDilAutoPushService
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $pricer ??= StdPrcVsDilPricer::forChannel('reverb');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, or the SNROI Cap price when the Dil slab has a Target SNROI %.
+        // The cap judges the page's SNROI%: (S PRC × (take-home − Ads%) − Ship − LP) ÷ LP, same Ads% as the page.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,

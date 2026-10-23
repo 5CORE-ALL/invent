@@ -3267,11 +3267,15 @@
                     hozAlign: "center",
                     editable: false,
                     sorter: shopifyB2cNumberSorter(function(d) { return isShopifyB2cParentRow(d) ? null : shopifyB2cShownSprice(d); }, true),
-                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), Capped at LMP first (when SGROI at LMP ≥ 20%), then Amz cap: LMP below A Price → A Price; price below A Price → A Price; above A Price stays. Saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP. Amz = using A Price.",
+                    headerTooltip: "Not editable. Std prc vs dil (Age + Dil + B Disc + 0 Sold + CVR + Rev Disc off Std Prc), A Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts. Clearance SKUs show C and are not priced. Capped at LMP first (when SGROI at LMP ≥ 20%), then Amz cap: LMP below A Price → A Price; price below A Price → A Price; above A Price stays. Saved and pushed to Shopify by the server twice daily (04:50 / 20:50 IST). Blue triangle = S PRC ≠ Price. Red triangle = S PRC at/above LMP. Amz = using A Price.",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isShopifyB2cParentRow(rowData)) {
                             return '';
+                        }
+                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
+                            return '<span title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
                         }
                         const value = shopifyB2cShownSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
@@ -4116,6 +4120,22 @@
             if (typeof window.chPromoBindTableAutofit === 'function') {
                 window.chPromoBindTableAutofit(table);
             }
+            // Clearance SKUs show "C" in S PRC: repaint once the Inv days clearance list is loaded.
+            const shopifyB2cRepaintClearance = function() {
+                const run = function() {
+                    try { table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
+                };
+                run();
+                setTimeout(run, 2500);
+            };
+            (function loadClearanceMarks(tries) {
+                if (typeof window.chStdLoadClearance !== 'function') {
+                    if (tries < 40) setTimeout(function() { loadClearanceMarks(tries + 1); }, 250);
+                    return;
+                }
+                window.chStdLoadClearance().always(shopifyB2cRepaintClearance);
+            })(0);
+            $(document).off('chStd:settled.b2cClearance').on('chStd:settled.b2cClearance', shopifyB2cRepaintClearance);
         });
 
         table.on('dataLoaded', function() {

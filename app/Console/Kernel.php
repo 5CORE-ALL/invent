@@ -1083,9 +1083,9 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // Blue-triangle catch-up for /reverb-pricing (INV > 0, RV Price ≠ S PRC): every 30 min, 24/7, page not needed.
+        // Blue-triangle catch-up for /reverb-pricing (INV > 0, RV Price ≠ S PRC): every 10 min, 24/7, page not needed (same as Amazon).
         $schedule->command('reverb:push-blue-prices')
-            ->everyThirtyMinutes()
+            ->everyTenMinutes()
             ->name('reverb-push-blue-prices')
             ->withoutOverlapping(180)
             ->runInBackground()

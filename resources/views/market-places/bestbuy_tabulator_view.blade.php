@@ -412,6 +412,8 @@
 <script>
     // S PRC is saved + pushed by the server (bestbuy:sprc-dil-auto-push). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
+    // The SNROI% column here is (S PRC x take-home - Ship BB - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
+    window.CH_PROMO_ADS_FN = function() { return 0; };
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'bestbuy'])
     @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
     let table = null;
@@ -2174,12 +2176,16 @@
                     title: "SPRICE",
                     field: "SPRICE",
                     hozAlign: "center",
-                    headerTooltip: "Not editable. S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz) Clearance SKUs keep the discount price. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
+                    headerTooltip: "Not editable. S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold (BB L30 = 0). CVR Disc is off (Best Buy has no session CVR). Std Prc is the maximum, capped at LMP, never below A Price (Amz). A Dil slab with a Target SNROI % prices S PRC from that SNROI. Clearance SKUs show C and are not priced. Saved and pushed by the server twice a day (4:40 AM / 8:40 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ BB Price. Red text = S PRC at or above LMP.",
                     editable: false,
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isBestbuyParentRow(rowData)) return '';
+                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
+                            return '<span class="bestbuy-sprice-clearance" title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                        }
                         let value = bestbuyDisplayedSprice(rowData);
                         const hasCustom = rowData.has_custom_sprice;
                         const status = rowData.SPRICE_STATUS;

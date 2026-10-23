@@ -512,6 +512,8 @@
 
 @section('script-bottom')
     <script>
+        // The SGROI/SNROI column here is (S PRC x take-home - Ship - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
+        window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'newegg'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;

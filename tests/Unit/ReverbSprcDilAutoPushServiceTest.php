@@ -70,15 +70,13 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
         $this->assertNull($svc->computeTarget($this->row(['standard_price' => 0]), $this->pricer()));
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_target_like_amazon(): void
     {
-        $out = (new ReverbSprcDilAutoPushService)->computeTarget(
+        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
+        $this->assertNull((new ReverbSprcDilAutoPushService)->computeTarget(
             $this->row(['lp' => 70, 'ship' => 8, 'clearance' => true]),
             $this->pricer()
-        );
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+        ));
     }
 
     public function test_lmp_cap_when_sgroi_at_lmp_is_at_least_20(): void
@@ -95,7 +93,7 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
     {
         // LP 60, ship 5: SGROI at LMP 72 = ((72 × 0.85) − 5 − 60) / 60 = −6.3% < 20 → keep the rule price.
         $out = (new ReverbSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 60, 'ship' => 5, 'lmp' => 72, 'clearance' => true]),
+            $this->row(['lp' => 60, 'ship' => 5, 'lmp' => 72]),
             $this->pricer()
         );
 
@@ -110,5 +108,48 @@ class ReverbSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(0.85, $out['margin'], 0.0001);
+    }
+
+    /** @return list<array{min:float,max:float,cap:float|null}> */
+    private function capSlabs(?float $cap): array
+    {
+        return [['min' => 0.0, 'max' => 100.0, 'cap' => $cap]];
+    }
+
+    public function test_snroi_cap_prices_s_prc_from_the_target_with_ship_and_ads(): void
+    {
+        // LP 20, Ship 3, take-home 0.85, Ads 5%. Cap 100% -> (20 x 2 + 3) / (0.85 - 0.05) = 53.75.
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget(
+            $this->row(['ads_pct' => 5]),
+            $this->pricer(['snroi_cap' => $this->capSlabs(100)])
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(53.75, $out['sprice']);
+        // The page SNROI% = (S PRC x (take-home - Ads%) - Ship - LP) / LP lands on the target.
+        $this->assertEqualsWithDelta(100.0, ((53.75 * 0.80) - 3 - 20) / 20 * 100, 0.01);
+    }
+
+    public function test_snroi_cap_then_lmp_cap_then_std_max(): void
+    {
+        // Cap price 53.75 is below LMP 80, so the LMP cap does not apply.
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget(
+            $this->row(['ads_pct' => 5, 'lmp' => 80]),
+            $this->pricer(['snroi_cap' => $this->capSlabs(100)])
+        );
+        $this->assertNotNull($out);
+        $this->assertSame(53.75, $out['sprice']);
+
+        $high = (new ReverbSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(1000)]));
+        $this->assertNotNull($high);
+        $this->assertSame(100.0, $high['sprice']);
+    }
+
+    public function test_snroi_cap_blank_slab_keeps_the_discount_price(): void
+    {
+        $out = (new ReverbSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(null)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(90.0, $out['sprice']);
     }
 }

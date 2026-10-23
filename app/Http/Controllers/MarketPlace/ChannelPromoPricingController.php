@@ -1463,6 +1463,12 @@ class ChannelPromoPricingController extends Controller
         // page shows the new rules at once instead of the old S PRC until the next scheduled run.
         $spriceRefreshed = $this->refreshServerOwnedSprice($channel);
 
+        // Macys: the page writes S PRC from the browser, and the background job re-saves it from the new rules at
+        // once (SNROI Cap included), so the saved S PRC follows the rules even when the page is closed.
+        if ($channel === 'macys' || $channel === 'macy') {
+            \App\Support\MacysRuleSpriceApply::dispatch();
+        }
+
         return response()->json(array_merge(['success' => true, 'sprice_refreshed' => $spriceRefreshed], $payload));
     }
 
@@ -1483,6 +1489,7 @@ class ChannelPromoPricingController extends Controller
             'aliexpress' => \App\Services\AliexpressSprcDilAutoPushService::class,
             'newtemutwo' => \App\Services\NewTemutwoSprcDilAutoPushService::class,
             'reverb' => \App\Services\ReverbSprcDilAutoPushService::class,
+            'shopify_b2c' => \App\Services\ShopifyB2cSprcDilAutoPushService::class,
         ];
         try {
             if ($channel === 'tiktok' || $channel === 'tiktok2') {
@@ -1496,7 +1503,14 @@ class ChannelPromoPricingController extends Controller
             @ini_set('memory_limit', '1G');
             \App\Support\StdPrcVsDilPricer::flush();
             $names = array_map(fn ($p) => $p->getName(), (new \ReflectionMethod($service, 'run'))->getParameters());
-            $args = ['skipPush' => true, 'sleepMs' => 0];
+            // Only the options this channel's run() has. Shopify B2C's run() only saves S PRC (its push is queued
+            // by the blue catch-up), so it takes neither.
+            $args = [];
+            foreach (['skipPush' => true, 'sleepMs' => 0] as $opt => $val) {
+                if (in_array($opt, $names, true)) {
+                    $args[$opt] = $val;
+                }
+            }
             // Rules were just saved: every SKU must get its new S PRC. A push cooldown (recently pushed or
             // recently errored) would leave the old, uncapped S PRC on the page.
             foreach (['cooldownMinutes', 'errorCooldownMinutes'] as $cd) {

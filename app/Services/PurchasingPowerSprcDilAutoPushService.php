@@ -20,6 +20,8 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with Purchasing Power as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
+ *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts.
+ *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
  *  Std Prc is the maximum, then the Amz rule: S PRC never sits below the Amazon price (A Price). Same rule
  *  the page labels "Amz" and MacysAmazonPriceCap applies to the push.
  *  Ship BB is part of profit (same as the page). Purchasing Power has no ads and no LMP, so neither is used.
@@ -164,8 +166,10 @@ class PurchasingPowerSprcDilAutoPushService
                             $stats['skipped']++;
                             continue;
                         }
-                        if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                            // Pushed recently. PP Price only follows after the next MCM sync, so give it time.
+                        if ($this->isUnchanged($row, $computed)
+                            && $this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
+                            // This exact price was pushed and PP Price only follows after the next MCM sync, so give it
+                            // time. A changed target (a rule was saved) is pushed at once, same as Amazon.
                             $stats['skipped_unchanged']++;
                             continue;
                         }
@@ -286,6 +290,10 @@ class PurchasingPowerSprcDilAutoPushService
         if (! ($std > 0)) {
             return null;
         }
+        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        if ((new StdPrcVsDilPricer([], 'purchasing_power'))->isClearanceRow($row)) {
+            return null;
+        }
         $lp = (float) ($row['lp'] ?? 0);
         $ship = (float) ($row['ship'] ?? 0);
         $margin = (float) ($row['margin'] ?? 0);
@@ -297,7 +305,8 @@ class PurchasingPowerSprcDilAutoPushService
         }
 
         $pricer ??= StdPrcVsDilPricer::forChannel('purchasing_power');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, or the SNROI Cap price when the Dil slab has a Target SNROI %.
+        // The cap judges the page's SNROI%: (S PRC × take-home − Ship BB − LP) ÷ LP, no Ads%.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,

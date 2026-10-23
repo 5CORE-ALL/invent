@@ -19,7 +19,9 @@ use Throwable;
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
- *  Clearance SKUs keep the discount price.
+ *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the discounts,
+ *  then the LMP cap and the Amz cap below still apply to it. Std Prc stays the maximum.
+ *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed (same as Amazon).
  *
  * Then the Amz cap (same as the old page), on the LMP-capped price: LMP below A Price → A Price;
  * price above A Price stays; price at/below A Price → A Price.
@@ -162,13 +164,17 @@ class ShopifyB2cSprcDilAutoPushService
         if (! ($std > 0)) {
             return null;
         }
+        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        if ((new StdPrcVsDilPricer([], 'shopify_b2c'))->isClearanceRow($row)) {
+            return null;
+        }
         $lp = (float) ($row['lp'] ?? 0);
         $ship = (float) ($row['ship'] ?? 0);
         $margin = self::MARGIN;
         $lmp = (float) ($row['lmp'] ?? 0);
 
         $pricer ??= StdPrcVsDilPricer::forChannel('shopify_b2c');
-        // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
+        // Age / Dil / B / 0 Sold / CVR / Rev discounts, or the SNROI Cap price when the Dil slab has a Target SNROI %.
         $pricerRow = [
             'sku' => (string) ($row['sku'] ?? ''),
             'inv' => $inv,
@@ -183,6 +189,9 @@ class ShopifyB2cSprcDilAutoPushService
             'lp' => $lp,
             'ship' => $ship,
             'margin' => $margin,
+            // SNROI Cap: judged like the page's SNROI% column, (S PRC × (take-home − Ads%) − Ship − LP) ÷ LP, with the
+            // same channel Ads% (TCOS badge) the page uses.
+            'ads' => $adsPct > 0 ? $adsPct / 100 : 0.0,
         ];
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];

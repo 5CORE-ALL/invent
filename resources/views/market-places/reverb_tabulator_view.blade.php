@@ -3197,6 +3197,10 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         if (isReverbParentRow(rowData)) return '';
+                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
+                            return '<span title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                        }
                         let value = (typeof chPromoTableSprice === 'function')
                             ? Number(chPromoTableSprice(rowData)) || 0
                             : parseFloat(cell.getValue() || 0);
@@ -4418,6 +4422,22 @@
             } catch (e) { /* already gone */ }
             applyColumnVisibilityFromServer();
             loadReverbDailyTotalsBadges();
+            // Clearance SKUs show "C" in S PRC: repaint once the Inv days clearance list is loaded.
+            const reverbRepaintClearance = function() {
+                const run = function() {
+                    try { table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
+                };
+                run();
+                setTimeout(run, 2500);
+            };
+            (function loadClearanceMarks(tries) {
+                if (typeof window.chStdLoadClearance !== 'function') {
+                    if (tries < 40) setTimeout(function() { loadClearanceMarks(tries + 1); }, 250);
+                    return;
+                }
+                window.chStdLoadClearance().always(reverbRepaintClearance);
+            })(0);
+            $(document).off('chStd:settled.reverbClearance').on('chStd:settled.reverbClearance', reverbRepaintClearance);
         });
 
         table.on('dataLoaded', function() {

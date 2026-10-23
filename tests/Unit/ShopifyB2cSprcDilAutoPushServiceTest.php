@@ -73,7 +73,7 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
     {
         // LP 60, ship 5: SGROI at LMP 72 = ((72 × 0.95) − 5 − 60) / 60 = 5% < 20 → keep the rule price.
         $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget(
-            $this->row(['lp' => 60, 'ship' => 5, 'lmp' => 72, 'clearance' => true]),
+            $this->row(['lp' => 60, 'ship' => 5, 'lmp' => 72]),
             $this->pricer()
         );
 
@@ -126,5 +126,51 @@ class ShopifyB2cSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(80.00, $out['sprice'], 0.001);
         $this->assertFalse($out['amz_capped']);
         $this->assertTrue($out['lmp_capped']);
+    }
+
+    public function test_clearance_sku_has_no_target_like_amazon(): void
+    {
+        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
+        $this->assertNull((new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['clearance' => true]), $this->pricer()));
+    }
+
+    /** @return list<array{min:float,max:float,cap:float|null}> */
+    private function capSlabs(?float $cap): array
+    {
+        return [['min' => 0.0, 'max' => 100.0, 'cap' => $cap]];
+    }
+
+    public function test_snroi_cap_prices_s_prc_from_the_target_with_ship_and_ads(): void
+    {
+        // LP 20, Ship 3, take-home 0.95, Ads 10%. Cap 100% -> (20 x 2 + 3) / (0.95 - 0.10) = 50.58.
+        $out = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(100)]), 10.0);
+
+        $this->assertNotNull($out);
+        $this->assertSame(50.58, $out['sprice']);
+        // The saved SNROI% (the page column) lands on the target, never above it.
+        $this->assertEqualsWithDelta(100.0, $out['snroi'], 0.5);
+        $this->assertLessThanOrEqual(100.0 + 1e-9, $out['snroi']);
+    }
+
+    public function test_snroi_cap_keeps_lmp_cap_amz_cap_and_std_max(): void
+    {
+        $cap = $this->pricer(['snroi_cap' => $this->capSlabs(100)]);
+
+        // The cap price 50.58 is below LMP 80: the LMP cap does not apply.
+        $lmp = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['lmp' => 80]), $cap, 10.0);
+        $this->assertNotNull($lmp);
+        $this->assertSame(50.58, $lmp['sprice']);
+        $this->assertFalse($lmp['lmp_capped']);
+
+        // The cap price is below A Price 70: the Amz cap still raises S PRC to A Price.
+        $amz = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(['amz' => 70]), $cap, 10.0);
+        $this->assertNotNull($amz);
+        $this->assertSame(70.0, $amz['sprice']);
+        $this->assertTrue($amz['amz_capped']);
+
+        // A target that needs more than Std holds at Std.
+        $high = (new ShopifyB2cSprcDilAutoPushService)->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(1000)]), 10.0);
+        $this->assertNotNull($high);
+        $this->assertSame(100.0, $high['sprice']);
     }
 }

@@ -33,6 +33,8 @@ class MacysRuleSpriceApplyService
      */
     public function run(bool $dryRun = false, ?int $limit = null, ?array $onlySkus = null, ?callable $logger = null): array
     {
+        // Rules saved a moment ago (a queue worker keeps the old ones in memory) must be read again.
+        \App\Support\StdPrcVsDilPricer::flush();
         $this->applyStdPrcVsDil = \App\Support\SpriceActiveRule::usesStdPrc('macys');
         $dilRules = $this->loadDilGroiRules();
         $margin = MarketplacePercentage::takeHomeForPromoChannel('macys');
@@ -148,6 +150,12 @@ class MacysRuleSpriceApplyService
     public function computeTarget(array $row, array $dilRules, float $margin): ?array
     {
         if ($this->applyStdPrcVsDil) {
+            // SNROI Cap: judge the same number as the page's SNROI% column, (S PRC × take-home − Ship − LP) ÷ LP.
+            // Macys has no Ads%, so the cap takes none off. The take-home % is the one the page row carries.
+            if ($margin > 0 && ! is_numeric($row['margin'] ?? null)) {
+                $row['margin'] = $margin;
+            }
+            $row['ads'] = 0.0;
             $priced = \App\Support\StdPrcVsDilPricer::forChannel('macys')->priceFromRow($row);
 
             return $priced !== null ? ['sprice' => $priced] : null;

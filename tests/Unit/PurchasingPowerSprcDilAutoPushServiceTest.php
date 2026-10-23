@@ -69,12 +69,10 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_target_like_amazon(): void
     {
-        $out = $this->service()->computeTarget($this->row(['lp' => 80, 'ship' => 4, 'clearance' => true]), $this->pricer());
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(90.00, $out['sprice'], 0.001);
+        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
+        $this->assertNull($this->service()->computeTarget($this->row(['lp' => 80, 'ship' => 4, 'clearance' => true]), $this->pricer()));
     }
 
     public function test_amz_rule_raises_price_to_a_price(): void
@@ -113,5 +111,48 @@ class PurchasingPowerSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(0.85, $out['margin'], 0.0001);
+    }
+
+    /** @return list<array{min:float,max:float,cap:float|null}> */
+    private function capSlabs(?float $cap): array
+    {
+        return [['min' => 0.0, 'max' => 100.0, 'cap' => $cap]];
+    }
+
+    public function test_snroi_cap_prices_s_prc_from_the_target_with_ship_bb_and_no_ads(): void
+    {
+        // LP 20, Ship BB 5, take-home 0.80. Cap 100% -> (20 x 2 + 5) / 0.80 = 56.25. The 90.00 discount price is not used.
+        $out = $this->service()->computeTarget(
+            $this->row(['ship' => 5, 'margin' => 0.80]),
+            $this->pricer(['snroi_cap' => $this->capSlabs(100)])
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(56.25, $out['sprice']);
+        $this->assertEqualsWithDelta(100.0, ((56.25 * 0.80) - 5 - 20) / 20 * 100, 0.01);
+    }
+
+    public function test_snroi_cap_then_std_max_then_amz_floor(): void
+    {
+        $high = $this->service()->computeTarget($this->row(['margin' => 0.80]), $this->pricer(['snroi_cap' => $this->capSlabs(1000)]));
+        $this->assertNotNull($high);
+        $this->assertSame(100.0, $high['sprice']);
+
+        // The cap price 56.25 is below A Price 70, so the Amz rule raises S PRC to 70.
+        $amz = $this->service()->computeTarget(
+            $this->row(['ship' => 5, 'margin' => 0.80, 'amz' => 70]),
+            $this->pricer(['snroi_cap' => $this->capSlabs(100)])
+        );
+        $this->assertNotNull($amz);
+        $this->assertSame(70.0, $amz['sprice']);
+        $this->assertTrue($amz['amz_capped']);
+    }
+
+    public function test_snroi_cap_blank_slab_keeps_the_discount_price(): void
+    {
+        $out = $this->service()->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(null)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(90.0, $out['sprice']);
     }
 }

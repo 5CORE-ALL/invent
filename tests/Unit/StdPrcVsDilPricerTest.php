@@ -490,16 +490,61 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(100.0, $wayfair->priceFromRow($row + ['dil' => 50]));
         // Every other channel page has the same SNROI Cap.
         $this->assertSame(84.21, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row + ['dil' => 10]));
-        // Only Amazon, AliExpress, TikTok 1 / 2, eBay 1 / 2 / 3, Temu 1 / 2 / 3 and the no-Ship pages have the SNROI Cap. The other pages with Ship
-        // (Reverb, Best Buy ...) price from their discounts only, so the same Dil slab leaves the Std price alone.
-        foreach (['reverb', 'bestbuy', 'shopify_b2c'] as $channel) {
-            $this->assertSame(100.0, (new StdPrcVsDilPricer($rules, $channel))->priceFromRow($row + ['dil' => 10, 'ship' => 5, 'ads' => 0.10]), $channel);
-            $this->assertNull((new StdPrcVsDilPricer($rules, $channel))->snroiCapTargetForDil(10.0), $channel);
-        }
         // The no-Ship pages, eBay and Temu keep it.
-        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'aliexpress', 'tiktok', 'tiktok2', 'pls', 'shein', 'ebay1', 'ebay2', 'ebay3', 'newtemuone', 'newtemutwo', 'temu3'] as $channel) {
+        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'aliexpress', 'tiktok', 'tiktok2', 'pls', 'shein', 'macys', 'macy', 'purchasing_power', 'reverb', 'bestbuy', 'newegg', 'shopify_b2c', 'ebay1', 'ebay2', 'ebay3', 'newtemuone', 'newtemutwo', 'temu3'] as $channel) {
             $this->assertTrue(StdPrcVsDilPricer::supportsSnroiCap($channel), $channel);
         }
+    }
+
+    public function test_newegg_snroi_cap_solves_the_page_snroi_with_ship_and_no_ads(): void
+    {
+        $rules = [
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 0, 'down_lt' => 7, 'down_disc' => 0,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'snroi_cap' => [
+                ['min' => 0, 'max' => 20, 'cap' => 60],
+                ['min' => 20, 'max' => 100, 'cap' => null],
+            ],
+        ];
+        // Newegg SGROI% = (S PRC x take-home - Ship - LP) / LP, no Ads%.
+        $row = ['inv' => 1, 'std_price' => 100, 'cvr' => 8, 'cvr_60' => 8, 'sold' => 1, 'lp' => 30, 'margin' => 0.80, 'ship' => 4];
+        $pricer = new StdPrcVsDilPricer($rules, 'newegg');
+        // (30 x 1.6 + 4) / 0.80 = 65.00
+        $this->assertSame(65.0, $pricer->priceFromRow($row + ['dil' => 10]));
+        $this->assertSame(100.0, $pricer->priceFromRow($row + ['dil' => 50]));
+    }
+
+    public function test_macys_snroi_cap_solves_the_page_snroi_with_ship_and_no_ads(): void
+    {
+        $rules = [
+            'dil' => [],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 0, 'down_lt' => 7, 'down_disc' => 0,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'snroi_cap' => [
+                ['min' => 0, 'max' => 20, 'cap' => 60],
+                ['min' => 20, 'max' => 100, 'cap' => null],
+            ],
+        ];
+        // Macys SNROI% = (S PRC x take-home - Ship - LP) / LP, no Ads%.
+        $row = ['inv' => 1, 'std_price' => 100, 'cvr' => 8, 'cvr_60' => 8, 'sold' => 1, 'mc_l30' => 1, 'lp' => 30, 'margin' => 0.75, 'ship' => 3, 'ads' => 0.0];
+        $pricer = new StdPrcVsDilPricer($rules, 'macys');
+        // (30 x 1.6 + 3) / 0.75 = 68.00
+        $price = $pricer->priceFromRow($row + ['dil' => 10]);
+        $this->assertSame(68.0, $price);
+        $this->assertEqualsWithDelta(60.0, ($price * 0.75 - 3 - 30) / 30 * 100, 0.2);
+        // A slab without a cap keeps the discount price.
+        $this->assertSame(100.0, $pricer->priceFromRow($row + ['dil' => 50]));
     }
 
     public function test_temu3_snroi_cap_uses_the_s_recovery_rate(): void

@@ -175,6 +175,8 @@
 <script>
     // S PRC is saved + pushed by the server (purchasing-power:sprc-dil-auto-push). The page only shows it.
     window.CH_STD_SERVER_OWNED = true;
+    // The SNROI% column here is (S PRC x take-home - Ship BB - LP) / LP with no Ads%, so the SNROI Cap judges the same number.
+    window.CH_PROMO_ADS_FN = function() { return 0; };
     @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'purchasing_power'])
     const COLUMN_VIS_KEY = "pp_tabulator_column_visibility";
     let table = null;
@@ -638,10 +640,14 @@
                 {
                     title: 'SPRICE', field: 'SPRICE', hozAlign: 'center',
                     editable: false, sorter: 'number', width: 120,
-                    headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, Std Prc is the maximum, never below A Price (Amz). Clearance SKUs keep the discount price. Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
+                    headerTooltip: 'S PRC from Std prc vs dil: Std Prc − Age − Dil − B Disc − 0 Sold (PP L30 = 0) − CVR − Reviews, Std Prc is the maximum, never below A Price (Amz). A Dil slab with a Target SNROI % prices S PRC from that SNROI. Clearance SKUs show C and are not priced. Saved and pushed by the server twice a day (4:35 AM / 8:35 PM IST) and every 10 min for blue triangles, page not required. Blue triangle = S PRC ≠ Price.',
                     formatter: function(cell) {
                         const d = cell.getRow().getData();
                         if (ppIsParentRow(d)) return '';
+                        // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                        if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(d)) {
+                            return '<span class="pp-sprice-clearance" title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                        }
                         let value = ppDisplayedSprice(d);
                         let bg = '';
                         if (d.SPRICE_STATUS === 'pushed') bg = 'background-color:#fff3cd;';

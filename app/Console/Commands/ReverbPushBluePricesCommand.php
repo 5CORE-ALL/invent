@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Headless catch-up for /reverb-pricing blue triangles (INV > 0, S PRC ≠ RV Price).
- * Same engine as reverb:sprc-dil-auto-push, but run every 30 minutes with a short
+ * Same engine as reverb:sprc-dil-auto-push, but run every 10 minutes with a short
  * cooldown so a blue SKU is not left waiting for the 04:25 / 20:25 IST run.
  * The page does not need to be open.
  */
@@ -20,7 +20,8 @@ class ReverbPushBluePricesCommand extends Command
     protected $signature = 'reverb:push-blue-prices
         {--dry-run : Compute only. Do NOT save SPRICE and do NOT push to Reverb}
         {--limit= : Max SKUs (for testing)}
-        {--cooldown=60 : Minutes before the same SKU is pushed / retried again}
+        {--max-pushes=300 : Max Reverb pushes per run (rest next run)}
+        {--cooldown=10 : Minutes before the same SKU is pushed / retried again}
         {--sleep-ms=300 : Delay between Reverb price API calls (ms)}';
 
     protected $description = 'Reverb: push every blue-triangle SKU (RV Price ≠ S PRC) without waiting for the twice-daily run.';
@@ -52,7 +53,10 @@ class ReverbPushBluePricesCommand extends Command
             onlySkus: null,
             logger: fn (string $msg) => $this->line($msg),
             pushAll: false,
-            cooldownMinutes: max(0, (int) $this->option('cooldown'))
+            cooldownMinutes: max(0, (int) $this->option('cooldown')),
+            blueCatchUp: true,
+            errorCooldownMinutes: max(0, (int) $this->option('cooldown')),
+            maxPushes: max(0, (int) $this->option('max-pushes'))
         );
 
         $stats = $summary['stats'] ?? [];
