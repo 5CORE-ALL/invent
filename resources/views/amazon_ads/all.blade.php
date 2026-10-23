@@ -1671,7 +1671,6 @@
                             <div class="amz-bgt-budget-badges" id="amz-bgt-budget-badges"></div>
                             <div class="amz-bgt-sum-body">
                                 <div class="amz-bgt-chart">
-                                    <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-sum"></canvas></div>
                                     <div class="amz-bgt-legend" id="amz-bgt-leg-sum"></div>
                                 </div>
                                 <div class="table-responsive">
@@ -1703,10 +1702,6 @@
                                 <div class="amz-bgt-title" title="Inclusive LT ACOS range. Use 9999 on To for the highest band. A $0 here is added as zero. The campaign pauses only when the six-part SBGT total is $0.">BGT Vs ACOS</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs ACOS" aria-label="Minimize BGT Vs ACOS">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-acos"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-acos"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtRuleTable">
                                     <thead class="table-light">
@@ -1715,6 +1710,7 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>SBGT</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1730,10 +1726,6 @@
                                 <div class="amz-bgt-title" title="Inclusive Amz page View L7 (parent Sess7). 0 is allowed for From and Bgt Views.">BGT Vs VIEWS</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs VIEWS" aria-label="Minimize BGT Vs VIEWS">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-views"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-views"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtViewsRuleTable">
                                     <thead class="table-light">
@@ -1742,6 +1734,7 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1757,10 +1750,6 @@
                                 <div class="amz-bgt-title" title="Inclusive Amz page CVR L30 (parent A L30 ÷ Sess30 × 100). 0 is allowed for From and Bgt Cvr.">BGT Vs CVR</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs CVR" aria-label="Minimize BGT Vs CVR">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-cvr"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-cvr"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtCvrRuleTable">
                                     <thead class="table-light">
@@ -1769,6 +1758,7 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1784,10 +1774,6 @@
                                 <div class="amz-bgt-title" title="Inclusive Price range (Amz list, else LMP). 0 is allowed for From and Bgt Prc.">BGT PRC</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT PRC" aria-label="Minimize BGT PRC">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-prc"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-prc"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtPrcRuleTable">
                                     <thead class="table-light">
@@ -1796,6 +1782,7 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1811,10 +1798,6 @@
                                 <div class="amz-bgt-title" title="Inclusive Reviews star range, same rating as the Reviews column.">BGT Vs REVIEWS</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs REVIEWS" aria-label="Minimize BGT Vs REVIEWS">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-reviews"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-reviews"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtReviewsRuleTable">
                                     <thead class="table-light">
@@ -1823,6 +1806,7 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1838,10 +1822,6 @@
                                 <div class="amz-bgt-title" title="Inclusive Dil% (ovl30 ÷ Inv × 100). Defaults: Pink 50%+, Green 25–50, Red under 25. 0 is allowed for From and Bgt Dil.">BGT Vs Dil</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs Dil" aria-label="Minimize BGT Vs Dil">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-dil"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-dil"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtDilRuleTable">
                                     <thead class="table-light">
@@ -1850,6 +1830,7 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1865,10 +1846,6 @@
                                 <div class="amz-bgt-title" title="Inclusive on-hand inventory (the Inv column). First matching slab wins, top to bottom. Default budgets are 0 until you set them.">Inv Rule</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize Inv Rule" aria-label="Minimize Inv Rule">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-inv"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-inv"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtInvRuleTable">
                                     <thead class="table-light">
@@ -1877,6 +1854,7 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1892,10 +1870,6 @@
                                 <div class="amz-bgt-title" title="Inclusive Avg GPFT % of the campaign's SKU(s) (the GPFT column, same as /amazon-tabulator-view; a PARENT campaign uses the average of its child SKUs). First matching slab wins, top to bottom. Negative From, To, and Bgt are allowed. Default budgets are 0 until you set them.">BGT Vs GPFT%</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize BGT Vs GPFT%" aria-label="Minimize BGT Vs GPFT%">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-gpft"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-gpft"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtGpftRuleTable">
                                     <thead class="table-light">
@@ -1904,6 +1878,7 @@
                                             <th>From %</th>
                                             <th>To %</th>
                                             <th>Bgt</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -1919,10 +1894,6 @@
                                 <div class="amz-bgt-title" title="Inclusive L30 spend (the cost column). First matching slab wins, top to bottom. Negative From, To, and Bgt are allowed.">Spend Rule</div>
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-exp-btn" title="Expand" aria-label="Expand">⤢</button><button type="button" class="amz-bgt-min-btn" title="Minimize Spend Rule" aria-label="Minimize Spend Rule">−</button></span>
                             </div>
-                            <div class="amz-bgt-chart">
-                                <div class="amz-bgt-chart-canvas"><canvas id="amz-bgt-chart-spend"></canvas></div>
-                                <div class="amz-bgt-legend" id="amz-bgt-leg-spend"></div>
-                            </div>
                             <div class="table-responsive">
                                 <table class="table table-sm table-bordered align-middle mb-0" id="amazonAdsBgtSpendRuleTable">
                                     <thead class="table-light">
@@ -1931,6 +1902,7 @@
                                             <th>From</th>
                                             <th>To</th>
                                             <th>Bgt</th>
+                                            <th class="text-center">Count</th>
                                             <th></th>
                                         </tr>
                                     </thead>
@@ -6502,14 +6474,47 @@
                 }
                 return '';
             }
+            var AMZ_BGT_BAND_TBODY = {
+                acos: 'amazonAdsBgtRuleBandsBody', views: 'amazonAdsBgtViewsRuleBandsBody', cvr: 'amazonAdsBgtCvrRuleBandsBody',
+                prc: 'amazonAdsBgtPrcRuleBandsBody', reviews: 'amazonAdsBgtReviewsRuleBandsBody', dil: 'amazonAdsBgtDilRuleBandsBody',
+                inv: 'amazonAdsBgtInvRuleBandsBody', gpft: 'amazonAdsBgtGpftRuleBandsBody', spend: 'amazonAdsBgtSpendRuleBandsBody'
+            };
+            // Campaign count per slab, written into the slab table itself (Count column + a Total footer).
+            function amzBgtWriteBandCounts(key, rows, total, note) {
+                var tbody = document.getElementById(AMZ_BGT_BAND_TBODY[key] || '');
+                if (!tbody) return;
+                var trs = tbody.querySelectorAll('tr');
+                for (var i = 0; i < trs.length; i++) {
+                    var td = trs[i].querySelector('td.amz-bgt-cnt');
+                    if (!td) {
+                        td = document.createElement('td');
+                        td.className = 'amz-bgt-cnt text-center fw-semibold';
+                        trs[i].insertBefore(td, trs[i].lastElementChild);
+                    }
+                    var r = rows && rows[i] ? rows[i] : null;
+                    td.textContent = r ? r.n.toLocaleString('en-US') : '…';
+                    td.title = r && total > 0 ? Math.round((r.n / total) * 100) + '% of ' + total.toLocaleString('en-US') + ' campaigns' : '';
+                }
+                var table = tbody.closest('table');
+                if (!table) return;
+                var foot = table.querySelector('tfoot.amz-bgt-cnt-foot');
+                if (!foot) {
+                    foot = document.createElement('tfoot');
+                    foot.className = 'amz-bgt-cnt-foot';
+                    table.appendChild(foot);
+                }
+                var unmatched = 0;
+                if (rows && rows.length > trs.length) unmatched = rows[rows.length - 1].n;
+                var text = rows ? ('Total' + (unmatched > 0 ? ' (No match ' + unmatched.toLocaleString('en-US') + ')' : '')) : 'Counting…';
+                foot.innerHTML = '<tr class="table-light"><td colspan="4" class="text-end small fw-semibold">' + amzEsc(text) + '</td>'
+                    + '<td class="text-center fw-bold">' + (rows ? total.toLocaleString('en-US') : '…') + '</td><td></td></tr>'
+                    + (note ? '<tr><td colspan="6" class="small text-muted">' + amzEsc(note) + '</td></tr>' : '');
+            }
             function amzBgtPaintColumn(key, bands, counts) {
-                var legend = document.getElementById('amz-bgt-leg-' + key);
-                var canvas = document.getElementById('amz-bgt-chart-' + key);
-                if (!legend || !canvas || typeof Chart === 'undefined') return;
                 // Stored counts only when they match these exact slabs. Otherwise count the rows on the page now.
                 var stored = amzBgtStoredColumn(key, bands);
                 if (stored && !(counts && counts._live)) counts = stored;
-                if (!counts) { legend.innerHTML = amzBgtCountingNote(); return; }
+                if (!counts) { amzBgtWriteBandCounts(key, null, 0, ''); return; }
                 if (counts._live) {
                     amzBgtStageColumn(key, counts, bands);
                     amzBgtScheduleSaveCounts();
@@ -6518,56 +6523,19 @@
                     var n = counts && counts[i] != null ? Number(counts[i]) : 0;
                     if (!isFinite(n)) n = 0;
                     var label = amzBgtBandRangeLabel(b) || ('Band ' + (i + 1));
-                    var color = (b && b.color) ? String(b.color) : AMZ_BGT_COL_COLORS[i % AMZ_BGT_COL_COLORS.length];
-                    return { label: label, n: n, color: color };
+                    return { label: label, n: n };
                 });
                 var unmatched = counts && typeof counts.unmatched === 'number' ? counts.unmatched : 0;
-                if (unmatched > 0) rows.push({ label: 'No match', n: unmatched, color: '#94a3b8' });
+                if (unmatched > 0) rows.push({ label: 'No match', n: unmatched });
                 var total = counts && typeof counts.campaigns === 'number'
                     ? counts.campaigns
                     : rows.reduce(function (s, r) { return s + r.n; }, 0);
-                legend.innerHTML = rows.map(function (r) {
-                    var pct = total > 0 ? Math.round((r.n / total) * 100) : 0;
-                    return '<div class="amz-bgt-leg-row"><span class="amz-bgt-swatch" style="background:' + r.color + '"></span><span>' + amzEsc(r.label) + '</span><strong>' + r.n + '</strong><span class="amz-bgt-leg-pct">' + pct + '%</span>' + amzHistDot('bgt_' + key + ':' + amzHistSlug(r.label), r.label, r.color, 'BGT ' + String(key).toUpperCase(), r.label === 'No match') + '</div>';
-                }).join('') + (rows.length ? '<div class="amz-bgt-leg-row amz-bgt-leg-total"><span class="amz-bgt-swatch" style="background:transparent"></span><span>Total</span><strong>' + total + '</strong><span class="amz-bgt-leg-pct">' + (total > 0 ? '100%' : '0%') + '</span></div>' : '')
-                    + (counts._partial ? '<div class="amz-bgt-leg-row text-muted"><span>This page only. Full count updating…</span></div>' : '');
+                amzBgtWriteBandCounts(key, rows, total, counts._partial ? 'This page only. Full count updating…' : '');
                 if (!counts._partial && !amzBgtDraftEdited && rows.length) {
                     var histMap = {};
                     rows.forEach(function (r) { histMap[amzHistSlug(r.label)] = r.n; });
                     amzHistRecord('bgt_' + key, histMap);
                 }
-                if (amzBgtColCharts[key]) {
-                    try { amzBgtColCharts[key].destroy(); } catch (e) {}
-                    amzBgtColCharts[key] = null;
-                }
-                amzBgtColCharts[key] = new Chart(canvas.getContext('2d'), {
-                    type: 'bar',
-                    data: {
-                        labels: rows.map(function (r) { return r.label; }),
-                        datasets: [{
-                            data: rows.map(function (r) { return r.n; }),
-                            backgroundColor: rows.map(function (r) { return r.color; }),
-                            borderWidth: 0,
-                            borderRadius: 4,
-                            maxBarThickness: 28
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        animation: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { display: false, grid: { display: false } },
-                            y: { display: false, beginAtZero: true, grid: { display: false } }
-                        }
-                    }
-                });
-                requestAnimationFrame(function () {
-                    if (amzBgtColCharts[key]) {
-                        try { amzBgtColCharts[key].resize(); } catch (e) {}
-                    }
-                });
                 if (key !== 'sum') amzBgtPaintSum();
             }
             function amzBgtBandAmount(bands, idx, key) {
@@ -6684,7 +6652,8 @@
                     // A page-only total must not replace the page-wide DAILY BGT badge.
                     var d = Math.round(sbgtTotal);
                     if (box) {
-                        box.innerHTML = '<span class="amz-bgt-budget-badge amz-bgt-budget-badge--total"><span class="amz-bgt-budget-amt">Daily budget (this page)</span><span class="amz-bgt-budget-n">$' + d.toLocaleString('en-US') + '</span><span class="amz-bgt-budget-day">' + totalN.toLocaleString('en-US') + ' campaigns</span></span>';
+                        box.innerHTML = '<span class="amz-bgt-budget-badge amz-bgt-budget-badge--total"><span class="amz-bgt-budget-amt">Daily budget (this page)</span><span class="amz-bgt-budget-n">$' + d.toLocaleString('en-US') + '</span><span class="amz-bgt-budget-day">' + totalN.toLocaleString('en-US') + ' campaigns</span></span>'
+                            + '<span class="amz-bgt-budget-badge amz-bgt-budget-badge--total" title="Monthly budget $' + (d * 30).toLocaleString('en-US') + ' = daily budget $' + d.toLocaleString('en-US') + ' × 30"><span class="amz-bgt-budget-amt">Monthly budget (this page)</span><span class="amz-bgt-budget-n">$' + (d * 30).toLocaleString('en-US') + '</span><span class="amz-bgt-budget-day">daily × 30</span></span>';
                     }
                     return;
                 }
@@ -6757,6 +6726,9 @@
                     return;
                 }
                 var sumPartial = !!sumRows._partial;
+                // No usable stored sum (for example one saved before GPFT existed). The grid holds one page only,
+                // so load every campaign. It repaints this panel when it lands and stores the new full sum.
+                if (sumPartial && !amzBgtUniverse.failed) amzBgtEnsureUniverse();
                 sumRows.forEach(function (row) {
                     var parts;
                     try { parts = amzBgtDraftParts(row); } catch (e) { return; }
