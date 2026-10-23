@@ -5,6 +5,7 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryMaster;
 use App\Models\ProductMaster;
+use App\Services\ProductMaster\BackstageSpecificationStore;
 use App\Services\ProductMaster\EbayTechnicalSpecificationSync;
 use App\Support\Marketplace\EbayCategoryAspects;
 use Illuminate\Http\Request;
@@ -451,6 +452,9 @@ class TechnicalSpecificationsController extends Controller
             }
             $specs = $this->normalizeSpecs($product->description_v2_specifications ?? null);
             $pushed = $sync->push($sku, $specs);
+            if ($pushed['success']) {
+                app(BackstageSpecificationStore::class)->recordPush($sku, 'ebay1', $specs);
+            }
             $results[] = $this->syncResult($sku, $pushed['success'], $pushed['message'], $specs);
         }
 
