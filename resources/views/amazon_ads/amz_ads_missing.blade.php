@@ -1030,8 +1030,8 @@
                                 : '')
                             + '</span>';
                     }).join('');
-                    return chips
-                        + '<button type="button" class="link-add-btn" data-sku="' + esc(d.sku) + '" data-type="' + type + '" title="Link the selected campaign as ' + type + '"><i class="fa fa-plus"></i></button>';
+                    // Campaigns are linked automatically (created here, or named "PARENT … KW / PT" on Amazon): no manual + button.
+                    return chips;
                 };
             }
 

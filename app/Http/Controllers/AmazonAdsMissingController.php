@@ -126,6 +126,10 @@ class AmazonAdsMissingController extends Controller
         }
         ksort($parents);
 
+        // Campaigns that already exist on Amazon as "PARENT {parent} KW" / "PARENT {parent} PT" are linked
+        // automatically, so nothing has to be added by hand.
+        $this->autoLinkExistingCampaigns($parents);
+
         // All links grouped by sku ("PARENT {parent}").
         $linksBySku = AmazonAdsMissingLink::orderBy('id')
             ->get()
@@ -158,6 +162,93 @@ class AmazonAdsMissingController extends Controller
         })->values();
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Link existing Amazon SP campaigns to their parent by name: "PARENT {parent} KW" -> KW, "PARENT {parent} PT" -> PT.
+     * Only fills gaps (a parent that already has a link of that type is left alone) and back-fills a missing campaign_id
+     * on links that only have a name. Never throws: a failure just leaves the cells as they were.
+     *
+     * @param  array<string, string>  $parents  UPPER(parent) => parent
+     */
+    private function autoLinkExistingCampaigns(array $parents): void
+    {
+        try {
+            if ($parents === []
+                || ! Schema::hasTable('amazon_ads_missing_links')
+                || ! Schema::hasTable(self::SP_TABLE)
+                || ! Schema::hasColumn(self::SP_TABLE, 'campaignName')
+                || ! Schema::hasColumn(self::SP_TABLE, 'campaign_id')) {
+                return;
+            }
+
+            // Normalized campaign name => [name, id] for names shaped like "PARENT … KW" / "PARENT … PT".
+            $campaigns = [];
+            $rows = DB::table(self::SP_TABLE)
+                ->selectRaw('campaignName AS campaign_name, MAX(campaign_id) AS campaign_id')
+                ->where('campaignName', 'like', 'PARENT %')
+                ->where(function ($q) {
+                    $q->where('campaignName', 'like', '% KW')
+                        ->orWhere('campaignName', 'like', '% PT')
+                        ->orWhere('campaignName', 'like', '% KW.')
+                        ->orWhere('campaignName', 'like', '% PT.');
+                })
+                ->groupBy('campaignName')
+                ->get();
+            foreach ($rows as $r) {
+                $name = trim((string) $r->campaign_name);
+                $key = $this->normalizeCampaignName($name);
+                if ($key === '') {
+                    continue;
+                }
+                $campaigns[$key] = [$name, preg_replace('/\D+/', '', (string) ($r->campaign_id ?? '')) ?: null];
+            }
+            if ($campaigns === []) {
+                return;
+            }
+
+            $existing = AmazonAdsMissingLink::query()->get(['id', 'sku', 'type', 'campaign_id', 'campaign_name']);
+            $hasType = [];
+            foreach ($existing as $l) {
+                $hasType[(string) $l->sku.'|'.(string) $l->type] = true;
+                // Back-fill the campaign id (needed to read / update the campaign through the API).
+                if (trim((string) $l->campaign_id) === '') {
+                    $hit = $campaigns[$this->normalizeCampaignName((string) $l->campaign_name)] ?? null;
+                    if ($hit && $hit[1]) {
+                        AmazonAdsMissingLink::where('id', $l->id)->update(['campaign_id' => $hit[1]]);
+                    }
+                }
+            }
+
+            // Archived campaigns (e.g. removed with the trash icon) must not come back.
+            $statusMap = $this->campaignStatusMap();
+
+            $created = 0;
+            foreach ($parents as $parent) {
+                $sku = 'PARENT '.$parent;
+                foreach (self::TYPES as $type) {
+                    if (isset($hasType[$sku.'|'.$type])) {
+                        continue;
+                    }
+                    $hit = $campaigns[$this->normalizeCampaignName($sku.' '.$type)] ?? null;
+                    if (! $hit || ($statusMap[$this->normalizeCampaignName($hit[0])] ?? '') === 'ARCHIVED') {
+                        continue;
+                    }
+                    $attrs = $this->missingLinkCreateAttrs($hit[1], false);
+                    $attrs['user_id'] = null; // auto-linked, not created by a person
+                    AmazonAdsMissingLink::firstOrCreate(
+                        ['sku' => $sku, 'type' => $type, 'campaign_name' => $hit[0]],
+                        $attrs
+                    );
+                    $created++;
+                }
+            }
+            if ($created > 0) {
+                self::forgetMissingTotalCache();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Amazon ads missing: auto-link failed', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
