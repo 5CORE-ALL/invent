@@ -106,4 +106,23 @@ class GoogleShoppingSbgtTest extends TestCase
             ]])['bgt']
         );
     }
+
+    public function test_price_below_threshold_zeros_sbgt(): void
+    {
+        $row = ['sbgt' => 8];
+        GoogleShoppingBgtParts::applyPricePause($row, 19.99, 20.0);
+        $this->assertSame(0, $row['sbgt']);
+
+        $row = ['sbgt' => 8];
+        GoogleShoppingBgtParts::applyPricePause($row, 20.0, 20.0);
+        $this->assertSame(8, $row['sbgt']);
+
+        $row = ['sbgt' => 8];
+        GoogleShoppingBgtParts::applyPricePause($row, 5.0, 0.0);
+        $this->assertSame(8, $row['sbgt']);
+
+        $row = ['sbgt' => 8];
+        GoogleShoppingBgtParts::applyPricePause($row, null, 20.0);
+        $this->assertSame(8, $row['sbgt']);
+    }
 }

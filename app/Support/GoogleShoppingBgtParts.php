@@ -85,6 +85,21 @@ final class GoogleShoppingBgtParts
         $cfg = ($rawRule ?? GoogleShoppingCampaignsRawRule::resolvedRule())['sbgt'] ?? [];
         self::applyPriceCap($arr, $price, (float) ($cfg['max_pct_of_price'] ?? 10.0));
         self::applyInventoryGate($arr, $inv, (bool) ($cfg['pause_if_inv_zero'] ?? true));
+        self::applyPricePause($arr, $price, (float) ($cfg['pause_price_below'] ?? 20.0));
+    }
+
+    /**
+     * Rule "Pause ads if price is below $X": a known price under the threshold forces SBGT to 0 — Google cannot
+     * push a $0 daily budget, so the campaign is paused instead. Threshold 0 = rule off; an unknown price never pauses.
+     */
+    public static function applyPricePause(array &$arr, ?float $price, float $below): void
+    {
+        if ($below <= 0 || $price === null || ! is_finite($price) || $price <= 0) {
+            return;
+        }
+        if ($price < $below) {
+            $arr['sbgt'] = 0;
+        }
     }
 
     /**

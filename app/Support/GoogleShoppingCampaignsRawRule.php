@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class GoogleShoppingCampaignsRawRule
 {
-    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v6';
+    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v7';
 
     /**
      * Same ACOS → SBGT brackets as /facebook-ads (live facebook_sbgt_rules),
@@ -42,6 +42,8 @@ final class GoogleShoppingCampaignsRawRule
                 'pause_if_inv_zero' => true,
                 // SBGT is capped at this % of the price (min $1); 0 = no cap.
                 'max_pct_of_price' => 10.0,
+                // Price below this ($) forces SBGT to 0, which pauses the ad; 0 = rule off.
+                'pause_price_below' => 20.0,
             ],
             'sbid' => [
                 'util_low' => 66.0,
@@ -134,6 +136,12 @@ final class GoogleShoppingCampaignsRawRule
         $maxPct = array_key_exists('max_pct_of_price', $sbIn) && is_numeric($sbIn['max_pct_of_price'])
             ? (float) $sbIn['max_pct_of_price']
             : (float) $d['sbgt']['max_pct_of_price'];
+        $pausePrice = array_key_exists('pause_price_below', $sbIn) && is_numeric($sbIn['pause_price_below'])
+            ? (float) $sbIn['pause_price_below']
+            : (float) $d['sbgt']['pause_price_below'];
+        if (! is_finite($pausePrice) || $pausePrice < 0 || $pausePrice > 1000000) {
+            throw new \InvalidArgumentException('Pause-below price must be 0 or more (0 = rule off).');
+        }
         if (! is_finite($maxPct) || $maxPct < 0 || $maxPct > 1000) {
             throw new \InvalidArgumentException('Max BGT % of price must be between 0 and 1000 (0 = no cap).');
         }
@@ -172,7 +180,7 @@ final class GoogleShoppingCampaignsRawRule
             throw new \InvalidArgumentException('SBID low-bid increment must be between 0.01 and 5.');
         }
 
-        return ['sbgt' => ['bands' => $bands, 'pause_if_inv_zero' => $pauseIfInvZero, 'max_pct_of_price' => $maxPct], 'sbid' => $sbid];
+        return ['sbgt' => ['bands' => $bands, 'pause_if_inv_zero' => $pauseIfInvZero, 'max_pct_of_price' => $maxPct, 'pause_price_below' => $pausePrice], 'sbid' => $sbid];
     }
 
     /**

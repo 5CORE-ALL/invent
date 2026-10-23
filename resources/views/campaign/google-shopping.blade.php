@@ -1028,6 +1028,10 @@
                             <input type="number" id="gac-bgt-max-pct" value="10" step="0.5" min="0" max="1000" class="form-control form-control-sm">
                             <span>% of price</span>
                         </label>
+                        <label class="gac-bgt-opt" title="Rule: when the price is below this amount SBGT becomes 0, and a $0 budget cannot be pushed, so the ad is paused automatically. Change the amount any time; 0 = rule off.">
+                            <span>Pause ads if price below $</span>
+                            <input type="number" id="gac-bgt-pause-price" value="20" step="1" min="0" class="form-control form-control-sm">
+                        </label>
                     </div>
 
                     <div class="gac-bgt-cols">
@@ -1698,6 +1702,11 @@
                 var dilp = parseInt(row.bgt_dil, 10);
                 var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL';
                 tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(dilp) ? dilp : 0);
+                var pBelow = gacPausePriceBelow();
+                var rowPrice = parseFloat(row && row.price);
+                if (pBelow > 0 && isFinite(rowPrice) && rowPrice > 0 && rowPrice < pBelow) {
+                    tip += ' · Price under $' + pBelow + ' zeros SBGT — cannot push $0, campaign will be paused';
+                }
                 var capV = parseInt(row.sbgt_cap, 10);
                 if (isFinite(capV)) tip += ' · max $' + capV + ' (% of price cap)';
                 var inv = parseFloat(row && row.inventory);
@@ -2929,10 +2938,14 @@
                             col.formatter = function(c) {
                                 var v = parseFloat(c.getValue());
                                 if (!isFinite(v) || v <= 0) return '—';
-                                // Whole dollars; anything under $20 is shown in red.
+                                // Whole dollars; anything under the "pause ads if price below" amount (default $20) is red.
                                 var rounded = Math.round(v);
                                 var txt = '$' + rounded.toLocaleString('en-US');
-                                return rounded < 20 ? '<span style="color:#dc2626;font-weight:700;" title="Price under $20">' + txt + '</span>' : txt;
+                                var lowBelow = gacPausePriceBelow();
+                                if (lowBelow > 0 && v < lowBelow) {
+                                    return '<span style="color:#dc2626;font-weight:700;" title="Price under $' + lowBelow + ' — ad is paused (SBGT 0)">' + txt + '</span>';
+                                }
+                                return txt;
                             };
                         }
                         if (Object.prototype.hasOwnProperty.call(moneySpendTitles, col.field)) {
@@ -3920,6 +3933,17 @@
             function gacBgtPauseInv0() {
                 var el = document.getElementById('gac-bgt-pause-inv0');
                 return el ? !!el.checked : true;
+            }
+            function gacBgtPausePrice() {
+                var el = document.getElementById('gac-bgt-pause-price');
+                var v = el ? parseFloat(el.value) : 20;
+                return (isFinite(v) && v >= 0) ? v : 20;
+            }
+            /** Saved "pause ads if price below $X" threshold (default 20; 0 = off). */
+            function gacPausePriceBelow() {
+                var sb = (window.gacRawRule && window.gacRawRule.sbgt) || {};
+                var v = parseFloat(sb.pause_price_below);
+                return isFinite(v) ? v : 20;
             }
             function gacBgtMaxPct() {
                 var el = document.getElementById('gac-bgt-max-pct');
@@ -5117,6 +5141,8 @@
                                 var maxPctEl = document.getElementById('gac-bgt-max-pct');
                                 if (pauseChk) pauseChk.checked = sbOpt.pause_if_inv_zero !== false;
                                 if (maxPctEl) maxPctEl.value = (sbOpt.max_pct_of_price != null ? sbOpt.max_pct_of_price : 10);
+                                var pausePriceEl = document.getElementById('gac-bgt-pause-price');
+                                if (pausePriceEl) pausePriceEl.value = (sbOpt.pause_price_below != null ? sbOpt.pause_price_below : 20);
                                 resolve();
                             });
                         })
@@ -5191,7 +5217,7 @@
                             'X-Requested-With': 'XMLHttpRequest',
                         },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ sbgt: { bands: sbgtBands, pause_if_inv_zero: gacBgtPauseInv0(), max_pct_of_price: gacBgtMaxPct() }, sbid: gacCollectSbid() }),
+                        body: JSON.stringify({ sbgt: { bands: sbgtBands, pause_if_inv_zero: gacBgtPauseInv0(), max_pct_of_price: gacBgtMaxPct(), pause_price_below: gacBgtPausePrice() }, sbid: gacCollectSbid() }),
                     })
                         .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
                         .then(function(out) {
