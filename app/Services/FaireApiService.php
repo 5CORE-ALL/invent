@@ -227,20 +227,32 @@ class FaireApiService
      */
     public function getTaxonomyTypes(): array
     {
-        foreach (['/products/taxonomy-types', '/taxonomy-types'] as $path) {
+        $cached = \Illuminate\Support\Facades\Cache::get('faire_taxonomy_types_v2');
+        if (is_array($cached) && $cached !== []) {
+            return ['success' => true, 'types' => $cached];
+        }
+
+        $lastError = '';
+        foreach (['/products/types', '/products/taxonomy-types', '/taxonomy-types'] as $path) {
             $res = $this->request('GET', $path);
             if (empty($res['ok']) || ! is_array($res['json'])) {
+                $lastError = $lastError !== '' ? $lastError : $this->errorFromResponse($res);
                 continue;
             }
             $types = $this->extractTaxonomyTypes($res['json']);
             if ($types === []) {
                 continue;
             }
+            \Illuminate\Support\Facades\Cache::put('faire_taxonomy_types_v2', $types, now()->addDay());
 
             return ['success' => true, 'types' => $types];
         }
 
-        return ['success' => false, 'types' => [], 'message' => 'Could not load Faire taxonomy types.'];
+        return [
+            'success' => false,
+            'types' => [],
+            'message' => 'Could not load Faire taxonomy types.'.($lastError !== '' ? ' '.$lastError : ''),
+        ];
     }
 
     /**

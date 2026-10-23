@@ -258,15 +258,9 @@ class ListingManagerImageStore
                 $publicSources[] = $url;
             }
         }
-        $hasLocal = false;
-        foreach ($images as $url) {
-            if (self::isStored((string) $url)) {
-                $hasLocal = true;
-                break;
-            }
-        }
-        if ($hasLocal && $publicSources !== []) {
-            return array_values(array_unique($publicSources));
+        $sourceByHash = [];
+        foreach ($publicSources as $url) {
+            $sourceByHash[sha1(self::canonicalUrl($url))] = $url;
         }
 
         $out = [];
@@ -275,13 +269,141 @@ class ListingManagerImageStore
             if ($url === '') {
                 continue;
             }
+            if (self::isStored($url)) {
+                $hash = pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_FILENAME);
+                if (isset($sourceByHash[$hash])) {
+                    $url = $sourceByHash[$hash];
+                }
+            }
             if (str_starts_with($url, '/')) {
                 $url = rtrim((string) config('app.url'), '/').$url;
             }
             $out[] = $url;
         }
+        if ($out === []) {
+            return array_values(array_unique($publicSources));
+        }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * Swap links whose file type the marketplace rejects for a public JPEG copy served by this app.
+     * Links that cannot be converted are dropped.
+     *
+     * @param  list<mixed>  $urls
+     * @param  list<string>  $allowedExtensions
+     * @return list<string>
+     */
+    public static function withAllowedFormats(array $urls, array $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif']): array
+    {
+        $out = [];
+        foreach ($urls as $url) {
+            $url = trim((string) $url);
+            if ($url === '') {
+                continue;
+            }
+            $ext = strtolower(pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
+            if ($ext !== '' && ! in_array($ext, $allowedExtensions, true)) {
+                $url = self::jpegCopyUrl($url);
+            }
+            if ($url !== '' && ! in_array($url, $out, true)) {
+                $out[] = $url;
+            }
+        }
+
+        return $out;
+    }
+
+    public static function jpegCopyUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+        if (str_starts_with($url, '/')) {
+            $url = rtrim((string) config('app.url'), '/').$url;
+        }
+        $stem = '';
+        if (self::isStored($url)) {
+            $stem = pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_FILENAME);
+        }
+        if (! preg_match('/^[a-f0-9]{40}$/', $stem)) {
+            $stem = sha1(self::canonicalUrl($url));
+        }
+        $name = $stem.'.jpg';
+        $relative = self::DIR.'/'.$name;
+        $publicUrl = rtrim((string) config('app.url'), '/').self::displayUrl($name);
+        if (Storage::disk(self::DISK)->exists($relative)) {
+            return $publicUrl;
+        }
+
+        $raw = null;
+        if (self::isStored($url)) {
+            $file = basename((string) parse_url($url, PHP_URL_PATH));
+            if (Storage::disk(self::DISK)->exists(self::DIR.'/'.$file)) {
+                $raw = Storage::disk(self::DISK)->get(self::DIR.'/'.$file);
+            }
+        }
+        if ($raw === null) {
+            try {
+                $response = Http::timeout(30)->withoutVerifying()->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (compatible; 5CoreListingManager/1.0)',
+                ])->get($url);
+                $raw = $response->successful() ? $response->body() : null;
+            } catch (\Throwable) {
+                $raw = null;
+            }
+        }
+        $jpeg = is_string($raw) && strlen($raw) > 32 ? self::toJpeg($raw) : null;
+        if ($jpeg === null) {
+            return '';
+        }
+        Storage::disk(self::DISK)->put($relative, $jpeg);
+
+        return $publicUrl;
+    }
+
+    private static function toJpeg(string $raw): ?string
+    {
+        if (str_starts_with($raw, "\xFF\xD8\xFF")) {
+            return $raw;
+        }
+        if (function_exists('imagecreatefromstring') && function_exists('imagejpeg')) {
+            $image = @imagecreatefromstring($raw);
+            if ($image !== false) {
+                $width = imagesx($image);
+                $height = imagesy($image);
+                $canvas = imagecreatetruecolor($width, $height);
+                imagefilledrectangle($canvas, 0, 0, $width, $height, imagecolorallocate($canvas, 255, 255, 255));
+                imagecopy($canvas, $image, 0, 0, 0, 0, $width, $height);
+                ob_start();
+                imagejpeg($canvas, null, 90);
+                $jpeg = ob_get_clean();
+                imagedestroy($image);
+                imagedestroy($canvas);
+                if (is_string($jpeg) && str_starts_with($jpeg, "\xFF\xD8")) {
+                    return $jpeg;
+                }
+            }
+        }
+        if (class_exists(\Imagick::class)) {
+            try {
+                $im = new \Imagick();
+                $im->readImageBlob($raw);
+                $im->setImageBackgroundColor('white');
+                $im = $im->mergeImageLayers(\Imagick::LAYERMETHOD_FLATTEN);
+                $im->setImageFormat('jpeg');
+                $im->setImageCompressionQuality(90);
+                $blob = $im->getImageBlob();
+                $im->clear();
+
+                return is_string($blob) && $blob !== '' ? $blob : null;
+            } catch (\Throwable) {
+            }
+        }
+
+        return null;
     }
 
     public static function serve(string $file): BinaryFileResponse

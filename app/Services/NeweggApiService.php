@@ -1777,7 +1777,9 @@ class NeweggApiService
         $path = (string) ($parts['path'] ?? '');
         $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         if ($ext !== '' && ! in_array($ext, ['jpg', 'jpeg', 'gif'], true)) {
-            return '';
+            $copy = \App\Support\Marketplace\ListingManagerImageStore::jpegCopyUrl($url);
+
+            return $copy !== '' && $copy !== $url ? self::neweggImageUrl($copy) : '';
         }
         $clean = ($parts['scheme'] ?? 'https').'://'.($parts['host'] ?? '').(isset($parts['port']) ? ':'.$parts['port'] : '').$path;
         if (! empty($parts['query']) && ! preg_match('/^v=\d+$/', (string) $parts['query'])) {

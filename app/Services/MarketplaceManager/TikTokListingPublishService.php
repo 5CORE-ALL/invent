@@ -248,9 +248,22 @@ class TikTokListingPublishService
         $this->persistListed($channel, $skuRows, $productId, $result['skus'] ?? [], $price);
         $this->forgetListingCaches($channel);
 
+        $message = $result['message'] ?? ('Published '.$primarySku.' to '.$label.'.');
+        $bullets = array_slice($this->highlightBullets($product), 0, 5);
+        if ($bullets !== []) {
+            try {
+                $highlights = $api->updateBulletPoints($productId !== '' ? $productId : $primarySku, implode("\n", $bullets));
+                if (empty($highlights['success'])) {
+                    $message .= ' Product highlights: '.trim((string) ($highlights['message'] ?? 'not saved'));
+                }
+            } catch (\Throwable $e) {
+                $message .= ' Product highlights: '.$e->getMessage();
+            }
+        }
+
         return [
             'success' => true,
-            'message' => $result['message'] ?? ('Published '.$primarySku.' to '.$label.'.'),
+            'message' => $message,
             'goods_id' => $productId !== '' ? $productId : null,
             'sku_id' => $result['sku_id'] ?? null,
             'skus' => $skuRows,
@@ -542,6 +555,27 @@ class TikTokListingPublishService
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function highlightBullets(ProductMaster $product): array
+    {
+        $fromVariation = \App\Support\Marketplace\VariationListingContent::bulletsFor($product);
+        if ($fromVariation !== null) {
+            return $fromVariation;
+        }
+
+        $bullets = [];
+        foreach (['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as $col) {
+            $line = trim((string) ($product->{$col} ?? ''));
+            if ($line !== '' && ! in_array($line, $bullets, true)) {
+                $bullets[] = $line;
+            }
+        }
+
+        return $bullets;
     }
 
     /**

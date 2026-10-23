@@ -1371,6 +1371,39 @@ class ListingManagerController extends Controller
         ]);
     }
 
+    /**
+     * Variation Master title, description, and bullets stored on the PARENT row.
+     */
+    public function variationContent(Request $request)
+    {
+        $sku = trim((string) $request->query('sku', ''));
+        $parent = ListingManagerFamily::normalizeParentKey((string) $request->query('parent', ''));
+        if ($parent === '' && $sku !== '') {
+            $parent = ListingManagerFamily::parentKey($sku);
+        }
+        if ($parent === '') {
+            return response()->json(['success' => false, 'message' => 'Pick a parent group first.'], 422);
+        }
+
+        \App\Support\Marketplace\VariationListingContent::forget($parent);
+        $content = \App\Support\Marketplace\VariationListingContent::forParent($parent);
+        if ($content['title'] === '' && $content['description'] === '' && $content['bullets'] === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Variation Master has no title, description, or bullets for '.$parent.'.',
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'parent' => $parent,
+            'title' => $content['title'],
+            'description' => $content['description'],
+            'bullets' => $content['bullets'],
+            'message' => 'Loaded from Variation Master ('.$parent.').',
+        ]);
+    }
+
     public function familyByParent(Request $request)
     {
         $parent = trim((string) $request->input('parent', ''));

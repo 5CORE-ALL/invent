@@ -943,9 +943,14 @@
                     <select class="form-select mb-3 lc-ebay-only" disabled><option>-- Do Not Use Template --</option></select>
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <label class="form-label mb-0">Title <span class="lc-req">*</span></label>
-                        <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="title">
-                            <i class="fas fa-heading me-1"></i>Load Title from Title Master
-                        </button>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm lc-load-master-btn" data-master-source="title">
+                                <i class="fas fa-heading me-1"></i>Load Title from Title Master
+                            </button>
+                            <button type="button" class="btn-lc btn-lc-ghost btn-sm" id="lc-load-variation-btn" title="Title, description, and bullets from the parent row on Variation Master">
+                                <i class="fas fa-sitemap me-1"></i>Load from Variation Master
+                            </button>
+                        </div>
                     </div>
                     <input id="lc-title" class="form-control mt-1">
                     <div id="lc-title-count" class="lc-char-ok mt-1">Characters: 0/80</div>
@@ -5772,6 +5777,32 @@
                     $btn.data('loading', false).prop('disabled', false).html(idleHtml);
                 }
             });
+        });
+        $(document).on('click', '#lc-load-variation-btn', function () {
+            if (!currentDraft) { toast('Open a draft first.', 'error'); return; }
+            const $btn = $(this);
+            if ($btn.data('loading')) return;
+            const idleHtml = $btn.html();
+            $btn.data('loading', true).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-1"></i>Loading…');
+            $.getJSON("{{ url('/listing-manager/variation-content') }}", {
+                sku: String(currentDraft.sku || $('#lc-sku').val() || ''),
+                parent: selectedParentGroup(currentDraft),
+            })
+                .done(function (res) {
+                    if (!res.success) {
+                        toast(res.message || 'Nothing on Variation Master.', 'error');
+                        return;
+                    }
+                    if (res.title) $('#lc-title').val(res.title);
+                    if (res.description) setDescriptionValue(res.description);
+                    if (Array.isArray(res.bullets) && res.bullets.length) $('#lc-bullets').val(res.bullets.join('\n'));
+                    refreshEditorUi(currentDraft);
+                    toast(res.message || 'Loaded from Variation Master.', 'success');
+                })
+                .fail(xhr => toast(xhr.responseJSON?.message || 'Could not load from Variation Master.', 'error'))
+                .always(function () {
+                    $btn.data('loading', false).prop('disabled', false).html(idleHtml);
+                });
         });
         $(document).on('click', '.lm-prod-master-btn', function () {
             const sku = currentProductSku;
