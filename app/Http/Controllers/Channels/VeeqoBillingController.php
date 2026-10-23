@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Channels;
 
 use App\Http\Controllers\Controller;
 use App\Models\VeeqoBillingShipment;
+use App\Services\Veeqo\OrderSkuLookup;
 use App\Services\Veeqo\VeeqoBillingSync;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -70,6 +71,18 @@ class VeeqoBillingController extends Controller
 
             return $out;
         });
+
+        $noSku = $rows->filter(fn ($r) => trim((string) ($r['skus'] ?? '')) === '' && ! empty($r['order_number']))->pluck('order_number')->unique()->values()->all();
+        if ($noSku !== []) {
+            $skus = app(OrderSkuLookup::class)->forOrders($noSku);
+            $rows = $rows->map(function ($r) use ($skus) {
+                if (trim((string) ($r['skus'] ?? '')) === '' && isset($skus[$r['order_number'] ?? ''])) {
+                    $r['skus'] = $skus[$r['order_number']];
+                }
+
+                return $r;
+            });
+        }
 
         return response()->json([
             'last_page' => $page->lastPage(),

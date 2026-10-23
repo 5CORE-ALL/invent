@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Channels;
 
 use App\Http\Controllers\Controller;
 use App\Models\VeeqoChargeback;
+use App\Services\Veeqo\OrderSkuLookup;
 use App\Services\Veeqo\VeeqoChargebackCsvImport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -60,6 +61,18 @@ class VeeqoChargebackController extends Controller
 
             return $out + ($shipments[$row->order_number] ?? []);
         });
+
+        $noSku = $rows->filter(fn ($r) => ($r['v_skus'] ?? '') === '' && ! empty($r['order_number']))->pluck('order_number')->unique()->values()->all();
+        if ($noSku !== []) {
+            $skus = app(OrderSkuLookup::class)->forOrders($noSku);
+            $rows = $rows->map(function ($r) use ($skus) {
+                if (($r['v_skus'] ?? '') === '' && isset($skus[$r['order_number'] ?? ''])) {
+                    $r['v_skus'] = $skus[$r['order_number']];
+                }
+
+                return $r;
+            });
+        }
 
         return response()->json([
             'last_page' => $page->lastPage(),
@@ -129,6 +142,110 @@ class VeeqoChargebackController extends Controller
         } finally {
             $lock->release();
         }
+    }
+
+    /**
+     * SKU-wise chargebacks for the last 12 months. A chargeback on a multi-SKU order counts once for
+     * each SKU and its amount is split evenly between them. Units sold come from sku_monthly_orders.
+     */
+    public function skuReport(Request $request)
+    {
+        if (! Schema::hasTable('veeqo_chargebacks')) {
+            return response()->json(['rows' => [], 'totals' => []]);
+        }
+
+        $from = now()->subMonths(12)->startOfDay();
+        $params = $request->except(['from', 'to', 'search', 'filter', 'sort', 'page', 'size']);
+        $chargebacks = $this->filtered($request->duplicate($params))
+            ->where('posted_at', '>=', $from)
+            ->get(['id', 'order_number', 'total_amount']);
+
+        $skusByOrder = app(OrderSkuLookup::class)->forOrders($chargebacks->pluck('order_number')->filter()->unique()->values()->all());
+
+        $bySku = [];
+        foreach ($chargebacks as $cb) {
+            $skus = isset($skusByOrder[$cb->order_number]) ? array_map('trim', explode(',', $skusByOrder[$cb->order_number])) : [];
+            $skus = array_values(array_unique(array_filter($skus, fn ($s) => $s !== '')));
+            if ($skus === []) {
+                $skus = ['(no SKU found)'];
+            }
+            $share = round((float) $cb->total_amount / count($skus), 4);
+            foreach ($skus as $sku) {
+                $key = $this->skuKey($sku);
+                $bySku[$key] ??= ['sku' => $sku, 'count' => 0, 'total' => 0.0, 'orders' => []];
+                $bySku[$key]['count']++;
+                $bySku[$key]['total'] += $share;
+                if ($cb->order_number) {
+                    $bySku[$key]['orders'][$cb->order_number] = true;
+                }
+            }
+        }
+
+        $sold = $this->unitsSoldLast12Months();
+        $rows = [];
+        // Veeqo splits one chargeback into a line per reason, so "count" is orders charged back.
+        foreach ($bySku as $key => $s) {
+            $units = $sold[$key] ?? null;
+            $count = max(1, count($s['orders']));
+            $rows[] = [
+                'sku' => $s['sku'],
+                'count' => $count,
+                'lines' => $s['count'],
+                'total' => round($s['total'], 2),
+                'average' => round($s['total'] / $count, 2),
+                'sold' => $units,
+                'pct' => $units ? round($count / $units * 100, 2) : null,
+            ];
+        }
+        usort($rows, fn ($a, $b) => abs($b['total']) <=> abs($a['total']));
+
+        $withSales = array_filter($rows, fn ($r) => $r['sold'] !== null);
+        $soldMatched = array_sum(array_column($withSales, 'sold'));
+        $countMatched = array_sum(array_column($withSales, 'count'));
+        $orders = $chargebacks->pluck('order_number')->filter()->unique()->count();
+
+        return response()->json([
+            'from' => $from->toDateString(),
+            'to' => now()->toDateString(),
+            'rows' => $rows,
+            'totals' => [
+                'skus' => count($rows),
+                'chargebacks' => $orders,
+                'lines' => $chargebacks->count(),
+                'amount' => round((float) $chargebacks->sum('total_amount'), 2),
+                'average' => $orders ? round((float) $chargebacks->sum('total_amount') / $orders, 2) : 0,
+                'sold' => $soldMatched,
+                'pct' => $soldMatched ? round($countMatched / $soldMatched * 100, 2) : null,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<string, int> normalized SKU => units sold in the last 12 calendar months
+     */
+    private function unitsSoldLast12Months(): array
+    {
+        if (! Schema::hasTable('sku_monthly_orders')) {
+            return [];
+        }
+        $start = now()->subMonths(11)->startOfMonth();
+        $sold = [];
+        DB::table('sku_monthly_orders')
+            ->whereRaw('(year * 100 + month) >= ?', [(int) $start->format('Ym')])
+            ->selectRaw('sku, SUM(order_count) as units')
+            ->groupBy('sku')
+            ->get()
+            ->each(function ($r) use (&$sold) {
+                $key = $this->skuKey((string) $r->sku);
+                $sold[$key] = ($sold[$key] ?? 0) + (int) $r->units;
+            });
+
+        return $sold;
+    }
+
+    private function skuKey(string $sku): string
+    {
+        return strtoupper((string) preg_replace('/\s+/', ' ', trim($sku)));
     }
 
     public function import(Request $request, VeeqoChargebackCsvImport $import)
