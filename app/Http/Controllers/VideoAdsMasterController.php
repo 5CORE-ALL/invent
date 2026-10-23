@@ -428,6 +428,12 @@ class VideoAdsMasterController extends Controller
         $copy->ad_checked    = false;
         $copy->ad_checked_by = null;
         $copy->ad_checked_at = null;
+        $copy->redo_checked      = false;
+        $copy->redo_checked_by   = null;
+        $copy->redo_checked_at   = null;
+        $copy->redone_checked    = false;
+        $copy->redone_checked_by = null;
+        $copy->redone_checked_at = null;
         $copy->save();
 
         return response()->json(['success' => true, 'row' => $this->presentRow($copy)]);
@@ -486,6 +492,37 @@ class VideoAdsMasterController extends Controller
         $row->ad_checked    = $newState;
         $row->ad_checked_by = $newState ? $username : null;
         $row->ad_checked_at = $newState ? $now : null;
+        $row->save();
+
+        return response()->json(['success' => true, 'row' => $row]);
+    }
+
+    /** REDO checkbox: same behaviour as AD (stamps the acting user + time). */
+    public function toggleRedo(Request $request, $id)
+    {
+        return $this->toggleStamped($request, $id, 'redo_checked');
+    }
+
+    /** REDONE checkbox: same behaviour as AD (stamps the acting user + time). */
+    public function toggleRedone(Request $request, $id)
+    {
+        return $this->toggleStamped($request, $id, 'redone_checked');
+    }
+
+    /**
+     * Toggle (or explicitly set) a "<flag>" checkbox and stamp "<flag>_by" / "<flag>_at".
+     */
+    private function toggleStamped(Request $request, $id, string $flag)
+    {
+        $row = VideoAdsMaster::findOrFail($id);
+
+        $newState = $request->has($flag)
+            ? $request->boolean($flag)
+            : ! $row->{$flag};
+
+        $row->{$flag} = $newState;
+        $row->{$flag.'_by'} = $newState ? (Auth::user()?->name ?? 'System') : null;
+        $row->{$flag.'_at'} = $newState ? now() : null;
         $row->save();
 
         return response()->json(['success' => true, 'row' => $row]);

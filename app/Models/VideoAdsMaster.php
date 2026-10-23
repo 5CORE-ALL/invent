@@ -26,6 +26,12 @@ class VideoAdsMaster extends Model
         'ad_checked',
         'ad_checked_by',
         'ad_checked_at',
+        'redo_checked',
+        'redo_checked_by',
+        'redo_checked_at',
+        'redone_checked',
+        'redone_checked_by',
+        'redone_checked_at',
     ];
 
     protected $hidden = [
@@ -37,6 +43,10 @@ class VideoAdsMaster extends Model
         'checked_at'            => 'datetime',
         'ad_checked'            => 'boolean',
         'ad_checked_at'         => 'datetime',
+        'redo_checked'          => 'boolean',
+        'redo_checked_at'       => 'datetime',
+        'redone_checked'        => 'boolean',
+        'redone_checked_at'     => 'datetime',
         'creators_initialized'  => 'boolean',
     ];
 

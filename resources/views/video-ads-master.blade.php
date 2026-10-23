@@ -247,6 +247,13 @@
         }
         .vam-check-meta .vam-check-user { font-weight: 700; color: #16a34a; }
         .vam-check-meta .vam-ad-user { font-weight: 700; color: #2c6ed5; }
+        .vam-check-meta .vam-redo-user { font-weight: 700; color: #d97706; }
+        .vam-check-meta .vam-redone-user { font-weight: 700; color: #7c3aed; }
+        .vam-redo-box, .vam-redone-box {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
         .vam-ad-box {
             width: 18px;
             height: 18px;
@@ -1454,6 +1461,34 @@
                     </div>`;
             }
 
+            // REDO / REDONE columns — same as AD: a checkbox plus the user + time of the last tick.
+            function stampCheckFormatter(flag, boxClass, userClass, title) {
+                return function (cell) {
+                    const row     = cell.getRow().getData();
+                    const checked = !!row[flag];
+                    const by      = row[flag + '_by'] ? escapeHtml(row[flag + '_by']) : '';
+                    const at      = row[flag + '_at'] ? escapeHtml(formatDateTime(row[flag + '_at'])) : '';
+
+                    let meta = '';
+                    if (checked && (by || at)) {
+                        meta = `<div class="vam-check-meta" title="${by}${at ? ' • ' + at : ''}">`
+                             + (by ? `<span class="${userClass}">${by}</span>` : '')
+                             + (at ? `<br>${at}` : '')
+                             + `</div>`;
+                    }
+
+                    return `
+                        <div class="vam-check-wrap">
+                            <div class="vam-check-top">
+                                <input type="checkbox" class="${boxClass} form-check-input" ${checked ? 'checked' : ''} title="${title}">
+                            </div>
+                            ${meta}
+                        </div>`;
+                };
+            }
+            const redoFormatter   = stampCheckFormatter('redo_checked',   'vam-redo-box',   'vam-redo-user',   'Mark row as redo');
+            const redoneFormatter = stampCheckFormatter('redone_checked', 'vam-redone-box', 'vam-redone-user', 'Mark redo as done');
+
             // ── Inline editors ─────────────────────────────────────────────────
             // All three pickers below use Tabulator's built-in `list` editor,
             // which renders its popup attached to <body> so it doesn't get
@@ -2477,6 +2512,24 @@
                             },
                         },
                         {
+                            title: 'REDO', field: '_redo', hozAlign: 'center',
+                            headerSort: false,
+                            formatter: redoFormatter,
+                            cellClick: (e, cell) => {
+                                const box = e.target.closest('.vam-redo-box');
+                                if (box) { toggleStamp(cell.getRow(), 'redo_checked', 'redo-check', box.checked, 'redo'); }
+                            },
+                        },
+                        {
+                            title: 'REDONE', field: '_redone', hozAlign: 'center',
+                            headerSort: false,
+                            formatter: redoneFormatter,
+                            cellClick: (e, cell) => {
+                                const box = e.target.closest('.vam-redone-box');
+                                if (box) { toggleStamp(cell.getRow(), 'redone_checked', 'redone-check', box.checked, 'redone'); }
+                            },
+                        },
+                        {
                             title: '',
                             field: '_actions',
                             hozAlign: 'center',
@@ -2783,6 +2836,38 @@
                     showToast(j.row.ad_checked ? 'Marked as ad' : 'Unmarked as ad', 'success');
                 })
                 .catch(e => { console.error(e); showToast('Network error while updating ad', 'error'); row.reformat(); });
+            }
+
+            // Toggle a REDO / REDONE checkbox (same flow as AD): persist, then mirror the stamped values back onto the row.
+            function toggleStamp(row, flag, path, desired, label) {
+                const data = row.getData();
+                if (!data.id) return;
+
+                fetch(`/video-ads-master/${data.id}/${path}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                    body: JSON.stringify({ [flag]: !!desired }),
+                })
+                .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                .then(({ ok, j }) => {
+                    if (!ok || !j.success) {
+                        showToast((j && j.message) || `Failed to update ${label}`, 'error');
+                        row.reformat(); // revert the visual toggle
+                        return;
+                    }
+                    row.update({
+                        [flag]: j.row[flag],
+                        [flag + '_by']: j.row[flag + '_by'],
+                        [flag + '_at']: j.row[flag + '_at'],
+                    });
+                    row.reformat();
+                    showToast(j.row[flag] ? `Marked as ${label}` : `Unmarked ${label}`, 'success');
+                })
+                .catch(e => { console.error(e); showToast(`Network error while updating ${label}`, 'error'); row.reformat(); });
             }
 
             // Fetch and render the check/uncheck audit trail for a row.
