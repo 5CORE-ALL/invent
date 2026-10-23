@@ -248,11 +248,25 @@ class AmazonAdsMissingController extends Controller
             'children' => ['required', 'array', 'min:1'],
             'children.*.target_sku' => ['required', 'string', 'max:255'],
             'children.*.asin' => ['nullable', 'string', 'max:32'],
+            // Keywords picked in the Keyword targeting section (Amazon suggestions / entered list / uploaded file).
+            'keywords' => ['nullable', 'array', 'max:1000'],
+            'keywords.*.text' => ['required', 'string', 'max:255'],
+            'keywords.*.match_type' => ['nullable', 'string', 'in:BROAD,PHRASE,EXACT'],
+            'keywords.*.bid' => ['nullable', 'numeric', 'min:0.02'],
         ]);
 
         $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
         $sku = 'PARENT '.$parent;
         $type = strtoupper(trim((string) ($validated['type'] ?? 'KW'))) === 'PT' ? 'PT' : 'KW';
+
+        // A KW / MANUAL campaign without keywords never serves: require the keywords up front.
+        $pickedKeywords = $type === 'KW' ? $this->normalizePickedKeywords($validated['keywords'] ?? []) : [];
+        if ($type === 'KW' && $pickedKeywords === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Add at least one keyword in Keyword targeting (Suggested, Enter list or Upload file) before creating a KW campaign.',
+            ], 422);
+        }
 
         $campaignName = $this->campaignNameWithTypeSuffix(
             (string) ($validated['campaign_name'] ?? ''),
@@ -359,6 +373,13 @@ class AmazonAdsMissingController extends Controller
             $extra = ' Warnings: '.implode(' | ', array_slice($created['errors'], 0, 2));
         }
 
+        // Add the picked keywords to the new ad group (same keyword + match type + bid the user chose).
+        $keywordResult = null;
+        if ($pickedKeywords !== [] && $campaignId !== '' && $adGroupId !== '') {
+            $keywordResult = $this->pushPickedKeywords($campaignId, $adGroupId, $pickedKeywords, $defaultBid);
+            $extra .= ' Keywords: '.$keywordResult['message'];
+        }
+
         return response()->json([
             'ok' => true,
             'message' => $targetingType.' SP campaign created (PAUSED): '.$campaignName
@@ -372,9 +393,158 @@ class AmazonAdsMissingController extends Controller
             'ad_group_id' => $adGroupId,
             'children' => $resolvedChildren,
             'campaign' => $created,
+            'keywords_result' => $keywordResult,
             'pt' => $this->linksResponseForSku($sku)['pt'],
             'kw' => $this->linksResponseForSku($sku)['kw'],
         ]);
+    }
+
+    /**
+     * Amazon's own keyword suggestions for the selected child ASINs (same data as "Keyword targeting → Suggested"
+     * in the Amazon console): keyword, impression share / rank and suggested bid per match type.
+     */
+    public function keywordSuggestions(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'children' => ['required', 'array', 'min:1'],
+            'children.*.target_sku' => ['nullable', 'string', 'max:255'],
+            'children.*.asin' => ['nullable', 'string', 'max:32'],
+            'sort' => ['nullable', 'string', 'in:CONVERSIONS,DEFAULT'],
+        ]);
+
+        $asins = [];
+        $needLookup = [];
+        foreach ($validated['children'] as $child) {
+            $asin = strtoupper(trim((string) ($child['asin'] ?? '')));
+            if ($asin !== '') {
+                $asins[] = $asin;
+
+                continue;
+            }
+            $sku = trim((string) ($child['target_sku'] ?? ''));
+            if ($sku !== '') {
+                $needLookup[] = $sku;
+            }
+        }
+        if ($needLookup !== []) {
+            foreach ($this->resolveAsinsForSkus($needLookup) as $asin) {
+                $asins[] = strtoupper(trim((string) $asin));
+            }
+        }
+        $asins = array_values(array_unique(array_filter($asins)));
+        if ($asins === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Select at least one child SKU with a valid ASIN to load Amazon keyword suggestions.',
+            ], 422);
+        }
+
+        try {
+            $keywords = app(AmazonAdsService::class)->keywordRecommendationsForAsins(
+                $asins,
+                200,
+                (string) ($validated['sort'] ?? 'CONVERSIONS')
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Amazon keyword recommendations failed', ['asins' => $asins, 'error' => $e->getMessage()]);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Amazon keyword suggestions failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
+            ], 502);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'asins' => $asins,
+            'count' => count($keywords),
+            'keywords' => $keywords,
+            'message' => $keywords === [] ? 'Amazon returned no keyword suggestions for these ASINs. Use Enter list or Upload file.' : '',
+        ]);
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows  [{text, match_type, bid}]
+     * @return list<array{text: string, match_type: string, bid: float|null}>
+     */
+    private function normalizePickedKeywords(array $rows): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $text = preg_replace('/\s+/', ' ', trim((string) ($row['text'] ?? '')));
+            // Amazon keyword limits: up to 80 characters / 10 words.
+            if ($text === '' || mb_strlen($text) > 80 || count(explode(' ', $text)) > 10) {
+                continue;
+            }
+            $mt = strtoupper(trim((string) ($row['match_type'] ?? 'PHRASE')));
+            if (! in_array($mt, ['BROAD', 'PHRASE', 'EXACT'], true)) {
+                $mt = 'PHRASE';
+            }
+            $key = mb_strtolower($text).'|'.$mt;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $bid = isset($row['bid']) && is_numeric($row['bid']) ? max(0.02, round((float) $row['bid'], 2)) : null;
+            $out[] = ['text' => $text, 'match_type' => $mt, 'bid' => $bid];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Push picked keywords grouped by match type + bid (one Amazon call per group, in batches of 100).
+     *
+     * @param  list<array{text: string, match_type: string, bid: float|null}>  $keywords
+     * @return array{added: int, failed: int, duplicates: int, message: string}
+     */
+    private function pushPickedKeywords(string $campaignId, string $adGroupId, array $keywords, float $defaultBid): array
+    {
+        $groups = [];
+        foreach ($keywords as $k) {
+            $bid = $k['bid'] ?? $defaultBid;
+            $groups[$k['match_type'].'|'.number_format($bid, 2, '.', '')][] = $k['text'];
+        }
+
+        $service = app(AmazonAdsService::class);
+        $added = 0;
+        $failed = 0;
+        $dups = 0;
+        $errors = [];
+        foreach ($groups as $key => $texts) {
+            [$mt, $bid] = explode('|', $key);
+            try {
+                $res = $service->pushAdGroupPositiveKeywords($campaignId, $adGroupId, $texts, $mt, (float) $bid);
+            } catch (\Throwable $e) {
+                $failed += count($texts);
+                $errors[] = $service->amazonErrorMessage($e);
+
+                continue;
+            }
+            $added += (int) ($res['added'] ?? 0);
+            $failed += (int) ($res['failed'] ?? 0);
+            $dups += (int) ($res['duplicates'] ?? 0);
+            foreach ((array) ($res['errors'] ?? []) as $err) {
+                $errors[] = (string) $err;
+            }
+        }
+        $msg = "added {$added} keyword(s)";
+        if ($dups > 0) {
+            $msg .= ", {$dups} already existed";
+        }
+        if ($failed > 0) {
+            $msg .= ", {$failed} rejected";
+            $errors = array_values(array_unique(array_filter($errors)));
+            if ($errors !== []) {
+                $msg .= ' ('.implode(' | ', array_slice($errors, 0, 2)).')';
+            }
+        }
+
+        return ['added' => $added, 'failed' => $failed, 'duplicates' => $dups, 'message' => $msg.'.'];
     }
 
     /**

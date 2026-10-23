@@ -304,16 +304,107 @@
                         </div>
                         <input type="hidden" id="amzCreateTargetSku" value="">
 
+                        {{-- Keyword targeting: same flow as the Amazon console (Suggested / Enter list / Upload file). KW campaigns only. --}}
+                        <div id="amzKwSection" class="mt-3">
+                            <div class="fw-semibold small mb-1">
+                                Keyword targeting
+                                <span class="text-muted fw-normal">— keywords come from Amazon's own suggestions, your list or a file (no AI)</span>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-lg-7">
+                                    <div class="border rounded">
+                                        <ul class="nav nav-tabs small px-2 pt-1" role="tablist">
+                                            <li class="nav-item"><button type="button" class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzKwPaneSug">Suggested</button></li>
+                                            <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzKwPaneList">Enter list</button></li>
+                                            <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzKwPaneFile">Upload file</button></li>
+                                        </ul>
+                                        <div class="p-2 border-bottom d-flex flex-wrap align-items-center gap-2 small">
+                                            <span class="fw-semibold">Bid</span>
+                                            <select class="form-select form-select-sm w-auto" id="amzKwBidMode">
+                                                <option value="suggested">Suggested bid</option>
+                                                <option value="custom">Custom bid</option>
+                                                <option value="default">Default bid</option>
+                                            </select>
+                                            <input type="number" class="form-control form-control-sm d-none" style="width:90px;" id="amzKwCustomBid" min="0.02" step="0.01" value="0.60" placeholder="$">
+                                            <span class="text-muted" id="amzKwBidHint">Amazon's suggested bid per match type (default bid if none).</span>
+                                        </div>
+                                        <div class="tab-content">
+                                            <div class="tab-pane fade show active" id="amzKwPaneSug">
+                                                <div class="p-2 d-flex flex-wrap align-items-center gap-3 small border-bottom">
+                                                    <span class="fw-semibold">Filter by</span>
+                                                    <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 amz-kw-filter" value="BROAD" checked>Broad</label>
+                                                    <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 amz-kw-filter" value="PHRASE" checked>Phrase</label>
+                                                    <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 amz-kw-filter" value="EXACT" checked>Exact</label>
+                                                    <span class="fw-semibold ms-2">Sort by</span>
+                                                    <select class="form-select form-select-sm w-auto" id="amzKwSort">
+                                                        <option value="CONVERSIONS">Orders</option>
+                                                        <option value="DEFAULT">Relevance</option>
+                                                    </select>
+                                                    <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzKwLoadBtn"><i class="fa fa-sync me-1"></i>Reload</button>
+                                                </div>
+                                                <div class="px-2 py-1 small text-muted d-flex justify-content-between">
+                                                    <span id="amzKwSugStatus">Select child SKUs, then load Amazon's suggestions.</span>
+                                                    <a href="#" id="amzKwAddAll" class="fw-semibold">Add all</a>
+                                                </div>
+                                                <div style="max-height:300px; overflow:auto;">
+                                                    <table class="table table-sm align-middle mb-0 small">
+                                                        <thead class="table-light sticky-top"><tr><th>Keyword <span class="text-muted fw-normal">IS | IR</span></th><th>Match type</th><th class="text-end">Sugg. bid</th><th class="text-end"></th></tr></thead>
+                                                        <tbody id="amzKwSugBody"></tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane fade" id="amzKwPaneList">
+                                                <div class="p-2 small">
+                                                    <textarea class="form-control form-control-sm" id="amzKwListText" rows="7" placeholder="Enter one keyword per line (or separate with commas)"></textarea>
+                                                    <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                        <span class="fw-semibold">Match types</span>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-list-mt" value="BROAD">Broad</label>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-list-mt" value="PHRASE" checked>Phrase</label>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-list-mt" value="EXACT">Exact</label>
+                                                        <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzKwListAddBtn">Add keywords</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane fade" id="amzKwPaneFile">
+                                                <div class="p-2 small">
+                                                    <input type="file" class="form-control form-control-sm" id="amzKwFile" accept=".csv,.txt,text/csv,text/plain">
+                                                    <div class="form-text">One keyword per line, or a CSV (the first column is used; a "keyword" header row is skipped).</div>
+                                                    <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                        <span class="fw-semibold">Match types</span>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-file-mt" value="BROAD">Broad</label>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-file-mt" value="PHRASE" checked>Phrase</label>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-file-mt" value="EXACT">Exact</label>
+                                                        <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzKwFileAddBtn">Add keywords</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-5">
+                                    <div class="border rounded h-100">
+                                        <div class="p-2 border-bottom d-flex justify-content-between align-items-center small">
+                                            <span class="fw-bold"><span id="amzKwAddedCount">0</span> added</span>
+                                            <a href="#" id="amzKwClearAll" class="text-danger">Remove all</a>
+                                        </div>
+                                        <div style="max-height:372px; overflow:auto;">
+                                            <table class="table table-sm align-middle mb-0 small">
+                                                <thead class="table-light sticky-top"><tr><th>Keyword</th><th>Match</th><th style="width:84px;">Bid ($)</th><th style="width:28px;"></th></tr></thead>
+                                                <tbody id="amzKwAddedBody"></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="mt-2 d-flex flex-wrap gap-3">
                             <a href="#" id="amzCreateAiNegLink" class="small fw-semibold">
                                 <i class="fa fa-magic me-1"></i> Generate AI negative keywords
                             </a>
-                            <a href="#" id="amzCreateAiPosLink" class="small fw-semibold text-success">
-                                <i class="fa fa-magic me-1"></i> Generate AI positive keywords
-                            </a>
                         </div>
                         <div class="form-text small mt-1" id="amzCreateTypeNote">
-                            Campaigns are created as KW/MANUAL so positive keywords can be pushed.
+                            KW / MANUAL campaigns are created with the keywords you add above.
                         </div>
                     </form>
                     <div class="text-danger small mt-2 d-none" id="amzCreateError"></div>
@@ -538,6 +629,7 @@
             var pushNegUrl = @json(route('amazon.ads.missing.push-negatives'));
             var aiPosUrl = @json(route('amazon.ads.missing.ai-positives'));
             var pushPosUrl = @json(route('amazon.ads.missing.push-positives'));
+            var kwSuggestUrl = @json(route('amazon.ads.missing.keyword-suggestions'));
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var lastCreatedCampaignId = '';
             var lastCreatedAdGroupId = '';
@@ -672,6 +764,242 @@
                 }).then(function (res) { return res.json().then(function (b) { return { ok: res.ok, body: b }; }); });
             }
 
+
+            // ---- Keyword targeting (Amazon suggestions / entered list / uploaded file) for KW campaigns ----
+            var kwSuggestions = [];   // [{keyword, is, ir, bids:{BROAD,PHRASE,EXACT}}] from Amazon
+            var kwAdded = [];         // [{text, match_type, bid}]
+            var kwSugSeq = 0;
+
+            function kwDefaultBid() {
+                return Math.max(0.02, parseFloat((document.getElementById('amzCreateDefaultBid') || {}).value) || 0.60);
+            }
+            function kwResolveBid(sugBid) {
+                var mode = (document.getElementById('amzKwBidMode') || {}).value || 'suggested';
+                var v = null;
+                if (mode === 'suggested' && sugBid != null && isFinite(sugBid)) { v = Number(sugBid); }
+                else if (mode === 'custom') { v = parseFloat((document.getElementById('amzKwCustomBid') || {}).value); }
+                if (v == null || !isFinite(v)) { v = kwDefaultBid(); }
+                return Math.max(0.02, Math.round(v * 100) / 100);
+            }
+            function kwFmtShare(v) {
+                if (v == null || !isFinite(v)) { return '—'; }
+                var pct = v <= 1 ? v * 100 : v;
+                return pct.toFixed(2) + '%';
+            }
+            function kwIsAdded(text, mt) {
+                var k = String(text).toLowerCase() + '|' + mt;
+                return kwAdded.some(function (a) { return (a.text.toLowerCase() + '|' + a.match_type) === k; });
+            }
+            function kwAdd(text, mt, bid) {
+                text = String(text || '').replace(/\s+/g, ' ').trim();
+                if (!text || kwIsAdded(text, mt)) { return false; }
+                kwAdded.push({ text: text, match_type: mt, bid: bid });
+                return true;
+            }
+            function kwActiveFilters() {
+                var out = [];
+                document.querySelectorAll('.amz-kw-filter').forEach(function (cb) { if (cb.checked) { out.push(cb.value); } });
+                return out;
+            }
+            function kwRenderAdded() {
+                var body = document.getElementById('amzKwAddedBody');
+                if (!body) { return; }
+                document.getElementById('amzKwAddedCount').textContent = String(kwAdded.length);
+                body.innerHTML = kwAdded.map(function (k, i) {
+                    return '<tr><td>' + esc(k.text) + '</td><td>' + esc(k.match_type.charAt(0) + k.match_type.slice(1).toLowerCase()) + '</td>'
+                        + '<td><input type="number" class="form-control form-control-sm py-0 amz-kw-bid" data-i="' + i + '" min="0.02" step="0.01" value="' + Number(k.bid).toFixed(2) + '"></td>'
+                        + '<td><a href="#" class="text-danger amz-kw-del" data-i="' + i + '" title="Remove">&times;</a></td></tr>';
+                }).join('');
+            }
+            function kwRenderSuggestions() {
+                var body = document.getElementById('amzKwSugBody');
+                if (!body) { return; }
+                var filters = kwActiveFilters();
+                var order = ['BROAD', 'PHRASE', 'EXACT'];
+                var html = '';
+                kwSuggestions.forEach(function (row, ki) {
+                    var mts = order.filter(function (mt) { return filters.indexOf(mt) !== -1 && row.bids && row.bids[mt] != null; });
+                    if (!mts.length) { return; }
+                    mts.forEach(function (mt, j) {
+                        var added = kwIsAdded(row.keyword, mt);
+                        html += '<tr>';
+                        if (j === 0) {
+                            html += '<td rowspan="' + mts.length + '"><div class="fw-semibold">' + esc(row.keyword) + '</div>'
+                                + '<div class="text-muted" style="font-size:11px;">IS: ' + esc(kwFmtShare(row.is)) + ' | IR: ' + esc(row.ir == null ? '—' : row.ir) + '</div></td>';
+                        }
+                        html += '<td>' + esc(mt.charAt(0) + mt.slice(1).toLowerCase()) + '</td>'
+                            + '<td class="text-end">$' + Number(row.bids[mt]).toFixed(2) + '</td>'
+                            + '<td class="text-end">' + (added
+                                ? '<span class="text-muted fst-italic">Added</span>'
+                                : '<a href="#" class="fw-semibold amz-kw-add" data-ki="' + ki + '" data-mt="' + mt + '">Add</a>') + '</td></tr>';
+                    });
+                });
+                body.innerHTML = html || '<tr><td colspan="4" class="text-muted text-center py-3">No suggestions to show.</td></tr>';
+            }
+            function kwSetStatus(msg, isErr) {
+                var el = document.getElementById('amzKwSugStatus');
+                if (!el) { return; }
+                el.textContent = msg;
+                el.classList.toggle('text-danger', !!isErr);
+            }
+            function kwLoadSuggestions() {
+                var children = collectSelectedChildren();
+                var btn = document.getElementById('amzKwLoadBtn');
+                if (!children.length) {
+                    kwSuggestions = [];
+                    kwRenderSuggestions();
+                    kwSetStatus('Select at least one child SKU with an ASIN to load Amazon suggestions.', false);
+                    return;
+                }
+                var seq = ++kwSugSeq;
+                kwSetStatus('Loading suggestions from Amazon…', false);
+                if (btn) { btn.disabled = true; }
+                postForm(kwSuggestUrl, {
+                    children: children,
+                    sort: (document.getElementById('amzKwSort') || {}).value || 'CONVERSIONS'
+                }).then(function (out) {
+                    if (seq !== kwSugSeq) { return; }
+                    if (btn) { btn.disabled = false; }
+                    if (out.ok && out.body && out.body.ok) {
+                        kwSuggestions = Array.isArray(out.body.keywords) ? out.body.keywords : [];
+                        kwSetStatus(kwSuggestions.length
+                            ? (kwSuggestions.length + ' keywords suggested by Amazon.')
+                            : (out.body.message || 'Amazon returned no suggestions.'), false);
+                    } else {
+                        kwSuggestions = [];
+                        kwSetStatus((out.body && out.body.message) || 'Could not load Amazon suggestions.', true);
+                    }
+                    kwRenderSuggestions();
+                }).catch(function () {
+                    if (seq !== kwSugSeq) { return; }
+                    if (btn) { btn.disabled = false; }
+                    kwSetStatus('Network error loading Amazon suggestions.', true);
+                });
+            }
+            function kwResetForOpen() {
+                kwSuggestions = [];
+                kwAdded = [];
+                kwRenderSuggestions();
+                kwRenderAdded();
+                var ta = document.getElementById('amzKwListText'); if (ta) { ta.value = ''; }
+                var f = document.getElementById('amzKwFile'); if (f) { f.value = ''; }
+                kwSetStatus('Select child SKUs, then load Amazon\'s suggestions.', false);
+            }
+            function kwParseList(text, isCsv) {
+                var parts = String(text || '').split(/\r?\n/);
+                var out = [];
+                parts.forEach(function (line, idx) {
+                    var cells = isCsv ? [line.split(',')[0]] : line.split(',');
+                    cells.forEach(function (c) {
+                        var t = String(c || '').replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').trim();
+                        if (!t) { return; }
+                        if (isCsv && idx === 0 && /^(keyword|keywords|keyword text|search term)$/i.test(t)) { return; }
+                        out.push(t);
+                    });
+                });
+                return out;
+            }
+            function kwAddTexts(texts, mts) {
+                var added = 0, skipped = 0;
+                texts.forEach(function (t) {
+                    if (t.length > 80 || t.split(' ').length > 10) { skipped++; return; }
+                    mts.forEach(function (mt) {
+                        if (kwAdd(t, mt, kwResolveBid(null))) { added++; }
+                    });
+                });
+                kwRenderAdded();
+                kwRenderSuggestions();
+                return { added: added, skipped: skipped };
+            }
+            function kwSelectedMts(cls) {
+                var out = [];
+                document.querySelectorAll('.' + cls).forEach(function (cb) { if (cb.checked) { out.push(cb.value); } });
+                return out;
+            }
+            function kwWire() {
+                var bidMode = document.getElementById('amzKwBidMode');
+                if (!bidMode) { return; }
+                bidMode.addEventListener('change', function () {
+                    document.getElementById('amzKwCustomBid').classList.toggle('d-none', bidMode.value !== 'custom');
+                    document.getElementById('amzKwBidHint').textContent = bidMode.value === 'suggested'
+                        ? 'Amazon\'s suggested bid per match type (default bid if none).'
+                        : (bidMode.value === 'custom' ? 'Same bid for every keyword you add next.' : 'The default bid of the campaign.');
+                });
+                document.getElementById('amzKwLoadBtn').addEventListener('click', kwLoadSuggestions);
+                document.getElementById('amzKwSort').addEventListener('change', kwLoadSuggestions);
+                document.querySelectorAll('.amz-kw-filter').forEach(function (cb) { cb.addEventListener('change', kwRenderSuggestions); });
+                document.getElementById('amzKwSugBody').addEventListener('click', function (e) {
+                    var a = e.target.closest ? e.target.closest('.amz-kw-add') : null;
+                    if (!a) { return; }
+                    e.preventDefault();
+                    var row = kwSuggestions[Number(a.getAttribute('data-ki'))];
+                    var mt = a.getAttribute('data-mt');
+                    if (row && mt) {
+                        kwAdd(row.keyword, mt, kwResolveBid(row.bids ? row.bids[mt] : null));
+                        kwRenderAdded();
+                        kwRenderSuggestions();
+                    }
+                });
+                document.getElementById('amzKwAddAll').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var filters = kwActiveFilters();
+                    kwSuggestions.forEach(function (row) {
+                        ['BROAD', 'PHRASE', 'EXACT'].forEach(function (mt) {
+                            if (filters.indexOf(mt) !== -1 && row.bids && row.bids[mt] != null) {
+                                kwAdd(row.keyword, mt, kwResolveBid(row.bids[mt]));
+                            }
+                        });
+                    });
+                    kwRenderAdded();
+                    kwRenderSuggestions();
+                });
+                document.getElementById('amzKwClearAll').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    kwAdded = [];
+                    kwRenderAdded();
+                    kwRenderSuggestions();
+                });
+                var addedBody = document.getElementById('amzKwAddedBody');
+                addedBody.addEventListener('click', function (e) {
+                    var d = e.target.closest ? e.target.closest('.amz-kw-del') : null;
+                    if (!d) { return; }
+                    e.preventDefault();
+                    kwAdded.splice(Number(d.getAttribute('data-i')), 1);
+                    kwRenderAdded();
+                    kwRenderSuggestions();
+                });
+                addedBody.addEventListener('change', function (e) {
+                    var inp = e.target;
+                    if (!inp || !inp.classList || !inp.classList.contains('amz-kw-bid')) { return; }
+                    var item = kwAdded[Number(inp.getAttribute('data-i'))];
+                    var v = parseFloat(inp.value);
+                    if (item) { item.bid = (isFinite(v) && v >= 0.02) ? Math.round(v * 100) / 100 : kwDefaultBid(); }
+                    kwRenderAdded();
+                });
+                document.getElementById('amzKwListAddBtn').addEventListener('click', function () {
+                    var mts = kwSelectedMts('amz-kw-list-mt');
+                    var ta = document.getElementById('amzKwListText');
+                    if (!mts.length) { window.alert('Pick at least one match type.'); return; }
+                    var r = kwAddTexts(kwParseList(ta.value, false), mts);
+                    ta.value = '';
+                    if (r.skipped) { window.alert(r.skipped + ' keyword(s) skipped: Amazon allows up to 80 characters / 10 words.'); }
+                });
+                document.getElementById('amzKwFileAddBtn').addEventListener('click', function () {
+                    var mts = kwSelectedMts('amz-kw-file-mt');
+                    var input = document.getElementById('amzKwFile');
+                    var file = input.files && input.files[0];
+                    if (!mts.length) { window.alert('Pick at least one match type.'); return; }
+                    if (!file) { window.alert('Choose a .csv or .txt file first.'); return; }
+                    var reader = new FileReader();
+                    reader.onload = function () {
+                        var r = kwAddTexts(kwParseList(String(reader.result || ''), /\.csv$/i.test(file.name)), mts);
+                        input.value = '';
+                        if (r.skipped) { window.alert(r.skipped + ' keyword(s) skipped: Amazon allows up to 80 characters / 10 words.'); }
+                    };
+                    reader.readAsText(file);
+                });
+            }
+
             function getCreateModal() {
                 var el = document.getElementById('amzCreateCampaignModal');
                 return el && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(el) : null;
@@ -732,6 +1060,7 @@
                         : 'Creates <strong>one PAUSED</strong> Sponsored Products <strong>KW / MANUAL</strong> campaign for the parent'
                             + ' (e.g. <code>' + example + '</code>). Selected child SKUs become product ads'
                             + ' (Amz seller rule: ads use seller <code>sku</code>; ASIN is shown for verification).'
+                            + ' The keywords you add under Keyword targeting are created in the same step.'
                             + ' Campaign negative keywords support Phrase / Exact only (not Broad).';
                 }
                 var nameInput = document.getElementById('amzCreateCampaignName');
@@ -740,8 +1069,10 @@
                 if (note) {
                     note.textContent = type === 'PT'
                         ? 'Campaigns are created as PT/AUTO. Use AI negative keywords if needed; positive keywords are not available.'
-                        : 'Campaigns are created as KW/MANUAL so positive keywords can be pushed.';
+                        : 'KW / MANUAL campaigns are created with the keywords you add above.';
                 }
+                var kwSec = document.getElementById('amzKwSection');
+                if (kwSec) { kwSec.classList.toggle('d-none', type === 'PT'); }
                 var posLink = document.getElementById('amzCreateAiPosLink');
                 if (posLink) { posLink.classList.toggle('d-none', type === 'PT'); }
             }
@@ -807,8 +1138,10 @@
                 }).join('');
                 document.getElementById('amzCreateChildCount').textContent = '(' + children.length + ')';
                 syncCreateAiHiddenFromSelection();
+                kwResetForOpen();
                 var modal = getCreateModal();
                 if (modal) { modal.show(); }
+                if (type === 'KW') { kwLoadSuggestions(); }
             }
 
             function collectSelectedChildren() {
@@ -1760,7 +2093,7 @@
                     });
                 }
 
-                document.getElementById('amzCreateAiPosLink').addEventListener('click', function (e) {
+                (document.getElementById('amzCreateAiPosLink') || document.createElement('a')).addEventListener('click', function (e) {
                     e.preventDefault();
                     if (currentCreateType() === 'PT') {
                         window.alert('Positive keywords require a KW / MANUAL campaign. Use Create KW.');
@@ -1912,6 +2245,7 @@
                     });
                 });
 
+                kwWire();
                 document.getElementById('amzCreateSelectAll').addEventListener('click', function () {
                     document.querySelectorAll('#amzCreateChildrenBody .amz-child-check').forEach(function (cb) {
                         if (!cb.disabled) { cb.checked = true; }
@@ -1927,6 +2261,7 @@
                 document.getElementById('amzCreateChildrenBody').addEventListener('change', function (e) {
                     if (e.target && e.target.classList.contains('amz-child-check')) {
                         syncCreateAiHiddenFromSelection();
+                        if (currentCreateType() === 'KW') { kwSetStatus('SKU selection changed — click Reload to refresh Amazon\'s suggestions.', false); }
                     }
                 });
 
@@ -1943,7 +2278,10 @@
                         budget_amount: parseFloat(document.getElementById('amzCreateBudget').value) || 3,
                         default_bid: parseFloat(document.getElementById('amzCreateDefaultBid').value) || 0.60,
                         type: currentCreateType(),
-                        children: children
+                        children: children,
+                        keywords: currentCreateType() === 'KW'
+                            ? kwAdded.map(function (k) { return { text: k.text, match_type: k.match_type, bid: k.bid }; })
+                            : []
                     };
                     if (!payload.parent || !(payload.campaign_name || '').trim()) {
                         errEl.textContent = 'Parent and campaign name are required.';
@@ -1952,6 +2290,11 @@
                     }
                     if (!children.length) {
                         errEl.textContent = 'Select at least one child SKU with a valid ASIN.';
+                        errEl.classList.remove('d-none');
+                        return;
+                    }
+                    if (payload.type === 'KW' && !payload.keywords.length) {
+                        errEl.textContent = 'Add at least one keyword in Keyword targeting (Suggested, Enter list or Upload file) before creating a KW campaign.';
                         errEl.classList.remove('d-none');
                         return;
                     }
@@ -1977,9 +2320,7 @@
                             }
                             updateMissingBadges();
                             // Keep Create modal open so AI Negatives/Positives → Push can use the new campaign id.
-                            var followUp = currentCreateType() === 'PT'
-                                ? '\n\nYou can now Generate AI negative keywords and Push.'
-                                : '\n\nYou can now Generate AI negative/positive keywords and Push.';
+                            var followUp = '\n\nYou can now Generate AI negative keywords and Push, if needed.';
                             window.alert((out.body.message || 'Campaign created.') + followUp);
                         } else {
                             errEl.textContent = (out.body && out.body.message) || 'Failed to create campaign.';

@@ -1444,6 +1444,95 @@ class AmazonAdsService
     }
 
     /**
+     * Amazon's own keyword recommendations ("Keyword targeting → Suggested" in the Amazon console),
+     * for a set of ASINs: keyword, impression share / rank and the suggested bid per match type.
+     * Sponsored Products keyword recommendations API v5 (POST /sp/targets/keywords/recommendations).
+     *
+     * @param  list<string>  $asins
+     * @param  string  $sortDimension  CONVERSIONS = sort by orders (console default), DEFAULT = relevance
+     * @return list<array{keyword: string, is: float|null, ir: int|null, bids: array<string, float>}>
+     */
+    public function keywordRecommendationsForAsins(
+        array $asins,
+        int $maxRecommendations = 200,
+        string $sortDimension = 'CONVERSIONS',
+        string $locale = 'en_US'
+    ): array {
+        $asins = array_values(array_unique(array_filter(array_map(
+            static fn ($a) => strtoupper(trim((string) $a)),
+            $asins
+        ))));
+        if ($asins === []) {
+            return [];
+        }
+        $sortDimension = strtoupper(trim($sortDimension)) === 'DEFAULT' ? 'DEFAULT' : 'CONVERSIONS';
+        $headers = [
+            'Content-Type' => 'application/vnd.spkeywordsrecommendation.v5+json',
+            'Accept' => 'application/vnd.spkeywordsrecommendation.v5+json',
+        ];
+
+        $merged = [];
+        // The API takes a limited number of ASINs per call: ask in groups of 10 (max 3 calls).
+        foreach (array_slice(array_chunk($asins, 10), 0, 3) as $chunk) {
+            $body = [
+                'recommendationType' => 'KEYWORDS_FOR_ASINS',
+                'asins' => $chunk,
+                'maxRecommendations' => max(1, min(200, $maxRecommendations)),
+                'sortDimension' => $sortDimension,
+                'locale' => $locale,
+                'bidsEnabled' => true,
+            ];
+            try {
+                $resp = $this->post('/sp/targets/keywords/recommendations', $body, $headers);
+            } catch (\Throwable $e) {
+                if ($body['maxRecommendations'] > 100) {
+                    $body['maxRecommendations'] = 100;
+                    $resp = $this->post('/sp/targets/keywords/recommendations', $body, $headers);
+                } else {
+                    throw $e;
+                }
+            }
+
+            $list = $resp['keywordTargetList'] ?? $resp['keywordTargets'] ?? [];
+            if (! is_array($list)) {
+                continue;
+            }
+            foreach ($list as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $text = trim((string) ($row['keyword'] ?? ''));
+                if ($text === '') {
+                    continue;
+                }
+                $key = mb_strtolower($text);
+                if (! isset($merged[$key])) {
+                    $share = $row['searchTermImpressionShare'] ?? null;
+                    $rank = $row['searchTermImpressionRank'] ?? null;
+                    $merged[$key] = [
+                        'keyword' => $text,
+                        'is' => is_numeric($share) ? (float) $share : null,
+                        'ir' => is_numeric($rank) ? (int) $rank : null,
+                        'bids' => [],
+                    ];
+                }
+                foreach ((array) ($row['bidInfo'] ?? []) as $b) {
+                    if (! is_array($b)) {
+                        continue;
+                    }
+                    $mt = strtoupper(trim((string) ($b['matchType'] ?? '')));
+                    if (! in_array($mt, ['BROAD', 'PHRASE', 'EXACT'], true) || ! isset($b['bid']) || ! is_numeric($b['bid'])) {
+                        continue;
+                    }
+                    $merged[$key]['bids'][$mt] = round((float) $b['bid'], 2);
+                }
+            }
+        }
+
+        return array_values($merged);
+    }
+
+    /**
      * Create Sponsored Products positive keywords (v3) on an ad group.
      * Match types: BROAD, PHRASE, EXACT (MANUAL campaigns only).
      *
