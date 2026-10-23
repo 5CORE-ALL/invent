@@ -4069,6 +4069,10 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             if (ttIsParentRow(rowData)) return '';
+                            // Clearance SKUs show "C" in S PRC (same as Amazon). The server saves and pushes nothing for them.
+                            if (typeof window.chStdIsClearance === 'function' && window.chStdIsClearance(rowData)) {
+                                return '<span class="tt-sprice-clearance" title="Clearance (Inv days clearance = YES): no S PRC is saved or pushed" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#dc3545;color:#fff;font-size:10px;font-weight:800;line-height:1;">C</span>';
+                            }
                             let value = parseFloat(cell.getValue() || 0);
                             if (!(value > 0)) value = ttDisplayedSprice(rowData);
                             if (!(value > 0)) return '';
@@ -5884,6 +5888,21 @@
             table.on('tableBuilt', function() {
                 buildColumnDropdown();
                 applyColumnVisibilityFromServer();
+                // Clearance SKUs show "C" in S PRC: repaint once the Inv days clearance list is loaded.
+                const ttRepaintClearance = function() {
+                    try { table.getRows('active').forEach(function(r) { try { r.reformat(); } catch (e) { /* ignore */ } }); } catch (e) { /* ignore */ }
+                };
+                (function loadClearanceMarks(tries) {
+                    if (typeof window.chStdLoadClearance !== 'function') {
+                        if (tries < 40) setTimeout(function() { loadClearanceMarks(tries + 1); }, 250);
+                        return;
+                    }
+                    window.chStdLoadClearance().always(function() {
+                        ttRepaintClearance();
+                        setTimeout(ttRepaintClearance, 2500);
+                    });
+                })(0);
+                $(document).off('chStd:settled.ttClearance').on('chStd:settled.ttClearance', ttRepaintClearance);
             });
 
             table.on('dataLoaded', function(data) {

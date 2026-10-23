@@ -7232,6 +7232,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/u7-distribution', 'u7Distribution')->name('google.shopping.campaigns.u7.distribution');
         Route::post('/google/shopping/google-shopping/u7-distribution-history', 'u7DistributionHistory')->name('google.shopping.campaigns.u7.history');
         Route::get('/google/shopping/google-shopping/negative-keywords', 'negativeKeywords')->name('google.shopping.campaigns.negatives');
+        Route::post('/google/shopping/google-shopping/negative-keywords/add', 'addNegativeKeywords')->name('google.shopping.campaigns.negatives.add');
 
         // "Revised" page — campaign + negative-keyword count + amazon-style red/green audit dot & history
         Route::get('/google/shopping/google-shopping/revised', 'revisedPage')->name('google.shopping.campaigns.revised');

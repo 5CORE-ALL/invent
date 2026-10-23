@@ -2065,6 +2065,98 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * Add campaign-level negative keywords to Google Ads (Negative keywords modal and Keyword Planner modal).
+     * Request: campaign_id, keywords (array or comma / new-line text), match_type (PHRASE | EXACT | BROAD).
+     */
+    public function addNegativeKeywords(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D/', '', (string) $request->input('campaign_id', ''));
+        if ($cid === '' || strlen($cid) > 32) {
+            return response()->json(['ok' => false, 'message' => 'Invalid campaign_id.'], 422);
+        }
+        $raw = $request->input('keywords', []);
+        if (is_string($raw)) {
+            $raw = preg_split('/[\r\n,]+/', $raw, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        }
+        $keywords = [];
+        foreach ((array) $raw as $k) {
+            $t = preg_replace('/\s+/', ' ', trim((string) $k));
+            if ($t !== '' && ! preg_match('/[@%!{}<>=;\\\\]/', $t)) { // characters Google rejects in keyword text
+                $keywords[mb_strtolower($t)] = mb_substr($t, 0, 80);
+            }
+        }
+        $keywords = array_slice(array_values($keywords), 0, 200);
+        if ($keywords === []) {
+            return response()->json(['ok' => false, 'message' => 'Enter at least one valid keyword.'], 422);
+        }
+        $match = strtoupper(trim((string) $request->input('match_type', 'PHRASE')));
+        if (! in_array($match, ['PHRASE', 'EXACT', 'BROAD'], true)) {
+            $match = 'PHRASE';
+        }
+        $customerId = (string) config('services.google_ads.login_customer_id');
+        if ($customerId === '') {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.'], 500);
+        }
+        $q = DB::table('google_ads_campaigns')->where('campaign_id', $cid);
+        $this->applyCampaignNameScope($q);
+        $latest = $q->orderByDesc('date')->first(['campaign_name']);
+        if (! $latest) {
+            return response()->json(['ok' => false, 'message' => 'Campaign not found in this grid.'], 404);
+        }
+
+        @ini_set('max_execution_time', '60');
+        try {
+            /** @var GoogleAdsSbidService $svc */
+            $svc = app(GoogleAdsSbidService::class);
+            $res = $svc->pushCampaignNegativeKeywords($customerId, $cid, $keywords, $match);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['ok' => false, 'message' => GoogleAdsSbidService::briefGoogleError($e)], 422);
+        }
+
+        // Mirror the new negatives locally so the list and N Target update now (the sync job keys on the resource name).
+        $rows = [];
+        foreach ($res['created'] ?? [] as $c) {
+            $rows[] = [
+                'level' => GoogleAdsNegativeKeyword::LEVEL_CAMPAIGN,
+                'customer_id' => $customerId,
+                'campaign_id' => $cid,
+                'campaign_name' => (string) $latest->campaign_name,
+                'criterion_id' => (string) (str_contains($c['resource'], '~') ? substr($c['resource'], strrpos($c['resource'], '~') + 1) : ''),
+                'criterion_resource_name' => $c['resource'],
+                'keyword_text' => $c['text'],
+                'match_type' => $match,
+                'criterion_type' => 'KEYWORD',
+                'status' => 'ENABLED',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        if ($rows !== []) {
+            try {
+                GoogleAdsNegativeKeyword::upsert($rows, ['criterion_resource_name'], ['keyword_text', 'match_type', 'status', 'updated_at']);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+            $this->bumpRawGridRowsCache();
+        }
+
+        $ok = ((int) $res['added']) > 0;
+        $message = $ok
+            ? $res['added'].' negative keyword(s) added to Google Ads'.($res['failed'] ? ', '.$res['failed'].' failed (already exist or rejected)' : '').'.'
+            : ($res['errors'][0] ?? 'No negative keyword was added (they may already exist).');
+
+        return response()->json([
+            'ok' => $ok,
+            'message' => $message,
+            'added' => (int) $res['added'],
+            'failed' => (int) $res['failed'],
+            'errors' => $res['errors'] ?? [],
+        ], $ok ? 200 : 422);
+    }
+
+    /**
      * Audit-history channel key for the "Revised" negative-keywords review page. Kept
      * separate from {@see channelKey()} so its red/green status + history don't mix with
      * the Shopping campaign audit.

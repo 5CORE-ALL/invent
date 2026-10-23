@@ -1306,14 +1306,6 @@
                                     <select id="gacKwFBrand" class="form-select form-select-sm"><option value="">All</option><option value="NON_BRAND">Non-brand</option><option value="BRAND">Brand</option><option value="OTHER_BRANDS">Other brands</option></select></div>
                                 <div><label class="mb-0 text-muted">Avg. monthly searches</label>
                                     <div class="d-flex gap-1"><input type="number" id="gacKwFSearchMin" class="form-control form-control-sm" placeholder="Min" style="width:80px;"><input type="number" id="gacKwFSearchMax" class="form-control form-control-sm" placeholder="Max" style="width:80px;"></div></div>
-                                <div><label class="mb-0 text-muted">Competition</label>
-                                    <div class="d-flex gap-2 pt-1">
-                                        <label class="mb-0"><input type="checkbox" class="gac-kw-fcomp" value="LOW"> Low</label>
-                                        <label class="mb-0"><input type="checkbox" class="gac-kw-fcomp" value="MEDIUM"> Medium</label>
-                                        <label class="mb-0"><input type="checkbox" class="gac-kw-fcomp" value="HIGH"> High</label>
-                                    </div></div>
-                                <div><label class="mb-0 text-muted">Top of page bid (high) $</label>
-                                    <div class="d-flex gap-1"><input type="number" step="0.01" id="gacKwFBidMin" class="form-control form-control-sm" placeholder="Min" style="width:80px;"><input type="number" step="0.01" id="gacKwFBidMax" class="form-control form-control-sm" placeholder="Max" style="width:80px;"></div></div>
                                 <div><label class="mb-0 text-muted">Keyword contains</label>
                                     <input type="text" id="gacKwFInc" class="form-control form-control-sm" placeholder="words" style="width:140px;"></div>
                                 <div><label class="mb-0 text-muted">Exclude keywords</label>
@@ -1335,13 +1327,14 @@
                             <strong style="color:#6d28d9;"><i class="fas fa-list-check"></i> Plan: <span id="gacKwPlanCount">0</span> keyword(s)</strong>
                             <div><label class="mb-0 text-muted">Match type</label>
                                 <select id="gacKwPlanMatch" class="form-select form-select-sm"><option value="BROAD">Broad</option><option value="PHRASE">Phrase</option><option value="EXACT">Exact</option></select></div>
-                            <div><label class="mb-0 text-muted">Max CPC bid $</label><input type="number" step="0.01" min="0.01" id="gacKwPlanCpc" class="form-control form-control-sm" value="1.00" style="width:90px;"></div>
-                            <div><label class="mb-0 text-muted">Daily budget $</label><input type="number" step="1" min="1" id="gacKwPlanBudget" class="form-control form-control-sm" value="50" style="width:90px;"></div>
-                            <div><label class="mb-0 text-muted">Forecast days</label><input type="number" min="1" max="365" id="gacKwPlanDays" class="form-control form-control-sm" value="30" style="width:80px;"></div>
                             <button type="button" class="btn btn-sm btn-primary" id="gacKwForecastGo">Get forecast</button>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="gacKwPlanToggle">View plan</button>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="gacKwPlanExport"><i class="fas fa-download"></i> Export plan</button>
                             <button type="button" class="btn btn-sm btn-outline-danger" id="gacKwPlanClear">Clear plan</button>
+                            <span class="vr mx-1"></span>
+                            <div><label class="mb-0 text-muted">Negative match</label>
+                                <select id="gacKwNegMatch" class="form-select form-select-sm"><option value="PHRASE" selected>Phrase</option><option value="EXACT">Exact</option><option value="BROAD">Broad</option></select></div>
+                            <button type="button" class="btn btn-sm btn-danger" id="gacKwAddNeg" title="Add the plan's keywords as negative keywords on this campaign in Google Ads"><i class="fas fa-ban"></i> Add plan as negatives</button>
                             <span id="gacKwForecastMsg" class="small"></span>
                         </div>
                         <div id="gacKwForecast" class="mt-2"></div>
@@ -1362,6 +1355,20 @@
                         Negative keywords — <span id="gacRawNegKwCid" class="text-muted"></span>
                     </h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="px-3 pt-2 pb-2 border-bottom" style="background:#f8fafc;">
+                    <div class="d-flex flex-wrap align-items-end gap-2">
+                        <div style="flex:1 1 320px;">
+                            <label class="form-label small fw-semibold mb-1" for="gacNegAddText">Add negative keywords to this campaign in Google Ads</label>
+                            <textarea id="gacNegAddText" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="One keyword per line, or separate with commas"></textarea>
+                        </div>
+                        <div>
+                            <label class="form-label small mb-1 text-muted" for="gacNegAddMatch">Match type</label>
+                            <select id="gacNegAddMatch" class="form-select form-select-sm"><option value="PHRASE" selected>Phrase</option><option value="EXACT">Exact</option><option value="BROAD">Broad</option></select>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-danger" id="gacNegAddGo"><i class="fas fa-ban"></i> Add negatives</button>
+                    </div>
+                    <div id="gacNegAddMsg" class="small mt-1"></div>
                 </div>
                 <div class="modal-body py-2" id="gacRawNegKwBody" style="max-height:60vh;overflow:auto;">
                     <p class="text-muted small mb-0">Loading…</p>
@@ -1406,6 +1413,8 @@
             const gacRawU7PieDistribUrl = @json(route('google.shopping.campaigns.u7.distribution'));
             const gacRawU7PieHistoryUrl = @json(route('google.shopping.campaigns.u7.history'));
             const gacRawNegKwUrl = @json(route('google.shopping.campaigns.negatives'));
+            const gacNegAddUrl = @json(route('google.shopping.campaigns.negatives.add'));
+            var gacNegCid = '';
             // Per-user column show/hide — same /tabulator-column-visibility endpoint as Amazon
             // Analytics / all-marketplace-master (channel_tabulator_column_settings).
             const TABULATOR_COLUMN_CHANNEL = 'google_shopping_user_{{ auth()->id() ?? 'guest' }}';
@@ -2121,7 +2130,9 @@
                 var el = gacKwEl(id);
                 if (el) { el.textContent = text || ''; el.className = 'small ' + (cls || 'text-muted'); }
             }
-            function gacKwPlannerOpen(campaignName) {
+            var gacKwCampaignId = '';
+            function gacKwPlannerOpen(campaignName, campaignId) {
+                gacKwCampaignId = String(campaignId || '').replace(/\D/g, '');
                 gacKwInitControls();
                 var seed = String(campaignName || '').replace(/^\s*PARENT\s+/i, '').trim();
                 gacKwSetTab('keywords');
@@ -2194,9 +2205,6 @@
             function gacKwFiltered() {
                 var brand = gacKwVal('gacKwFBrand');
                 var sMin = parseFloat(gacKwVal('gacKwFSearchMin')), sMax = parseFloat(gacKwVal('gacKwFSearchMax'));
-                var bMin = parseFloat(gacKwVal('gacKwFBidMin')), bMax = parseFloat(gacKwVal('gacKwFBidMax'));
-                var comps = [];
-                document.querySelectorAll('.gac-kw-fcomp:checked').forEach(function(c) { comps.push(c.value); });
                 var inc = gacKwVal('gacKwFInc').toLowerCase().split(/[\s,]+/).filter(Boolean);
                 var exc = gacKwVal('gacKwFExc').toLowerCase().split(/[,\n]+/).map(function(x) { return x.trim(); }).filter(Boolean);
                 var cons = Object.keys(gacKw.concepts);
@@ -2205,9 +2213,6 @@
                     if (brand && r.brand !== brand) return false;
                     if (isFinite(sMin) && (r.avg_monthly === null || r.avg_monthly < sMin)) return false;
                     if (isFinite(sMax) && (r.avg_monthly === null || r.avg_monthly > sMax)) return false;
-                    if (isFinite(bMin) && (r.high_bid === null || r.high_bid < bMin)) return false;
-                    if (isFinite(bMax) && (r.high_bid === null || r.high_bid > bMax)) return false;
-                    if (comps.length && comps.indexOf(r.competition) === -1) return false;
                     for (var i = 0; i < inc.length; i++) if (kw.indexOf(inc[i]) === -1) return false;
                     for (var j = 0; j < exc.length; j++) if (kw.indexOf(exc[j]) !== -1) return false;
                     if (cons.length) {
@@ -2221,7 +2226,6 @@
                     rows = rows.slice().sort(function(a, b) {
                         var x = a[k], y = b[k];
                         if (k === 'keyword') return d * String(x).localeCompare(String(y));
-                        if (k === 'competition') { var o = { LOW: 1, MEDIUM: 2, HIGH: 3 }; x = o[x] || 0; y = o[y] || 0; }
                         if (x === null || x === undefined) x = -Infinity;
                         if (y === null || y === undefined) y = -Infinity;
                         return d * (x - y);
@@ -2229,42 +2233,24 @@
                 }
                 return rows;
             }
-            function gacKwSpark(arr) {
-                if (!arr || arr.length < 2) return '<span class="text-muted">—</span>';
-                var w = 70, h = 20, mx = Math.max.apply(null, arr), mn = Math.min.apply(null, arr), span = (mx - mn) || 1;
-                var pts = arr.map(function(v, i) { return (i * (w / (arr.length - 1))).toFixed(1) + ',' + (h - 2 - ((v - mn) / span) * (h - 4)).toFixed(1); }).join(' ');
-                return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"><polyline fill="none" stroke="#2563eb" stroke-width="1.5" points="' + pts + '"/></svg>';
-            }
-            function gacKwChange(v) {
-                if (v === null || v === undefined) return '<span class="text-muted">—</span>';
-                var c = v > 0 ? '#166534' : (v < 0 ? '#991b1b' : '#6b7280');
-                return '<span style="color:' + c + ';font-weight:600;">' + (v > 0 ? '+' : '') + v + '%</span>';
-            }
             function gacKwRender() {
                 var rows = gacKwFiltered();
                 gacKwEl('gacKwCount').textContent = rows.length.toLocaleString() + ' of ' + gacKw.rows.length.toLocaleString() + ' keyword ideas';
                 var body = gacKwEl('gacKwPlannerBody');
                 if (!rows.length) { body.innerHTML = '<p class="text-muted small mb-0">No keyword ideas match the filters.</p>'; return; }
-                var money = function(v) { return (v === null || v === undefined) ? '—' : '$' + Number(v).toFixed(2); };
-                var compColor = { LOW: '#166534', MEDIUM: '#92400e', HIGH: '#991b1b' };
                 var head = function(key, label, cls) {
                     var arrow = gacKw.sortKey === key ? (gacKw.sortDir > 0 ? ' ▲' : ' ▼') : '';
                     return '<th class="' + (cls || '') + ' gac-kw-sort" data-sort="' + key + '" style="cursor:pointer;white-space:nowrap;">' + label + arrow + '</th>';
                 };
                 var html = '<table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px;"><thead class="table-light" style="position:sticky;top:0;z-index:1;"><tr>'
-                    + '<th style="width:28px;"></th>' + head('keyword', 'Keyword') + head('avg_monthly', 'Avg. monthly searches', 'text-end') + '<th class="text-center">Trend (12 mo)</th>'
-                    + head('three_month', '3-month change', 'text-end') + head('yoy', 'YoY change', 'text-end') + head('competition', 'Competition', 'text-center')
-                    + head('low_bid', 'Top of page bid (low)', 'text-end') + head('high_bid', 'Top of page bid (high)', 'text-end') + head('avg_cpc', 'Avg. CPC', 'text-end') + '</tr></thead><tbody>';
+                    + '<th style="width:28px;"></th>' + head('keyword', 'Keyword') + head('avg_monthly', 'Avg. monthly searches', 'text-end') + '</tr></thead><tbody>';
                 rows.slice(0, 1000).forEach(function(r) {
                     var inPlan = !!gacKw.plan[r.keyword.toLowerCase()];
                     html += '<tr' + (inPlan ? ' style="background:#faf5ff;"' : '') + '>'
                         + '<td class="text-center"><input type="checkbox" class="gac-kw-pick" data-kw="' + gacRawEscAttr(r.keyword) + '"' + (inPlan ? ' checked' : '') + '></td>'
                         + '<td>' + gacRawEscAttr(r.keyword) + (r.brand === 'BRAND' || r.brand === 'OTHER_BRANDS' ? ' <span class="badge bg-light text-dark border" style="font-size:10px;">brand</span>' : '') + '</td>'
                         + '<td class="text-end">' + (r.avg_monthly === null || r.avg_monthly === undefined ? '—' : Number(r.avg_monthly).toLocaleString()) + '</td>'
-                        + '<td class="text-center">' + gacKwSpark(r.monthly) + '</td>'
-                        + '<td class="text-end">' + gacKwChange(r.three_month) + '</td><td class="text-end">' + gacKwChange(r.yoy) + '</td>'
-                        + '<td class="text-center" style="font-weight:700;color:' + (compColor[r.competition] || '#6b7280') + ';" title="' + (r.competition_index !== null && r.competition_index !== undefined ? 'Competition index ' + r.competition_index : '') + '">' + gacRawEscAttr(r.competition || '—') + '</td>'
-                        + '<td class="text-end">' + money(r.low_bid) + '</td><td class="text-end">' + money(r.high_bid) + '</td><td class="text-end">' + money(r.avg_cpc) + '</td></tr>';
+                        + '</tr>';
                 });
                 body.innerHTML = html + '</tbody></table>';
             }
@@ -2313,8 +2299,7 @@
                 gacKwEl('gacKwForecast').innerHTML = '';
                 gacKwPost(gacKwForecastUrl, {
                     keywords: list.map(function(p) { return { text: p.text, match: match }; }),
-                    language: gacKwVal('gacKwLang') || '1000', geos: gacKwSelectedGeos(),
-                    max_cpc: gacKwVal('gacKwPlanCpc'), daily_budget: gacKwVal('gacKwPlanBudget'), days: gacKwVal('gacKwPlanDays')
+                    language: gacKwVal('gacKwLang') || '1000', geos: gacKwSelectedGeos()
                 }).then(function(resp) {
                     btn.disabled = false;
                     if (!resp || !resp.ok) { gacKwMsg('gacKwForecastMsg', (resp && resp.message) || 'Forecast failed.', 'text-danger'); return; }
@@ -2327,6 +2312,26 @@
                         + card('Clicks', n(f.clicks)) + card('Cost', m(f.cost)) + card('Avg. CPC', m(f.avg_cpc)) + card('Conversions', n(f.conversions)) + card('Avg. CPA', m(f.avg_cpa))
                         + '</div><div class="text-muted mt-1" style="font-size:11px;">Forecast for ' + f.keywords + ' keyword(s), next ' + f.days + ' day(s), max CPC $' + Number(f.max_cpc).toFixed(2) + '.</div>';
                 }).catch(function() { btn.disabled = false; gacKwMsg('gacKwForecastMsg', 'Forecast failed.', 'text-danger'); });
+            }
+            // ---- add negative keywords to Google Ads (from the Negative keywords modal and the Keyword Planner plan) ----
+            function gacNegPush(cid, keywords, match, done) {
+                var tokenEl = document.querySelector('meta[name="csrf-token"]');
+                fetch(gacNegAddUrl, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': tokenEl ? tokenEl.getAttribute('content') : '' },
+                    body: JSON.stringify({ campaign_id: cid, keywords: keywords, match_type: match })
+                }).then(function(r) { return r.json().catch(function() { return {}; }); }).then(function(resp) {
+                    done(resp || {});
+                }).catch(function() { done({ ok: false, message: 'Request failed.' }); });
+            }
+            function gacNegAfterAdd() {
+                if (gacNegCid) {
+                    fetch(gacRawNegKwUrl + '?campaign_id=' + encodeURIComponent(gacNegCid), {
+                        credentials: 'same-origin',
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    }).then(function(r) { return r.json(); }).then(function(resp) { gacRawRenderNegKw(resp || {}); }).catch(function() {});
+                }
+                if (typeof gacRawReloadGridForFilters === 'function') gacRawReloadGridForFilters();
             }
             function gacSkuApply(selectEl) {
                 var item = selectEl.getAttribute('data-item') || '';
@@ -2419,6 +2424,9 @@
                 var modalEl = document.getElementById('gacRawNegKwModal');
                 var body = document.getElementById('gacRawNegKwBody');
                 var titleCid = document.getElementById('gacRawNegKwCid');
+                gacNegCid = cid;
+                var addMsg = document.getElementById('gacNegAddMsg');
+                if (addMsg) { addMsg.textContent = ''; }
                 if (titleCid) {
                     titleCid.textContent = (campaignName ? campaignName + ' ' : '') + '(' + cid + ')';
                 }
@@ -3078,10 +3086,43 @@
                     e.preventDefault();
                     var tmp = document.createElement('textarea');
                     tmp.innerHTML = t.getAttribute('data-kw-name') || '';
-                    gacKwPlannerOpen(tmp.value);
+                    gacKwPlannerOpen(tmp.value, t.getAttribute('data-kw-cid'));
                 });
                 (function() {
                     var on = function(id, ev, fn) { var el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
+                    on('gacNegAddGo', 'click', function() {
+                        var txt = (document.getElementById('gacNegAddText') || {}).value || '';
+                        var msg = document.getElementById('gacNegAddMsg');
+                        var btn = document.getElementById('gacNegAddGo');
+                        if (!txt.trim()) { if (msg) { msg.textContent = 'Enter at least one keyword.'; msg.className = 'small mt-1 text-danger'; } return; }
+                        btn.disabled = true;
+                        if (msg) { msg.textContent = 'Adding to Google Ads…'; msg.className = 'small mt-1 text-muted'; }
+                        gacNegPush(gacNegCid, txt, (document.getElementById('gacNegAddMatch') || {}).value || 'PHRASE', function(resp) {
+                            btn.disabled = false;
+                            if (msg) { msg.textContent = resp.message || (resp.ok ? 'Added.' : 'Failed.'); msg.className = 'small mt-1 fw-semibold ' + (resp.ok ? 'text-success' : 'text-danger'); }
+                            if (resp.ok) {
+                                document.getElementById('gacNegAddText').value = '';
+                                gacNegAfterAdd();
+                            }
+                        });
+                    });
+                    on('gacKwAddNeg', 'click', function() {
+                        var list = gacKwPlanList();
+                        var msg = document.getElementById('gacKwForecastMsg');
+                        if (!gacKwCampaignId) { if (msg) { msg.textContent = 'Open the planner from a campaign\'s N Target number.'; msg.className = 'small text-danger'; } return; }
+                        if (!list.length) { if (msg) { msg.textContent = 'Add keywords to the plan first.'; msg.className = 'small text-danger'; } return; }
+                        var match = (document.getElementById('gacKwNegMatch') || {}).value || 'PHRASE';
+                        var campName = (document.getElementById('gacKwPlannerName') || {}).textContent || gacKwCampaignId;
+                        if (!window.confirm('Add ' + list.length + ' negative keyword(s) (' + match.toLowerCase() + ' match) to campaign ' + campName.replace(/^—\s*/, '') + ' in Google Ads?\nThis changes the live account.')) return;
+                        var btn = document.getElementById('gacKwAddNeg');
+                        btn.disabled = true;
+                        if (msg) { msg.textContent = 'Adding to Google Ads…'; msg.className = 'small text-muted'; }
+                        gacNegPush(gacKwCampaignId, list.map(function(p) { return p.text; }), match, function(resp) {
+                            btn.disabled = false;
+                            if (msg) { msg.textContent = resp.message || (resp.ok ? 'Added.' : 'Failed.'); msg.className = 'small fw-semibold ' + (resp.ok ? 'text-success' : 'text-danger'); }
+                            if (resp.ok && typeof gacRawReloadGridForFilters === 'function') gacRawReloadGridForFilters();
+                        });
+                    });
                     on('gacKwPlannerGo', 'click', gacKwFetch);
                     on('gacKwForecastGo', 'click', gacKwForecast);
                     ['gacKwPlannerKeywords', 'gacKwPlannerSite', 'gacKwPlannerUrl'].forEach(function(id) {
@@ -3094,14 +3135,12 @@
                         ev.preventDefault();
                         gacKwSetTab(a.getAttribute('data-kw-tab'));
                     });
-                    ['gacKwFBrand', 'gacKwFSearchMin', 'gacKwFSearchMax', 'gacKwFBidMin', 'gacKwFBidMax', 'gacKwFInc', 'gacKwFExc'].forEach(function(id) {
+                    ['gacKwFBrand', 'gacKwFSearchMin', 'gacKwFSearchMax', 'gacKwFInc', 'gacKwFExc'].forEach(function(id) {
                         on(id, 'input', gacKwRender);
                         on(id, 'change', gacKwRender);
                     });
-                    document.querySelectorAll('.gac-kw-fcomp').forEach(function(c) { c.addEventListener('change', gacKwRender); });
                     on('gacKwFClear', 'click', function() {
-                        ['gacKwFBrand', 'gacKwFSearchMin', 'gacKwFSearchMax', 'gacKwFBidMin', 'gacKwFBidMax', 'gacKwFInc', 'gacKwFExc'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
-                        document.querySelectorAll('.gac-kw-fcomp').forEach(function(c) { c.checked = false; });
+                        ['gacKwFBrand', 'gacKwFSearchMin', 'gacKwFSearchMax', 'gacKwFInc', 'gacKwFExc'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
                         gacKw.concepts = {};
                         document.querySelectorAll('.gac-kw-concept').forEach(function(c) { c.style.background = '#e5e7eb'; c.style.color = '#111827'; });
                         gacKwRender();
@@ -3148,10 +3187,10 @@
                     on('gacKwPlanClear', 'click', function() { gacKw.plan = {}; gacKwSavePlan(); gacKwRenderPlan(); gacKwRender(); });
                     on('gacKwExport', 'click', function() {
                         var rows = gacKwFiltered().map(function(r) { return Object.assign({}, r, { concepts_txt: (r.concepts || []).join('; ') }); });
-                        gacKwDownload('keyword-ideas.csv', gacKwCsv(rows, [['keyword', 'Keyword'], ['avg_monthly', 'Avg monthly searches'], ['three_month', '3-month change %'], ['yoy', 'YoY change %'], ['competition', 'Competition'], ['competition_index', 'Competition index'], ['low_bid', 'Top of page bid low'], ['high_bid', 'Top of page bid high'], ['avg_cpc', 'Avg CPC'], ['brand', 'Brand type'], ['concepts_txt', 'Concepts']]));
+                        gacKwDownload('keyword-ideas.csv', gacKwCsv(rows, [['keyword', 'Keyword'], ['avg_monthly', 'Avg monthly searches'], ['brand', 'Brand type'], ['concepts_txt', 'Concepts']]));
                     });
                     on('gacKwPlanExport', 'click', function() {
-                        gacKwDownload('keyword-plan.csv', gacKwCsv(gacKwPlanList(), [['text', 'Keyword'], ['avg_monthly', 'Avg monthly searches'], ['high_bid', 'Top of page bid high'], ['competition', 'Competition']]));
+                        gacKwDownload('keyword-plan.csv', gacKwCsv(gacKwPlanList(), [['text', 'Keyword'], ['avg_monthly', 'Avg monthly searches']]));
                     });
                 })();
                 // "Show only SKUs not in ads" / "Show all SKUs" link inside the SKUs modal.
@@ -3430,7 +3469,7 @@
                         var n = parseInt(v, 10);
                         if (!isFinite(n)) return '—';
                         var rowD = c.getRow().getData() || {};
-                        var nm = ' data-kw-name="' + gacRawEscAttr(String(rowD.campaign_name || '')) + '" role="button" title="Click to open Keyword Planner" style="cursor:pointer;';
+                        var nm = ' data-kw-cid="' + gacRawEscAttr(String(rowD.campaign_id || '')) + '" data-kw-name="' + gacRawEscAttr(String(rowD.campaign_name || '')) + '" role="button" title="Click to open Keyword Planner" style="cursor:pointer;';
                         if (n === 0) return '<span class="fw-semibold gac-ntarget-link"' + nm + 'color:#dc3545">M</span>';
                         var color = n < 50 ? '#dc3545' : (n > 100 ? '#6f42c1' : '#198754');
                         return '<span class="fw-semibold gac-ntarget-link"' + nm + 'color:' + color + '">' + n.toLocaleString() + '</span>';

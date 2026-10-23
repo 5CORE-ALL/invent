@@ -24,7 +24,7 @@ use Throwable;
  * share one page, so one service runs both channels):
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Clearance SKUs keep the discount price.
+ *  Clearance SKUs show "C" in S PRC: nothing is saved or pushed for them (same as Amazon).
  *  0 Sold = TT L30 (tiktok_orders), the page's sold qty.
  *  Caps, same order as Amazon:
  *   1. LMP cap: S PRC at or above LMP becomes LMP when SGROI at LMP is ≥ 20%.
@@ -90,7 +90,7 @@ class TiktokSprcDilAutoPushService
         ?callable $logger = null,
         bool $pushAll = false,
         bool $blueCatchUp = false,
-        int $cooldownMinutes = 60,
+        int $cooldownMinutes = 120,
         int $errorCooldownMinutes = 120,
         int $maxPushes = 0
     ): array {
@@ -155,22 +155,35 @@ class TiktokSprcDilAutoPushService
                     }
 
                     if ($blueCatchUp) {
-                        // Headless "Push on reload": SKUs whose TT Price ≠ S PRC. The twice-daily run skips a SKU
-                        // whose last pushed price already equals the target, so a Price that stayed different
-                        // afterwards (TikTok reverted it, or the link map re-read an older price) is picked up here.
+                        // Headless "Push on reload": the blue-triangle SKUs (INV > 0, Price ≠ S PRC), same as Amazon.
+                        // The twice-daily run skips a SKU whose last pushed price already equals the target, so a Price
+                        // that drifted afterwards (TikTok reverted it) stayed blue until someone opened the page.
                         if ($maxPushes > 0 && $stats['pushed'] + $stats['push_failed'] >= $maxPushes) {
                             $this->log($logger, "Reached max pushes ({$maxPushes}) — rest next run");
                             break;
                         }
-                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $errorCooldownMinutes)) {
+                        if (! empty($row['push_error_at']) && $this->withinCooldown((string) $row['push_error_at'], $cooldownMinutes)) {
                             // TikTok rejected the last push — retry after the cooldown, not every run.
                             $stats['skipped']++;
                             continue;
                         }
-                        if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
-                            // Pushed recently and Price still differs: do not loop on it every 10 minutes.
-                            $stats['skipped_unchanged']++;
-                            continue;
+                        if ($this->isUnchanged($row, $computed)) {
+                            if ($this->withinCooldown((string) ($row['pushed_at'] ?? ''), $cooldownMinutes)) {
+                                $stats['skipped_unchanged']++;
+                                continue;
+                            }
+                            // Pull the live Price first. TikTok may already be right and only the Price column stale.
+                            if (! $dryRun && $canPush) {
+                                $pull = $this->pullLive((string) $row['sku'], $sprice);
+                                if ($sleepMs > 0) {
+                                    usleep($sleepMs * 1000);
+                                }
+                                if ($pull && ! empty($pull['success']) && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
+                                    $stats['price_repaired']++;
+                                    $stats['skipped_unchanged']++;
+                                    continue;
+                                }
+                            }
                         }
                     } elseif (! $pushAll && $this->isUnchanged($row, $computed)) {
                         // Last push already equals the target. Refresh the live TikTok Price column, no push.
@@ -202,21 +215,6 @@ class TiktokSprcDilAutoPushService
                         $stats['skipped']++;
                         $this->log($logger, 'Skip '.$row['sku'].': negative SNROI');
                         continue;
-                    }
-
-                    if ($blueCatchUp) {
-                        // Pull the live TikTok price first: TikTok may already be right and only the Price column
-                        // stale. A matching live price is written, no push.
-                        $pull = $this->pullLive((string) $row['sku'], $sprice);
-                        if ($sleepMs > 0) {
-                            usleep($sleepMs * 1000);
-                        }
-                        if ($pull && ! empty($pull['success']) && PushedListingPrice::same($pull['price'] ?? 0, $sprice)) {
-                            $stats['price_repaired']++;
-                            $stats['skipped_unchanged']++;
-                            $this->saveSprice($row, $computed, 'pushed');
-                            continue;
-                        }
                     }
 
                     $this->pushOne($row, $computed, $stats, $logger);
@@ -269,6 +267,10 @@ class TiktokSprcDilAutoPushService
         }
         $std = (float) ($row['standard_price'] ?? 0);
         if (! ($std > 0)) {
+            return null;
+        }
+        // Clearance SKUs show "C" in S PRC. No price is saved or pushed for them (same as Amazon).
+        if ((new StdPrcVsDilPricer([], $this->channel))->isClearanceRow($row)) {
             return null;
         }
         $lp = (float) ($row['lp'] ?? 0);
@@ -536,6 +538,10 @@ class TiktokSprcDilAutoPushService
                 $pull = $this->pullLive($sku, $price);
                 if ($pull && empty($pull['success']) && isset($pull['price']) && $pull['price'] > 0) {
                     $this->log($logger, 'Pulled '.$sku.': '.$this->label().' shows $'.number_format((float) $pull['price'], 2).', pushed $'.number_format($price, 2));
+                }
+                // Still not showing the pushed price: tiktok:pull-pushed-prices re-reads it every 2 minutes (same as Amazon).
+                if (! ($pull && ! empty($pull['success']))) {
+                    app(TiktokPushedPricePullService::class)->scheduleAfterPush($this->channel, $sku);
                 }
             }
 

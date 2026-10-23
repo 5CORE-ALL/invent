@@ -1151,6 +1151,7 @@ class GoogleAdsSbidService
         $added = 0;
         $failed = 0;
         $errors = [];
+        $created = [];
 
         foreach (array_chunk($clean, 100) as $chunk) {
             $operations = [];
@@ -1174,6 +1175,14 @@ class GoogleAdsSbidService
                     ])
                 );
                 $added += $resp->getResults() ? $resp->getResults()->count() : 0;
+                $ci = 0;
+                foreach ($resp->getResults() as $res) {
+                    $rn = (string) $res->getResourceName();
+                    if ($rn !== '' && isset($chunk[$ci])) {
+                        $created[] = ['text' => $chunk[$ci], 'resource' => $rn];
+                    }
+                    $ci++;
+                }
 
                 if ($resp->hasPartialFailureError()) {
                     $msg = $resp->getPartialFailureError()->getMessage();
@@ -1210,6 +1219,7 @@ class GoogleAdsSbidService
             'campaign_id' => $campaignId,
             'match_type' => $matchType,
             'errors' => array_slice($errors, 0, 5),
+            'created' => $created,
         ];
     }
 

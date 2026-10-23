@@ -1258,6 +1258,15 @@ class Kernel extends ConsoleKernel
                 ->appendOutputTo($log);
         }
 
+        // Push and pull together (same as amazon:pull-pushed-prices): a pushed SKU whose live TikTok price still differs is
+        // re-read every minute until the Price column shows the pushed S PRC. Covers TikTok and TikTok 2.
+        $schedule->command('tiktok:pull-pushed-prices')
+            ->everyMinute()
+            ->name('tiktok-pull-pushed-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_MINUTE)
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         // Alibaba Std prc vs dil (Std − Age/Dil/B/0 Sold/CVR/Rev Disc, Std max, no LMP)
         // → S PRC saved twice daily (--skip-push). Alibaba is NOT pushed from here: /alibaba-analytics pushes
         // S PRC (calc − Ship) itself, on the first page open of the day or with its Push now button.

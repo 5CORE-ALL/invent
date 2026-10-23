@@ -66,12 +66,10 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
         $this->assertEqualsWithDelta(86.00, $out['sprice'], 0.001);
     }
 
-    public function test_clearance_keeps_the_discount_price(): void
+    public function test_clearance_sku_has_no_target_like_amazon(): void
     {
-        $out = $this->target($this->row(['standard_price' => 120, 'lp' => 70, 'ship' => 10, 'clearance' => true]));
-
-        $this->assertNotNull($out);
-        $this->assertEqualsWithDelta(108.00, $out['sprice'], 0.001);
+        // Clearance SKUs show "C" in S PRC. Nothing is saved or pushed for them.
+        $this->assertNull($this->target($this->row(['lp' => 70, 'ship' => 8, 'clearance' => true])));
     }
 
     public function test_lmp_below_the_price_caps_to_lmp(): void
@@ -116,5 +114,63 @@ class TiktokSprcDilAutoPushServiceTest extends TestCase
 
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(0.80, $out['margin'], 0.0001);
+    }
+
+    /** @return list<array{min:float,max:float,cap:float|null}> */
+    private function capSlabs(?float $cap): array
+    {
+        return [['min' => 0.0, 'max' => 100.0, 'cap' => $cap]];
+    }
+
+    public function test_snroi_cap_prices_s_prc_from_the_target_with_ship_and_tacos(): void
+    {
+        // LP 20, Ship 5, take-home 0.80, TACOS 5%. Cap 100% -> (20 x 2 + 5) / (0.80 - 0.05) = 60.00 (the 90.00 discount price is not used).
+        $out = $this->target($this->row(['tacos' => 5.0]), $this->pricer(['snroi_cap' => $this->capSlabs(100)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(60.0, $out['sprice']);
+        // The page SNROI% = (S PRC x take-home - Ship - LP - S PRC x Ads%) / LP lands on the target.
+        $snroi = ((60.0 * 0.80) - 5 - 20 - (60.0 * 0.05)) / 20 * 100;
+        $this->assertEqualsWithDelta(100.0, $snroi, 0.01);
+    }
+
+    public function test_tiktok2_cap_has_no_ads(): void
+    {
+        // TikTok 2 never subtracts Ads%, even when the row carries a TACOS%: (20 x 2 + 5) / 0.80 = 56.25.
+        $out = $this->target(
+            $this->row(['tacos' => 5.0]),
+            $this->pricer(['snroi_cap' => $this->capSlabs(100)], 'tiktok2'),
+            0.0,
+            'tiktok2'
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(56.25, $out['sprice']);
+    }
+
+    public function test_snroi_cap_above_what_std_can_reach_holds_at_std(): void
+    {
+        $out = $this->target($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(1000)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(100.0, $out['sprice']);
+    }
+
+    public function test_snroi_cap_blank_slab_keeps_the_discount_price(): void
+    {
+        $out = $this->target($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(null)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(90.0, $out['sprice']);
+    }
+
+    public function test_lmp_cap_still_applies_after_the_snroi_cap(): void
+    {
+        // Cap 1000% holds at Std 100, then LMP 80 (SGROI at LMP is far above 20%) pulls it to 80.
+        $out = $this->target($this->row(['lmp' => 80]), $this->pricer(['snroi_cap' => $this->capSlabs(1000)]));
+
+        $this->assertNotNull($out);
+        $this->assertSame(80.0, $out['sprice']);
+        $this->assertTrue($out['lmp_capped']);
     }
 }
