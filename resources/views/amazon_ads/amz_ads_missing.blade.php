@@ -277,6 +277,22 @@
                                 <label class="form-label small mb-1">Default bid ($)</label>
                                 <input type="number" class="form-control form-control-sm" id="amzCreateDefaultBid" name="default_bid" min="0.02" step="0.01" value="0.60">
                             </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Campaign bidding strategy</label>
+                                <select class="form-select form-select-sm" id="amzCreateStrategy" name="bidding_strategy">
+                                    <option value="LEGACY_FOR_SALES">Dynamic bids - down only</option>
+                                    <option value="AUTO_FOR_SALES">Dynamic bids - up and down</option>
+                                    <option value="MANUAL">Fixed bids</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Top of search (first page) +%</label>
+                                <input type="number" class="form-control form-control-sm" id="amzCreateTopPct" name="top_of_search_pct" min="0" max="900" step="1" value="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Product pages +%</label>
+                                <input type="number" class="form-control form-control-sm" id="amzCreateProdPct" name="product_pages_pct" min="0" max="900" step="1" value="0">
+                            </div>
                         </div>
 
                         <div class="d-flex align-items-center justify-content-between mb-1">
@@ -315,6 +331,7 @@
                                     <div class="border rounded">
                                         <ul class="nav nav-tabs small px-2 pt-1" role="tablist">
                                             <li class="nav-item"><button type="button" class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzKwPaneSug">Suggested</button></li>
+                                            <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzKwPaneIdeas">Search ideas</button></li>
                                             <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzKwPaneList">Enter list</button></li>
                                             <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzKwPaneFile">Upload file</button></li>
                                         </ul>
@@ -338,8 +355,10 @@
                                                     <span class="fw-semibold ms-2">Sort by</span>
                                                     <select class="form-select form-select-sm w-auto" id="amzKwSort">
                                                         <option value="CONVERSIONS">Orders</option>
+                                                        <option value="CLICKS">Clicks</option>
                                                         <option value="DEFAULT">Relevance</option>
                                                     </select>
+                                                    <input type="text" class="form-control form-control-sm" style="width:150px;" id="amzKwSugSearch" placeholder="Search keywords">
                                                     <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzKwLoadBtn"><i class="fa fa-sync me-1"></i>Reload</button>
                                                 </div>
                                                 <div class="px-2 py-1 small text-muted d-flex justify-content-between">
@@ -348,8 +367,33 @@
                                                 </div>
                                                 <div style="max-height:300px; overflow:auto;">
                                                     <table class="table table-sm align-middle mb-0 small">
-                                                        <thead class="table-light sticky-top"><tr><th>Keyword <span class="text-muted fw-normal">IS | IR</span></th><th>Match type</th><th class="text-end">Sugg. bid</th><th class="text-end"></th></tr></thead>
+                                                        <thead class="table-light sticky-top"><tr><th>Keyword <span class="text-muted fw-normal">IS | IR</span></th><th>Match type</th><th class="text-end">Sugg. bid <span class="text-muted fw-normal">(range)</span></th><th class="text-end"></th></tr></thead>
                                                         <tbody id="amzKwSugBody"></tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane fade" id="amzKwPaneIdeas">
+                                                <div class="p-2 small border-bottom">
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="text" class="form-control" id="amzKwSeed" placeholder="Type keywords (comma separated), e.g. woofer, 15 inch subwoofer">
+                                                        <button type="button" class="btn btn-primary" id="amzKwSeedBtn"><i class="fa fa-search me-1"></i>Get ideas</button>
+                                                    </div>
+                                                    <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                        <span class="fw-semibold">Add as</span>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-idea-mt" value="BROAD">Broad</label>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-idea-mt" value="PHRASE" checked>Phrase</label>
+                                                        <label><input type="checkbox" class="form-check-input me-1 amz-kw-idea-mt" value="EXACT">Exact</label>
+                                                        <span class="text-muted">Ideas come from the Keyword Planner (same as Google Shopping). The bid is the Bid setting above.</span>
+                                                    </div>
+                                                </div>
+                                                <div class="px-2 py-1 small text-muted d-flex justify-content-between">
+                                                    <span id="amzKwIdeaStatus">Type a keyword and press Get ideas.</span>
+                                                    <a href="#" id="amzKwIdeaAddAll" class="fw-semibold">Add all</a>
+                                                </div>
+                                                <div style="max-height:300px; overflow:auto;">
+                                                    <table class="table table-sm align-middle mb-0 small">
+                                                        <thead class="table-light sticky-top"><tr><th>Keyword</th><th class="text-end">Avg monthly</th><th>Competition</th><th class="text-end">Avg CPC</th><th></th></tr></thead>
+                                                        <tbody id="amzKwIdeaBody"></tbody>
                                                     </table>
                                                 </div>
                                             </div>
@@ -385,7 +429,11 @@
                                     <div class="border rounded h-100">
                                         <div class="p-2 border-bottom d-flex justify-content-between align-items-center small">
                                             <span class="fw-bold"><span id="amzKwAddedCount">0</span> added</span>
-                                            <a href="#" id="amzKwClearAll" class="text-danger">Remove all</a>
+                                            <span class="d-flex align-items-center gap-1">
+                                                <input type="number" class="form-control form-control-sm py-0" style="width:78px;" id="amzKwBulkBid" min="0.02" step="0.01" placeholder="Bid $">
+                                                <a href="#" id="amzKwBulkBidApply" title="Set this bid for every added keyword">Set all</a>
+                                                <a href="#" id="amzKwClearAll" class="text-danger ms-2">Remove all</a>
+                                            </span>
                                         </div>
                                         <div style="max-height:372px; overflow:auto;">
                                             <table class="table table-sm align-middle mb-0 small">
@@ -398,11 +446,41 @@
                             </div>
                         </div>
 
-                        <div class="mt-2 d-flex flex-wrap gap-3">
-                            <a href="#" id="amzCreateAiNegLink" class="small fw-semibold">
-                                <i class="fa fa-magic me-1"></i> Generate AI negative keywords
-                            </a>
+                        {{-- Campaign negative keywords (Amazon console "Negative keyword targeting"): Phrase / Exact only. --}}
+                        <div id="amzNegSection" class="mt-3">
+                            <div class="fw-semibold small mb-1">
+                                Negative keywords
+                                <span class="text-muted fw-normal">(optional) - campaign level, Phrase / Exact only</span>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-lg-7">
+                                    <div class="border rounded p-2 small">
+                                        <textarea class="form-control form-control-sm" id="amzNegText" rows="3" placeholder="Enter one negative keyword per line (or separate with commas)"></textarea>
+                                        <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                            <span class="fw-semibold">Match types</span>
+                                            <label><input type="checkbox" class="form-check-input me-1 amz-neg-mt" value="PHRASE" checked>Phrase</label>
+                                            <label><input type="checkbox" class="form-check-input me-1 amz-neg-mt" value="EXACT">Exact</label>
+                                            <input type="file" class="form-control form-control-sm w-auto" id="amzNegFile" accept=".csv,.txt,text/csv,text/plain">
+                                            <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzNegAddBtn">Add negatives</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-5">
+                                    <div class="border rounded h-100">
+                                        <div class="p-2 border-bottom d-flex justify-content-between align-items-center small">
+                                            <span class="fw-bold"><span id="amzNegCount">0</span> negatives</span>
+                                            <a href="#" id="amzNegClear" class="text-danger">Remove all</a>
+                                        </div>
+                                        <div style="max-height:150px; overflow:auto;">
+                                            <table class="table table-sm align-middle mb-0 small">
+                                                <tbody id="amzNegBody"></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+
                         <div class="form-text small mt-1" id="amzCreateTypeNote">
                             KW / MANUAL campaigns are created with the keywords you add above.
                         </div>
@@ -630,6 +708,7 @@
             var aiPosUrl = @json(route('amazon.ads.missing.ai-positives'));
             var pushPosUrl = @json(route('amazon.ads.missing.push-positives'));
             var kwSuggestUrl = @json(route('amazon.ads.missing.keyword-suggestions'));
+            var kwIdeasUrl = @json(route('amazon.ads.missing.keyword-ideas'));
             var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
             var lastCreatedCampaignId = '';
             var lastCreatedAdGroupId = '';
@@ -761,7 +840,10 @@
                         'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: JSON.stringify(payload)
-                }).then(function (res) { return res.json().then(function (b) { return { ok: res.ok, body: b }; }); });
+                }).then(function (res) {
+                    return res.json().then(function (b) { return { ok: res.ok, status: res.status, body: b }; })
+                        .catch(function () { return { ok: false, status: res.status, body: {} }; });
+                });
             }
 
 
@@ -785,6 +867,12 @@
                 if (v == null || !isFinite(v)) { return '—'; }
                 var pct = v <= 1 ? v * 100 : v;
                 return pct.toFixed(2) + '%';
+            }
+            function kwRangeHtml(row, mt) {
+                var r = row.ranges && row.ranges[mt];
+                if (!r || (r[0] == null && r[1] == null)) { return ''; }
+                return '<div class="text-muted" style="font-size:11px;">$' + (r[0] == null ? '—' : Number(r[0]).toFixed(2))
+                    + ' - $' + (r[1] == null ? '—' : Number(r[1]).toFixed(2)) + '</div>';
             }
             function kwIsAdded(text, mt) {
                 var k = String(text).toLowerCase() + '|' + mt;
@@ -817,7 +905,9 @@
                 var filters = kwActiveFilters();
                 var order = ['BROAD', 'PHRASE', 'EXACT'];
                 var html = '';
+                var q = String((document.getElementById('amzKwSugSearch') || {}).value || '').toLowerCase().trim();
                 kwSuggestions.forEach(function (row, ki) {
+                    if (q && String(row.keyword).toLowerCase().indexOf(q) === -1) { return; }
                     var mts = order.filter(function (mt) { return filters.indexOf(mt) !== -1 && row.bids && row.bids[mt] != null; });
                     if (!mts.length) { return; }
                     mts.forEach(function (mt, j) {
@@ -828,7 +918,7 @@
                                 + '<div class="text-muted" style="font-size:11px;">IS: ' + esc(kwFmtShare(row.is)) + ' | IR: ' + esc(row.ir == null ? '—' : row.ir) + '</div></td>';
                         }
                         html += '<td>' + esc(mt.charAt(0) + mt.slice(1).toLowerCase()) + '</td>'
-                            + '<td class="text-end">$' + Number(row.bids[mt]).toFixed(2) + '</td>'
+                            + '<td class="text-end">$' + Number(row.bids[mt]).toFixed(2) + kwRangeHtml(row, mt) + '</td>'
                             + '<td class="text-end">' + (added
                                 ? '<span class="text-muted fst-italic">Added</span>'
                                 : '<a href="#" class="fw-semibold amz-kw-add" data-ki="' + ki + '" data-mt="' + mt + '">Add</a>') + '</td></tr>';
@@ -867,7 +957,7 @@
                             : (out.body.message || 'Amazon returned no suggestions.'), false);
                     } else {
                         kwSuggestions = [];
-                        kwSetStatus((out.body && out.body.message) || 'Could not load Amazon suggestions.', true);
+                        kwSetStatus((out.body && out.body.message) || ('Could not load Amazon suggestions (HTTP ' + out.status + '). If this is 404, run php artisan route:clear on the server.'), true);
                     }
                     kwRenderSuggestions();
                 }).catch(function () {
@@ -879,8 +969,21 @@
             function kwResetForOpen() {
                 kwSuggestions = [];
                 kwAdded = [];
+                kwNegatives = [];
+                kwNegRender();
+                var negTa = document.getElementById('amzNegText'); if (negTa) { negTa.value = ''; }
+                var negF = document.getElementById('amzNegFile'); if (negF) { negF.value = ''; }
+                var sq = document.getElementById('amzKwSugSearch'); if (sq) { sq.value = ''; }
+                var bb = document.getElementById('amzKwBulkBid'); if (bb) { bb.value = ''; }
+                var st = document.getElementById('amzCreateStrategy'); if (st) { st.value = 'LEGACY_FOR_SALES'; }
+                var tp = document.getElementById('amzCreateTopPct'); if (tp) { tp.value = '0'; }
+                var pp = document.getElementById('amzCreateProdPct'); if (pp) { pp.value = '0'; }
                 kwRenderSuggestions();
                 kwRenderAdded();
+                kwIdeas = [];
+                kwRenderIdeas();
+                var seedEl = document.getElementById('amzKwSeed'); if (seedEl) { seedEl.value = ''; }
+                var ideaSt = document.getElementById('amzKwIdeaStatus'); if (ideaSt) { ideaSt.textContent = 'Type a keyword and press Get ideas.'; ideaSt.classList.remove('text-danger'); }
                 var ta = document.getElementById('amzKwListText'); if (ta) { ta.value = ''; }
                 var f = document.getElementById('amzKwFile'); if (f) { f.value = ''; }
                 kwSetStatus('Select child SKUs, then load Amazon\'s suggestions.', false);
@@ -928,6 +1031,16 @@
                 document.getElementById('amzKwLoadBtn').addEventListener('click', kwLoadSuggestions);
                 document.getElementById('amzKwSort').addEventListener('change', kwLoadSuggestions);
                 document.querySelectorAll('.amz-kw-filter').forEach(function (cb) { cb.addEventListener('change', kwRenderSuggestions); });
+                document.getElementById('amzKwSugSearch').addEventListener('input', kwRenderSuggestions);
+                document.getElementById('amzKwBulkBidApply').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var v = parseFloat((document.getElementById('amzKwBulkBid') || {}).value);
+                    if (!isFinite(v) || v < 0.02) { window.alert('Enter a bid of at least $0.02.'); return; }
+                    v = Math.round(v * 100) / 100;
+                    kwAdded.forEach(function (k) { k.bid = v; });
+                    kwRenderAdded();
+                });
+                kwWireNegatives();
                 document.getElementById('amzKwSugBody').addEventListener('click', function (e) {
                     var a = e.target.closest ? e.target.closest('.amz-kw-add') : null;
                     if (!a) { return; }
@@ -967,6 +1080,7 @@
                     kwAdded.splice(Number(d.getAttribute('data-i')), 1);
                     kwRenderAdded();
                     kwRenderSuggestions();
+                    kwRenderIdeas();
                 });
                 addedBody.addEventListener('change', function (e) {
                     var inp = e.target;
@@ -997,6 +1111,137 @@
                         if (r.skipped) { window.alert(r.skipped + ' keyword(s) skipped: Amazon allows up to 80 characters / 10 words.'); }
                     };
                     reader.readAsText(file);
+                });
+            }
+
+
+            // ---- Negative keywords (campaign level, Phrase / Exact) ----
+            var kwNegatives = [];     // [{text, match_type: PHRASE|EXACT}]
+            function kwNegRender() {
+                var body = document.getElementById('amzNegBody');
+                if (!body) { return; }
+                document.getElementById('amzNegCount').textContent = String(kwNegatives.length);
+                body.innerHTML = kwNegatives.length ? kwNegatives.map(function (n, i) {
+                    return '<tr><td>' + esc(n.text) + '</td><td>' + esc(n.match_type.charAt(0) + n.match_type.slice(1).toLowerCase()) + '</td>'
+                        + '<td style="width:28px;"><a href="#" class="text-danger amz-neg-del" data-i="' + i + '" title="Remove">&times;</a></td></tr>';
+                }).join('') : '<tr><td class="text-muted text-center py-2">None added.</td></tr>';
+            }
+            function kwNegAddTexts(texts) {
+                var mts = kwSelectedMts('amz-neg-mt');
+                if (!mts.length) { window.alert('Pick Phrase and/or Exact for negatives.'); return; }
+                var skipped = 0;
+                texts.forEach(function (t) {
+                    if (t.length > 80 || t.split(' ').length > 10) { skipped++; return; }
+                    mts.forEach(function (mt) {
+                        var k = t.toLowerCase() + '|' + mt;
+                        if (!kwNegatives.some(function (n) { return (n.text.toLowerCase() + '|' + n.match_type) === k; })) {
+                            kwNegatives.push({ text: t, match_type: mt });
+                        }
+                    });
+                });
+                kwNegRender();
+                if (skipped) { window.alert(skipped + ' negative(s) skipped: Amazon allows up to 80 characters / 10 words.'); }
+            }
+            function kwWireNegatives() {
+                var addBtn = document.getElementById('amzNegAddBtn');
+                if (!addBtn) { return; }
+                addBtn.addEventListener('click', function () {
+                    var ta = document.getElementById('amzNegText');
+                    var fileInput = document.getElementById('amzNegFile');
+                    var file = fileInput.files && fileInput.files[0];
+                    if (file) {
+                        var reader = new FileReader();
+                        reader.onload = function () {
+                            kwNegAddTexts(kwParseList(String(reader.result || ''), /\.csv$/i.test(file.name)));
+                            fileInput.value = '';
+                        };
+                        reader.readAsText(file);
+                    }
+                    if (ta.value.trim()) {
+                        kwNegAddTexts(kwParseList(ta.value, false));
+                        ta.value = '';
+                    }
+                });
+                document.getElementById('amzNegClear').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    kwNegatives = [];
+                    kwNegRender();
+                });
+                document.getElementById('amzNegBody').addEventListener('click', function (e) {
+                    var d = e.target.closest ? e.target.closest('.amz-neg-del') : null;
+                    if (!d) { return; }
+                    e.preventDefault();
+                    kwNegatives.splice(Number(d.getAttribute('data-i')), 1);
+                    kwNegRender();
+                });
+            }
+
+            // ---- Search ideas tab: type seed keywords -> Keyword Planner ideas ----
+            var kwIdeas = [];
+            function kwIdeaMts() { return kwSelectedMts('amz-kw-idea-mt'); }
+            function kwRenderIdeas() {
+                var body = document.getElementById('amzKwIdeaBody');
+                if (!body) { return; }
+                var mts = kwIdeaMts();
+                body.innerHTML = kwIdeas.length ? kwIdeas.map(function (r, i) {
+                    var all = mts.length && mts.every(function (mt) { return kwIsAdded(r.keyword, mt); });
+                    return '<tr><td class="fw-semibold">' + esc(r.keyword) + '</td>'
+                        + '<td class="text-end">' + (r.avg_monthly == null ? '—' : Number(r.avg_monthly).toLocaleString('en-US')) + '</td>'
+                        + '<td>' + esc(r.competition || '—') + '</td>'
+                        + '<td class="text-end">' + (r.avg_cpc == null ? '—' : '$' + Number(r.avg_cpc).toFixed(2)) + '</td>'
+                        + '<td class="text-end">' + (all ? '<span class="text-muted fst-italic">Added</span>'
+                            : '<a href="#" class="fw-semibold amz-kw-idea-add" data-i="' + i + '">Add</a>') + '</td></tr>';
+                }).join('') : '<tr><td colspan="5" class="text-muted text-center py-3">No ideas yet.</td></tr>';
+            }
+            function kwAddIdea(r) {
+                var mts = kwIdeaMts();
+                if (!mts.length) { window.alert('Pick at least one match type under "Add as".'); return false; }
+                mts.forEach(function (mt) { kwAdd(r.keyword, mt, kwResolveBid(null)); });
+                return true;
+            }
+            function kwLoadIdeas() {
+                var seed = (document.getElementById('amzKwSeed') || {}).value || '';
+                var st = document.getElementById('amzKwIdeaStatus');
+                var btn = document.getElementById('amzKwSeedBtn');
+                if (!seed.trim()) { st.textContent = 'Type at least one keyword.'; st.classList.add('text-danger'); return; }
+                st.textContent = 'Getting keyword ideas…'; st.classList.remove('text-danger');
+                btn.disabled = true;
+                postForm(kwIdeasUrl, { seeds: seed }).then(function (out) {
+                    btn.disabled = false;
+                    if (out.ok && out.body && out.body.ok) {
+                        kwIdeas = Array.isArray(out.body.rows) ? out.body.rows : [];
+                        st.textContent = kwIdeas.length ? (kwIdeas.length + ' ideas.') : (out.body.message || 'No ideas found.');
+                    } else {
+                        kwIdeas = [];
+                        st.textContent = (out.body && out.body.message) || ('Could not get ideas (HTTP ' + out.status + ').');
+                        st.classList.add('text-danger');
+                    }
+                    kwRenderIdeas();
+                }).catch(function () {
+                    btn.disabled = false;
+                    st.textContent = 'Network error getting ideas.'; st.classList.add('text-danger');
+                });
+            }
+            function kwWireIdeas() {
+                var btn = document.getElementById('amzKwSeedBtn');
+                if (!btn) { return; }
+                btn.addEventListener('click', kwLoadIdeas);
+                document.getElementById('amzKwSeed').addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') { e.preventDefault(); kwLoadIdeas(); }
+                });
+                document.querySelectorAll('.amz-kw-idea-mt').forEach(function (cb) { cb.addEventListener('change', kwRenderIdeas); });
+                document.getElementById('amzKwIdeaBody').addEventListener('click', function (e) {
+                    var a = e.target.closest ? e.target.closest('.amz-kw-idea-add') : null;
+                    if (!a) { return; }
+                    e.preventDefault();
+                    var r = kwIdeas[Number(a.getAttribute('data-i'))];
+                    if (r && kwAddIdea(r)) { kwRenderAdded(); kwRenderIdeas(); kwRenderSuggestions(); }
+                });
+                document.getElementById('amzKwIdeaAddAll').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var ok = true;
+                    kwIdeas.forEach(function (r) { if (ok) { ok = kwAddIdea(r); } });
+                    kwRenderAdded(); kwRenderIdeas(); kwRenderSuggestions();
                 });
             }
 
@@ -1784,7 +2029,7 @@
                     });
                 }
 
-                document.getElementById('amzCreateAiNegLink').addEventListener('click', function (e) {
+                (document.getElementById('amzCreateAiNegLink') || document.createElement('a')).addEventListener('click', function (e) {
                     e.preventDefault();
                     var modal = getAiNegModal();
                     if (!modal) {
@@ -2246,6 +2491,7 @@
                 });
 
                 kwWire();
+                kwWireIdeas();
                 document.getElementById('amzCreateSelectAll').addEventListener('click', function () {
                     document.querySelectorAll('#amzCreateChildrenBody .amz-child-check').forEach(function (cb) {
                         if (!cb.disabled) { cb.checked = true; }
@@ -2281,7 +2527,11 @@
                         children: children,
                         keywords: currentCreateType() === 'KW'
                             ? kwAdded.map(function (k) { return { text: k.text, match_type: k.match_type, bid: k.bid }; })
-                            : []
+                            : [],
+                        bidding_strategy: document.getElementById('amzCreateStrategy').value || 'LEGACY_FOR_SALES',
+                        top_of_search_pct: parseInt(document.getElementById('amzCreateTopPct').value, 10) || 0,
+                        product_pages_pct: parseInt(document.getElementById('amzCreateProdPct').value, 10) || 0,
+                        negatives: kwNegatives.map(function (n) { return { text: n.text, match_type: n.match_type }; })
                     };
                     if (!payload.parent || !(payload.campaign_name || '').trim()) {
                         errEl.textContent = 'Parent and campaign name are required.';
@@ -2320,7 +2570,7 @@
                             }
                             updateMissingBadges();
                             // Keep Create modal open so AI Negatives/Positives → Push can use the new campaign id.
-                            var followUp = '\n\nYou can now Generate AI negative keywords and Push, if needed.';
+                            var followUp = '';
                             window.alert((out.body.message || 'Campaign created.') + followUp);
                         } else {
                             errEl.textContent = (out.body && out.body.message) || 'Failed to create campaign.';

@@ -1449,8 +1449,8 @@ class AmazonAdsService
      * Sponsored Products keyword recommendations API v5 (POST /sp/targets/keywords/recommendations).
      *
      * @param  list<string>  $asins
-     * @param  string  $sortDimension  CONVERSIONS = sort by orders (console default), DEFAULT = relevance
-     * @return list<array{keyword: string, is: float|null, ir: int|null, bids: array<string, float>}>
+     * @param  string  $sortDimension  CONVERSIONS = sort by orders (console default), CLICKS, DEFAULT = relevance
+     * @return list<array{keyword: string, is: float|null, ir: int|null, bids: array<string, float>, ranges: array<string, array{0: float|null, 1: float|null}>}>
      */
     public function keywordRecommendationsForAsins(
         array $asins,
@@ -1465,7 +1465,10 @@ class AmazonAdsService
         if ($asins === []) {
             return [];
         }
-        $sortDimension = strtoupper(trim($sortDimension)) === 'DEFAULT' ? 'DEFAULT' : 'CONVERSIONS';
+        $sortDimension = strtoupper(trim($sortDimension));
+        if (! in_array($sortDimension, ['CONVERSIONS', 'CLICKS', 'DEFAULT'], true)) {
+            $sortDimension = 'CONVERSIONS';
+        }
         $headers = [
             'Content-Type' => 'application/vnd.spkeywordsrecommendation.v5+json',
             'Accept' => 'application/vnd.spkeywordsrecommendation.v5+json',
@@ -1482,15 +1485,42 @@ class AmazonAdsService
                 'locale' => $locale,
                 'bidsEnabled' => true,
             ];
-            try {
-                $resp = $this->post('/sp/targets/keywords/recommendations', $body, $headers);
-            } catch (\Throwable $e) {
-                if ($body['maxRecommendations'] > 100) {
-                    $body['maxRecommendations'] = 100;
-                    $resp = $this->post('/sp/targets/keywords/recommendations', $body, $headers);
-                } else {
-                    throw $e;
+            // Try the full v5 request first; on a 4xx fall back to simpler requests (v5 minimal, then v4)
+            // so a field Amazon rejects for this marketplace does not kill the whole suggestion list.
+            $minimal = [
+                'recommendationType' => 'KEYWORDS_FOR_ASINS',
+                'asins' => $chunk,
+                'bidsEnabled' => true,
+            ];
+            $v4Headers = [
+                'Content-Type' => 'application/vnd.spkeywordsrecommendation.v4+json',
+                'Accept' => 'application/vnd.spkeywordsrecommendation.v4+json',
+            ];
+            $attempts = [
+                [$body, $headers],
+                [array_merge($body, ['maxRecommendations' => 100]), $headers],
+                [$minimal, $headers],
+                [$minimal, $v4Headers],
+            ];
+            $resp = null;
+            $lastError = null;
+            foreach ($attempts as [$attemptBody, $attemptHeaders]) {
+                try {
+                    $resp = $this->post('/sp/targets/keywords/recommendations', $attemptBody, $attemptHeaders);
+                    $lastError = null;
+                    break;
+                } catch (\Throwable $e) {
+                    $lastError = $e;
+                    $status = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()
+                        ? $e->getResponse()->getStatusCode() : 0;
+                    // Auth / throttling / server errors will not be fixed by a different body.
+                    if ($status === 0 || $status === 401 || $status === 403 || $status === 429 || $status >= 500) {
+                        break;
+                    }
                 }
+            }
+            if ($resp === null) {
+                throw $lastError ?? new \RuntimeException('Amazon keyword recommendations request failed.');
             }
 
             $list = $resp['keywordTargetList'] ?? $resp['keywordTargets'] ?? [];
@@ -1514,6 +1544,7 @@ class AmazonAdsService
                         'is' => is_numeric($share) ? (float) $share : null,
                         'ir' => is_numeric($rank) ? (int) $rank : null,
                         'bids' => [],
+                        'ranges' => [],
                     ];
                 }
                 foreach ((array) ($row['bidInfo'] ?? []) as $b) {
@@ -1521,10 +1552,27 @@ class AmazonAdsService
                         continue;
                     }
                     $mt = strtoupper(trim((string) ($b['matchType'] ?? '')));
-                    if (! in_array($mt, ['BROAD', 'PHRASE', 'EXACT'], true) || ! isset($b['bid']) || ! is_numeric($b['bid'])) {
+                    if (! in_array($mt, ['BROAD', 'PHRASE', 'EXACT'], true)) {
                         continue;
                     }
-                    $merged[$key]['bids'][$mt] = round((float) $b['bid'], 2);
+                    // v5 returns the console's "Suggested bid" in bidInfo.suggestedBid.suggested; older shapes use bidInfo.bid.
+                    $bid = data_get($b, 'suggestedBid.suggested');
+                    if (! is_numeric($bid)) {
+                        $bid = $b['bid'] ?? null;
+                    }
+                    if (! is_numeric($bid) || (float) $bid <= 0) {
+                        continue;
+                    }
+                    // Several themes can come back per match type: keep the first (Amazon's primary suggestion).
+                    if (! isset($merged[$key]['bids'][$mt])) {
+                        $merged[$key]['bids'][$mt] = round((float) $bid, 2);
+                        $rs = data_get($b, 'suggestedBid.rangeStart');
+                        $re = data_get($b, 'suggestedBid.rangeEnd');
+                        $merged[$key]['ranges'][$mt] = [
+                            is_numeric($rs) ? round((float) $rs, 2) : null,
+                            is_numeric($re) ? round((float) $re, 2) : null,
+                        ];
+                    }
                 }
             }
         }
@@ -1576,7 +1624,8 @@ class AmazonAdsService
         array $sellerSkus,
         float $dailyBudget = 3.0,
         float $defaultBid = 0.60,
-        string $targetingType = 'AUTO'
+        string $targetingType = 'AUTO',
+        array $options = []
     ): array {
         $campaignName = trim($campaignName);
         $targetingType = strtoupper(trim($targetingType)) === 'MANUAL' ? 'MANUAL' : 'AUTO';
@@ -1600,6 +1649,23 @@ class AmazonAdsService
 
         $errors = [];
 
+        // Campaign bidding strategy + placement adjustments (Amazon console "Campaign bidding strategy").
+        $strategy = strtoupper(trim((string) ($options['bidding_strategy'] ?? 'LEGACY_FOR_SALES')));
+        if (! in_array($strategy, ['LEGACY_FOR_SALES', 'AUTO_FOR_SALES', 'MANUAL'], true)) {
+            $strategy = 'LEGACY_FOR_SALES';
+        }
+        $dynamicBidding = ['strategy' => $strategy];
+        $placements = [];
+        foreach (['PLACEMENT_TOP' => 'top_of_search_pct', 'PLACEMENT_PRODUCT_PAGE' => 'product_pages_pct'] as $placement => $optKey) {
+            $pct = $options[$optKey] ?? null;
+            if (is_numeric($pct) && (int) $pct > 0) {
+                $placements[] = ['placement' => $placement, 'percentage' => max(0, min(900, (int) round((float) $pct)))];
+            }
+        }
+        if ($placements !== []) {
+            $dynamicBidding['placementBidding'] = $placements;
+        }
+
         try {
             $campaignResp = $this->createCampaigns([
                 [
@@ -1611,9 +1677,7 @@ class AmazonAdsService
                         'budgetType' => 'DAILY',
                     ],
                     'startDate' => now()->format('Y-m-d'),
-                    'dynamicBidding' => [
-                        'strategy' => 'LEGACY_FOR_SALES',
-                    ],
+                    'dynamicBidding' => $dynamicBidding,
                 ],
             ]);
         } catch (\Throwable $e) {

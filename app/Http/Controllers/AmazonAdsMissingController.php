@@ -253,6 +253,14 @@ class AmazonAdsMissingController extends Controller
             'keywords.*.text' => ['required', 'string', 'max:255'],
             'keywords.*.match_type' => ['nullable', 'string', 'in:BROAD,PHRASE,EXACT'],
             'keywords.*.bid' => ['nullable', 'numeric', 'min:0.02'],
+            // Campaign settings from the Amazon console: bidding strategy + placement adjustments.
+            'bidding_strategy' => ['nullable', 'string', 'in:LEGACY_FOR_SALES,AUTO_FOR_SALES,MANUAL'],
+            'top_of_search_pct' => ['nullable', 'integer', 'min:0', 'max:900'],
+            'product_pages_pct' => ['nullable', 'integer', 'min:0', 'max:900'],
+            // Campaign negative keywords (Amazon: phrase / exact only).
+            'negatives' => ['nullable', 'array', 'max:1000'],
+            'negatives.*.text' => ['required', 'string', 'max:255'],
+            'negatives.*.match_type' => ['nullable', 'string', 'in:PHRASE,EXACT'],
         ]);
 
         $parent = preg_replace('/\s+/', ' ', trim($validated['parent']));
@@ -324,7 +332,12 @@ class AmazonAdsMissingController extends Controller
                 $sellerSkus,
                 $budget,
                 $defaultBid,
-                $targetingType
+                $targetingType,
+                [
+                    'bidding_strategy' => $validated['bidding_strategy'] ?? 'LEGACY_FOR_SALES',
+                    'top_of_search_pct' => $validated['top_of_search_pct'] ?? 0,
+                    'product_pages_pct' => $validated['product_pages_pct'] ?? 0,
+                ]
             );
 
             if (! empty($created['success'])) {
@@ -380,6 +393,14 @@ class AmazonAdsMissingController extends Controller
             $extra .= ' Keywords: '.$keywordResult['message'];
         }
 
+        // Campaign negative keywords picked in the "Negative keywords" box.
+        $negativeResult = null;
+        $pickedNegatives = $this->normalizePickedNegatives($validated['negatives'] ?? []);
+        if ($pickedNegatives !== [] && $campaignId !== '') {
+            $negativeResult = $this->pushPickedNegatives($campaignId, $pickedNegatives);
+            $extra .= ' Negatives: '.$negativeResult['message'];
+        }
+
         return response()->json([
             'ok' => true,
             'message' => $targetingType.' SP campaign created (PAUSED): '.$campaignName
@@ -394,6 +415,7 @@ class AmazonAdsMissingController extends Controller
             'children' => $resolvedChildren,
             'campaign' => $created,
             'keywords_result' => $keywordResult,
+            'negatives_result' => $negativeResult,
             'pt' => $this->linksResponseForSku($sku)['pt'],
             'kw' => $this->linksResponseForSku($sku)['kw'],
         ]);
@@ -409,7 +431,7 @@ class AmazonAdsMissingController extends Controller
             'children' => ['required', 'array', 'min:1'],
             'children.*.target_sku' => ['nullable', 'string', 'max:255'],
             'children.*.asin' => ['nullable', 'string', 'max:32'],
-            'sort' => ['nullable', 'string', 'in:CONVERSIONS,DEFAULT'],
+            'sort' => ['nullable', 'string', 'in:CONVERSIONS,CLICKS,DEFAULT'],
         ]);
 
         $asins = [];
@@ -464,6 +486,66 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
+     * Keyword ideas from typed seed keywords (same Keyword Planner source as the Google Shopping N Target modal).
+     * Amazon only suggests keywords from ASINs, so this is the "type a keyword, get ideas" search.
+     */
+    public function keywordIdeas(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'seeds' => ['required', 'string', 'max:2000'],
+        ]);
+        $customerId = (string) config('services.google_ads.login_customer_id');
+        if ($customerId === '') {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.', 'rows' => []], 500);
+        }
+        $seeds = preg_split('/[\r\n,]+/', $validated['seeds'], -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $seeds = array_slice(array_values(array_unique(array_filter(array_map(
+            static fn ($k) => mb_substr(trim((string) $k), 0, 80),
+            $seeds
+        )))), 0, 20);
+        if ($seeds === []) {
+            return response()->json(['ok' => false, 'message' => 'Type at least one keyword.', 'rows' => []], 422);
+        }
+
+        @ini_set('max_execution_time', '90');
+        try {
+            $res = app(\App\Services\GoogleAdsSbidService::class)->keywordPlannerIdeas($customerId, [
+                'keywords' => $seeds,
+                'url' => '',
+                'scope' => 'page',
+                'language' => '1000',
+                'geos' => ['2840'],
+                'network' => 'partners',
+                'include_adult' => false,
+                'limit' => 300,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Amazon missing keyword ideas failed', ['seeds' => $seeds, 'error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'message' => 'Keyword ideas failed: '.$e->getMessage(), 'rows' => []], 502);
+        }
+        if (empty($res['ok'])) {
+            return response()->json(['ok' => false, 'message' => (string) ($res['message'] ?? 'Keyword ideas failed.'), 'rows' => []], 422);
+        }
+
+        $rows = [];
+        foreach ((array) ($res['rows'] ?? []) as $r) {
+            $kw = trim((string) ($r['keyword'] ?? ''));
+            if ($kw === '' || mb_strlen($kw) > 80 || count(explode(' ', $kw)) > 10) {
+                continue;
+            }
+            $rows[] = [
+                'keyword' => $kw,
+                'avg_monthly' => $r['avg_monthly'] ?? null,
+                'competition' => (string) ($r['competition'] ?? '—'),
+                'avg_cpc' => $r['avg_cpc'] ?? null,
+            ];
+        }
+
+        return response()->json(['ok' => true, 'rows' => $rows, 'message' => $rows === [] ? 'No ideas found for these keywords.' : '']);
+    }
+
+    /**
      * @param  array<int, mixed>  $rows  [{text, match_type, bid}]
      * @return list<array{text: string, match_type: string, bid: float|null}>
      */
@@ -494,6 +576,84 @@ class AmazonAdsMissingController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows
+     * @return list<array{text: string, match_type: string}>
+     */
+    private function normalizePickedNegatives(array $rows): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $text = preg_replace('/\s+/', ' ', trim((string) ($row['text'] ?? '')));
+            // Campaign negatives: up to 80 characters / 10 words.
+            if ($text === '' || mb_strlen($text) > 80 || count(explode(' ', $text)) > 10) {
+                continue;
+            }
+            $mt = strtoupper(trim((string) ($row['match_type'] ?? 'PHRASE'))) === 'EXACT' ? 'NEGATIVE_EXACT' : 'NEGATIVE_PHRASE';
+            $key = mb_strtolower($text).'|'.$mt;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = ['text' => $text, 'match_type' => $mt];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Push campaign negative keywords grouped by match type.
+     *
+     * @param  list<array{text: string, match_type: string}>  $negatives
+     * @return array{added: int, failed: int, duplicates: int, message: string}
+     */
+    private function pushPickedNegatives(string $campaignId, array $negatives): array
+    {
+        $groups = [];
+        foreach ($negatives as $n) {
+            $groups[$n['match_type']][] = $n['text'];
+        }
+
+        $service = app(AmazonAdsService::class);
+        $added = 0;
+        $failed = 0;
+        $dups = 0;
+        $errors = [];
+        foreach ($groups as $mt => $texts) {
+            try {
+                $res = $service->pushCampaignNegativeKeywords($campaignId, $texts, $mt);
+            } catch (\Throwable $e) {
+                $failed += count($texts);
+                $errors[] = $service->amazonErrorMessage($e);
+
+                continue;
+            }
+            $added += (int) ($res['added'] ?? 0);
+            $failed += (int) ($res['failed'] ?? 0);
+            $dups += (int) ($res['duplicates'] ?? 0);
+            foreach ((array) ($res['errors'] ?? []) as $err) {
+                $errors[] = (string) $err;
+            }
+        }
+        $msg = "added {$added} negative keyword(s)";
+        if ($dups > 0) {
+            $msg .= ", {$dups} already existed";
+        }
+        if ($failed > 0) {
+            $msg .= ", {$failed} rejected";
+            $errors = array_values(array_unique(array_filter($errors)));
+            if ($errors !== []) {
+                $msg .= ' ('.implode(' | ', array_slice($errors, 0, 2)).')';
+            }
+        }
+
+        return ['added' => $added, 'failed' => $failed, 'duplicates' => $dups, 'message' => $msg.'.'];
     }
 
     /**
