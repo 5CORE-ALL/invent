@@ -669,6 +669,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/veeqo-chargebacks/transaction/{id}', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'show'])->name('veeqo.chargebacks.show')->whereNumber('id');
     Route::post('/veeqo-chargebacks/sync', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'syncNow'])->name('veeqo.chargebacks.sync');
     Route::get('/veeqo-chargebacks/sku-report', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'skuReport'])->name('veeqo.chargebacks.sku-report');
+    Route::post('/veeqo-chargebacks/find-missing-skus', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'findMissingSkus'])->name('veeqo.chargebacks.find-skus');
+    Route::post('/veeqo-chargebacks/fill-osize', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'fillOsize'])->name('veeqo.chargebacks.fill-osize');
     Route::post('/veeqo-chargebacks/import', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'import'])->name('veeqo.chargebacks.import');
     Route::get('/order-fulfillment', [OrderFulfillmentController::class, 'index'])->name('order.fulfillment');
     Route::get('/order-fulfillment/delivered', [OrderFulfillmentController::class, 'delivered'])->name('order.fulfillment.delivered');

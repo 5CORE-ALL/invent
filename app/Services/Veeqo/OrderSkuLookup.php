@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * SKUs for Veeqo order numbers from the order-fulfillment sources:
- * Veeqo shipments, Amazon orders/items, Shopify raw orders (#123, Amz111-…, 01-…, #TT-…), eBay 1-3, TikTok 1-2.
+ * Veeqo shipments, Veeqo API lookups (veeqo_order_skus), Amazon orders/items,
+ * Shopify raw orders (#123, Amz111-…, 01-…, #TT-…), eBay 1-3, TikTok 1-2.
  */
 class OrderSkuLookup
 {
@@ -24,6 +25,7 @@ class OrderSkuLookup
         }
 
         $this->collect($found, $want, fn (array $missing) => $this->pairs('veeqo_billing_shipments', 'order_number', 'skus', $missing, true));
+        $this->collect($found, $want, fn (array $missing) => $this->pairs('veeqo_order_skus', 'order_number', 'skus', $missing, true));
         $this->collect($found, $want, fn (array $missing) => $this->amazon($missing));
         $this->collect($found, $want, fn (array $missing) => $this->shopify($missing));
         foreach (['ebay1_order_metrics', 'ebay2_order_metrics', 'ebay3_order_metrics'] as $table) {

@@ -226,6 +226,18 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->name('veeqo-sync-chargebacks')
             ->appendOutputTo($log);
+        $schedule->command('veeqo:fill-order-skus --limit=300')
+            ->hourlyAt(50)
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('veeqo-fill-order-skus')
+            ->appendOutputTo($log);
+        $schedule->command('veeqo:chargeback-osize')
+            ->dailyAt('05:15')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('veeqo-chargeback-osize')
+            ->appendOutputTo($log);
         $ist = fn ($event) => $this->istBusinessWindow($event);
 
         // Forecast month table: 1st of the month, 00:20 Pacific (not IST —

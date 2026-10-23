@@ -6,6 +6,28 @@
     <style>
         .vc-card { border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 12px rgba(44,110,213,.06); }
         .vc-toolbar { display:flex; flex-wrap:wrap; align-items:flex-end; gap:.5rem; margin-bottom:.75rem; }
+        .vc-toolbar .vc-field { display:flex; flex-direction:column; gap:.2rem; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#475569; }
+        .vc-type-btn { min-width:250px; max-width:320px; height:32px; font-size:.82rem; text-transform:none; letter-spacing:0; font-weight:400; color:#212529; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .vc-toolbar .vc-type-menu { width:330px; padding:0; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 12px 32px rgba(15,23,42,.16); overflow:hidden; text-transform:none; letter-spacing:0; font-weight:400; color:#1e293b; }
+        .vc-type-menu .vc-type-head { display:flex; justify-content:space-between; align-items:center; padding:.6rem .8rem .45rem; }
+        .vc-type-menu .vc-type-title { font-size:.8rem; font-weight:700; color:#0f172a; }
+        .vc-type-menu .vc-type-count { font-size:.7rem; font-weight:700; color:#4338ca; background:#eef2ff; border-radius:999px; padding:1px 8px; }
+        .vc-type-menu .vc-type-quick { display:flex; gap:.35rem; padding:0 .8rem .55rem; border-bottom:1px solid #eef2f7; }
+        .vc-type-menu .vc-type-quick button { font-size:.72rem; font-weight:600; border-radius:999px; padding:2px 10px; border:1px solid #cbd5e1; background:#fff; color:#334155; line-height:1.5; }
+        .vc-type-menu .vc-type-quick button:hover { background:#f1f5f9; }
+        .vc-type-menu .vc-type-quick button.on { background:#4f46e5; border-color:#4f46e5; color:#fff; }
+        .vc-type-menu .vc-type-list { max-height:320px; overflow-y:auto; padding:.3rem .4rem; }
+        .vc-type-menu .vc-type-group { font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; padding:.45rem .45rem .2rem; }
+        .vc-toolbar .vc-type-menu label.vc-type-opt { display:flex; flex-direction:row; align-items:center; gap:.6rem; margin:1px 0; padding:.4rem .45rem; border-radius:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-size:.82rem; font-weight:500; color:#1e293b; }
+        .vc-type-menu label.vc-type-opt:hover { background:#f1f5f9; }
+        .vc-type-menu label.vc-type-opt.sel { background:#eef2ff; }
+        .vc-toolbar .vc-type-menu label.vc-type-opt input { flex:0 0 auto; width:16px; height:16px; margin:0; font-size:inherit; cursor:pointer; }
+        .vc-type-menu .vc-type-txt { display:flex; flex-direction:column; line-height:1.2; min-width:0; }
+        .vc-type-menu .vc-type-code { font-size:.68rem; color:#94a3b8; font-weight:400; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+        .vc-type-menu .vc-type-foot { display:flex; justify-content:space-between; align-items:center; gap:.5rem; padding:.55rem .8rem; border-top:1px solid #eef2f7; background:#f8fafc; }
+        .vc-type-menu .vc-type-saved { font-size:.72rem; color:#15803d; font-weight:700; }
+        .vc-type-menu .vc-type-unsaved { font-size:.72rem; color:#b45309; font-weight:600; }
+        .vc-type-menu #vcTypeSave { font-size:.75rem; font-weight:600; border-radius:8px; padding:3px 12px; }
         .vc-toolbar label { display:flex; flex-direction:column; gap:.2rem; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#475569; }
         .vc-toolbar input, .vc-toolbar select { height:32px; font-size:.82rem; }
         .vc-badges { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:.75rem; }
@@ -29,22 +51,52 @@
         #vc-col-dropdown label { display:flex; gap:.4rem; align-items:center; font-size:.8rem; padding:2px 0; }
         .btn-sku-report { background:linear-gradient(135deg,#7c3aed 0%,#db2777 55%,#f97316 100%); color:#fff; border:none; font-weight:600; box-shadow:0 3px 10px rgba(219,39,119,.35); }
         .btn-sku-report:hover { color:#fff; filter:brightness(1.08); transform:translateY(-1px); }
-        #vcSkuModal .modal-content { border:none; border-radius:16px; overflow:hidden; background:#f8fafc; }
+        #vcSkuModal .modal-content { border:none; border-radius:0; overflow:hidden; background:#f8fafc; }
+        #vcSkuModal .modal-body { display:flex; flex-direction:column; }
+        .sr-tm-btn { border:none; border-radius:6px; padding:2px 9px; font-size:11px; font-weight:800; color:#fff; background:linear-gradient(135deg,#4f46e5,#db2777); box-shadow:0 2px 6px rgba(79,70,229,.35); }
+        .sr-tm-btn:hover { filter:brightness(1.1); }
+        .sr-cchip { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; margin:1px 3px 1px 0; white-space:nowrap; }
+        .sr-cchip.fedex { background:#6d28d9; }
+        .sr-cchip.ups { background:#7c4a1e; }
+        .sr-cchip.usps { background:#1d4ed8; }
+        .sr-cchip.dhl { background:#c2410c; }
+        .sr-cchip.amazon { background:#1f2937; }
+        .sr-cchip.other { background:#64748b; }
         #vcSkuModal .modal-header { background:linear-gradient(120deg,#4f46e5 0%,#7c3aed 35%,#db2777 70%,#f97316 100%); color:#fff; border:none; padding:1rem 1.5rem; }
         #vcSkuModal .modal-header .btn-close { filter:invert(1) grayscale(1) brightness(2); }
         #vcSkuModal .sr-sub { font-size:.8rem; opacity:.9; }
         .sr-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:.75rem; margin-bottom:1rem; }
         .sr-kpi { border-radius:14px; padding:.8rem 1rem; color:#fff; box-shadow:0 6px 18px rgba(15,23,42,.12); position:relative; overflow:hidden; }
         .sr-kpi::after { content:''; position:absolute; right:-18px; top:-18px; width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,.15); }
-        .sr-kpi .k { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; opacity:.92; }
-        .sr-kpi .v { font-size:1.45rem; font-weight:800; line-height:1.2; }
+        .sr-kpi .k { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; text-shadow:0 1px 2px rgba(0,0,0,.25); }
+        .sr-kpi .v { font-size:1.45rem; font-weight:800; line-height:1.2; text-shadow:0 1px 3px rgba(0,0,0,.3); }
         .sr-kpi i { position:absolute; right:12px; bottom:10px; font-size:1.4rem; opacity:.35; }
-        .sr-k1 { background:linear-gradient(135deg,#6366f1,#8b5cf6); }
-        .sr-k2 { background:linear-gradient(135deg,#0ea5e9,#06b6d4); }
-        .sr-k3 { background:linear-gradient(135deg,#ef4444,#f97316); }
-        .sr-k4 { background:linear-gradient(135deg,#f59e0b,#eab308); }
-        .sr-k5 { background:linear-gradient(135deg,#10b981,#22c55e); }
-        .sr-k6 { background:linear-gradient(135deg,#ec4899,#d946ef); }
+        .sr-k1 { background:linear-gradient(135deg,#4338ca,#6d28d9); }
+        .sr-k2 { background:linear-gradient(135deg,#0369a1,#0e7490); }
+        .sr-k3 { background:linear-gradient(135deg,#b91c1c,#c2410c); }
+        .sr-k4 { background:linear-gradient(135deg,#b45309,#92400e); }
+        .sr-k5 { background:linear-gradient(135deg,#047857,#15803d); }
+        .sr-k6 { background:linear-gradient(135deg,#be185d,#a21caf); }
+        .sr-section { font-size:.75rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#334155; margin:.25rem 0 .5rem; }
+        .sr-carriers { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:.75rem; margin-bottom:1rem; }
+        .sr-carrier { border-radius:14px; padding:.75rem 1rem; color:#fff; box-shadow:0 6px 18px rgba(15,23,42,.12); }
+        .sr-carrier .cn { font-size:1rem; font-weight:800; display:flex; justify-content:space-between; align-items:center; text-shadow:0 1px 2px rgba(0,0,0,.3); }
+        .sr-carrier .cp { font-size:1.35rem; font-weight:800; text-shadow:0 1px 3px rgba(0,0,0,.3); }
+        .sr-carrier .cm { font-size:.8rem; font-weight:600; opacity:.95; }
+        .sr-carrier .ct { height:8px; border-radius:999px; background:rgba(255,255,255,.3); margin-top:.45rem; overflow:hidden; }
+        .sr-carrier .ct span { display:block; height:100%; background:#fff; border-radius:999px; }
+        .sr-carrier .ct.ctv { margin-top:.3rem; }
+        .sr-carrier .ct.ctv span { background:#fde047; }
+        .sr-carrier .cps { display:flex; gap:.9rem; }
+        .sr-carrier .cpb { display:flex; flex-direction:column; align-items:flex-end; line-height:1.05; }
+        .sr-carrier .cpb small { font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; opacity:.9; }
+        .sr-carrier .cp.cv { color:#fde047; }
+        .sr-c-fedex { background:linear-gradient(135deg,#4d148c,#7e22ce); }
+        .sr-c-ups { background:linear-gradient(135deg,#4b2e14,#7c4a1e); }
+        .sr-c-usps { background:linear-gradient(135deg,#1e3a8a,#1d4ed8); }
+        .sr-c-dhl { background:linear-gradient(135deg,#b91c1c,#d97706); }
+        .sr-c-amazon { background:linear-gradient(135deg,#111827,#c2410c); }
+        .sr-c-other { background:linear-gradient(135deg,#334155,#475569); }
         .sr-tools { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.75rem; }
         .sr-tools .btn-sort { border-radius:999px; font-weight:600; }
         .sr-tools .btn-sort.active { background:linear-gradient(135deg,#4f46e5,#db2777); color:#fff; border-color:transparent; }
@@ -61,9 +113,11 @@
         .sr-rank.r2 { background:linear-gradient(135deg,#94a3b8,#64748b); }
         .sr-rank.r3 { background:linear-gradient(135deg,#d97706,#92400e); }
         .sr-sku { font-weight:700; color:#4c1d95; }
-        .sr-bar { position:relative; height:20px; border-radius:6px; background:#fee2e2; overflow:hidden; min-width:120px; }
-        .sr-bar span { position:absolute; inset:0 auto 0 0; background:linear-gradient(90deg,#f97316,#dc2626); border-radius:6px; }
-        .sr-bar b { position:relative; z-index:1; display:block; text-align:right; padding-right:6px; font-size:12px; line-height:20px; color:#7f1d1d; }
+        .sr-amt { min-width:140px; }
+        .sr-amt b { display:block; font-size:13px; font-weight:800; color:#b91c1c; line-height:1.2; }
+        .sr-amt .sr-track { height:6px; border-radius:999px; background:#fee2e2; margin-top:3px; overflow:hidden; }
+        .sr-amt .sr-track span { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#f97316,#dc2626); }
+        .btn-sku-report, .btn-sku-report:focus, .btn-sku-report:disabled { color:#fff !important; opacity:1; text-shadow:0 1px 2px rgba(0,0,0,.3); }
         .sr-count { display:inline-block; min-width:30px; text-align:center; padding:1px 8px; border-radius:999px; background:#ede9fe; color:#5b21b6; font-weight:700; }
         .sr-sold { color:#0369a1; font-weight:700; }
         .sr-pct { display:inline-block; min-width:62px; text-align:center; padding:2px 8px; border-radius:999px; font-weight:800; font-size:12px; }
@@ -100,12 +154,13 @@
                                 <option value="amazon_api">Amazon settlement (API)</option>
                             </select>
                         </label>
-                        <label>Type
-                            <select id="vcType" class="form-select form-select-sm">
-                                <option value="">All label adjustments</option>
-                                <option value="chargebacks" selected>All chargebacks</option>
-                            </select>
-                        </label>
+                        <div class="vc-field">Type
+                            <div class="dropdown">
+                                <button type="button" id="vcTypeBtn" class="form-select form-select-sm text-start vc-type-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">All chargebacks</button>
+                                <div class="dropdown-menu vc-type-menu" id="vcTypeMenu"></div>
+                            </div>
+                        </div>
+                        <label>Reason <select id="vcReason" class="form-select form-select-sm"><option value="">All reasons</option></select></label>
                         <label>Debit / Credit
                             <select id="vcDirection" class="form-select form-select-sm">
                                 <option value="">All</option>
@@ -138,7 +193,7 @@
     </div>
 
     <div class="modal fade" id="vcSkuModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-fullscreen-lg-down" style="max-width:min(1400px,96vw);">
+        <div class="modal-dialog modal-fullscreen">
             <div class="modal-content">
                 <div class="modal-header">
                     <div>
@@ -149,6 +204,8 @@
                 </div>
                 <div class="modal-body">
                     <div class="sr-kpis" id="vcSkuKpis"></div>
+                    <div class="sr-section"><i class="fas fa-truck me-1"></i> Chargebacks by carrier</div>
+                    <div class="sr-carriers" id="vcSkuCarriers"></div>
                     <div class="sr-tools">
                         <span class="fw-bold text-secondary small text-uppercase">Sort by chargeback amount</span>
                         <button type="button" class="btn btn-sm btn-outline-secondary btn-sort active" data-dir="desc"><i class="fas fa-sort-amount-down"></i> Max → Min</button>
@@ -160,12 +217,14 @@
                             <span class="sr-pct mid">1–3%</span>
                             <span class="sr-pct high">&gt; 3%</span>
                         </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="vcFindSkus" title="Look up orders without a SKU in the Veeqo API (also runs hourly)"><i class="fas fa-search"></i> Find missing SKUs in Veeqo</button>
+                        <button type="button" class="btn btn-sm btn-outline-success" id="vcFillOsize" title="Write each SKU's Avg Chargeback Total (as a positive figure) into Shipping Master O-Size Charge. Ship, Temu ship and Ship BB totals update. Also runs daily."><i class="fas fa-truck-loading"></i> Fill Shipping Master O-Size</button>
                         <button type="button" class="btn btn-sm btn-sku-report" id="vcSkuExport"><i class="fas fa-download"></i> Export CSV</button>
                     </div>
                     <div id="vcSkuTable"></div>
                     <div class="small text-muted mt-2">
                         Uses the Source / Type / Debit-Credit filters from the page. Chargeback count = orders charged back (Veeqo splits one chargeback into a line per reason; those are the charge lines).
-                        Orders with several SKUs count for each SKU and their amount is split evenly. Units sold = 12-month sales across all channels. Chargeback % = chargeback count ÷ units sold.
+                        Orders with several SKUs count for each SKU and their amount is split evenly. Units sold = 12-month sales across all channels. Avg chargeback total = total chargeback ÷ units sold. Chargeback % = chargeback count ÷ units sold. Chargeback%TC = chargeback count ÷ total chargeback count of all SKUs.
                     </div>
                 </div>
             </div>
@@ -213,7 +272,8 @@
                     from: document.getElementById('vcFrom').value,
                     to: document.getElementById('vcTo').value,
                     source: document.getElementById('vcSource').value,
-                    type: document.getElementById('vcType').value,
+                    types: selectedTypes.join('|'),
+                    reason: document.getElementById('vcReason').value,
                     direction: document.getElementById('vcDirection').value,
                     status: document.getElementById('vcStatus').value,
                     search: document.getElementById('vcSearch').value.trim(),
@@ -323,13 +383,103 @@
                 table.on('tableBuilt', buildColumnPicker);
             }
 
+            const TYPE_KEY = 'veeqo_chargebacks_default_types_v1';
+            const TYPE_OPTIONS = [
+                ['Chargeback Debit - Outbound', 'Chargeback Debit - Outbound', 'Veeqo'],
+                ['Chargeback Credit - Outbound', 'Chargeback Credit - Outbound', 'Veeqo'],
+                ['LabmanLabelChargeBack', 'Label chargeback', 'Amazon'],
+                ['LabmanLabelPurchase', 'Label purchase', 'Amazon'],
+                ['LabmanLabelRefund', 'Label refund', 'Amazon'],
+                ['LabmanLabelReturn', 'Return label', 'Amazon'],
+            ];
+            const CHARGEBACK_TYPES = ['Chargeback Debit - Outbound', 'Chargeback Credit - Outbound', 'LabmanLabelChargeBack'];
+            let typeOptions = TYPE_OPTIONS.slice();
+            let selectedTypes = (function () {
+                try {
+                    const saved = JSON.parse(localStorage.getItem(TYPE_KEY) || 'null');
+                    if (Array.isArray(saved)) return saved;
+                } catch (_) {}
+                return CHARGEBACK_TYPES.slice();
+            })();
+            let typesDirty = false;
+
+            function typeButtonText() {
+                if (selectedTypes.length === 0 || selectedTypes.length === typeOptions.length) return 'All label adjustments';
+                if (selectedTypes.length === CHARGEBACK_TYPES.length && CHARGEBACK_TYPES.every(t => selectedTypes.includes(t))) return 'All chargebacks';
+                if (selectedTypes.length === 1) return (typeOptions.find(o => o[0] === selectedTypes[0]) || [, selectedTypes[0]])[1];
+                return selectedTypes.length + ' types selected';
+            }
+
+            function renderTypeMenu(dbTypes) {
+                (dbTypes || []).forEach(function (t) {
+                    if (!typeOptions.some(o => o[0] === t)) typeOptions.push([t, t, 'Other']);
+                });
+                const menu = document.getElementById('vcTypeMenu');
+                const isSaved = JSON.stringify((JSON.parse(localStorage.getItem(TYPE_KEY) || 'null') || CHARGEBACK_TYPES).slice().sort()) === JSON.stringify(selectedTypes.slice().sort());
+                const sameSet = list => list.length === selectedTypes.length && list.every(t => selectedTypes.includes(t));
+                const preset = sameSet(CHARGEBACK_TYPES) ? 'chargebacks' : (sameSet(typeOptions.map(o => o[0])) ? 'all' : (selectedTypes.length ? '' : 'none'));
+                let html = '<div class="vc-type-head"><span class="vc-type-title">Transaction types</span>' +
+                    '<span class="vc-type-count">' + selectedTypes.length + ' of ' + typeOptions.length + '</span></div>' +
+                    '<div class="vc-type-quick">' +
+                    '<button type="button" data-preset="chargebacks"' + (preset === 'chargebacks' ? ' class="on"' : '') + '>All chargebacks</button>' +
+                    '<button type="button" data-preset="all"' + (preset === 'all' ? ' class="on"' : '') + '>Select all</button>' +
+                    '<button type="button" data-preset="none"' + (preset === 'none' ? ' class="on"' : '') + '>Clear</button>' +
+                    '</div><div class="vc-type-list">';
+                let group = '';
+                typeOptions.forEach(function (o) {
+                    if (o[2] !== group) { group = o[2]; html += '<div class="vc-type-group">' + esc(group) + '</div>'; }
+                    const on = selectedTypes.includes(o[0]);
+                    html += '<label class="vc-type-opt' + (on ? ' sel' : '') + '"><input type="checkbox" class="form-check-input" value="' + esc(o[0]) + '"' + (on ? ' checked' : '') + '>' +
+                        '<span class="vc-type-txt"><span>' + esc(o[1]) + '</span>' + (o[1] !== o[0] ? '<span class="vc-type-code">' + esc(o[0]) + '</span>' : '') + '</span></label>';
+                });
+                html += '</div><div class="vc-type-foot">' +
+                    (isSaved ? '<span class="vc-type-saved"><i class="fas fa-check-circle"></i> Saved as default</span>' : '<span class="vc-type-unsaved">Not saved as default</span>') +
+                    '<button type="button" class="btn btn-sm btn-primary" id="vcTypeSave"' + (isSaved ? ' disabled' : '') + '><i class="fas fa-save me-1"></i>Save as default</button></div>';
+                menu.innerHTML = html;
+                document.getElementById('vcTypeBtn').textContent = typeButtonText();
+
+                menu.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', function () {
+                    selectedTypes = Array.from(menu.querySelectorAll('input[type=checkbox]:checked')).map(x => x.value);
+                    typesDirty = true;
+                    renderTypeMenu();
+                }));
+                menu.querySelectorAll('[data-preset]').forEach(btn => btn.addEventListener('click', function () {
+                    const p = btn.dataset.preset;
+                    selectedTypes = p === 'all' ? typeOptions.map(o => o[0]) : (p === 'none' ? [] : CHARGEBACK_TYPES.slice());
+                    typesDirty = true;
+                    renderTypeMenu();
+                }));
+                document.getElementById('vcTypeSave').addEventListener('click', function () {
+                    localStorage.setItem(TYPE_KEY, JSON.stringify(selectedTypes));
+                    renderTypeMenu();
+                    if (typesDirty) { typesDirty = false; refresh(); }
+                });
+            }
+
+            const FIXED_OPTIONS = {
+                vcReason: [
+                    ['', 'All reasons'],
+                    ['Additional Base Rate Charge', 'Additional Base Rate Charge'],
+                    ['Fuel Surcharge', 'Fuel Surcharge'],
+                    ['Residential Area Delivery Surcharge', 'Residential Area Delivery Surcharge'],
+                    ['Delivery Area Surcharge', 'Delivery Area Surcharge'],
+                    ['Oversize Charge', 'Oversize Charge'],
+                    ['Returned Shipment or Delivery Intercept Charge', 'Returned Shipment or Delivery Intercept Charge'],
+                    ['ADJUSTMENT', 'Adjustment'],
+                    ['Others', 'Others'],
+                ],
+                vcStatus: [['', 'All']],
+            };
+
             function setOptions(id, values) {
                 const sel = document.getElementById(id);
                 const current = sel.value;
-                const list = (values || []).slice();
-                if (current && !list.includes(current)) list.unshift(current);
-                const first = sel.options[0] ? sel.options[0].outerHTML : '<option value="">All</option>';
-                sel.innerHTML = first + list.map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('');
+                const opts = (FIXED_OPTIONS[id] || [['', 'All']]).slice();
+                const known = new Set(opts.map(o => o[0]));
+                (values || []).concat(current ? [current] : []).forEach(function (v) {
+                    if (!known.has(v)) { known.add(v); opts.push([v, v]); }
+                });
+                sel.innerHTML = opts.map(o => '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>').join('');
                 sel.value = current;
             }
 
@@ -351,7 +501,8 @@
                     badge('Amazon settlement net', money(t.amazon_net || 0), Number(t.amazon_net) < 0 ? 'vc-debit' : 'vc-credit');
 
                 const f = json.filters || {};
-                setOptions('vcType', f.types);
+                renderTypeMenu(f.types);
+                setOptions('vcReason', f.reasons);
                 setOptions('vcStatus', f.statuses);
 
                 const s = json.sync || {};
@@ -413,11 +564,19 @@
             let skuTable = null;
             let skuMax = 1;
 
+            function carrierClass(name) {
+                const key = String(name || '').toLowerCase();
+                return key.includes('fedex') ? 'fedex' : key.includes('usps') ? 'usps' : key === 'ups' ? 'ups' : key.includes('dhl') ? 'dhl' : key.includes('amazon') ? 'amazon' : 'other';
+            }
+            function fmtPct(v) {
+                const n = Number(v) || 0;
+                return (Math.abs(n) > 9.9 ? Math.round(n) : n.toFixed(1)) + '%';
+            }
             function pctBadge(v) {
                 if (v === null || v === undefined) return '<span class="sr-pct na">no sales</span>';
                 const n = Number(v);
                 const cls = n > 3 ? 'high' : (n >= 1 ? 'mid' : 'low');
-                return '<span class="sr-pct ' + cls + '">' + n.toFixed(2) + '%</span>';
+                return '<span class="sr-pct ' + cls + '">' + fmtPct(n) + '</span>';
             }
             function absSorter(a, b) { return Math.abs(Number(a) || 0) - Math.abs(Number(b) || 0); }
 
@@ -431,7 +590,7 @@
                 skuTable = new Tabulator('#vcSkuTable', {
                     data: rows,
                     layout: 'fitColumns',
-                    height: 'calc(100vh - 420px)',
+                    height: 'max(380px, calc(100vh - 430px))',
                     placeholder: 'No chargebacks in the last 12 months for these filters.',
                     pagination: true,
                     paginationSize: 100,
@@ -441,14 +600,31 @@
                         { title: '#', field: '_rank', width: 56, hozAlign: 'center', headerSort: false,
                           formatter: c => { const p = c.getRow().getPosition(); return '<span class="sr-rank ' + (p <= 3 ? 'r' + p : '') + '">' + p + '</span>'; } },
                         { title: 'SKU', field: 'sku', minWidth: 200, headerFilter: 'input', formatter: c => '<span class="sr-sku">' + esc(c.getValue()) + '</span>' },
+                        { title: 'Carriers', field: 'carrier_text', minWidth: 170, headerFilter: 'input', headerSort: false,
+                          headerTooltip: 'Carriers on this SKU\'s charged-back orders (orders per carrier)',
+                          formatter: function (c) {
+                              const map = c.getRow().getData().carriers || {};
+                              return Object.keys(map).map(function (name) {
+                                  return '<span class="sr-cchip ' + carrierClass(name) + '">' + esc(name) + ' ' + map[name] + '</span>';
+                              }).join('');
+                          } },
                         { title: 'Chargeback Count', field: 'count', hozAlign: 'center', width: 130, formatter: c => '<span class="sr-count">' + c.getValue() + '</span>' },
                         { title: 'Charge Lines', field: 'lines', hozAlign: 'center', width: 100, formatter: c => '<span class="text-muted">' + c.getValue() + '</span>' },
                         { title: 'Total Chargeback', field: 'total', minWidth: 190, sorter: absSorter,
-                          formatter: c => { const v = Number(c.getValue()) || 0; const w = Math.round(Math.abs(v) / skuMax * 100); return '<div class="sr-bar"><span style="width:' + w + '%"></span><b>' + money(v) + '</b></div>'; } },
+                          formatter: c => { const v = Number(c.getValue()) || 0; const w = Math.max(2, Math.round(Math.abs(v) / skuMax * 100)); return '<div class="sr-amt"><b>' + money(v) + '</b><div class="sr-track"><span style="width:' + w + '%"></span></div></div>'; } },
                         { title: 'Avg Chargeback', field: 'average', hozAlign: 'right', width: 140, sorter: absSorter, formatter: c => money(c.getValue(), true) },
                         { title: 'Units Sold (12 mo)', field: 'sold', hozAlign: 'right', width: 150,
                           formatter: c => c.getValue() === null ? '<span class="text-muted">—</span>' : '<span class="sr-sold">' + Number(c.getValue()).toLocaleString() + '</span>' },
+                        { title: 'Avg Chargeback Total', field: 'per_unit', hozAlign: 'right', width: 150, sorter: (a, b) => Math.abs(a ?? 0) - Math.abs(b ?? 0),
+                          formatter: c => c.getValue() === null ? '<span class="text-muted">—</span>' : money(c.getValue(), true) },
                         { title: 'Chargeback %', field: 'pct', hozAlign: 'center', width: 130, sorter: (a, b) => (a ?? -1) - (b ?? -1), formatter: c => pctBadge(c.getValue()) },
+                        { title: 'Chargeback%TC', field: 'pct_tc', hozAlign: 'center', width: 130,
+                          headerTooltip: 'Chargeback percentage of total count: this SKU\'s chargeback count ÷ chargeback count of all SKUs',
+                          formatter: c => '<span class="sr-pct na" style="color:#4c1d95;background:#ede9fe;">' + fmtPct(c.getValue()) + '</span>' },
+                        { title: 'TM', field: '_tm', width: 62, hozAlign: 'center', headerSort: false, frozen: true, download: false,
+                          headerTooltip: 'Assign a task for this SKU in Task Manager',
+                          formatter: () => '<button type="button" class="sr-tm-btn" title="Assign Task">TM</button>',
+                          cellClick: (e, cell) => openTaskForm(cell.getRow().getData()) },
                     ],
                 });
                 ['dataSorted', 'dataFiltered'].forEach(ev => skuTable.on(ev, () => setTimeout(() => skuTable.getRows('active').forEach(r => r.reformat()), 0)));
@@ -458,6 +634,7 @@
                 if (!skuModal) skuModal = new bootstrap.Modal(document.getElementById('vcSkuModal'));
                 document.getElementById('vcSkuSub').textContent = 'Loading…';
                 document.getElementById('vcSkuKpis').innerHTML = '';
+                document.getElementById('vcSkuCarriers').innerHTML = '';
                 skuModal.show();
                 try {
                     const p = params();
@@ -472,12 +649,61 @@
                         skuKpi('sr-k3', 'fa-dollar-sign', 'Total chargeback', money(t.amount || 0)) +
                         skuKpi('sr-k4', 'fa-balance-scale', 'Avg per order', money(t.average || 0)) +
                         skuKpi('sr-k5', 'fa-box-open', 'Units sold (those SKUs)', Number(t.sold || 0).toLocaleString()) +
-                        skuKpi('sr-k6', 'fa-percentage', 'Overall chargeback %', t.pct === null || t.pct === undefined ? '—' : Number(t.pct).toFixed(2) + '%');
+                        skuKpi('sr-k6', 'fa-percentage', 'Overall chargeback %', t.pct === null || t.pct === undefined ? '—' : fmtPct(t.pct));
+                    document.getElementById('vcSkuCarriers').innerHTML = (json.carriers || []).map(function (c) {
+                        return '<div class="sr-carrier sr-c-' + carrierClass(c.carrier) + '">' +
+                            '<div class="cn"><span>' + esc(c.carrier) + '</span>' +
+                            '<span class="cps"><span class="cpb"><small>By count</small><span class="cp">' + fmtPct(c.pct) + '</span></span>' +
+                            '<span class="cpb"><small>By value</small><span class="cp cv">' + fmtPct(c.value_pct) + '</span></span></span></div>' +
+                            '<div class="cm">' + Number(c.count).toLocaleString() + ' orders · ' + Number(c.lines).toLocaleString() + ' lines · ' + money(c.amount) + '</div>' +
+                            '<div class="ct" title="Share of orders charged back"><span style="width:' + Math.min(100, Number(c.pct)) + '%"></span></div>' +
+                            '<div class="ct ctv" title="Share of chargeback amount"><span style="width:' + Math.min(100, Math.max(0, Number(c.value_pct))) + '%"></span></div>' +
+                            '</div>';
+                    }).join('') || '<div class="text-muted small">No carrier data.</div>';
                     buildSkuTable(json.rows || []);
                     document.querySelectorAll('#vcSkuModal .btn-sort').forEach(b => b.classList.toggle('active', b.dataset.dir === 'desc'));
                 } catch (e) {
                     document.getElementById('vcSkuSub').textContent = 'Could not load the SKU report: ' + e.message;
                 }
+            }
+
+            function taskIssueText(r) {
+                const carriers = Object.keys(r.carriers || {}).map(n => n + ' ' + r.carriers[n]).join(', ');
+                let text = 'Chargebacks on ' + r.sku + ' (last 12 months): ' + r.count + ' orders charged back, total ' + money(r.total) + ', avg ' + money(r.average) + ' per order';
+                if (r.sold) text += ', ' + fmtPct(r.pct) + ' of ' + Number(r.sold).toLocaleString() + ' units sold (' + money(r.per_unit) + ' per unit)';
+                if (carriers) text += '. Carriers: ' + carriers;
+                return text + '. Check listed weight/dimensions and packaging to stop carrier adjustments.';
+            }
+
+            let taskFormWatcher = null;
+
+            function openTaskForm(row) {
+                const panel = document.getElementById('floating-task-form');
+                if (typeof window.openQuickTaskForm !== 'function' || !panel) {
+                    alert('Task Manager form is not available on this page.');
+                    return;
+                }
+                const reopenReport = skuModal && document.getElementById('vcSkuModal').classList.contains('show');
+                const open = function () {
+                    window.openQuickTaskForm({
+                        group: row.sku || '',
+                        title: taskIssueText(row).slice(0, 1000),
+                        assignorId: {{ (int) (Auth::id() ?? 0) }} || undefined,
+                        referenceLink: window.location.origin + window.location.pathname,
+                    });
+                    if (!reopenReport) return;
+                    if (taskFormWatcher) taskFormWatcher.disconnect();
+                    taskFormWatcher = new MutationObserver(function () {
+                        if (panel.style.display !== 'none') return;
+                        taskFormWatcher.disconnect();
+                        taskFormWatcher = null;
+                        skuModal.show();
+                    });
+                    taskFormWatcher.observe(panel, { attributes: true, attributeFilter: ['style'] });
+                };
+                if (!reopenReport) return open();
+                document.getElementById('vcSkuModal').addEventListener('hidden.bs.modal', open, { once: true });
+                skuModal.hide();
             }
 
             async function importCsv(input) {
@@ -528,12 +754,51 @@
                     const q = this.value.trim().toLowerCase();
                     if (q === '') skuTable.clearFilter(); else skuTable.setFilter(d => String(d.sku || '').toLowerCase().includes(q));
                 });
+                document.getElementById('vcFindSkus').addEventListener('click', async function () {
+                    const btn = this;
+                    const html = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Looking up in Veeqo…';
+                    try {
+                        const res = await fetch('{{ route('veeqo.chargebacks.find-skus') }}', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
+                        const json = await res.json().catch(() => ({}));
+                        alert(json.message || (res.ok ? 'Done.' : 'Lookup failed (' + res.status + ').'));
+                        openSkuReport();
+                        if (table) table.setData();
+                    } catch (e) {
+                        alert('Lookup failed: ' + e.message);
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = html;
+                    }
+                });
+                document.getElementById('vcFillOsize').addEventListener('click', async function () {
+                    if (!confirm('Write each SKU\'s Avg Chargeback Total (positive) into Shipping Master O-Size Charge?\n\nThis overwrites existing O-Size values and raises Ship, Temu ship and Ship BB for those SKUs.\nFigures use all chargeback types, debits only, last 12 months.')) return;
+                    const btn = this;
+                    const html = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Filling O-Size…';
+                    try {
+                        const res = await fetch('{{ route('veeqo.chargebacks.fill-osize') }}', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
+                        const json = await res.json().catch(() => ({}));
+                        alert(json.message || (res.ok ? 'Done.' : 'O-Size fill failed (' + res.status + ').'));
+                    } catch (e) {
+                        alert('O-Size fill failed: ' + e.message);
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerHTML = html;
+                    }
+                });
                 document.getElementById('vcSkuExport').addEventListener('click', function () {
                     if (skuTable) skuTable.download('csv', 'veeqo_chargebacks_by_sku.csv');
                 });
                 document.getElementById('vcImport').addEventListener('click', () => document.getElementById('vcImportFile').click());
                 document.getElementById('vcImportFile').addEventListener('change', function () { importCsv(this); });
-                ['vcFrom', 'vcTo', 'vcSource', 'vcType', 'vcDirection', 'vcStatus'].forEach(id => document.getElementById(id).addEventListener('change', refresh));
+                renderTypeMenu();
+                document.getElementById('vcTypeBtn').closest('.dropdown').addEventListener('hidden.bs.dropdown', function () {
+                    if (typesDirty) { typesDirty = false; refresh(); }
+                });
+                ['vcFrom', 'vcTo', 'vcSource', 'vcReason', 'vcDirection', 'vcStatus'].forEach(id => document.getElementById(id).addEventListener('change', refresh));
                 let timer = null;
                 document.getElementById('vcSearch').addEventListener('input', function () {
                     clearTimeout(timer);
