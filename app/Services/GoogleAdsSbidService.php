@@ -1590,58 +1590,208 @@ class GoogleAdsSbidService
     }
 
     /**
-     * Google Ads Keyword Planner ("Discover new keywords"): keyword ideas with historical metrics for United States / English.
-     * Seeds: keywords, optionally narrowed by a site (keywords + site = KeywordAndUrlSeed), or a site alone.
+     * Google Ads Keyword Planner ("Discover new keywords").
      *
-     * @param  list<string>  $keywords
-     * @return array{ok: bool, message: string, rows: list<array{keyword: string, avg_monthly: ?int, competition: string, competition_index: ?int, low_bid: ?float, high_bid: ?float}>}
+     * Options: keywords (list), url (string), scope ('page' | 'site' — how a lone URL is used), language (languageConstants id),
+     * geos (list of geoTargetConstants ids), network ('search' | 'partners'), include_adult (bool), limit (int).
+     *
+     * @param  array<string, mixed>  $o
+     * @return array{ok: bool, message: string, rows: list<array<string, mixed>>, concepts: list<array<string, mixed>>}
      */
-    public function keywordPlannerIdeas(string $customerId, array $keywords, string $url = '', int $limit = 200): array
+    public function keywordPlannerIdeas(string $customerId, array $o): array
     {
-        $keywords = array_values(array_filter(array_map(static fn ($k) => trim((string) $k), $keywords), static fn ($k) => $k !== ''));
-        $url = trim($url);
+        $keywords = array_values(array_filter(array_map(static fn ($k) => trim((string) $k), (array) ($o['keywords'] ?? [])), static fn ($k) => $k !== ''));
+        $url = trim((string) ($o['url'] ?? ''));
+        $scope = ($o['scope'] ?? 'page') === 'site' ? 'site' : 'page';
+        $limit = max(1, min(1000, (int) ($o['limit'] ?? 500)));
+        $empty = ['ok' => false, 'message' => '', 'rows' => [], 'concepts' => []];
         if ($keywords === [] && $url === '') {
-            return ['ok' => false, 'message' => 'Enter at least one keyword or a site.', 'rows' => []];
+            return ['message' => 'Enter at least one keyword or a site.'] + $empty;
         }
-        try {
+
+        $run = function (bool $withRange) use ($customerId, $o, $keywords, $url, $scope, $limit) {
             $req = new \Google\Ads\GoogleAds\V25\Services\GenerateKeywordIdeasRequest();
             $req->setCustomerId($customerId);
-            $req->setLanguage('languageConstants/1000');           // English
-            $req->setGeoTargetConstants(['geoTargetConstants/2840']); // United States
-            $req->setKeywordPlanNetwork(\Google\Ads\GoogleAds\V25\Enums\KeywordPlanNetworkEnum\KeywordPlanNetwork::GOOGLE_SEARCH_AND_PARTNERS);
+            $req->setLanguage('languageConstants/'.preg_replace('/\D/', '', (string) ($o['language'] ?? '1000')));
+            $geos = array_values(array_filter(array_map(static fn ($g) => preg_replace('/\D/', '', (string) $g), (array) ($o['geos'] ?? ['2840']))));
+            $req->setGeoTargetConstants(array_map(static fn ($g) => 'geoTargetConstants/'.$g, $geos ?: ['2840']));
+            $req->setKeywordPlanNetwork(($o['network'] ?? 'partners') === 'search'
+                ? \Google\Ads\GoogleAds\V25\Enums\KeywordPlanNetworkEnum\KeywordPlanNetwork::GOOGLE_SEARCH
+                : \Google\Ads\GoogleAds\V25\Enums\KeywordPlanNetworkEnum\KeywordPlanNetwork::GOOGLE_SEARCH_AND_PARTNERS);
+            $req->setIncludeAdultKeywords(! empty($o['include_adult']));
+            $req->setPageSize(min(1000, $limit));
+            // Concepts power "Refine keywords" and the brand / non-brand filter.
+            $req->setKeywordAnnotation([\Google\Ads\GoogleAds\V25\Enums\KeywordPlanKeywordAnnotationEnum\KeywordPlanKeywordAnnotation::KEYWORD_CONCEPT]);
+            if ($withRange) {
+                // 14 monthly points ending two months back, so the 3-month and year-over-year change can be computed.
+                $end = \Carbon\Carbon::now()->startOfMonth()->subMonths(2);
+                $start = $end->copy()->subMonths(13);
+                $ym = static fn (\Carbon\Carbon $d) => (new \Google\Ads\GoogleAds\V25\Common\YearMonth())->setYear($d->year)->setMonth($d->month + 1);
+                $req->setHistoricalMetricsOptions(
+                    (new \Google\Ads\GoogleAds\V25\Common\HistoricalMetricsOptions())
+                        ->setYearMonthRange((new \Google\Ads\GoogleAds\V25\Common\YearMonthRange())->setStart($ym($start))->setEnd($ym($end)))
+                        ->setIncludeAverageCpc(true)
+                );
+            }
             if ($keywords !== [] && $url !== '') {
                 $req->setKeywordAndUrlSeed((new \Google\Ads\GoogleAds\V25\Services\KeywordAndUrlSeed())->setUrl($url)->setKeywords($keywords));
             } elseif ($keywords !== []) {
                 $req->setKeywordSeed((new \Google\Ads\GoogleAds\V25\Services\KeywordSeed())->setKeywords($keywords));
+            } elseif ($scope === 'site') {
+                $req->setSiteSeed((new \Google\Ads\GoogleAds\V25\Services\SiteSeed())->setSite(preg_replace('#^https?://#i', '', rtrim($url, '/'))));
             } else {
                 $req->setUrlSeed((new \Google\Ads\GoogleAds\V25\Services\UrlSeed())->setUrl($url));
             }
-            $resp = $this->getClient()->getKeywordPlanIdeaServiceClient()->generateKeywordIdeas($req);
+
+            return $this->getClient()->getKeywordPlanIdeaServiceClient()->generateKeywordIdeas($req);
+        };
+
+        try {
+            try {
+                $resp = $run(true); // the first page is requested here, so a bad date range throws here
+            } catch (\Throwable $e) {
+                if (! preg_match('/year|month|range|historical/i', $e->getMessage())) {
+                    throw $e;
+                }
+                $resp = $run(false); // fall back to Google's default 12-month window (no year-over-year)
+            }
+
             $levels = [2 => 'LOW', 3 => 'MEDIUM', 4 => 'HIGH'];
+            $groupTypes = [2 => 'BRAND', 3 => 'OTHER_BRANDS', 4 => 'NON_BRAND'];
             $rows = [];
+            $concepts = [];
             foreach ($resp->iterateAllElements() as $r) {
                 $m = $r->getKeywordIdeaMetrics();
-                $low = $m ? (int) $m->getLowTopOfPageBidMicros() : 0;
-                $high = $m ? (int) $m->getHighTopOfPageBidMicros() : 0;
+                $monthly = [];
+                if ($m) {
+                    $pts = [];
+                    foreach ($m->getMonthlySearchVolumes() as $mv) {
+                        $pts[] = [((int) $mv->getYear()) * 100 + (int) $mv->getMonth(), (int) $mv->getMonthlySearches()];
+                    }
+                    usort($pts, static fn ($a, $b) => $a[0] <=> $b[0]); // oldest → newest
+                    $monthly = array_column($pts, 1);
+                }
+                $n = count($monthly);
+                $last = $n ? $monthly[$n - 1] : null;
+                $pct = static fn ($now, $then) => ($then !== null && $then > 0 && $now !== null) ? round(($now - $then) / $then * 100) : null;
+                $three = $n >= 4 ? $pct($last, $monthly[$n - 4]) : null;
+                $yoy = $n >= 13 ? $pct($last, $monthly[$n - 13]) : null;
+
+                $conceptNames = [];
+                $brandType = '';
+                if ($r->getKeywordAnnotations()) {
+                    foreach ($r->getKeywordAnnotations()->getConcepts() as $c) {
+                        $g = $c->getConceptGroup();
+                        $gname = $g ? (string) $g->getName() : '';
+                        $gtype = $g ? ($groupTypes[(int) $g->getType()] ?? '') : '';
+                        $conceptNames[] = (string) $c->getName();
+                        if ($gtype !== '' && $brandType === '') {
+                            $brandType = $gtype;
+                        }
+                        $ck = $gname !== '' ? $gname : (string) $c->getName();
+                        $concepts[$ck] = ($concepts[$ck] ?? 0) + 1;
+                    }
+                }
+                $micro = static fn ($v) => ($v !== null && (int) $v > 0) ? round(((int) $v) / 1_000_000, 2) : null;
                 $rows[] = [
                     'keyword' => (string) $r->getText(),
                     'avg_monthly' => $m ? (int) $m->getAvgMonthlySearches() : null,
+                    'three_month' => $three,
+                    'yoy' => $yoy,
+                    'monthly' => $monthly,
                     'competition' => $m ? ($levels[(int) $m->getCompetition()] ?? '—') : '—',
                     'competition_index' => $m ? (int) $m->getCompetitionIndex() : null,
-                    'low_bid' => $low > 0 ? round($low / 1_000_000, 2) : null,
-                    'high_bid' => $high > 0 ? round($high / 1_000_000, 2) : null,
+                    'low_bid' => $m ? $micro($m->getLowTopOfPageBidMicros()) : null,
+                    'high_bid' => $m ? $micro($m->getHighTopOfPageBidMicros()) : null,
+                    'avg_cpc' => $m ? $micro($m->getAverageCpcMicros()) : null,
+                    'brand' => $brandType,
+                    'concepts' => array_slice($conceptNames, 0, 6),
                 ];
-                if (count($rows) >= max(1, $limit)) {
+                if (count($rows) >= $limit) {
                     break;
                 }
             }
-            usort($rows, static fn ($a, $b) => ($b['avg_monthly'] ?? 0) <=> ($a['avg_monthly'] ?? 0));
+            arsort($concepts);
+            $conceptList = [];
+            foreach (array_slice($concepts, 0, 40, true) as $name => $count) {
+                $conceptList[] = ['name' => (string) $name, 'count' => $count];
+            }
 
-            return ['ok' => true, 'message' => '', 'rows' => $rows];
+            return ['ok' => true, 'message' => '', 'rows' => $rows, 'concepts' => $conceptList];
         } catch (\Throwable $e) {
             report($e);
 
-            return ['ok' => false, 'message' => self::briefGoogleError($e), 'rows' => []];
+            return ['message' => self::briefGoogleError($e)] + $empty;
+        }
+    }
+
+    /**
+     * Keyword Planner forecast for a set of keywords (the "Add to plan" → forecast view).
+     *
+     * @param  list<array{text: string, match: string}>  $keywords
+     * @param  array<string, mixed>  $o  language, geos, max_cpc (currency), days, daily_budget (currency)
+     * @return array{ok: bool, message: string, forecast: ?array<string, mixed>}
+     */
+    public function keywordPlannerForecast(string $customerId, array $keywords, array $o): array
+    {
+        $infos = [];
+        foreach ($keywords as $k) {
+            $text = trim((string) ($k['text'] ?? ''));
+            if ($text === '') {
+                continue;
+            }
+            $match = strtoupper((string) ($k['match'] ?? 'BROAD'));
+            $mt = ['EXACT' => \Google\Ads\GoogleAds\V25\Enums\KeywordMatchTypeEnum\KeywordMatchType::EXACT,
+                'PHRASE' => \Google\Ads\GoogleAds\V25\Enums\KeywordMatchTypeEnum\KeywordMatchType::PHRASE][$match]
+                ?? \Google\Ads\GoogleAds\V25\Enums\KeywordMatchTypeEnum\KeywordMatchType::BROAD;
+            $infos[] = (new KeywordInfo())->setText($text)->setMatchType($mt);
+        }
+        if ($infos === []) {
+            return ['ok' => false, 'message' => 'Add at least one keyword to the plan.', 'forecast' => null];
+        }
+        $days = max(1, min(365, (int) ($o['days'] ?? 30)));
+        $maxCpc = max(0.01, (float) ($o['max_cpc'] ?? 1.0));
+        try {
+            $strategy = (new \Google\Ads\GoogleAds\V25\Services\CampaignToForecast\CampaignBiddingStrategy())
+                ->setManualCpcBiddingStrategy(
+                    (new \Google\Ads\GoogleAds\V25\Services\ManualCpcBiddingStrategy())
+                        ->setMaxCpcBidMicros((int) round($maxCpc * 1_000_000))
+                        ->setDailyBudgetMicros((int) round(max(1.0, (float) ($o['daily_budget'] ?? 50)) * 1_000_000))
+                );
+            $geos = array_values(array_filter(array_map(static fn ($g) => preg_replace('/\D/', '', (string) $g), (array) ($o['geos'] ?? ['2840']))));
+            $campaign = (new \Google\Ads\GoogleAds\V25\Services\CampaignToForecast())
+                ->setLanguageConstants(['languageConstants/'.preg_replace('/\D/', '', (string) ($o['language'] ?? '1000'))])
+                ->setGeoTargetConstants(array_map(static fn ($g) => 'geoTargetConstants/'.$g, $geos ?: ['2840']))
+                ->setBiddingStrategy($strategy)
+                ->setAdGroups([(new \Google\Ads\GoogleAds\V25\Services\ForecastAdGroup())->setKeywords($infos)]);
+            $start = \Carbon\Carbon::now()->addDay();
+            $req = new \Google\Ads\GoogleAds\V25\Services\GenerateKeywordForecastMetricsRequest();
+            $req->setCustomerId($customerId);
+            $req->setCampaign($campaign);
+            $req->setForecastPeriod(
+                (new \Google\Ads\GoogleAds\V25\Common\DateRange())
+                    ->setStartDate($start->toDateString())
+                    ->setEndDate($start->copy()->addDays($days - 1)->toDateString())
+            );
+            $resp = $this->getClient()->getKeywordPlanIdeaServiceClient()->generateKeywordForecastMetrics($req);
+            $f = $resp->getCampaignForecastMetrics();
+            if (! $f) {
+                return ['ok' => false, 'message' => 'Google returned no forecast for these keywords.', 'forecast' => null];
+            }
+            $micro = static fn ($v) => ($v !== null && (int) $v > 0) ? round(((int) $v) / 1_000_000, 2) : null;
+
+            return ['ok' => true, 'message' => '', 'forecast' => [
+                'clicks' => $f->hasClicks() ? round((float) $f->getClicks(), 1) : null,
+                'cost' => $f->hasCostMicros() ? $micro($f->getCostMicros()) : null,
+                'conversions' => $f->hasConversions() ? round((float) $f->getConversions(), 2) : null,
+                'avg_cpc' => $f->hasAverageCpcMicros() ? $micro($f->getAverageCpcMicros()) : null,
+                'avg_cpa' => $f->hasAverageCpaMicros() ? $micro($f->getAverageCpaMicros()) : null,
+                'days' => $days, 'max_cpc' => $maxCpc, 'keywords' => count($infos),
+            ]];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ['ok' => false, 'message' => self::briefGoogleError($e), 'forecast' => null];
         }
     }
 

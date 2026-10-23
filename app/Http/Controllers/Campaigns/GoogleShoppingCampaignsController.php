@@ -711,14 +711,15 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
-     * N Target click → Keyword Planner modal. Request: keywords (comma / new-line separated), site (optional URL).
-     * Returns US / English keyword ideas with average monthly searches, competition and top-of-page bid range.
+     * N Target click → Keyword Planner modal ("Discover new keywords").
+     * Request: keywords (comma / new-line separated), site, scope (page|site), language, geos[], network, include_adult.
+     * Returns keyword ideas with search volume, 3-month / YoY change, competition, bids, monthly trend and concepts.
      */
     public function keywordPlannerIdeas(Request $request): JsonResponse
     {
         $customerId = (string) config('services.google_ads.login_customer_id');
         if ($customerId === '') {
-            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.', 'rows' => []], 500);
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.', 'rows' => [], 'concepts' => []], 500);
         }
         $keywords = preg_split('/[\r\n,]+/', (string) $request->input('keywords', ''), -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $keywords = array_slice(array_values(array_unique(array_map(static fn ($k) => mb_substr(trim($k), 0, 80), $keywords))), 0, 20);
@@ -727,12 +728,51 @@ class GoogleShoppingCampaignsController extends Controller
             $site = 'https://'.$site;
         }
         if ($site !== '' && ! filter_var($site, FILTER_VALIDATE_URL)) {
-            return response()->json(['ok' => false, 'message' => 'Enter a valid site URL.', 'rows' => []], 422);
+            return response()->json(['ok' => false, 'message' => 'Enter a valid site URL.', 'rows' => [], 'concepts' => []], 422);
         }
-        @ini_set('max_execution_time', '60');
+        @ini_set('max_execution_time', '90');
         /** @var GoogleAdsSbidService $svc */
         $svc = app(GoogleAdsSbidService::class);
-        $res = $svc->keywordPlannerIdeas($customerId, $keywords, $site);
+        $res = $svc->keywordPlannerIdeas($customerId, [
+            'keywords' => $keywords,
+            'url' => $site,
+            'scope' => (string) $request->input('scope', 'page'),
+            'language' => (string) $request->input('language', '1000'),
+            'geos' => array_slice((array) $request->input('geos', ['2840']), 0, 10),
+            'network' => (string) $request->input('network', 'partners'),
+            'include_adult' => $request->boolean('include_adult'),
+            'limit' => 800,
+        ]);
+
+        return response()->json($res, $res['ok'] ? 200 : 422);
+    }
+
+    /**
+     * Keyword Planner forecast for the keywords the user added to the plan.
+     * Request: keywords[] ({text, match}), language, geos[], max_cpc, daily_budget, days.
+     */
+    public function keywordPlannerForecast(Request $request): JsonResponse
+    {
+        $customerId = (string) config('services.google_ads.login_customer_id');
+        if ($customerId === '') {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.', 'forecast' => null], 500);
+        }
+        $kw = [];
+        foreach (array_slice((array) $request->input('keywords', []), 0, 100) as $k) {
+            if (is_array($k) && trim((string) ($k['text'] ?? '')) !== '') {
+                $kw[] = ['text' => mb_substr(trim((string) $k['text']), 0, 80), 'match' => (string) ($k['match'] ?? 'BROAD')];
+            }
+        }
+        @ini_set('max_execution_time', '90');
+        /** @var GoogleAdsSbidService $svc */
+        $svc = app(GoogleAdsSbidService::class);
+        $res = $svc->keywordPlannerForecast($customerId, $kw, [
+            'language' => (string) $request->input('language', '1000'),
+            'geos' => array_slice((array) $request->input('geos', ['2840']), 0, 10),
+            'max_cpc' => (float) $request->input('max_cpc', 1),
+            'daily_budget' => (float) $request->input('daily_budget', 50),
+            'days' => (int) $request->input('days', 30),
+        ]);
 
         return response()->json($res, $res['ok'] ? 200 : 422);
     }
