@@ -1768,7 +1768,8 @@
             function amzSetupModeBox(d, type) {
                 var box = document.getElementById('amzModeBox');
                 if (!box) { return; }
-                var list = (type === 'KW' && Array.isArray(d.kw)) ? d.kw.filter(function (c) { return c && c.campaign_id; }) : [];
+                var src = type === 'PT' ? d.pt : d.kw;
+                var list = Array.isArray(src) ? src.filter(function (c) { return c && c.campaign_id; }) : [];
                 var sel = document.getElementById('amzUpdateCampaign');
                 sel.innerHTML = list.map(function (c) {
                     return '<option value="' + esc(c.campaign_id) + '">' + esc(c.campaign_name || c.campaign_id) + '</option>';
@@ -1891,15 +1892,16 @@
                             }
                         },
                         {
-                            title: 'Create KW', field: '_create_kw', width: 100,
+                            title: 'CT/UP KW', field: '_create_kw', width: 100,
+                            headerTooltip: 'CT = Create a new KW / MANUAL campaign. UP = Update an existing linked KW campaign (add keywords). Click + on a row to choose.',
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: false,
                             formatter: function (cell) {
                                 var d = cell.getData();
                                 var hasKw = Array.isArray(d.kw) && d.kw.length > 0;
                                 var title = hasKw
-                                    ? 'KW already linked — create another MANUAL campaign?'
-                                    : 'Create Amz KW / MANUAL SP campaign for this parent';
+                                    ? 'KW already linked — click to create another MANUAL campaign (CT) or add keywords to the existing one (UP)'
+                                    : 'CT: create Amz KW / MANUAL SP campaign for this parent';
                                 return '<button type="button" class="amz-create-btn" data-sku="' + esc(d.sku || '') + '" data-type="KW" title="' + esc(title) + '">'
                                     + '<i class="fa fa-plus"></i></button>';
                             }
@@ -1916,15 +1918,16 @@
                             accessorDownload: linkNamesAccessor
                         },
                         {
-                            title: 'Create PT', field: '_create_pt', width: 100,
+                            title: 'CT/UP PT', field: '_create_pt', width: 100,
+                            headerTooltip: 'CT = Create a new PT campaign (auto groups or ASIN targets). UP = Update an existing linked PT campaign (add targets / auto groups). Click + on a row to choose.',
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: false,
                             formatter: function (cell) {
                                 var d = cell.getData();
                                 var hasPt = Array.isArray(d.pt) && d.pt.length > 0;
                                 var title = hasPt
-                                    ? 'PT already linked — create another AUTO campaign?'
-                                    : 'Create Amz PT / AUTO SP campaign for this parent';
+                                    ? 'PT already linked — click to create another PT campaign (CT) or add targets to the existing one (UP)'
+                                    : 'CT: create Amz PT SP campaign for this parent';
                                 return '<button type="button" class="amz-create-btn" data-sku="' + esc(d.sku || '') + '" data-type="PT" title="' + esc(title) + '">'
                                     + '<i class="fa fa-plus"></i></button>';
                             }
@@ -3000,7 +3003,7 @@
                 (document.getElementById('amzCreateAiPosLink') || document.createElement('a')).addEventListener('click', function (e) {
                     e.preventDefault();
                     if (currentCreateType() === 'PT') {
-                        window.alert('Positive keywords require a KW / MANUAL campaign. Use Create KW.');
+                        window.alert('Positive keywords require a KW / MANUAL campaign. Use CT/UP KW.');
                         return;
                     }
                     lastCreatedCampaignId = lastCreatedCampaignId
@@ -3189,7 +3192,11 @@
                                 ? kwAdded.map(function (k) { return { text: k.text, match_type: k.match_type, bid: k.bid }; })
                                 : []
                         };
-                        if (currentCreateType() === 'PT') { Object.assign(updPayload, ptPayload()); }
+                        if (currentCreateType() === 'PT') {
+                            Object.assign(updPayload, ptPayload());
+                            // When updating, only change the groups left in the list; never pause the others.
+                            updPayload.pt_groups = (updPayload.pt_groups || []).filter(function (g) { return g.enabled; });
+                        }
                         if (!updPayload.campaign_id) {
                             errEl.textContent = 'Pick the campaign to update.';
                             errEl.classList.remove('d-none');
@@ -3197,6 +3204,11 @@
                         }
                         if (currentCreateType() === 'KW' && !updPayload.keywords.length) {
                             errEl.textContent = 'Add at least one keyword to update the campaign.';
+                            errEl.classList.remove('d-none');
+                            return;
+                        }
+                        if (currentCreateType() === 'PT' && updPayload.pt_mode === 'AUTO' && !updPayload.pt_groups.length) {
+                            errEl.textContent = 'Add at least one auto targeting group to update the campaign.';
                             errEl.classList.remove('d-none');
                             return;
                         }
