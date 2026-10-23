@@ -1912,6 +1912,7 @@
                                     + '<i class="fa fa-plus"></i></button>';
                             }
                         },
+                        countColumnDef('pt', 'PT Count', 'Targets (auto groups + ASIN / category targets, enabled + paused) in the linked PT campaign(s), counted through the Amazon Ads API. Click to see them.'),
                         {
                             title: 'Campaign PT', field: 'pt', widthGrow: 2,
                             hozAlign: 'center', headerHozAlign: 'center',
@@ -1921,8 +1922,7 @@
                             headerFilterFunc: missingHeaderFilter,
                             formatter: chipsFormatter('PT'),
                             accessorDownload: linkNamesAccessor
-                        },
-                        countColumnDef('pt', 'PT Count', 'Targets (auto groups + ASIN / category targets, enabled + paused) in the linked PT campaign(s), counted through the Amazon Ads API. Click to see them.')
+                        }
                     ]
                 });
 
