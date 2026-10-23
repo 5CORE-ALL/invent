@@ -1334,8 +1334,12 @@
                             <span class="vr mx-1"></span>
                             <div><label class="mb-0 text-muted">Negative match</label>
                                 <select id="gacKwNegMatch" class="form-select form-select-sm"><option value="PHRASE" selected>Phrase</option><option value="EXACT">Exact</option><option value="BROAD">Broad</option></select></div>
-                            <button type="button" class="btn btn-sm btn-danger" id="gacKwAddNeg" title="Add the plan's keywords as negative keywords on this campaign in Google Ads"><i class="fas fa-ban"></i> Add plan as negatives</button>
+                            <button type="button" class="btn btn-sm btn-danger" id="gacKwAddNeg" title="Add the plan's keywords and anything typed in the box as negative keywords on this campaign in Google Ads"><i class="fas fa-ban"></i> Add as negatives</button>
                             <span id="gacKwForecastMsg" class="small"></span>
+                        </div>
+                        <div class="mt-2">
+                            <label class="mb-0 text-muted" for="gacKwNegManual">Type negative keywords manually (one per line or comma-separated) — added together with the plan's keywords</label>
+                            <textarea id="gacKwNegManual" class="form-control form-control-sm" rows="2" maxlength="2000" placeholder="e.g. free, cheap, used"></textarea>
                         </div>
                         <div id="gacKwForecast" class="mt-2"></div>
                         <div id="gacKwPlanList" class="mt-2 d-none" style="max-height:200px;overflow:auto;"></div>
@@ -3107,20 +3111,31 @@
                         });
                     });
                     on('gacKwAddNeg', 'click', function() {
-                        var list = gacKwPlanList();
                         var msg = document.getElementById('gacKwForecastMsg');
-                        if (!gacKwCampaignId) { if (msg) { msg.textContent = 'Open the planner from a campaign\'s N Target number.'; msg.className = 'small text-danger'; } return; }
-                        if (!list.length) { if (msg) { msg.textContent = 'Add keywords to the plan first.'; msg.className = 'small text-danger'; } return; }
+                        var fail = function(t) { if (msg) { msg.textContent = t; msg.className = 'small text-danger'; } };
+                        if (!gacKwCampaignId) { fail('Open the planner from a campaign\'s N Target number.'); return; }
+                        // Plan keywords (ticked) + anything typed by hand, de-duplicated case-insensitively.
+                        var seen = {}, kws = [];
+                        var take = function(t) {
+                            t = String(t || '').replace(/\s+/g, ' ').trim();
+                            if (t && !seen[t.toLowerCase()]) { seen[t.toLowerCase()] = true; kws.push(t); }
+                        };
+                        gacKwPlanList().forEach(function(p) { take(p.text); });
+                        String((document.getElementById('gacKwNegManual') || {}).value || '').split(/[\r\n,]+/).forEach(take);
+                        if (!kws.length) { fail('Tick keywords for the plan or type some in the box first.'); return; }
                         var match = (document.getElementById('gacKwNegMatch') || {}).value || 'PHRASE';
                         var campName = (document.getElementById('gacKwPlannerName') || {}).textContent || gacKwCampaignId;
-                        if (!window.confirm('Add ' + list.length + ' negative keyword(s) (' + match.toLowerCase() + ' match) to campaign ' + campName.replace(/^—\s*/, '') + ' in Google Ads?\nThis changes the live account.')) return;
+                        if (!window.confirm('Add ' + kws.length + ' negative keyword(s) (' + match.toLowerCase() + ' match) to campaign ' + campName.replace(/^—\s*/, '') + ' in Google Ads?\n\n' + kws.slice(0, 15).join(', ') + (kws.length > 15 ? ', …' : '') + '\n\nThis changes the live account.')) return;
                         var btn = document.getElementById('gacKwAddNeg');
                         btn.disabled = true;
                         if (msg) { msg.textContent = 'Adding to Google Ads…'; msg.className = 'small text-muted'; }
-                        gacNegPush(gacKwCampaignId, list.map(function(p) { return p.text; }), match, function(resp) {
+                        gacNegPush(gacKwCampaignId, kws, match, function(resp) {
                             btn.disabled = false;
                             if (msg) { msg.textContent = resp.message || (resp.ok ? 'Added.' : 'Failed.'); msg.className = 'small fw-semibold ' + (resp.ok ? 'text-success' : 'text-danger'); }
-                            if (resp.ok && typeof gacRawReloadGridForFilters === 'function') gacRawReloadGridForFilters();
+                            if (resp.ok) {
+                                var man = document.getElementById('gacKwNegManual'); if (man) man.value = '';
+                                if (typeof gacRawReloadGridForFilters === 'function') gacRawReloadGridForFilters();
+                            }
                         });
                     });
                     on('gacKwPlannerGo', 'click', gacKwFetch);
