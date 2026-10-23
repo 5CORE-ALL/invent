@@ -1678,8 +1678,17 @@
                                     <table class="table table-sm table-bordered align-middle mb-0 amz-bgt-sum-table">
                                         <thead class="table-light">
                                             <tr>
-                                                <th>Part</th>
+                                                <th>Budget</th>
                                                 <th class="text-center">Campaigns</th>
+                                                <th class="text-end">Per day</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="amz-bgt-budget-tbody"></tbody>
+                                    </table>
+                                    <table class="table table-sm table-bordered align-middle mb-0 mt-2 amz-bgt-sum-table">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Part</th>
                                                 <th class="text-end">Budget</th>
                                             </tr>
                                         </thead>
@@ -6858,13 +6867,30 @@
                 } else {
                     amzBgtStaged.sum = null;
                 }
-                if (tbody) {
-                    var html = order.map(function (p) {
-                        return '<tr><td>' + amzEsc(p.label) + '</td><td class="text-center">' + partCount[p.key].toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(partSum[p.key]) + '</td></tr>';
+                amzBgtRenderSumTables(
+                    order.map(function (p) { return { label: p.label, sum: partSum[p.key] }; }),
+                    rows, totalN, sbgtTotal, bgtTotal
+                );
+            }
+            // Budget-wise counts (campaigns per daily budget) plus each part's budget. No per-part campaign counts.
+            function amzBgtRenderSumTables(parts, rows, totalN, sbgtTotal, bgtTotal) {
+                var budgetBody = document.getElementById('amz-bgt-budget-tbody');
+                var partBody = document.getElementById('amz-bgt-sum-tbody');
+                if (budgetBody) {
+                    var bh = (rows || []).map(function (r) {
+                        var day = Number(r.label) * r.n;
+                        return '<tr><td>$' + amzEsc(r.label) + '</td><td class="text-center">' + r.n.toLocaleString('en-US') + '</td><td class="text-end">$' + Math.round(day).toLocaleString('en-US') + '</td></tr>';
                     }).join('');
-                    html += '<tr class="amz-bgt-count-total"><td>Total</td><td class="text-center">' + countTotal.toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(bgtTotal) + '</td></tr>';
-                    html += '<tr class="fw-semibold"><td>SBGT</td><td class="text-center">' + campaigns.toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(sbgtTotal) + '</td></tr>';
-                    tbody.innerHTML = html;
+                    bh += '<tr class="fw-semibold"><td>Total</td><td class="text-center">' + totalN.toLocaleString('en-US') + '</td><td class="text-end">$' + Math.round(sbgtTotal).toLocaleString('en-US') + '</td></tr>';
+                    budgetBody.innerHTML = bh;
+                }
+                if (partBody) {
+                    var ph = (parts || []).map(function (p) {
+                        return '<tr><td>' + amzEsc(p.label || '') + '</td><td class="text-end">$' + amzBgtFmtMoney(Number(p.sum) || 0) + '</td></tr>';
+                    }).join('');
+                    ph += '<tr class="amz-bgt-count-total"><td>Total</td><td class="text-end">$' + amzBgtFmtMoney(Number(bgtTotal) || 0) + '</td></tr>';
+                    ph += '<tr class="fw-semibold"><td>SBGT</td><td class="text-end">$' + amzBgtFmtMoney(Number(sbgtTotal) || 0) + '</td></tr>';
+                    partBody.innerHTML = ph;
                 }
             }
             function amzBgtApplySavedSum(sum) {
@@ -6910,13 +6936,8 @@
                         }
                     });
                 }
-                if (tbody && Array.isArray(sum.parts)) {
-                    var html = sum.parts.map(function (p) {
-                        return '<tr><td>' + amzEsc(p.label || '') + '</td><td class="text-center">' + (Number(p.count) || 0).toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(Number(p.sum) || 0) + '</td></tr>';
-                    }).join('');
-                    html += '<tr class="amz-bgt-count-total"><td>Total</td><td class="text-center">' + (Number(sum.countTotal) || 0).toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(Number(sum.bgtTotal) || 0) + '</td></tr>';
-                    html += '<tr class="fw-semibold"><td>SBGT</td><td class="text-center">' + (Number(sum.campaigns) || 0).toLocaleString('en-US') + '</td><td class="text-end">$' + amzBgtFmtMoney(Number(sum.sbgtTotal) || 0) + '</td></tr>';
-                    tbody.innerHTML = html;
+                if (Array.isArray(sum.parts)) {
+                    amzBgtRenderSumTables(sum.parts, rows, totalN, Number(sum.sbgtTotal) || 0, Number(sum.bgtTotal) || 0);
                 }
                 return true;
             }
