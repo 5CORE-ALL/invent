@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\CategoryMaster;
 use App\Models\ProductMaster;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -42,13 +43,22 @@ class TechnicalSpecificationsController extends Controller
                 ->select($select)
                 ->get();
 
+            $categories = Schema::hasTable('category_masters')
+                ? CategoryMaster::query()->get(['sku', 'category_ebay', 'category_amz', 'category_temu'])
+                    ->keyBy(fn ($row) => $this->skuKey((string) $row->sku))
+                : collect();
+
             $result = [];
             foreach ($products as $product) {
                 $specs = $this->normalizeSpecs($product->description_v2_specifications ?? null);
                 $text = $this->specsToText($specs);
+                $category = $categories->get($this->skuKey((string) $product->sku));
 
                 $result[] = [
                     'id' => $product->id,
+                    'category_ebay' => (string) ($category->category_ebay ?? ''),
+                    'category_amz' => (string) ($category->category_amz ?? ''),
+                    'category_temu' => (string) ($category->category_temu ?? ''),
                     'Parent' => $product->parent,
                     'SKU' => $product->sku,
                     'title150' => $product->title150,
@@ -135,6 +145,13 @@ class TechnicalSpecificationsController extends Controller
                 'message' => 'Failed to save Technical Specifications: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    private function skuKey(string $sku): string
+    {
+        $sku = str_replace("\u{00a0}", ' ', trim($sku));
+
+        return strtolower(preg_replace('/\s+/u', ' ', $sku) ?? $sku);
     }
 
     /**

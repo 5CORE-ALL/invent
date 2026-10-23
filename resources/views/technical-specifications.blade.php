@@ -147,6 +147,20 @@
                 setTimeout(() => el.remove(), 3200);
             }
 
+            function categoryColumn(title, field) {
+                return {
+                    title: title,
+                    field: field,
+                    width: 180,
+                    headerFilter: 'input',
+                    headerFilterPlaceholder: 'Filter',
+                    formatter: function (cell) {
+                        const v = String(cell.getValue() || '').trim();
+                        return v ? esc(v) : '<span class="text-muted">—</span>';
+                    },
+                };
+            }
+
             function esc(s) {
                 return String(s == null ? '' : s)
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -323,6 +337,9 @@
                                 cell.getRow().toggleSelect();
                             },
                         },
+                        categoryColumn('Category eBay', 'category_ebay'),
+                        categoryColumn('Category Amz', 'category_amz'),
+                        categoryColumn('Category Temu', 'category_temu'),
                         {
                             title: 'Parent',
                             field: 'Parent',
@@ -430,6 +447,9 @@
                 if (!table) return;
                 const rows = table.getData('active').map(r => ({
                     SKU: r.SKU || '',
+                    'Category eBay': r.category_ebay || '',
+                    'Category Amz': r.category_amz || '',
+                    'Category Temu': r.category_temu || '',
                     Parent: r.Parent || '',
                     title150: r.title150 || '',
                     technical_specifications: specsText(r),
