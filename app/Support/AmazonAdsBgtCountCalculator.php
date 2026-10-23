@@ -278,13 +278,14 @@ final class AmazonAdsBgtCountCalculator
                 $parts['inv'],
                 $parts['gpft']
             );
-            if ($total === null) {
-                continue;
-            }
+            // A campaign no slab gives a budget to has $0, so every campaign is counted.
+            $total ??= 0;
             $campaigns++;
             $sbgtTotal += $total;
             $buckets[$total] = ($buckets[$total] ?? 0) + 1;
         }
+        // The $0 badge is always shown, even when no campaign is at $0.
+        $buckets[0] ??= 0;
         ksort($buckets, SORT_NUMERIC);
         $chartRows = [];
         $i = 0;

@@ -1072,6 +1072,14 @@
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tr.amz-bgt-count-total td { background: #f1f5f9; }
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tr.fw-semibold td { background: #0f766e; color: #fff; font-size: 14px; }
         #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .table-responsive { flex: 0 1 380px; min-width: 260px; }
+        #amazonAdsBgtRulesModal .amz-bgt-count-badges { display: inline-flex; align-items: center; gap: 4px; margin: 0 auto 0 8px; flex-shrink: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-count-badge { background: #0f766e; color: #fff; font-size: 12px; font-weight: 700; line-height: 1; padding: 4px 9px; border-radius: 999px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        #amazonAdsBgtRulesModal .amz-bgt-count-badge.is-partial { background: #f59e0b; }
+        #amazonAdsBgtRulesModal .amz-bgt-count-badge.is-nomatch { background: #e2e8f0; color: #475569; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-count-badges { display: none; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) tfoot td { background: #f1f5f9; border-top: 2px solid #cbd5e1; font-weight: 700; padding: 5px 6px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) tfoot td.amz-bgt-foot-label { text-align: left; padding-left: 10px; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+        #amazonAdsBgtRulesModal .amz-bgt-col td.amz-bgt-cnt-sum { background: #ccfbf1; font-size: 14px; }
         #amazonAdsSbidRuleModal .modal-dialog {
             width: min(1120px, calc(100vw - 1.25rem));
             max-width: calc(100vw - 1.25rem);
@@ -6521,9 +6529,43 @@
                     td.textContent = r ? r.n.toLocaleString('en-US') : '…';
                     td.title = r && total > 0 ? Math.round((r.n / total) * 100) + '% of ' + total.toLocaleString('en-US') + ' campaigns' : '';
                 }
+                var sum = 0;
+                var unmatched = 0;
+                if (rows) {
+                    for (var k = 0; k < rows.length; k++) {
+                        if (k < trs.length) sum += rows[k].n;
+                        else unmatched += rows[k].n;
+                    }
+                }
+                var sumText = rows ? sum.toLocaleString('en-US') : '…';
+                // Sum row under the Count column. The first cell is the hidden # column.
                 var table = tbody.closest('table');
-                var oldFoot = table ? table.querySelector('tfoot.amz-bgt-cnt-foot') : null;
-                if (oldFoot) oldFoot.remove();
+                if (table) {
+                    var foot = table.querySelector('tfoot.amz-bgt-cnt-foot');
+                    if (!foot) {
+                        foot = document.createElement('tfoot');
+                        foot.className = 'amz-bgt-cnt-foot';
+                        table.appendChild(foot);
+                    }
+                    foot.innerHTML = '<tr><td></td><td class="amz-bgt-foot-label">Total</td><td></td><td></td>'
+                        + '<td class="amz-bgt-cnt amz-bgt-cnt-sum text-center">' + sumText + '</td><td></td></tr>';
+                }
+                // Count badges in the panel header: sum of the slab counts, plus campaigns that match no slab.
+                var panel = tbody.closest('.amz-bgt-col');
+                var head = panel ? panel.querySelector('.amz-bgt-col-head') : null;
+                if (!head) return;
+                var holder = head.querySelector('.amz-bgt-count-badges');
+                if (!holder) {
+                    holder = document.createElement('span');
+                    holder.className = 'amz-bgt-count-badges';
+                    head.insertBefore(holder, head.querySelector('.amz-bgt-head-actions'));
+                }
+                var partialNote = note ? ' (' + note + ')' : '';
+                var html = '<span class="amz-bgt-count-badge' + (note ? ' is-partial' : '') + '" title="' + amzEsc('Campaigns counted in the slabs' + partialNote) + '">' + sumText + '</span>';
+                if (unmatched > 0) {
+                    html += '<span class="amz-bgt-count-badge is-nomatch" title="Campaigns that match no slab">No match ' + unmatched.toLocaleString('en-US') + '</span>';
+                }
+                holder.innerHTML = html;
             }
             function amzBgtPaintColumn(key, bands, counts) {
                 // Stored counts only when they match these exact slabs. Otherwise count the rows on the page now.
@@ -6753,11 +6795,14 @@
                         partSum[p.key] += n;
                     });
                     var total = amzBgtFloorSum(order.map(function (p) { return parts[p.key]; }));
-                    if (total === null) return;
+                    // A campaign no slab gives a budget to has $0, so every campaign is counted.
+                    if (total === null) total = 0;
                     campaigns++;
                     sbgtTotal += total;
                     buckets[total] = (buckets[total] || 0) + 1;
                 });
+                // The $0 badge is always shown, even when no campaign is at $0.
+                if (buckets[0] === undefined) buckets[0] = 0;
                 var keys = Object.keys(buckets).map(function (k) { return +k; }).sort(function (a, b) { return a - b; });
                 var rows = keys.map(function (k, i) {
                     return {
