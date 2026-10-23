@@ -3913,6 +3913,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-ads/missing/unlink', [\App\Http\Controllers\AmazonAdsMissingController::class, 'unlink'])->name('amazon.ads.missing.unlink');
     Route::post('/amazon-ads/missing/create', [\App\Http\Controllers\AmazonAdsMissingController::class, 'create'])->name('amazon.ads.missing.create');
     Route::post('/amazon-ads/missing/keyword-suggestions', [\App\Http\Controllers\AmazonAdsMissingController::class, 'keywordSuggestions'])->name('amazon.ads.missing.keyword-suggestions');
+    Route::post('/amazon-ads/missing/product-suggestions', [\App\Http\Controllers\AmazonAdsMissingController::class, 'productSuggestions'])->name('amazon.ads.missing.product-suggestions');
     Route::post('/amazon-ads/missing/keyword-ideas', [\App\Http\Controllers\AmazonAdsMissingController::class, 'keywordIdeas'])->name('amazon.ads.missing.keyword-ideas');
     Route::post('/amazon-ads/missing/update-campaign', [\App\Http\Controllers\AmazonAdsMissingController::class, 'updateCampaign'])->name('amazon.ads.missing.update-campaign');
     Route::post('/amazon-ads/missing/keyword-counts', [\App\Http\Controllers\AmazonAdsMissingController::class, 'keywordCounts'])->name('amazon.ads.missing.keyword-counts');

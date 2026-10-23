@@ -287,7 +287,7 @@ class AmazonAdsMissingController extends Controller
         if ($type === 'PT' && $ptMode === 'MANUAL' && $ptTargets === []) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Add at least one valid ASIN (10 characters) in Product targeting before creating a manual PT campaign.',
+                'message' => 'Add at least one valid ASIN (10 characters) in Product targeting before creating a manual PT campaign (or open the "Auto groups" tab for an automatic one).',
             ], 422);
         }
 
@@ -846,6 +846,81 @@ class AmazonAdsMissingController extends Controller
             'count' => count($keywords),
             'keywords' => $keywords,
             'message' => $keywords === [] ? 'Amazon returned no keyword suggestions for these ASINs. Use Enter list or Upload file.' : '',
+        ]);
+    }
+
+    /**
+     * Amazon's own product-target suggestions for the selected child ASINs (same data as
+     * "Product targeting → Suggested" in the Amazon console).
+     */
+    public function productSuggestions(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'children' => ['required', 'array', 'min:1'],
+            'children.*.target_sku' => ['nullable', 'string', 'max:255'],
+            'children.*.asin' => ['nullable', 'string', 'max:32'],
+            'refresh' => ['nullable', 'boolean'],
+        ]);
+
+        $asins = [];
+        $needLookup = [];
+        foreach ($validated['children'] as $child) {
+            $asin = strtoupper(trim((string) ($child['asin'] ?? '')));
+            if ($asin !== '') {
+                $asins[] = $asin;
+
+                continue;
+            }
+            $sku = trim((string) ($child['target_sku'] ?? ''));
+            if ($sku !== '') {
+                $needLookup[] = $sku;
+            }
+        }
+        if ($needLookup !== []) {
+            foreach ($this->resolveAsinsForSkus($needLookup) as $asin) {
+                $asins[] = strtoupper(trim((string) $asin));
+            }
+        }
+        $asins = array_values(array_unique(array_filter($asins)));
+        if ($asins === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Select at least one child SKU with a valid ASIN to load Amazon product suggestions.',
+            ], 422);
+        }
+
+        $sortedAsins = $asins;
+        sort($sortedAsins);
+        $cacheKey = 'amz_pt_reco:'.md5(implode(',', $sortedAsins));
+        $products = ! empty($validated['refresh']) ? null : Cache::get($cacheKey);
+
+        if (! is_array($products)) {
+            try {
+                $products = app(AmazonAdsService::class)->productRecommendationsForAsins($asins, 100);
+            } catch (\Throwable $e) {
+                Log::warning('Amazon product recommendations failed', ['asins' => $asins, 'error' => $e->getMessage()]);
+                $throttled = $e instanceof \GuzzleHttp\Exception\RequestException
+                    && $e->hasResponse()
+                    && $e->getResponse()->getStatusCode() === 429;
+
+                return response()->json([
+                    'ok' => false,
+                    'message' => $throttled
+                        ? 'Amazon is rate-limiting product suggestions right now. Wait about a minute and click Reload (Enter list / Upload file still work).'
+                        : 'Amazon product suggestions failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
+                ], $throttled ? 429 : 502);
+            }
+            if ($products !== []) {
+                Cache::put($cacheKey, $products, now()->addHours(6));
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'asins' => $asins,
+            'count' => count($products),
+            'products' => $products,
+            'message' => $products === [] ? 'Amazon returned no product suggestions for these ASINs. Use Enter list or Upload file.' : '',
         ]);
     }
 

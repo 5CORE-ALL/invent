@@ -465,13 +465,14 @@
                         <div id="amzPtSection" class="mt-3 d-none">
                             <div class="fw-semibold small mb-1">
                                 Product targeting
-                                <span class="text-muted fw-normal">— Amazon's automatic groups, or your own ASIN targets</span>
+                                <span class="text-muted fw-normal">— Amazon's suggested products, its automatic groups, your list or a file</span>
                             </div>
                             <div class="row g-2">
                                 <div class="col-lg-7">
                                     <div class="border rounded">
                                         <ul class="nav nav-tabs small px-2 pt-1" role="tablist" id="amzPtTabs">
-                                            <li class="nav-item"><button type="button" class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzPtPaneAuto" data-pt-mode="AUTO">Auto groups</button></li>
+                                            <li class="nav-item"><button type="button" class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzPtPaneSug" data-pt-mode="MANUAL">Suggested</button></li>
+                                            <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzPtPaneAuto" data-pt-mode="AUTO">Auto groups</button></li>
                                             <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzPtPaneList" data-pt-mode="MANUAL">Enter list</button></li>
                                             <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzPtPaneFile" data-pt-mode="MANUAL">Upload file</button></li>
                                         </ul>
@@ -485,7 +486,23 @@
                                             <span class="text-muted" id="amzPtBidHint">The default bid of the campaign, used for what you add next.</span>
                                         </div>
                                         <div class="tab-content">
-                                            <div class="tab-pane fade show active" id="amzPtPaneAuto">
+                                            <div class="tab-pane fade show active" id="amzPtPaneSug">
+                                                <div class="p-2 d-flex flex-wrap align-items-center gap-3 small border-bottom">
+                                                    <input type="text" class="form-control form-control-sm" style="width:180px;" id="amzPtSugSearch" placeholder="Search ASINs">
+                                                    <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzPtLoadBtn"><i class="fa fa-sync me-1"></i>Reload</button>
+                                                </div>
+                                                <div class="px-2 py-1 small text-muted d-flex justify-content-between">
+                                                    <span id="amzPtSugStatus">Select child SKUs, then load Amazon's suggestions.</span>
+                                                    <a href="#" id="amzPtSugAddAll" class="fw-semibold">Add all</a>
+                                                </div>
+                                                <div style="max-height:300px; overflow:auto;">
+                                                    <table class="table table-sm align-middle mb-0 small">
+                                                        <thead class="table-light sticky-top"><tr><th>Product (ASIN)</th><th>Why Amazon suggests it</th><th class="text-end"></th></tr></thead>
+                                                        <tbody id="amzPtSugBody"></tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane fade" id="amzPtPaneAuto">
                                                 <div class="px-2 py-1 small text-muted d-flex justify-content-between">
                                                     <span>Amazon matches shoppers automatically. Groups you remove from the list on the right are paused.</span>
                                                     <a href="#" id="amzPtAutoAddAll" class="fw-semibold">Add all</a>
@@ -1310,6 +1327,61 @@
             ];
             var ptAutoAdded = [];   // [{type, bid}]
             var ptAsins = [];       // [{asin, bid}]
+            var ptSuggestions = []; // [{asin, themes[]}] from Amazon
+            var ptSugSeq = 0;
+            var ptSuggestUrl = @json(route('amazon.ads.missing.product-suggestions'));
+            function ptSetStatus(msg, isErr) {
+                var el = document.getElementById('amzPtSugStatus');
+                if (!el) { return; }
+                el.textContent = msg;
+                el.classList.toggle('text-danger', !!isErr);
+            }
+            function ptIsAdded(asin) { return ptAsins.some(function (x) { return x.asin === asin; }); }
+            function ptRenderSuggestions() {
+                var body = document.getElementById('amzPtSugBody');
+                if (!body) { return; }
+                var q = String((document.getElementById('amzPtSugSearch') || {}).value || '').toLowerCase().trim();
+                var html = '';
+                ptSuggestions.forEach(function (row, i) {
+                    if (q && String(row.asin).toLowerCase().indexOf(q) === -1) { return; }
+                    html += '<tr><td class="fw-semibold">' + esc(row.asin) + '</td>'
+                        + '<td class="text-muted" style="font-size:11px;">' + esc((row.themes || []).join(' · ') || '—') + '</td>'
+                        + '<td class="text-end">' + (ptIsAdded(row.asin) ? '<span class="text-muted fst-italic">Added</span>'
+                            : '<a href="#" class="fw-semibold amz-pt-sug-add" data-i="' + i + '">Add</a>') + '</td></tr>';
+                });
+                body.innerHTML = html || '<tr><td colspan="3" class="text-muted text-center py-3">No suggestions to show.</td></tr>';
+            }
+            function ptLoadSuggestions(force) {
+                var children = collectSelectedChildren();
+                var btn = document.getElementById('amzPtLoadBtn');
+                if (!children.length) {
+                    ptSuggestions = [];
+                    ptRenderSuggestions();
+                    ptSetStatus('Select at least one child SKU with an ASIN to load Amazon suggestions.', false);
+                    return;
+                }
+                var seq = ++ptSugSeq;
+                ptSetStatus('Loading suggestions from Amazon…', false);
+                if (btn) { btn.disabled = true; }
+                postForm(ptSuggestUrl, { children: children, refresh: force === true }).then(function (out) {
+                    if (seq !== ptSugSeq) { return; }
+                    if (btn) { btn.disabled = false; }
+                    if (out.ok && out.body && out.body.ok) {
+                        ptSuggestions = Array.isArray(out.body.products) ? out.body.products : [];
+                        ptSetStatus(ptSuggestions.length
+                            ? (ptSuggestions.length + ' products suggested by Amazon.')
+                            : (out.body.message || 'Amazon returned no suggestions.'), false);
+                    } else {
+                        ptSuggestions = [];
+                        ptSetStatus((out.body && out.body.message) || ('Could not load Amazon suggestions (HTTP ' + out.status + '). If this is 404, run php artisan route:clear on the server.'), true);
+                    }
+                    ptRenderSuggestions();
+                }).catch(function () {
+                    if (seq !== ptSugSeq) { return; }
+                    if (btn) { btn.disabled = false; }
+                    ptSetStatus('Network error loading Amazon suggestions.', true);
+                });
+            }
             // The active tab decides the mode: "Auto groups" = AUTO campaign, "Enter list" / "Upload file" = ASIN targets (MANUAL).
             function ptMode() {
                 var t = document.querySelector('#amzPtTabs .nav-link.active');
@@ -1339,6 +1411,7 @@
                 var rows = auto
                     ? ptAutoAdded.map(function (a, i) { return { label: ptGroupLabel(a.type), type: 'Auto group', bid: a.bid, i: i }; })
                     : ptAsins.map(function (a, i) { return { label: a.asin, type: 'ASIN', bid: a.bid, i: i }; });
+                ptRenderSuggestions();
                 var cnt = document.getElementById('amzPtAddedCount'); if (cnt) { cnt.textContent = String(rows.length); }
                 var body = document.getElementById('amzPtAddedBody');
                 if (body) {
@@ -1352,6 +1425,10 @@
             function ptResetForOpen() {
                 ptAutoAdded = PT_GROUPS.map(function (g) { return { type: g.type, bid: kwDefaultBid() }; });
                 ptAsins = [];
+                ptSuggestions = [];
+                ptSugSeq++;
+                var psq = document.getElementById('amzPtSugSearch'); if (psq) { psq.value = ''; }
+                ptSetStatus('Select child SKUs, then load Amazon\'s suggestions.', false);
                 var firstTab = document.querySelector('#amzPtTabs .nav-link');
                 if (firstTab && window.bootstrap) { bootstrap.Tab.getOrCreateInstance(firstTab).show(); }
                 ['amzPtAsinText', 'amzPtBulkBid'].forEach(function (id) { var el = document.getElementById(id); if (el) { el.value = ''; } });
@@ -1397,6 +1474,26 @@
                     document.getElementById('amzPtBidHint').textContent = ptBidMode.value === 'custom'
                         ? 'Same bid for every target you add next.'
                         : 'The default bid of the campaign, used for what you add next.';
+                });
+                document.getElementById('amzPtLoadBtn').addEventListener('click', function () { ptLoadSuggestions(true); });
+                document.getElementById('amzPtSugSearch').addEventListener('input', ptRenderSuggestions);
+                document.getElementById('amzPtSugBody').addEventListener('click', function (e) {
+                    var a = e.target.closest ? e.target.closest('.amz-pt-sug-add') : null;
+                    if (!a) { return; }
+                    e.preventDefault();
+                    var row = ptSuggestions[Number(a.getAttribute('data-i'))];
+                    if (row && !ptIsAdded(row.asin)) { ptAsins.push({ asin: row.asin, bid: ptResolveBid() }); }
+                    ptRender();
+                });
+                document.getElementById('amzPtSugAddAll').addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var q = String((document.getElementById('amzPtSugSearch') || {}).value || '').toLowerCase().trim();
+                    var bid = ptResolveBid();
+                    ptSuggestions.forEach(function (row) {
+                        if (q && String(row.asin).toLowerCase().indexOf(q) === -1) { return; }
+                        if (!ptIsAdded(row.asin)) { ptAsins.push({ asin: row.asin, bid: bid }); }
+                    });
+                    ptRender();
                 });
                 document.getElementById('amzPtAutoBody').addEventListener('click', function (e) {
                     var a = e.target.closest ? e.target.closest('.amz-pt-auto-add') : null;
@@ -1712,6 +1809,7 @@
                 var modal = getCreateModal();
                 if (modal) { modal.show(); }
                 if (type === 'KW') { kwLoadSuggestions(); }
+                if (type === 'PT') { ptLoadSuggestions(); }
             }
 
             function collectSelectedChildren() {

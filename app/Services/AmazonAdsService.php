@@ -1655,6 +1655,74 @@ class AmazonAdsService
     }
 
     /**
+     * Amazon's own product recommendations ("Product targeting → Suggested" in the Amazon console):
+     * ASINs shoppers view alongside the advertised ASINs.
+     * Sponsored Products product recommendations API v3 (POST /sp/targets/products/recommendations).
+     *
+     * @param  list<string>  $asins  advertised ASINs
+     * @return list<array{asin: string, themes: list<string>}>
+     */
+    public function productRecommendationsForAsins(array $asins, int $pageSize = 100): array
+    {
+        $asins = array_values(array_unique(array_filter(array_map(
+            static fn ($a) => strtoupper(trim((string) $a)),
+            $asins
+        ))));
+        if ($asins === []) {
+            return [];
+        }
+        $headers = [
+            'Content-Type' => 'application/vnd.spproductrecommendation.v3+json',
+            'Accept' => 'application/vnd.spproductrecommendation.v3+json',
+        ];
+        $resp = null;
+        $lastError = null;
+        // 429 = throttled (HTML body from Amazon's edge): wait and retry.
+        for ($try = 0; $try < 4; $try++) {
+            try {
+                $resp = $this->post('/sp/targets/products/recommendations', [
+                    'adAsins' => array_slice($asins, 0, 50),
+                    'pageSize' => max(1, min(100, $pageSize)),
+                ], $headers);
+                $lastError = null;
+                break;
+            } catch (\Throwable $e) {
+                $lastError = $e;
+                $status = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()
+                    ? $e->getResponse()->getStatusCode() : 0;
+                if ($status !== 429) {
+                    break;
+                }
+                if ($try < 3) {
+                    sleep(3 + 3 * $try);
+                }
+            }
+        }
+        if ($resp === null) {
+            throw $lastError ?? new \RuntimeException('Amazon product recommendations request failed.');
+        }
+
+        $out = [];
+        $seen = [];
+        foreach ((array) ($resp['recommendations'] ?? []) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $asin = strtoupper(trim((string) ($row['recommendedAsin'] ?? '')));
+            if ($asin === '' || isset($seen[$asin]) || in_array($asin, $asins, true)) {
+                continue;
+            }
+            $seen[$asin] = true;
+            $out[] = [
+                'asin' => $asin,
+                'themes' => array_values(array_filter(array_map('strval', (array) ($row['themes'] ?? [])))),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Create Sponsored Products positive keywords (v3) on an ad group.
      * Match types: BROAD, PHRASE, EXACT (MANUAL campaigns only).
      *
