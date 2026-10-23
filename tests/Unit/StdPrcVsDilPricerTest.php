@@ -490,12 +490,16 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(100.0, $wayfair->priceFromRow($row + ['dil' => 50]));
         // Every other channel page has the same SNROI Cap.
         $this->assertSame(84.21, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row + ['dil' => 10]));
-        // A channel that pays ship counts it: (50 × 1.6 + 5) / 0.95 = 89.47.
-        $this->assertSame(89.47, (new StdPrcVsDilPricer($rules, 'reverb'))->priceFromRow($row + ['dil' => 10, 'ship' => 5]));
-        // Ads % comes off the margin: 0.95 − 0.10 = 0.85 → (50 × 1.6) / 0.85 = 94.11.
-        $this->assertSame(94.11, (new StdPrcVsDilPricer($rules, 'reverb'))->priceFromRow($row + ['dil' => 10, 'ads' => 0.10]));
-        // Ads given as a percent (10) is read the same way.
-        $this->assertSame(94.11, (new StdPrcVsDilPricer($rules, 'reverb'))->priceFromRow($row + ['dil' => 10, 'ads' => 10]));
+        // Only Amazon and the no-Ship pages have the SNROI Cap. Pages with Ship (eBay, Reverb, Best Buy, Temu ...) price from
+        // their discounts only, so the same Dil slab leaves the Std price alone.
+        foreach (['reverb', 'ebay2', 'bestbuy', 'newtemuone', 'shopify_b2c'] as $channel) {
+            $this->assertSame(100.0, (new StdPrcVsDilPricer($rules, $channel))->priceFromRow($row + ['dil' => 10, 'ship' => 5, 'ads' => 0.10]), $channel);
+            $this->assertNull((new StdPrcVsDilPricer($rules, $channel))->snroiCapTargetForDil(10.0), $channel);
+        }
+        // The no-Ship pages keep it.
+        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon'] as $channel) {
+            $this->assertTrue(StdPrcVsDilPricer::supportsSnroiCap($channel), $channel);
+        }
     }
 
     public function test_snroi_cap_slab_prices_from_the_target_not_the_discounts_and_std_is_the_maximum(): void

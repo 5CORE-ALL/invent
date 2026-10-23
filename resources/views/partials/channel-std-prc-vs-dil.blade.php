@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair', 'topdawg', 'faire', 'alibaba'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair', 'topdawg', 'faire', 'alibaba'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. @if(\App\Support\StdPrcVsDilPricer::supportsSnroiCap((string) ($channelPromoChannel ?? ''))) A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.@endif</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -280,6 +280,7 @@
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-all"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Disc %</th><th class="text-center">Count</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
                         </div>
+                        @if(\App\Support\StdPrcVsDilPricer::supportsSnroiCap((string) ($channelPromoChannel ?? '')))
                         <div class="ch-sp-col" data-ch-sp-panel="snroicap">
                             <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Slabs on the Dil %. Cap is the Target SNROI %. A SKU in a slab with a Cap gets the S PRC that lands on that SNROI, instead of the discount price. Std Prc stays the maximum. Leave the Cap blank to use the discounts for that slab.">SNROI Cap</div><button type="button" class="ch-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-snroicap"></canvas></div>
@@ -288,6 +289,7 @@
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-snroicap-add">Add slab</button>
                             <div class="small text-muted mt-1">Capped = SKUs whose S PRC comes from the Target SNROI % instead of the discounts.</div>
                         </div>
+                        @endif
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -755,8 +757,10 @@
             if (!chStdRowHasLmp(d) || !(chStdStockForAge(d) > 0)) return 0;
             return chStdRangeDisc(chStdDilPct(d), rules || chStdLmp);
         }
+        // The SNROI Cap rule exists only on Amazon (its own partial) and the no-Ship pages. Every other page prices from
+        // its discounts only, so the cap is off and its panel is not drawn.
         function chStdUsesSnroiCap() {
-            return true;
+            return @json(\App\Support\StdPrcVsDilPricer::supportsSnroiCap((string) ($channelPromoChannel ?? '')));
         }
         function chStdNormCap(r) {
             let min = Number(r && r.min), max = Number(r && r.max);

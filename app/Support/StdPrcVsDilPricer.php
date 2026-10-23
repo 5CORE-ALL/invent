@@ -259,6 +259,10 @@ class StdPrcVsDilPricer
     /** Target SNROI % of the Dil slab this value falls in. Null when the slab has no cap or no slab matches. */
     private function snroiCapFor(float $dil): ?float
     {
+        if (! self::supportsSnroiCap($this->channel)) {
+            return null;
+        }
+
         return self::snroiCapTarget($dil, $this->rules['snroi_cap'] ?? []);
     }
 
@@ -492,6 +496,19 @@ class StdPrcVsDilPricer
         }
 
         return $this->rangeDisc($age, $this->rules['age']);
+    }
+
+    /**
+     * Pages that have the SNROI Cap rule: Amazon and the pages with no Ship (Wayfair, Faire, Topdawg, Alibaba, Shopify B2B,
+     * Depop, Mercari w/o ship, Doba w/o ship, FB Marketplace, Instagram). Every other page prices from its discounts only.
+     */
+    public static function supportsSnroiCap(string $channel): bool
+    {
+        $c = strtolower(trim($channel));
+
+        return $c === 'amazon'
+            || self::excludesShip($c)
+            || in_array($c, ['doba_withoutship', 'fb_marketplace', 'instagram'], true);
     }
 
     public static function excludesShip(string $channel): bool
