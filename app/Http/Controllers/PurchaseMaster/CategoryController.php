@@ -2646,6 +2646,10 @@ class CategoryController extends Controller
 
     public function updateGeneralSpecificMaster(Request $request)
     {
+        if (is_array($request->input('skus')) && count($request->input('skus')) > 1) {
+            return $this->bulkUpdateGeneralSpecificMaster($request);
+        }
+
         try {
             $validated = $request->validate([
                 'product_id' => 'required|integer',
@@ -2709,6 +2713,73 @@ class CategoryController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Error updating General Specific Master: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating data: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Apply filled general-specific fields to every selected SKU.
+     * A blank field is left unchanged on that row.
+     */
+    private function bulkUpdateGeneralSpecificMaster(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'skus' => 'required|array|min:2|max:5000',
+                'skus.*' => 'required|string|max:255',
+                'brand' => 'nullable|string',
+                'handling_time' => 'nullable|string',
+                'country_of_origin' => 'nullable|string',
+                'warranty' => 'nullable|string',
+                'prop_warning' => 'nullable|string',
+                'condition' => 'nullable|string',
+            ]);
+
+            $updates = [];
+            foreach (['brand', 'handling_time', 'country_of_origin', 'warranty', 'prop_warning', 'condition'] as $field) {
+                $value = trim((string) ($validated[$field] ?? ''));
+                if ($value !== '') {
+                    $updates[$field] = $value;
+                }
+            }
+            if ($updates === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Enter at least one field. Blank fields are left unchanged.',
+                ], 422);
+            }
+
+            $skus = array_values(array_unique(array_map(static fn ($sku) => trim((string) $sku), $validated['skus'])));
+            $products = ProductMaster::query()->whereIn('sku', $skus)->get();
+            $updated = 0;
+            foreach ($products as $product) {
+                $values = is_array($product->Values) ? $product->Values :
+                    (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                if (! is_array($values)) {
+                    $values = [];
+                }
+                foreach ($updates as $field => $value) {
+                    $values[$field] = $value;
+                    if ($field === 'condition') {
+                        $values['Condition'] = $value;
+                    }
+                }
+                $product->Values = $values;
+                $product->save();
+                $updated++;
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Updated '.$updated.' row'.($updated === 1 ? '' : 's').'.',
+                'updated' => $updated,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error bulk updating General Specific Master: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,

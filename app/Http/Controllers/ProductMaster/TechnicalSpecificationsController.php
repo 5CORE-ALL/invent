@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\Controller;
+use App\Models\CategoryMaster;
 use App\Models\ProductMaster;
+use App\Support\Marketplace\EbayCategoryAspects;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -24,7 +26,7 @@ class TechnicalSpecificationsController extends Controller
     public function getData(Request $request)
     {
         try {
-            @set_time_limit(180);
+            @set_time_limit(300);
             @ini_set('memory_limit', '512M');
 
             $select = [
@@ -42,13 +44,27 @@ class TechnicalSpecificationsController extends Controller
                 ->select($select)
                 ->get();
 
+            $categoryColumns = ['sku', 'category_ebay', 'category_amz', 'category_temu'];
+            if (Schema::hasTable('category_masters') && Schema::hasColumn('category_masters', 'category_ebay_id')) {
+                $categoryColumns[] = 'category_ebay_id';
+            }
+            $categories = Schema::hasTable('category_masters')
+                ? CategoryMaster::query()->get($categoryColumns)
+                    ->keyBy(fn ($row) => $this->skuKey((string) $row->sku))
+                : collect();
+
             $result = [];
             foreach ($products as $product) {
                 $specs = $this->normalizeSpecs($product->description_v2_specifications ?? null);
                 $text = $this->specsToText($specs);
+                $category = $categories->get($this->skuKey((string) $product->sku));
 
                 $result[] = [
                     'id' => $product->id,
+                    'category_ebay' => (string) ($category->category_ebay ?? ''),
+                    'category_ebay_id' => $this->ebayCategoryId($category),
+                    'category_amz' => (string) ($category->category_amz ?? ''),
+                    'category_temu' => (string) ($category->category_temu ?? ''),
                     'Parent' => $product->parent,
                     'SKU' => $product->sku,
                     'title150' => $product->title150,
@@ -63,11 +79,34 @@ class TechnicalSpecificationsController extends Controller
                 ];
             }
 
+            $this->fillEbayCategoryFromParent($result);
+            $aspectsByCategory = $this->ebayRequiredAspects($result);
+            $aspectNames = [];
+            foreach ($result as &$row) {
+                $names = $aspectsByCategory[$row['category_ebay_id']] ?? [];
+                $values = [];
+                foreach ($names as $name) {
+                    $values[$name] = $this->specValue($row['description_v2_specifications'], $name);
+                    $aspectNames[$name] = true;
+                }
+                $row['ebay_required'] = $names;
+                $row['ebay_values'] = $values;
+                unset($row['category_ebay_id']);
+            }
+            unset($row);
+
+            $ebayAspects = array_keys($aspectNames);
+            usort($ebayAspects, static fn ($a, $b) => strcasecmp($a, $b));
+
             return response()->json([
                 'message' => 'Technical Specifications data loaded',
                 'data' => $result,
+                'ebay_aspects' => $ebayAspects,
                 'status' => 200,
-                'meta' => ['total' => count($result)],
+                'meta' => [
+                    'total' => count($result),
+                    'ebay_categories' => count($aspectsByCategory),
+                ],
             ]);
         } catch (\Throwable $e) {
             Log::error('TechnicalSpecifications: getData failed', ['error' => $e->getMessage()]);
@@ -135,6 +174,108 @@ class TechnicalSpecificationsController extends Controller
                 'message' => 'Failed to save Technical Specifications: '.$e->getMessage(),
             ], 500);
         }
+    }
+
+    private function skuKey(string $sku): string
+    {
+        $sku = str_replace("\u{00a0}", ' ', trim($sku));
+
+        return strtolower(preg_replace('/\s+/u', ' ', $sku) ?? $sku);
+    }
+
+    private function ebayCategoryId($category): string
+    {
+        if ($category === null) {
+            return '';
+        }
+        $id = trim((string) ($category->category_ebay_id ?? ''));
+        if (preg_match('/^\d+$/', $id)) {
+            return $id;
+        }
+        $name = trim((string) ($category->category_ebay ?? ''));
+        if (preg_match('/^\d+$/', $name)) {
+            return $name;
+        }
+
+        return '';
+    }
+
+    /**
+     * A child with no eBay category uses the category saved on its parent row.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function fillEbayCategoryFromParent(array &$rows): void
+    {
+        $byParent = [];
+        foreach ($rows as $row) {
+            $id = trim((string) ($row['category_ebay_id'] ?? ''));
+            $parent = $this->skuKey((string) ($row['Parent'] ?? ''));
+            if ($id === '' || $parent === '' || ! $this->isParentSku((string) ($row['SKU'] ?? ''))) {
+                continue;
+            }
+            $byParent[$parent] = $id;
+        }
+        foreach ($rows as &$row) {
+            if (trim((string) ($row['category_ebay_id'] ?? '')) !== '' || $this->isParentSku((string) ($row['SKU'] ?? ''))) {
+                continue;
+            }
+            $parent = $this->skuKey((string) ($row['Parent'] ?? ''));
+            if ($parent !== '' && isset($byParent[$parent])) {
+                $row['category_ebay_id'] = $byParent[$parent];
+            }
+        }
+        unset($row);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, list<string>>
+     */
+    private function ebayRequiredAspects(array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            $id = trim((string) ($row['category_ebay_id'] ?? ''));
+            if ($id !== '') {
+                $ids[$id] = $id;
+            }
+        }
+        if ($ids === []) {
+            return [];
+        }
+
+        return EbayCategoryAspects::requiredNamesByCategory(
+            array_values($ids),
+            '',
+            (string) config('services.ebay.app_id'),
+            (string) config('services.ebay.cert_id')
+        );
+    }
+
+    private function isParentSku(string $sku): bool
+    {
+        return stripos(trim($sku), 'PARENT ') === 0;
+    }
+
+    /**
+     * @param  list<array{key: string, value: string}>  $specs
+     */
+    private function specValue(array $specs, string $name): string
+    {
+        $want = $this->specKey($name);
+        foreach ($specs as $row) {
+            if ($this->specKey((string) ($row['key'] ?? '')) === $want) {
+                return (string) ($row['value'] ?? '');
+            }
+        }
+
+        return '';
+    }
+
+    private function specKey(string $name): string
+    {
+        return strtolower(preg_replace('/[^a-z0-9]+/i', '', $name) ?? $name);
     }
 
     /**

@@ -53,6 +53,17 @@
             transition: all 0.2s;
         }
 
+        .table-responsive thead input.gsm-select-all,
+        .table-responsive tbody input.row-checkbox {
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            padding: 0;
+            accent-color: #1a56b7;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+
         .table-responsive thead select {
             background-color: rgba(255, 255, 255, 0.9);
             border: none;
@@ -274,6 +285,9 @@
                         <table id="general-specific-master-datatable" class="table dt-responsive nowrap" style="width: 100%;">
                             <thead>
                                 <tr>
+                                    <th style="width: 36px; text-align: center;">
+                                        <input type="checkbox" id="selectAll" class="gsm-select-all" title="Select all" aria-label="Select all rows">
+                                    </th>
                                     <th style="width: 60px;">Image</th>
                                     <th style="width: 100px;">
                                         <div style="display: flex; align-items: center; gap: 3px; font-size: 9px;">
@@ -431,6 +445,8 @@
                         <input type="hidden" id="editProductId" name="product_id">
                         <input type="hidden" id="editSku" name="sku">
                         <input type="hidden" id="editParent" name="parent">
+
+                        <div id="editBulkNote" class="alert alert-info py-2" style="display: none;"></div>
                         
                         <div class="row mb-3">
                             <div class="col-md-6">
@@ -527,6 +543,28 @@
                 return num.toFixed(decimals);
             }
 
+            function syncSelectAll() {
+                const selectAll = document.getElementById('selectAll');
+                const boxes = document.querySelectorAll('#table-body .row-checkbox');
+                const checked = document.querySelectorAll('#table-body .row-checkbox:checked');
+                if (!selectAll) return;
+                selectAll.checked = boxes.length > 0 && checked.length === boxes.length;
+                selectAll.indeterminate = checked.length > 0 && checked.length < boxes.length;
+            }
+
+            document.getElementById('selectAll')?.addEventListener('change', function () {
+                document.querySelectorAll('#table-body .row-checkbox').forEach(cb => {
+                    cb.checked = this.checked;
+                });
+                this.indeterminate = false;
+            });
+
+            document.getElementById('table-body')?.addEventListener('change', function (e) {
+                if (e.target.classList.contains('row-checkbox')) {
+                    syncSelectAll();
+                }
+            });
+
             // Load general specific data from server
             function loadData() {
                 const cacheParam = '?ts=' + new Date().getTime();
@@ -561,6 +599,12 @@
                 const tbody = document.getElementById('table-body');
                 tbody.innerHTML = '';
 
+                const selectAll = document.getElementById('selectAll');
+                if (selectAll) {
+                    selectAll.checked = false;
+                    selectAll.indeterminate = false;
+                }
+
                 if (data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="13" class="text-center">No data found</td></tr>';
                     return;
@@ -568,6 +612,17 @@
 
                 data.forEach(item => {
                     const row = document.createElement('tr');
+
+                    const selectCell = document.createElement('td');
+                    selectCell.className = 'text-center';
+                    selectCell.style.maxWidth = '36px';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'row-checkbox';
+                    checkbox.dataset.sku = item.SKU || '';
+                    checkbox.setAttribute('aria-label', 'Select ' + (item.SKU || 'row'));
+                    selectCell.appendChild(checkbox);
+                    row.appendChild(selectCell);
 
                     // Image column
                     const imageCell = document.createElement('td');
@@ -1011,56 +1066,168 @@
                 });
             }
 
-            // Setup edit button handlers
-            function setupEditButtons() {
-                document.querySelectorAll('.edit-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const sku = this.getAttribute('data-sku');
-                        const product = tableData.find(item => item.SKU === sku);
-                        if (product) {
-                            editGeneralSpecific(product);
-                        }
-                    });
+            let bulkEditSkus = null;
+
+            function selectedSkus() {
+                const skus = [];
+                document.querySelectorAll('#table-body .row-checkbox:checked').forEach(cb => {
+                    const sku = String(cb.dataset.sku || '').trim();
+                    if (sku && !skus.includes(sku)) skus.push(sku);
                 });
+                return skus;
+            }
+
+            function fieldValue(product, key) {
+                if (key === 'condition') {
+                    return String(product.condition || product.Condition || '').trim();
+                }
+                return String(product[key] || '').trim();
+            }
+
+            function sharedField(products, key) {
+                if (!products.length) return '';
+                const first = fieldValue(products[0], key);
+                return products.every(product => fieldValue(product, key) === first) ? first : '';
+            }
+
+            function bindSaveButton() {
+                const saveBtn = document.getElementById('saveGeneralSpecificBtn');
+                const newSaveBtn = saveBtn.cloneNode(true);
+                saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+                newSaveBtn.addEventListener('click', async function() {
+                    await saveGeneralSpecific();
+                });
+            }
+
+            function openEditor(modal) {
+                const el = document.getElementById('editGeneralSpecificModal');
+                if (!el) {
+                    showToast('danger', 'Edit window is missing. Refresh the page.');
+                    return;
+                }
+                if (el.parentElement !== document.body) {
+                    document.body.appendChild(el);
+                }
+                if (window.bootstrap && bootstrap.Modal) {
+                    const instance = bootstrap.Modal.getOrCreateInstance
+                        ? bootstrap.Modal.getOrCreateInstance(el)
+                        : new bootstrap.Modal(el);
+                    instance.show();
+                    return;
+                }
+                if (window.jQuery) {
+                    window.jQuery(el).modal('show');
+                }
+            }
+
+            function setupEditButtons() {
+                if (document.body.dataset.gsmEditBound === '1') return;
+                document.body.dataset.gsmEditBound = '1';
+                document.addEventListener('click', function (e) {
+                    const btn = e.target.closest('.edit-btn');
+                    if (!btn || !document.getElementById('table-body')?.contains(btn)) return;
+                    e.preventDefault();
+                    try {
+                        const selected = selectedSkus();
+                        const skuSet = new Set(selected);
+                        if (selected.length > 1) {
+                            const products = tableData.filter(item => skuSet.has(String(item.SKU || '')));
+                            editGeneralSpecificBulk(products.length ? products : selected.map(sku => ({ SKU: sku })));
+                            return;
+                        }
+                        const sku = btn.getAttribute('data-sku');
+                        const product = tableData.find(item => String(item.SKU || '') === String(sku || ''));
+                        if (!product) {
+                            showToast('danger', 'Could not find ' + (sku || 'that row') + '.');
+                            return;
+                        }
+                        editGeneralSpecific(product);
+                    } catch (err) {
+                        console.error(err);
+                        showToast('danger', err && err.message ? err.message : 'Could not open the editor.');
+                    }
+                });
+            }
+
+            function fillEditFields(values) {
+                document.getElementById('editBrand').value = values.brand || '';
+                document.getElementById('editHandlingTime').value = values.handling_time || '';
+                document.getElementById('editCountryOfOrigin').value = values.country_of_origin || '';
+                document.getElementById('editWarranty').value = values.warranty || '';
+                document.getElementById('editPropWarning').value = values.prop_warning || '';
+                document.getElementById('editCondition').value = values.condition || '';
             }
 
             // Edit General Specific Master
             function editGeneralSpecific(product) {
-                const modal = new bootstrap.Modal(document.getElementById('editGeneralSpecificModal'));
+                bulkEditSkus = null;
+                document.getElementById('editGeneralSpecificModalLabel').textContent = 'Edit General Specific Master';
+                const note = document.getElementById('editBulkNote');
+                if (note) note.style.display = 'none';
+                document.getElementById('saveGeneralSpecificBtn').innerHTML = '<i class="fas fa-save me-2"></i> Save Changes';
                 
                 // Populate form fields
                 document.getElementById('editProductId').value = product.id || '';
                 document.getElementById('editSku').value = product.SKU || '';
                 document.getElementById('editParent').value = product.Parent || '';
-                document.getElementById('editBrand').value = product.brand || '';
-                document.getElementById('editHandlingTime').value = product.handling_time || '';
-                document.getElementById('editCountryOfOrigin').value = product.country_of_origin || '';
-                document.getElementById('editWarranty').value = product.warranty || '';
-                document.getElementById('editPropWarning').value = product.prop_warning || '';
-                document.getElementById('editCondition').value = product.condition || product.Condition || '';
-                
-                // Setup save button handler
-                const saveBtn = document.getElementById('saveGeneralSpecificBtn');
-                const newSaveBtn = saveBtn.cloneNode(true);
-                saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-                
-                newSaveBtn.addEventListener('click', async function() {
-                    await saveGeneralSpecific();
+                fillEditFields({
+                    brand: product.brand || '',
+                    handling_time: product.handling_time || '',
+                    country_of_origin: product.country_of_origin || '',
+                    warranty: product.warranty || '',
+                    prop_warning: product.prop_warning || '',
+                    condition: product.condition || product.Condition || '',
                 });
                 
-                modal.show();
+                bindSaveButton();
+                openEditor();
+            }
+
+            function editGeneralSpecificBulk(products) {
+                bulkEditSkus = products.map(product => String(product.SKU || '').trim()).filter(Boolean);
+                const shown = bulkEditSkus.slice(0, 8).join(', ');
+                const extra = bulkEditSkus.length > 8 ? ' and ' + (bulkEditSkus.length - 8) + ' more' : '';
+                document.getElementById('editGeneralSpecificModalLabel').textContent = 'Bulk edit ' + bulkEditSkus.length + ' rows';
+                const note = document.getElementById('editBulkNote');
+                if (note) {
+                    note.style.display = 'block';
+                    note.textContent = 'Filled fields are saved on ' + bulkEditSkus.length + ' selected SKUs: ' + shown + extra + '. Leave a field blank to keep its current value.';
+                }
+                document.getElementById('editProductId').value = '';
+                document.getElementById('editSku').value = '';
+                document.getElementById('editParent').value = '';
+                fillEditFields({
+                    brand: sharedField(products, 'brand'),
+                    handling_time: sharedField(products, 'handling_time'),
+                    country_of_origin: sharedField(products, 'country_of_origin'),
+                    warranty: sharedField(products, 'warranty'),
+                    prop_warning: sharedField(products, 'prop_warning'),
+                    condition: sharedField(products, 'condition'),
+                });
+                document.getElementById('saveGeneralSpecificBtn').innerHTML = '<i class="fas fa-save me-2"></i> Apply to ' + bulkEditSkus.length + ' rows';
+                bindSaveButton();
+                openEditor();
             }
 
             // Save General Specific Master
             async function saveGeneralSpecific() {
                 const saveBtn = document.getElementById('saveGeneralSpecificBtn');
                 const originalText = saveBtn.innerHTML;
+                const isBulk = Array.isArray(bulkEditSkus) && bulkEditSkus.length > 1;
                 
                 try {
                     saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Saving...';
                     saveBtn.disabled = true;
                     
-                    const formData = {
+                    const formData = isBulk ? {
+                        skus: bulkEditSkus,
+                        brand: document.getElementById('editBrand').value,
+                        handling_time: document.getElementById('editHandlingTime').value,
+                        country_of_origin: document.getElementById('editCountryOfOrigin').value,
+                        warranty: document.getElementById('editWarranty').value,
+                        prop_warning: document.getElementById('editPropWarning').value,
+                        condition: document.getElementById('editCondition').value
+                    } : {
                         product_id: document.getElementById('editProductId').value,
                         sku: document.getElementById('editSku').value,
                         parent: document.getElementById('editParent').value,
@@ -1087,7 +1254,8 @@
                         throw new Error(data.message || 'Failed to save data');
                     }
                     
-                    showToast('success', 'General Specific Master updated successfully!');
+                    showToast('success', data.message || 'General Specific Master updated successfully!');
+                    bulkEditSkus = null;
                     
                     // Close modal
                     const modal = bootstrap.Modal.getInstance(document.getElementById('editGeneralSpecificModal'));
@@ -1428,6 +1596,7 @@
             }
 
             // Initialize
+            setupEditButtons();
             loadData();
             setupExcelExport();
             setupAddButton();
