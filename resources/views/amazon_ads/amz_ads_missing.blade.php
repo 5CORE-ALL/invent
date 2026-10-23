@@ -789,6 +789,39 @@
                 kw: { map: {}, loading: false, field: 'kw' },
                 pt: { map: {}, loading: false, field: 'pt' }
             };
+            // Counts survive a page reload: kept in localStorage for 30 minutes (same as the server-side cache).
+            var CNT_STORE_KEY = 'amzMissingCounts.v1';
+            var CNT_TTL_MS = 30 * 60 * 1000;
+            var cntTs = { kw: {}, pt: {} };
+            function cntHydrate() {
+                try {
+                    var raw = JSON.parse(window.localStorage.getItem(CNT_STORE_KEY) || '{}');
+                    var now = Date.now();
+                    ['kw', 'pt'].forEach(function (kind) {
+                        var src = raw[kind] || {};
+                        Object.keys(src).forEach(function (k) {
+                            var e = src[k];
+                            if (e && e.t && e.t.total != null && now - e.ts < CNT_TTL_MS) {
+                                cntState[kind].map[k] = e.t;
+                                cntTs[kind][k] = e.ts;
+                            }
+                        });
+                    });
+                } catch (err) { /* storage unavailable or corrupt: just reload from Amazon */ }
+            }
+            function cntPersist(kind, keys) {
+                try {
+                    var raw = JSON.parse(window.localStorage.getItem(CNT_STORE_KEY) || '{}');
+                    raw[kind] = raw[kind] || {};
+                    var now = Date.now();
+                    (keys || Object.keys(cntState[kind].map)).forEach(function (k) {
+                        var t = cntState[kind].map[k];
+                        if (t && t.total != null) { raw[kind][k] = { t: t, ts: now }; cntTs[kind][k] = now; }
+                    });
+                    window.localStorage.setItem(CNT_STORE_KEY, JSON.stringify(raw));
+                } catch (err) { /* ignore quota / private mode */ }
+            }
+            cntHydrate();
             function kwRefKey(c) { return c && c.campaign_id ? String(c.campaign_id) : 'n:' + String((c && c.campaign_name) || ''); }
             function kwRowRefs(d, kind) {
                 return (Array.isArray(d && d[cntState[kind].field]) ? d[cntState[kind].field] : []).map(function (c) {
@@ -1784,6 +1817,7 @@
                     el.classList.toggle('text-danger', !!isErr);
                 }
                 // kind: 'kw' | 'pt'. refsOverride: load exactly these refs (refreshing them); otherwise every linked campaign not loaded yet.
+                var kwLastData = null;
                 function amzLoadCounts(kind, refsOverride, onDone) {
                     var st = cntState[kind];
                     var label = kind === 'pt' ? 'target' : 'keyword';
@@ -1792,10 +1826,12 @@
                     if (refsOverride) {
                         refsOverride.forEach(function (r) { all[r.key] = r; });
                     } else {
-                        table.getData().forEach(function (d) {
+                        var source = (kwLastData && kwLastData.length) ? kwLastData : table.getData();
+                        source.forEach(function (d) {
                             kwRowRefs(d, kind).forEach(function (r) {
                                 var known = st.map[r.key];
-                                if (!known || known.unresolved) { all[r.key] = r; }
+                                var fresh = known && !known.unresolved && cntTs[kind][r.key] && (Date.now() - cntTs[kind][r.key] < CNT_TTL_MS);
+                                if (!fresh) { all[r.key] = r; }
                             });
                         });
                     }
@@ -1821,6 +1857,7 @@
                             var body = out.body || {};
                             if (body.counts) {
                                 Object.keys(body.counts).forEach(function (k) { st.map[k] = body.counts[k]; });
+                                cntPersist(kind, Object.keys(body.counts));
                             }
                             (body.unresolved || []).forEach(function (k) { st.map[k] = { total: null, unresolved: true }; });
                             if (!out.ok || body.ok === false) {
@@ -1838,14 +1875,17 @@
                     next();
                 }
                 // Keywords first, then targets (one after the other: Amazon throttles parallel calls).
-                function amzLoadAllCounts() {
+                function amzLoadAllCounts(data) {
+                    kwLastData = Array.isArray(data) ? data : null;
                     amzLoadCounts('kw', null, function (err) {
                         if (!err) { amzLoadCounts('pt', null, null); }
                     });
                 }
                 var kwCountReloadBtn = document.getElementById('amzKwCountReloadBtn');
                 if (kwCountReloadBtn) { kwCountReloadBtn.addEventListener('click', amzLoadAllCounts); }
-                table.on('dataLoaded', amzLoadAllCounts);
+                table.on('dataLoaded', function (data) { amzLoadAllCounts(data); });
+                // Show the counts remembered from before the reload as soon as the rows exist.
+                table.on('renderComplete', function () { if (!cntState.kw.loading && !cntState.pt.loading) { kwCountsReformat(); } });
 
                 // ---- Keyword list modal (click a KW K Count) ----
                 var kwListState = { kind: 'kw', rows: [], campaigns: [], refs: [], parent: '' };
@@ -1916,6 +1956,7 @@
                             var t = { total: mine.length, enabled: 0, paused: 0 };
                             mine.forEach(function (r) { if (r.state === 'ENABLED') { t.enabled++; } else if (r.state === 'PAUSED') { t.paused++; } });
                             (c.keys || []).forEach(function (k) { cntState[kwListState.kind].map[k] = t; });
+                            cntPersist(kwListState.kind, c.keys || []);
                         });
                         kwCountsReformat();
                         if (b.truncated) {
@@ -1955,6 +1996,7 @@
                         e.preventDefault();
                         var row = table.getRow(a.getAttribute('data-sku'));
                         if (row) { kwListOpen(row.getData(), a.getAttribute('data-kind')); }
+                        if (!cntState.kw.loading && !cntState.pt.loading) { amzLoadAllCounts(); }
                     });
                 }
                 ['amzKwListCampaign', 'amzKwListMatch', 'amzKwListState'].forEach(function (id) {
