@@ -3312,6 +3312,8 @@
             ajaxSorting: false,
             layout: 'fitData',
             layoutColumnsOnNewData: true,
+            // ~43 columns x 100 rows: only build cells for the columns on screen so left/right scroll stays smooth.
+            renderHorizontal: 'virtual',
             pagination: true,
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
