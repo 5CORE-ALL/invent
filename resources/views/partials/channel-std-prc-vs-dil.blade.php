@@ -757,8 +757,8 @@
             if (!chStdRowHasLmp(d) || !(chStdStockForAge(d) > 0)) return 0;
             return chStdRangeDisc(chStdDilPct(d), rules || chStdLmp);
         }
-        // The SNROI Cap rule exists only on Amazon (its own partial) and the no-Ship pages. Every other page prices from
-        // its discounts only, so the cap is off and its panel is not drawn.
+        // The SNROI Cap rule exists on Amazon (its own partial), eBay 1 / 2 / 3 and the no-Ship pages. Every other page
+        // prices from its discounts only, so the cap is off and its panel is not drawn.
         function chStdUsesSnroiCap() {
             return @json(\App\Support\StdPrcVsDilPricer::supportsSnroiCap((string) ($channelPromoChannel ?? '')));
         }
@@ -2414,7 +2414,7 @@
                 url: CH_PROMO_RULES_BASE + '/std-prc-vs-dil',
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), 'Accept': 'application/json' },
-                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, pricing: draft.pricing, roi: draft.roi, lmp: draft.lmp, moq_m: draft.moqM, snroi_cap: (draft.snroiCap || []).map(function(r) { return { min: r.min, max: r.max, cap: r.cap == null ? '' : r.cap }; }), zero_sold_disc: draft.zeroSoldDisc },
+                data: { _token: (typeof chPromoCsrf === 'function' ? chPromoCsrf() : ''), dil: draft.dil, age: draft.age, cvr: draft.cvr, reviews: draft.reviews, review_max: draft.reviewMax, buss: draft.buss, pricing: draft.pricing, roi: draft.roi, lmp: draft.lmp, moq_m: draft.moqM, snroi_cap_sent: chStdUsesSnroiCap() ? 1 : 0, snroi_cap: (draft.snroiCap || []).map(function(r) { return { min: r.min, max: r.max, cap: r.cap == null ? '' : r.cap }; }), zero_sold_disc: draft.zeroSoldDisc },
             }).done(function(res) {
                 if (res && res.dil) chStdDil = res.dil.map(chStdNormRange).filter(Boolean);
                 if (res && res.age) chStdAge = res.age.map(chStdNormRange).filter(Boolean);

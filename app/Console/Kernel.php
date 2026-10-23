@@ -2265,6 +2265,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log));
 
+        // BGT Rules "Pause ads if price below $X" — hourly, so low-priced ads are paused without waiting for the daily budget push.
+        $schedule->command('google:pause-low-price-shopping')
+            ->hourlyAt(15)
+            ->name('google-pause-low-price-shopping')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('budget:update-serp')
             ->dailyAt('17:51')
             ->timezone('Asia/Kolkata')

@@ -215,7 +215,10 @@ class StdPrcVsDilPricer
         return $price > 0 ? $price : null;
     }
 
-    /** Pages with no Ship (and Amazon, which has its own job) keep their own inputs: never use the channel fallback. */
+    /**
+     * Pages with no Ship (and Amazon, which has its own job) keep their own inputs: never use the channel fallback.
+     * eBay 1 / 2 / 3 send take-home %, Ship and Ads% on every row, and fall back to the channel's own values.
+     */
     private function usesChannelSnroiInputs(): bool
     {
         $c = strtolower(trim($this->channel));
@@ -499,7 +502,8 @@ class StdPrcVsDilPricer
     }
 
     /**
-     * Pages that have the SNROI Cap rule: Amazon and the pages with no Ship (Wayfair, Faire, Topdawg, Alibaba, Shopify B2B,
+     * Pages that have the SNROI Cap rule: Amazon, eBay 1 / 2 / 3 (same rule chain as Amazon, SNROI% judged with the
+     * page's take-home %, Ship and Ads%) and the pages with no Ship (Wayfair, Faire, Topdawg, Alibaba, Shopify B2B,
      * Depop, Mercari w/o ship, Doba w/o ship, FB Marketplace, Instagram). Every other page prices from its discounts only.
      */
     public static function supportsSnroiCap(string $channel): bool
@@ -507,6 +511,7 @@ class StdPrcVsDilPricer
         $c = strtolower(trim($channel));
 
         return $c === 'amazon'
+            || self::usesOwnChannelMetrics($c)
             || self::excludesShip($c)
             || in_array($c, ['doba_withoutship', 'fb_marketplace', 'instagram'], true);
     }

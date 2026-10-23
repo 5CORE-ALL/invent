@@ -1434,9 +1434,12 @@ class ChannelPromoPricingController extends Controller
         }
         $defaults = $this->defaultStdPrcVsDil();
         // An old page that does not send snroi_cap must not wipe the caps already saved.
+        // The page sends snroi_cap_sent (like Amazon) so that deleting every slab still clears them.
         $existing = ChannelTabulatorColumnSetting::query()->where('channel_name', $channel.'_std_prc_vs_dil')->first();
         $existingVis = is_array($existing?->visibility) ? $existing->visibility : [];
-        $snroiCapIn = $request->has('snroi_cap') ? $request->input('snroi_cap') : ($existingVis['snroi_cap'] ?? null);
+        $snroiCapIn = ($request->has('snroi_cap') || $request->boolean('snroi_cap_sent'))
+            ? $request->input('snroi_cap')
+            : ($existingVis['snroi_cap'] ?? null);
         $payload = [
             'dil' => $this->normalizeStdPrcRanges($request->input('dil'), $defaults['dil']),
             'age' => $this->normalizeStdPrcRanges($request->input('age'), $defaults['age']),
