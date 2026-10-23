@@ -140,10 +140,10 @@
                             <div class="dropdown-menu" id="ts-column-dropdown" aria-labelledby="tsColumnVisibility"></div>
                         </div>
                         <button type="button" id="pullEbayBtn" class="btn btn-sm btn-outline-primary" title="Pull item specifics from eBay for the selected rows">
-                            <i class="fas fa-cloud-download-alt"></i> Pull from eBay
+                            <i class="fas fa-cloud-download-alt"></i> Pull from eBay 1
                         </button>
-                        <button type="button" id="pushEbayBtn" class="btn btn-sm btn-outline-danger" title="Push technical specifications to eBay for the selected rows">
-                            <i class="fas fa-cloud-upload-alt"></i> Push to eBay
+                        <button type="button" id="pushEbayBtn" class="btn btn-sm btn-outline-danger" title="Push technical specifications to eBay 1 for the selected rows">
+                            <i class="fas fa-cloud-upload-alt"></i> Push to eBay 1
                         </button>
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm">
                             <i class="fas fa-download"></i> Export
@@ -753,13 +753,19 @@
             }
 
             function initTable(rows, aspectNames) {
-                if (Array.isArray(aspectNames)) ebayAspectNames = aspectNames;
+                const nextNames = Array.isArray(aspectNames) ? aspectNames : ebayAspectNames;
+                if (table && nextNames.join('\n') !== ebayAspectNames.join('\n')) {
+                    table.destroy();
+                    table = null;
+                }
+                ebayAspectNames = nextNames;
                 rows.forEach(stampAspectFields);
                 allRows = rows;
                 if (table) {
                     table.replaceData(rows);
                     applyStatusFilter();
                     buildTsColumnPicker();
+                    bindTopHScroll();
                     return;
                 }
 
@@ -993,7 +999,7 @@
 
             function promptEbaySync(mode) {
                 const rows = selectedRows();
-                const verb = mode === 'pull' ? 'pull from eBay' : 'push to eBay';
+                const verb = mode === 'pull' ? 'pull from eBay 1' : 'push to eBay 1';
                 if (!rows.length) {
                     openEbayPrompt({
                         title: 'Select rows',
@@ -1018,14 +1024,14 @@
                     });
                 }
                 openEbayPrompt({
-                    title: mode === 'pull' ? 'Pull from eBay' : 'Push to eBay',
+                    title: mode === 'pull' ? 'Pull from eBay 1' : 'Push to eBay 1',
                     body: mode === 'pull'
-                        ? 'Pull technical specifications for these ' + rows.length + ' rows? Live eBay item specifics replace the specifications saved here.'
-                        : 'Push technical specifications for these ' + rows.length + ' rows to every eBay account that lists them?',
+                        ? 'Pull eBay 1 specifications for these ' + rows.length + ' rows? Matching columns are filled, and any specification that does not have a column yet is added for that category. A blank cell is one eBay 1 did not have.'
+                        : 'Push the filled specifications for these ' + rows.length + ' rows back to eBay 1?',
                     rows: rows,
                     blanks: blanks,
-                    alertText: 'These rows have blank specifications. Blank values are not sent, so eBay keeps its current value. Push anyway only if that is what you want.',
-                    confirmText: blanks.length ? 'Push anyway' : (mode === 'pull' ? 'Pull from eBay' : 'Push to eBay'),
+                    alertText: 'These rows have blank specifications. Blank values are not sent, so eBay 1 keeps its current value. Push anyway only if that is what you want.',
+                    confirmText: blanks.length ? 'Push anyway' : (mode === 'pull' ? 'Pull from eBay 1' : 'Push to eBay 1'),
                     confirmClass: blanks.length ? 'btn-danger' : 'btn-primary',
                     onConfirm: function () { runEbaySync(mode, rows.map(function (row) { return row.SKU; }), blanks.length > 0); },
                 });
@@ -1060,7 +1066,7 @@
                             confirmBtn.disabled = false;
                             cancelBtn.disabled = false;
                             openEbayPrompt({
-                                title: 'Push to eBay',
+                                title: 'Push to eBay 1',
                                 body: 'These rows have blank specifications.',
                                 rows: selectedRows().filter(function (row) {
                                     return (json.blanks || []).some(function (blank) { return blank.sku === row.SKU; });
@@ -1085,6 +1091,10 @@
                             }
                         });
                         done += chunk.length;
+                    }
+                    if (mode === 'pull' && done > failed) {
+                        status.textContent = 'Refreshing columns…';
+                        await loadData();
                     }
                     status.textContent = 'Finished ' + done + ' row' + (done === 1 ? '' : 's') + (failed ? ', ' + failed + ' failed' : '') + '.';
                     applyStatusFilter();

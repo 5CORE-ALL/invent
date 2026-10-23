@@ -34,7 +34,7 @@ class EbayTechnicalSpecificationSync
             return $this->emptyResult(false, 'Parent rows are not listed on eBay.');
         }
 
-        foreach (self::ACCOUNTS as $label => $cfg) {
+        foreach (['eBay 1' => self::ACCOUNTS['eBay 1']] as $label => $cfg) {
             $itemId = $this->listingId($cfg['table'], $sku);
             if ($itemId === null) {
                 continue;
@@ -67,7 +67,7 @@ class EbayTechnicalSpecificationSync
             ];
         }
 
-        return $this->emptyResult(false, 'This SKU is not listed on eBay 1, eBay 2, or eBay 3.');
+        return $this->emptyResult(false, 'This SKU is not listed on eBay 1.');
     }
 
     /**
@@ -95,7 +95,7 @@ class EbayTechnicalSpecificationSync
         $messages = [];
         $found = false;
         $failed = false;
-        foreach (self::ACCOUNTS as $label => $cfg) {
+        foreach (['eBay 1' => self::ACCOUNTS['eBay 1']] as $label => $cfg) {
             $itemId = $this->listingId($cfg['table'], $sku);
             if ($itemId === null) {
                 continue;
@@ -137,7 +137,7 @@ class EbayTechnicalSpecificationSync
         }
 
         if (! $found) {
-            return ['success' => false, 'message' => 'This SKU is not listed on eBay 1, eBay 2, or eBay 3.'];
+            return ['success' => false, 'message' => 'This SKU is not listed on eBay 1.'];
         }
 
         return ['success' => ! $failed, 'message' => implode(' ', $messages)];
@@ -155,27 +155,111 @@ class EbayTechnicalSpecificationSync
         foreach ($rows as $row) {
             $specs[] = ['key' => $row['name'], 'value' => implode(', ', $row['values'])];
         }
+        foreach ($this->specsFromDescription($node['Description'] ?? '') as $spec) {
+            $this->addSpec($specs, $spec['key'], $spec['value']);
+        }
+        $this->addSpec($specs, 'Condition', $this->plainText($node['ConditionDisplayName'] ?? ''));
+        $details = is_array($node['ProductListingDetails'] ?? null) ? $node['ProductListingDetails'] : [];
+        $this->addSpec($specs, 'UPC', $this->plainText($details['UPC'] ?? ''));
 
         $variation = EbayTradingReviseItem::findVariationForSku($item, $sku);
         if ($variation === null) {
             return $specs;
         }
         foreach (EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null) as $name => $value) {
-            $replaced = false;
-            foreach ($specs as &$spec) {
-                if (strcasecmp($spec['key'], (string) $name) === 0) {
-                    $spec['value'] = (string) $value;
-                    $replaced = true;
-                    break;
-                }
-            }
-            unset($spec);
-            if (! $replaced) {
-                $specs[] = ['key' => (string) $name, 'value' => (string) $value];
-            }
+            $this->addSpec($specs, (string) $name, (string) $value, true);
         }
 
         return $specs;
+    }
+
+    /**
+     * Specification lines live in the listing description when they are not item specifics.
+     * The block starts at a "Specification" heading and continues through Key: Value lines.
+     *
+     * @return list<array{key: string, value: string}>
+     */
+    private function specsFromDescription(mixed $html): array
+    {
+        $html = trim(is_array($html) ? (string) reset($html) : (string) $html);
+        if ($html === '') {
+            return [];
+        }
+
+        $text = html_entity_decode(strip_tags(str_ireplace(
+            ['<br>', '<br/>', '<br />', '</tr>', '</li>', '</p>', '</div>', '</h1>', '</h2>', '</h3>', '</td>'],
+            "\n",
+            $html
+        )));
+        $lines = [];
+        foreach (preg_split('/\r\n|\r|\n/', $text) ?: [] as $line) {
+            $line = trim(preg_replace('/\s+/u', ' ', $line) ?? '');
+            if ($line !== '') {
+                $lines[] = $line;
+            }
+        }
+
+        $start = null;
+        foreach ($lines as $index => $line) {
+            if (preg_match('/\bspecifications?\b\s*:?\s*$/iu', $line)) {
+                $start = $index + 1;
+                break;
+            }
+        }
+        if ($start === null) {
+            return [];
+        }
+
+        $out = [];
+        for ($index = $start, $count = count($lines); $index < $count; $index++) {
+            if (! preg_match('/^(.{1,80}?)\s*:\s*(.+)$/u', $lines[$index], $match)) {
+                if ($out !== []) {
+                    break;
+                }
+
+                continue;
+            }
+            $key = trim($match[1]);
+            $value = trim($match[2]);
+            if ($key === '' || $value === '' || preg_match('/^https?:/i', $key)) {
+                continue;
+            }
+            $out[] = ['key' => $key, 'value' => $value];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array{key: string, value: string}>  $specs
+     */
+    private function plainText(mixed $value): string
+    {
+        if (is_array($value)) {
+            $value = reset($value);
+        }
+
+        return trim(html_entity_decode(strip_tags((string) $value)));
+    }
+
+    private function addSpec(array &$specs, string $key, string $value, bool $overwrite = false): void
+    {
+        $key = trim($key);
+        $value = trim($value);
+        if ($key === '' || $value === '') {
+            return;
+        }
+        foreach ($specs as &$spec) {
+            if (strcasecmp($spec['key'], $key) === 0) {
+                if ($overwrite) {
+                    $spec['value'] = $value;
+                }
+
+                return;
+            }
+        }
+        unset($spec);
+        $specs[] = ['key' => $key, 'value' => $value];
     }
 
     private function listingId(string $table, string $sku): ?string
