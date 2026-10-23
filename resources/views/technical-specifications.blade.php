@@ -118,6 +118,11 @@
         #technical-specs-table .tabulator-cell {
             text-align: center;
         }
+        #technical-specs-table .tabulator-col-title .ts-col-icon {
+            display: inline-block;
+            transform: rotate(90deg);
+            font-size: 14px;
+        }
         #technical-specs-table .ts-cat-dot {
             display: inline-block;
             width: 12px;
@@ -1163,7 +1168,7 @@
                 const data = table.getData();
                 table.getColumns().forEach(function (col) {
                     const field = col.getField();
-                    if (!field || field === '_action' || field === '_missing' || field.indexOf('category_') === 0) return;
+                    if (!field || field === '_action' || field === '_missing' || field === '_edit' || field.indexOf('category_') === 0) return;
                     let max = 52;
                     data.forEach(function (row) {
                         const text = String(field === 'Parent'
@@ -1251,6 +1256,27 @@
                                 return '<span class="ts-missing" title="' + esc(names.join(', ')) + '"><i class="fas fa-exclamation-triangle"></i>' + names.length + '</span>';
                             },
                         },
+                        {
+                            title: 'Edit',
+                            field: '_edit',
+                            width: 52,
+                            minWidth: 52,
+                            hozAlign: 'center',
+                            headerHozAlign: 'center',
+                            headerTooltip: 'Edit',
+                            headerSort: false,
+                            resizable: false,
+                            frozen: true,
+                            titleFormatter: function () {
+                                return '<i class="fas fa-pen ts-col-icon" title="Edit"></i>';
+                            },
+                            formatter: function () {
+                                return '<button type="button" class="btn btn-sm btn-primary ts-edit-btn" title="Edit"><i class="fas fa-edit"></i></button>';
+                            },
+                            cellClick: function (e, cell) {
+                                if (e.target.closest('.ts-edit-btn')) openEdit(cell.getRow().getData());
+                            },
+                        },
                         categoryColumn('Category eBay', 'category_ebay'),
                         categoryColumn('Category Amz', 'category_amz'),
                         categoryColumn('Category Temu', 'category_temu'),
@@ -1270,22 +1296,17 @@
                         {
                             title: 'Action',
                             field: '_action',
-                            width: 96,
-                            minWidth: 96,
+                            width: 60,
+                            minWidth: 60,
                             hozAlign: 'center',
                             headerHozAlign: 'center',
                             headerTooltip: 'Action',
                             headerSort: false,
                             formatter: function () {
-                                return '<div class="d-flex gap-1 justify-content-center">' +
-                                    '<button type="button" class="btn btn-sm btn-info text-white ts-view-btn"><i class="fas fa-eye"></i></button>' +
-                                    '<button type="button" class="btn btn-sm btn-primary ts-edit-btn"><i class="fas fa-edit"></i></button>' +
-                                    '</div>';
+                                return '<button type="button" class="btn btn-sm btn-info text-white ts-view-btn" title="View"><i class="fas fa-eye"></i></button>';
                             },
                             cellClick: function (e, cell) {
-                                const d = cell.getRow().getData();
-                                if (e.target.closest('.ts-view-btn')) openView(d);
-                                if (e.target.closest('.ts-edit-btn')) openEdit(d);
+                                if (e.target.closest('.ts-view-btn')) openView(cell.getRow().getData());
                             },
                         },
                     ],
