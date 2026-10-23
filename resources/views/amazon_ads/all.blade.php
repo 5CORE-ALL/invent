@@ -3769,7 +3769,7 @@
                     amzPaintYesterdayBadgeTone(dot.id, cls);
                     var word = cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : (cls === 'flat' ? 'Same' : ''));
                     dot.title = word
-                        ? (word + ' vs prior day (' + amzKpiFmt(key, old) + ' → ' + amzKpiFmt(key, cur) + '). Click for history.')
+                        ? (word + ' vs prior day (daily history). Click for history.')
                         : 'Click for history (no prior day yet)';
                 });
             }

@@ -5194,6 +5194,18 @@ class AmazonAdsController extends Controller
             $cursor = $cursor->modify('+1 day');
         }
 
+        // The newest point is the tile itself (same L1 / L7 / L30 summary rows and the same formulas as the cards), so the
+        // chart and the dots always end on the number shown. Older points are rebuilt from the daily rows.
+        // Dots (metric=tones) compare two days built the same way, so they use the daily series before this swap: the L30 / L7
+        // summary rows count sold / sales differently from the sum of daily rows, which would fake a jump on the last day.
+        $tileValues = $metric === 'tones' ? null : self::kpiTileValuesForTables($request, $tables);
+        if ($tileValues !== null && $series !== []) {
+            $lastIdx = count($series) - 1;
+            foreach ($tileValues as $k => $v) {
+                $series[$lastIdx][$k] = $v === null ? null : round((float) $v, 4);
+            }
+        }
+
         $n = count($series);
         if ($metric === 'tones') {
             $cur = $n >= 1 ? $series[$n - 1] : [];
@@ -5211,6 +5223,98 @@ class AmazonAdsController extends Controller
         }
 
         return response()->json(['ok' => true, 'metric' => $metric, 'points' => $points]);
+    }
+
+    /**
+     * Tile values exactly as the summary cards show them (payload.kpiBlocks + the existing ACOS / projected totals),
+     * summed over the given tables. Null when no table has data.
+     *
+     * @param  list<string>  $tables
+     * @return array<string, float|int|null>|null
+     */
+    private static function kpiTileValuesForTables(Request $request, array $tables): ?array
+    {
+        $blocks = null;
+        foreach ($tables as $table) {
+            if (! SchemaMemo::hasTable($table)) {
+                continue;
+            }
+            $dbColumns = self::orderedColumnsForTable($table);
+            if (! in_array('campaign_id', $dbColumns, true) || ! in_array('cost', $dbColumns, true)) {
+                continue;
+            }
+            $universe = self::badgeUniverseQuery($request, $table, $dbColumns);
+            if ($universe === null) {
+                continue;
+            }
+            $columns = self::displayColumnsForTable($table);
+            $l30 = self::aggregateL30CostAndSalesDistinctForFilteredAmazonAdsRows($universe, $table, $dbColumns, $columns);
+            if ($l30 === null) {
+                continue;
+            }
+            $l1 = self::sumLatestSummaryMetricsForFilteredCampaigns($universe, $table, $dbColumns, 'L1');
+            $l7 = self::sumLatestSummaryMetricsForFilteredCampaigns($universe, $table, $dbColumns, 'L7');
+            $l30b = self::sumLatestSummaryMetricsForFilteredCampaigns($universe, $table, $dbColumns, 'L30');
+            $part = [
+                'y' => ['spend' => (float) $l1['cost_sum'], 'sales' => (float) $l1['sales_sum'], 'clicks' => (float) $l1['clicks_sum'], 'sold' => (float) $l1['purchases_sum'], 'budget' => (float) $l1['budget_sum']],
+                'l7' => ['spend' => (float) $l7['cost_sum'], 'sales' => (float) $l7['sales_sum'], 'clicks' => (float) $l7['clicks_sum'], 'sold' => (float) $l7['purchases_sum'], 'budget' => (float) $l7['budget_sum']],
+                'l30' => ['spend' => (float) $l30['cost_sum'], 'sales' => (float) $l30['sales_sum'], 'clicks' => (float) $l30['clicks_sum'], 'sold' => (float) $l30['purchases_sum'], 'budget' => (float) $l30b['budget_sum']],
+                'u1' => self::utilBucketsLatestSummaryForFilteredCampaigns($universe, $table, $dbColumns, 'L1', 1),
+                'u7' => self::utilBucketsLatestSummaryForFilteredCampaigns($universe, $table, $dbColumns, 'L7', 7),
+            ];
+            $blocks = self::sumKpiBlocks($blocks, $part);
+        }
+        if ($blocks === null) {
+            return null;
+        }
+
+        $derive = static function (array $w, int $days, float $acos): array {
+            return [
+                'bgt' => $w['budget'],
+                'util' => $w['budget'] > 0 ? $w['spend'] / ($w['budget'] * $days) * 100 : null,
+                'bid' => $w['clicks'] > 0 ? $w['spend'] / $w['clicks'] : null,
+                'cvr' => $w['clicks'] > 0 ? $w['sold'] / $w['clicks'] * 100 : null,
+                'acos' => $acos,
+                'clicks' => $w['clicks'],
+                'sold' => $w['sold'],
+                'sales' => $w['sales'],
+                'spend' => $w['spend'],
+            ];
+        };
+        $y = $blocks['y'];
+        $l30 = $blocks['l30'];
+        $l7 = $blocks['l7'];
+        $out = [];
+        foreach ($derive($y, 1, self::overallAcosPercentFromAggregatedSums($y['spend'], $y['sales'])) as $k => $v) {
+            $out['y_'.$k] = $v;
+        }
+        foreach ($derive($l30, 30, self::overallAcosPercentFromAggregatedSums($l30['spend'], $l30['sales'])) as $k => $v) {
+            $out['l30_'.$k] = $v;
+        }
+        $out['l30_bgt_total'] = $l30['budget'] * 30;
+
+        // Projected: spend / sales = L7 ÷ 7 × 30 (rounded like the Projected badges); clicks / sold the same; ratios from L7.
+        $pSpend = self::projectMonthFromLast7($l7['spend']);
+        $pSales = self::projectMonthFromLast7($l7['sales']);
+        $p = $derive($l7, 7, self::overallAcosPercentFromAggregatedSums($pSpend, $pSales));
+        foreach ($p as $k => $v) {
+            $out['p_'.$k] = $v;
+        }
+        $out['p_clicks'] = $l7['clicks'] / 7 * 30;
+        $out['p_sold'] = $l7['sold'] / 7 * 30;
+        $out['p_sales'] = $pSales;
+        $out['p_spend'] = $pSpend;
+        $out['p_bgt_total'] = $l7['budget'] * 30;
+
+        foreach (['u1', 'u7'] as $u) {
+            $b = $blocks[$u];
+            $out[$u.'_green'] = $b['66_99'];
+            $out[$u.'_red'] = $b['lt66'];
+            $out[$u.'_pink'] = $b['gt99'];
+            $out[$u.'_avg'] = $b['bd'] > 0 ? $b['spend'] / $b['bd'] * 100 : null;
+        }
+
+        return $out;
     }
 
     /**
