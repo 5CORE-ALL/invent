@@ -499,6 +499,7 @@
         .gac-card--yesterday .faas-stat-badge, .gac-card--l30 .faas-stat-badge, .gac-card--projected .faas-stat-badge {
             background: #fff; color: #111827; border: 1px solid #e5e7eb;
         }
+        .gac-card .faas-stat-badge.gac-ads-needed { background: #7c3aed; color: #fff; border-color: #6d28d9; }
         .gac-card .faas-stat-badge.gac-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
         .gac-card .faas-stat-badge.gac-cmp-worse  { background: #ef4444; color: #fff; border-color: #dc2626; }
         /* Dashboard-standard history dot: green = up, red = down, yellow = same, grey = no prior day. */
@@ -721,6 +722,10 @@
                                         <span id="faasActiveBadge" data-label="Active"
                                     class="faas-stat-badge faas-stat-badge--sales is-static"
                                     title="Enabled campaigns out of all campaigns (every status), and the share that is active.">ACTIVE:<span id="faasActiveValue">0 / 0</span><span class="gac-util-pct" id="faasActivePct">0%</span></span>
+                                        {{-- ADS NEEDED: SKUs with INV > 0 and no running ad, across all enabled campaigns (purple). --}}
+                                        <span id="gacAdsNeededBadge" data-label="Ads Needed"
+                                    class="faas-stat-badge gac-ads-needed is-static"
+                                    title="SKUs that have inventory but no running ad (all enabled campaigns).">ADS NEEDED:<span id="gacAdsNeededValue">—</span></span>
                                     @endif
                                     @if ($kpiRow['tag'] === 'L30')
                                         {{-- L30 CLICKS: sum of the visible rows' L30 clicks (updateMetricBadges()); opens the clicks history chart. --}}
@@ -1302,6 +1307,7 @@
                 ver_total: true,
                 ver_status: true,
                 ver_reason: true,
+                ads_needed_title: true,
                 id_alert_title: true,
                 bgt_views_color: true,
                 bgt_views_label: true,
@@ -1420,6 +1426,25 @@
             // Ads on/off switch: ON = ENABLED. Flipping it pushes PAUSED/ENABLED to Google Ads right away.
             // If the row is one of several checked rows, the same change is applied to all checked rows (bulk).
             var gacRawToggleBusy = false;
+            /** Ads Needed: purple alert with the number of SKUs that have INV but no running ad (click → SKUs modal). */
+            function gacRawAdsNeededFormatter(cell) {
+                var row = cell.getRow().getData() || {};
+                var n = row.ads_needed;
+                if (n === null || n === undefined || n === '') {
+                    var err = String(row.ads_needed_title || '');
+                    return err ? '<span title="' + gacRawEscAttr(err) + '" style="color:#9ca3af;">?</span>' : '<span style="color:#d1d5db;">—</span>';
+                }
+                n = parseInt(n, 10) || 0;
+                var title = String(row.ads_needed_title || '');
+                if (n <= 0) {
+                    return '<span style="color:#9ca3af;" title="' + gacRawEscAttr(title || 'Every SKU with inventory has a running ad') + '">0</span>';
+                }
+                var cid = String(row.campaign_id || '').replace(/\D/g, '');
+                return '<span class="gac-sku-plus gac-ads-needed-pill" role="button" tabindex="0" data-sku-cid="' + cid + '" data-sku-name="' + gacRawEscAttr(String(row.campaign_name || '')) + '"'
+                    + ' title="' + gacRawEscAttr(title + ' — click to see the SKUs') + '"'
+                    + ' style="display:inline-flex;align-items:center;gap:4px;background:#7c3aed;color:#fff;font-weight:700;font-size:12px;line-height:1;padding:3px 8px;border-radius:999px;cursor:pointer;">'
+                    + '<i class="fas fa-exclamation-circle" style="font-size:11px;"></i>' + n + '</span>';
+            }
             function gacRawStatusToggleFormatter(cell) {
                 var row = cell.getRow().getData() || {};
                 var cid = String(row.campaign_id || '').replace(/\D/g, '');
@@ -2191,6 +2216,22 @@
                     return;
                 }
                 var s = response.summary;
+                var needEl = document.getElementById('gacAdsNeededValue');
+                if (needEl) {
+                    var needBadge = document.getElementById('gacAdsNeededBadge');
+                    if (s.ads_needed_error) {
+                        needEl.textContent = '?';
+                        if (needBadge) needBadge.title = 'Could not read live ads: ' + s.ads_needed_error;
+                    } else {
+                        var nTot = Number(s.ads_needed_total) || 0;
+                        needEl.textContent = nTot.toLocaleString() + (nTot ? ' · ' + (Number(s.ads_needed_campaigns) || 0) + ' camp.' : '');
+                        if (needBadge) {
+                            needBadge.title = nTot + ' SKU(s) have inventory but no running ad, in ' + (Number(s.ads_needed_campaigns) || 0) + ' enabled campaign(s). They are created automatically every hour.'
+                                + ((Number(s.ads_needed_pause) || 0) ? ' ' + s.ads_needed_pause + ' SKU(s) with INV 0 still run and will be paused.' : '')
+                                + ((Number(s.ads_needed_no_id) || 0) ? ' ' + s.ads_needed_no_id + ' SKU(s) have no Merchant Center Item ID and cannot be created.' : '');
+                        }
+                    }
+                }
                 var gacAllNum = function(v) {
                     return (v !== null && v !== undefined && Number.isFinite(Number(v))) ? Number(v) : null;
                 };
@@ -3094,6 +3135,16 @@
                                 return formatted;
                             };
                         }
+                        if (col.field === 'ads_needed') {
+                            col.title = 'Ads Needed';
+                            col.headerTooltip = 'Purple = SKUs that have inventory (INV > 0) but no running ad in this campaign. The number is how many ads are not created. They are created automatically (hourly); SKUs with INV 0 are paused.';
+                            col.headerSort = false;
+                            col.hozAlign = 'center';
+                            col.headerHozAlign = 'center';
+                            col.width = 78;
+                            col.minWidth = 70;
+                            col.formatter = gacRawAdsNeededFormatter;
+                        }
                         if (col.field === 'price') {
                             col.title = 'Price';
                             col.headerTooltip = 'Shopify price (parent = average of children with price > 0). Same value used by BGT PRC.';
@@ -3228,6 +3279,14 @@
                             col.minWidth = 44;
                         }
                     });
+                    // Ads Needed sits right before the campaign name.
+                    (function() {
+                        var iNeed = defs.findIndex(function(d) { return d.field === 'ads_needed'; });
+                        if (iNeed === -1) return;
+                        var needDef = defs.splice(iNeed, 1)[0];
+                        var iName = defs.findIndex(function(d) { return d.field === 'campaign_name'; });
+                        if (iName === -1) defs.push(needDef); else defs.splice(iName, 0, needDef);
+                    })();
                     // Action column (synthetic — no data field). Red alert when
                     // ACOS > current avg ACOS badge AND Spend > $30.
                     if (!defs.some(function(d) { return d.field === 'action'; })) {
@@ -3448,7 +3507,7 @@
              */
             // Column picker groups. Any column not listed lands in "Other".
             var GAC_COL_GROUPS = [
-                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification', 'ver_fix', 'reason'] },
+                { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'ads_needed', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification', 'ver_fix', 'reason'] },
                 { key: 'bids', title: 'Bids', fields: ['cpc_L30', 'live_cpc', 'cpc_L7', 'cpc_L2', 'cpc_L1', 'lbid', 'sbid'] },
                 { key: 'util', title: 'Utilization', fields: ['spend', 'l7_spend', 'l2_spend', 'l1_spend', 'ub7', 'ub2', 'ub1'] },
                 { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'bgt_dil', 'sbgt', 'lbgt'] },

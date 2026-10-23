@@ -19,7 +19,8 @@ use Throwable;
  * Same steps as AmazonSprcDilAutoPushService, with AliExpress as the source:
  *  S PRC = Std Prc × (1 − (Age Disc + Dil Disc + B Disc + 0 Sold Disc + CVR Disc + Rev Disc) / 100)
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
- *  Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
+ *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI instead of the
+ *  discounts. Then LMP cap when LMP is lower and SGROI at LMP ≥ 20%. Std Prc is the maximum.
  *  Skip when the live Price already equals the target. Price column updates on each push.
  *
  * Rows come from AliexpressController::buildPricingRows(), the same rows /aliexpress-pricing shows
@@ -215,6 +216,8 @@ class AliexpressSprcDilAutoPushService
             'lp' => $lp,
             'ship' => $ship,
             'margin' => $margin,
+            // SNROI Cap: the AliExpress SNROI% column has no Ads%, so the cap judges the same take-home and Ship only.
+            'ads' => 0.0,
         ];
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];

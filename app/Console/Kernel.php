@@ -2281,6 +2281,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // "Ads Needed": create ads for SKUs with INV > 0, pause (remove) ads for SKUs with INV <= 0 — hourly.
+        $schedule->command('google:sync-shopping-ads-by-inventory')
+            ->hourlyAt(45)
+            ->name('google-sync-shopping-ads-by-inventory')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('budget:update-serp')
             ->dailyAt('17:51')
             ->timezone('Asia/Kolkata')

@@ -1377,6 +1377,15 @@ class GoogleShoppingCampaignsController extends Controller
         $summary = array_merge($summary, $this->rawGridUtilizationAllCampaigns($request, $collection, $invFilter, $invResolver));
         // BGT "Sum" card: SBGT distribution over ALL campaigns (every status), independent of filters / page.
         $summary['sbgt_dist'] = $this->sbgtDistributionAllCampaigns($rawRule, $invResolver, $bgtResolver);
+        // "Ads Needed": SKUs with inventory whose ad is not running (all enabled campaigns).
+        $adsNeeded = $this->channelKey() === 'shopping'
+            ? $this->adsNeededAllCampaigns($invResolver)
+            : ['map' => [], 'total' => 0, 'campaigns' => 0, 'pause_total' => 0, 'no_id_total' => 0, 'error' => ''];
+        $summary['ads_needed_total'] = $adsNeeded['total'];
+        $summary['ads_needed_campaigns'] = $adsNeeded['campaigns'];
+        $summary['ads_needed_pause'] = $adsNeeded['pause_total'];
+        $summary['ads_needed_no_id'] = $adsNeeded['no_id_total'];
+        $summary['ads_needed_error'] = $adsNeeded['error'];
 
         [$sortField, $sortDir] = $this->rawGridSortFromRequest($request);
         $needsPhpSort = $sortField !== null && $this->isPhpSortField($sortField);
@@ -1452,7 +1461,11 @@ class GoogleShoppingCampaignsController extends Controller
                 $this->attachMerchantIdVerification($pageRows);
             }
 
-            $rows = $pageRows->map(static fn (array $arr) => self::prepareRawRowForTabulator($arr))->values();
+            $rows = $pageRows->map(function (array $arr) use ($adsNeeded) {
+                $this->attachAdsNeeded($arr, $adsNeeded);
+
+                return self::prepareRawRowForTabulator($arr);
+            })->values();
 
             return response()->json([
                 'last_page' => $lastPage,
@@ -1479,7 +1492,7 @@ class GoogleShoppingCampaignsController extends Controller
         $negCounts = $this->negativeTargetCountsForPage($pageCampaignIds);
         $liveStates = $this->liveBidBgtStatesForPage($pageCampaignIds);
 
-        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $negCounts, $invResolver, $bgtResolver, $liveStates) {
+        $rows = $pageCollection->map(function ($row) use ($rawRule, $prevSbgtMap, $negCounts, $invResolver, $bgtResolver, $liveStates, $adsNeeded) {
             $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
             $this->attachSbgtTrend($arr, $prevSbgtMap);
             $this->attachNegativeTargetCount($arr, $negCounts);
@@ -1491,6 +1504,7 @@ class GoogleShoppingCampaignsController extends Controller
             $arr['ver_total'] = null;
             $arr['ver_status'] = '';
             $arr['ver_reason'] = '';
+            $this->attachAdsNeeded($arr, $adsNeeded);
 
             return self::prepareRawRowForTabulator($arr);
         })->values();
@@ -1502,6 +1516,152 @@ class GoogleShoppingCampaignsController extends Controller
             'total' => $total,
             'summary' => $summary,
         ]);
+    }
+
+    /**
+     * "Ads Needed": for every ENABLED Shopping campaign, the SKUs that have inventory (INV > 0) but whose Item ID is not
+     * running in the ad (not in the listing groups, paused or excluded), and the SKUs without inventory that still run.
+     * Cached for 5 minutes (cleared whenever Item IDs change).
+     *
+     * @return array{map: array<string, array{n: int, skus: list<string>, no_id: list<string>, pause: list<string>, enable_items: list<string>, remove_items: list<string>, name: string}>, total: int, campaigns: int, pause_total: int, no_id_total: int, error: string}
+     */
+    public function adsNeededAllCampaigns(?\Closure $invResolver = null, bool $fresh = false): array
+    {
+        $customerId = (string) config('services.google_ads.login_customer_id');
+        $empty = ['map' => [], 'total' => 0, 'campaigns' => 0, 'pause_total' => 0, 'no_id_total' => 0, 'error' => ''];
+        if ($customerId === '') {
+            return ['error' => 'Google Ads customer ID is not configured.'] + $empty;
+        }
+        $key = 'gads_ads_needed_v1:'.$this->channelKey().':'.((int) Cache::get('gads_shopping_item_ids_gen', 0));
+        if ($fresh) {
+            Cache::forget($key);
+        }
+
+        return Cache::remember($key, 300, function () use ($customerId, $invResolver, $empty) {
+            $maxDate = DB::table('google_ads_campaigns')->where('advertising_channel_type', 'SHOPPING')->max('date');
+            if (! $maxDate) {
+                return $empty;
+            }
+            $q = DB::table('google_ads_campaigns')
+                ->where('advertising_channel_type', 'SHOPPING')
+                ->where('date', '>=', Carbon::parse($maxDate)->subDays(10)->toDateString());
+            $this->applyCampaignNameScope($q);
+            $names = [];
+            $seen = [];
+            foreach ($q->orderByDesc('date')->get(['campaign_id', 'campaign_name', 'campaign_status']) as $r) {
+                $cid = (string) $r->campaign_id;
+                if (isset($seen[$cid])) {
+                    continue;
+                }
+                $seen[$cid] = true;
+                if (strtoupper(trim((string) $r->campaign_status)) === 'ENABLED') {
+                    $names[$cid] = (string) $r->campaign_name;
+                }
+            }
+            if ($names === []) {
+                return $empty;
+            }
+
+            $invResolver ??= $this->buildInventoryResolver();
+            try {
+                /** @var GoogleAdsSbidService $sbid */
+                $sbid = app(GoogleAdsSbidService::class);
+                $nodesBy = $sbid->fetchListingGroupNodesByCampaign($customerId, array_keys($names));
+            } catch (\Throwable $e) {
+                report($e);
+
+                return ['error' => GoogleAdsSbidService::briefGoogleError($e)] + $empty;
+            }
+
+            $skusByCampaign = [];
+            $allSkus = [];
+            foreach ($names as $cid => $name) {
+                $skusByCampaign[$cid] = $this->childSkusForCampaignName($name);
+                foreach ($skusByCampaign[$cid] as $s) {
+                    $allSkus[$s] = true;
+                }
+            }
+            $itemBySku = $this->resolveMerchantCenterItemIds(array_keys($allSkus));
+
+            $map = [];
+            $total = $campaigns = $pauseTotal = $noIdTotal = 0;
+            foreach ($names as $cid => $name) {
+                $states = GoogleAdsSbidService::itemStatesFromNodes($nodesBy[$cid] ?? []);
+                $needed = $noId = $pause = $enableItems = $removeItems = [];
+                foreach ($skusByCampaign[$cid] as $sku) {
+                    $inv = $invResolver($sku);
+                    if ($inv === null) {
+                        continue;
+                    }
+                    $item = (string) ($itemBySku[$sku] ?? '');
+                    $state = $item === '' ? '' : ($states[strtolower($item)] ?? 'NOT_ATTACHED');
+                    if ((float) $inv > 0) {
+                        if ($item === '') {
+                            $noId[] = $sku;
+                        } elseif ($state !== 'ENABLED') {
+                            $needed[] = $sku;
+                            $enableItems[] = $item;
+                        }
+                    } elseif ($state === 'ENABLED') {
+                        $pause[] = $sku;
+                        $removeItems[] = $item;
+                    }
+                }
+                if ($needed !== [] || $pause !== [] || $noId !== []) {
+                    $map[$cid] = [
+                        'n' => count($needed), 'skus' => $needed, 'no_id' => $noId, 'pause' => $pause,
+                        'enable_items' => $enableItems, 'remove_items' => $removeItems, 'name' => $name,
+                    ];
+                }
+                if ($needed !== []) {
+                    $campaigns++;
+                    $total += count($needed);
+                }
+                $pauseTotal += count($pause);
+                $noIdTotal += count($noId);
+            }
+
+            return ['map' => $map, 'total' => $total, 'campaigns' => $campaigns, 'pause_total' => $pauseTotal, 'no_id_total' => $noIdTotal, 'error' => ''];
+        });
+    }
+
+    /**
+     * Adds the "Ads Needed" count and tooltip to a grid row.
+     *
+     * @param  array<string, mixed>  $arr
+     * @param  array{map: array<string, mixed>, error: string}  $needed
+     */
+    private function attachAdsNeeded(array &$arr, array $needed): void
+    {
+        if ($this->channelKey() !== 'shopping') {
+            return; // SERP / YouTube grids share this controller but have no Ads Needed column
+        }
+        $arr['ads_needed'] = null;
+        $arr['ads_needed_title'] = '';
+        if (($needed['error'] ?? '') !== '') {
+            $arr['ads_needed_title'] = 'Could not read live ads: '.$needed['error'];
+
+            return;
+        }
+        if (strtoupper((string) ($arr['campaign_status'] ?? '')) !== 'ENABLED') {
+            return; // only running campaigns are checked
+        }
+        $cid = (string) ($arr['campaign_id'] ?? '');
+        $m = $needed['map'][$cid] ?? null;
+        $arr['ads_needed'] = $m ? (int) $m['n'] : 0;
+        if ($m) {
+            $parts = [];
+            if ($m['skus'] !== []) {
+                $parts[] = 'Has INV but no running ad: '.implode(', ', array_slice($m['skus'], 0, 8)).(count($m['skus']) > 8 ? ', …' : '');
+            }
+            if ($m['no_id'] !== []) {
+                $parts[] = 'No Merchant Center Item ID (cannot be created): '.implode(', ', array_slice($m['no_id'], 0, 5));
+            }
+            if ($m['pause'] !== []) {
+                $parts[] = 'INV 0 but still running (will be paused): '.implode(', ', array_slice($m['pause'], 0, 5));
+            }
+            $arr['ads_needed_title'] = implode(' | ', $parts);
+        }
     }
 
     /**
@@ -4323,6 +4483,8 @@ class GoogleShoppingCampaignsController extends Controller
             'ver_total',
             'ver_status',
             'ver_reason',
+            'ads_needed',
+            'ads_needed_title',
         ];
     }
 

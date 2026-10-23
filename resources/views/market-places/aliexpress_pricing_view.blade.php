@@ -607,6 +607,8 @@
     <script>
         // S PRC is saved + pushed by the server (aliexpress:sprc-dil-auto-push). The page only shows it.
         window.CH_STD_SERVER_OWNED = true;
+        // The SNROI% column here is SGROI (no Ads%), so the SNROI Cap in Std prc vs dil judges the same number.
+        window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'aliexpress'])
         @include('partials.lmp-ignore', ['lmpIgnorePart' => 'script'])
         let table = null;
