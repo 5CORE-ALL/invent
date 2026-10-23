@@ -2274,8 +2274,9 @@
     }
     /**
      * S Disc $ = Std Prc × Disc % (Disc % = Sum disc = PM).
-     * SNROI Cap: when that leaves S Promo Prc with a SNROI above the Target SNROI % of the SKU's Dil slab, S Disc $ grows
-     * just enough to land on the target. It never lowers S Disc $, so the cap only ever lowers the price.
+     * SNROI Cap (same as Amazon): when the SKU's Dil slab has a Target SNROI %, S Promo Prc is the price that lands on that
+     * target and the Dil / Age / CVR ... discounts are not used. Std Prc less S 12% $ is the highest it can be, so a target
+     * that needs more than that holds there with no discount.
      */
     function ntoRowSDiscAmt(d) {
         const s = ntoRowSpriceStart(d);
@@ -2284,8 +2285,9 @@
         let amt = pm > 0 ? +(s * pm / 100).toFixed(2) : 0;
         const capPrc = ntoRowSnroiCapPrc(d);
         if (capPrc != null) {
-            const promo = s - ntoRowSTwelvePct(d) - amt;
-            if (promo > capPrc + 0.0001) amt = +(s - ntoRowSTwelvePct(d) - capPrc).toFixed(2);
+            // Same as Amazon: the capped price replaces the discount price. Std Prc less S 12% $ is the most it can be.
+            const maxPromo = s - ntoRowSTwelvePct(d);
+            amt = capPrc >= maxPromo ? 0 : +(maxPromo - capPrc).toFixed(2);
         }
         return amt;
     }

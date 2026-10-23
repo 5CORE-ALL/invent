@@ -275,12 +275,14 @@ class NewTemutwoSprcDilAutoPushService
         $discAmt = max(0.0, round($std - $discounted, 2));
         $priceAfterDisc = round($std - $twelvePct - $discAmt, 2);
         // SNROI Cap: same as the page. SNROI% = ((Price After Discount × 0.95 − Ship − LP) − Std × Ads%) / LP × 100.
-        // When it is above the Target SNROI % of the SKU's Dil slab, Disc $ grows so Price After Discount lands on it.
+        // Same as Amazon: a Dil slab with a Target SNROI % prices Price After Discount from that SNROI, not from the
+        // discounts. Std − 12% $ (no Disc $) is the most it can be, so a target that needs more holds there.
         $snroiCapped = false;
         $capTarget = $pricer->snroiCapTargetForDil((float) ($row['dil'] ?? 0));
         if ($capTarget !== null && $lp > 0) {
             $capPrice = floor((((($lp * (1 + $capTarget / 100)) + $ship + ($std * $adsPct / 100)) / 0.95) * 100) + 0.00001) / 100;
-            if ($capPrice > 0 && $priceAfterDisc > $capPrice + 0.0001) {
+            $capPrice = min($capPrice, round($std - $twelvePct, 2));
+            if ($capPrice > 0 && abs($capPrice - $priceAfterDisc) > 0.0001) {
                 $priceAfterDisc = round($capPrice, 2);
                 $snroiCapped = true;
             }

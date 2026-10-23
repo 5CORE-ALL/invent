@@ -142,14 +142,15 @@ class NewTemutwoSprcDilAutoPushServiceTest extends TestCase
         $this->assertGreaterThan(39.9, $snroi);
     }
 
-    public function test_snroi_cap_leaves_a_price_already_under_the_target(): void
+    public function test_snroi_cap_above_what_std_can_reach_holds_at_std_with_no_discount(): void
     {
         $svc = new NewTemutwoSprcDilAutoPushService();
+        // Same as Amazon: a 500% target needs far more than Std, so S PRC is Std (10% Sum disc is not taken).
         $out = $svc->computeTarget($this->row(), $this->pricer(['snroi_cap' => $this->capSlabs(500)]));
 
         $this->assertNotNull($out);
-        $this->assertFalse($out['snroi_capped']);
-        $this->assertSame(90.0, $out['sprice']);
+        $this->assertTrue($out['snroi_capped']);
+        $this->assertSame(100.0, $out['sprice']);
     }
 
     public function test_snroi_cap_blank_slab_means_no_cap(): void
