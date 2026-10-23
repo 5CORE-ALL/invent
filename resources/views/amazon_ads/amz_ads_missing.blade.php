@@ -465,33 +465,55 @@
                         <div id="amzPtSection" class="mt-3 d-none">
                             <div class="fw-semibold small mb-1">
                                 Product targeting
-                                <span class="text-muted fw-normal">- Amazon's automatic groups, or your own ASIN targets</span>
-                            </div>
-                            <div class="d-flex flex-wrap align-items-center gap-3 small mb-2">
-                                <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzPtMode" value="AUTO" checked>Auto targeting groups</label>
-                                <label class="mb-0"><input type="radio" class="form-check-input me-1" name="amzPtMode" value="MANUAL">Product (ASIN) targets</label>
+                                <span class="text-muted fw-normal">— Amazon's automatic groups, or your own ASIN targets</span>
                             </div>
                             <div class="row g-2">
                                 <div class="col-lg-7">
                                     <div class="border rounded">
-                                        <div id="amzPtPaneAuto">
-                                            <div class="p-2 border-bottom small text-muted">Amazon matches shoppers automatically. Groups you remove from the list on the right are paused.</div>
-                                            <table class="table table-sm align-middle mb-0 small">
-                                                <thead class="table-light"><tr><th>Targeting group</th><th class="text-end"></th></tr></thead>
-                                                <tbody id="amzPtAutoBody"></tbody>
-                                            </table>
-                                            <div class="px-2 py-1 text-end small"><a href="#" id="amzPtAutoAddAll" class="fw-semibold">Add all</a></div>
+                                        <ul class="nav nav-tabs small px-2 pt-1" role="tablist" id="amzPtTabs">
+                                            <li class="nav-item"><button type="button" class="nav-link active py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzPtPaneAuto" data-pt-mode="AUTO">Auto groups</button></li>
+                                            <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzPtPaneList" data-pt-mode="MANUAL">Enter list</button></li>
+                                            <li class="nav-item"><button type="button" class="nav-link py-1 px-2" data-bs-toggle="tab" data-bs-target="#amzPtPaneFile" data-pt-mode="MANUAL">Upload file</button></li>
+                                        </ul>
+                                        <div class="p-2 border-bottom d-flex flex-wrap align-items-center gap-2 small">
+                                            <span class="fw-semibold">Bid</span>
+                                            <select class="form-select form-select-sm w-auto" id="amzPtBidMode">
+                                                <option value="default">Default bid</option>
+                                                <option value="custom">Custom bid</option>
+                                            </select>
+                                            <input type="number" class="form-control form-control-sm d-none" style="width:90px;" id="amzPtBid" min="0.02" step="0.01" value="0.60" placeholder="$">
+                                            <span class="text-muted" id="amzPtBidHint">The default bid of the campaign, used for what you add next.</span>
                                         </div>
-                                        <div id="amzPtPaneManual" class="d-none">
-                                            <div class="p-2 small">
-                                                <textarea class="form-control form-control-sm" id="amzPtAsinText" rows="7" placeholder="Enter one ASIN per line (or separate with commas)"></textarea>
-                                                <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
-                                                    <input type="file" class="form-control form-control-sm w-auto" id="amzPtFile" accept=".csv,.txt,text/csv,text/plain">
-                                                    <span class="fw-semibold">Bid ($)</span>
-                                                    <input type="number" class="form-control form-control-sm" style="width:90px;" id="amzPtBid" min="0.02" step="0.01" placeholder="default">
-                                                    <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzPtAddBtn">Add ASINs</button>
+                                        <div class="tab-content">
+                                            <div class="tab-pane fade show active" id="amzPtPaneAuto">
+                                                <div class="px-2 py-1 small text-muted d-flex justify-content-between">
+                                                    <span>Amazon matches shoppers automatically. Groups you remove from the list on the right are paused.</span>
+                                                    <a href="#" id="amzPtAutoAddAll" class="fw-semibold">Add all</a>
                                                 </div>
-                                                <div class="form-text">ASIN targets need a MANUAL campaign: choosing this creates a manual product-targeting campaign.</div>
+                                                <div style="max-height:300px; overflow:auto;">
+                                                    <table class="table table-sm align-middle mb-0 small">
+                                                        <thead class="table-light sticky-top"><tr><th>Targeting group</th><th class="text-end"></th></tr></thead>
+                                                        <tbody id="amzPtAutoBody"></tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane fade" id="amzPtPaneList">
+                                                <div class="p-2 small">
+                                                    <textarea class="form-control form-control-sm" id="amzPtAsinText" rows="7" placeholder="Enter one ASIN per line (or separate with commas)"></textarea>
+                                                    <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                        <span class="text-muted">ASIN targets need a MANUAL campaign: adding ASINs here creates a manual product-targeting campaign.</span>
+                                                        <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzPtAddBtn">Add ASINs</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane fade" id="amzPtPaneFile">
+                                                <div class="p-2 small">
+                                                    <input type="file" class="form-control form-control-sm" id="amzPtFile" accept=".csv,.txt,text/csv,text/plain">
+                                                    <div class="form-text">One ASIN per line, or a CSV (all 10-character ASINs in the file are added).</div>
+                                                    <div class="d-flex flex-wrap align-items-center gap-3 mt-2">
+                                                        <button type="button" class="btn btn-primary btn-sm ms-auto" id="amzPtFileAddBtn">Add ASINs</button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -506,7 +528,7 @@
                                                 <a href="#" id="amzPtClearAll" class="text-danger ms-2">Remove all</a>
                                             </span>
                                         </div>
-                                        <div style="max-height:300px; overflow:auto;">
+                                        <div style="max-height:372px; overflow:auto;">
                                             <table class="table table-sm align-middle mb-0 small">
                                                 <thead class="table-light sticky-top"><tr><th>Target</th><th>Type</th><th style="width:84px;">Bid ($)</th><th style="width:28px;"></th></tr></thead>
                                                 <tbody id="amzPtAddedBody"></tbody>
@@ -1288,9 +1310,16 @@
             ];
             var ptAutoAdded = [];   // [{type, bid}]
             var ptAsins = [];       // [{asin, bid}]
+            // The active tab decides the mode: "Auto groups" = AUTO campaign, "Enter list" / "Upload file" = ASIN targets (MANUAL).
             function ptMode() {
-                var r = document.querySelector('input[name="amzPtMode"]:checked');
-                return r && r.value === 'MANUAL' ? 'MANUAL' : 'AUTO';
+                var t = document.querySelector('#amzPtTabs .nav-link.active');
+                return t && t.getAttribute('data-pt-mode') === 'MANUAL' ? 'MANUAL' : 'AUTO';
+            }
+            function ptResolveBid() {
+                var mode = (document.getElementById('amzPtBidMode') || {}).value || 'default';
+                var v = mode === 'custom' ? parseFloat((document.getElementById('amzPtBid') || {}).value) : null;
+                if (v == null || !isFinite(v) || v < 0.02) { v = kwDefaultBid(); }
+                return Math.round(v * 100) / 100;
             }
             function ptGroupLabel(type) {
                 var g = PT_GROUPS.filter(function (x) { return x.type === type; })[0];
@@ -1298,8 +1327,6 @@
             }
             function ptRender() {
                 var auto = ptMode() === 'AUTO';
-                var paneA = document.getElementById('amzPtPaneAuto'); if (paneA) { paneA.classList.toggle('d-none', !auto); }
-                var paneM = document.getElementById('amzPtPaneManual'); if (paneM) { paneM.classList.toggle('d-none', auto); }
                 var left = document.getElementById('amzPtAutoBody');
                 if (left) {
                     left.innerHTML = PT_GROUPS.map(function (g) {
@@ -1325,8 +1352,11 @@
             function ptResetForOpen() {
                 ptAutoAdded = PT_GROUPS.map(function (g) { return { type: g.type, bid: kwDefaultBid() }; });
                 ptAsins = [];
-                var r = document.querySelector('input[name="amzPtMode"][value="AUTO"]'); if (r) { r.checked = true; }
-                ['amzPtAsinText', 'amzPtBid', 'amzPtBulkBid'].forEach(function (id) { var el = document.getElementById(id); if (el) { el.value = ''; } });
+                var firstTab = document.querySelector('#amzPtTabs .nav-link');
+                if (firstTab && window.bootstrap) { bootstrap.Tab.getOrCreateInstance(firstTab).show(); }
+                ['amzPtAsinText', 'amzPtBulkBid'].forEach(function (id) { var el = document.getElementById(id); if (el) { el.value = ''; } });
+                var bm = document.getElementById('amzPtBidMode'); if (bm) { bm.value = 'default'; }
+                var cb = document.getElementById('amzPtBid'); if (cb) { cb.value = '0.60'; cb.classList.add('d-none'); }
                 var f = document.getElementById('amzPtFile'); if (f) { f.value = ''; }
                 ptRender();
             }
@@ -1344,9 +1374,7 @@
                 return out;
             }
             function ptAddAsins(texts) {
-                var bidEl = document.getElementById('amzPtBid');
-                var bid = parseFloat(bidEl && bidEl.value);
-                bid = (isFinite(bid) && bid >= 0.02) ? Math.round(bid * 100) / 100 : kwDefaultBid();
+                var bid = ptResolveBid();
                 var bad = 0;
                 texts.forEach(function (t) {
                     var a = String(t || '').toUpperCase().trim();
@@ -1360,40 +1388,48 @@
             function ptWire() {
                 var addBtn = document.getElementById('amzPtAddBtn');
                 if (!addBtn) { return; }
-                document.querySelectorAll('input[name="amzPtMode"]').forEach(function (r) {
-                    r.addEventListener('change', function () { ptRender(); syncPtModeUi(); });
+                document.querySelectorAll('#amzPtTabs .nav-link').forEach(function (t) {
+                    t.addEventListener('shown.bs.tab', function () { ptRender(); syncPtModeUi(); });
+                });
+                var ptBidMode = document.getElementById('amzPtBidMode');
+                ptBidMode.addEventListener('change', function () {
+                    document.getElementById('amzPtBid').classList.toggle('d-none', ptBidMode.value !== 'custom');
+                    document.getElementById('amzPtBidHint').textContent = ptBidMode.value === 'custom'
+                        ? 'Same bid for every target you add next.'
+                        : 'The default bid of the campaign, used for what you add next.';
                 });
                 document.getElementById('amzPtAutoBody').addEventListener('click', function (e) {
                     var a = e.target.closest ? e.target.closest('.amz-pt-auto-add') : null;
                     if (!a) { return; }
                     e.preventDefault();
                     var type = a.getAttribute('data-type');
-                    if (!ptAutoAdded.some(function (x) { return x.type === type; })) { ptAutoAdded.push({ type: type, bid: kwDefaultBid() }); }
+                    if (!ptAutoAdded.some(function (x) { return x.type === type; })) { ptAutoAdded.push({ type: type, bid: ptResolveBid() }); }
                     ptRender();
                 });
                 document.getElementById('amzPtAutoAddAll').addEventListener('click', function (e) {
                     e.preventDefault();
                     PT_GROUPS.forEach(function (g) {
-                        if (!ptAutoAdded.some(function (x) { return x.type === g.type; })) { ptAutoAdded.push({ type: g.type, bid: kwDefaultBid() }); }
+                        if (!ptAutoAdded.some(function (x) { return x.type === g.type; })) { ptAutoAdded.push({ type: g.type, bid: ptResolveBid() }); }
                     });
                     ptRender();
                 });
                 addBtn.addEventListener('click', function () {
                     var ta = document.getElementById('amzPtAsinText');
-                    var fileInput = document.getElementById('amzPtFile');
-                    var file = fileInput.files && fileInput.files[0];
-                    if (file) {
-                        var reader = new FileReader();
-                        reader.onload = function () {
-                            ptAddAsins(String(reader.result || '').split(/[\s,;]+/));
-                            fileInput.value = '';
-                        };
-                        reader.readAsText(file);
-                    }
                     if (ta.value.trim()) {
                         ptAddAsins(ta.value.split(/[\s,;]+/));
                         ta.value = '';
                     }
+                });
+                document.getElementById('amzPtFileAddBtn').addEventListener('click', function () {
+                    var fileInput = document.getElementById('amzPtFile');
+                    var file = fileInput.files && fileInput.files[0];
+                    if (!file) { window.alert('Choose a .csv or .txt file first.'); return; }
+                    var reader = new FileReader();
+                    reader.onload = function () {
+                        ptAddAsins(String(reader.result || '').split(/[\s,;]+/));
+                        fileInput.value = '';
+                    };
+                    reader.readAsText(file);
                 });
                 document.getElementById('amzPtClearAll').addEventListener('click', function (e) {
                     e.preventDefault();
