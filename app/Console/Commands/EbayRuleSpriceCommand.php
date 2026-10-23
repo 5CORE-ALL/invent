@@ -39,8 +39,9 @@ class EbayRuleSpriceCommand extends Command
         $changes = [];
         $unchanged = 0;
         $skipped = 0;
+        $pageAds = EbayRuleSprice::pageAdsPercent($channel);
         foreach ($this->tabulatorRows($channel) as $row) {
-            $input = EbayRuleSprice::inputFromTabulatorRow($row);
+            $input = EbayRuleSprice::inputFromTabulatorRow($row, $pageAds);
             if ($input === null) {
                 continue;
             }

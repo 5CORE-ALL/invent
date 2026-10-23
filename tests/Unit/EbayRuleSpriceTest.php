@@ -265,6 +265,22 @@ class EbayRuleSpriceTest extends TestCase
         $this->assertEqualsWithDelta(20.0, ((($sprice * (0.88 - 0.03)) - 3 - 40) / 40) * 100, 0.0001);
     }
 
+    public function test_snroi_cap_uses_the_page_ads_percent_when_it_differs_from_the_row_ad_percent(): void
+    {
+        $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 1000, 'cap' => 20.0]]], 'ebay2');
+        $row = [
+            '(Child) sku' => 'SKU-1', 'INV' => 10, 'L30' => 2, 'STANDARD_PRICE' => 100,
+            'LP_productmaster' => 40, 'Ship_productmaster' => 3, 'percentage' => 0.88,
+            'AD%' => 3.0, 'SCVR' => 5, 'CVR_45' => 5,
+        ];
+        // The page's SNROI% column uses 6% Ads, so the cap must land on 20% at 6%, not at the row's 3%.
+        $input = EbayRuleSprice::inputFromTabulatorRow($row, 6.0);
+        $sprice = EbayRuleSprice::price($pricer, $input)['sprice'];
+
+        $this->assertEqualsWithDelta(20.0, ((($sprice * (0.88 - 0.06)) - 3 - 40) / 40) * 100, 0.1);
+        $this->assertGreaterThan(60.0, $sprice);
+    }
+
     public function test_cvr_trend_override_is_ignored_when_invalid(): void
     {
         $pricer = $this->pricer(['cvr' => ['down2_lt' => 4, 'down2_disc' => 8, 'down_lt' => 7, 'down_disc' => 5,

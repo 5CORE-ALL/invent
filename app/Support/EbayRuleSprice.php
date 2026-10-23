@@ -75,7 +75,7 @@ class EbayRuleSprice
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null  null for parent / summary rows
      */
-    public static function inputFromTabulatorRow(array $row): ?array
+    public static function inputFromTabulatorRow(array $row, ?float $pageAdsPct = null): ?array
     {
         $sku = trim((string) ($row['(Child) sku'] ?? $row['sku'] ?? ''));
         if ($sku === '' || stripos($sku, 'PARENT') !== false
@@ -86,7 +86,9 @@ class EbayRuleSprice
         $ov = (float) ($row['L30'] ?? 0);
         $cvr30 = (float) ($row['SCVR'] ?? 0);
         $cvr45 = self::cvr45($row);
-        $ads = (float) ($row['AD%'] ?? 0);
+        // The SNROI% column on the page uses the page's Ads% (Total Ad Spend ÷ real-orders L30 sales), which is not
+        // always the row's AD% (Channel Master TCOS). Use the page's number so the server cap lands where the page does.
+        $ads = $pageAdsPct !== null ? $pageAdsPct : (float) ($row['AD%'] ?? 0);
         $input = [
             'sku' => $sku,
             'inv' => $inv,
@@ -114,6 +116,29 @@ class EbayRuleSprice
         }
 
         return $input;
+    }
+
+    /**
+     * Ads% the channel's tabulator page uses in its SNROI% column (EBAY*_CHANNEL_ADS_PCT). Null if it can't be read.
+     */
+    public static function pageAdsPercent(string $channel): ?float
+    {
+        try {
+            $controller = match ($channel) {
+                'ebay1' => app(\App\Http\Controllers\MarketPlace\EbayController::class),
+                'ebay2' => app(\App\Http\Controllers\MarketPlace\EbayTwoController::class),
+                'ebay3' => app(\App\Http\Controllers\MarketPlace\EbayThreeController::class),
+                default => null,
+            };
+            if ($controller === null) {
+                return null;
+            }
+            $pct = (float) $controller->tabulatorChannelAdsPercent();
+
+            return is_finite($pct) && $pct >= 0 ? $pct : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
