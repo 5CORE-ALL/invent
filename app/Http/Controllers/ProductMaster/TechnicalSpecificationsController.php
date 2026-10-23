@@ -82,13 +82,30 @@ class TechnicalSpecificationsController extends Controller
 
             $this->fillEbayCategoryFromParent($result);
             $aspectsByCategory = $this->ebayRequiredAspects($result);
+            $savedByCategory = [];
+            foreach ($result as $row) {
+                $categoryId = (string) ($row['category_ebay_id'] ?? '');
+                if ($categoryId === '') {
+                    continue;
+                }
+                foreach ($row['description_v2_specifications'] as $spec) {
+                    $key = trim((string) ($spec['key'] ?? ''));
+                    if ($key !== '') {
+                        $savedByCategory[$categoryId][$this->specKey($key)] = $key;
+                    }
+                }
+            }
             $aspectNames = [];
             foreach ($result as &$row) {
-                $names = $aspectsByCategory[$row['category_ebay_id']] ?? [];
+                $categoryId = (string) ($row['category_ebay_id'] ?? '');
+                $saved = $categoryId !== ''
+                    ? array_values($savedByCategory[$categoryId] ?? [])
+                    : array_map(static fn ($spec) => (string) ($spec['key'] ?? ''), $row['description_v2_specifications']);
+                $names = $this->mergeAspectNames($aspectsByCategory[$categoryId] ?? [], $saved);
                 $values = [];
                 foreach ($names as $name) {
                     $values[$name] = $this->specValue($row['description_v2_specifications'], $name);
-                    $aspectNames[$name] = true;
+                    $aspectNames[$this->specKey($name)] = $name;
                 }
                 $row['ebay_required'] = $names;
                 $row['ebay_values'] = $values;
@@ -96,7 +113,7 @@ class TechnicalSpecificationsController extends Controller
             }
             unset($row);
 
-            $ebayAspects = array_keys($aspectNames);
+            $ebayAspects = array_values($aspectNames);
             usort($ebayAspects, static fn ($a, $b) => strcasecmp($a, $b));
 
             return response()->json([
@@ -277,6 +294,28 @@ class TechnicalSpecificationsController extends Controller
     private function specKey(string $name): string
     {
         return strtolower(preg_replace('/[^a-z0-9]+/i', '', $name) ?? $name);
+    }
+
+    /**
+     * @param  list<string>  $required
+     * @param  list<string>  $saved
+     * @return list<string>
+     */
+    private function mergeAspectNames(array $required, array $saved): array
+    {
+        $out = [];
+        $seen = [];
+        foreach (array_merge($required, $saved) as $name) {
+            $name = trim((string) $name);
+            $key = $this->specKey($name);
+            if ($name === '' || $key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $name;
+        }
+
+        return $out;
     }
 
     /**
