@@ -1005,6 +1005,162 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Write non-empty technical specifications onto the live listing.
+     * Item specifics are merged. A name that already belongs to this SKU's variation is revised on that variation.
+     * Blank values are not sent.
+     *
+     * @param  list<array{name: string, value: string}>  $overrides
+     * @return array{success: bool, message: string}
+     */
+    public static function reviseTechnicalSpecifications(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        array $getItemResponse,
+        string $sku,
+        array $overrides,
+    ): array {
+        $item = self::itemFromGetItem($getItemResponse);
+        $itemId = trim(self::xmlText($item['ItemID'] ?? ''));
+        if ($itemId === '') {
+            return ['success' => false, 'message' => 'GetItem response missing ItemID.'];
+        }
+
+        $clean = [];
+        foreach ($overrides as $row) {
+            $name = trim((string) ($row['name'] ?? ''));
+            $value = trim((string) ($row['value'] ?? ''));
+            if ($name !== '' && $value !== '') {
+                $clean[] = ['name' => $name, 'value' => $value];
+            }
+        }
+        if ($clean === []) {
+            return ['success' => true, 'message' => 'No specifications to send. Blank values were left unchanged on eBay.'];
+        }
+
+        $variation = self::findVariationForSku($getItemResponse, $sku);
+        $variationMap = $variation
+            ? EbayLiveListingMapper::nameValueMap($variation['VariationSpecifics']['NameValueList'] ?? null)
+            : [];
+        $variationKeys = [];
+        foreach (array_keys($variationMap) as $name) {
+            $variationKeys[self::aspectKey($name)] = $name;
+        }
+
+        $itemRows = self::normalizeItemSpecificsNameValueLists($item['ItemSpecifics'] ?? null);
+        $itemChanged = false;
+        $variationChanged = false;
+        foreach ($clean as $row) {
+            $key = self::aspectKey($row['name']);
+            if (isset($variationKeys[$key])) {
+                $variationMap[$variationKeys[$key]] = $row['value'];
+                $variationChanged = true;
+
+                continue;
+            }
+            $itemChanged = true;
+            $replaced = false;
+            foreach ($itemRows as &$existing) {
+                if (self::aspectKey($existing['name']) === $key) {
+                    $existing['name'] = $row['name'];
+                    $existing['values'] = [$row['value']];
+                    $replaced = true;
+                    break;
+                }
+            }
+            unset($existing);
+            if (! $replaced) {
+                $itemRows[] = ['name' => $row['name'], 'values' => [$row['value']]];
+            }
+        }
+
+        $messages = [];
+        if ($itemChanged) {
+            $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $itemRows, 'ReviseItem', 'ReviseItemRequest', null, null);
+            $messages[] = $result['message'];
+            if (! $result['success']) {
+                return ['success' => false, 'message' => implode(' ', $messages)];
+            }
+        }
+        if ($variationChanged) {
+            $rows = [];
+            foreach ($variationMap as $name => $value) {
+                if (trim((string) $value) !== '') {
+                    $rows[] = ['name' => (string) $name, 'values' => [(string) $value]];
+                }
+            }
+            $result = self::postSpecificRows($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $authToken, $itemId, $rows, 'ReviseFixedPriceItem', 'ReviseFixedPriceItemRequest', $sku, 'VariationSpecifics');
+            $messages[] = $result['message'];
+            if (! $result['success']) {
+                return ['success' => false, 'message' => implode(' ', $messages)];
+            }
+        }
+
+        return ['success' => true, 'message' => $messages === [] ? 'Already matches eBay.' : implode(' ', $messages)];
+    }
+
+    /**
+     * @param  list<array{name: string, values: list<string>}>  $rows
+     * @return array{success: bool, message: string}
+     */
+    private static function postSpecificRows(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+        array $rows,
+        string $callName,
+        string $root,
+        ?string $variationSku,
+        ?string $specificsNode,
+    ): array {
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="utf-8"?><'.$root.' xmlns="urn:ebay:apis:eBLBaseComponents"/>');
+        $creds = $xml->addChild('RequesterCredentials');
+        $creds->addChild('eBayAuthToken', $authToken);
+        $xml->addChild('ErrorLanguage', 'en_US');
+        $xml->addChild('WarningLevel', 'High');
+        $itemNode = $xml->addChild('Item');
+        $itemNode->addChild('ItemID', $itemId);
+        $specParent = $itemNode;
+        if ($variationSku !== null && $specificsNode !== null) {
+            $variation = $itemNode->addChild('Variations')->addChild('Variation');
+            $variation->addChild('SKU', $variationSku);
+            $specParent = $variation;
+        }
+        $spec = $specParent->addChild($specificsNode ?? 'ItemSpecifics');
+        foreach ($rows as $row) {
+            $values = array_values(array_filter(array_map(static fn ($v) => trim((string) $v), $row['values'] ?? []), static fn ($v) => $v !== ''));
+            if ($values === [] || trim((string) ($row['name'] ?? '')) === '') {
+                continue;
+            }
+            $nvl = $spec->addChild('NameValueList');
+            $nvl->addChild('Name', (string) $row['name']);
+            foreach ($values as $value) {
+                $nvl->addChild('Value', $value);
+            }
+        }
+        $xmlBody = $xml->asXML();
+        if ($xmlBody === false) {
+            return ['success' => false, 'message' => 'Failed to build '.$callName.' XML.'];
+        }
+
+        return self::postReviseItemXml($endpoint, $compatLevel, $devId, $appId, $certId, $siteId, $itemId, $xmlBody, 'technical specifications', $callName);
+    }
+
+    private static function aspectKey(string $name): string
+    {
+        return strtolower(preg_replace('/[^a-z0-9]+/i', '', $name) ?? $name);
+    }
+
+    /**
      * Merge GetItem ItemSpecifics (plus any other NameValueList nodes under Item, excluding Variations),
      * preserve non-bullet specifics, then apply Bullet Point 1–5. Brand is always set to the configured
      * value (default "5 Core") so ReviseItem sends an explicit custom Brand value.
@@ -2631,13 +2787,14 @@ final class EbayTradingReviseItem
         string $itemId,
         string $xmlBody,
         string $contextLabel,
+        string $callName = 'ReviseItem',
     ): array {
         $headers = [
             'X-EBAY-API-COMPATIBILITY-LEVEL' => $compatLevel,
             'X-EBAY-API-DEV-NAME' => $devId,
             'X-EBAY-API-APP-NAME' => $appId,
             'X-EBAY-API-CERT-NAME' => $certId,
-            'X-EBAY-API-CALL-NAME' => 'ReviseItem',
+            'X-EBAY-API-CALL-NAME' => $callName,
             'X-EBAY-API-SITEID' => $siteId,
             'Content-Type' => 'text/xml',
         ];

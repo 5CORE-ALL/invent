@@ -5,6 +5,7 @@ namespace App\Http\Controllers\ProductMaster;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryMaster;
 use App\Models\ProductMaster;
+use App\Services\ProductMaster\EbayTechnicalSpecificationSync;
 use App\Support\Marketplace\EbayCategoryAspects;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -349,5 +350,170 @@ class TechnicalSpecificationsController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * POST /technical-specifications/pull-ebay
+     * Live eBay item specifics replace the specifications saved for each selected SKU.
+     */
+    public function pullEbay(Request $request, EbayTechnicalSpecificationSync $sync)
+    {
+        $skus = $this->selectedSkus($request);
+        @set_time_limit(300);
+
+        $results = [];
+        foreach ($skus as $sku) {
+            $product = ProductMaster::query()->where('sku', $sku)->first();
+            if (! $product) {
+                $results[] = $this->syncResult($sku, false, 'SKU not found.');
+
+                continue;
+            }
+            $pulled = $sync->pull($sku);
+            if ($pulled['success'] && Schema::hasColumn('product_master', 'description_v2_specifications')) {
+                $product->description_v2_specifications = $pulled['specs'] === [] ? null : $pulled['specs'];
+                $product->save();
+            }
+            $results[] = $this->syncResult($sku, $pulled['success'], $pulled['message'], $pulled['specs']);
+        }
+
+        return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * POST /technical-specifications/push-ebay
+     * Refuses while any selected row is blank unless push_anyway is set.
+     */
+    public function pushEbay(Request $request, EbayTechnicalSpecificationSync $sync)
+    {
+        $skus = $this->selectedSkus($request);
+        $pushAnyway = $request->boolean('push_anyway');
+        @set_time_limit(300);
+
+        if (! $pushAnyway) {
+            $blanks = $this->blankSpecifications($skus);
+            if ($blanks !== []) {
+                return response()->json([
+                    'success' => false,
+                    'needs_confirmation' => true,
+                    'message' => 'Some selected rows have blank technical specifications.',
+                    'blanks' => $blanks,
+                ], 422);
+            }
+        }
+
+        $results = [];
+        foreach ($skus as $sku) {
+            $product = ProductMaster::query()->where('sku', $sku)->first();
+            if (! $product) {
+                $results[] = $this->syncResult($sku, false, 'SKU not found.');
+
+                continue;
+            }
+            $specs = $this->normalizeSpecs($product->description_v2_specifications ?? null);
+            $pushed = $sync->push($sku, $specs);
+            $results[] = $this->syncResult($sku, $pushed['success'], $pushed['message'], $specs);
+        }
+
+        return response()->json(['success' => true, 'results' => $results]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function selectedSkus(Request $request): array
+    {
+        $data = $request->validate([
+            'skus' => 'required|array|min:1|max:25',
+            'skus.*' => 'required|string|max:255',
+        ]);
+
+        $skus = [];
+        foreach ($data['skus'] as $sku) {
+            $sku = trim((string) $sku);
+            if ($sku !== '') {
+                $skus[$sku] = $sku;
+            }
+        }
+        if ($skus === []) {
+            abort(response()->json(['success' => false, 'message' => 'Select the rows first.'], 422));
+        }
+
+        return array_values($skus);
+    }
+
+    /**
+     * @param  list<string>  $skus
+     * @return list<array{sku: string, missing: list<string>}>
+     */
+    private function blankSpecifications(array $skus): array
+    {
+        $products = ProductMaster::query()->whereIn('sku', $skus)->get(['sku', 'parent', 'description_v2_specifications']);
+        $categoryColumns = ['sku', 'category_ebay'];
+        if (Schema::hasTable('category_masters') && Schema::hasColumn('category_masters', 'category_ebay_id')) {
+            $categoryColumns[] = 'category_ebay_id';
+        }
+        $wanted = $products->pluck('sku')->all();
+        foreach ($products as $product) {
+            $parent = trim((string) ($product->parent ?? ''));
+            if ($parent !== '') {
+                $wanted[] = 'PARENT '.$parent;
+            }
+        }
+        $categories = Schema::hasTable('category_masters')
+            ? CategoryMaster::query()->whereIn('sku', array_values(array_unique($wanted)))->get($categoryColumns)
+                ->keyBy(fn ($row) => $this->skuKey((string) $row->sku))
+            : collect();
+
+        $rows = [];
+        foreach ($products as $product) {
+            $category = $categories->get($this->skuKey((string) $product->sku));
+            $categoryId = $this->ebayCategoryId($category);
+            $parent = trim((string) ($product->parent ?? ''));
+            if ($categoryId === '' && $parent !== '' && ! $this->isParentSku((string) $product->sku)) {
+                $categoryId = $this->ebayCategoryId($categories->get($this->skuKey('PARENT '.$parent)));
+            }
+            $rows[] = [
+                'SKU' => (string) $product->sku,
+                'Parent' => $parent,
+                'category_ebay_id' => $categoryId,
+                'specs' => $this->normalizeSpecs($product->description_v2_specifications ?? null),
+            ];
+        }
+        $aspects = $this->ebayRequiredAspects($rows);
+
+        $blanks = [];
+        foreach ($rows as $row) {
+            $missing = [];
+            if ($row['specs'] === []) {
+                $missing[] = 'Technical specifications';
+            } else {
+                foreach ($aspects[$row['category_ebay_id']] ?? [] as $name) {
+                    if ($this->specValue($row['specs'], $name) === '') {
+                        $missing[] = $name;
+                    }
+                }
+            }
+            if ($missing !== []) {
+                $blanks[] = ['sku' => $row['SKU'], 'missing' => array_values(array_unique($missing))];
+            }
+        }
+
+        return $blanks;
+    }
+
+    /**
+     * @param  list<array{key: string, value: string}>  $specs
+     * @return array{sku: string, success: bool, message: string, description_v2_specifications: list<array{key: string, value: string}>, technical_specifications: string}
+     */
+    private function syncResult(string $sku, bool $success, string $message, array $specs = []): array
+    {
+        return [
+            'sku' => $sku,
+            'success' => $success,
+            'message' => $message,
+            'description_v2_specifications' => $specs,
+            'technical_specifications' => $this->specsToText($specs),
+        ];
     }
 }
