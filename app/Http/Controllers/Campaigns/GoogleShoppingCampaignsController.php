@@ -575,9 +575,15 @@ class GoogleShoppingCampaignsController extends Controller
                 continue;
             }
             $skus = $this->childSkusForCampaignName($names[$cid]);
+            // SKUs with no stock are not expected in the ad (keeps Fix consistent with the Verification column).
+            $inStock = array_values(array_filter($skus, static function ($sku) use ($invResolver) {
+                $inv = $invResolver($sku);
+
+                return $inv === null || (float) $inv > 0;
+            }));
             $expectedBySku = $this->resolveMerchantCenterItemIds($skus);
             $expected = [];
-            foreach ($skus as $sku) {
+            foreach ($inStock !== [] ? $inStock : $skus as $sku) {
                 $itemId = $expectedBySku[$sku] ?? '';
                 if ($itemId !== '') {
                     $expected[$itemId] = $itemId;
@@ -1440,6 +1446,14 @@ class GoogleShoppingCampaignsController extends Controller
         $collection = $this->filterRawGridRowsByInventory($collection, $invFilter, $invResolver);
         $collection = $this->filterRawGridRowsByPrice($collection, $request, $bgtResolver);
         $collection = $this->filterRawGridRowsByNegativeTargets($collection, $request->input('filter_ntarget'));
+        $fixNeeded = $this->channelKey() === 'shopping'
+            ? $this->fixNeededAllCampaigns($invResolver)
+            : ['ids' => [], 'total' => 0, 'error' => ''];
+        if ($request->boolean('filter_fix') && $this->channelKey() === 'shopping') {
+            // "FIX" badge click: only the campaigns that currently show the Fix button.
+            $fixSet = array_flip($fixNeeded['ids']);
+            $collection = $collection->filter(static fn ($row) => isset($fixSet[(string) (is_object($row) ? ($row->campaign_id ?? '') : ($row['campaign_id'] ?? ''))]))->values();
+        }
         $summary = $this->summarizeRawGridRows($collection);
         $summary = array_merge($summary, $this->rawGridL30TotalsAllStatuses($request, $collection, $invFilter, $invResolver));
         $summary = array_merge($summary, $this->rawGridUtilizationAllCampaigns($request, $collection, $invFilter, $invResolver));
@@ -1454,6 +1468,8 @@ class GoogleShoppingCampaignsController extends Controller
         $summary['ads_needed_pause'] = $adsNeeded['pause_total'];
         $summary['ads_needed_no_id'] = $adsNeeded['no_id_total'];
         $summary['ads_needed_error'] = $adsNeeded['error'];
+        $summary['fix_needed_total'] = $fixNeeded['total'];
+        $summary['fix_needed_error'] = $fixNeeded['error'];
 
         [$sortField, $sortDir] = $this->rawGridSortFromRequest($request);
         $needsPhpSort = $sortField !== null && $this->isPhpSortField($sortField);
@@ -1584,6 +1600,77 @@ class GoogleShoppingCampaignsController extends Controller
             'total' => $total,
             'summary' => $summary,
         ]);
+    }
+
+    /**
+     * Campaigns that show the Fix button: Item IDs attached on Google Ads differ from the SKUs with stock
+     * (Verification mismatch, or Item ID mismatch / missing), and the campaign has inventory (INV > 0).
+     * Covers every ENABLED and PAUSED campaign; cached 5 minutes (cleared whenever Item IDs change).
+     *
+     * @return array{ids: list<string>, total: int, error: string}
+     */
+    public function fixNeededAllCampaigns(?\Closure $invResolver = null, bool $fresh = false): array
+    {
+        $empty = ['ids' => [], 'total' => 0, 'error' => ''];
+        if ((string) config('services.google_ads.login_customer_id') === '') {
+            return ['error' => 'Google Ads customer ID is not configured.'] + $empty;
+        }
+        $key = 'gads_fix_needed_v1:'.$this->channelKey().':'.((int) Cache::get('gads_shopping_item_ids_gen', 0));
+        if ($fresh) {
+            Cache::forget($key);
+        }
+
+        return Cache::remember($key, 300, function () use ($invResolver, $empty) {
+            $maxDate = DB::table('google_ads_campaigns')->where('advertising_channel_type', 'SHOPPING')->max('date');
+            if (! $maxDate) {
+                return $empty;
+            }
+            $q = DB::table('google_ads_campaigns')
+                ->where('advertising_channel_type', 'SHOPPING')
+                ->where('date', '>=', Carbon::parse($maxDate)->subDays(10)->toDateString());
+            $this->applyCampaignNameScope($q);
+            $rows = [];
+            $seen = [];
+            foreach ($q->orderByDesc('date')->get(['campaign_id', 'campaign_name', 'campaign_status']) as $r) {
+                $cid = (string) $r->campaign_id;
+                if (isset($seen[$cid])) {
+                    continue;
+                }
+                $seen[$cid] = true;
+                if (in_array(strtoupper(trim((string) $r->campaign_status)), ['ENABLED', 'PAUSED'], true)) {
+                    $rows[] = ['campaign_id' => $cid, 'campaign_name' => (string) $r->campaign_name];
+                }
+            }
+            if ($rows === []) {
+                return $empty;
+            }
+            $invResolver ??= $this->buildInventoryResolver();
+            $coll = collect($rows);
+            try {
+                $this->attachMerchantIdVerification($coll);
+            } catch (\Throwable $e) {
+                report($e);
+
+                return ['error' => GoogleAdsSbidService::briefGoogleError($e)] + $empty;
+            }
+            $ids = [];
+            $errors = 0;
+            foreach ($coll as $arr) {
+                $ids_ = (string) ($arr['id_status'] ?? '');
+                if ($ids_ === 'error') {
+                    $errors++;
+
+                    continue;
+                }
+                $needs = ($arr['ver_status'] ?? '') === 'mismatch' || $ids_ === 'mismatch' || $ids_ === 'missing';
+                $inv = $invResolver((string) ($arr['campaign_name'] ?? ''));
+                if ($needs && $inv !== null && (int) $inv > 0) {
+                    $ids[] = (string) $arr['campaign_id'];
+                }
+            }
+
+            return ['ids' => $ids, 'total' => count($ids), 'error' => $errors === $coll->count() ? 'Could not read live Item IDs from Google Ads.' : ''];
+        });
     }
 
     /**
@@ -4668,6 +4755,7 @@ class GoogleShoppingCampaignsController extends Controller
             'id_alert_title',
             'ver_attached',
             'ver_total',
+            'ver_zero',
             'ver_status',
             'ver_reason',
             'ads_needed',
@@ -4932,11 +5020,20 @@ class GoogleShoppingCampaignsController extends Controller
             }
         }
         $expectedBySku = $this->resolveMerchantCenterItemIds(array_keys($allSkus));
+        $invResolver = $this->buildInventoryResolver();
 
         foreach ($rows as $i => $arr) {
             $cid = (string) ($arr['campaign_id'] ?? '');
             $name = (string) ($arr['campaign_name'] ?? '');
-            $skus = $skusByCampaignName[$name] ?? [];
+            $allChildSkus = $skusByCampaignName[$name] ?? [];
+            // SKUs with no stock (INV <= 0) are meant to be out of the ad, so they are not expected / not counted.
+            $skus = array_values(array_filter($allChildSkus, static function ($sku) use ($invResolver) {
+                $inv = $invResolver($sku);
+
+                return $inv === null || (float) $inv > 0;
+            }));
+            $zeroInv = count($allChildSkus) - count($skus);
+            $noStockOnly = $allChildSkus !== [] && $skus === [];
             $expected = [];
             foreach ($skus as $sku) {
                 if (! empty($expectedBySku[$sku])) {
@@ -4956,6 +5053,8 @@ class GoogleShoppingCampaignsController extends Controller
             if ($apiError !== null) {
                 $status = 'error';
                 $tip = 'Could not fetch live Ads Item IDs: '.$apiError;
+            } elseif ($noStockOnly) {
+                $tip = 'No stock (INV ≤ 0) on every SKU — nothing needs to be attached.';
             } elseif ($expected === []) {
                 $status = 'missing';
                 $tip = 'No Merchant Center Item ID found in catalog for this campaign SKU(s).';
@@ -4984,10 +5083,15 @@ class GoogleShoppingCampaignsController extends Controller
             $attached = $apiError !== null ? null : count($live);
             $arr['ver_attached'] = $attached;
             $arr['ver_total'] = $skuTotal;
-            $arr['ver_status'] = ($attached !== null && $skuTotal > 0 && $attached === $skuTotal) ? 'match' : 'mismatch';
+            $arr['ver_zero'] = $zeroInv;
+            // Green when every SKU with stock is attached; a campaign with no stock at all (INV <= 0) is green too.
+            $arr['ver_status'] = $noStockOnly || ($attached !== null && $skuTotal > 0 && $attached === $skuTotal) ? 'match' : 'mismatch';
             // Exact reason shown in the Reason column (+ the last Fix attempt's error, if any).
-            if ($status === 'matched' && $arr['ver_status'] === 'match') {
-                $reason = "OK — all {$skuTotal} SKU(s) attached with matching Item IDs.";
+            if ($noStockOnly) {
+                $reason = 'OK — no stock (INV ≤ 0) on any SKU, nothing to attach.';
+            } elseif ($status === 'matched' && $arr['ver_status'] === 'match') {
+                $reason = "OK — all {$skuTotal} SKU(s) with stock attached with matching Item IDs."
+                    .($zeroInv > 0 ? " ({$zeroInv} SKU(s) with INV ≤ 0 not counted.)" : '');
             } elseif ($status === 'matched') {
                 $reason = "Item IDs match, but Items attached ({$attached}) ≠ SKUs ({$skuTotal})"
                     .($skusNoId !== [] ? ': no Merchant Center Item ID in catalog for SKU '.implode(', ', array_slice($skusNoId, 0, 5)).(count($skusNoId) > 5 ? ', …' : '') : '.');

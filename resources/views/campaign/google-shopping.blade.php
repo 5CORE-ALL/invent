@@ -499,6 +499,8 @@
         .gac-card--yesterday .faas-stat-badge, .gac-card--l30 .faas-stat-badge, .gac-card--projected .faas-stat-badge {
             background: #fff; color: #111827; border: 1px solid #e5e7eb;
         }
+        .gac-card .faas-stat-badge.gac-fix-badge { cursor: pointer; user-select: none; }
+        .gac-card .faas-stat-badge.gac-fix-badge.is-on { background: #dc2626; color: #fff; border-color: #b91c1c; box-shadow: 0 0 0 2px #fecaca; }
         .gac-card .faas-stat-badge.gac-ads-needed { background: #7c3aed; color: #fff; border-color: #6d28d9; }
         .gac-card .faas-stat-badge.gac-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
         .gac-card .faas-stat-badge.gac-cmp-worse  { background: #ef4444; color: #fff; border-color: #dc2626; }
@@ -726,6 +728,10 @@
                                         <span id="gacAdsNeededBadge" data-label="Ads Needed"
                                     class="faas-stat-badge gac-ads-needed is-static"
                                     title="SKUs that have inventory but no running ad (all enabled campaigns).">ADS NEEDED:<span id="gacAdsNeededValue">—</span></span>
+                                        {{-- FIX: campaigns that show the Fix button. Click = show only those rows (click again = all). --}}
+                                        <span id="gacFixBadge" data-label="Fix" role="button" tabindex="0"
+                                    class="faas-stat-badge gac-fix-badge"
+                                    title="Campaigns that need a Fix (Item IDs on Google Ads differ from the SKUs with stock). Click to show only those rows.">FIX:<span id="gacFixValue">—</span></span>
                                     @endif
                                     @if ($kpiRow['tag'] === 'L30')
                                         {{-- L30 CLICKS: sum of the visible rows' L30 clicks (updateMetricBadges()); opens the clicks history chart. --}}
@@ -1442,6 +1448,7 @@
                 id_status: true,
                 ver_attached: true,
                 ver_total: true,
+                ver_zero: true,
                 ver_status: true,
                 ver_reason: true,
                 ads_needed_title: true,
@@ -1704,6 +1711,9 @@
                 var ids = String(row.id_status || '');
                 var needs = String(row.ver_status || '') === 'mismatch' || ids === 'mismatch' || ids === 'missing';
                 if (!needs || ids === 'error') return '';
+                // No stock (INV <= 0): nothing to fix — the campaign is paused / its ads removed instead.
+                var invNow = parseFloat(row.inventory);
+                if (isFinite(invNow) && invNow <= 0) return '';
                 var btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-sm gac-fix-btn';
@@ -1840,7 +1850,8 @@
                 var att = row.ver_attached;
                 var attTxt = (att === null || att === undefined || att === '') ? '?' : String(att);
                 var color = st === 'match' ? '#16a34a' : '#dc2626';
-                var tip = 'Items attached on Google Ads: ' + attTxt + ' | SKUs under this parent: ' + (total === null || total === undefined ? '?' : total);
+                var tip = 'Items attached on Google Ads: ' + attTxt + ' | SKUs under this parent: ' + (total === null || total === undefined ? '?' : total)
+                    + (Number(row.ver_zero) > 0 ? ' (' + row.ver_zero + ' SKU(s) with INV ≤ 0 not counted)' : '');
                 return '<span title="' + tip + '" style="color:' + color + ';font-weight:700;">' + attTxt + ' / ' + (total === null || total === undefined ? '?' : total) + '</span>';
             }
 
@@ -2618,6 +2629,17 @@
                     return;
                 }
                 var s = response.summary;
+                var fixEl = document.getElementById('gacFixValue');
+                if (fixEl) {
+                    var fixBadge = document.getElementById('gacFixBadge');
+                    if (s.fix_needed_error) {
+                        fixEl.textContent = '?';
+                        if (fixBadge) fixBadge.title = 'Could not check Item IDs: ' + s.fix_needed_error;
+                    } else {
+                        fixEl.textContent = (Number(s.fix_needed_total) || 0).toLocaleString();
+                        if (fixBadge) fixBadge.title = (Number(s.fix_needed_total) || 0) + ' campaign(s) need a Fix (Item IDs on Google Ads differ from the SKUs with stock). Click to show only those rows' + (gacFixFilterOn ? ' (filter is ON — click to show all).' : '.');
+                    }
+                }
                 var needEl = document.getElementById('gacAdsNeededValue');
                 if (needEl) {
                     var needBadge = document.getElementById('gacAdsNeededBadge');
@@ -2726,6 +2748,7 @@
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
                     filter_inv: gacRawFilterParamVal('gac-filter-inv'),
                     filter_ntarget: gacRawFilterParamVal('gac-filter-ntarget'),
+                    filter_fix: gacFixFilterOn ? 1 : 0,
                     filter_id_status: gacRawFilterParamVal('gac-filter-idst'),
                     filter_verification: gacRawFilterParamVal('gac-filter-ver'),
                     filter_ctr_min: gacRawRangeInputVal('gac-filter-ctr-min'),
@@ -2753,6 +2776,7 @@
                 }
             }
 
+            var gacFixFilterOn = false;
             function gacRawReloadGridForFilters() {
                 if (!table) return;
                 // setPage(1) + setData() both trigger a remote load; the first
@@ -3082,6 +3106,20 @@
                     e.preventDefault();
                     gacRawOpenSbgtHistory(dot.getAttribute('data-sbgt-cid'));
                 });
+                // FIX badge: toggle the "only campaigns that need a Fix" filter.
+                (function() {
+                    var fb = document.getElementById('gacFixBadge');
+                    if (!fb) return;
+                    var toggle = function(ev) {
+                        if (ev && ev.type === 'keydown' && ev.key !== 'Enter' && ev.key !== ' ') return;
+                        if (ev) ev.preventDefault();
+                        gacFixFilterOn = !gacFixFilterOn;
+                        fb.classList.toggle('is-on', gacFixFilterOn);
+                        gacRawReloadGridForFilters();
+                    };
+                    fb.addEventListener('click', toggle);
+                    fb.addEventListener('keydown', toggle);
+                })();
                 // N Target number → Keyword Planner modal.
                 document.addEventListener('click', function (e) {
                     var t = e.target.closest ? e.target.closest('.gac-ntarget-link') : null;
