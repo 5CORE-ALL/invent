@@ -535,15 +535,17 @@
             line-height: 1; margin: 0 0 0.35rem; color: #854d0e;
         }
         .amz-card-tiles { display: grid; gap: 0.4rem; align-items: stretch; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        /* Tiles grow with their text: label and value wrap onto a second line instead of overflowing the tile. */
         .amz-kpi-tile {
-            display: inline-flex; align-items: center; justify-content: center; text-align: center;
-            width: 100%; min-width: 0; min-height: 36px; box-sizing: border-box; white-space: nowrap;
-            font-size: 0.78rem; font-weight: 700; line-height: 1.2; padding: 0.3rem 0.35rem; border-radius: 0.375rem;
+            display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; text-align: center;
+            column-gap: 4px; row-gap: 0;
+            width: 100%; min-width: 0; min-height: 36px; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere;
+            font-size: clamp(0.68rem, 0.62vw + 0.28rem, 0.78rem); font-weight: 700; line-height: 1.25; padding: 0.3rem 0.4rem; border-radius: 0.375rem;
             background: #fff; color: #111827; border: 1px solid #e5e7eb;
         }
-        .amz-kpi-tile .amz-badge-history-dot { margin-right: 6px; }
-        .amz-kpi-tile > .amz-kpi-val { margin-left: 4px; font-size: 0.85rem; font-weight: 800; }
-        .amz-kpi-tile > .amz-kpi-pct { margin-left: 5px; font-size: 0.75rem; font-weight: 700; opacity: 0.95; }
+        .amz-kpi-tile .amz-badge-history-dot { margin-right: 2px; flex: 0 0 auto; }
+        .amz-kpi-tile > .amz-kpi-val { margin-left: 0; font-size: 1.08em; font-weight: 800; white-space: nowrap; }
+        .amz-kpi-tile > .amz-kpi-pct { margin-left: 0; white-space: nowrap; font-size: 0.75rem; font-weight: 700; opacity: 0.95; }
         .amz-kpi-tile.amz-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
         .amz-kpi-tile.amz-cmp-worse { background: #ef4444; color: #fff; border-color: #dc2626; }
         .amz-kpi-tile.amz-kpi-campaign { background: #4c7ed8; color: #fff; border-color: #3b6cc4; }
@@ -1233,10 +1235,10 @@
 
                         {{-- Suggested BGT (SBGT): what the ACOS vs SBGT rule wants (not the budget currently set on Amazon — that is CURRENT BGT in the cards above). Same block structure as the other cards; element ids are unchanged so the existing budget / Lbgt / BID code keeps filling them. --}}
                         <div class="amz-card amz-card--sbgt" id="amzSbgtCard">
-                            <div class="amz-card-title">Suggested BGT (SBGT)</div>
+                            <div class="amz-card-title">Sugg BGT (SBGT)</div>
                             <div class="amz-card-tiles">
-                                <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-kpi-tile" title="SUGGESTED daily budget = sum of floored SBGT (from the ACOS vs SBGT rule) across campaigns in the current filters. This is what the rules want, not what is set on Amazon now (see CURRENT BGT in the L30 card). Open BGT Rules for the count at each budget.">SUGGESTED DAILY BGT:<span class="amz-kpi-val" id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
-                                <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-kpi-tile" title="SUGGESTED monthly budget = suggested daily budget (SBGT) × 30.">SUGGESTED MONTHLY BGT:<span class="amz-kpi-val" id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
+                                <span id="amazonAdsDailyBudgetBadgeWrap" class="amz-kpi-tile" title="SUGGESTED daily budget = sum of floored SBGT (from the ACOS vs SBGT rule) across campaigns in the current filters. This is what the rules want, not what is set on Amazon now (see CURRENT BGT in the L30 card). Open BGT Rules for the count at each budget.">SUGG DAILY BGT:<span class="amz-kpi-val" id="amazonAdsDailyBudgetBadgeValue">$0</span></span>
+                                <span id="amazonAdsMonthlyBudgetBadgeWrap" class="amz-kpi-tile" title="SUGGESTED monthly budget = suggested daily budget (SBGT) × 30.">SUGG MONTHLY BGT:<span class="amz-kpi-val" id="amazonAdsMonthlyBudgetBadgeValue">$0</span></span>
                                 <div class="amz-kpi-tile amz-sbgt-group" title="Click an Lbgt color to show only those rows. Click again to clear.">
                                     <span class="amz-sync-toolbar-label">Lbgt</span>
                                     <div class="amz-sync-head-badges" data-sync-field="bgt"></div>
