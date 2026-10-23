@@ -1020,6 +1020,58 @@
             padding: 6px 16px;
         }
         #amazonAdsBgtRulesModal .amz-bgt-col .table-responsive { margin-bottom: 0; flex: 1 1 auto; min-height: 0; overflow: auto; }
+        /* BGT Rules modal polish: three roomy cards per row, readable tables, compact Sum. */
+        #amazonAdsBgtRulesModal .modal-header { padding: 12px 18px; }
+        #amazonAdsBgtRulesModal .modal-title { font-size: 17px !important; }
+        #amazonAdsBgtRulesModal .modal-body { padding: 12px; gap: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-cols { gap: 12px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col {
+            flex: 1 1 calc((100% - 24px) / 3);
+            max-width: calc((100% - 24px) / 3);
+            min-width: 300px;
+            padding: 10px 14px 14px;
+            border-radius: 12px;
+            border: 1px solid #e3eaf3;
+            border-top: 3px solid #0f766e;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar { border-top-color: #0f172a; margin-bottom: 12px; gap: 10px; }
+        @media (max-width: 1100px) {
+            #amazonAdsBgtRulesModal .amz-bgt-col { flex-basis: calc((100% - 12px) / 2); max-width: calc((100% - 12px) / 2); }
+        }
+        @media (max-width: 720px) {
+            #amazonAdsBgtRulesModal .amz-bgt-col { flex-basis: 100%; max-width: 100%; min-width: 0; }
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col-head { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #eef2f7; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.is-min .amz-bgt-col-head { border-bottom: 0; padding-bottom: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-title { font-size: 14px; }
+        #amazonAdsBgtRulesModal .amz-bgt-min-btn,
+        #amazonAdsBgtRulesModal .amz-bgt-exp-btn { width: 26px; height: 26px; border-radius: 8px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) { font-size: 13px; width: 100%; border-collapse: separate; border-spacing: 0; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) thead th {
+            font-size: 10px; padding: 7px 8px; background: #f1f5f9; border-color: #e6edf5; text-align: left;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) thead th.text-center { text-align: center; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) td { padding: 4px 6px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) tbody tr:hover td { background: #f8fafc; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) .form-control-sm {
+            padding: 4px 8px; font-size: 13px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #0f172a;
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table:not(.amz-bgt-sum-table) .form-control-sm:focus {
+            border-color: #0f766e; background: #fff; box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+        }
+        #amazonAdsBgtRulesModal .amz-bgt-col td.amz-bgt-cnt { width: 64px; font-size: 13px; font-weight: 700; color: #0f766e; font-variant-numeric: tabular-nums; background: #f0fdfa; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger { color: #ef4444; font-size: 0.9em; padding: 5px 7px; border-radius: 6px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .btn-outline-danger:hover:not(:disabled) { background: #fef2f2; color: #dc2626; }
+        #amazonAdsBgtRulesModal .amz-bgt-col .table-responsive { margin-bottom: 10px; }
+        #amazonAdsBgtRulesModal .amz-bgt-add { padding: 6px 10px; font-size: 13px; border-radius: 8px; border-width: 1.5px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table { height: auto; font-size: 13px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table th,
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table td { padding: 5px 12px; font-size: 13px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table td.text-end { font-variant-numeric: tabular-nums; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tr.amz-bgt-count-total td { background: #f1f5f9; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .amz-bgt-sum-table tr.fw-semibold td { background: #0f766e; color: #fff; font-size: 14px; }
+        #amazonAdsBgtRulesModal .amz-bgt-col.amz-bgt-sumbar .table-responsive { flex: 0 1 380px; min-width: 260px; }
         #amazonAdsSbidRuleModal .modal-dialog {
             width: min(1120px, calc(100vw - 1.25rem));
             max-width: calc(100vw - 1.25rem);
@@ -1669,32 +1721,6 @@
                                 <span class="amz-bgt-head-actions"><button type="button" class="amz-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
                             </div>
                             <div class="amz-bgt-budget-badges" id="amz-bgt-budget-badges"></div>
-                            <div class="amz-bgt-sum-body">
-                                <div class="amz-bgt-chart">
-                                    <div class="amz-bgt-legend" id="amz-bgt-leg-sum"></div>
-                                </div>
-                                <div class="table-responsive">
-                                    <table class="table table-sm table-bordered align-middle mb-0 amz-bgt-sum-table">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th>Budget</th>
-                                                <th class="text-center">Campaigns</th>
-                                                <th class="text-end">Per day</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="amz-bgt-budget-tbody"></tbody>
-                                    </table>
-                                    <table class="table table-sm table-bordered align-middle mb-0 mt-2 amz-bgt-sum-table">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th>Part</th>
-                                                <th class="text-end">Budget</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="amz-bgt-sum-tbody"></tbody>
-                                    </table>
-                                </div>
-                            </div>
                         </div>
                     <div class="amz-bgt-cols">
                         <div class="amz-bgt-col" data-amz-bgt-panel="acos">
@@ -6496,19 +6522,8 @@
                     td.title = r && total > 0 ? Math.round((r.n / total) * 100) + '% of ' + total.toLocaleString('en-US') + ' campaigns' : '';
                 }
                 var table = tbody.closest('table');
-                if (!table) return;
-                var foot = table.querySelector('tfoot.amz-bgt-cnt-foot');
-                if (!foot) {
-                    foot = document.createElement('tfoot');
-                    foot.className = 'amz-bgt-cnt-foot';
-                    table.appendChild(foot);
-                }
-                var unmatched = 0;
-                if (rows && rows.length > trs.length) unmatched = rows[rows.length - 1].n;
-                var text = rows ? ('Total' + (unmatched > 0 ? ' (No match ' + unmatched.toLocaleString('en-US') + ')' : '')) : 'Counting…';
-                foot.innerHTML = '<tr class="table-light"><td colspan="4" class="text-end small fw-semibold">' + amzEsc(text) + '</td>'
-                    + '<td class="text-center fw-bold">' + (rows ? total.toLocaleString('en-US') : '…') + '</td><td></td></tr>'
-                    + (note ? '<tr><td colspan="6" class="small text-muted">' + amzEsc(note) + '</td></tr>' : '');
+                var oldFoot = table ? table.querySelector('tfoot.amz-bgt-cnt-foot') : null;
+                if (oldFoot) oldFoot.remove();
             }
             function amzBgtPaintColumn(key, bands, counts) {
                 // Stored counts only when they match these exact slabs. Otherwise count the rows on the page now.
@@ -6700,7 +6715,6 @@
                 var legend = document.getElementById('amz-bgt-leg-sum');
                 var canvas = document.getElementById('amz-bgt-chart-sum');
                 var tbody = document.getElementById('amz-bgt-sum-tbody');
-                if (!legend && !tbody) return;
                 var order = [
                     { key: 'views', label: 'Views' },
                     { key: 'cvr', label: 'CVR' },
@@ -6844,18 +6858,9 @@
                     rows, totalN, sbgtTotal, bgtTotal
                 );
             }
-            // Budget-wise counts (campaigns per daily budget) plus each part's budget. No per-part campaign counts.
+            // Each part's budget, then Total and SBGT.
             function amzBgtRenderSumTables(parts, rows, totalN, sbgtTotal, bgtTotal) {
-                var budgetBody = document.getElementById('amz-bgt-budget-tbody');
                 var partBody = document.getElementById('amz-bgt-sum-tbody');
-                if (budgetBody) {
-                    var bh = (rows || []).map(function (r) {
-                        var day = Number(r.label) * r.n;
-                        return '<tr><td>$' + amzEsc(r.label) + '</td><td class="text-center">' + r.n.toLocaleString('en-US') + '</td><td class="text-end">$' + Math.round(day).toLocaleString('en-US') + '</td></tr>';
-                    }).join('');
-                    bh += '<tr class="fw-semibold"><td>Total</td><td class="text-center">' + totalN.toLocaleString('en-US') + '</td><td class="text-end">$' + Math.round(sbgtTotal).toLocaleString('en-US') + '</td></tr>';
-                    budgetBody.innerHTML = bh;
-                }
                 if (partBody) {
                     var ph = (parts || []).map(function (p) {
                         return '<tr><td>' + amzEsc(p.label || '') + '</td><td class="text-end">$' + amzBgtFmtMoney(Number(p.sum) || 0) + '</td></tr>';
