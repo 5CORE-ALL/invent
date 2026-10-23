@@ -360,7 +360,7 @@
                         <h5 class="modal-title fs-6 mb-0" id="amzStdPrcModalLabel">
                             <i class="fas fa-tags me-1"></i> Std prc vs dil
                         </h5>
-                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. SNROI Cap then lowers S PRC so a SKU's SNROI does not go above the Target SNROI % of its Dil slab.</div>
+                        <div class="amz-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − 0 Sold − CVR − Reviews. 0 Sold applies only when A L30 is 0. Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, and Review discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -858,9 +858,9 @@
             return -1;
         }
         /**
-         * Lower a price whose SNROI is above the Target SNROI % of its Dil slab to the price that lands on the target.
+         * SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts.
          * SNROI = ((price x (margin - ads%)) - ship - LP) / LP, the same number as the SNROI% column. Rounded down to the
-         * cent. Never raises a price. Same math as StdPrcVsDilPricer::capPriceToSnroi on the server.
+         * cent. Std Prc stays the maximum. Same math as StdPrcVsDilPricer::snroiTargetPrice on the server.
          */
         function amzStdApplySnroiCap(d, price, rules) {
             const p = Number(price);
@@ -875,10 +875,10 @@
             const adsFrac = amzStdAdsPct() / 100;
             const net = margin - (adsFrac > 0 && adsFrac < margin ? adsFrac : 0);
             if (!(lp > 0) || !(net > 0)) return price;
-            const snroi = (((p * net) - ship - lp) / lp) * 100;
-            if (snroi <= target + 0.00001) return price;
-            const capped = Math.floor((((lp * (1 + target / 100)) + ship) / net) * 100 + 0.00001) / 100;
-            return (capped > 0 && capped < p) ? capped : price;
+            let solved = Math.floor((((lp * (1 + target / 100)) + ship) / net) * 100 + 0.00001) / 100;
+            const std = Number(d && d.STANDARD_PRICE) || 0;
+            if (std > 0 && solved > std) solved = Math.round(std * 100) / 100;
+            return solved > 0 ? solved : price;
         }
         window.amzStdApplySnroiCap = amzStdApplySnroiCap;
         window.amzStdSnroiCapRulesLive = amzStdSnroiCapRulesLive;
@@ -1433,7 +1433,7 @@
                     // SNROI Cap: after all discounts, never let SNROI go above the Target SNROI % of the SKU's Dil slab.
                     const capIdx = amzStdSnroiCapSlab(d, draft.snroiCap);
                     const cappedPrice = amzStdApplySnroiCap(d, sprice, draft.snroiCap);
-                    if (capIdx >= 0 && cappedPrice < sprice) {
+                    if (capIdx >= 0 && Math.abs(cappedPrice - sprice) > 0.004) {
                         snroiCapCounts['n' + capIdx] += 1;
                         sprice = cappedPrice;
                     } else {

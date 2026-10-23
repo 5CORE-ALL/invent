@@ -3217,12 +3217,12 @@
                 if (!(sale >= 0.01)) sale = null;
             }
             let effective = sale != null ? sale : std;
-            // SNROI Cap: after all discounts, lower the price when its SNROI is above the Target SNROI % of the
-            // SKU's Dil slab. Only ever lowers. The sale price follows so the push writes the capped price.
+            // SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts.
+            // Std Prc stays the maximum. The sale price follows so the push writes the capped price.
             let snroiCapped = false;
             if (effective > 0 && typeof amzStdApplySnroiCap === 'function') {
                 const afterCap = amzPefRound2(amzStdApplySnroiCap(d, effective));
-                if (afterCap > 0 && afterCap < effective - 0.0001) {
+                if (afterCap > 0 && Math.abs(afterCap - effective) > 0.0001) {
                     effective = afterCap;
                     sale = afterCap;
                     snroiCapped = true;

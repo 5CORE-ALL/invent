@@ -149,7 +149,7 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0"><i class="fas fa-tags me-1"></i> Std prc vs dil</h5>
-                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair', 'topdawg', 'faire', 'alibaba'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. SNROI Cap then lowers S PRC so a SKU's SNROI does not go above the Target SNROI % of its Dil slab.</div>
+                        <div class="ch-sp-sub">S PRC = Std Prc − Age − Dil − B Disc − Pricing − ROI − 0 Sold − CVR − Reviews − LMP − MOQ M.@if(in_array(($channelPromoChannel ?? ''), ['shopify_b2b', 'wayfair', 'topdawg', 'faire', 'alibaba'], true)) After the discount, the Ship column is subtracted.@endif 0 Sold applies only when sold qty is 0. LMP Disc applies only to SKUs that have an LMP, on that SKU's Dil slab. MOQ M uses Dil MOQ % slabs (OV L30 ÷ Req M). Std Prc under $15 uses half of Age, Dil, 0 Sold, CVR, Review, LMP, and MOQ M discounts. B Disc stays at the full Disc %. Clearance SKUs stay on the discount price. A Dil slab with a SNROI Cap prices S PRC from the Target SNROI % (the discounts above are not used for it). Std Prc stays the maximum.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -281,12 +281,12 @@
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th>Disc %</th><th class="text-center">Count</th></tr></thead><tbody id="ch-sp-all-tbody"></tbody></table></div>
                         </div>
                         <div class="ch-sp-col" data-ch-sp-panel="snroicap">
-                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Slabs on the Dil %. Cap is the Target SNROI %. After all discounts, a SKU whose SNROI at S PRC is above the Cap of its Dil slab gets a lower S PRC that lands on the Cap. It only lowers prices. Leave the Cap blank to turn it off for that slab.">SNROI Cap</div><button type="button" class="ch-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></div>
+                            <div class="ch-sp-col-head"><div class="ch-sp-pie-title" title="Slabs on the Dil %. Cap is the Target SNROI %. A SKU in a slab with a Cap gets the S PRC that lands on that SNROI, instead of the discount price. Std Prc stays the maximum. Leave the Cap blank to use the discounts for that slab.">SNROI Cap</div><button type="button" class="ch-sp-min-btn" title="Minimize SNROI Cap" aria-label="Minimize SNROI Cap">−</button></div>
                             <div class="ch-sp-pie-canvas"><canvas id="ch-sp-pie-snroicap"></canvas></div>
                             <div class="ch-sp-pie-legend" id="ch-sp-leg-snroicap"></div>
                             <div class="table-responsive"><table class="table table-sm table-bordered mb-0"><thead class="table-light"><tr><th class="text-center">Dil from</th><th class="text-center">Dil to</th><th class="text-center">Capped</th><th class="text-end">Cap SNROI %</th><th></th></tr></thead><tbody id="ch-sp-snroicap-tbody"></tbody></table></div>
                             <button type="button" class="btn btn-sm btn-outline-primary ch-sp-add" id="ch-sp-snroicap-add">Add slab</button>
-                            <div class="small text-muted mt-1">Capped = SKUs whose S PRC was lowered to hold the Target SNROI %.</div>
+                            <div class="small text-muted mt-1">Capped = SKUs whose S PRC comes from the Target SNROI % instead of the discounts.</div>
                         </div>
                     </div>
                 </div>
@@ -815,10 +815,11 @@
             return -1;
         }
         /**
-         * Lower a price that has a SNROI above the Target SNROI % of its Dil slab to the price that lands on the target.
+         * SNROI Cap: when the SKU's Dil slab has a Target SNROI %, S PRC is the price that lands on that target
+         * (the discount price is used only when the slab has no cap). Std Prc stays the maximum.
          * SNROI = ((price x (margin - ads%)) - ship - LP) / LP, the same number the S NROI column shows (ads% is 0 on pages
-         * without ads, ship is 0 on pages that exclude it). Rounded down to the cent. Never raises a price.
-         * Same math as StdPrcVsDilPricer::capPriceToSnroi on the server.
+         * without ads, ship is 0 on pages that exclude it). Rounded down to the cent.
+         * Same math as StdPrcVsDilPricer::snroiTargetPrice on the server.
          */
         function chStdApplySnroiCap(d, price, rules) {
             const p = Number(price);
@@ -832,10 +833,11 @@
             const margin = chStdMargin(d) - (adsFrac > 0 && adsFrac < chStdMargin(d) ? adsFrac : 0);
             const ship = chStdExcludesShip() ? 0 : ((typeof chPromoShipCost === 'function') ? (Number(chPromoShipCost(d)) || 0) : 0);
             if (!(lp > 0) || !(margin > 0)) return price;
-            const snroi = (((p * margin) - ship - lp) / lp) * 100;
-            if (snroi <= target + 0.00001) return price;
-            const capped = Math.floor((((lp * (1 + target / 100)) + ship) / margin) * 100 + 0.00001) / 100;
-            return (capped > 0 && capped < p) ? capped : price;
+            let solved = Math.floor((((lp * (1 + target / 100)) + ship) / margin) * 100 + 0.00001) / 100;
+            const std = (typeof chPromoStdBase === 'function') ? (Number(chPromoStdBase(d)) || 0) : 0;
+            const maxPrice = std - chStdShipOff(d);
+            if (maxPrice > 0 && solved > maxPrice) solved = Math.round(maxPrice * 100) / 100;
+            return solved > 0 ? solved : price;
         }
         window.chStdApplySnroiCap = chStdApplySnroiCap;
         /**
@@ -1222,7 +1224,7 @@
                     if (snroiCapOn) {
                         const capIdx = chStdSnroiCapSlab(d, draft.snroiCap);
                         const cappedPrice = chStdApplySnroiCap(d, sprice, draft.snroiCap);
-                        if (capIdx >= 0 && cappedPrice < sprice) {
+                        if (capIdx >= 0 && Math.abs(cappedPrice - sprice) > 0.004) {
                             snroiCapCounts['n' + capIdx] += 1;
                             sprice = cappedPrice;
                         } else {
@@ -1873,7 +1875,7 @@
             let raw = std * (1 - Math.min(99.99, sum) / 100);
             raw -= chStdShipOff(d);
             if (!(raw > 0)) return 0;
-            // SNROI Cap: after all discounts, never let SNROI go above the Target SNROI % of the SKU's Dil slab.
+            // SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts.
             if (chStdUsesSnroiCap()) raw = chStdApplySnroiCap(d, raw, (draft && draft.snroiCap) || chStdSnroiCapRulesLive());
             if (chStdIsEbay()) raw = chStdEbayCap(d, raw);
             if (!(raw > 0)) return 0;

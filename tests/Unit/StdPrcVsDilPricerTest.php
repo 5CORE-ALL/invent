@@ -497,4 +497,34 @@ class StdPrcVsDilPricerTest extends TestCase
         // Ads given as a percent (10) is read the same way.
         $this->assertSame(94.11, (new StdPrcVsDilPricer($rules, 'reverb'))->priceFromRow($row + ['dil' => 10, 'ads' => 10]));
     }
+
+    public function test_snroi_cap_slab_prices_from_the_target_not_the_discounts_and_std_is_the_maximum(): void
+    {
+        $rules = [
+            'dil' => [['min' => 0, 'max' => 100, 'disc' => 10]],
+            'age' => [],
+            'cvr' => [
+                'down2_lt' => 4, 'down2_disc' => 0, 'down_lt' => 7, 'down_disc' => 0,
+                'up_gt' => 10, 'up_disc' => 0, 'up2_gt' => 15, 'up2_disc' => 0, 'flat_disc' => 0,
+            ],
+            'reviews' => [],
+            'review_max' => 4,
+            'snroi_cap' => [
+                ['min' => 0, 'max' => 20, 'cap' => 60],
+                ['min' => 20, 'max' => 50, 'cap' => 500],
+                ['min' => 50, 'max' => 100, 'cap' => null],
+            ],
+        ];
+        $row = ['inv' => 1, 'std_price' => 100, 'cvr' => 8, 'cvr_60' => 8, 'sold' => 1, 'lp' => 50, 'margin' => 0.95];
+        $pricer = new StdPrcVsDilPricer($rules, 'faire');
+
+        // Capped slab: S PRC = (50 x 1.6) / 0.95 = 84.21 even though the 10% discount price (90) is higher.
+        $this->assertSame(84.21, $pricer->priceFromRow($row + ['dil' => 10]));
+        // The discount price is BELOW the target price: S PRC goes up to the target, not down to the discount.
+        $this->assertSame(84.21, $pricer->priceFromRow($row + ['dil' => 10, 'std_price' => 100, 'lp' => 50]));
+        // A target that needs more than Std holds at Std Prc.
+        $this->assertSame(100.0, $pricer->priceFromRow($row + ['dil' => 30]));
+        // Slab with no cap: the discounts apply.
+        $this->assertSame(90.0, $pricer->priceFromRow($row + ['dil' => 70]));
+    }
 }

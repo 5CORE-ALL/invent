@@ -138,18 +138,19 @@ class StdPrcVsDilPricer
                 return null;
             }
         }
-        $price = $this->applySnroiCap($price, $dil, $row);
+        $price = $this->applySnroiCap($price, $dil, $row, $std - $shipOff);
 
         return $price > 0 ? $price : null;
     }
 
     /**
-     * SNROI Cap: when the SNROI at this price is above the Target SNROI % of the SKU's Dil slab, lower the price
-     * to the one that lands on the target. It only ever lowers a price.
+     * SNROI Cap: when the SKU's Dil slab has a Target SNROI %, S PRC is the price that lands on that target. The
+     * Age / Dil / B / 0 Sold / CVR / Review discounts are used only when the slab has no cap. Std Prc stays the
+     * maximum ($maxPrice), so a target that needs more than Std holds at Std.
      *
      * @param  array<string, mixed>  $row
      */
-    private function applySnroiCap(float $price, float $dil, array $row): float
+    private function applySnroiCap(float $price, float $dil, array $row, float $maxPrice = 0.0): float
     {
         // A caller that solves the cap on its own price chain (New Temu Two) asks for it to be skipped here.
         if (! empty($row['skip_snroi_cap'])) {
@@ -188,7 +189,30 @@ class StdPrcVsDilPricer
             $ads = 0.0;
         }
 
-        return self::capPriceToSnroi($price, $target, $lp, $margin, $ship, $ads);
+        $solved = self::snroiTargetPrice($target, $lp, $margin, $ship, $ads);
+        if ($solved === null) {
+            return $price;
+        }
+        if ($maxPrice > 0 && $solved > $maxPrice) {
+            $solved = round($maxPrice, 2);
+        }
+
+        return $solved > 0 ? $solved : $price;
+    }
+
+    /**
+     * The price whose SNROI is the target: (LP × (1 + target%) + ship) ÷ (margin − ads), rounded down to the cent.
+     * Null when LP or the net margin is missing, so the caller keeps its discount price.
+     */
+    public static function snroiTargetPrice(float $target, float $lp, float $margin, float $ship = 0.0, float $ads = 0.0): ?float
+    {
+        $net = $margin - $ads;
+        if (! ($lp > 0) || ! ($net > 0)) {
+            return null;
+        }
+        $price = floor(((($lp * (1 + $target / 100)) + $ship) / $net) * 100 + 0.00001) / 100;
+
+        return $price > 0 ? $price : null;
     }
 
     /** Pages with no Ship (and Amazon, which has its own job) keep their own inputs: never use the channel fallback. */

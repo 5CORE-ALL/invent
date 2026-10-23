@@ -378,23 +378,25 @@ class AmazonSprcDilAutoPushService
             return null;
         }
 
-        // SNROI Cap: after all discounts, lower the price when its SNROI is above the Target SNROI % of the Dil slab.
-        // It only ever lowers a price. The LMP cap below can still bring it down further.
+        // SNROI Cap: a Dil slab with a Target SNROI % prices S PRC from that SNROI, not from the discounts. Std Prc
+        // stays the maximum. The LMP cap below can still bring it down.
         $snroiCap = StdPrcVsDilPricer::snroiCapTarget(
             $dil,
             is_array($stdPromo['snroi_cap'] ?? null) ? $stdPromo['snroi_cap'] : []
         );
         $snroiCapped = false;
         if ($snroiCap !== null) {
-            $afterCap = StdPrcVsDilPricer::capPriceToSnroi(
-                $effective,
+            $afterCap = StdPrcVsDilPricer::snroiTargetPrice(
                 $snroiCap,
                 $lp,
                 AmazonDilGroiRule::TAKE_HOME,
                 $ship,
                 max(0.0, (float) $ads) / 100
             );
-            if ($afterCap > 0 && $afterCap < $effective - 0.0001) {
+            if ($afterCap !== null && $std > 0 && $afterCap > $std) {
+                $afterCap = round($std, 2);
+            }
+            if ($afterCap !== null && $afterCap > 0 && abs($afterCap - $effective) > 0.0001) {
                 $effective = $afterCap;
                 $sale = $afterCap;
                 $snroiCapped = true;
