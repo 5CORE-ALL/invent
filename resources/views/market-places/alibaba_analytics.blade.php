@@ -311,6 +311,8 @@
         // S PRC (calc − Ship) is saved by the server (alibaba:sprc-dil-auto-push --skip-push). The page pushes S PRC to
         // Alibaba: on the first page open of the day (once a day) or with the Push now button.
         window.CH_STD_SERVER_OWNED = true;
+        // The SNROI% column here is SGROI on the S PRC (Ship already taken off, no Ads%), so the SNROI Cap judges the same number.
+        window.CH_PROMO_ADS_FN = function() { return 0; };
         @include('partials.channel-pef-promo', ['channelPromoPart' => 'script', 'channelPromoChannel' => 'alibaba'])
         document.body.style.zoom = "90%";
 

@@ -915,6 +915,14 @@
                                 </select>
                             </div>
                             <div class="gac-raw-filter-field">
+                                <label class="gac-raw-filter-label mb-0" for="gac-filter-ntarget" title="Negative keyword count (N Target column)">N Tgt</label>
+                                <select id="gac-filter-ntarget" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by N Target (negative keyword count)">
+                                    <option value="all" selected>All</option>
+                                    <option value="m">M (none)</option>
+                                    <option value="has">Has negatives</option>
+                                </select>
+                            </div>
+                            <div class="gac-raw-filter-field">
                                 <label class="gac-raw-filter-label mb-0" for="gac-filter-idst">Alert</label>
                                 <select id="gac-filter-idst" class="form-select form-select-sm gac-raw-filter-select" aria-label="Filter by Item ID check against Merchant Center" title="ID alert (checks Google Ads Item ID vs Merchant Center): Green = ID matched, Yellow = no ID found, Red = ID mismatch / lookup failed.">
                                     <option value="all" selected>All</option>
@@ -1230,6 +1238,40 @@
         </div>
     </div>
 
+    {{-- N Target click: Google Ads Keyword Planner ("Discover new keywords"), United States / English. --}}
+    <div class="modal fade" id="gacKwPlannerModal" tabindex="-1" aria-labelledby="gacKwPlannerLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title" id="gacKwPlannerLabel">
+                        <i class="fas fa-search" style="color:#2563eb;"></i>
+                        Keyword Planner — Discover new keywords <span id="gacKwPlannerName" class="text-muted"></span>
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2">
+                    <div class="row g-3">
+                        <div class="col-md-7">
+                            <label class="form-label small fw-semibold mb-1" for="gacKwPlannerKeywords">Enter products or services closely related to your business</label>
+                            <textarea id="gacKwPlannerKeywords" class="form-control form-control-sm" rows="2" maxlength="600" placeholder='Try "meal delivery" or "leather boots" (separate several with commas)'></textarea>
+                            <div class="small text-muted mt-1"><i class="fas fa-language"></i> English &nbsp; <i class="fas fa-map-marker-alt"></i> United States</div>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small fw-semibold mb-1" for="gacKwPlannerSite">Enter a site to filter unrelated keywords</label>
+                            <input type="text" id="gacKwPlannerSite" class="form-control form-control-sm" placeholder="https://" maxlength="200">
+                            <div class="small text-muted mt-1">Optional. Filters out products or brands you don't offer.</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-primary" id="gacKwPlannerGo">Get results</button>
+                        <span id="gacKwPlannerMsg" class="small ms-2"></span>
+                    </div>
+                    <div id="gacKwPlannerBody" style="max-height:52vh;overflow:auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Negative keywords for a campaign (campaign-level + ad group-level), populated by app:fetch-google-ads-negative-keywords --}}
     <div class="modal fade" id="gacRawNegKwModal" tabindex="-1" aria-labelledby="gacRawNegKwModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -1272,6 +1314,7 @@
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawToggleStatusUrl = @json(route('google.shopping.campaigns.toggle.status'));
             const gacRawFixItemIdsUrl = @json(route('google.shopping.campaigns.fix.item.ids'));
+            const gacKwPlannerUrl = @json(route('google.shopping.campaigns.keyword.planner'));
             const gacCampaignSkusUrl = @json(route('google.shopping.campaigns.campaign.skus'));
             const gacCampaignSkuActionUrl = @json(route('google.shopping.campaigns.campaign.sku.action'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
@@ -1956,6 +1999,69 @@
                 if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
                 gacSkuLoad();
             }
+            // ---- N Target click: Keyword Planner modal ----
+            function gacKwPlannerOpen(campaignName) {
+                var seed = String(campaignName || '').replace(/^\s*PARENT\s+/i, '').trim();
+                var kw = document.getElementById('gacKwPlannerKeywords');
+                if (kw) kw.value = seed;
+                var site = document.getElementById('gacKwPlannerSite');
+                if (site) site.value = '';
+                var nm = document.getElementById('gacKwPlannerName');
+                if (nm) nm.textContent = seed ? '— ' + seed : '';
+                var msg = document.getElementById('gacKwPlannerMsg');
+                if (msg) { msg.textContent = ''; msg.className = 'small ms-2'; }
+                var body = document.getElementById('gacKwPlannerBody');
+                if (body) body.innerHTML = '';
+                var modalEl = document.getElementById('gacKwPlannerModal');
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            }
+            function gacKwPlannerFetch() {
+                var kw = (document.getElementById('gacKwPlannerKeywords') || {}).value || '';
+                var site = (document.getElementById('gacKwPlannerSite') || {}).value || '';
+                var msg = document.getElementById('gacKwPlannerMsg');
+                var body = document.getElementById('gacKwPlannerBody');
+                var btn = document.getElementById('gacKwPlannerGo');
+                if (!kw.trim() && !site.trim()) {
+                    if (msg) { msg.textContent = 'Enter a keyword or a site.'; msg.className = 'small ms-2 text-danger'; }
+                    return;
+                }
+                if (btn) btn.disabled = true;
+                if (msg) { msg.textContent = 'Fetching from Google Keyword Planner…'; msg.className = 'small ms-2 text-muted'; }
+                if (body) body.innerHTML = '';
+                var tokenEl = document.querySelector('meta[name="csrf-token"]');
+                fetch(gacKwPlannerUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': tokenEl ? tokenEl.getAttribute('content') : ''
+                    },
+                    body: JSON.stringify({ keywords: kw, site: site })
+                }).then(function(r) { return r.json().catch(function() { return {}; }); }).then(function(resp) {
+                    if (btn) btn.disabled = false;
+                    if (!resp || !resp.ok) {
+                        if (msg) { msg.textContent = (resp && resp.message) || 'Keyword Planner request failed.'; msg.className = 'small ms-2 text-danger'; }
+                        return;
+                    }
+                    var rows = resp.rows || [];
+                    if (msg) { msg.textContent = rows.length + ' keyword idea(s)'; msg.className = 'small ms-2 text-success fw-semibold'; }
+                    if (!rows.length) { if (body) body.innerHTML = '<p class="text-muted small mb-0">No keyword ideas returned.</p>'; return; }
+                    var money = function(v) { return (v === null || v === undefined) ? '—' : '$' + Number(v).toFixed(2); };
+                    var compColor = { LOW: '#166534', MEDIUM: '#92400e', HIGH: '#991b1b' };
+                    var html = '<table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px;"><thead class="table-light" style="position:sticky;top:0;">'
+                        + '<tr><th>Keyword</th><th class="text-end">Avg. monthly searches</th><th class="text-center">Competition</th><th class="text-end">Top of page bid (low)</th><th class="text-end">Top of page bid (high)</th></tr></thead><tbody>';
+                    rows.forEach(function(r) {
+                        html += '<tr><td>' + gacRawEscAttr(r.keyword) + '</td>'
+                            + '<td class="text-end">' + (r.avg_monthly === null || r.avg_monthly === undefined ? '—' : Number(r.avg_monthly).toLocaleString()) + '</td>'
+                            + '<td class="text-center" style="font-weight:700;color:' + (compColor[r.competition] || '#6b7280') + ';">' + gacRawEscAttr(r.competition || '—') + '</td>'
+                            + '<td class="text-end">' + money(r.low_bid) + '</td><td class="text-end">' + money(r.high_bid) + '</td></tr>';
+                    });
+                    if (body) body.innerHTML = html + '</tbody></table>';
+                }).catch(function() {
+                    if (btn) btn.disabled = false;
+                    if (msg) { msg.textContent = 'Keyword Planner request failed.'; msg.className = 'small ms-2 text-danger'; }
+                });
+            }
             function gacSkuApply(selectEl) {
                 var item = selectEl.getAttribute('data-item') || '';
                 var action = selectEl.value;
@@ -2341,6 +2447,7 @@
                     filter_acos: gacRawFilterParamVal('gac-filter-acos'),
                     filter_stat: gacRawFilterParamVal('gac-filter-stat'),
                     filter_inv: gacRawFilterParamVal('gac-filter-inv'),
+                    filter_ntarget: gacRawFilterParamVal('gac-filter-ntarget'),
                     filter_id_status: gacRawFilterParamVal('gac-filter-idst'),
                     filter_verification: gacRawFilterParamVal('gac-filter-ver'),
                     filter_ctr_min: gacRawRangeInputVal('gac-filter-ctr-min'),
@@ -2697,6 +2804,22 @@
                     e.preventDefault();
                     gacRawOpenSbgtHistory(dot.getAttribute('data-sbgt-cid'));
                 });
+                // N Target number → Keyword Planner modal.
+                document.addEventListener('click', function (e) {
+                    var t = e.target.closest ? e.target.closest('.gac-ntarget-link') : null;
+                    if (!t) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    var tmp = document.createElement('textarea');
+                    tmp.innerHTML = t.getAttribute('data-kw-name') || '';
+                    gacKwPlannerOpen(tmp.value);
+                });
+                var gacKwGo = document.getElementById('gacKwPlannerGo');
+                if (gacKwGo) gacKwGo.addEventListener('click', gacKwPlannerFetch);
+                ['gacKwPlannerKeywords', 'gacKwPlannerSite'].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el) el.addEventListener('keydown', function(ev) { if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); gacKwPlannerFetch(); } });
+                });
                 // "Show only SKUs not in ads" / "Show all SKUs" link inside the SKUs modal.
                 document.addEventListener('click', function (e) {
                     var a = e.target.closest ? e.target.closest('.gac-sku-toggle') : null;
@@ -2972,9 +3095,11 @@
                         if (v === null || v === undefined || v === '') return '—';
                         var n = parseInt(v, 10);
                         if (!isFinite(n)) return '—';
-                        if (n === 0) return '<span class="fw-semibold" style="color:#dc3545">M</span>';
+                        var rowD = c.getRow().getData() || {};
+                        var nm = ' data-kw-name="' + gacRawEscAttr(String(rowD.campaign_name || '')) + '" role="button" title="Click to open Keyword Planner" style="cursor:pointer;';
+                        if (n === 0) return '<span class="fw-semibold gac-ntarget-link"' + nm + 'color:#dc3545">M</span>';
                         var color = n < 50 ? '#dc3545' : (n > 100 ? '#6f42c1' : '#198754');
-                        return '<span class="fw-semibold" style="color:' + color + '">' + n.toLocaleString() + '</span>';
+                        return '<span class="fw-semibold gac-ntarget-link"' + nm + 'color:' + color + '">' + n.toLocaleString() + '</span>';
                     };
                     var campaignStatusFormatter = function(c) {
                         var v = c.getValue();
@@ -3456,7 +3581,7 @@
                     if (sel.value !== 'all') sel.classList.add('gac-alert-' + sel.value);
                 });
             });
-            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat', 'gac-filter-inv', 'gac-filter-idst', 'gac-filter-ver'].forEach(function(fid) {
+            ['gac-filter-ub7', 'gac-filter-ub1', 'gac-filter-acos', 'gac-filter-stat', 'gac-filter-inv', 'gac-filter-ntarget', 'gac-filter-idst', 'gac-filter-ver'].forEach(function(fid) {
                 var fel = document.getElementById(fid);
                 if (fel) {
                     fel.addEventListener('change', gacRawReloadGridForFilters);

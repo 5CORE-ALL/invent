@@ -7222,6 +7222,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/fix-item-ids', 'fixItemIds')->name('google.shopping.campaigns.fix.item.ids');
         Route::get('/google/shopping/google-shopping/campaign-skus', 'campaignSkus')->name('google.shopping.campaigns.campaign.skus');
         Route::post('/google/shopping/google-shopping/campaign-sku-action', 'campaignSkuAction')->name('google.shopping.campaigns.campaign.sku.action');
+        Route::post('/google/shopping/google-shopping/keyword-planner', 'keywordPlannerIdeas')->name('google.shopping.campaigns.keyword.planner');
         Route::post('/google/shopping/google-shopping/pull-data', 'pullData')->name('google.shopping.campaigns.pull.data');
         Route::get('/google/shopping/google-shopping/badge-history', 'badgeHistory')->name('google.shopping.campaigns.badge.history');
         Route::get('/google/shopping/google-shopping/badge-kpis', 'badgeKpis')->name('google.shopping.campaigns.badge.kpis');

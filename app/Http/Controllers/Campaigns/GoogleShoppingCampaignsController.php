@@ -711,6 +711,33 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * N Target click → Keyword Planner modal. Request: keywords (comma / new-line separated), site (optional URL).
+     * Returns US / English keyword ideas with average monthly searches, competition and top-of-page bid range.
+     */
+    public function keywordPlannerIdeas(Request $request): JsonResponse
+    {
+        $customerId = (string) config('services.google_ads.login_customer_id');
+        if ($customerId === '') {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.', 'rows' => []], 500);
+        }
+        $keywords = preg_split('/[\r\n,]+/', (string) $request->input('keywords', ''), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $keywords = array_slice(array_values(array_unique(array_map(static fn ($k) => mb_substr(trim($k), 0, 80), $keywords))), 0, 20);
+        $site = trim((string) $request->input('site', ''));
+        if ($site !== '' && ! preg_match('#^https?://#i', $site)) {
+            $site = 'https://'.$site;
+        }
+        if ($site !== '' && ! filter_var($site, FILTER_VALIDATE_URL)) {
+            return response()->json(['ok' => false, 'message' => 'Enter a valid site URL.', 'rows' => []], 422);
+        }
+        @ini_set('max_execution_time', '60');
+        /** @var GoogleAdsSbidService $svc */
+        $svc = app(GoogleAdsSbidService::class);
+        $res = $svc->keywordPlannerIdeas($customerId, $keywords, $site);
+
+        return response()->json($res, $res['ok'] ? 200 : 422);
+    }
+
+    /**
      * "+" modal dropdown: enable / pause / remove one Item ID in the campaign's Google Ads listing groups.
      * Request: campaign_id, item_id, action (enable|pause|remove).
      */
@@ -1372,6 +1399,7 @@ class GoogleShoppingCampaignsController extends Controller
         $invFilter = $this->normalizeInvFilter($request->input('filter_inv'));
         $collection = $this->filterRawGridRowsByInventory($collection, $invFilter, $invResolver);
         $collection = $this->filterRawGridRowsByPrice($collection, $request, $bgtResolver);
+        $collection = $this->filterRawGridRowsByNegativeTargets($collection, $request->input('filter_ntarget'));
         $summary = $this->summarizeRawGridRows($collection);
         $summary = array_merge($summary, $this->rawGridL30TotalsAllStatuses($request, $collection, $invFilter, $invResolver));
         $summary = array_merge($summary, $this->rawGridUtilizationAllCampaigns($request, $collection, $invFilter, $invResolver));
@@ -3526,6 +3554,33 @@ class GoogleShoppingCampaignsController extends Controller
         $v = is_string($value) ? strtolower(trim($value)) : 'all';
 
         return in_array($v, ['match', 'mismatch'], true) ? $v : 'all';
+    }
+
+    /**
+     * N Target filter: "m" = campaigns with no negative keywords (the red M), "has" = at least one.
+     * Counts live in google_ads_negative_keywords, so like INV this runs in PHP. Shopping grid only.
+     *
+     * @param  \Illuminate\Support\Collection<int, mixed>  $collection
+     * @return \Illuminate\Support\Collection<int, mixed>
+     */
+    private function filterRawGridRowsByNegativeTargets($collection, mixed $value)
+    {
+        $v = is_string($value) ? strtolower(trim($value)) : 'all';
+        if (! in_array($v, ['m', 'has'], true) || $this->channelKey() !== 'shopping') {
+            return $collection;
+        }
+        $ids = [];
+        foreach ($collection as $row) {
+            $ids[] = (string) (is_object($row) ? ($row->campaign_id ?? '') : ($row['campaign_id'] ?? ''));
+        }
+        $counts = $this->negativeTargetCountsForPage($ids);
+
+        return $collection->filter(static function ($row) use ($counts, $v) {
+            $cid = trim((string) (is_object($row) ? ($row->campaign_id ?? '') : ($row['campaign_id'] ?? '')));
+            $n = (int) ($counts[$cid] ?? 0);
+
+            return $v === 'm' ? $n === 0 : $n > 0;
+        })->values();
     }
 
     private function normalizeInvFilter(mixed $value): string

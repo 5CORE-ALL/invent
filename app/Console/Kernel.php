@@ -1287,8 +1287,17 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
-        // alibaba:push-blue-prices (10-minute headless push of S PRC) is no longer scheduled: it would push the plain
-        // S PRC and break the once-a-day push that /alibaba-analytics owns.
+        // Headless "Push on reload" for /alibaba-analytics (same as amazon:push-blue-prices): blue-triangle SKUs
+        // (INV > 0, Alibaba Price ≠ S PRC) are pushed with the page closed, so a rule or SNROI Cap change goes live within
+        // minutes. The S PRC saved by the job above is already calc − Ship (the same price the page pushes), so the formula
+        // is unchanged. Alibaba reviews price changes: a pushed price is held 6 h, then --max-pushes keeps a run short.
+        // --respect-switch: the page Push on reload switch decides; when it is OFF this job does nothing.
+        $schedule->command('alibaba:push-blue-prices --respect-switch')
+            ->cron('7-59/10 * * * *')
+            ->name('alibaba-push-blue-prices')
+            ->withoutOverlapping(self::HF_MUTEX_EVERY_TEN)
+            ->runInBackground()
+            ->appendOutputTo($log);
 
         // Push and pull together (same as amazon:pull-pushed-prices): every pushed SKU is read back right after the
         // push; Alibaba reviews price changes, so this re-reads the pushed SKUs until the Price column matches.

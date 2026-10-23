@@ -1590,6 +1590,62 @@ class GoogleAdsSbidService
     }
 
     /**
+     * Google Ads Keyword Planner ("Discover new keywords"): keyword ideas with historical metrics for United States / English.
+     * Seeds: keywords, optionally narrowed by a site (keywords + site = KeywordAndUrlSeed), or a site alone.
+     *
+     * @param  list<string>  $keywords
+     * @return array{ok: bool, message: string, rows: list<array{keyword: string, avg_monthly: ?int, competition: string, competition_index: ?int, low_bid: ?float, high_bid: ?float}>}
+     */
+    public function keywordPlannerIdeas(string $customerId, array $keywords, string $url = '', int $limit = 200): array
+    {
+        $keywords = array_values(array_filter(array_map(static fn ($k) => trim((string) $k), $keywords), static fn ($k) => $k !== ''));
+        $url = trim($url);
+        if ($keywords === [] && $url === '') {
+            return ['ok' => false, 'message' => 'Enter at least one keyword or a site.', 'rows' => []];
+        }
+        try {
+            $req = new \Google\Ads\GoogleAds\V25\Services\GenerateKeywordIdeasRequest();
+            $req->setCustomerId($customerId);
+            $req->setLanguage('languageConstants/1000');           // English
+            $req->setGeoTargetConstants(['geoTargetConstants/2840']); // United States
+            $req->setKeywordPlanNetwork(\Google\Ads\GoogleAds\V25\Enums\KeywordPlanNetworkEnum\KeywordPlanNetwork::GOOGLE_SEARCH_AND_PARTNERS);
+            if ($keywords !== [] && $url !== '') {
+                $req->setKeywordAndUrlSeed((new \Google\Ads\GoogleAds\V25\Services\KeywordAndUrlSeed())->setUrl($url)->setKeywords($keywords));
+            } elseif ($keywords !== []) {
+                $req->setKeywordSeed((new \Google\Ads\GoogleAds\V25\Services\KeywordSeed())->setKeywords($keywords));
+            } else {
+                $req->setUrlSeed((new \Google\Ads\GoogleAds\V25\Services\UrlSeed())->setUrl($url));
+            }
+            $resp = $this->getClient()->getKeywordPlanIdeaServiceClient()->generateKeywordIdeas($req);
+            $levels = [2 => 'LOW', 3 => 'MEDIUM', 4 => 'HIGH'];
+            $rows = [];
+            foreach ($resp->iterateAllElements() as $r) {
+                $m = $r->getKeywordIdeaMetrics();
+                $low = $m ? (int) $m->getLowTopOfPageBidMicros() : 0;
+                $high = $m ? (int) $m->getHighTopOfPageBidMicros() : 0;
+                $rows[] = [
+                    'keyword' => (string) $r->getText(),
+                    'avg_monthly' => $m ? (int) $m->getAvgMonthlySearches() : null,
+                    'competition' => $m ? ($levels[(int) $m->getCompetition()] ?? '—') : '—',
+                    'competition_index' => $m ? (int) $m->getCompetitionIndex() : null,
+                    'low_bid' => $low > 0 ? round($low / 1_000_000, 2) : null,
+                    'high_bid' => $high > 0 ? round($high / 1_000_000, 2) : null,
+                ];
+                if (count($rows) >= max(1, $limit)) {
+                    break;
+                }
+            }
+            usort($rows, static fn ($a, $b) => ($b['avg_monthly'] ?? 0) <=> ($a['avg_monthly'] ?? 0));
+
+            return ['ok' => true, 'message' => '', 'rows' => $rows];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ['ok' => false, 'message' => self::briefGoogleError($e), 'rows' => []];
+        }
+    }
+
+    /**
      * Current state of every Item ID in a Shopping campaign's listing groups.
      * state: ENABLED | PAUSED | EXCLUDED (negative unit only). Keys are lower-cased Item IDs.
      *

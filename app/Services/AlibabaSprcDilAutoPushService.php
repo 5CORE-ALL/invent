@@ -25,6 +25,8 @@ use Throwable;
  *  Std Prc under $15 uses half of each rule discount (0.5×). B Disc stays at the full Disc %.
  *  NPFT = ((S PRC × margin − LP) / S PRC) − Ads%. Clearance SKUs keep the discount price.
  *  0 Sold = AB L30 (Alibaba orders L30), the page's sold qty.
+ *  SNROI Cap (same as Amazon): a Dil slab with a Target SNROI % prices S PRC from that SNROI, judged on the S PRC after
+ *  Ship was taken off (S PRC × take-home − LP) ÷ LP, no Ads%. The discounts are not used for that SKU.
  *  Caps: Alibaba has no LMP, so Std Prc is the maximum.
  *  Never pushes a price whose SNROI is below 0 (NegativeSnroiPushGuard). The S PRC is still saved.
  *
@@ -272,7 +274,6 @@ class AlibabaSprcDilAutoPushService
         if (! ($margin > 0 && $margin <= 1)) {
             $margin = 1.0;
         }
-        $ads = $adsFrac ?? $this->channelAdsFrac();
 
         $pricer ??= StdPrcVsDilPricer::forChannel(self::CHANNEL);
         // Age / Dil / B / 0 Sold / CVR / Rev discounts, then clearance SKUs keep the discount price.
@@ -292,7 +293,9 @@ class AlibabaSprcDilAutoPushService
             // that is really saved and pushed.
             'ship_off' => max(0.0, (float) ($row['ship'] ?? 0)),
             'margin' => $margin,
-            'ads' => $ads,
+            // SNROI Cap: the page's SNROI% column is SGROI (S PRC × take-home − LP) ÷ LP, with no Ads% and no Ship (Ship is
+            // already inside S PRC). The cap judges that same number, so it never subtracts Ads% here.
+            'ads' => 0.0,
         ];
         if (array_key_exists('clearance', $row)) {
             $pricerRow['clearance'] = $row['clearance'];

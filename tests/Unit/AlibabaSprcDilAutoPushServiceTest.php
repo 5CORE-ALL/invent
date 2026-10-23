@@ -109,4 +109,34 @@ class AlibabaSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(1.0, $out['margin'], 0.0001);
     }
+
+    public function test_snroi_cap_ignores_ads_because_the_page_snroi_has_none(): void
+    {
+        // The page SNROI% = (S PRC x take-home - LP) / LP. Cap 100% -> (20 x 2) / 0.80 = 50.00, even when an Ads% is passed in.
+        $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 100, 'cap' => 100.0]]]);
+        $out = $this->target($this->row(['ship' => 8]), $pricer, 0.10);
+
+        $this->assertNotNull($out);
+        $this->assertSame(50.0, $out['sprice']);
+        $this->assertEqualsWithDelta(100.0, (($out['sprice'] * 0.80) - 20) / 20 * 100, 0.01);
+    }
+
+    public function test_snroi_cap_above_what_std_less_ship_can_reach_holds_there(): void
+    {
+        // A 1000% target needs far more than Std. S PRC holds at Std - Ship (100 - 8 = 92), the discounts are not taken.
+        $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 100, 'cap' => 1000.0]]]);
+        $out = $this->target($this->row(['ship' => 8]), $pricer);
+
+        $this->assertNotNull($out);
+        $this->assertSame(92.0, $out['sprice']);
+    }
+
+    public function test_snroi_cap_blank_slab_keeps_the_discount_price_less_ship(): void
+    {
+        $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 100, 'cap' => null]]]);
+        $out = $this->target($this->row(['ship' => 8]), $pricer);
+
+        $this->assertNotNull($out);
+        $this->assertSame(82.0, $out['sprice']);
+    }
 }
