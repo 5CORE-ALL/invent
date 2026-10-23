@@ -231,7 +231,11 @@
                             <span class="amz-missing-badge-label">Missing PT</span>
                             <span class="amz-missing-badge-value tabular-nums" id="amzMissingPtValue">0</span>
                         </div>
-                        <button type="button" class="btn btn-success btn-sm ms-auto" id="amzMissingExportBtn" title="Export the current (filtered) view to CSV">
+                        <span class="small text-muted ms-2" id="amzKwCountStatus"></span>
+                        <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="amzKwCountReloadBtn" title="Load keyword counts from Amazon for rows that don't have one yet">
+                            <i class="fa fa-sync me-1"></i> KW counts
+                        </button>
+                        <button type="button" class="btn btn-success btn-sm" id="amzMissingExportBtn" title="Export the current (filtered) view to CSV">
                             <i class="fa fa-download me-1"></i> Export
                         </button>
                     </div>
@@ -508,6 +512,49 @@
         </div>
     </div>
 
+    <div class="modal fade" id="amzKwListModal" tabindex="-1" aria-labelledby="amzKwListModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="amzKwListModalLabel">Keywords</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+                        <select class="form-select form-select-sm w-auto d-none" id="amzKwListCampaign"></select>
+                        <select class="form-select form-select-sm w-auto" id="amzKwListMatch">
+                            <option value="">All match types</option>
+                            <option value="BROAD">Broad</option>
+                            <option value="PHRASE">Phrase</option>
+                            <option value="EXACT">Exact</option>
+                        </select>
+                        <select class="form-select form-select-sm w-auto" id="amzKwListState">
+                            <option value="">Enabled + paused</option>
+                            <option value="ENABLED">Enabled</option>
+                            <option value="PAUSED">Paused</option>
+                        </select>
+                        <input type="text" class="form-control form-control-sm" style="width:200px;" id="amzKwListSearch" placeholder="Search keywords">
+                        <span class="text-muted" id="amzKwListSummary"></span>
+                    </div>
+                    <div class="text-danger small mb-2 d-none" id="amzKwListError"></div>
+                    <div class="border rounded" style="max-height:60vh; overflow:auto;">
+                        <table class="table table-sm table-hover align-middle mb-0 small">
+                            <thead class="table-light sticky-top">
+                                <tr><th style="width:50px;">#</th><th>Keyword</th><th>Match</th><th class="text-end">Bid ($)</th><th>State</th><th class="amz-kwlist-camp-col">Campaign</th></tr>
+                            </thead>
+                            <tbody id="amzKwListBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="amzKwListRefreshBtn"><i class="fa fa-sync me-1"></i>Refresh</button>
+                    <button type="button" class="btn btn-outline-success btn-sm" id="amzKwListCsvBtn"><i class="fa fa-download me-1"></i>Download CSV</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal fade" id="amzAiNegModal" tabindex="-1" aria-labelledby="amzAiNegModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
@@ -714,6 +761,28 @@
             var unlinkUrl = @json(route('amazon.ads.missing.unlink'));
             var createUrl = @json(route('amazon.ads.missing.create'));
             var updateUrl = @json(route('amazon.ads.missing.update-campaign'));
+            var kwCountUrl = @json(route('amazon.ads.missing.keyword-counts'));
+            var kwListUrl = @json(route('amazon.ads.missing.keyword-list'));
+            // KW K Count column state: key (campaign id, or "n:<name>" when only the name is linked) => {total, enabled, paused}
+            var kwCountMap = {};
+            var kwCountsLoading = false;
+            function kwRefKey(c) { return c && c.campaign_id ? String(c.campaign_id) : 'n:' + String((c && c.campaign_name) || ''); }
+            function kwRowRefs(d) {
+                return (Array.isArray(d && d.kw) ? d.kw : []).map(function (c) {
+                    return { key: kwRefKey(c), campaign_id: c.campaign_id ? String(c.campaign_id) : '', campaign_name: c.campaign_name || '' };
+                }).filter(function (r) { return r.key !== 'n:'; });
+            }
+            function kwCountForRow(d) {
+                var refs = kwRowRefs(d);
+                if (!refs.length) { return null; }
+                var sum = 0;
+                for (var i = 0; i < refs.length; i++) {
+                    var c = kwCountMap[refs[i].key];
+                    if (!c || c.total == null) { return null; }
+                    sum += c.total;
+                }
+                return sum;
+            }
             var deleteUrl = @json(route('amazon.ads.missing.delete'));
             var aiNegUrl = @json(route('amazon.ads.missing.ai-negatives'));
             var pushNegUrl = @json(route('amazon.ads.missing.push-negatives'));
@@ -1519,6 +1588,34 @@
                             accessorDownload: linkNamesAccessor
                         },
                         {
+                            title: 'KW K Count', field: '_kw_count', width: 110,
+                            hozAlign: 'center', headerHozAlign: 'center',
+                            headerSort: true, sorter: function (a, b, aRow, bRow) {
+                                var x = kwCountForRow(aRow.getData()), y = kwCountForRow(bRow.getData());
+                                x = x == null ? -1 : x; y = y == null ? -1 : y;
+                                return x - y;
+                            },
+                            headerTooltip: 'Keywords (enabled + paused) in the linked KW campaign(s), counted through the Amazon Ads API. Click to see them.',
+                            formatter: function (cell) {
+                                var d = cell.getData();
+                                var refs = kwRowRefs(d);
+                                if (!refs.length) { return '<span class="text-muted">—</span>'; }
+                                var n = kwCountForRow(d);
+                                if (n == null) {
+                                    var bad = refs.some(function (r) { return kwCountMap[r.key] && kwCountMap[r.key].unresolved; });
+                                    if (bad) { return '<a href="#" class="amz-kwcount text-muted" data-sku="' + esc(d.sku || '') + '" title="No Amazon campaign id found - click to try">?</a>'; }
+                                    return kwCountsLoading
+                                        ? '<i class="fa fa-spinner fa-spin text-muted" title="Loading from Amazon…"></i>'
+                                        : '<a href="#" class="amz-kwcount text-muted" data-sku="' + esc(d.sku || '') + '" title="Click to load keywords from Amazon"><i class="fa fa-sync"></i></a>';
+                                }
+                                var en = 0, pa = 0;
+                                refs.forEach(function (r) { var c = kwCountMap[r.key] || {}; en += c.enabled || 0; pa += c.paused || 0; });
+                                return '<a href="#" class="amz-kwcount fw-semibold" data-sku="' + esc(d.sku || '') + '" title="Enabled ' + en + ' / Paused ' + pa + ' - click to view keywords">'
+                                    + Number(n).toLocaleString('en-US') + '</a>';
+                            },
+                            accessorDownload: function (value, data) { var n = kwCountForRow(data); return n == null ? '' : n; }
+                        },
+                        {
                             title: 'Create PT', field: '_create_pt', width: 100,
                             hozAlign: 'center', headerHozAlign: 'center',
                             headerSort: false,
@@ -1557,6 +1654,193 @@
                         table.download('csv', 'amazon-ads-missing-' + stamp + '.csv');
                     });
                 }
+
+
+                // ---- KW K Count column: keyword counts of the linked KW campaigns, loaded through the Amazon Ads API ----
+                function kwCountsReformat() {
+                    table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
+                }
+                function kwCountStatus(msg, isErr) {
+                    var el = document.getElementById('amzKwCountStatus');
+                    if (!el) { return; }
+                    el.textContent = msg || '';
+                    el.classList.toggle('text-danger', !!isErr);
+                }
+                // refsOverride: load exactly these refs (refreshing them); otherwise every linked KW campaign not loaded yet.
+                function amzLoadKwCounts(refsOverride) {
+                    if (kwCountsLoading) { return; }
+                    var all = {};
+                    if (refsOverride) {
+                        refsOverride.forEach(function (r) { all[r.key] = r; });
+                    } else {
+                        table.getData().forEach(function (d) {
+                            kwRowRefs(d).forEach(function (r) {
+                                var known = kwCountMap[r.key];
+                                if (!known || known.unresolved) { all[r.key] = r; }
+                            });
+                        });
+                    }
+                    var refs = Object.keys(all).map(function (k) { return all[k]; });
+                    if (!refs.length) { kwCountStatus('', false); return; }
+                    var chunks = [];
+                    for (var i = 0; i < refs.length; i += 40) { chunks.push(refs.slice(i, i + 40)); }
+                    var done = 0;
+                    kwCountsLoading = true;
+                    kwCountsReformat();
+                    kwCountStatus('Loading keyword counts from Amazon… 0/' + refs.length, false);
+
+                    function finish(msg, isErr) {
+                        kwCountsLoading = false;
+                        kwCountsReformat();
+                        kwCountStatus(msg, isErr);
+                    }
+                    function next() {
+                        if (!chunks.length) { finish('', false); return; }
+                        var chunk = chunks.shift();
+                        postForm(kwCountUrl, { campaigns: chunk, refresh: !!refsOverride }).then(function (out) {
+                            var body = out.body || {};
+                            if (body.counts) {
+                                Object.keys(body.counts).forEach(function (k) { kwCountMap[k] = body.counts[k]; });
+                            }
+                            (body.unresolved || []).forEach(function (k) { kwCountMap[k] = { total: null, unresolved: true }; });
+                            if (!out.ok || body.ok === false) {
+                                finish(body.message || ('Could not load keyword counts (HTTP ' + out.status + '). Use the KW counts button to retry.'), true);
+                                return;
+                            }
+                            done += chunk.length;
+                            kwCountStatus('Loading keyword counts from Amazon… ' + done + '/' + refs.length, false);
+                            kwCountsReformat();
+                            next();
+                        }).catch(function () {
+                            finish('Network error loading keyword counts. Use the KW counts button to retry.', true);
+                        });
+                    }
+                    next();
+                }
+                var kwCountReloadBtn = document.getElementById('amzKwCountReloadBtn');
+                if (kwCountReloadBtn) { kwCountReloadBtn.addEventListener('click', function () { amzLoadKwCounts(null); }); }
+                table.on('dataLoaded', function () { amzLoadKwCounts(null); });
+
+                // ---- Keyword list modal (click a KW K Count) ----
+                var kwListState = { rows: [], campaigns: [], refs: [], parent: '' };
+                function getKwListModal() {
+                    var el = document.getElementById('amzKwListModal');
+                    return el && window.bootstrap ? bootstrap.Modal.getOrCreateInstance(el) : null;
+                }
+                function kwListFiltered() {
+                    var camp = (document.getElementById('amzKwListCampaign') || {}).value || '';
+                    var mt = (document.getElementById('amzKwListMatch') || {}).value || '';
+                    var st = (document.getElementById('amzKwListState') || {}).value || '';
+                    var q = String((document.getElementById('amzKwListSearch') || {}).value || '').toLowerCase().trim();
+                    return kwListState.rows.filter(function (r) {
+                        return (!camp || r.campaign_id === camp)
+                            && (!mt || r.match_type === mt)
+                            && (!st || r.state === st)
+                            && (!q || String(r.keyword).toLowerCase().indexOf(q) !== -1);
+                    });
+                }
+                function kwListRender() {
+                    var body = document.getElementById('amzKwListBody');
+                    if (!body) { return; }
+                    var rows = kwListFiltered();
+                    var multi = kwListState.campaigns.length > 1;
+                    document.querySelectorAll('.amz-kwlist-camp-col').forEach(function (el) { el.classList.toggle('d-none', !multi); });
+                    var shown = rows.slice(0, 1000);
+                    body.innerHTML = shown.length ? shown.map(function (r, i) {
+                        var mtLabel = r.match_type ? r.match_type.charAt(0) + r.match_type.slice(1).toLowerCase() : '—';
+                        return '<tr><td class="text-muted">' + (i + 1) + '</td><td>' + esc(r.keyword) + '</td><td>' + esc(mtLabel) + '</td>'
+                            + '<td class="text-end">' + (r.bid == null ? '—' : Number(r.bid).toFixed(2)) + '</td>'
+                            + '<td>' + (r.state === 'ENABLED' ? '<span class="text-success">Enabled</span>' : '<span class="text-muted">' + esc(r.state ? r.state.charAt(0) + r.state.slice(1).toLowerCase() : '—') + '</span>') + '</td>'
+                            + (multi ? '<td>' + esc(r.campaign_name) + '</td>' : '<td class="d-none amz-kwlist-camp-col"></td>') + '</tr>';
+                    }).join('') : '<tr><td colspan="6" class="text-muted text-center py-3">No keywords to show.</td></tr>';
+                    var en = 0, pa = 0;
+                    rows.forEach(function (r) { if (r.state === 'ENABLED') { en++; } else if (r.state === 'PAUSED') { pa++; } });
+                    document.getElementById('amzKwListSummary').textContent = rows.length.toLocaleString('en-US') + ' keywords (' + en + ' enabled, ' + pa + ' paused)'
+                        + (rows.length > shown.length ? ' - showing the first ' + shown.length.toLocaleString('en-US') + ', narrow the filters to see the rest' : '');
+                }
+                function kwListLoad() {
+                    var errEl = document.getElementById('amzKwListError');
+                    errEl.classList.add('d-none');
+                    document.getElementById('amzKwListBody').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="fa fa-spinner fa-spin me-1"></i>Loading keywords from Amazon…</td></tr>';
+                    document.getElementById('amzKwListSummary').textContent = '';
+                    postForm(kwListUrl, { campaigns: kwListState.refs }).then(function (out) {
+                        var b = out.body || {};
+                        if (!out.ok || !b.ok) {
+                            kwListState.rows = [];
+                            kwListRender();
+                            errEl.textContent = b.message || ('Could not load keywords (HTTP ' + out.status + '). If this is 404, run php artisan route:clear on the server.');
+                            errEl.classList.remove('d-none');
+                            return;
+                        }
+                        kwListState.rows = b.keywords || [];
+                        kwListState.campaigns = b.campaigns || [];
+                        var sel = document.getElementById('amzKwListCampaign');
+                        sel.innerHTML = '<option value="">All campaigns</option>' + kwListState.campaigns.map(function (c) {
+                            return '<option value="' + esc(c.campaign_id) + '">' + esc(c.campaign_name || c.campaign_id) + '</option>';
+                        }).join('');
+                        sel.classList.toggle('d-none', kwListState.campaigns.length < 2);
+                        // Keep the table column in sync with what Amazon just returned.
+                        kwListState.campaigns.forEach(function (c) {
+                            var mine = kwListState.rows.filter(function (r) { return r.campaign_id === c.campaign_id; });
+                            var t = { total: mine.length, enabled: 0, paused: 0 };
+                            mine.forEach(function (r) { if (r.state === 'ENABLED') { t.enabled++; } else if (r.state === 'PAUSED') { t.paused++; } });
+                            (c.keys || []).forEach(function (k) { kwCountMap[k] = t; });
+                        });
+                        kwCountsReformat();
+                        if (b.truncated) {
+                            errEl.textContent = 'Amazon returned ' + Number(b.total).toLocaleString('en-US') + ' keywords; only the first 5,000 are listed.';
+                            errEl.classList.remove('d-none');
+                        }
+                        kwListRender();
+                    }).catch(function () {
+                        errEl.textContent = 'Network error loading keywords.';
+                        errEl.classList.remove('d-none');
+                    });
+                }
+                function kwListOpen(d) {
+                    var refs = kwRowRefs(d);
+                    if (!refs.length) { return; }
+                    kwListState = { rows: [], campaigns: [], refs: refs, parent: d.parent || '' };
+                    document.getElementById('amzKwListModalLabel').textContent = 'Keywords - ' + (d.parent || d.sku || '');
+                    ['amzKwListMatch', 'amzKwListState'].forEach(function (id) { document.getElementById(id).value = ''; });
+                    document.getElementById('amzKwListSearch').value = '';
+                    document.getElementById('amzKwListCampaign').classList.add('d-none');
+                    var m = getKwListModal();
+                    if (m) { m.show(); }
+                    kwListLoad();
+                }
+                var tableEl = document.getElementById('amzAdsMissingTable');
+                if (tableEl) {
+                    tableEl.addEventListener('click', function (e) {
+                        var a = e.target.closest ? e.target.closest('.amz-kwcount') : null;
+                        if (!a) { return; }
+                        e.preventDefault();
+                        var row = table.getRow(a.getAttribute('data-sku'));
+                        if (row) { kwListOpen(row.getData()); }
+                    });
+                }
+                ['amzKwListCampaign', 'amzKwListMatch', 'amzKwListState'].forEach(function (id) {
+                    document.getElementById(id).addEventListener('change', kwListRender);
+                });
+                document.getElementById('amzKwListSearch').addEventListener('input', kwListRender);
+                document.getElementById('amzKwListRefreshBtn').addEventListener('click', kwListLoad);
+                document.getElementById('amzKwListCsvBtn').addEventListener('click', function () {
+                    var rows = kwListFiltered();
+                    var csv = ['Campaign,Keyword,Match type,Bid,State'].concat(rows.map(function (r) {
+                        return [r.campaign_name, r.keyword, r.match_type, r.bid == null ? '' : r.bid, r.state].map(function (v) {
+                            return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+                        }).join(',');
+                    })).join('\n');
+                    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    var url = URL.createObjectURL(blob);
+                    var link = document.createElement('a');
+                    link.href = url;
+                    link.download = 'amazon-kw-' + String(kwListState.parent || 'keywords').replace(/[^a-z0-9]+/gi, '-') + '.csv';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                });
 
                 // Count blank PT / KW cells across the current (filtered) view.
                 function updateMissingBadges(rowsData) {
@@ -2594,6 +2878,7 @@
                                 kwRenderAdded();
                                 kwRenderSuggestions();
                                 kwNegRender();
+                                amzLoadKwCounts([{ key: String(updPayload.campaign_id), campaign_id: String(updPayload.campaign_id), campaign_name: '' }]);
                                 window.alert(out.body.message || 'Campaign updated.');
                             } else {
                                 errEl.textContent = (out.body && out.body.message) || ('Failed to update campaign (HTTP ' + out.status + ').');

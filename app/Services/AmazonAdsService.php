@@ -438,6 +438,26 @@ class AmazonAdsService
     }
 
     /**
+     * Same as listKeywordsByCampaignIds but with large pages (1000 keywords) and 50 campaigns per call:
+     * far fewer requests for the "KW K Count" column and keyword modal.
+     *
+     * @param  list<string>  $campaignIds
+     * @return list<array<string, mixed>>
+     */
+    public function listKeywordsByCampaignIdsBulk(array $campaignIds, int $maxPages = 40): array
+    {
+        return $this->listSpEntitiesByCampaignIds(
+            '/sp/keywords/list',
+            'application/vnd.spKeyword.v3+json',
+            ['keywords'],
+            $campaignIds,
+            $maxPages,
+            1000,
+            50
+        );
+    }
+
+    /**
      * SP keywords for one or more campaigns (walks nextToken).
      *
      * @param  list<string>  $campaignIds
@@ -719,7 +739,9 @@ class AmazonAdsService
         string $accept,
         array $listKeys,
         array $campaignIds,
-        int $maxPages = 20
+        int $maxPages = 20,
+        int $pageSize = 100,
+        int $chunkSize = 8
     ): array {
         $ids = array_values(array_unique(array_filter(array_map(
             static fn ($id) => trim((string) $id),
@@ -730,7 +752,7 @@ class AmazonAdsService
         }
 
         $out = [];
-        foreach (array_chunk($ids, 8) as $chunk) {
+        foreach (array_chunk($ids, max(1, $chunkSize)) as $chunk) {
             $nextToken = null;
             $pages = 0;
             do {
@@ -738,15 +760,28 @@ class AmazonAdsService
                 $body = [
                     'campaignIdFilter' => ['include' => $chunk],
                     'stateFilter' => ['include' => ['ENABLED', 'PAUSED']],
-                    'maxResults' => 100,
+                    'maxResults' => max(1, $pageSize),
                 ];
                 if (is_string($nextToken) && $nextToken !== '') {
                     $body['nextToken'] = $nextToken;
                 }
-                $response = $this->post($path, $body, [
-                    'Content-Type' => $accept,
-                    'Accept' => $accept,
-                ]);
+                // Amazon answers 429 (HTML page) when called too fast: wait and retry a few times.
+                $response = [];
+                for ($try = 0; $try < 4; $try++) {
+                    try {
+                        $response = $this->post($path, $body, [
+                            'Content-Type' => $accept,
+                            'Accept' => $accept,
+                        ]);
+                        break;
+                    } catch (\GuzzleHttp\Exception\RequestException $e) {
+                        $status = $e->hasResponse() ? $e->getResponse()->getStatusCode() : 0;
+                        if ($status !== 429 || $try === 3) {
+                            throw $e;
+                        }
+                        sleep(2 + 2 * $try);
+                    }
+                }
                 $batch = [];
                 foreach ($listKeys as $key) {
                     if (isset($response[$key]) && is_array($response[$key])) {

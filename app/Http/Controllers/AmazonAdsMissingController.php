@@ -501,6 +501,191 @@ class AmazonAdsMissingController extends Controller
     }
 
     /**
+     * Resolve client campaign refs ({key, campaign_id?, campaign_name?}) to Amazon campaign ids.
+     * A link without a stored id is looked up by name in the SP reports table.
+     *
+     * @param  array<int, mixed>  $refs
+     * @return array<string, array{id: string, name: string}>  key => campaign
+     */
+    private function resolveKeywordCampaignRefs(array $refs): array
+    {
+        $out = [];
+        foreach ($refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+            $key = (string) ($ref['key'] ?? '');
+            $name = trim((string) ($ref['campaign_name'] ?? ''));
+            $id = preg_replace('/\D+/', '', (string) ($ref['campaign_id'] ?? '')) ?: '';
+            if ($id === '' && $name !== '') {
+                $id = $this->campaignIdFromSpReports($name);
+            }
+            if ($key !== '' && $id !== '') {
+                $out[$key] = ['id' => $id, 'name' => $name];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Keyword counts (enabled + paused) per linked KW campaign, straight from the Amazon Ads API.
+     * Cached 30 minutes per campaign; "refresh" bypasses the cache.
+     */
+    public function keywordCounts(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campaigns' => ['required', 'array', 'min:1', 'max:60'],
+            'campaigns.*.key' => ['required', 'string', 'max:300'],
+            'campaigns.*.campaign_id' => ['nullable', 'string', 'max:64'],
+            'campaigns.*.campaign_name' => ['nullable', 'string', 'max:255'],
+            'refresh' => ['nullable', 'boolean'],
+        ]);
+
+        $refs = $this->resolveKeywordCampaignRefs($validated['campaigns']);
+        $force = ! empty($validated['refresh']);
+        $counts = [];
+        $unresolved = [];
+        foreach ($validated['campaigns'] as $c) {
+            if (! isset($refs[(string) $c['key']])) {
+                $unresolved[] = (string) $c['key'];
+            }
+        }
+
+        $toFetch = [];
+        foreach ($refs as $key => $ref) {
+            $cached = $force ? null : Cache::get('amz_kw_cnt:'.$ref['id']);
+            if (is_array($cached)) {
+                $counts[$key] = $cached;
+            } else {
+                $toFetch[$ref['id']][] = $key;
+            }
+        }
+
+        $error = '';
+        $status = 200;
+        if ($toFetch !== []) {
+            try {
+                $rows = app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($toFetch));
+                $tally = [];
+                foreach (array_keys($toFetch) as $id) {
+                    $tally[$id] = ['total' => 0, 'enabled' => 0, 'paused' => 0];
+                }
+                foreach ($rows as $row) {
+                    $cid = (string) ($row['campaignId'] ?? '');
+                    if (! isset($tally[$cid])) {
+                        continue;
+                    }
+                    $tally[$cid]['total']++;
+                    $state = strtoupper((string) ($row['state'] ?? ''));
+                    if ($state === 'ENABLED') {
+                        $tally[$cid]['enabled']++;
+                    } elseif ($state === 'PAUSED') {
+                        $tally[$cid]['paused']++;
+                    }
+                }
+                foreach ($tally as $id => $t) {
+                    Cache::put('amz_kw_cnt:'.$id, $t, now()->addMinutes(30));
+                    foreach ($toFetch[$id] as $key) {
+                        $counts[$key] = $t;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Amazon keyword counts failed', ['error' => $e->getMessage()]);
+                $status = ($e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()
+                    && $e->getResponse()->getStatusCode() === 429) ? 429 : 502;
+                $error = $status === 429
+                    ? 'Amazon is rate-limiting keyword requests right now. Try again in a minute.'
+                    : 'Amazon keyword count failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e);
+            }
+        }
+
+        return response()->json([
+            'ok' => $error === '',
+            'message' => $error,
+            'counts' => $counts,
+            'unresolved' => $unresolved,
+        ], $status);
+    }
+
+    /**
+     * Keywords (text, match type, bid, state) of the given linked KW campaigns, straight from the Amazon Ads API.
+     */
+    public function keywordList(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campaigns' => ['required', 'array', 'min:1', 'max:20'],
+            'campaigns.*.key' => ['required', 'string', 'max:300'],
+            'campaigns.*.campaign_id' => ['nullable', 'string', 'max:64'],
+            'campaigns.*.campaign_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $refs = $this->resolveKeywordCampaignRefs($validated['campaigns']);
+        if ($refs === []) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No Amazon campaign id found for the linked campaign(s). Link the campaign from the list (it needs to exist in Amazon Ads).',
+            ], 422);
+        }
+
+        $names = [];
+        $keysById = [];
+        foreach ($refs as $key => $ref) {
+            $names[$ref['id']] = $ref['name'];
+            $keysById[$ref['id']][] = (string) $key;
+        }
+
+        try {
+            $rows = app(AmazonAdsService::class)->listKeywordsByCampaignIdsBulk(array_keys($names));
+        } catch (\Throwable $e) {
+            Log::warning('Amazon keyword list failed', ['error' => $e->getMessage()]);
+            $throttled = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()
+                && $e->getResponse()->getStatusCode() === 429;
+
+            return response()->json([
+                'ok' => false,
+                'message' => $throttled
+                    ? 'Amazon is rate-limiting keyword requests right now. Try again in a minute.'
+                    : 'Amazon keyword list failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
+            ], $throttled ? 429 : 502);
+        }
+
+        $keywords = [];
+        foreach ($rows as $row) {
+            $cid = (string) ($row['campaignId'] ?? '');
+            $keywords[] = [
+                'campaign_id' => $cid,
+                'campaign_name' => $names[$cid] ?? $cid,
+                'keyword' => (string) ($row['keywordText'] ?? ''),
+                'match_type' => strtoupper((string) ($row['matchType'] ?? '')),
+                'bid' => isset($row['bid']) && is_numeric($row['bid']) ? round((float) $row['bid'], 2) : null,
+                'state' => strtoupper((string) ($row['state'] ?? '')),
+            ];
+        }
+        usort($keywords, static fn ($a, $b) => [$a['campaign_name'], mb_strtolower($a['keyword']), $a['match_type']]
+            <=> [$b['campaign_name'], mb_strtolower($b['keyword']), $b['match_type']]);
+
+        $total = count($keywords);
+        $limit = 5000;
+
+        return response()->json([
+            'ok' => true,
+            'total' => $total,
+            'truncated' => $total > $limit,
+            'campaigns' => array_values(array_map(
+                static fn ($id, $name) => [
+                    'campaign_id' => (string) $id,
+                    'campaign_name' => $name,
+                    'keys' => $keysById[$id] ?? [],
+                ],
+                array_keys($names),
+                array_values($names)
+            )),
+            'keywords' => array_slice($keywords, 0, $limit),
+        ]);
+    }
+
+    /**
      * Amazon's own keyword suggestions for the selected child ASINs (same data as "Keyword targeting → Suggested"
      * in the Amazon console): keyword, impression share / rank and suggested bid per match type.
      */
