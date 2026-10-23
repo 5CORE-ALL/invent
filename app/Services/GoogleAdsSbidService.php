@@ -1300,17 +1300,16 @@ class GoogleAdsSbidService
     /**
      * Align a Shopping campaign's listing-group Item IDs with the expected Merchant Center IDs:
      *  - add Item IDs that are missing,
-     *  - re-include (excluded) or enable (paused) Item IDs that already exist — only when the SKU has inventory,
+     *  - re-include (excluded) or enable (paused) Item IDs that already exist (regardless of inventory),
      *  - remove Item IDs that do not belong to the campaign's SKU(s).
      * Only the simple tree this app builds is touched (root SUBDIVISION + one UNIT per Item ID +
      * "everything else"); any other structure is reported as unsupported and left unchanged.
      *
      * @param  list<string>  $expectedIds
-     * @param  array<string, int|float|bool>  $invByItem  Item ID => inventory (missing key = treated as available)
      * @return array{status: string, add: list<string>, reinclude: list<string>, enable: list<string>, remove: list<string>, skip: list<string>, applied: bool, message: string}
      *         status: ok | nothing | unsupported | error
      */
-    public function syncShoppingItemIds(string $customerId, string $campaignId, array $expectedIds, bool $dryRun = true, array $invByItem = []): array
+    public function syncShoppingItemIds(string $customerId, string $campaignId, array $expectedIds, bool $dryRun = true): array
     {
         $customerId = str_replace('-', '', trim($customerId));
         $campaignId = preg_replace('/\D+/', '', $campaignId) ?: '';
@@ -1464,22 +1463,13 @@ class GoogleAdsSbidService
             if (array_filter($positive, static fn ($n) => $n['status'] === 'ENABLED') !== []) {
                 continue; // already attached and enabled
             }
-            $hasInv = ((float) ($invByItem[$itemId] ?? 1)) > 0;
             if ($positive !== []) {
-                if ($hasInv) {
-                    $enable[] = $itemId;
-                    $updateOps[] = $positive[0]['resource'];
-                } else {
-                    $skip[] = $itemId.' (paused in Ads, SKU has no inventory — left paused)';
-                }
+                $enable[] = $itemId;
+                $updateOps[] = $positive[0]['resource'];
             } else {
-                if ($hasInv) {
-                    $reinclude[] = $itemId;
-                    foreach ($existing as $n) {
-                        $removeOps[] = $n['resource'];
-                    }
-                } else {
-                    $skip[] = $itemId.' (excluded in Ads, SKU has no inventory — left excluded)';
+                $reinclude[] = $itemId;
+                foreach ($existing as $n) {
+                    $removeOps[] = $n['resource'];
                 }
             }
         }
@@ -1502,9 +1492,7 @@ class GoogleAdsSbidService
 
         $plan = ['add' => $add, 'reinclude' => $reinclude, 'enable' => $enable, 'remove' => $remove, 'skip' => $skip];
         if ($add === [] && $reinclude === [] && $enable === [] && $remove === []) {
-            return $result('nothing', $skip === []
-                ? 'Item IDs already match Merchant Center — nothing to fix.'
-                : 'Nothing can be changed: '.count($skip).' Item ID(s) are excluded/paused and their SKU has no inventory.', $plan);
+            return $result('nothing', 'Item IDs already match Merchant Center — nothing to fix.', $plan);
         }
         if ($dryRun) {
             return $result('ok', 'Ready to apply.', $plan);

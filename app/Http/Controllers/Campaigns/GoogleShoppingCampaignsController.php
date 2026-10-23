@@ -536,8 +536,13 @@ class GoogleShoppingCampaignsController extends Controller
         $latestQuery = DB::table('google_ads_campaigns')->whereIn('campaign_id', $ids);
         $this->applyCampaignNameScope($latestQuery);
         $names = [];
-        foreach ($latestQuery->orderByDesc('date')->get(['campaign_id', 'campaign_name']) as $r) {
-            $names[(string) $r->campaign_id] ??= (string) $r->campaign_name;
+        $statuses = [];
+        foreach ($latestQuery->orderByDesc('date')->get(['campaign_id', 'campaign_name', 'campaign_status']) as $r) {
+            $key = (string) $r->campaign_id;
+            if (! isset($names[$key])) {
+                $names[$key] = (string) $r->campaign_name;
+                $statuses[$key] = strtoupper(trim((string) $r->campaign_status));
+            }
         }
 
         /** @var GoogleAdsSbidService $sbidService */
@@ -556,25 +561,45 @@ class GoogleShoppingCampaignsController extends Controller
             $skus = $this->childSkusForCampaignName($names[$cid]);
             $expectedBySku = $this->resolveMerchantCenterItemIds($skus);
             $expected = [];
-            $invByItem = [];
             foreach ($skus as $sku) {
                 $itemId = $expectedBySku[$sku] ?? '';
-                if ($itemId === '') {
-                    continue;
+                if ($itemId !== '') {
+                    $expected[$itemId] = $itemId;
                 }
-                $expected[$itemId] = $itemId;
-                $inv = $invResolver($sku);
-                $invByItem[$itemId] = $inv !== null ? (int) $inv : 0;
             }
             $expected = array_values($expected);
 
-            $res = $sbidService->syncShoppingItemIds((string) $customerId, $cid, $expected, $dryRun, $invByItem);
+            // Item IDs are fixed regardless of inventory.
+            $res = $sbidService->syncShoppingItemIds((string) $customerId, $cid, $expected, $dryRun);
             $missingSkus = count($skus) - count($expected);
             if ($missingSkus > 0 && $res['status'] !== 'error') {
                 $res['message'] .= " ({$missingSkus} SKU(s) have no Merchant Center ID in the catalog and cannot be added.)";
             }
             if ($res['applied']) {
                 $applied++;
+            }
+
+            // INV 0 (parent = sum of children) → the ad is paused automatically.
+            $inv = $invResolver($names[$cid]);
+            $invN = $inv !== null ? (int) $inv : 0;
+            $needsPause = $invN <= 0 && ($statuses[$cid] ?? '') === 'ENABLED';
+            $res['pause_campaign'] = $needsPause;
+            $res['paused'] = false;
+            if ($needsPause) {
+                if ($dryRun) {
+                    $res['message'] .= ' Campaign will be paused (INV 0).';
+                } else {
+                    try {
+                        $sbidService->pauseCampaign((string) $customerId, "customers/{$customerId}/campaigns/{$cid}");
+                        GoogleAdsCampaign::where('campaign_id', $cid)->update(['campaign_status' => 'PAUSED']);
+                        $res['paused'] = true;
+                        $res['message'] .= ' Campaign paused (INV 0).';
+                        $this->bumpRawGridRowsCache();
+                    } catch (\Throwable $e) {
+                        $res['message'] .= ' Pause failed (INV 0): '.GoogleAdsSbidService::briefGoogleError($e);
+                        $res['status'] = $res['status'] === 'ok' ? 'error' : $res['status'];
+                    }
+                }
             }
 
             // Remember the last problem so the grid's Reason column can show it after a reload.
@@ -1234,6 +1259,8 @@ class GoogleShoppingCampaignsController extends Controller
         $summary = $this->summarizeRawGridRows($collection);
         $summary = array_merge($summary, $this->rawGridL30TotalsAllStatuses($request, $collection, $invFilter, $invResolver));
         $summary = array_merge($summary, $this->rawGridUtilizationAllCampaigns($request, $collection, $invFilter, $invResolver));
+        // BGT "Sum" card: SBGT distribution over ALL campaigns (every status), independent of filters / page.
+        $summary['sbgt_dist'] = $this->sbgtDistributionAllCampaigns($rawRule, $invResolver, $bgtResolver);
 
         [$sortField, $sortDir] = $this->rawGridSortFromRequest($request);
         $needsPhpSort = $sortField !== null && $this->isPhpSortField($sortField);
@@ -3600,6 +3627,41 @@ class GoogleShoppingCampaignsController extends Controller
      * @param  \Closure(string): ?int  $invResolver
      * @return array<string, int|float>
      */
+    /**
+     * Campaigns per SBGT (suggested daily budget) over every campaign in the grid — all statuses, no filters.
+     * Feeds the BGT Rules "Sum" card so it is not limited to the rows on the current page.
+     *
+     * @return list<array{value: float|int, count: int}>
+     */
+    private function sbgtDistributionAllCampaigns($rawRule, \Closure $invResolver, \Closure $bgtResolver): array
+    {
+        $key = 'gads_sbgt_dist_v1:'.$this->channelKey().':'.$this->rawGridRowsCacheVersion().':'.sha1((string) json_encode($this->rawGridDateBoundaries()));
+
+        return Cache::remember($key, now()->addSeconds(60), function () use ($rawRule, $invResolver, $bgtResolver) {
+            $empty = Request::create('/', 'GET');
+            $query = $this->buildRawGridBaseQuery();
+            $this->applyRawGridDataFilters($query, $empty);
+            $this->applyRawGridSort($query, $empty);
+            $counts = [];
+            foreach ($this->rememberRawGridRows($empty, $query) as $row) {
+                $arr = $this->hydrateRawGridRow($row, $rawRule, $invResolver, $bgtResolver);
+                $v = $arr['sbgt'] ?? null;
+                if ($v === null || $v === '' || ! is_numeric($v)) {
+                    continue;
+                }
+                $k = (string) (0 + $v);
+                $counts[$k] = ($counts[$k] ?? 0) + 1;
+            }
+            ksort($counts, SORT_NUMERIC);
+            $out = [];
+            foreach ($counts as $value => $count) {
+                $out[] = ['value' => 0 + $value, 'count' => $count];
+            }
+
+            return $out;
+        });
+    }
+
     private function rawGridUtilizationAllCampaigns(Request $request, $collection, string $invFilter, \Closure $invResolver): array
     {
         $rows = $collection;

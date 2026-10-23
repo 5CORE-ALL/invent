@@ -1059,7 +1059,7 @@
 
                         <div class="gac-bgt-col gac-bgt-col--sum" data-gac-bgt-panel="sum">
                             <div class="gac-bgt-col-head">
-                                <div class="gac-bgt-title" title="SBGT for the rows on the current grid page (saved rules): campaigns per daily budget, and BGT = daily budget x campaigns. SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC; a total of 0 pauses the campaign. The charts count the same rows against the bands you are editing.">Sum</div>
+                                <div class="gac-bgt-title" title="SBGT for ALL campaigns, every status (saved rules; not limited by the grid page or filters): campaigns per daily budget, and BGT = daily budget x campaigns. SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC; a total of 0 pauses the campaign. The charts count the same rows against the bands you are editing.">Sum</div>
                                 <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
                             </div>
                             <div class="gac-bgt-sum-dist">
@@ -1546,7 +1546,8 @@
                 if (r.reinclude && r.reinclude.length) t += '\n      ↺ re-include (was excluded): ' + r.reinclude.join(', ');
                 if (r.enable && r.enable.length) t += '\n      ▶ enable (was paused): ' + r.enable.join(', ');
                 if (r.remove && r.remove.length) t += '\n      - remove: ' + r.remove.join(', ');
-                if (r.skip && r.skip.length) t += '\n      ⏸ skipped: ' + r.skip.join('; ');
+                if (r.paused) t += '\n      ⏸ campaign PAUSED (INV 0)';
+                else if (r.pause_campaign) t += '\n      ⏸ campaign will be paused (INV 0)';
                 return t;
             }
 
@@ -1571,18 +1572,18 @@
                 gacShowPushLoading('Checking ' + ids.length + ' campaign(s) against Merchant Center…', 'Reading listing groups from Google Ads — nothing is changed yet.');
                 gacRawFixRunChunks(ids, 5, true).then(function(plans) {
                     var cnt = function(p) { return (p.add || []).length + (p.reinclude || []).length + (p.enable || []).length + (p.remove || []).length; };
-                    var actionable = plans.filter(function(p) { return p.status === 'ok' && cnt(p) > 0; });
+                    var actionable = plans.filter(function(p) { return (p.status === 'ok' || p.status === 'nothing') && (cnt(p) > 0 || p.pause_campaign); });
                     var planText = plans.map(gacRawFixLine).join('\n');
                     if (!actionable.length) {
                         gacRawFixBusy = false;
                         gacShowPushResult('Nothing to change in Google Ads', planText, plans.some(function(p) { return p.status === 'error'; }) ? 'error' : 'success');
                         return null;
                     }
-                    var nAdd = 0, nRem = 0;
-                    actionable.forEach(function(p) { nAdd += (p.add || []).length + (p.reinclude || []).length + (p.enable || []).length; nRem += (p.remove || []).length; });
-                    gacShowPushResult('Fix plan — ' + actionable.length + ' campaign(s): +' + nAdd + ' / −' + nRem + ' Item ID(s)', planText, 'success');
+                    var nAdd = 0, nRem = 0, nPause = 0;
+                    actionable.forEach(function(p) { nAdd += (p.add || []).length + (p.reinclude || []).length + (p.enable || []).length; nRem += (p.remove || []).length; if (p.pause_campaign) nPause++; });
+                    gacShowPushResult('Fix plan — ' + actionable.length + ' campaign(s): +' + nAdd + ' / −' + nRem + ' Item ID(s)' + (nPause ? ', pause ' + nPause : ''), planText, 'success');
                     var preview = actionable.slice(0, 8).map(gacRawFixLine).join('\n');
-                    if (!window.confirm('Apply this in Google Ads now?\n\n' + actionable.length + ' campaign(s): add/enable ' + nAdd + ', remove ' + nRem + ' Item ID(s).\n\n' + preview + (actionable.length > 8 ? '\n…' : ''))) {
+                    if (!window.confirm('Apply this in Google Ads now?\n\n' + actionable.length + ' campaign(s): add/enable ' + nAdd + ', remove ' + nRem + ' Item ID(s)' + (nPause ? ', pause ' + nPause + ' campaign(s) with INV 0' : '') + '.\n\n' + preview + (actionable.length > 8 ? '\n…' : ''))) {
                         gacRawFixBusy = false;
                         return null;
                     }
@@ -1932,6 +1933,14 @@
             }
 
             function gacRawSummaryFromResponse(response) {
+                // BGT Rules "Sum" card: server-side SBGT distribution over every campaign (not just this page).
+                if (response && response.summary && Array.isArray(response.summary.sbgt_dist)) {
+                    window.gacRawSbgtDist = response.summary.sbgt_dist;
+                    if (typeof gacBgtPaintSum === 'function' && document.getElementById('gacRawBgtRulesModal')
+                        && document.getElementById('gacRawBgtRulesModal').classList.contains('show')) {
+                        gacBgtPaintSum();
+                    }
+                }
                 var spiEl = document.getElementById('gac-raw-summary-spi30-val');
                 var acosEl = document.getElementById('gac-raw-summary-acos-val');
                 var campaignsEl = document.getElementById('faasCampaignsValue');
@@ -4750,16 +4759,27 @@
 
             /** Summary: SBGT currently on the grid (saved rules) + what each part adds up to. */
             function gacBgtPaintSum() {
-                var rows = gacBgtGridRows();
                 var byVal = {};
                 var total = 0;
-                rows.forEach(function(r) {
-                    var n = parseFloat(r && r.sbgt);
-                    if (!isFinite(n)) return;
-                    var k = String(n);
-                    byVal[k] = (byVal[k] || 0) + 1;
-                    total++;
-                });
+                if (Array.isArray(window.gacRawSbgtDist)) {
+                    // Every campaign (all statuses), from the server.
+                    window.gacRawSbgtDist.forEach(function(d) {
+                        var n = Number(d.value);
+                        var c = Number(d.count) || 0;
+                        if (!isFinite(n) || c <= 0) return;
+                        var k = String(n);
+                        byVal[k] = (byVal[k] || 0) + c;
+                        total += c;
+                    });
+                } else {
+                    gacBgtGridRows().forEach(function(r) {
+                        var n = parseFloat(r && r.sbgt);
+                        if (!isFinite(n)) return;
+                        var k = String(n);
+                        byVal[k] = (byVal[k] || 0) + 1;
+                        total++;
+                    });
+                }
                 var keys = Object.keys(byVal).sort(function(a, b) { return Number(a) - Number(b); });
                 var items = keys.map(function(k, i) {
                     return {
