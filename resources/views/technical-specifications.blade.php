@@ -9,22 +9,34 @@
         .card.ts-master-card .card-body { padding: 1.25rem 1.5rem; }
         .ts-master-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
         .ts-master-toolbar .btn { padding:.3rem .6rem; font-size:.8rem; }
+        #ts-hscroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+            height: 16px;
+            margin: 0 0 6px;
+        }
+        #ts-hscroll-inner { height: 1px; }
         #technical-specs-table { border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.04); }
-        #technical-specs-table .tabulator-header { background:linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%); color:#fff; }
+        #technical-specs-table .tabulator-header {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            background: linear-gradient(135deg,#2c6ed5 0%,#1a56b7 100%);
+            color: #fff;
+        }
         #technical-specs-table .tabulator-col { background:transparent !important; border-right:1px solid rgba(255,255,255,.15); }
-        #technical-specs-table .tabulator-col-title { color:#fff; font-size:11px; font-weight:600; text-transform:uppercase; }
+        #technical-specs-table .tabulator-col-title { color:#fff; font-size:13.2px; font-weight:600; text-transform:uppercase; }
         #technical-specs-table .tabulator-header-filter input {
             background:rgba(255,255,255,.95); border:none; border-radius:4px; color:#333;
-            padding:4px 6px; width:100%; font-size:10px;
+            padding:4px 6px; width:100%; font-size:12px;
         }
+        #technical-specs-table .tabulator-tableholder::-webkit-scrollbar { width: 10px; height: 0; }
+        #technical-specs-table .tabulator-tableholder { scrollbar-width: thin; }
         #technical-specs-table .tabulator-row:nth-child(even) { background:#f8fafc; }
         #technical-specs-table .tabulator-row:hover { background:#e8f0fe !important; }
-        #technical-specs-table .tabulator-cell { font-size:11px; color:#475569; }
-        .preview-cell { max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; }
+        #technical-specs-table .tabulator-cell { font-size:13.2px; color:#475569; }
         .toast-container { position:fixed; top:20px; right:20px; z-index:9999; }
         .modal-header-gradient { background:linear-gradient(135deg,#6B73FF 0%,#000DFF 100%); color:#fff; }
-        #tsCharCount { font-variant-numeric: tabular-nums; }
-        #tsLineCount { font-variant-numeric: tabular-nums; }
         #ts-column-dropdown.show {
             min-width: min(92vw, 720px);
             max-width: min(96vw, 780px);
@@ -127,6 +139,12 @@
                             </button>
                             <div class="dropdown-menu" id="ts-column-dropdown" aria-labelledby="tsColumnVisibility"></div>
                         </div>
+                        <button type="button" id="pullEbayBtn" class="btn btn-sm btn-outline-primary" title="Pull item specifics from eBay for the selected rows">
+                            <i class="fas fa-cloud-download-alt"></i> Pull from eBay
+                        </button>
+                        <button type="button" id="pushEbayBtn" class="btn btn-sm btn-outline-danger" title="Push technical specifications to eBay for the selected rows">
+                            <i class="fas fa-cloud-upload-alt"></i> Push to eBay
+                        </button>
                         <button type="button" id="exportBtn" class="btn btn-primary btn-sm">
                             <i class="fas fa-download"></i> Export
                         </button>
@@ -143,6 +161,7 @@
                         <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;">
                     </div>
 
+                    <div id="ts-hscroll" title="Scroll columns"><div id="ts-hscroll-inner"></div></div>
                     <div id="technical-specs-table"></div>
                 </div>
             </div>
@@ -169,12 +188,8 @@
                         <div class="small text-muted mb-1">Applying to SKUs:</div>
                         <div id="bulkSkuList" class="small border rounded bg-light p-2" style="max-height:120px; overflow:auto;"></div>
                     </div>
-                    <label for="modalSpecs" class="form-label">Technical Specifications</label>
-                    <textarea id="modalSpecs" class="form-control font-monospace" rows="12" placeholder="One per line:&#10;Material: Steel&#10;Weight: 2.5 kg&#10;Color: Black"></textarea>
-                    <div class="d-flex justify-content-between mt-1">
-                        <span class="small text-muted">Format: <code>Key: Value</code> (or <code>Key | Value</code>)</span>
-                        <span class="small text-muted"><span id="tsLineCount">0</span> lines · <span id="tsCharCount">0</span> chars</span>
-                    </div>
+                    <div id="specFields" class="d-flex flex-column gap-2"></div>
+                    <p id="specFieldsEmpty" class="text-muted small mb-0 d-none">No specifications for this category yet.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -200,6 +215,30 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                     <button type="button" class="btn btn-primary" id="viewCopyBtn"><i class="fas fa-copy me-1"></i> Copy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="ebaySyncModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="ebaySyncTitle">eBay</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="ebaySyncAlert" class="alert alert-danger d-none">
+                        <div class="fw-semibold"><i class="fas fa-exclamation-triangle me-2"></i><span id="ebaySyncAlertText"></span></div>
+                        <ul id="ebaySyncAlertList" class="mb-0 mt-2"></ul>
+                    </div>
+                    <p id="ebaySyncBody" class="mb-2"></p>
+                    <ul id="ebaySyncSkuList" class="small mb-0" style="max-height:240px; overflow:auto;"></ul>
+                    <div id="ebaySyncStatus" class="text-muted small mt-2"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="ebaySyncCancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="ebaySyncConfirm">Continue</button>
                 </div>
             </div>
         </div>
@@ -259,12 +298,6 @@
 
             function specsText(row) {
                 return String(row.technical_specifications || row.specifications_text || '').trim();
-            }
-
-            function preview100(row) {
-                const t = specsText(row);
-                if (!t) return '—';
-                return t.length > 100 ? t.slice(0, 100) + '…' : t;
             }
 
             function updateRowCount(n) {
@@ -338,7 +371,7 @@
                             const d = cell.getRow().getData();
                             if (!rowRequiresAspect(d, name)) return '<span class="text-muted">—</span>';
                             const v = String(cell.getValue() || '').trim();
-                            if (!v) return '<span class="text-warning">Required</span>';
+                            if (!v) return '<i class="fas fa-exclamation-triangle text-danger" title="Blank"></i>';
                             return esc(v);
                         },
                         cellEdited: async function (cell) {
@@ -466,9 +499,94 @@
                     saveLabel.textContent = 'Save';
                 }
 
-                document.getElementById('modalSpecs').value = specsText(rowData);
-                updateCounts();
+                renderSpecFields(rowsForEdit(rowData));
                 editModal.show();
+            }
+
+            function rowsForEdit(rowData) {
+                const wanted = new Set((bulkEditSkus && bulkEditSkus.length) ? bulkEditSkus : [rowData.SKU]);
+                const rows = (table ? table.getData() : []).filter(function (row) {
+                    return wanted.has(String(row.SKU || '').trim());
+                });
+                const clicked = rows.find(function (row) { return row.SKU === rowData.SKU; }) || rowData;
+                const rest = rows.filter(function (row) { return row !== clicked; });
+                return [clicked].concat(rest);
+            }
+
+            function valueForSpec(row, name) {
+                const want = String(name || '').trim().toLowerCase();
+                const specs = row.description_v2_specifications || [];
+                for (let i = 0; i < specs.length; i++) {
+                    if (String(specs[i].key || '').trim().toLowerCase() === want) {
+                        return String(specs[i].value || '');
+                    }
+                }
+                return String(row[aspectKey(name)] || '');
+            }
+
+            function specFieldNames(rows) {
+                const names = [];
+                const seen = {};
+                function add(name) {
+                    const label = String(name || '').trim();
+                    const key = label.toLowerCase();
+                    if (!label || seen[key]) return;
+                    seen[key] = true;
+                    names.push(label);
+                }
+                ebayAspectNames.forEach(function (name) {
+                    if (rows.some(function (row) { return rowRequiresAspect(row, name); })) add(name);
+                });
+                rows.forEach(function (row) {
+                    (row.description_v2_specifications || []).forEach(function (spec) { add(spec.key); });
+                });
+                return names;
+            }
+
+            function renderSpecFields(rows) {
+                const wrap = document.getElementById('specFields');
+                const empty = document.getElementById('specFieldsEmpty');
+                wrap.innerHTML = '';
+                const names = specFieldNames(rows);
+                const source = rows[0] || {};
+                if (!names.length) {
+                    empty.classList.remove('d-none');
+                    return;
+                }
+                empty.classList.add('d-none');
+                names.forEach(function (name) {
+                    const group = document.createElement('div');
+                    const label = document.createElement('label');
+                    label.className = 'form-label mb-1';
+                    label.textContent = name;
+                    const alert = document.createElement('i');
+                    alert.className = 'fas fa-exclamation-triangle text-danger spec-blank-alert ms-1';
+                    alert.title = 'Blank';
+                    label.appendChild(alert);
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'form-control spec-field';
+                    input.dataset.name = name;
+                    input.value = valueForSpec(source, name);
+                    input.addEventListener('input', function () { markBlankSpec(group, input); });
+                    group.appendChild(label);
+                    group.appendChild(input);
+                    wrap.appendChild(group);
+                    markBlankSpec(group, input);
+                });
+            }
+
+            function markBlankSpec(group, input) {
+                const blank = !String(input.value || '').trim();
+                const alert = group.querySelector('.spec-blank-alert');
+                if (alert) alert.style.display = blank ? '' : 'none';
+                input.classList.toggle('border-danger', blank);
+            }
+
+            function collectSpecFields() {
+                return Array.from(document.querySelectorAll('#specFields .spec-field')).map(function (input) {
+                    return { key: input.dataset.name, value: String(input.value || '').trim() };
+                }).filter(function (row) { return row.value !== ''; });
             }
 
             function openView(rowData) {
@@ -477,13 +595,6 @@
                     (rowData.SKU || '') + ' — ' + (rowData.Parent || rowData.title150 || '');
                 document.getElementById('viewSpecsContent').textContent = text || '(empty)';
                 viewModal.show();
-            }
-
-            function updateCounts() {
-                const v = document.getElementById('modalSpecs').value || '';
-                const lines = v.split(/\r\n|\r|\n/).filter(l => l.trim() !== '').length;
-                document.getElementById('tsCharCount').textContent = String(v.length);
-                document.getElementById('tsLineCount').textContent = String(lines);
             }
 
             function tsColumnGroup(field) {
@@ -617,6 +728,30 @@
                 menu.appendChild(wrap);
             }
 
+            function bindTopHScroll() {
+                const holder = document.querySelector('#technical-specs-table .tabulator-tableholder');
+                const bar = document.getElementById('ts-hscroll');
+                const inner = document.getElementById('ts-hscroll-inner');
+                if (!holder || !bar || !inner) return;
+                const tableEl = holder.querySelector('.tabulator-table');
+                inner.style.width = ((tableEl ? tableEl.scrollWidth : holder.scrollWidth) || 0) + 'px';
+                if (bar.dataset.bound === '1') return;
+                bar.dataset.bound = '1';
+                let lock = false;
+                bar.addEventListener('scroll', function () {
+                    if (lock) return;
+                    lock = true;
+                    holder.scrollLeft = bar.scrollLeft;
+                    lock = false;
+                });
+                holder.addEventListener('scroll', function () {
+                    if (lock) return;
+                    lock = true;
+                    bar.scrollLeft = holder.scrollLeft;
+                    lock = false;
+                });
+            }
+
             function initTable(rows, aspectNames) {
                 if (Array.isArray(aspectNames)) ebayAspectNames = aspectNames;
                 rows.forEach(stampAspectFields);
@@ -631,7 +766,7 @@
                 table = new Tabulator('#technical-specs-table', {
                     data: rows,
                     layout: 'fitColumns',
-                    height: '640px',
+                    height: 'calc(100vh - 250px)',
                     pagination: true,
                     paginationSize: 50,
                     paginationSizeSelector: [25, 50, 100, 200],
@@ -676,43 +811,6 @@
                             headerFilter: 'input',
                             headerFilterPlaceholder: 'Filter SKU',
                         },
-                        {
-                            title: 'Preview',
-                            field: 'technical_specifications',
-                            minWidth: 220,
-                            headerFilter: 'input',
-                            headerFilterPlaceholder: 'Filter preview',
-                            formatter: function (cell) {
-                                const d = cell.getRow().getData();
-                                const full = specsText(d);
-                                return '<span class="preview-cell" title="' + esc(full) + '">' + esc(preview100(d)) + '</span>';
-                            },
-                        },
-                        {
-                            title: 'Technical Specifications',
-                            field: 'technical_specifications',
-                            minWidth: 320,
-                            editor: 'textarea',
-                            formatter: function (cell) {
-                                const v = String(cell.getValue() || '').trim();
-                                if (!v) return '<span class="text-muted">—</span>';
-                                return esc(v.length > 160 ? v.slice(0, 160) + '…' : v);
-                            },
-                            cellEdited: async function (cell) {
-                                const d = cell.getRow().getData();
-                                const sku = d.SKU;
-                                const value = String(cell.getValue() || '');
-                                try {
-                                    const json = await saveSpecs(sku, value);
-                                    applySaveToRow(sku, json, value);
-                                    toast('Saved specs for ' + sku, 'success');
-                                    applyStatusFilter();
-                                } catch (e) {
-                                    toast(e.message || 'Save failed', 'error');
-                                    cell.restoreOldValue();
-                                }
-                            },
-                        },
                         ...ebayAspectColumns(),
                         {
                             title: 'Action',
@@ -737,7 +835,11 @@
 
                 table.on('tableBuilt', function () {
                     buildTsColumnPicker();
+                    bindTopHScroll();
                 });
+                table.on('renderComplete', bindTopHScroll);
+                table.on('columnResized', bindTopHScroll);
+                table.on('columnVisibilityChanged', bindTopHScroll);
                 table.on('dataFiltered', function () {
                     updateRowCount(table.getDataCount('active'));
                     updateSelectedCount();
@@ -821,9 +923,189 @@
                 applyStatusFilter();
             }
 
+            let ebaySyncModal = null;
+            let ebaySyncAction = null;
+
+            function selectedRows() {
+                return table ? table.getSelectedData() : [];
+            }
+
+            function blankFieldsForRow(row) {
+                if (!specsText(row)) return ['Technical specifications'];
+                const missing = [];
+                (row.ebay_required || []).forEach(function (name) {
+                    if (!String(row[aspectKey(name)] || '').trim()) missing.push(name);
+                });
+                return missing;
+            }
+
+            function fillSkuList(rows) {
+                const list = document.getElementById('ebaySyncSkuList');
+                list.innerHTML = '';
+                const shown = rows.slice(0, 40);
+                shown.forEach(function (row) {
+                    const li = document.createElement('li');
+                    li.textContent = row.SKU || '';
+                    list.appendChild(li);
+                });
+                if (rows.length > shown.length) {
+                    const li = document.createElement('li');
+                    li.textContent = 'and ' + (rows.length - shown.length) + ' more';
+                    list.appendChild(li);
+                }
+            }
+
+            function openEbayPrompt(opts) {
+                document.getElementById('ebaySyncTitle').textContent = opts.title;
+                document.getElementById('ebaySyncBody').textContent = opts.body;
+                document.getElementById('ebaySyncStatus').textContent = '';
+                const alertBox = document.getElementById('ebaySyncAlert');
+                const alertList = document.getElementById('ebaySyncAlertList');
+                alertList.innerHTML = '';
+                if (opts.blanks && opts.blanks.length) {
+                    alertBox.classList.remove('d-none');
+                    document.getElementById('ebaySyncAlertText').textContent = opts.alertText;
+                    opts.blanks.forEach(function (blank) {
+                        const li = document.createElement('li');
+                        li.textContent = blank.sku + ' — ' + blank.missing.join(', ');
+                        alertList.appendChild(li);
+                    });
+                } else {
+                    alertBox.classList.add('d-none');
+                }
+                fillSkuList(opts.rows || []);
+                const confirmBtn = document.getElementById('ebaySyncConfirm');
+                const cancelBtn = document.getElementById('ebaySyncCancel');
+                cancelBtn.textContent = opts.confirmText ? 'Cancel' : 'OK';
+                cancelBtn.disabled = false;
+                if (!opts.confirmText) {
+                    confirmBtn.classList.add('d-none');
+                    ebaySyncAction = null;
+                } else {
+                    confirmBtn.classList.remove('d-none');
+                    confirmBtn.disabled = false;
+                    confirmBtn.className = 'btn ' + (opts.confirmClass || 'btn-primary');
+                    confirmBtn.textContent = opts.confirmText;
+                    ebaySyncAction = opts.onConfirm;
+                }
+                ebaySyncModal.show();
+            }
+
+            function promptEbaySync(mode) {
+                const rows = selectedRows();
+                const verb = mode === 'pull' ? 'pull from eBay' : 'push to eBay';
+                if (!rows.length) {
+                    openEbayPrompt({
+                        title: 'Select rows',
+                        body: 'Select the rows to ' + verb + ' before continuing. Use the checkboxes in the first column.',
+                        rows: [],
+                    });
+                    return;
+                }
+                if (rows.length > 100) {
+                    openEbayPrompt({
+                        title: 'Too many rows',
+                        body: 'Select 100 rows or fewer at a time, then ' + verb + ' again.',
+                        rows: rows,
+                    });
+                    return;
+                }
+                const blanks = [];
+                if (mode === 'push') {
+                    rows.forEach(function (row) {
+                        const missing = blankFieldsForRow(row);
+                        if (missing.length) blanks.push({ sku: row.SKU || '', missing: missing });
+                    });
+                }
+                openEbayPrompt({
+                    title: mode === 'pull' ? 'Pull from eBay' : 'Push to eBay',
+                    body: mode === 'pull'
+                        ? 'Pull technical specifications for these ' + rows.length + ' rows? Live eBay item specifics replace the specifications saved here.'
+                        : 'Push technical specifications for these ' + rows.length + ' rows to every eBay account that lists them?',
+                    rows: rows,
+                    blanks: blanks,
+                    alertText: 'These rows have blank specifications. Blank values are not sent, so eBay keeps its current value. Push anyway only if that is what you want.',
+                    confirmText: blanks.length ? 'Push anyway' : (mode === 'pull' ? 'Pull from eBay' : 'Push to eBay'),
+                    confirmClass: blanks.length ? 'btn-danger' : 'btn-primary',
+                    onConfirm: function () { runEbaySync(mode, rows.map(function (row) { return row.SKU; }), blanks.length > 0); },
+                });
+            }
+
+            async function runEbaySync(mode, skus, pushAnyway) {
+                const confirmBtn = document.getElementById('ebaySyncConfirm');
+                const cancelBtn = document.getElementById('ebaySyncCancel');
+                const status = document.getElementById('ebaySyncStatus');
+                const list = document.getElementById('ebaySyncSkuList');
+                confirmBtn.disabled = true;
+                cancelBtn.disabled = true;
+                list.innerHTML = '';
+                const url = mode === 'pull' ? '/technical-specifications/pull-ebay' : '/technical-specifications/push-ebay';
+                let done = 0;
+                let failed = 0;
+                try {
+                    for (let i = 0; i < skus.length; i += 8) {
+                        const chunk = skus.slice(i, i + 8);
+                        status.textContent = (mode === 'pull' ? 'Pulling ' : 'Pushing ') + (done + 1) + '–' + (done + chunk.length) + ' of ' + skus.length + '…';
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                            },
+                            body: JSON.stringify({ skus: chunk, push_anyway: !!pushAnyway }),
+                        });
+                        const json = await res.json();
+                        if (res.status === 422 && json.needs_confirmation) {
+                            confirmBtn.disabled = false;
+                            cancelBtn.disabled = false;
+                            openEbayPrompt({
+                                title: 'Push to eBay',
+                                body: 'These rows have blank specifications.',
+                                rows: selectedRows().filter(function (row) {
+                                    return (json.blanks || []).some(function (blank) { return blank.sku === row.SKU; });
+                                }),
+                                blanks: json.blanks || [],
+                                alertText: 'Blank values are not sent, so eBay keeps its current value. Push anyway only if that is what you want.',
+                                confirmText: 'Push anyway',
+                                confirmClass: 'btn-danger',
+                                onConfirm: function () { runEbaySync('push', skus, true); },
+                            });
+                            return;
+                        }
+                        if (!res.ok) throw new Error(json.message || 'eBay request failed');
+                        (json.results || []).forEach(function (result) {
+                            const li = document.createElement('li');
+                            li.textContent = (result.sku || '') + ' — ' + (result.message || '');
+                            li.className = result.success ? 'text-success' : 'text-danger';
+                            list.appendChild(li);
+                            if (!result.success) failed++;
+                            if (mode === 'pull' && result.success) {
+                                applySaveToRow(result.sku, result, result.technical_specifications || '');
+                            }
+                        });
+                        done += chunk.length;
+                    }
+                    status.textContent = 'Finished ' + done + ' row' + (done === 1 ? '' : 's') + (failed ? ', ' + failed + ' failed' : '') + '.';
+                    applyStatusFilter();
+                } catch (e) {
+                    status.textContent = e.message || 'eBay request failed';
+                }
+                confirmBtn.classList.add('d-none');
+                cancelBtn.disabled = false;
+                cancelBtn.textContent = 'Close';
+                ebaySyncAction = null;
+            }
+
             document.addEventListener('DOMContentLoaded', function () {
                 editModal = new bootstrap.Modal(document.getElementById('editSpecsModal'));
                 viewModal = new bootstrap.Modal(document.getElementById('viewSpecsModal'));
+                ebaySyncModal = new bootstrap.Modal(document.getElementById('ebaySyncModal'));
+                document.getElementById('pullEbayBtn').addEventListener('click', function () { promptEbaySync('pull'); });
+                document.getElementById('pushEbayBtn').addEventListener('click', function () { promptEbaySync('push'); });
+                document.getElementById('ebaySyncConfirm').addEventListener('click', function () {
+                    if (typeof ebaySyncAction === 'function') ebaySyncAction();
+                });
 
                 parentPlayback = window.ParentPlayback.create({
                     getAllData: function () { return allRows; },
@@ -841,10 +1123,9 @@
                     e.target.value = '';
                 });
                 document.getElementById('statusFilter').addEventListener('change', applyStatusFilter);
-                document.getElementById('modalSpecs').addEventListener('input', updateCounts);
 
                 document.getElementById('modalSaveBtn').addEventListener('click', async function () {
-                    const text = document.getElementById('modalSpecs').value || '';
+                    const specs = collectSpecFields();
                     const skus = bulkEditSkus.length
                         ? bulkEditSkus.slice()
                         : [document.getElementById('modalSku').value].filter(Boolean);
@@ -858,8 +1139,8 @@
                     try {
                         for (const sku of skus) {
                             try {
-                                const json = await saveSpecs(sku, text);
-                                applySaveToRow(sku, json, text);
+                                const json = await saveSpecs(sku, '', specs);
+                                applySaveToRow(sku, json, json.technical_specifications || '');
                                 ok++;
                             } catch (_) {
                                 fail++;
