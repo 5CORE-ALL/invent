@@ -113,4 +113,44 @@ class FaireSprcDilAutoPushServiceTest extends TestCase
         $this->assertNotNull($out);
         $this->assertEqualsWithDelta(0.75, $out['margin'], 0.0001);
     }
+
+    public function test_snroi_cap_above_what_std_less_ship_can_reach_holds_there(): void
+    {
+        $svc = new FaireSprcDilAutoPushService();
+        // A 1000% target needs far more than Std. S PRC holds at Std - Ship (100 - 8 = 92), the discounts are not taken.
+        $out = $svc->computeTarget(
+            $this->row(['ship' => 8]),
+            $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 100, 'cap' => 1000.0]]])
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(92.0, $out['sprice']);
+    }
+
+    public function test_snroi_cap_blank_slab_keeps_the_discount_price_less_ship(): void
+    {
+        $svc = new FaireSprcDilAutoPushService();
+        $out = $svc->computeTarget(
+            $this->row(['ship' => 8]),
+            $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 100, 'cap' => null]]])
+        );
+
+        $this->assertNotNull($out);
+        $this->assertSame(82.0, $out['sprice']);
+    }
+
+    public function test_capped_price_gives_the_target_snroi_on_the_page_formula(): void
+    {
+        $svc = new FaireSprcDilAutoPushService();
+        $out = $svc->computeTarget(
+            $this->row(['ship' => 8]),
+            $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 100, 'cap' => 100.0]]])
+        );
+
+        $this->assertNotNull($out);
+        // Page SNROI% = (S PRC x take-home - LP) / LP, no Ship, no Ads%.
+        $snroi = (($out['sprice'] * 0.75) - 20) / 20 * 100;
+        $this->assertLessThanOrEqual(100.0, $snroi);
+        $this->assertGreaterThan(99.9, $snroi);
+    }
 }
