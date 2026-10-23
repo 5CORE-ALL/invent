@@ -100,6 +100,11 @@ class EbayRuleSprice
             'ship' => (float) ($row['Ship_productmaster'] ?? 0),
             'percentage' => (float) ($row['percentage'] ?? 0),
             'ads_frac' => $ads > 0 ? $ads / 100 : 0.0,
+            // SNROI Cap: the pricer judges SNROI with the SAME take-home % and channel Ads % as the page's SNROI%
+            // column. Without these it fell back to 80% take-home and 0 Ads, so the server price (saved by the
+            // 10-minute / daily job) sat above the cap the page shows.
+            'margin' => (float) ($row['percentage'] ?? 0),
+            'ads' => $ads > 0 ? $ads / 100 : 0.0,
             'lmp' => self::effectiveLmp($row),
         ];
         foreach (['age_days', 'clearance', 'review_count'] as $key) {

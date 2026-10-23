@@ -242,6 +242,29 @@ class EbayRuleSpriceTest extends TestCase
         }
     }
 
+    public function test_snroi_cap_uses_the_row_take_home_and_channel_ads_like_the_page(): void
+    {
+        $pricer = $this->pricer(['snroi_cap' => [['min' => 0, 'max' => 1000, 'cap' => 20.0]]], 'ebay2');
+        $input = EbayRuleSprice::inputFromTabulatorRow([
+            '(Child) sku' => 'SKU-1',
+            'INV' => 10,
+            'L30' => 2,
+            'STANDARD_PRICE' => 100,
+            'LP_productmaster' => 40,
+            'Ship_productmaster' => 3,
+            'percentage' => 0.88,
+            'AD%' => 3.0,
+            'SCVR' => 5,
+            'CVR_45' => 5,
+        ]);
+
+        $sprice = EbayRuleSprice::price($pricer, $input)['sprice'];
+
+        // SNROI% column: ((price × (take-home − Ads%)) − Ship − LP) ÷ LP = 20% at $60.00.
+        $this->assertSame(60.0, $sprice);
+        $this->assertEqualsWithDelta(20.0, ((($sprice * (0.88 - 0.03)) - 3 - 40) / 40) * 100, 0.0001);
+    }
+
     public function test_cvr_trend_override_is_ignored_when_invalid(): void
     {
         $pricer = $this->pricer(['cvr' => ['down2_lt' => 4, 'down2_disc' => 8, 'down_lt' => 7, 'down_disc' => 5,
