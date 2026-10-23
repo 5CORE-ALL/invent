@@ -490,14 +490,14 @@ class StdPrcVsDilPricerTest extends TestCase
         $this->assertSame(100.0, $wayfair->priceFromRow($row + ['dil' => 50]));
         // Every other channel page has the same SNROI Cap.
         $this->assertSame(84.21, (new StdPrcVsDilPricer($rules, 'faire'))->priceFromRow($row + ['dil' => 10]));
-        // Only Amazon, eBay 1 / 2 / 3, Temu 1 / 2 / 3 and the no-Ship pages have the SNROI Cap. The other pages with Ship
+        // Only Amazon, AliExpress, eBay 1 / 2 / 3, Temu 1 / 2 / 3 and the no-Ship pages have the SNROI Cap. The other pages with Ship
         // (Reverb, Best Buy ...) price from their discounts only, so the same Dil slab leaves the Std price alone.
         foreach (['reverb', 'bestbuy', 'shopify_b2c'] as $channel) {
             $this->assertSame(100.0, (new StdPrcVsDilPricer($rules, $channel))->priceFromRow($row + ['dil' => 10, 'ship' => 5, 'ads' => 0.10]), $channel);
             $this->assertNull((new StdPrcVsDilPricer($rules, $channel))->snroiCapTargetForDil(10.0), $channel);
         }
         // The no-Ship pages, eBay and Temu keep it.
-        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'ebay1', 'ebay2', 'ebay3', 'newtemuone', 'newtemutwo', 'temu3'] as $channel) {
+        foreach (['wayfair', 'faire', 'topdawg', 'alibaba', 'shopify_b2b', 'amazon', 'aliexpress', 'ebay1', 'ebay2', 'ebay3', 'newtemuone', 'newtemutwo', 'temu3'] as $channel) {
             $this->assertTrue(StdPrcVsDilPricer::supportsSnroiCap($channel), $channel);
         }
     }
