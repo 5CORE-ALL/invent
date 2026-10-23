@@ -673,6 +673,7 @@ class Temu2ListingPublishService
         }
 
         $skuList = [];
+        $listPrices = [];
         foreach ($payloadV2['skuList'] ?? [] as $item) {
             if (! is_array($item)) {
                 continue;
@@ -699,12 +700,9 @@ class Temu2ListingPublishService
             ];
             $money = $this->v1Money($price);
             if ($money['basePrice'] !== null) {
-                $sku['basePrice'] = $money['basePrice'];
+                $sku['price'] = ['basePrice' => $money['basePrice']];
             }
-            if ($money['listPrice'] !== null) {
-                $sku['listPrice'] = $money['listPrice'];
-                $sku['listPriceType'] = 1;
-            }
+            $listPrices[] = $money['listPrice'];
             $skuList[] = $sku;
         }
         $v1['skuList'] = $skuList;
@@ -712,17 +710,9 @@ class Temu2ListingPublishService
         $data = $this->temuCallBody($v1, 120);
         if (! ($data['success'] ?? false) && $this->isPriceTypeError($data)) {
             foreach ($v1['skuList'] as $index => $sku) {
-                if (! is_array($sku)) {
-                    continue;
-                }
-                foreach (['basePrice', 'listPrice'] as $key) {
-                    if (! is_array($sku[$key] ?? null)) {
-                        continue;
-                    }
-                    $amount = $sku[$key]['amount'] ?? null;
-                    if (is_numeric($amount)) {
-                        $v1['skuList'][$index][$key]['amount'] = (float) number_format((float) $amount, 2, '.', '');
-                    }
+                if (is_array($sku['price'] ?? null) && ($listPrices[$index] ?? null) !== null) {
+                    $v1['skuList'][$index]['price']['listPrice'] = $listPrices[$index];
+                    $v1['skuList'][$index]['price']['listPriceType'] = 1;
                 }
             }
             $data = $this->temuCallBody($v1, 120);
