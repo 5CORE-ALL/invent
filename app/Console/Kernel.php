@@ -212,6 +212,20 @@ class Kernel extends ConsoleKernel
             ->name('payroll-fetch-fx-rates');
 
         $log = $this->schedulerLog;
+
+        // Veeqo Billing: orders updated since the last run (label charges per shipment).
+        $schedule->command('veeqo:sync-billing')
+            ->hourlyAt(25)
+            ->withoutOverlapping(120)
+            ->runInBackground()
+            ->name('veeqo-sync-billing')
+            ->appendOutputTo($log);
+        $schedule->command('veeqo:sync-chargebacks --days=30')
+            ->dailyAt('04:40')
+            ->withoutOverlapping(60)
+            ->runInBackground()
+            ->name('veeqo-sync-chargebacks')
+            ->appendOutputTo($log);
         $ist = fn ($event) => $this->istBusinessWindow($event);
 
         // Forecast month table: 1st of the month, 00:20 Pacific (not IST —

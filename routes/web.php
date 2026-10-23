@@ -658,6 +658,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/sales-loss-order/data', [SalesLossOrderController::class, 'data'])->name('sales.loss.order.data');
     Route::get('/cancelled-orders', [SalesCancelledOrderController::class, 'index'])->name('sales.cancelled.order');
     Route::get('/cancelled-orders/data', [SalesCancelledOrderController::class, 'data'])->name('sales.cancelled.order.data');
+    Route::get('/veeqo-billing', [\App\Http\Controllers\Channels\VeeqoBillingController::class, 'index'])->name('veeqo.billing');
+    Route::get('/veeqo-billing/data', [\App\Http\Controllers\Channels\VeeqoBillingController::class, 'data'])->name('veeqo.billing.data');
+    Route::get('/veeqo-billing/summary', [\App\Http\Controllers\Channels\VeeqoBillingController::class, 'summary'])->name('veeqo.billing.summary');
+    Route::get('/veeqo-billing/shipment/{shipmentId}', [\App\Http\Controllers\Channels\VeeqoBillingController::class, 'show'])->name('veeqo.billing.show')->whereNumber('shipmentId');
+    Route::post('/veeqo-billing/sync', [\App\Http\Controllers\Channels\VeeqoBillingController::class, 'syncNow'])->name('veeqo.billing.sync');
+    Route::get('/veeqo-chargebacks', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'index'])->name('veeqo.chargebacks');
+    Route::get('/veeqo-chargebacks/data', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'data'])->name('veeqo.chargebacks.data');
+    Route::get('/veeqo-chargebacks/summary', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'summary'])->name('veeqo.chargebacks.summary');
+    Route::get('/veeqo-chargebacks/transaction/{id}', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'show'])->name('veeqo.chargebacks.show')->whereNumber('id');
+    Route::post('/veeqo-chargebacks/sync', [\App\Http\Controllers\Channels\VeeqoChargebackController::class, 'syncNow'])->name('veeqo.chargebacks.sync');
     Route::get('/order-fulfillment', [OrderFulfillmentController::class, 'index'])->name('order.fulfillment');
     Route::get('/order-fulfillment/delivered', [OrderFulfillmentController::class, 'delivered'])->name('order.fulfillment.delivered');
     Route::get('/order-fulfillment/transit', [OrderFulfillmentController::class, 'transit'])->name('order.fulfillment.transit');
