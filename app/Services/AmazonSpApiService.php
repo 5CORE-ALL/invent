@@ -5636,6 +5636,201 @@ class AmazonSpApiService
     }
 
     /**
+     * Live browse-node category of a listing: leaf node ID and its full path.
+     * The path comes from the Catalog API classifications for the listing's ASIN; the ID falls back to the
+     * seller's recommended_browse_nodes attribute when the catalog has no classification.
+     *
+     * @return array{success: bool, message: string, id?: string, path?: string, asin?: string}
+     */
+    public function fetchListingCategory(string $identifier): array
+    {
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $sellerId = config('services.amazon_sp.seller_id');
+        if ($sku === '') {
+            return ['success' => false, 'message' => 'SKU is required.'];
+        }
+        if (empty($sellerId)) {
+            return ['success' => false, 'message' => 'Amazon Seller ID is not configured.'];
+        }
+
+        try {
+            $accessToken = $this->getAccessToken();
+            if (empty($accessToken)) {
+                return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+            }
+
+            $target = $this->resolveAmazonListingTarget($sku, $accessToken);
+            $amazonSku = $target['amazon_sku'] ?? null;
+            if (empty($amazonSku)) {
+                return ['success' => false, 'message' => 'SKU not found in Amazon.'];
+            }
+
+            $marketplaceId = config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER';
+            $url = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/".rawurlencode($amazonSku)
+                .'?marketplaceIds='.rawurlencode((string) $marketplaceId).'&includedData=summaries,attributes';
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Accept' => 'application/json',
+            ])->timeout(45)->get($url);
+
+            if ($response->failed()) {
+                $msg = $response->json('errors.0.message') ?: $response->body();
+
+                return ['success' => false, 'message' => 'Amazon listing lookup failed: '.(is_string($msg) ? $msg : json_encode($msg))];
+            }
+
+            $listing = $response->json() ?? [];
+            $asin = trim((string) ($listing['summaries'][0]['asin'] ?? ''));
+            $nodeFromAttributes = trim((string) ($listing['attributes']['recommended_browse_nodes'][0]['value'] ?? ''));
+
+            $classification = ['id' => '', 'path' => ''];
+            if ($asin !== '') {
+                $ctx = [];
+                $catalog = $this->getCatalogItemByAsin($asin, $ctx, 'classifications');
+                if (is_array($catalog)) {
+                    $classification = self::classificationFromCatalog($catalog, (string) $marketplaceId);
+                }
+            }
+
+            $id = $classification['id'] !== '' ? $classification['id'] : $nodeFromAttributes;
+            $path = $classification['path'];
+            if ($id === '') {
+                return ['success' => false, 'message' => 'Amazon returned no browse-node category for this listing.', 'asin' => $asin];
+            }
+            if ($path === '') {
+                $path = 'Browse node '.$id;
+            }
+
+            return ['success' => true, 'message' => 'OK', 'id' => $id, 'path' => $path, 'asin' => $asin];
+        } catch (\Throwable $e) {
+            Log::warning('Amazon fetchListingCategory failed', ['sku' => $sku, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Catalog Items classifications → leaf node ID and "Root > ... > Leaf" path.
+     *
+     * @param  array<string, mixed>  $catalog
+     * @return array{id: string, path: string}
+     */
+    public static function classificationFromCatalog(array $catalog, string $marketplaceId = ''): array
+    {
+        $blocks = $catalog['classifications'] ?? [];
+        if (! is_array($blocks) || $blocks === []) {
+            return ['id' => '', 'path' => ''];
+        }
+
+        $block = null;
+        foreach ($blocks as $candidate) {
+            if (is_array($candidate) && ($candidate['marketplaceId'] ?? '') === $marketplaceId) {
+                $block = $candidate;
+                break;
+            }
+        }
+        $block = $block ?? (is_array($blocks[0] ?? null) ? $blocks[0] : []);
+
+        $leaf = $block['classifications'][0] ?? null;
+        if (! is_array($leaf)) {
+            return ['id' => '', 'path' => ''];
+        }
+
+        $names = [];
+        $node = $leaf;
+        for ($depth = 0; is_array($node) && $depth < 20; $depth++) {
+            $name = trim((string) ($node['displayName'] ?? ''));
+            if ($name !== '') {
+                array_unshift($names, $name);
+            }
+            $node = $node['parent'] ?? null;
+        }
+
+        return [
+            'id' => trim((string) ($leaf['classificationId'] ?? '')),
+            'path' => implode(' > ', $names),
+        ];
+    }
+
+    /**
+     * Point a listing at another browse node (recommended_browse_nodes).
+     * With $preview Amazon only validates the change (mode=VALIDATION_PREVIEW) and applies nothing.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateBrowseNode(string $identifier, string $nodeId, bool $preview = false): array
+    {
+        $sku = $this->resolveAmazonSellerSkuForBullets($identifier);
+        $nodeId = trim($nodeId);
+        $sellerId = config('services.amazon_sp.seller_id');
+        if ($sku === '' || ! preg_match('/^\d+$/', $nodeId)) {
+            return ['success' => false, 'message' => 'SKU and a numeric Amazon browse node ID are required.'];
+        }
+        if (empty($sellerId)) {
+            return ['success' => false, 'message' => 'Amazon Seller ID is not configured.'];
+        }
+
+        try {
+            $accessToken = $this->getAccessToken();
+            if (empty($accessToken)) {
+                return ['success' => false, 'message' => 'Failed to get Amazon access token.'];
+            }
+
+            $target = $this->resolveAmazonListingTarget($sku, $accessToken);
+            $amazonSku = $target['amazon_sku'] ?? null;
+            $productType = $target['product_type'] ?? null;
+            if (empty($amazonSku)) {
+                return ['success' => false, 'message' => 'SKU not found in Amazon.'];
+            }
+            if (empty($productType)) {
+                $productType = $this->getAmazonProductType($sku, $amazonSku, $accessToken);
+            }
+            if (empty($productType)) {
+                return ['success' => false, 'message' => 'Product type not found for SKU.'];
+            }
+
+            $marketplaceId = (string) (config('services.amazon_sp.marketplace_id') ?: 'ATVPDKIKX0DER');
+            $endpoint = "https://sellingpartnerapi-na.amazon.com/listings/2021-08-01/items/{$sellerId}/".rawurlencode($amazonSku)
+                .'?marketplaceIds='.rawurlencode($marketplaceId).($preview ? '&mode=VALIDATION_PREVIEW' : '');
+
+            $response = Http::withHeaders([
+                'x-amz-access-token' => $accessToken,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])->timeout(45)->patch($endpoint, [
+                'productType' => $productType,
+                'patches' => [[
+                    'op' => 'replace',
+                    'path' => '/attributes/recommended_browse_nodes',
+                    'value' => [['value' => $nodeId, 'marketplace_id' => $marketplaceId]],
+                ]],
+            ]);
+
+            $data = $response->json() ?? [];
+            if ($response->failed()) {
+                $msg = $data['errors'][0]['message'] ?? $response->body();
+
+                return ['success' => false, 'message' => is_string($msg) ? $msg : json_encode($msg)];
+            }
+
+            $status = strtoupper((string) ($data['status'] ?? ''));
+            $issues = is_array($data['issues'] ?? null) ? $data['issues'] : [];
+            $errors = array_values(array_filter($issues, static fn ($i) => strtoupper((string) ($i['severity'] ?? '')) === 'ERROR'));
+            if ($status !== 'ACCEPTED' || $errors !== []) {
+                $texts = array_map(static fn ($i) => (string) ($i['message'] ?? ''), $errors ?: $issues);
+
+                return ['success' => false, 'message' => trim('Amazon did not accept the browse node. '.implode(' ', array_filter($texts)))];
+            }
+
+            Log::info('Amazon browse node '.($preview ? 'validated' : 'updated'), ['sku' => $sku, 'amazon_sku' => $amazonSku, 'node' => $nodeId]);
+
+            return ['success' => true, 'message' => $preview ? 'Amazon accepts this browse node.' : 'Amazon browse node updated.'];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Rich listing update: HTML description (Listings Items API) plus gallery images when URLs are provided.
      * True Brand A+ Content Documents use the separate A+ Content API (see updateAplusContent); many sellers
      * still surface copy and images via product_description + main/other image locators.

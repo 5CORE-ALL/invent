@@ -34,9 +34,10 @@ abstract class GoogleShoppingBgtSlabRule
         return 'slab';
     }
 
+    /** Negative BGT values are allowed (a slab can reduce the summed SBGT). */
     public static function minBgt(): int
     {
-        return 0;
+        return -100_000;
     }
 
     public static function treatMissingInputAsZero(): bool
@@ -162,9 +163,6 @@ abstract class GoogleShoppingBgtSlabRule
             }
             if ($from > $to) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': From must be ≤ To.');
-            }
-            if ($from < 0) {
-                throw new \InvalidArgumentException('Slab '.($i + 1).': From must be 0 or more.');
             }
             if ($bgt < $minBgt || $bgt > 100_000) {
                 throw new \InvalidArgumentException('Slab '.($i + 1).': Bgt must be between '.$minBgt.' and 100000.');

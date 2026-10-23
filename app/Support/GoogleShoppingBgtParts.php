@@ -67,20 +67,52 @@ final class GoogleShoppingBgtParts
         $arr['bgt_prc_label'] = $hitPrc['label'];
         $arr['bgt_prc_price'] = $price;
 
+        // BGT DIL: Dil% slab → budget part (default slabs add 0).
+        $hitDil = GoogleShoppingBgtDilRule::apply($dil);
+        $arr['bgt_dil'] = $hitDil['bgt'];
+        $arr['bgt_dil_color'] = $hitDil['color'];
+        $arr['bgt_dil_label'] = $hitDil['label'];
+        $arr['bgt_dil_value'] = $dil;
+
         $arr['sbgt'] = GoogleShoppingSbgt::sumFromParts(
             $arr['bgt_views'],
             $arr['bgt_cvr'],
             $arr['bgt_acos'],
-            $arr['bgt_prc']
+            $arr['bgt_prc'],
+            $arr['bgt_dil']
         );
-        self::applyInventoryGate($arr, $inv);
+
+        $cfg = ($rawRule ?? GoogleShoppingCampaignsRawRule::resolvedRule())['sbgt'] ?? [];
+        self::applyPriceCap($arr, $price, (float) ($cfg['max_pct_of_price'] ?? 10.0));
+        self::applyInventoryGate($arr, $inv, (bool) ($cfg['pause_if_inv_zero'] ?? true));
     }
 
     /**
-     * INV ≤ 0 forces SBGT to 0 — Google cannot push a $0 daily budget.
+     * Maximum BGT = $maxPct % of the price (whole dollars, at least $1 because a $0 budget cannot be pushed).
+     * $maxPct 0 or no price = no cap.
      */
-    public static function applyInventoryGate(array &$arr, mixed $fallbackInv = null): void
+    public static function applyPriceCap(array &$arr, ?float $price, float $maxPct): void
     {
+        $arr['sbgt_cap'] = null;
+        if ($maxPct <= 0 || $price === null || $price <= 0 || ! isset($arr['sbgt']) || ! is_numeric($arr['sbgt'])) {
+            return;
+        }
+        $cap = max(1, (int) floor($price * $maxPct / 100.0));
+        $arr['sbgt_cap'] = $cap;
+        if ((int) $arr['sbgt'] > $cap) {
+            $arr['sbgt'] = $cap;
+        }
+    }
+
+    /**
+     * Rule "Pause ads if INV = 0": INV ≤ 0 forces SBGT to 0 — Google cannot push a $0 daily budget,
+     * so the campaign is paused instead. With the rule off, INV does not change SBGT.
+     */
+    public static function applyInventoryGate(array &$arr, mixed $fallbackInv = null, bool $pauseIfInvZero = true): void
+    {
+        if (! $pauseIfInvZero) {
+            return;
+        }
         $inv = isset($arr['inventory']) && is_numeric($arr['inventory'])
             ? (float) $arr['inventory']
             : (is_numeric($fallbackInv) ? (float) $fallbackInv : null);
@@ -95,7 +127,8 @@ final class GoogleShoppingBgtParts
         ?float $viewsL7,
         ?float $price,
         ?array $rawRule = null,
-        ?float $inv = null
+        ?float $inv = null,
+        ?float $dil = null
     ): int {
         $row = [
             'acos_l30' => $acos,
@@ -108,6 +141,7 @@ final class GoogleShoppingBgtParts
             'views_l7' => $viewsL7,
             'price' => $price,
             'inv' => $inv,
+            'dil' => $dil,
         ], $rawRule);
 
         $sbgt = $row['sbgt'] ?? null;

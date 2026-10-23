@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  */
 final class GoogleShoppingCampaignsRawRule
 {
-    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v5';
+    public const CACHE_KEY = 'google_shopping_campaigns_raw_rule_resolved_v6';
 
     /**
      * Same ACOS → SBGT brackets as /facebook-ads (live facebook_sbgt_rules),
@@ -38,6 +38,10 @@ final class GoogleShoppingCampaignsRawRule
         return [
             'sbgt' => [
                 'bands' => self::defaultSbgtBands(),
+                // INV ≤ 0 forces SBGT to 0, which pauses the ad when SBGT is pushed.
+                'pause_if_inv_zero' => true,
+                // SBGT is capped at this % of the price (min $1); 0 = no cap.
+                'max_pct_of_price' => 10.0,
             ],
             'sbid' => [
                 'util_low' => 66.0,
@@ -124,6 +128,16 @@ final class GoogleShoppingCampaignsRawRule
 
         self::validateSbgtBands($bands);
 
+        $pauseIfInvZero = array_key_exists('pause_if_inv_zero', $sbIn)
+            ? filter_var($sbIn['pause_if_inv_zero'], FILTER_VALIDATE_BOOLEAN)
+            : (bool) $d['sbgt']['pause_if_inv_zero'];
+        $maxPct = array_key_exists('max_pct_of_price', $sbIn) && is_numeric($sbIn['max_pct_of_price'])
+            ? (float) $sbIn['max_pct_of_price']
+            : (float) $d['sbgt']['max_pct_of_price'];
+        if (! is_finite($maxPct) || $maxPct < 0 || $maxPct > 1000) {
+            throw new \InvalidArgumentException('Max BGT % of price must be between 0 and 1000 (0 = no cap).');
+        }
+
         $sbid = [];
         foreach ($d['sbid'] as $k => $def) {
             $sbid[$k] = (float) ($sbidIn[$k] ?? $def);
@@ -158,7 +172,7 @@ final class GoogleShoppingCampaignsRawRule
             throw new \InvalidArgumentException('SBID low-bid increment must be between 0.01 and 5.');
         }
 
-        return ['sbgt' => ['bands' => $bands], 'sbid' => $sbid];
+        return ['sbgt' => ['bands' => $bands, 'pause_if_inv_zero' => $pauseIfInvZero, 'max_pct_of_price' => $maxPct], 'sbid' => $sbid];
     }
 
     /**
@@ -186,7 +200,7 @@ final class GoogleShoppingCampaignsRawRule
         $r = $rule ?? self::resolvedRule();
         $bands = self::normalizeSbgtBands($r['sbgt']['bands'] ?? []);
 
-        if (! is_finite($acos) || $acos < 0) {
+        if (! is_finite($acos)) {
             $fallback = self::fallbackSbgtFromBands($bands);
 
             return $fallback ?? 20;
@@ -458,9 +472,9 @@ final class GoogleShoppingCampaignsRawRule
             if ($from > $to) {
                 throw new \InvalidArgumentException('SBGT band '.($i + 1).': From must be ≤ To.');
             }
-            // 0 is allowed (matches /facebook-ads Critical band).
-            if ($sbgt < 0 || $sbgt > 100_000) {
-                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between 0 and 100000.');
+            // 0 and negative values are allowed (a negative band reduces the summed SBGT).
+            if ($sbgt < -100_000 || $sbgt > 100_000) {
+                throw new \InvalidArgumentException('SBGT band '.($i + 1).': SBGT must be between -100000 and 100000.');
             }
         }
     }

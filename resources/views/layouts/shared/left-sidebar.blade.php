@@ -2852,6 +2852,9 @@
                             <a href="{{ route('category.master') }}">PM Category Master</a>
                         </li>
                         <li>
+                            <a href="{{ route('category.masters') }}">PM Category Masters</a>
+                        </li>
+                        <li>
                             <a href="{{ route('id.master') }}">PM ID Master</a>
                         </li>
                         <li>

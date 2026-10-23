@@ -120,6 +120,7 @@ return [
     'features' => 'sidebar_product',
     'images' => 'sidebar_product',
     'category.master' => 'sidebar_product',
+    'category.masters' => 'sidebar_product',
     'costprice.analysis' => 'sidebar_product',
     'return.analysis' => 'sidebar_product',
     'pRoi.analysis' => 'sidebar_product',

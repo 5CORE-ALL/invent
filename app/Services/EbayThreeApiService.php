@@ -311,6 +311,32 @@ class EbayThreeApiService
     }
 
     /**
+     * Move a live listing to another eBay leaf category (ReviseFixedPriceItem).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function updateCategory($itemId, $categoryId)
+    {
+        try {
+            return EbayTradingReviseItem::reviseListingCategory(
+                (string) $this->endpoint,
+                (string) $this->compatLevel,
+                (string) $this->devId,
+                (string) $this->appId,
+                (string) $this->certId,
+                (string) $this->siteId,
+                (string) ($this->generateBearerToken() ?? ''),
+                trim((string) $itemId),
+                trim((string) $categoryId),
+            );
+        } catch (\Throwable $e) {
+            Log::error('eBay3 updateCategory exception', ['itemId' => $itemId, 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Update listing title via ReviseItem (eBay title max 80 chars).
      * Fetches item details first and includes required fields (SKU, ListingType, Country, Currency, ConditionID).
      */

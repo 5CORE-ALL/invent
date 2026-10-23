@@ -2353,6 +2353,58 @@ final class EbayTradingReviseItem
     }
 
     /**
+     * Move a live fixed-price listing to another eBay leaf category.
+     * ReviseFixedPriceItem with only ItemID + PrimaryCategory/CategoryID.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public static function reviseListingCategory(
+        string $endpoint,
+        string $compatLevel,
+        string $devId,
+        string $appId,
+        string $certId,
+        string $siteId,
+        string $authToken,
+        string $itemId,
+        string $categoryId,
+    ): array {
+        $itemId = trim($itemId);
+        $categoryId = trim($categoryId);
+        if ($itemId === '' || ! preg_match('/^\d+$/', $categoryId)) {
+            return ['success' => false, 'message' => 'Item ID and a numeric eBay category ID are required.'];
+        }
+
+        $xmlBody = '<?xml version="1.0" encoding="utf-8"?>'
+            .'<ReviseFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+            .'<RequesterCredentials><eBayAuthToken>'.self::escapeXmlElementText($authToken).'</eBayAuthToken></RequesterCredentials>'
+            .'<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>'
+            .'<Item><ItemID>'.self::escapeXmlElementText($itemId).'</ItemID>'
+            .'<PrimaryCategory><CategoryID>'.$categoryId.'</CategoryID></PrimaryCategory>'
+            .'</Item></ReviseFixedPriceItemRequest>';
+
+        $result = self::postTradingCall(
+            $endpoint,
+            $compatLevel,
+            $devId,
+            $appId,
+            $certId,
+            $siteId,
+            $itemId,
+            $xmlBody,
+            'ReviseFixedPriceItem',
+            'category',
+        );
+
+        return [
+            'success' => (bool) ($result['success'] ?? false),
+            'message' => ($result['success'] ?? false)
+                ? 'Category changed to '.$categoryId.' on eBay item '.$itemId.'.'
+                : (string) ($result['message'] ?? 'eBay rejected the category change.'),
+        ];
+    }
+
+    /**
      * @return array{success: bool, message: string}
      */
     private static function postTitleReviseCall(

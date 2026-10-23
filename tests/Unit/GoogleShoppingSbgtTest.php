@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Support\GoogleShoppingBgtCvrRule;
 use App\Support\GoogleShoppingBgtParts;
+use App\Support\GoogleShoppingBgtDilRule;
 use App\Support\GoogleShoppingBgtPrcRule;
 use App\Support\GoogleShoppingBgtViewsRule;
 use App\Support\GoogleShoppingSbgt;
@@ -72,5 +73,37 @@ class GoogleShoppingSbgtTest extends TestCase
         $row = ['sbgt' => 12, 'inventory' => 4];
         GoogleShoppingBgtParts::applyInventoryGate($row);
         $this->assertSame(12, $row['sbgt']);
+    }
+    public function test_inventory_gate_can_be_turned_off(): void
+    {
+        $row = ['sbgt' => 12, 'inventory' => 0];
+        GoogleShoppingBgtParts::applyInventoryGate($row, null, false);
+        $this->assertSame(12, $row['sbgt']);
+    }
+
+    public function test_price_cap_is_ten_percent_of_price(): void
+    {
+        $row = ['sbgt' => 50];
+        GoogleShoppingBgtParts::applyPriceCap($row, 200.0, 10.0);
+        $this->assertSame(20, $row['sbgt']);
+
+        $row = ['sbgt' => 5];
+        GoogleShoppingBgtParts::applyPriceCap($row, 200.0, 10.0);
+        $this->assertSame(5, $row['sbgt']);
+
+        $row = ['sbgt' => 50];
+        GoogleShoppingBgtParts::applyPriceCap($row, 200.0, 0.0);
+        $this->assertSame(50, $row['sbgt']);
+    }
+
+    public function test_dil_part_is_summed_and_negatives_are_allowed(): void
+    {
+        $this->assertSame(3, GoogleShoppingSbgt::sumFromParts(1, 1, 2, 1, -2));
+        $this->assertSame(
+            -4,
+            GoogleShoppingBgtDilRule::apply(30.0, ['bands' => [
+                ['dil_from' => 0, 'dil_to' => 100, 'bgt' => -4, 'label' => 'x', 'color' => '#000000'],
+            ]])['bgt']
+        );
     }
 }

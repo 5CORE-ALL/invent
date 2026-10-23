@@ -4526,6 +4526,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/product-master', [ProductMasterController::class, 'product_master_index'])
         ->name('product.master');
     Route::get('/title-master', fn () => view('title-master'))->name('title.master');
+    Route::get('/category-masters', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'index'])->name('category.masters');
+    Route::get('/category-masters/data', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'getData'])->name('category.masters.data');
+    Route::post('/category-masters/save-bulk', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'saveBulk'])->name('category.masters.save.bulk');
+    Route::post('/category-masters/pull', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'pull'])->name('category.masters.pull');
+    Route::post('/category-masters/push', [\App\Http\Controllers\ProductMaster\CategoryMastersController::class, 'push'])->name('category.masters.push');
     Route::get('/masters-barcode', [MastersBarcodeController::class, 'index'])->name('masters.barcode');
     Route::get('/masters-barcode-data', [MastersBarcodeController::class, 'getData'])->name('masters.barcode.data');
     Route::post('/masters-barcode/save', [MastersBarcodeController::class, 'save'])->name('masters.barcode.save');
@@ -7205,6 +7210,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/google/shopping/google-shopping/bgt-cvr-rule', 'saveBgtCvrRule')->name('google.shopping.campaigns.bgt-cvr-rule.save');
         Route::get('/google/shopping/google-shopping/bgt-prc-rule', 'getBgtPrcRule')->name('google.shopping.campaigns.bgt-prc-rule');
         Route::post('/google/shopping/google-shopping/bgt-prc-rule', 'saveBgtPrcRule')->name('google.shopping.campaigns.bgt-prc-rule.save');
+        Route::get('/google/shopping/google-shopping/bgt-dil-rule', 'getBgtDilRule')->name('google.shopping.campaigns.bgt-dil-rule');
+        Route::post('/google/shopping/google-shopping/bgt-dil-rule', 'saveBgtDilRule')->name('google.shopping.campaigns.bgt-dil-rule.save');
         Route::post('/google/shopping/google-shopping/push-sbgt', 'pushSbgtShoppingBudgets')->name('google.shopping.campaigns.push.sbgt');
         Route::post('/google/shopping/google-shopping/push-sbid', 'pushSbidShopping')->name('google.shopping.campaigns.push.sbid');
         Route::post('/google/shopping/google-shopping/toggle-status', 'toggleCampaignStatus')->name('google.shopping.campaigns.toggle.status');

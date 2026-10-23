@@ -466,7 +466,7 @@
             background: #fef9c3; border: 1px solid #facc15; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
         }
         /* One row on wide screens: Yesterday 4 · L30 4 · Utilized Y 2 · Utilized L7 2 (of 12). Narrower screens wrap (media queries below). */
-        .gac-card--yesterday, .gac-card--l30 { grid-column: span 4; }
+        .gac-card--yesterday, .gac-card--l30, .gac-card--projected { grid-column: span 4; }
         .gac-card--util { grid-column: span 2; }
         .gac-card--util .gac-card-badges { grid-template-columns: minmax(0, 1fr); }
         .gac-card-title {
@@ -484,21 +484,23 @@
         .gac-card .faas-stat-badge > span { font-size: 0.85rem; }
         .gac-card .faas-stat-badge > .gac-util-pct { font-size: 0.75rem; font-weight: 700; opacity: 0.95; margin-left: 5px; }
         @media (max-width: 1399.98px) {
-            .gac-card--yesterday, .gac-card--l30, .gac-card--util { grid-column: span 6; }
+            .gac-card--yesterday, .gac-card--l30, .gac-card--projected, .gac-card--util { grid-column: span 6; }
             .gac-card--util .gac-card-badges { grid-template-columns: repeat(3, minmax(0, 1fr)); }
         }
         @media (max-width: 991.98px) {
-            .gac-card--yesterday, .gac-card--l30, .gac-card--util { grid-column: span 12; }
+            .gac-card--yesterday, .gac-card--l30, .gac-card--projected, .gac-card--util { grid-column: span 12; }
         }
         @media (max-width: 575.98px) {
             .gac-card--util { grid-column: span 12; }
             .gac-card-badges, .gac-card--util .gac-card-badges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         /* KPI tiles take the dashboard trend colour (dot up = green, down = red, same = yellow, none = grey). */
-        .gac-card .faas-stat-badge.gac-trend-up   { background: #22c55e; color: #052e16; }
-        .gac-card .faas-stat-badge.gac-trend-down { background: #ef4444; color: #fff; }
-        .gac-card .faas-stat-badge.gac-trend-flat { background: #facc15; color: #713f12; }
-        .gac-card .faas-stat-badge.gac-trend-none { background: #d1d5db; color: #111827; }
+        /* Tiles in the Yesterday / L30 / Projected cards are white. Yesterday and Projected turn green when better than the L30 average, red otherwise. */
+        .gac-card--yesterday .faas-stat-badge, .gac-card--l30 .faas-stat-badge, .gac-card--projected .faas-stat-badge {
+            background: #fff; color: #111827; border: 1px solid #e5e7eb;
+        }
+        .gac-card .faas-stat-badge.gac-cmp-better { background: #22c55e; color: #052e16; border-color: #16a34a; }
+        .gac-card .faas-stat-badge.gac-cmp-worse  { background: #ef4444; color: #fff; border-color: #dc2626; }
         /* Dashboard-standard history dot: green = up, red = down, yellow = same, grey = no prior day. */
         .gac-cards .summary-trend-dot {
             display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; flex-shrink: 0;
@@ -627,6 +629,9 @@
         #gacRawBgtRulesModal .gac-bgt-col .gac-bgt-add { margin-top: 10px; }
 
         /* Sum card: last card in the row (right-hand side), same look as the rule cards. Data only, no chart. */
+        #gacRawBgtRulesModal .gac-bgt-opts { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin: 0 0 12px; padding: 8px 12px; background: #fefce8; border: 1px solid #fde68a; border-radius: 8px; }
+        #gacRawBgtRulesModal .gac-bgt-opt { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 700; color: #854d0e; cursor: pointer; }
+        #gacRawBgtRulesModal .gac-bgt-opt input[type="number"] { width: 70px; text-align: center; font-weight: 700; }
         #gacRawBgtRulesModal .gac-bgt-col.gac-bgt-col--sum { flex: 1.4 1 0; min-width: 330px; }
         #gacRawBgtRulesModal .gac-bgt-sum-dist-head {
             display: grid; grid-template-columns: minmax(0, 1fr) 62px 62px 42px; gap: 6px; padding: 7px 8px 7px 22px;
@@ -688,11 +693,23 @@
                                     ['l30_cvr',  'CVR%',       'L30 CVR%',       'faas-stat-badge--cvr',   'L30 CVR% = 30-day sold ÷ clicks.'],
                                     ['l30_acos', 'ACOS%',      'L30 ACOS%',      'faas-stat-badge--clk',   'L30 ACOS% = 30-day spend ÷ sales.'],
                                 ]],
+                                ['tag' => 'Projected', 'title' => 'Projected · L7 ÷ 7 × 30', 'items' => [
+                                    ['p_bgt',   'DAILY BGT', 'Projected Daily BGT', 'faas-stat-badge--acos',  'Average daily budget over the last 7 days (L7 ÷ 7).'],
+                                    ['p_util',  'UTIL',      'Projected Utilization','faas-stat-badge--sold', 'L7 utilization = 7-day spend ÷ 7-day budget (the ratio is the same when scaled to 30 days).'],
+                                    ['p_bid',   'AVG BID',   'Projected Avg Bid',   'faas-stat-badge--impr',  'L7 avg bid = 7-day spend ÷ clicks (avg CPC).'],
+                                    ['p_cvr',   'CVR%',      'Projected CVR%',      'faas-stat-badge--cvr',   'L7 CVR% = 7-day sold ÷ clicks.'],
+                                    ['p_acos',  'ACOS%',     'Projected ACOS%',     'faas-stat-badge--clk',   'L7 ACOS% = 7-day spend ÷ sales.'],
+                                    ['p_clicks','CLICKS',    'Projected Clicks',    'faas-stat-badge--impr',  'Projected 30-day clicks = L7 clicks ÷ 7 × 30 (campaigns shown).'],
+                                    ['p_sold',  'SOLD',      'Projected Sold',      'faas-stat-badge--clk',   'Projected 30-day sold = L7 sold ÷ 7 × 30 (all campaigns).'],
+                                    ['p_sales', 'SALES',     'Projected Sales',     'faas-stat-badge--spend', 'Projected 30-day sales = L7 sales ÷ 7 × 30 (all campaigns).'],
+                                    ['p_spend', 'SPEND',     'Projected Spend',     'faas-stat-badge--spend', 'Projected 30-day spend = L7 spend ÷ 7 × 30 (all campaigns).'],
+                                    ['p_bgt_total', 'TOTAL BGT', 'Projected Total BGT', 'faas-stat-badge--acos', 'Projected 30-day total budget = L7 daily budgets summed ÷ 7 × 30 (all campaigns).'],
+                                ]],
                             ];
                         @endphp
                         @foreach ($gacKpiRows as $kpiRow)
                             <div class="gac-card gac-card--{{ strtolower($kpiRow['tag']) }}">
-                                <div class="gac-card-title">{{ $kpiRow['tag'] }}</div>
+                                <div class="gac-card-title">{{ $kpiRow['title'] ?? $kpiRow['tag'] }}</div>
                                 <div class="gac-card-badges">
                                     @foreach ($kpiRow['items'] as [$kpiKey, $kpiText, $kpiLabel, $kpiClass, $kpiTip])
                                         <span id="gacKpi_{{ $kpiKey }}" data-metric="{{ $kpiKey }}" data-label="{{ $kpiLabel }}" data-kpi="{{ $kpiKey }}"
@@ -979,12 +996,13 @@
         </div>
     </div>
 
-    {{-- BGT Rules — one modal for BGT Vs ACOS, VIEWS, CVR and PRC. --}}
+    {{-- BGT Rules — one modal for BGT Vs ACOS, VIEWS, CVR, PRC and DIL. --}}
     @php
         $gacBgtSlabCards = [
             ['key' => 'views', 'title' => 'BGT Vs VIEWS', 'hint' => 'Inclusive Shopify View L7 range (parent = sum of children). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-views-bands-body', 'add' => 'gac-bgt-views-add-band-btn', 'err' => 'gacRawBgtViewsRuleErr'],
             ['key' => 'cvr', 'title' => 'BGT Vs CVR', 'hint' => 'Inclusive Google Shopping CVR L30 range (Sold ÷ Clicks × 100). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-cvr-bands-body', 'add' => 'gac-bgt-cvr-add-band-btn', 'err' => 'gacRawBgtCvrRuleErr'],
             ['key' => 'prc', 'title' => 'BGT PRC', 'hint' => 'Inclusive Shopify Price range (parent = average of children with price > 0). First matching slab wins, top to bottom. Saved in a Google-only table.', 'tbody' => 'gac-bgt-prc-bands-body', 'add' => 'gac-bgt-prc-add-band-btn', 'err' => 'gacRawBgtPrcRuleErr'],
+            ['key' => 'dil', 'title' => 'BGT Vs DIL', 'hint' => 'Inclusive Dil% range (OV L30 ÷ INV × 100; parent = children total). First matching slab wins, top to bottom; the matching BGT is added to SBGT. Negative values are allowed. Default slabs add 0. Saved in a Google-only table.', 'tbody' => 'gac-bgt-dil-bands-body', 'add' => 'gac-bgt-dil-add-band-btn', 'err' => 'gacRawBgtDilRuleErr'],
         ];
     @endphp
     <div class="modal fade" id="gacRawBgtRulesModal" tabindex="-1" aria-labelledby="gacRawBgtRulesModalLabel" aria-hidden="true">
@@ -993,12 +1011,24 @@
                 <div class="modal-header">
                     <div>
                         <h5 class="modal-title fs-6 mb-0" id="gacRawBgtRulesModalLabel"><i class="fas fa-tags me-1"></i> BGT Rules</h5>
-                        <div class="gac-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC. INV ≤ 0 forces SBGT to 0, and SBGT 0 cannot be pushed (the campaign is paused). Save and apply writes every rule, then refreshes the grid.</div>
+                        <div class="gac-bgt-sub">SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL, capped at the max % of price. SBGT 0 cannot be pushed (the campaign is paused). Negative numbers are allowed in every rule. Save and apply writes every rule, then refreshes the grid.</div>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-danger gac-bgt-global-err d-none" id="gacRawBgtRulesErr" role="alert"></p>
+
+                    <div class="gac-bgt-opts">
+                        <label class="gac-bgt-opt" title="Rule: when INV is 0 (parent = total of its SKUs) SBGT becomes 0, and a $0 budget cannot be pushed, so the ad is paused automatically.">
+                            <input type="checkbox" id="gac-bgt-pause-inv0" checked>
+                            <span>Pause ads if INV = 0</span>
+                        </label>
+                        <label class="gac-bgt-opt" title="Rule: SBGT can never be more than this % of the price (whole dollars, minimum $1 because a $0 budget cannot be pushed). 0 = no cap.">
+                            <span>Max BGT =</span>
+                            <input type="number" id="gac-bgt-max-pct" value="10" step="0.5" min="0" max="1000" class="form-control form-control-sm">
+                            <span>% of price</span>
+                        </label>
+                    </div>
 
                     <div class="gac-bgt-cols">
                         <div class="gac-bgt-col" data-gac-bgt-panel="acos">
@@ -1059,7 +1089,7 @@
 
                         <div class="gac-bgt-col gac-bgt-col--sum" data-gac-bgt-panel="sum">
                             <div class="gac-bgt-col-head">
-                                <div class="gac-bgt-title" title="SBGT for ALL campaigns, every status (saved rules; not limited by the grid page or filters): campaigns per daily budget, and BGT = daily budget x campaigns. SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC; a total of 0 pauses the campaign. The charts count the same rows against the bands you are editing.">Sum</div>
+                                <div class="gac-bgt-title" title="SBGT for ALL campaigns, every status (saved rules; not limited by the grid page or filters): campaigns per daily budget, and BGT = daily budget x campaigns. SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL, capped at the max % of price; a total of 0 pauses the campaign. The charts count the same rows against the bands you are editing.">Sum</div>
                                 <span class="gac-bgt-head-actions"><button type="button" class="gac-bgt-min-btn" title="Minimize Sum" aria-label="Minimize Sum">−</button></span>
                             </div>
                             <div class="gac-bgt-sum-dist">
@@ -1202,6 +1232,8 @@
             const gacBgtCvrRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-cvr-rule.save'));
             const gacBgtPrcRuleGetUrl = @json(route('google.shopping.campaigns.bgt-prc-rule'));
             const gacBgtPrcRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-prc-rule.save'));
+            const gacBgtDilRuleGetUrl = @json(route('google.shopping.campaigns.bgt-dil-rule'));
+            const gacBgtDilRuleSaveUrl = @json(route('google.shopping.campaigns.bgt-dil-rule.save'));
             const gacRawPushSbgtUrl = @json(route('google.shopping.campaigns.push.sbgt'));
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawToggleStatusUrl = @json(route('google.shopping.campaigns.toggle.status'));
@@ -1248,6 +1280,10 @@
                 bgt_prc_color: true,
                 bgt_prc_label: true,
                 bgt_prc_price: true,
+                bgt_dil_color: true,
+                bgt_dil_label: true,
+                bgt_dil_value: true,
+                sbgt_cap: true,
                 ovl30: true,
                 lbid_green: true,
                 lbgt_green: true,
@@ -1659,8 +1695,11 @@
                 var cvr = parseInt(row.bgt_cvr, 10);
                 var acos = parseInt(row.bgt_acos, 10);
                 var prc = parseInt(row.bgt_prc, 10);
-                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC';
-                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0);
+                var dilp = parseInt(row.bgt_dil, 10);
+                var tip = 'SBGT = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL';
+                tip += ' · ' + (isFinite(views) ? views : 0) + ' + ' + (isFinite(cvr) ? cvr : 0) + ' + ' + (isFinite(acos) ? acos : 0) + ' + ' + (isFinite(prc) ? prc : 0) + ' + ' + (isFinite(dilp) ? dilp : 0);
+                var capV = parseInt(row.sbgt_cap, 10);
+                if (isFinite(capV)) tip += ' · max $' + capV + ' (% of price cap)';
                 var inv = parseFloat(row && row.inventory);
                 if (isFinite(v) && v === 0 && isFinite(inv) && inv <= 0) {
                     tip += ' · INV ≤ 0 zeros SBGT — cannot push $0, campaign will be paused';
@@ -1737,6 +1776,16 @@
                     var label = String((row && row.bgt_prc_label) || '').trim();
                     var tip = 'BGT PRC from Shopify Price';
                     if (isFinite(price)) tip += ' · $' + price;
+                    if (label) tip += ' · ' + label;
+                    return tip;
+                });
+            }
+            function gacRawBgtDilFormatter(cell) {
+                return gacRawBgtPartFormatter(cell, 'bgt_dil_color', function(row) {
+                    var dil = parseFloat(row && row.bgt_dil_value);
+                    var label = String((row && row.bgt_dil_label) || '').trim();
+                    var tip = 'BGT DIL from Dil%';
+                    if (isFinite(dil)) tip += ' · Dil ' + Math.round(dil) + '%';
                     if (label) tip += ' · ' + label;
                     return tip;
                 });
@@ -2604,6 +2653,7 @@
                         bgt_views: 'Bgt Views',
                         bgt_cvr: 'Bgt Cvr',
                         bgt_prc: 'BGT PRC',
+                        bgt_dil: 'BGT DIL',
                         sbgt: 'SBGT',
                         sbid: 'SBID',
                     };
@@ -2761,6 +2811,7 @@
                         bgt_views: true,
                         bgt_cvr: true,
                         bgt_prc: true,
+                        bgt_dil: true,
                         sbgt: true,
                         sbid: true,
                     };
@@ -2769,7 +2820,7 @@
                         metrics_clicks: true, ctr_l30: true, cpc_L30: true, cpc_L7: true, cpc_L2: true, cpc_L1: true,
                         ad_sold_L30: true, ad_sales_L30: true, acos_l30: true, price: true, cvr_l30: true,
                         ub7: true, ub2: true, ub1: true, bgt: true, bgt_acos: true, views_l30: true, views_l7: true,
-                        bgt_views: true, bgt_cvr: true, bgt_prc: true, sbgt: true, sbid: true
+                        bgt_views: true, bgt_cvr: true, bgt_prc: true, bgt_dil: true, sbgt: true, sbid: true
                     };
                     defs.forEach(function(col) {
                         if (col.field === '__gac_select') {
@@ -2940,8 +2991,12 @@
                                 col.headerTooltip = 'Suggested budget from BGT PRC — Shopify Price';
                                 col.formatter = gacRawBgtPrcFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 68);
+                            } else if (col.field === 'bgt_dil') {
+                                col.headerTooltip = 'Suggested budget from BGT Vs DIL — Dil% slabs (added to SBGT)';
+                                col.formatter = gacRawBgtDilFormatter;
+                                col.minWidth = Math.max(col.minWidth || 0, 68);
                             } else if (col.field === 'sbgt') {
-                                col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC. INV ≤ 0 zeros SBGT. SBGT 0 cannot be pushed — Push SBGT pauses the campaign.';
+                                col.headerTooltip = 'Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL, capped at the max % of price. With the rule on, INV ≤ 0 zeros SBGT. SBGT 0 cannot be pushed — Push SBGT pauses the campaign.';
                                 col.formatter = gacRawSbgtCellFormatter;
                                 col.minWidth = Math.max(col.minWidth || 0, 72);
                             } else if (col.field === 'sbid') {
@@ -3218,7 +3273,7 @@
                 { key: 'basic', title: 'Basic', fields: ['campaign_status', 'ads_toggle', 'campaign_name', 'inventory', 'dil', 'price', 'id_check', 'verification', 'ver_fix', 'reason'] },
                 { key: 'bids', title: 'Bids', fields: ['cpc_L30', 'live_cpc', 'cpc_L7', 'cpc_L2', 'cpc_L1', 'lbid', 'sbid'] },
                 { key: 'util', title: 'Utilization', fields: ['spend', 'l7_spend', 'l2_spend', 'l1_spend', 'ub7', 'ub2', 'ub1'] },
-                { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'sbgt', 'lbgt'] },
+                { key: 'bgt', title: 'BGT', fields: ['bgt', 'views_l30', 'views_l7', 'bgt_acos', 'bgt_views', 'bgt_cvr', 'bgt_prc', 'bgt_dil', 'sbgt', 'lbgt'] },
                 { key: 'other', title: 'Other', fields: [] }
             ];
 
@@ -3794,13 +3849,13 @@
                     var tr = document.createElement('tr');
                     tr.innerHTML = ''
                         + '<td class="text-muted small">' + (i + 1) + '</td>'
-                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
+                        + '<td><input type="number" step="0.1" class="form-control form-control-sm"'
                         + ' value="' + (band.acos_from ?? '') + '" data-idx="' + i + '" data-field="acos_from"'
                         + ' placeholder="0"></td>'
-                        + '<td><input type="number" step="0.1" min="0" class="form-control form-control-sm"'
+                        + '<td><input type="number" step="0.1" class="form-control form-control-sm"'
                         + ' value="' + (band.acos_to ?? '') + '" data-idx="' + i + '" data-field="acos_to"'
                         + ' placeholder="9999"></td>'
-                        + '<td><input type="number" step="1" min="0" class="form-control form-control-sm"'
+                        + '<td><input type="number" step="1" class="form-control form-control-sm"'
                         + ' value="' + (band.sbgt ?? '') + '" data-idx="' + i + '" data-field="sbgt"></td>'
                         + '<td class="text-center">'
                         + '<button type="button" class="btn btn-sm btn-outline-danger px-2" data-remove-idx="' + i + '"'
@@ -3860,6 +3915,16 @@
                         color: gacAcosSchemaStyleForBand(acosFrom, acosTo).bg,
                     };
                 });
+            }
+            /** BGT Rules options: "Pause ads if INV = 0" and "Max BGT = x % of price". */
+            function gacBgtPauseInv0() {
+                var el = document.getElementById('gac-bgt-pause-inv0');
+                return el ? !!el.checked : true;
+            }
+            function gacBgtMaxPct() {
+                var el = document.getElementById('gac-bgt-max-pct');
+                var v = el ? parseFloat(el.value) : 10;
+                return (isFinite(v) && v >= 0) ? v : 10;
             }
             /** SBID is no longer edited on this page; re-send the saved rule so saving the BGT bands never resets it. */
             function gacCollectSbid() {
@@ -3950,7 +4015,7 @@
                 cvr:  { fmt: function(v) { return v.toFixed(1) + '%'; },   eps: 0.05,  invert: false },
                 acos: { fmt: function(v) { return v.toFixed(1) + '%'; },   eps: 0.05,  invert: true }
             };
-            var GAC_KPI_KEYS = ['y_bgt', 'y_util', 'y_bid', 'y_cvr', 'y_acos', 'y_clicks', 'y_sold', 'y_sales', 'y_spend', 'l30_bgt', 'l30_util', 'l30_bid', 'l30_cvr', 'l30_acos', 'l30_bgt_total'];
+            var GAC_KPI_KEYS = ['y_bgt', 'y_util', 'y_bid', 'y_cvr', 'y_acos', 'y_clicks', 'y_sold', 'y_sales', 'y_spend', 'l30_bgt', 'l30_util', 'l30_bid', 'l30_cvr', 'l30_acos', 'l30_bgt_total', 'p_bgt', 'p_util', 'p_bid', 'p_cvr', 'p_acos', 'p_clicks', 'p_sold', 'p_sales', 'p_spend', 'p_bgt_total'];
             var gacKpiLastSig = '';
             var gacKpiLastAt = 0;
             var gacKpiAjaxSeq = 0;
@@ -3970,7 +4035,7 @@
                 return cls;
             }
 
-            function gacKpiPaint(values, prev) {
+            function gacKpiPaint(values, prev, cmp, base) {
                 GAC_KPI_KEYS.forEach(function(key) {
                     var badge = document.getElementById('gacKpi_' + key);
                     if (!badge) return;
@@ -3983,8 +4048,19 @@
                     if (!dot) return;
                     var cls = gacKpiTrend(key, cur, old);
                     dot.className = 'summary-trend-dot ' + cls;
-                    badge.classList.remove('gac-trend-up', 'gac-trend-down', 'gac-trend-flat', 'gac-trend-none');
+                    badge.classList.remove('gac-trend-up', 'gac-trend-down', 'gac-trend-flat', 'gac-trend-none', 'gac-cmp-better', 'gac-cmp-worse');
                     badge.classList.add('gac-trend-' + cls);
+                    // Yesterday / Projected vs the L30 average: green = better, red = otherwise.
+                    var verdict = cmp ? cmp[key] : null;
+                    if (badge.dataset.tip === undefined) badge.dataset.tip = badge.getAttribute('title') || '';
+                    var tipTxt = badge.dataset.tip;
+                    if (verdict === 'better' || verdict === 'worse') {
+                        badge.classList.add(verdict === 'better' ? 'gac-cmp-better' : 'gac-cmp-worse');
+                        var ref = base ? Number(base[key]) : NaN;
+                        var refLbl = key.charAt(0) === 'y' && /_(clicks|sold|sales|spend)$/.test(key) ? 'L30 daily avg' : 'L30';
+                        tipTxt += ' · ' + (verdict === 'better' ? 'Better' : 'Worse') + ' than ' + refLbl + (Number.isFinite(ref) ? ' (' + meta.fmt(ref) + ')' : '') + '.';
+                    }
+                    badge.setAttribute('title', tipTxt);
                     var word = cls === 'up' ? 'Up' : (cls === 'down' ? 'Down' : (cls === 'flat' ? 'Same' : ''));
                     dot.title = word
                         ? (word + ' vs prior day (' + meta.fmt(old) + ' → ' + meta.fmt(cur) + '). Click for history.')
@@ -4068,7 +4144,7 @@
                     .then(function(res) { return res.json(); })
                     .then(function(resp) {
                         if (seq !== gacKpiAjaxSeq) return;
-                        if (resp && resp.success) gacKpiPaint(resp.values, resp.prev);
+                        if (resp && resp.success) gacKpiPaint(resp.values, resp.prev, resp.cmp, resp.base);
                         else { gacKpiLastSig = ''; gacKpiPaint(null, null); }
                     })
                     .catch(function(err) {
@@ -4088,7 +4164,7 @@
                 if (metric === 'acos' || metric === 'cvr' || /^util_(y|l7)_avg$/.test(metric)) {
                     return n.toFixed(1) + '%';
                 }
-                if (GAC_KPI_META[metric.slice(metric.indexOf('_') + 1)] && /^(y|l30)_/.test(metric)) {
+                if (GAC_KPI_META[metric.slice(metric.indexOf('_') + 1)] && /^(y|l30|p)_/.test(metric)) {
                     var kpiMeta = GAC_KPI_META[metric.slice(metric.indexOf('_') + 1)];
                     return kpiMeta.fmt(n);
                 }
@@ -4135,6 +4211,8 @@
                     // Green util history is a daily count (re-anchored windows), not a rolling L30 average.
                     if (isGreenUtil) {
                         titleEl.textContent = 'Google Shopping - ' + (label || 'Green Util (L7)') + ' (Daily · ' + rangeLabel + ')';
+                    } else if (/^p_/.test(metric)) {
+                        titleEl.textContent = 'Google Shopping - ' + (label || metric.toUpperCase()) + ' (Projected from L7 ÷ 7 × 30 · ' + rangeLabel + ')';
                     } else if (/^y_/.test(metric)) {
                         // Yesterday KPI badges: one point per day (that day's own value).
                         titleEl.textContent = 'Google Shopping - ' + (label || metric.toUpperCase()) + ' (Daily · ' + rangeLabel + ')';
@@ -4607,7 +4685,7 @@
                         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': gacCsrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
                         credentials: 'same-origin',
                         // the SBGT bands are re-sent unchanged so saving SBID never touches them
-                        body: JSON.stringify({ sbgt: { bands: ((window.gacRawRule && window.gacRawRule.sbgt && window.gacRawRule.sbgt.bands) || []) }, sbid: sbid }),
+                        body: JSON.stringify({ sbgt: Object.assign({}, (window.gacRawRule && window.gacRawRule.sbgt) || { bands: [] }), sbid: sbid }),
                     })
                         .then(function(res) { return res.json().then(function(b) { return { ok: res.ok, body: b }; }); })
                         .then(function(out) {
@@ -4823,7 +4901,7 @@
                 var colors = opts.colors || [];
                 var fromKey = opts.fromKey;
                 var toKey = opts.toKey;
-                var minBgt = opts.minBgt != null ? opts.minBgt : 0;
+                var minBgt = opts.minBgt != null ? opts.minBgt : -100000;
 
                 function normalize(existing) {
                     var prev = Array.isArray(existing) ? existing : [];
@@ -4855,9 +4933,9 @@
                         var tr = document.createElement('tr');
                         tr.innerHTML = ''
                             + '<td class="text-muted small">' + (i + 1) + '</td>'
-                            + '<td><input type="number" step="' + (opts.step || '1') + '" min="0" class="form-control form-control-sm" value="' + (band[fromKey] != null ? band[fromKey] : '') + '" data-idx="' + i + '" data-field="' + fromKey + '"></td>'
-                            + '<td><input type="number" step="' + (opts.step || '1') + '" min="0" class="form-control form-control-sm" value="' + (band[toKey] != null ? band[toKey] : '') + '" data-idx="' + i + '" data-field="' + toKey + '"></td>'
-                            + '<td><input type="number" step="1" min="' + minBgt + '" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>'
+                            + '<td><input type="number" step="' + (opts.step || '1') + '" class="form-control form-control-sm" value="' + (band[fromKey] != null ? band[fromKey] : '') + '" data-idx="' + i + '" data-field="' + fromKey + '"></td>'
+                            + '<td><input type="number" step="' + (opts.step || '1') + '" class="form-control form-control-sm" value="' + (band[toKey] != null ? band[toKey] : '') + '" data-idx="' + i + '" data-field="' + toKey + '"></td>'
+                            + '<td><input type="number" step="1" class="form-control form-control-sm" value="' + (band.bgt != null ? band.bgt : '') + '" data-idx="' + i + '" data-field="bgt"></td>'
                             + '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="' + i + '"' + (canDelete ? '' : ' disabled') + ' title="Delete this slab" aria-label="Delete slab"><i class="fas fa-trash"></i></button></td>';
                         tbody.appendChild(tr);
                     });
@@ -4906,7 +4984,6 @@
                         var b = cleaned[i];
                         if (!isFinite(b[fromKey]) || !isFinite(b[toKey]) || !isFinite(b.bgt)) return { cleaned: null, error: 'Every slab needs numeric From, To, and Bgt values.' };
                         if (b[fromKey] > b[toKey]) return { cleaned: null, error: 'Each slab needs From ≤ To.' };
-                        if (b[fromKey] < 0) return { cleaned: null, error: 'From must be 0 or more.' };
                         if (b.bgt < minBgt) return { cleaned: null, error: 'Bgt must be ' + minBgt + ' or more.' };
                     }
                     return { cleaned: cleaned, error: '' };
@@ -4934,7 +5011,7 @@
                         var lastTo = last ? parseFloat(last[toKey]) : NaN;
                         var from = isFinite(lastTo) ? lastTo : 0;
                         var i = bands.length;
-                        var row = { bgt: minBgt, label: labels[i] || ('Slab ' + (i + 1)), color: colors[i] || '#6c757d' };
+                        var row = { bgt: 0, label: labels[i] || ('Slab ' + (i + 1)), color: colors[i] || '#6c757d' };
                         row[fromKey] = from;
                         row[toKey] = 9999;
                         bands.push(row);
@@ -4959,7 +5036,7 @@
                 ],
                 labels: ['Purple', 'Pink', 'Green', 'Blue', 'Yellow', 'Red'],
                 colors: ['#7c3aed', '#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
-                fromKey: 'views_from', toKey: 'views_to', step: '1', minBgt: 0,
+                fromKey: 'views_from', toKey: 'views_to', step: '1', minBgt: -100000,
                 tbodyId: 'gac-bgt-views-bands-body',
                 addBtnId: 'gac-bgt-views-add-band-btn', errId: 'gacRawBgtViewsRuleErr',
                 getUrl: gacBgtViewsRuleGetUrl, saveUrl: gacBgtViewsRuleSaveUrl,
@@ -4977,7 +5054,7 @@
                 ],
                 labels: ['Purple', 'Pink', 'Green', 'Blue', 'Yellow', 'Red'],
                 colors: ['#7c3aed', '#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
-                fromKey: 'cvr_from', toKey: 'cvr_to', step: '0.01', minBgt: 0,
+                fromKey: 'cvr_from', toKey: 'cvr_to', step: '0.01', minBgt: -100000,
                 tbodyId: 'gac-bgt-cvr-bands-body',
                 addBtnId: 'gac-bgt-cvr-add-band-btn', errId: 'gacRawBgtCvrRuleErr',
                 getUrl: gacBgtCvrRuleGetUrl, saveUrl: gacBgtCvrRuleSaveUrl,
@@ -4994,11 +5071,26 @@
                 ],
                 labels: ['Pink', 'Green', 'Blue', 'Yellow', 'Red'],
                 colors: ['#e83e8c', '#28a745', '#2563eb', '#ffc107', '#a00211'],
-                fromKey: 'prc_from', toKey: 'prc_to', step: '0.01', minBgt: 0,
+                fromKey: 'prc_from', toKey: 'prc_to', step: '0.01', minBgt: -100000,
                 tbodyId: 'gac-bgt-prc-bands-body',
                 addBtnId: 'gac-bgt-prc-add-band-btn', errId: 'gacRawBgtPrcRuleErr',
                 getUrl: gacBgtPrcRuleGetUrl, saveUrl: gacBgtPrcRuleSaveUrl,
                 valueOfRow: function(row) { var n = parseFloat(row && row.bgt_prc_price); return isFinite(n) ? n : null; }
+            });
+            gacBgtBindSlab({
+                key: 'dil',
+                defaults: [
+                    { dil_from: 50, dil_to: 9999, bgt: 0, label: 'Pink', color: '#e83e8c' },
+                    { dil_from: 25, dil_to: 50, bgt: 0, label: 'Green', color: '#28a745' },
+                    { dil_from: 0, dil_to: 25, bgt: 0, label: 'Red', color: '#a00211' }
+                ],
+                labels: ['Pink', 'Green', 'Red', 'Blue', 'Yellow', 'Purple'],
+                colors: ['#e83e8c', '#28a745', '#a00211', '#2563eb', '#ffc107', '#7c3aed'],
+                fromKey: 'dil_from', toKey: 'dil_to', step: '0.01', minBgt: -100000,
+                tbodyId: 'gac-bgt-dil-bands-body',
+                addBtnId: 'gac-bgt-dil-add-band-btn', errId: 'gacRawBgtDilRuleErr',
+                getUrl: gacBgtDilRuleGetUrl, saveUrl: gacBgtDilRuleSaveUrl,
+                valueOfRow: function(row) { var n = parseFloat(row && row.bgt_dil_value); return isFinite(n) ? n : null; }
             });
 
             // ---- Modal open: load every rule, then paint ----------------------------
@@ -5020,6 +5112,11 @@
                         new Promise(function(resolve) {
                             gacRefreshRuleFromServer(function() {
                                 gacLoadSbgtBandsFromRule((window.gacRawRule && window.gacRawRule.sbgt) || {});
+                                var sbOpt = (window.gacRawRule && window.gacRawRule.sbgt) || {};
+                                var pauseChk = document.getElementById('gac-bgt-pause-inv0');
+                                var maxPctEl = document.getElementById('gac-bgt-max-pct');
+                                if (pauseChk) pauseChk.checked = sbOpt.pause_if_inv_zero !== false;
+                                if (maxPctEl) maxPctEl.value = (sbOpt.max_pct_of_price != null ? sbOpt.max_pct_of_price : 10);
                                 resolve();
                             });
                         })
@@ -5094,7 +5191,7 @@
                             'X-Requested-With': 'XMLHttpRequest',
                         },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ sbgt: { bands: sbgtBands }, sbid: gacCollectSbid() }),
+                        body: JSON.stringify({ sbgt: { bands: sbgtBands, pause_if_inv_zero: gacBgtPauseInv0(), max_pct_of_price: gacBgtMaxPct() }, sbid: gacCollectSbid() }),
                     })
                         .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
                         .then(function(out) {

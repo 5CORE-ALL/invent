@@ -280,8 +280,8 @@ class UpdateShoppingBudgetCronCommand extends Command
                 $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)->sortByDesc('date')->first();
                 $currentBudget = ($latestCampaign && $latestCampaign->budget_amount_micros) ? $latestCampaign->budget_amount_micros / 1000000 : 0;
 
-                // Daily budget = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC (same as grid SBGT).
-                // INV ≤ 0 forces SBGT 0 — cannot push $0, so the campaign is paused instead.
+                // Daily budget = Bgt Views + Bgt Cvr + BGT ACOS + BGT PRC + BGT DIL, capped at the max % of price (same as grid SBGT).
+                // INV ≤ 0 forces SBGT 0 (rule "Pause ads if INV = 0") — cannot push $0, so the campaign is paused instead.
                 $inv = isset($skuMetrics['inv']) && is_numeric($skuMetrics['inv'])
                     ? (float) $skuMetrics['inv']
                     : 0.0;
@@ -291,7 +291,8 @@ class UpdateShoppingBudgetCronCommand extends Command
                     isset($skuMetrics['views_l7']) ? (float) $skuMetrics['views_l7'] : 0.0,
                     isset($skuMetrics['price']) && is_numeric($skuMetrics['price']) ? (float) $skuMetrics['price'] : null,
                     $rawRule,
-                    $inv
+                    $inv,
+                    isset($skuMetrics['dil']) && is_numeric($skuMetrics['dil']) ? (float) $skuMetrics['dil'] : null
                 );
 
                 $skipCounters['total_campaigns_processed']++;

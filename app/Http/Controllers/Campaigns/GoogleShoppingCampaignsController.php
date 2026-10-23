@@ -12,6 +12,7 @@ use App\Services\GoogleShoppingLiveBidBgtService;
 use App\Support\GoogleShoppingLiveSyncStatus;
 use App\Support\GoogleShoppingBgtCvrRule;
 use App\Support\GoogleShoppingBgtParts;
+use App\Support\GoogleShoppingBgtDilRule;
 use App\Support\GoogleShoppingBgtPrcRule;
 use App\Support\GoogleShoppingBgtSkuMetrics;
 use App\Support\GoogleShoppingBgtViewsRule;
@@ -334,6 +335,21 @@ class GoogleShoppingCampaignsController extends Controller
         );
     }
 
+    public function getBgtDilRule(): JsonResponse
+    {
+        return $this->jsonBgtRuleGet(GoogleShoppingBgtDilRule::class);
+    }
+
+    public function saveBgtDilRule(Request $request): JsonResponse
+    {
+        return $this->jsonBgtRuleSave(
+            $request,
+            GoogleShoppingBgtDilRule::class,
+            'Could not save BGT Vs DIL rule.',
+            'BGT Vs DIL saved. BGT DIL on the grid will use the new Dil bands after reload.'
+        );
+    }
+
     /**
      * @param  class-string  $class
      */
@@ -582,7 +598,8 @@ class GoogleShoppingCampaignsController extends Controller
             // INV 0 (parent = sum of children) → the ad is paused automatically.
             $inv = $invResolver($names[$cid]);
             $invN = $inv !== null ? (int) $inv : 0;
-            $needsPause = $invN <= 0 && ($statuses[$cid] ?? '') === 'ENABLED';
+            $pauseRule = (bool) (GoogleShoppingCampaignsRawRule::resolvedRule()['sbgt']['pause_if_inv_zero'] ?? true);
+            $needsPause = $pauseRule && $invN <= 0 && ($statuses[$cid] ?? '') === 'ENABLED';
             $res['pause_campaign'] = $needsPause;
             $res['paused'] = false;
             if ($needsPause) {
@@ -2272,13 +2289,21 @@ class GoogleShoppingCampaignsController extends Controller
         'y_bgt', 'y_util', 'y_bid', 'y_cvr', 'y_acos', 'y_clicks', 'y_sold', 'y_sales', 'y_spend',
         'l30_bgt', 'l30_util', 'l30_bid', 'l30_cvr', 'l30_acos',
         'l30_bgt_total',
+        'p_bgt', 'p_util', 'p_bid', 'p_cvr', 'p_acos', 'p_clicks', 'p_sold', 'p_sales', 'p_spend', 'p_bgt_total',
     ];
 
     /**
      * KPI badges that always cover EVERY campaign (Active, Paused, Removed …), whatever rows the grid is showing.
      * l30_bgt_total = the daily budgets summed over the last 30 days.
      */
-    public const KPI_ALL_CAMPAIGN_METRICS = ['l30_bgt_total'];
+    public const KPI_ALL_CAMPAIGN_METRICS = ['l30_bgt_total', 'p_sold', 'p_sales', 'p_spend', 'p_bgt_total'];
+
+    /**
+     * Projected badges (p_*): the last 7 completed US days, divided by 7 and multiplied by 30.
+     * Totals (clicks / sold / sales / spend / total bgt) are scaled to 30 days; ratios (util / bid / cvr / acos)
+     * and the average daily budget are unchanged by the scaling.
+     */
+    public const KPI_PROJECTION_DAYS = 30;
 
     /**
      * @return array<string, true>  campaign_id => true (digits only, max 1000)
@@ -2375,37 +2400,45 @@ class GoogleShoppingCampaignsController extends Controller
      *
      * @param  array{spend: float, sales: float, clicks: float, sold: float, bgt: float, days: int}  $w
      */
-    protected function kpiValueFromWindow(string $metric, array $w): float
+    protected function kpiValueFromWindow(string $metric, array $w, bool $round = true): float
     {
         $kind = substr($metric, (int) strpos($metric, '_') + 1);
+
+        if (str_starts_with($metric, 'p_')) {
+            // L7 ÷ 7 × 30. Days is scaled too so the average daily budget stays the L7 daily average.
+            $f = self::KPI_PROJECTION_DAYS / 7;
+            foreach (['spend', 'sales', 'clicks', 'sold', 'bgt', 'days'] as $k) {
+                $w[$k] = $w[$k] * $f;
+            }
+        }
 
         switch ($kind) {
             case 'bgt':
                 // Average daily budget across the window (one day for y_*).
-                return $w['days'] > 0 ? round($w['bgt'] / $w['days'], 2) : 0.0;
+                return $w['days'] > 0 ? ($round ? round($w['bgt'] / $w['days'], 2) : ($w['bgt'] / $w['days'])) : 0.0;
             case 'bgt_total':
                 // Sum of the daily budgets across the whole window (30 days for l30_*).
-                return round($w['bgt'], 2);
+                return ($round ? round($w['bgt'], 2) : ($w['bgt']));
             case 'util':
-                return $w['bgt'] > 0 ? round(($w['spend'] / $w['bgt']) * 100, 1) : 0.0;
+                return $w['bgt'] > 0 ? ($round ? round(($w['spend'] / $w['bgt']) * 100, 1) : (($w['spend'] / $w['bgt']) * 100)) : 0.0;
             case 'clicks':
-                return round($w['clicks']);
+                return $round ? round($w['clicks']) : $w['clicks'];
             case 'sold':
-                return round($w['sold']);
+                return $round ? round($w['sold']) : $w['sold'];
             case 'sales':
-                return round($w['sales'], 2);
+                return ($round ? round($w['sales'], 2) : ($w['sales']));
             case 'spend':
-                return round($w['spend'], 2);
+                return ($round ? round($w['spend'], 2) : ($w['spend']));
             case 'bid':
-                return $w['clicks'] > 0 ? round($w['spend'] / $w['clicks'], 2) : 0.0;
+                return $w['clicks'] > 0 ? ($round ? round($w['spend'] / $w['clicks'], 2) : ($w['spend'] / $w['clicks'])) : 0.0;
             case 'cvr':
-                return $w['clicks'] > 0 ? round(($w['sold'] / $w['clicks']) * 100, 1) : 0.0;
+                return $w['clicks'] > 0 ? ($round ? round(($w['sold'] / $w['clicks']) * 100, 1) : (($w['sold'] / $w['clicks']) * 100)) : 0.0;
             case 'acos':
                 if ($w['spend'] <= 0.0) {
                     return 0.0;
                 }
 
-                return $w['sales'] < 1.0 ? 100.0 : round(($w['spend'] / $w['sales']) * 100, 1);
+                return $w['sales'] < 1.0 ? 100.0 : ($round ? round(($w['spend'] / $w['sales']) * 100, 1) : (($w['spend'] / $w['sales']) * 100));
         }
 
         return 0.0;
@@ -2413,6 +2446,10 @@ class GoogleShoppingCampaignsController extends Controller
 
     protected function kpiWindowLength(string $metric): int
     {
+        if (str_starts_with($metric, 'p_')) {
+            return 7;
+        }
+
         return str_starts_with($metric, 'l30_') ? 30 : 1;
     }
 
@@ -2440,6 +2477,30 @@ class GoogleShoppingCampaignsController extends Controller
             $prev[$metric] = $this->kpiValueFromWindow($metric, $this->sumKpiWindow($src, $prevEnd, $len));
         }
 
+        // Yesterday (y_*) and Projected (p_*) tiles vs the L30 average: better = green, otherwise red.
+        $cmp = [];
+        $base = [];
+        foreach (self::KPI_BADGE_METRICS as $metric) {
+            if (! str_starts_with($metric, 'y_') && ! str_starts_with($metric, 'p_')) {
+                continue;
+            }
+            $kind = substr($metric, (int) strpos($metric, '_') + 1);
+            $src = in_array($metric, self::KPI_ALL_CAMPAIGN_METRICS, true) ? $dailyAll : $daily;
+            $l30 = $this->sumKpiWindow($src, $end, 30);
+            $cur = $this->kpiValueFromWindow($metric, $this->sumKpiWindow($src, $end, $this->kpiWindowLength($metric)), false);
+            if (str_starts_with($metric, 'y_') && in_array($kind, ['clicks', 'sold', 'sales', 'spend'], true)) {
+                // One day vs the L30 per-day average.
+                $avg = $l30['days'] > 0 ? $l30[$kind] / $l30['days'] : 0.0;
+                $ref = $avg;
+            } else {
+                $ref = $this->kpiValueFromWindow('l30_'.$kind, $l30, false);
+            }
+            $lowerIsBetter = in_array($kind, ['bid', 'acos'], true);
+            $better = $lowerIsBetter ? $cur < $ref - 1e-9 : $cur > $ref + 1e-9;
+            $cmp[$metric] = $better ? 'better' : 'worse';
+            $base[$metric] = round($ref, 4);
+        }
+
         return response()->json([
             'success' => true,
             'end_date' => $end->toDateString(),
@@ -2447,6 +2508,8 @@ class GoogleShoppingCampaignsController extends Controller
             'timezone' => 'America/Los_Angeles',
             'values' => $values,
             'prev' => $prev,
+            'cmp' => $cmp,
+            'base' => $base,
         ]);
     }
 
@@ -2478,7 +2541,7 @@ class GoogleShoppingCampaignsController extends Controller
             'success' => true,
             'metric' => $metric,
             'days' => $days,
-            'mode' => $len === 1 ? 'daily' : 'l30_avg',
+            'mode' => $len === 1 ? 'daily' : ($len === 7 ? 'projected_l7' : 'l30_avg'),
             'end_date' => $end->toDateString(),
             'timezone' => 'America/Los_Angeles',
             'data' => $data,
@@ -3311,6 +3374,7 @@ class GoogleShoppingCampaignsController extends Controller
             'price',
             'bgt_views',
             'bgt_prc',
+            'bgt_dil',
             'sbgt',
         ];
 
@@ -4124,7 +4188,9 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_views',
             'bgt_cvr',
             'bgt_prc',
+            'bgt_dil',
             'sbgt',
+            'sbgt_cap',
             'sbgt_prev',
             'sbgt_prev_date',
             'sbgt_trend',
@@ -4136,6 +4202,9 @@ class GoogleShoppingCampaignsController extends Controller
             'bgt_prc_color',
             'bgt_prc_label',
             'bgt_prc_price',
+            'bgt_dil_color',
+            'bgt_dil_label',
+            'bgt_dil_value',
             'ovl30',
             'sbid',
             'lbid',
