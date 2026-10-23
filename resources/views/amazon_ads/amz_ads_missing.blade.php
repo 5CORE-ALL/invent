@@ -932,7 +932,7 @@
                 el.textContent = msg;
                 el.classList.toggle('text-danger', !!isErr);
             }
-            function kwLoadSuggestions() {
+            function kwLoadSuggestions(force) {
                 var children = collectSelectedChildren();
                 var btn = document.getElementById('amzKwLoadBtn');
                 if (!children.length) {
@@ -946,7 +946,8 @@
                 if (btn) { btn.disabled = true; }
                 postForm(kwSuggestUrl, {
                     children: children,
-                    sort: (document.getElementById('amzKwSort') || {}).value || 'CONVERSIONS'
+                    sort: (document.getElementById('amzKwSort') || {}).value || 'CONVERSIONS',
+                    refresh: force === true
                 }).then(function (out) {
                     if (seq !== kwSugSeq) { return; }
                     if (btn) { btn.disabled = false; }
@@ -1028,8 +1029,8 @@
                         ? 'Amazon\'s suggested bid per match type (default bid if none).'
                         : (bidMode.value === 'custom' ? 'Same bid for every keyword you add next.' : 'The default bid of the campaign.');
                 });
-                document.getElementById('amzKwLoadBtn').addEventListener('click', kwLoadSuggestions);
-                document.getElementById('amzKwSort').addEventListener('change', kwLoadSuggestions);
+                document.getElementById('amzKwLoadBtn').addEventListener('click', function () { kwLoadSuggestions(true); });
+                document.getElementById('amzKwSort').addEventListener('change', function () { kwLoadSuggestions(false); });
                 document.querySelectorAll('.amz-kw-filter').forEach(function (cb) { cb.addEventListener('change', kwRenderSuggestions); });
                 document.getElementById('amzKwSugSearch').addEventListener('input', kwRenderSuggestions);
                 document.getElementById('amzKwBulkBidApply').addEventListener('click', function (e) {

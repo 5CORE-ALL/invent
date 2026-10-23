@@ -432,6 +432,7 @@ class AmazonAdsMissingController extends Controller
             'children.*.target_sku' => ['nullable', 'string', 'max:255'],
             'children.*.asin' => ['nullable', 'string', 'max:32'],
             'sort' => ['nullable', 'string', 'in:CONVERSIONS,CLICKS,DEFAULT'],
+            'refresh' => ['nullable', 'boolean'],
         ]);
 
         $asins = [];
@@ -461,19 +462,32 @@ class AmazonAdsMissingController extends Controller
             ], 422);
         }
 
-        try {
-            $keywords = app(AmazonAdsService::class)->keywordRecommendationsForAsins(
-                $asins,
-                200,
-                (string) ($validated['sort'] ?? 'CONVERSIONS')
-            );
-        } catch (\Throwable $e) {
-            Log::warning('Amazon keyword recommendations failed', ['asins' => $asins, 'error' => $e->getMessage()]);
+        // Amazon throttles this endpoint hard (a 2nd call within seconds gets 429): cache per ASIN set + sort.
+        $sort = (string) ($validated['sort'] ?? 'CONVERSIONS');
+        $sortedAsins = $asins;
+        sort($sortedAsins);
+        $cacheKey = 'amz_kw_reco:'.md5(implode(',', $sortedAsins).'|'.$sort);
+        $keywords = ! empty($validated['refresh']) ? null : Cache::get($cacheKey);
 
-            return response()->json([
-                'ok' => false,
-                'message' => 'Amazon keyword suggestions failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
-            ], 502);
+        if (! is_array($keywords)) {
+            try {
+                $keywords = app(AmazonAdsService::class)->keywordRecommendationsForAsins($asins, 200, $sort);
+            } catch (\Throwable $e) {
+                Log::warning('Amazon keyword recommendations failed', ['asins' => $asins, 'error' => $e->getMessage()]);
+                $throttled = $e instanceof \GuzzleHttp\Exception\RequestException
+                    && $e->hasResponse()
+                    && $e->getResponse()->getStatusCode() === 429;
+
+                return response()->json([
+                    'ok' => false,
+                    'message' => $throttled
+                        ? 'Amazon is rate-limiting keyword suggestions right now. Wait about a minute and click Reload (Enter list / Search ideas / Upload file still work).'
+                        : 'Amazon keyword suggestions failed: '.app(AmazonAdsService::class)->amazonErrorMessage($e),
+                ], $throttled ? 429 : 502);
+            }
+            if ($keywords !== []) {
+                Cache::put($cacheKey, $keywords, now()->addHours(6));
+            }
         }
 
         return response()->json([

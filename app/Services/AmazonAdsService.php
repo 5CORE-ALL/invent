@@ -1475,8 +1475,12 @@ class AmazonAdsService
         ];
 
         $merged = [];
-        // The API takes a limited number of ASINs per call: ask in groups of 10 (max 3 calls).
-        foreach (array_slice(array_chunk($asins, 10), 0, 3) as $chunk) {
+        // The API takes up to 50 ASINs per call and is throttled hard (a 2nd call within a few seconds gets a 429),
+        // so use as few calls as possible and pause between them.
+        foreach (array_slice(array_chunk($asins, 50), 0, 2) as $chunkIndex => $chunk) {
+            if ($chunkIndex > 0) {
+                sleep(4);
+            }
             $body = [
                 'recommendationType' => 'KEYWORDS_FOR_ASINS',
                 'asins' => $chunk,
@@ -1505,18 +1509,28 @@ class AmazonAdsService
             $resp = null;
             $lastError = null;
             foreach ($attempts as [$attemptBody, $attemptHeaders]) {
-                try {
-                    $resp = $this->post('/sp/targets/keywords/recommendations', $attemptBody, $attemptHeaders);
-                    $lastError = null;
-                    break;
-                } catch (\Throwable $e) {
-                    $lastError = $e;
-                    $status = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()
-                        ? $e->getResponse()->getStatusCode() : 0;
-                    // Auth / throttling / server errors will not be fixed by a different body.
-                    if ($status === 0 || $status === 401 || $status === 403 || $status === 429 || $status >= 500) {
-                        break;
+                $status = 0;
+                // 429 = throttled (Amazon's edge returns an HTML page): wait and retry the same request.
+                for ($try = 0; $try < 4; $try++) {
+                    try {
+                        $resp = $this->post('/sp/targets/keywords/recommendations', $attemptBody, $attemptHeaders);
+                        $lastError = null;
+                        break 2;
+                    } catch (\Throwable $e) {
+                        $lastError = $e;
+                        $status = $e instanceof \GuzzleHttp\Exception\RequestException && $e->hasResponse()
+                            ? $e->getResponse()->getStatusCode() : 0;
+                        if ($status !== 429) {
+                            break;
+                        }
+                        if ($try < 3) {
+                            sleep(3 + 3 * $try);
+                        }
                     }
+                }
+                // Auth / throttling / server errors will not be fixed by a different body.
+                if ($status === 0 || $status === 401 || $status === 403 || $status === 429 || $status >= 500) {
+                    break;
                 }
             }
             if ($resp === null) {
@@ -1555,22 +1569,28 @@ class AmazonAdsService
                     if (! in_array($mt, ['BROAD', 'PHRASE', 'EXACT'], true)) {
                         continue;
                     }
-                    // v5 returns the console's "Suggested bid" in bidInfo.suggestedBid.suggested; older shapes use bidInfo.bid.
-                    $bid = data_get($b, 'suggestedBid.suggested');
-                    if (! is_numeric($bid)) {
-                        $bid = $b['bid'] ?? null;
-                    }
-                    if (! is_numeric($bid) || (float) $bid <= 0) {
+                    // v5 returns whole minor units (e.g. 168 = $1.68; range in the same unit). Floats are already dollars.
+                    $toDollars = static function ($v): ?float {
+                        if (! is_numeric($v)) {
+                            return null;
+                        }
+
+                        return is_int($v) || (is_string($v) && ctype_digit($v)) ? ((float) $v) / 100 : (float) $v;
+                    };
+                    $bid = $toDollars(data_get($b, 'suggestedBid.suggested'))
+                        ?? $toDollars(data_get($b, 'suggestedBid.rangeMedian'))
+                        ?? $toDollars($b['bid'] ?? null);
+                    if ($bid === null || $bid <= 0) {
                         continue;
                     }
                     // Several themes can come back per match type: keep the first (Amazon's primary suggestion).
                     if (! isset($merged[$key]['bids'][$mt])) {
-                        $merged[$key]['bids'][$mt] = round((float) $bid, 2);
-                        $rs = data_get($b, 'suggestedBid.rangeStart');
-                        $re = data_get($b, 'suggestedBid.rangeEnd');
+                        $merged[$key]['bids'][$mt] = round($bid, 2);
+                        $rs = $toDollars(data_get($b, 'suggestedBid.rangeStart'));
+                        $re = $toDollars(data_get($b, 'suggestedBid.rangeEnd'));
                         $merged[$key]['ranges'][$mt] = [
-                            is_numeric($rs) ? round((float) $rs, 2) : null,
-                            is_numeric($re) ? round((float) $re, 2) : null,
+                            $rs !== null ? round($rs, 2) : null,
+                            $re !== null ? round($re, 2) : null,
                         ];
                     }
                 }
