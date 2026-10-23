@@ -76,6 +76,45 @@ class VeeqoApiService
     }
 
     /**
+     * One page of orders plus Veeqo's paging headers.
+     *
+     * @param  array<string, mixed>  $query
+     * @return array{ok: bool, http_status: int, msg: string, data: list<array<string, mixed>>, total: ?int, total_pages: ?int}
+     */
+    public function listOrdersPage(array $query): array
+    {
+        if (! $this->isConfigured()) {
+            return ['ok' => false, 'http_status' => 401, 'msg' => 'Veeqo API key not configured', 'data' => [], 'total' => null, 'total_pages' => null];
+        }
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout($this->timeout)
+                ->connectTimeout(min(10, $this->timeout))
+                ->retry(3, 3000, throw: false)
+                ->acceptJson()
+                ->withHeaders(['x-api-key' => $this->apiKey])
+                ->get($this->baseUrl.'/orders', $query);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'http_status' => 500, 'msg' => $e->getMessage(), 'data' => [], 'total' => null, 'total_pages' => null];
+        }
+
+        $json = $response->json();
+        $ok = $response->successful() && is_array($json);
+        $total = $response->header('x-total-count');
+        $pages = $response->header('x-total-pages-count');
+
+        return [
+            'ok' => $ok,
+            'http_status' => $response->status(),
+            'msg' => $ok ? 'OK' : (string) (is_array($json) ? ($json['error_messages'][0] ?? $json['error'] ?? $json['message'] ?? 'Veeqo API error') : 'Veeqo API error'),
+            'data' => $ok && array_is_list($json) ? $json : [],
+            'total' => is_numeric($total) ? (int) $total : null,
+            'total_pages' => is_numeric($pages) ? (int) $pages : null,
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function getOrder(int|string $orderId): array

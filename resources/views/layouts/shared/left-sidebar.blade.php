@@ -220,7 +220,7 @@
             </li>
 
             @php
-                $ofNavOpen = request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.delivered') || request()->routeIs('order.fulfillment.transit') || request()->routeIs('order.fulfillment.scan-pending') || request()->routeIs('order.fulfillment.unpaid') || request()->routeIs('order.fulfillment.pending') || request()->routeIs('order.fulfillment.create-orders');
+                $ofNavOpen = request()->routeIs('order.fulfillment') || request()->routeIs('order.fulfillment.delivered') || request()->routeIs('order.fulfillment.transit') || request()->routeIs('order.fulfillment.scan-pending') || request()->routeIs('order.fulfillment.unpaid') || request()->routeIs('order.fulfillment.pending') || request()->routeIs('order.fulfillment.create-orders') || request()->routeIs('veeqo.billing') || request()->routeIs('veeqo.chargebacks');
             @endphp
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#orderFulfillmentNav" aria-expanded="{{ $ofNavOpen ? 'true' : 'false' }}"
@@ -251,6 +251,12 @@
                         </li>
                         <li>
                             <a href="{{ route('order.fulfillment.create-orders') }}" class="{{ request()->routeIs('order.fulfillment.create-orders') ? 'active' : '' }}">Create Orders <span class="badge rounded-pill of-nav-count" data-of-count="create_orders"></span></a>
+                        </li>
+                        <li>
+                            <a href="{{ route('veeqo.billing') }}" class="{{ request()->routeIs('veeqo.billing') ? 'active' : '' }}">Veeqo Billing</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('veeqo.chargebacks') }}" class="{{ request()->routeIs('veeqo.chargebacks') ? 'active' : '' }}">Veeqo Chargebacks</a>
                         </li>
                     </ul>
                 </div>
