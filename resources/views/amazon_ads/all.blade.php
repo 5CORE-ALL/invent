@@ -3291,7 +3291,7 @@
                 if (c === 'clicks') { col.title = 'Clicks'; col.headerTooltip = 'Amazon Ads clicks (L30).'; col.formatter = fmtDashInt; return; }
             }
 
-            // ---- Parent Vs Ads SKU KW / PT: same result as /amz-variation-verify (each child SKU of the parent is in the parent's KW / PT campaign) ----
+            // ---- Parent Vs Ads SKU KW / PT: Amazon Ads variation check (each child SKU of the parent is in the parent's KW / PT campaign) ----
             var amzPvaUrl = @json(route('amazon.ads.parent-vs-ads'));
             var amzPvaMap = null;       // UPPER(parent) -> {kw: {...}, pt: {...}}
             var amzPvaLoading = false;
@@ -3363,7 +3363,7 @@
                 return {
                     title: 'Parent Vs Ads SKU',
                     field: '_pva',
-                    headerTooltip: 'For PARENT … KW / PT campaigns: same check as /amz-variation-verify. Every child SKU of the parent that needs ads is in this campaign (2/2 = all present). Hover a value for the SKU lists.',
+                    headerTooltip: 'For PARENT … KW / PT campaigns: the Amazon Ads variation check. Every child SKU of the parent that needs ads is in this campaign (2/2 = all present). Hover a value for the SKU lists.',
                     hozAlign: 'center', headerHozAlign: 'center',
                     headerSort: false, download: false,
                     minWidth: 130, widthGrow: 0,
@@ -4047,7 +4047,7 @@
             });
 
             table.on('pageLoaded', amzRefreshUiSoon);
-            // Parent Vs Ads SKU (same logic as /amz-variation-verify): load once, then repaint the column.
+            // Parent Vs Ads SKU (Amazon Ads variation check): load once, then repaint the column.
             table.on('dataLoaded', function () {
                 if (amzPvaMap !== null) { return; }
                 amzPvaLoad(false, function () {

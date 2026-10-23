@@ -3824,7 +3824,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-amazon-price', action: [OverallAmazonController::class, 'updatePrice'])->name('amazon.priceChange');
 
     Route::get('/amazon-ads/all', [AmazonAdsController::class, 'index'])->name('amazon.ads.all');
-    Route::get('/amazon-ads/parent-vs-ads', [\App\Http\Controllers\MarketPlace\AmzVariationVerifyController::class, 'parentAdsSummary'])->name('amazon.ads.parent-vs-ads');
+    Route::get('/amazon-ads/parent-vs-ads', [AmzVariationVerifyController::class, 'parentAdsSummary'])->name('amazon.ads.parent-vs-ads');
     Route::get('/amazon-ads/campaign-skus', [AmazonAdsController::class, 'campaignSkus'])->name('amazon.ads.campaign-skus');
     Route::post('/amazon-ads/sb-ads/products', [AmazonAdsController::class, 'addSbAdProducts'])->name('amazon.ads.sb-ads.products.add');
     Route::post('/amazon-ads/sb-ads/products/remove', [AmazonAdsController::class, 'removeSbAdProducts'])->name('amazon.ads.sb-ads.products.remove');
@@ -4892,12 +4892,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
 
     // Amazon Ads Variation Verification
-    Route::get('/amz-variation-verify', [AmzVariationVerifyController::class, 'index'])->name('amz.variation.verify');
-    Route::get('/amz-variation-verify/data', [AmzVariationVerifyController::class, 'data'])->name('amz.variation.verify.data');
-    Route::get('/amz-variation-verify/chart-data', [AmzVariationVerifyController::class, 'chartData'])->name('amz.variation.verify.chart');
-    Route::post('/amz-variation-verify/archive-extra-ads', [AmzVariationVerifyController::class, 'archiveExtraAds'])->name('amz.variation.verify.archive.extra');
-    Route::post('/amz-variation-verify/add-missing-ads', [AmzVariationVerifyController::class, 'addMissingAds'])->name('amz.variation.verify.add.missing');
-    Route::post('/amz-variation-verify/add-all-missing-ads', [AmzVariationVerifyController::class, 'addAllMissingAds'])->name('amz.variation.verify.add.missing.all');
 
     Route::get('/amz-buybox', [AmzBuyboxController::class, 'index'])->name('amz.buybox');
     Route::get('/amz-buybox/data', [AmzBuyboxController::class, 'data'])->name('amz.buybox.data');

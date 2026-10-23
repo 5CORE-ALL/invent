@@ -1047,7 +1047,7 @@
                 };
             }
 
-            // ---- Parent Vs Ads SKU KW / PT: same result as /amz-variation-verify (each child SKU of the parent is in the parent's KW / PT campaign) ----
+            // ---- Parent Vs Ads SKU KW / PT: Amazon Ads variation check (each child SKU of the parent is in the parent's KW / PT campaign) ----
             var amzPvaUrl = @json(route('amazon.ads.parent-vs-ads'));
             var amzPvaMap = null;       // UPPER(parent) -> {kw: {...}, pt: {...}}
             var amzPvaLoading = false;
@@ -1998,7 +1998,7 @@
                         },
                         {
                             title: 'Parent Vs Ads SKU KW', field: '_pva_kw', width: 150,
-                            headerTooltip: 'Same check as /amz-variation-verify: every child SKU of this parent that needs ads is in the parent\'s KW campaign (2/2 = all present). Hover a value for the SKU lists.',
+                            headerTooltip: 'The Amazon Ads variation check: every child SKU of this parent that needs ads is in the parent\'s KW campaign (2/2 = all present). Hover a value for the SKU lists.',
                             hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                             formatter: function (cell) { return amzPvaCell(cell.getData().parent, 'kw'); }
                         },
@@ -2030,7 +2030,7 @@
                         },
                         {
                             title: 'Parent Vs Ads SKU PT', field: '_pva_pt', width: 150,
-                            headerTooltip: 'Same check as /amz-variation-verify: every child SKU of this parent that needs ads is in the parent\'s PT campaign (2/2 = all present). Hover a value for the SKU lists.',
+                            headerTooltip: 'The Amazon Ads variation check: every child SKU of this parent that needs ads is in the parent\'s PT campaign (2/2 = all present). Hover a value for the SKU lists.',
                             hozAlign: 'center', headerHozAlign: 'center', headerSort: false,
                             formatter: function (cell) { return amzPvaCell(cell.getData().parent, 'pt'); }
                         }
@@ -2039,7 +2039,7 @@
 
                 table.on('tableBuilt', function () {
                     table.setFilter(onlyParentsFilter);
-                    // Parent Vs Ads SKU KW / PT (same logic as /amz-variation-verify), loaded once and painted into the cells.
+                    // Parent Vs Ads SKU KW / PT (Amazon Ads variation check), loaded once and painted into the cells.
                     amzPvaLoad(false, function () {
                         table.getRows().forEach(function (r) { try { r.reformat(); } catch (e) {} });
                     });

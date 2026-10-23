@@ -95,7 +95,6 @@ return [
 
     // Marketplace
     ['value' => 'amazon_analytics', 'text' => 'Amazon Analytics', 'group' => 'Marketplace'],
-    ['value' => 'amz_variation_verify', 'text' => 'Amazon Ads Variation Verification', 'group' => 'Marketplace'],
     ['value' => 'amz_buybox', 'text' => 'Amz Buybox', 'group' => 'Marketplace'],
     ['value' => 'amz_reviews', 'text' => 'Amz Reviews', 'group' => 'Marketplace'],
     ['value' => 'amz_titles', 'text' => 'Amz Titles', 'group' => 'Marketplace'],
