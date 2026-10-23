@@ -1269,6 +1269,7 @@
             const gacRawFixItemIdsUrl = @json(route('google.shopping.campaigns.fix.item.ids'));
             const gacCampaignSkusUrl = @json(route('google.shopping.campaigns.campaign.skus'));
             const gacCampaignSkuActionUrl = @json(route('google.shopping.campaigns.campaign.sku.action'));
+            const gacChildCampaignActionUrl = @json(route('google.shopping.campaigns.child.campaign.action'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
             const gacRawBadgeKpisUrl = @json(route('google.shopping.campaigns.badge.kpis'));
@@ -1881,7 +1882,69 @@
                         + '<td class="text-center"><span class="badge" style="background:' + st.bg + ';color:' + st.fg + ';font-weight:700;">' + st.label + '</span></td>'
                         + '<td>' + sel + '</td></tr>';
                 });
-                body.innerHTML = html + '</tbody></table>';
+                body.innerHTML = html + '</tbody></table>' + gacSkuChildCampaignsHtml(resp.child_campaigns || []);
+            }
+            /** "Campaigns under this parent": separate campaigns named after one of the SKUs (enabled / paused / removed). */
+            function gacSkuChildCampaignsHtml(list) {
+                var h = '<div class="fw-semibold mt-3 mb-1" style="font-size:12px;">Campaigns under this parent <span class="text-muted fw-normal">(separate campaigns named after these SKUs)</span></div>';
+                if (!list.length) return h + '<p class="text-muted small mb-0">No separate campaigns found for these SKUs.</p>';
+                var cs = {
+                    ENABLED: { label: 'Enabled', bg: '#dcfce7', fg: '#166534', sel: 'enable' },
+                    PAUSED: { label: 'Paused', bg: '#fef3c7', fg: '#92400e', sel: 'pause' },
+                    REMOVED: { label: 'Removed', bg: '#fee2e2', fg: '#991b1b', sel: '' }
+                };
+                h += '<table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px;">'
+                    + '<thead class="table-light"><tr><th>Campaign</th><th>SKU</th><th class="text-center">INV</th><th class="text-center">Status</th><th class="text-center" style="width:130px;">Action</th></tr></thead><tbody>';
+                list.forEach(function(c) {
+                    var st = cs[c.status] || { label: c.status || '—', bg: '#f3f4f6', fg: '#4b5563', sel: '' };
+                    var removed = c.status === 'REMOVED';
+                    var inv = (c.inv === null || c.inv === undefined) ? '—' : Number(c.inv).toLocaleString();
+                    var invStyle = (c.inv !== null && c.inv !== undefined && Number(c.inv) <= 0) ? 'color:#dc2626;font-weight:700;' : '';
+                    var sel = '<select class="form-select form-select-sm gac-child-camp-action" data-cid="' + gacRawEscAttr(c.campaign_id) + '" data-prev="' + st.sel + '"' + (removed ? ' disabled' : '') + '>'
+                        + (st.sel ? '' : '<option value="" selected disabled>' + (removed ? 'Removed' : 'Select…') + '</option>')
+                        + ['enable:Enable', 'pause:Pause', 'remove:Remove'].map(function(o) {
+                            var kv = o.split(':');
+                            return '<option value="' + kv[0] + '"' + (st.sel === kv[0] ? ' selected' : '') + '>' + kv[1] + '</option>';
+                        }).join('') + '</select>';
+                    h += '<tr><td class="fw-semibold">' + gacRawEscAttr(c.name) + '<div class="text-muted" style="font-size:10px;">' + gacRawEscAttr(c.campaign_id) + '</div></td>'
+                        + '<td>' + gacRawEscAttr(c.sku) + '</td>'
+                        + '<td class="text-center" style="' + invStyle + '">' + inv + '</td>'
+                        + '<td class="text-center"><span class="badge" style="background:' + st.bg + ';color:' + st.fg + ';font-weight:700;">' + st.label + '</span></td>'
+                        + '<td>' + sel + '</td></tr>';
+                });
+                return h + '</tbody></table>';
+            }
+            function gacChildCampaignApply(selectEl) {
+                var cid = selectEl.getAttribute('data-cid') || '';
+                var action = selectEl.value;
+                var prev = selectEl.getAttribute('data-prev') || '';
+                if (!cid || !action || action === prev) return;
+                if (action === 'remove' && !window.confirm('Remove campaign ' + cid + ' from Google Ads? This cannot be undone.')) {
+                    selectEl.value = prev;
+                    return;
+                }
+                selectEl.disabled = true;
+                gacSkuShowMsg('Applying ' + action + ' to campaign ' + cid + ' in Google Ads…', true);
+                fetch(gacChildCampaignActionUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ campaign_id: cid, action: action }),
+                }).then(function(r) { return r.json().catch(function() { return {}; }).then(function(b) { b = b || {}; b._status = r.status; return b; }); }).then(function(resp) {
+                    var ok = !!(resp && resp.ok);
+                    gacSkuShowMsg((resp && resp.message) || (ok ? 'Done.' : 'Request failed (HTTP ' + (resp && resp._status || '?') + ').'), ok);
+                    if (ok && typeof gacRawReloadGridForFilters === 'function') { try { gacRawReloadGridForFilters(); } catch (e) {} }
+                    gacSkuLoad();
+                }).catch(function() {
+                    gacSkuShowMsg('Request failed.', false);
+                    selectEl.disabled = false;
+                    selectEl.value = prev;
+                });
             }
             function gacSkuLoad() {
                 var body = document.getElementById('gacSkuBody');
@@ -1947,7 +2010,9 @@
             }
             document.addEventListener('change', function(e) {
                 var sel = e.target && e.target.closest ? e.target.closest('.gac-sku-action') : null;
-                if (sel) gacSkuApply(sel);
+                if (sel) { gacSkuApply(sel); return; }
+                var csel = e.target && e.target.closest ? e.target.closest('.gac-child-camp-action') : null;
+                if (csel) gacChildCampaignApply(csel);
             });
             function gacRawOpenSbgtHistory(campaignId) {
                 var cid = String(campaignId || '').replace(/\D/g, '');
