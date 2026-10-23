@@ -648,6 +648,105 @@ class GoogleShoppingCampaignsController extends Controller
     }
 
     /**
+     * "+" modal: the SKUs behind a campaign (parent → its children) with INV, Merchant Center Item ID and the
+     * Item ID's current state in the Google Ads listing groups. Item IDs attached in the ad that belong to no
+     * SKU of the campaign are listed too (sku "—") so they can be removed.
+     */
+    public function campaignSkus(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', (string) $request->input('campaign_id', ''));
+        if ($cid === '') {
+            return response()->json(['ok' => false, 'message' => 'campaign_id is required.'], 422);
+        }
+        $customerId = config('services.google_ads.login_customer_id');
+        if (! $customerId) {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.'], 500);
+        }
+        @ini_set('max_execution_time', '60');
+
+        $q = DB::table('google_ads_campaigns')->where('campaign_id', $cid);
+        $this->applyCampaignNameScope($q);
+        $latest = $q->orderByDesc('date')->first(['campaign_name', 'campaign_status']);
+        if (! $latest) {
+            return response()->json(['ok' => false, 'message' => 'Campaign not found in this grid.'], 404);
+        }
+        $name = (string) $latest->campaign_name;
+
+        $skus = $this->childSkusForCampaignName($name);
+        sort($skus, SORT_NATURAL | SORT_FLAG_CASE);
+        $itemBySku = $this->resolveMerchantCenterItemIds($skus);
+        $invResolver = $this->buildInventoryResolver();
+
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $live = $sbidService->listShoppingItemStates((string) $customerId, $cid);
+
+        $rows = [];
+        $known = [];
+        foreach ($skus as $sku) {
+            $item = (string) ($itemBySku[$sku] ?? '');
+            $inv = $invResolver($sku);
+            if ($item !== '') {
+                $known[strtolower($item)] = true;
+            }
+            $state = $item === '' ? 'NO_ITEM_ID' : ($live['items'][strtolower($item)]['state'] ?? 'NOT_ATTACHED');
+            $rows[] = ['sku' => $sku, 'inv' => $inv, 'item_id' => $item, 'state' => $state, 'extra' => false];
+        }
+        foreach ($live['items'] as $key => $info) {
+            if (! isset($known[$key])) {
+                $rows[] = ['sku' => '—', 'inv' => null, 'item_id' => $info['item'], 'state' => $info['state'], 'extra' => true];
+            }
+        }
+
+        return response()->json([
+            'ok' => true,
+            'campaign_id' => $cid,
+            'name' => $name,
+            'campaign_status' => strtoupper(trim((string) $latest->campaign_status)),
+            'inv_total' => $invResolver($name),
+            'live_error' => $live['status'] === 'error' ? $live['message'] : '',
+            'live_note' => $live['status'] === 'ok' ? $live['message'] : '',
+            'rows' => $rows,
+        ]);
+    }
+
+    /**
+     * "+" modal dropdown: enable / pause / remove one Item ID in the campaign's Google Ads listing groups.
+     * Request: campaign_id, item_id, action (enable|pause|remove).
+     */
+    public function campaignSkuAction(Request $request): JsonResponse
+    {
+        $cid = preg_replace('/\D+/', '', (string) $request->input('campaign_id', ''));
+        $item = trim((string) $request->input('item_id', ''));
+        $action = strtolower(trim((string) $request->input('action', '')));
+        if ($cid === '' || $item === '' || ! in_array($action, ['enable', 'pause', 'remove'], true)) {
+            return response()->json(['ok' => false, 'message' => 'campaign_id, item_id and a valid action are required.'], 422);
+        }
+        $customerId = config('services.google_ads.login_customer_id');
+        if (! $customerId) {
+            return response()->json(['ok' => false, 'message' => 'Google Ads customer ID is not configured.'], 500);
+        }
+
+        $q = DB::table('google_ads_campaigns')->where('campaign_id', $cid);
+        $this->applyCampaignNameScope($q);
+        if (! $q->exists()) {
+            return response()->json(['ok' => false, 'message' => 'Campaign not found in this grid.'], 404);
+        }
+
+        @ini_set('max_execution_time', '60');
+        /** @var GoogleAdsSbidService $sbidService */
+        $sbidService = app(GoogleAdsSbidService::class);
+        $res = $sbidService->setShoppingItemState((string) $customerId, $cid, $item, $action);
+        if ($res['ok']) {
+            // Live Ads Item IDs are cached for the ID / Verification check — invalidate them.
+            Cache::forever('gads_shopping_item_ids_gen', ((int) Cache::get('gads_shopping_item_ids_gen', 0)) + 1);
+            $this->bumpRawGridRowsCache();
+        }
+
+        return response()->json($res, $res['ok'] ? 200 : 422);
+    }
+
+    /**
      * Manually trigger `app:fetch-google-ads-campaigns` so missing rows can be back-filled
      * without waiting for the daily 09:00 IST cron. Runs synchronously — the request blocks
      * until the fetch completes or fails so the UI can show real success/failure.

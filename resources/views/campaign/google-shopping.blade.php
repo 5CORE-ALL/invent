@@ -1205,6 +1205,26 @@
         </div>
     </div>
 
+    {{-- "+" next to the campaign name: SKUs of the (parent) campaign with INV, Item ID, live state in the ad and an Enable / Pause / Remove dropdown. --}}
+    <div class="modal fade" id="gacSkuModal" tabindex="-1" aria-labelledby="gacSkuModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title" id="gacSkuModalLabel">
+                        <i class="fas fa-plus-circle" style="color:#2563eb;"></i>
+                        SKUs — <span id="gacSkuName" class="text-muted"></span>
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-2" style="min-height:120px;">
+                    <div id="gacSkuMeta" class="small text-muted mb-2"></div>
+                    <div id="gacSkuMsg" class="small mb-2 d-none"></div>
+                    <div id="gacSkuBody"><p class="text-muted small mb-0">Loading…</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Negative keywords for a campaign (campaign-level + ad group-level), populated by app:fetch-google-ads-negative-keywords --}}
     <div class="modal fade" id="gacRawNegKwModal" tabindex="-1" aria-labelledby="gacRawNegKwModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -1247,6 +1267,8 @@
             const gacRawPushSbidUrl = @json(route('google.shopping.campaigns.push.sbid'));
             const gacRawToggleStatusUrl = @json(route('google.shopping.campaigns.toggle.status'));
             const gacRawFixItemIdsUrl = @json(route('google.shopping.campaigns.fix.item.ids'));
+            const gacCampaignSkusUrl = @json(route('google.shopping.campaigns.campaign.skus'));
+            const gacCampaignSkuActionUrl = @json(route('google.shopping.campaigns.campaign.sku.action'));
             const gacRawPullDataUrl = @json(route('google.shopping.campaigns.pull.data'));
             const gacRawBadgeHistoryUrl = @json(route('google.shopping.campaigns.badge.history'));
             const gacRawBadgeKpisUrl = @json(route('google.shopping.campaigns.badge.kpis'));
@@ -1809,6 +1831,123 @@
                     return tip;
                 });
             }
+            // ---- "+" modal: SKUs of a campaign with INV / Item ID / state in the ad / Enable-Pause-Remove ----
+            var gacSkuCid = '';
+            var GAC_SKU_STATE = {
+                ENABLED: { label: 'Enabled', bg: '#dcfce7', fg: '#166534', sel: 'enable' },
+                PAUSED: { label: 'Paused', bg: '#fef3c7', fg: '#92400e', sel: 'pause' },
+                EXCLUDED: { label: 'Excluded', bg: '#fee2e2', fg: '#991b1b', sel: 'remove' },
+                NOT_ATTACHED: { label: 'Not in ad', bg: '#f3f4f6', fg: '#4b5563', sel: 'remove' },
+                NO_ITEM_ID: { label: 'No Item ID', bg: '#f3f4f6', fg: '#9ca3af', sel: '' }
+            };
+            function gacSkuShowMsg(text, ok) {
+                var el = document.getElementById('gacSkuMsg');
+                if (!el) return;
+                if (!text) { el.classList.add('d-none'); el.textContent = ''; return; }
+                el.className = 'small mb-2 ' + (ok ? 'text-success' : 'text-danger');
+                el.textContent = text;
+            }
+            function gacSkuRender(resp) {
+                var body = document.getElementById('gacSkuBody');
+                var meta = document.getElementById('gacSkuMeta');
+                if (!body) return;
+                var rows = resp.rows || [];
+                if (meta) {
+                    var invT = resp.inv_total === null || resp.inv_total === undefined ? '—' : Number(resp.inv_total).toLocaleString();
+                    meta.textContent = 'Campaign ' + (resp.campaign_id || '') + ' · Status ' + (resp.campaign_status || '—') + ' · Total INV ' + invT + ' · ' + rows.filter(function(r) { return !r.extra; }).length + ' SKU(s)';
+                }
+                var warn = '';
+                if (resp.live_error) warn = '<div class="alert alert-warning py-1 px-2 small mb-2">Could not read the live ad: ' + gacRawEscAttr(resp.live_error) + '</div>';
+                else if (resp.live_note) warn = '<div class="text-muted small mb-2">' + gacRawEscAttr(resp.live_note) + '</div>';
+                if (!rows.length) { body.innerHTML = warn + '<p class="text-muted small mb-0">No SKUs found for this campaign.</p>'; return; }
+                var html = warn + '<table class="table table-sm table-bordered align-middle mb-0" style="font-size:12px;">'
+                    + '<thead class="table-light"><tr><th>SKU</th><th class="text-center">INV</th><th>Item ID</th><th class="text-center">Current status in ad</th><th class="text-center" style="width:130px;">Action</th></tr></thead><tbody>';
+                rows.forEach(function(r, i) {
+                    var st = GAC_SKU_STATE[r.state] || GAC_SKU_STATE.NOT_ATTACHED;
+                    var inv = (r.inv === null || r.inv === undefined) ? '—' : Number(r.inv).toLocaleString();
+                    var invStyle = (r.inv !== null && r.inv !== undefined && Number(r.inv) <= 0) ? 'color:#dc2626;font-weight:700;' : '';
+                    var skuTxt = r.extra ? '— (not in this parent)' : r.sku;
+                    var dis = r.item_id ? '' : ' disabled';
+                    var sel = '<select class="form-select form-select-sm gac-sku-action" data-item="' + gacRawEscAttr(r.item_id || '') + '" data-prev="' + st.sel + '"' + dis + '>'
+                        + ['enable:Enable', 'pause:Pause', 'remove:Remove'].map(function(o) {
+                            var kv = o.split(':');
+                            return '<option value="' + kv[0] + '"' + (st.sel === kv[0] ? ' selected' : '') + '>' + kv[1] + '</option>';
+                        }).join('') + '</select>';
+                    html += '<tr' + (r.extra ? ' style="background:#fffbeb;"' : '') + '>'
+                        + '<td class="fw-semibold">' + gacRawEscAttr(skuTxt) + '</td>'
+                        + '<td class="text-center" style="' + invStyle + '">' + inv + '</td>'
+                        + '<td style="font-family:monospace;font-size:11px;word-break:break-all;">' + (r.item_id ? gacRawEscAttr(r.item_id) : '<span class="text-muted">—</span>') + '</td>'
+                        + '<td class="text-center"><span class="badge" style="background:' + st.bg + ';color:' + st.fg + ';font-weight:700;">' + st.label + '</span></td>'
+                        + '<td>' + sel + '</td></tr>';
+                });
+                body.innerHTML = html + '</tbody></table>';
+            }
+            function gacSkuLoad() {
+                var body = document.getElementById('gacSkuBody');
+                fetch(gacCampaignSkusUrl + '?campaign_id=' + encodeURIComponent(gacSkuCid), {
+                    credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function(r) { return r.json().catch(function() { return {}; }); }).then(function(resp) {
+                    if (!resp || !resp.ok) {
+                        if (body) body.innerHTML = '<p class="text-danger small mb-0">' + gacRawEscAttr((resp && resp.message) || 'Failed to load SKUs.') + '</p>';
+                        return;
+                    }
+                    gacSkuRender(resp);
+                }).catch(function() {
+                    if (body) body.innerHTML = '<p class="text-danger small mb-0">Failed to load SKUs.</p>';
+                });
+            }
+            function gacOpenSkuModal(campaignId, name) {
+                var cid = String(campaignId || '').replace(/\D/g, '');
+                if (!cid) return;
+                gacSkuCid = cid;
+                var nameEl = document.getElementById('gacSkuName');
+                if (nameEl) nameEl.textContent = name || cid;
+                var metaEl = document.getElementById('gacSkuMeta');
+                if (metaEl) metaEl.textContent = '';
+                gacSkuShowMsg('', true);
+                var body = document.getElementById('gacSkuBody');
+                if (body) body.innerHTML = '<p class="text-muted small mb-0">Loading from Google Ads…</p>';
+                var modalEl = document.getElementById('gacSkuModal');
+                if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                gacSkuLoad();
+            }
+            function gacSkuApply(selectEl) {
+                var item = selectEl.getAttribute('data-item') || '';
+                var action = selectEl.value;
+                var prev = selectEl.getAttribute('data-prev') || '';
+                if (!item || action === prev) return;
+                if (action === 'remove' && !window.confirm('Remove Item ID ' + item + ' from this campaign in Google Ads?')) {
+                    selectEl.value = prev;
+                    return;
+                }
+                selectEl.disabled = true;
+                gacSkuShowMsg('Applying ' + action + ' in Google Ads…', true);
+                fetch(gacCampaignSkuActionUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': gacCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ campaign_id: gacSkuCid, item_id: item, action: action }),
+                }).then(function(r) { return r.json().catch(function() { return {}; }); }).then(function(resp) {
+                    var ok = !!(resp && resp.ok);
+                    gacSkuShowMsg((resp && resp.message) || (ok ? 'Done.' : 'Failed.'), ok);
+                    if (ok && typeof gacRawReloadGridForFilters === 'function') { try { gacRawReloadGridForFilters(); } catch (e) {} }
+                    gacSkuLoad(); // re-read the live state either way
+                }).catch(function() {
+                    gacSkuShowMsg('Request failed.', false);
+                    selectEl.disabled = false;
+                    selectEl.value = prev;
+                });
+            }
+            document.addEventListener('change', function(e) {
+                var sel = e.target && e.target.closest ? e.target.closest('.gac-sku-action') : null;
+                if (sel) gacSkuApply(sel);
+            });
             function gacRawOpenSbgtHistory(campaignId) {
                 var cid = String(campaignId || '').replace(/\D/g, '');
                 if (!cid) return;
@@ -2498,6 +2637,17 @@
                     e.preventDefault();
                     gacRawOpenSbgtHistory(dot.getAttribute('data-sbgt-cid'));
                 });
+                // Click the blue + icon in the campaign name cell → open the campaign's SKUs modal.
+                document.addEventListener('click', function (e) {
+                    var icon = e.target.closest ? e.target.closest('.gac-sku-plus') : null;
+                    if (!icon) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    var nameAttr = icon.getAttribute('data-sku-name') || '';
+                    var tmp = document.createElement('textarea');
+                    tmp.innerHTML = nameAttr;
+                    gacOpenSkuModal(icon.getAttribute('data-sku-cid'), tmp.value);
+                });
                 // Click the red ban icon in the campaign name cell → open that campaign's negatives.
                 document.addEventListener('click', function (e) {
                     var icon = e.target.closest ? e.target.closest('.gac-neg-kw') : null;
@@ -2795,8 +2945,12 @@
                                 + ' data-neg-cid="' + cid + '"'
                                 + ' data-neg-name="' + attr + '"'
                                 + ' style="margin-left:6px;color:#ef4444;cursor:pointer;flex-shrink:0;"></i>';
+                        var plus = '<i class="fas fa-plus-circle gac-sku-plus" role="button" tabindex="0" title="Show SKUs of this campaign"'
+                                 + ' data-sku-cid="' + cid + '" data-sku-name="' + attr + '"'
+                                 + ' style="margin-left:6px;color:#2563eb;cursor:pointer;flex-shrink:0;"></i>';
                         return '<span style="display:inline-flex;align-items:center;justify-content:center;gap:2px;max-width:100%;">'
-                             + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc + '</span>'
+                             + plus
+                             + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:4px;">' + esc + '</span>'
                              + copy + neg + '</span>';
                     };
                     /** Server-side sort whitelist — keep in sync with applyRawGridSort() in the controller. */

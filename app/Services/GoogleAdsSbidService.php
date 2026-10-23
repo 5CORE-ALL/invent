@@ -1542,6 +1542,328 @@ class GoogleAdsSbidService
     }
 
     /**
+     * Listing-group nodes of a Shopping campaign (non-removed), with the ad groups they live in.
+     *
+     * @return array{nodes: list<array<string, mixed>>, adGroups: array<string, array{id: string, cpc: int}>}
+     */
+    private function fetchListingGroupNodes(string $customerId, string $campaignId): array
+    {
+        $rows = $this->runQuery($customerId, "
+            SELECT
+                ad_group.id,
+                ad_group.resource_name,
+                ad_group.cpc_bid_micros,
+                ad_group_criterion.resource_name,
+                ad_group_criterion.status,
+                ad_group_criterion.negative,
+                ad_group_criterion.cpc_bid_micros,
+                ad_group_criterion.listing_group.type,
+                ad_group_criterion.listing_group.parent_ad_group_criterion,
+                ad_group_criterion.listing_group.case_value.product_item_id.value
+            FROM ad_group_criterion
+            WHERE campaign.id = {$campaignId}
+              AND ad_group_criterion.type = 'LISTING_GROUP'
+              AND ad_group_criterion.status != 'REMOVED'
+        ");
+
+        $adGroups = [];
+        $nodes = [];
+        foreach ($rows as $row) {
+            $ag = $row['adGroup'] ?? [];
+            $crit = $row['adGroupCriterion'] ?? [];
+            $lg = $crit['listingGroup'] ?? [];
+            $agResource = (string) ($ag['resourceName'] ?? '');
+            $adGroups[$agResource] = ['id' => (string) ($ag['id'] ?? ''), 'cpc' => (int) ($ag['cpcBidMicros'] ?? 0)];
+            $nodes[] = [
+                'resource' => (string) ($crit['resourceName'] ?? ''),
+                'type' => (string) ($lg['type'] ?? ''),
+                'parent' => (string) ($lg['parentAdGroupCriterion'] ?? ''),
+                'status' => (string) ($crit['status'] ?? 'ENABLED'),
+                'negative' => (bool) ($crit['negative'] ?? false),
+                'item' => trim((string) ($lg['caseValue']['productItemId']['value'] ?? '')),
+                'cpc' => (int) ($crit['cpcBidMicros'] ?? 0),
+                'adGroup' => $agResource,
+            ];
+        }
+
+        return ['nodes' => $nodes, 'adGroups' => $adGroups];
+    }
+
+    /**
+     * Current state of every Item ID in a Shopping campaign's listing groups.
+     * state: ENABLED | PAUSED | EXCLUDED (negative unit only). Keys are lower-cased Item IDs.
+     *
+     * @return array{status: string, message: string, items: array<string, array{item: string, state: string}>}
+     */
+    public function listShoppingItemStates(string $customerId, string $campaignId): array
+    {
+        $customerId = str_replace('-', '', trim($customerId));
+        $campaignId = preg_replace('/\D+/', '', $campaignId) ?: '';
+        if ($customerId === '' || $campaignId === '') {
+            return ['status' => 'error', 'message' => 'customer_id and campaign_id are required.', 'items' => []];
+        }
+        try {
+            $data = $this->fetchListingGroupNodes($customerId, $campaignId);
+        } catch (\Throwable $e) {
+            return ['status' => 'error', 'message' => self::briefGoogleError($e), 'items' => []];
+        }
+
+        $byItem = [];
+        foreach ($data['nodes'] as $n) {
+            if ($n['item'] === '') {
+                continue;
+            }
+            $byItem[strtolower($n['item'])][] = $n;
+        }
+        $items = [];
+        foreach ($byItem as $key => $nodes) {
+            $positive = array_values(array_filter($nodes, static fn ($n) => ! $n['negative']));
+            if ($positive === []) {
+                $state = 'EXCLUDED';
+            } elseif (array_filter($positive, static fn ($n) => $n['status'] === 'ENABLED') !== []) {
+                $state = 'ENABLED';
+            } else {
+                $state = 'PAUSED';
+            }
+            $items[$key] = ['item' => $nodes[0]['item'], 'state' => $state];
+        }
+
+        return ['status' => 'ok', 'message' => $data['nodes'] === [] ? 'No listing groups in this campaign.' : '', 'items' => $items];
+    }
+
+    /**
+     * Enable, pause or remove one Item ID in a Shopping campaign's listing groups.
+     *  - pause:  paused unit (the product stops serving).
+     *  - enable: enables a paused unit; re-includes an excluded one; adds one that is not attached (flat tree only).
+     *  - remove: removes the unit(s) for the Item ID.
+     *
+     * @return array{ok: bool, message: string, state: string}
+     */
+    public function setShoppingItemState(string $customerId, string $campaignId, string $itemId, string $action): array
+    {
+        $customerId = str_replace('-', '', trim($customerId));
+        $campaignId = preg_replace('/\D+/', '', $campaignId) ?: '';
+        $itemId = trim($itemId);
+        $action = strtolower(trim($action));
+        $fail = static fn (string $m) => ['ok' => false, 'message' => $m, 'state' => ''];
+
+        if ($customerId === '' || $campaignId === '' || $itemId === '') {
+            return $fail('customer_id, campaign_id and item_id are required.');
+        }
+        if (! in_array($action, ['enable', 'pause', 'remove'], true)) {
+            return $fail('Unknown action.');
+        }
+
+        try {
+            $data = $this->fetchListingGroupNodes($customerId, $campaignId);
+        } catch (\Throwable $e) {
+            return $fail(self::briefGoogleError($e));
+        }
+        $nodes = $data['nodes'];
+        $key = strtolower($itemId);
+        $mine = array_values(array_filter($nodes, static fn ($n) => $n['item'] !== '' && strtolower($n['item']) === $key));
+        $positive = array_values(array_filter($mine, static fn ($n) => ! $n['negative']));
+
+        $ops = [];
+        $state = '';
+        $note = '';
+        if ($action === 'pause') {
+            if ($positive === []) {
+                return $fail('This Item ID is not attached in the ad — nothing to pause.');
+            }
+            foreach ($positive as $n) {
+                if ($n['status'] !== 'PAUSED') {
+                    $ops[] = (new AdGroupCriterionOperation())
+                        ->setUpdate(new AdGroupCriterion(['resource_name' => $n['resource'], 'status' => AdGroupCriterionStatus::PAUSED]))
+                        ->setUpdateMask(new FieldMask(['paths' => ['status']]));
+                }
+            }
+            $state = 'PAUSED';
+            $note = $ops === [] ? 'Already paused.' : 'Item paused in the ad.';
+        } elseif ($action === 'remove') {
+            if ($mine === []) {
+                return $fail('This Item ID is not in the ad — nothing to remove.');
+            }
+            foreach ($mine as $n) {
+                $ops[] = (new AdGroupCriterionOperation())->setRemove($n['resource']);
+            }
+            $state = 'NOT_ATTACHED';
+            $note = 'Item removed from the ad.';
+        } else { // enable
+            if ($positive !== []) {
+                foreach ($positive as $n) {
+                    if ($n['status'] !== 'ENABLED') {
+                        $ops[] = (new AdGroupCriterionOperation())
+                            ->setUpdate(new AdGroupCriterion(['resource_name' => $n['resource'], 'status' => AdGroupCriterionStatus::ENABLED]))
+                            ->setUpdateMask(new FieldMask(['paths' => ['status']]));
+                    }
+                }
+                $state = 'ENABLED';
+                $note = $ops === [] ? 'Already enabled.' : 'Item enabled in the ad.';
+            } else {
+                // Excluded or not attached: (re)create it as an included unit under the root — flat tree only.
+                if (count($data['adGroups']) > 1) {
+                    return $fail('Campaign has several ad groups with listing groups — fix manually in Google Ads.');
+                }
+                $roots = array_values(array_filter($nodes, static fn ($n) => $n['parent'] === ''));
+                if (count($roots) !== 1 || $roots[0]['type'] !== 'SUBDIVISION') {
+                    return $fail('Campaign targets "All products" or a custom tree — fix manually in Google Ads.');
+                }
+                $agResource = (string) array_key_first($data['adGroups']);
+                $bid = 0;
+                foreach ($nodes as $n) {
+                    if (! $n['negative'] && $n['item'] !== '' && $n['cpc'] > 0) {
+                        $bid = $n['cpc'];
+                        break;
+                    }
+                }
+                $bid = $bid ?: ($data['adGroups'][$agResource]['cpc'] ?: 500000);
+                foreach ($mine as $n) {
+                    $ops[] = (new AdGroupCriterionOperation())->setRemove($n['resource']);
+                }
+                $ops[] = (new AdGroupCriterionOperation())->setCreate(new AdGroupCriterion([
+                    'ad_group' => $agResource,
+                    'status' => AdGroupCriterionStatus::ENABLED,
+                    'listing_group' => new ListingGroupInfo([
+                        'type' => ListingGroupType::UNIT,
+                        'parent_ad_group_criterion' => $roots[0]['resource'],
+                        'case_value' => new ListingDimensionInfo([
+                            'product_item_id' => new ProductItemIdInfo(['value' => $itemId]),
+                        ]),
+                    ]),
+                    'cpc_bid_micros' => $bid,
+                ]));
+                $state = 'ENABLED';
+                $note = $mine === [] ? 'Item added and enabled in the ad.' : 'Item re-included and enabled in the ad.';
+            }
+        }
+
+        if ($ops === []) {
+            return ['ok' => true, 'message' => $note, 'state' => $state];
+        }
+
+        try {
+            $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
+                new MutateAdGroupCriteriaRequest(['customer_id' => $customerId, 'operations' => $ops])
+            );
+        } catch (\Throwable $e) {
+            Log::error('Failed to set Shopping Item ID state', ['campaign_id' => $campaignId, 'item' => $itemId, 'action' => $action, 'error' => $e->getMessage()]);
+
+            return $fail(self::briefGoogleError($e));
+        }
+        Log::info('Set Shopping Item ID state', ['campaign_id' => $campaignId, 'item' => $itemId, 'action' => $action]);
+
+        return ['ok' => true, 'message' => $note, 'state' => $state];
+    }
+
+    /**
+     * Listing-group nodes (non-removed) for many Shopping campaigns at once, grouped by campaign id.
+     *
+     * @param  list<string>  $campaignIds
+     * @return array<string, list<array<string, mixed>>>
+     */
+    public function fetchListingGroupNodesByCampaign(string $customerId, array $campaignIds): array
+    {
+        $customerId = str_replace('-', '', trim($customerId));
+        $ids = array_values(array_unique(array_filter(array_map(static fn ($id) => preg_replace('/\D+/', '', (string) $id), $campaignIds))));
+        $out = [];
+        foreach (array_chunk($ids, 50) as $chunk) {
+            $rows = $this->runQuery($customerId, '
+                SELECT
+                    campaign.id,
+                    ad_group_criterion.resource_name,
+                    ad_group_criterion.status,
+                    ad_group_criterion.negative,
+                    ad_group_criterion.listing_group.type,
+                    ad_group_criterion.listing_group.parent_ad_group_criterion,
+                    ad_group_criterion.listing_group.case_value.product_item_id.value
+                FROM ad_group_criterion
+                WHERE campaign.id IN ('.implode(', ', $chunk).")
+                  AND ad_group_criterion.type = 'LISTING_GROUP'
+                  AND ad_group_criterion.status != 'REMOVED'
+            ");
+            foreach ($rows as $row) {
+                $cid = (string) ($row['campaign']['id'] ?? '');
+                $crit = $row['adGroupCriterion'] ?? [];
+                $lg = $crit['listingGroup'] ?? [];
+                if ($cid === '') {
+                    continue;
+                }
+                $out[$cid][] = [
+                    'resource' => (string) ($crit['resourceName'] ?? ''),
+                    'type' => (string) ($lg['type'] ?? ''),
+                    'parent' => (string) ($lg['parentAdGroupCriterion'] ?? ''),
+                    'status' => (string) ($crit['status'] ?? 'ENABLED'),
+                    'negative' => (bool) ($crit['negative'] ?? false),
+                    'item' => trim((string) ($lg['caseValue']['productItemId']['value'] ?? '')),
+                ];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Remove the Item ID units that are not serving — excluded (grey "−" in Google Ads) or paused — from a campaign.
+     * Only the simple tree this app builds is touched (root SUBDIVISION + one UNIT per Item ID + "everything else");
+     * the "everything else" node is never removed. Any other structure is reported as skipped.
+     *
+     * @param  list<array<string, mixed>>  $nodes  from fetchListingGroupNodesByCampaign()
+     * @return array{status: string, removed: list<array{item: string, reason: string}>, applied: bool, message: string}
+     */
+    public function removeInactiveShoppingItems(string $customerId, string $campaignId, array $nodes, bool $dryRun = true): array
+    {
+        $customerId = str_replace('-', '', trim($customerId));
+        $res = static fn (string $status, string $message, array $removed = [], bool $applied = false) => [
+            'status' => $status, 'removed' => $removed, 'applied' => $applied, 'message' => $message,
+        ];
+
+        $roots = array_values(array_filter($nodes, static fn ($n) => $n['parent'] === ''));
+        if (count($roots) !== 1 || $roots[0]['type'] !== 'SUBDIVISION') {
+            return $res('skipped', 'Campaign targets "All products", has no listing groups or a custom tree.');
+        }
+        $rootResource = $roots[0]['resource'];
+        foreach ($nodes as $n) {
+            if ($n['parent'] !== '' && ($n['parent'] !== $rootResource || $n['type'] !== 'UNIT')) {
+                return $res('skipped', 'Listing group tree has custom subdivisions.');
+            }
+        }
+
+        $removed = [];
+        $ops = [];
+        foreach ($nodes as $n) {
+            if ($n['parent'] === '' || $n['item'] === '') {
+                continue; // root, or the "everything else" node
+            }
+            $reason = $n['negative'] ? 'excluded' : ($n['status'] === 'PAUSED' ? 'paused' : '');
+            if ($reason === '') {
+                continue;
+            }
+            $removed[] = ['item' => $n['item'], 'reason' => $reason];
+            $ops[] = (new AdGroupCriterionOperation())->setRemove($n['resource']);
+        }
+        if ($ops === []) {
+            return $res('nothing', 'No excluded or paused Item IDs.');
+        }
+        if ($dryRun) {
+            return $res('ok', 'Would remove '.count($ops).' Item ID(s).', $removed);
+        }
+
+        try {
+            $this->getClient()->getAdGroupCriterionServiceClient()->mutateAdGroupCriteria(
+                new MutateAdGroupCriteriaRequest(['customer_id' => $customerId, 'operations' => $ops])
+            );
+        } catch (\Throwable $e) {
+            Log::error('Failed to remove inactive Shopping Item IDs', ['campaign_id' => $campaignId, 'error' => $e->getMessage()]);
+
+            return $res('error', self::briefGoogleError($e), $removed);
+        }
+        Log::info('Removed inactive Shopping Item IDs', ['campaign_id' => $campaignId, 'count' => count($ops)]);
+
+        return $res('ok', 'Removed '.count($ops).' Item ID(s).', $removed, true);
+    }
+
+    /**
      * @param  list<string>  $itemIds
      */
     private function createFlatListingTree(string $customerId, string $adGroupResourceName, int $adGroupId, array $itemIds, int $bidMicros): void

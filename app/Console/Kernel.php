@@ -2273,6 +2273,14 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo($log);
 
+        // Excluded (grey "−") / paused Item IDs are removed from Shopping campaigns hourly.
+        $schedule->command('google:remove-inactive-shopping-items')
+            ->hourlyAt(30)
+            ->name('google-remove-inactive-shopping-items')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo($log);
+
         $ist($schedule->command('budget:update-serp')
             ->dailyAt('17:51')
             ->timezone('Asia/Kolkata')
